@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, ChevronDown } from 'lucide-react';
 import {
   AreaChart,
   Area,
@@ -9,134 +9,106 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
-import { MonitoringMessage, LLMCall } from '../../types/monitoring';
+import { Card } from '@/components/ui/card';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
+import { Skeleton } from '@/components/ui/skeleton';
+import { MonitoringData } from '../../types/monitoring';
 
 interface TrafficChartProps {
-  messages: MonitoringMessage[];
-  llmCalls: LLMCall[];
+  traffic?: MonitoringData['traffic'];
   loading?: boolean;
 }
 
-interface ChartDataPoint {
-  time: string;
-  timestamp: number;
-  messages: number;
-  llmCalls: number;
+export default function TrafficChart(props: TrafficChartProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem('langbot-traffic-chart-open') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={(value) => {
+        setOpen(value);
+        try {
+          localStorage.setItem('langbot-traffic-chart-open', String(value));
+        } catch {
+          /* Storage may be unavailable. */
+        }
+      }}
+      asChild
+    >
+      <Card className="gap-0 overflow-hidden py-0">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="group flex w-full items-center gap-3 px-5 py-4 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              <BarChart3 className="size-4" />
+            </span>
+            <span className="flex-1 text-sm font-semibold">
+              {t('monitoring.trafficChart.title')}
+            </span>
+            <span className="hidden items-center gap-4 text-xs text-muted-foreground sm:flex">
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-blue-500" />
+                {t('monitoring.trafficChart.messages')}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="size-1.5 rounded-full bg-violet-500" />
+                {t('monitoring.trafficChart.llmCalls')}
+              </span>
+            </span>
+            <ChevronDown
+              className={`ml-2 size-4 text-muted-foreground transition-transform motion-reduce:transition-none ${open ? 'rotate-180' : ''}`}
+            />
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="border-t px-3 pb-4 pt-4 sm:px-5">
+            <TrafficChartContent {...props} />
+          </div>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
 }
 
-export default function TrafficChart({
-  messages,
-  llmCalls,
-  loading,
-}: TrafficChartProps) {
+function TrafficChartContent({ traffic, loading }: TrafficChartProps) {
   const { t } = useTranslation();
+  const chartData = useMemo(
+    () =>
+      (traffic?.points ?? []).map((point) => ({
+        ...point,
+        time: point.timestamp.toLocaleString(
+          [],
+          traffic?.bucket === 'day'
+            ? { month: 'short', day: 'numeric' }
+            : {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              },
+        ),
+      })),
+    [traffic],
+  );
 
-  const chartData = useMemo(() => {
-    const safeMessages = Array.isArray(messages) ? messages : [];
-    const safeLlmCalls = Array.isArray(llmCalls) ? llmCalls : [];
-    if (!safeMessages.length && !safeLlmCalls.length) {
-      return [];
-    }
-
-    // Combine all timestamps and find the range
-    const allTimestamps = [
-      ...safeMessages.map((m) => m.timestamp.getTime()),
-      ...safeLlmCalls.map((c) => c.timestamp.getTime()),
-    ];
-
-    if (allTimestamps.length === 0) return [];
-
-    const minTime = Math.min(...allTimestamps);
-    const maxTime = Math.max(...allTimestamps);
-    const timeRange = maxTime - minTime;
-
-    // Determine bucket size based on time range
-    let bucketSize: number;
-    let formatTime: (date: Date) => string;
-
-    if (timeRange <= 60 * 60 * 1000) {
-      // <= 1 hour: 5-minute buckets
-      bucketSize = 5 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 6 * 60 * 60 * 1000) {
-      // <= 6 hours: 15-minute buckets
-      bucketSize = 15 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 24 * 60 * 60 * 1000) {
-      // <= 24 hours: 1-hour buckets
-      bucketSize = 60 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    } else if (timeRange <= 7 * 24 * 60 * 60 * 1000) {
-      // <= 7 days: 4-hour buckets
-      bucketSize = 4 * 60 * 60 * 1000;
-      formatTime = (date) =>
-        `${date.toLocaleDateString([], {
-          month: 'short',
-          day: 'numeric',
-        })} ${date.toLocaleTimeString([], { hour: '2-digit' })}`;
-    } else {
-      // > 7 days: 1-day buckets
-      bucketSize = 24 * 60 * 60 * 1000;
-      formatTime = (date) =>
-        date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-    }
-
-    // Create buckets
-    const buckets: Map<number, ChartDataPoint> = new Map();
-    const startBucket = Math.floor(minTime / bucketSize) * bucketSize;
-    const endBucket = Math.ceil(maxTime / bucketSize) * bucketSize;
-
-    for (let bucket = startBucket; bucket <= endBucket; bucket += bucketSize) {
-      buckets.set(bucket, {
-        time: formatTime(new Date(bucket)),
-        timestamp: bucket,
-        messages: 0,
-        llmCalls: 0,
-      });
-    }
-
-    // Count messages per bucket
-    safeMessages.forEach((msg) => {
-      const bucket =
-        Math.floor(msg.timestamp.getTime() / bucketSize) * bucketSize;
-      const point = buckets.get(bucket);
-      if (point) {
-        point.messages++;
-      }
-    });
-
-    // Count LLM calls per bucket
-    safeLlmCalls.forEach((call) => {
-      const bucket =
-        Math.floor(call.timestamp.getTime() / bucketSize) * bucketSize;
-      const point = buckets.get(bucket);
-      if (point) {
-        point.llmCalls++;
-      }
-    });
-
-    return Array.from(buckets.values()).sort(
-      (a, b) => a.timestamp - b.timestamp,
-    );
-  }, [messages, llmCalls]);
-
-  if (loading) {
+  if (loading && !traffic) {
     return (
-      <div className="bg-card rounded-xl border p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div className="h-5 w-32 bg-muted animate-pulse rounded"></div>
-          <div className="flex gap-4">
-            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-            <div className="h-4 w-24 bg-muted animate-pulse rounded"></div>
-          </div>
-        </div>
+      <div>
         <div className="h-[300px] flex items-center justify-center">
-          <div className="animate-pulse w-full h-full bg-muted rounded"></div>
+          <Skeleton className="w-full h-full rounded" />
         </div>
       </div>
     );
@@ -144,23 +116,28 @@ export default function TrafficChart({
 
   if (chartData.length === 0) {
     return (
-      <div className="bg-card rounded-xl border p-6">
-        <h3 className="text-base font-semibold text-foreground mb-4">
-          {t('monitoring.trafficChart.title')}
-        </h3>
+      <div>
         <div className="h-[300px] flex flex-col items-center justify-center text-muted-foreground gap-2">
           <BarChart3 className="h-[3rem] w-[3rem]" />
-          <div className="text-sm">{t('monitoring.trafficChart.noData')}</div>
+          <div className="text-sm">
+            {t(
+              traffic
+                ? 'monitoring.trafficChart.noData'
+                : 'monitoring.trafficChart.unavailable',
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-card rounded-xl border p-6 transition-shadow duration-300">
-      <h3 className="text-base font-semibold text-foreground mb-6">
-        {t('monitoring.trafficChart.title')}
-      </h3>
+    <div>
+      {traffic?.truncated && (
+        <p role="status" className="text-sm text-muted-foreground mb-3">
+          {t('monitoring.trafficChart.truncated')}
+        </p>
+      )}
       <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
@@ -214,16 +191,8 @@ export default function TrafficChart({
               }}
               itemStyle={{ padding: '4px 0' }}
             />
-            <Legend
-              wrapperStyle={{
-                fontSize: '13px',
-                paddingTop: '16px',
-                fontWeight: 500,
-              }}
-              iconType="circle"
-              iconSize={10}
-            />
             <Area
+              isAnimationActive={false}
               type="monotone"
               dataKey="messages"
               name={t('monitoring.trafficChart.messages')}
@@ -235,6 +204,7 @@ export default function TrafficChart({
               activeDot={{ r: 6, strokeWidth: 2 }}
             />
             <Area
+              isAnimationActive={false}
               type="monotone"
               dataKey="llmCalls"
               name={t('monitoring.trafficChart.llmCalls')}

@@ -7,7 +7,13 @@ Tests log page management and pointer-based retrieval.
 from __future__ import annotations
 
 
-from langbot.pkg.utils.logcache import LogPage, LogCache, LOG_PAGE_SIZE, MAX_CACHED_PAGES
+from langbot.pkg.utils.logcache import (
+    LogPage,
+    LogCache,
+    LOG_PAGE_SIZE,
+    MAX_CACHED_PAGES,
+    MAX_LOG_LINE_CHARS,
+)
 
 
 class TestLogPage:
@@ -153,6 +159,17 @@ class TestLogCache:
         assert 'page0 log 0' in result
         assert 'page1 log 0' in result
 
+    def test_get_log_by_pointer_across_pages_keeps_line_boundaries(self):
+        """Lines from adjacent pages are separated by a newline, not glued together."""
+        cache = LogCache()
+        logs = [f'log {i}' for i in range(LOG_PAGE_SIZE * 2 + 1)]
+        for log in logs:
+            cache.add_log(log)
+
+        result, _, _ = cache.get_log_by_pointer(0, 0)
+
+        assert result.split('\n') == logs
+
     def test_get_log_by_pointer_from_second_page(self):
         """get_log_by_pointer can start from second page."""
         cache = LogCache()
@@ -188,16 +205,11 @@ class TestLogCache:
         assert result == ''
 
     def test_get_log_by_pointer_nonexistent_page(self):
-        """get_log_by_pointer handles nonexistent page number."""
+        """A cursor beyond the tail returns no logs and resumes at the actual tail."""
         cache = LogCache()
-
         cache.add_log('log 1')
 
-        # Request page that doesn't exist
-        result, page_num, offset = cache.get_log_by_pointer(99, 0)
-
-        # Returns empty or last available
-        # Behavior depends on implementation
+        assert cache.get_log_by_pointer(99, 0) == ('', 0, 1)
 
     def test_max_cached_pages_constant(self):
         """MAX_CACHED_PAGES is defined and reasonable."""
@@ -208,3 +220,11 @@ class TestLogCache:
         """LOG_PAGE_SIZE is defined and reasonable."""
         assert LOG_PAGE_SIZE > 0
         assert LOG_PAGE_SIZE <= 1000  # Reasonable upper bound
+
+    def test_single_log_line_is_bounded(self):
+        cache = LogCache()
+
+        cache.add_log('x' * (MAX_LOG_LINE_CHARS * 2))
+
+        assert len(cache.log_pages[0].logs[0]) == MAX_LOG_LINE_CHARS
+        assert cache.log_pages[0].logs[0].endswith('[log truncated]')

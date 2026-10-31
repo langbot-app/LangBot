@@ -1,0 +1,52 @@
+---
+title: "ランタイムと拡張機能の関係"
+description: "LangBot のランタイムと拡張を理解：Box Runtime・サンドボックスバックエンド・MCP サーバーの関係。"
+---
+
+LangBot には **プラグイン、MCP、Skills、サンドボックス** という 4 種類の拡張機構が併存しており、混同されやすい部分です。本ページではそれぞれの役割と使い分けを整理します。
+
+## 一行で区別する
+
+- **Box 実行環境**: Agent がコマンド実行やファイル読み書きを行う場所。隔離の有無は選択したバックエンドによる
+- **Skills**: オンデマンドで起動する指示パック。Agent に一時的に専門的なワークフローを追加する
+- **MCP サーバー**: 外部のツールサービスに接続する
+- **プラグイン**: 長期常駐する拡張プロセス。設定ページ、イベント監視、ナレッジベースを持てる
+
+## 対応表
+
+| 機能 | 提供元 | Agent への入り方 | いつ使うか |
+|------|--------|----------------|---------|
+| Box 実行環境 | Box Runtime | `exec/read/write/edit/glob/grep` の 6 点セットを直接付与 | Agent がコード実行やファイル読み書きを行うとき |
+| Skills | Box Runtime skill store | Agent が `activate` を呼び出した後、指示が Tool Result として注入される | Agent にワークフロー／テンプレート／スクリプトを追加し、必要時にのみ発火させたいとき |
+| MCP サーバー | LangBot MCP Loader（stdio モードは Box がホスト） | ツールが利用可能ツール一覧に直接入る | 既存の MCP サービスに接続したいとき |
+| プラグイン | Plugin Runtime | プラグインシステムから能力が公開される | 長期的な機能、設定ページ／イベント監視／ナレッジコンポーネントが必要なとき |
+
+## パイプラインへのバインド
+
+Skills、MCP サーバー、プラグインはすべて **パイプライン拡張** に属します。WebUI でインストール／作成した後、パイプライン拡張設定で有効化範囲を決定する必要があります。
+
+- すべての拡張を有効化する、または
+- 指定した拡張のみをバインドする
+
+Skills のバインドは Agent が **どの Skill を見えるか** を決定します（`<available_skills>` 一覧に影響）。具体的な Skill 内容は Agent が `activate` を呼び出した後にのみ注入されます。
+
+## バックエンドと隔離境界
+
+Box API、Agent ツール、セッションスコープ、ライフサイクル、Skills、stdio MCP ホスティングの使い方は各バックエンドで同じですが、セキュリティ特性は異なります。Docker、nsjail、E2B はそれぞれのサンドボックス境界を提供します。Host は Box Runtime ホスト上のプロセスを直接使用し、信頼できるローカル開発専用です。Host を選択しても WebUI は変わらず、別々のセッションにホストレベルの隔離が追加されることもありません。
+
+## トラブルシューティングの入口
+
+| 症状 | まず確認すること |
+|------|---------|
+| Agent に `exec/read/write` ツールがない | `box.enabled`、バックエンドが利用可能か、パイプラインが組み込み Agent を使用しているか |
+| Skill 一覧が空 | Box Runtime の状態、`box.local.skills_root`、パイプラインのバインド |
+| stdio MCP の起動に失敗 | Box Runtime の状態、MCP コマンドと環境変数、起動タイムアウト |
+| Docker デプロイでサンドボックスが起動しない | `langbot_box` が `docker.sock` をマウントしているか、Box ルートディレクトリのパスが一致しているか |
+| ファイル読み書きに失敗 | `box.local.host_root`、`box.local.allowed_mount_roots` |
+| バックエンド選択が効かない | `BOX__BACKEND` が `langbot_box` ではなく `langbot` サービスに設定されているか確認 |
+| Host バックエンドが利用できない | システムが POSIX で、`PATH` に `sh` があることを確認。Windows では WSL を使用 |
+| 外部 Host Box への接続が拒否される | LangBot と Box Runtime に同じ `LANGBOT_BOX_CONTROL_TOKEN` を設定 |
+
+<Note>
+サンドボックスの組み込みツールと Skills は、現在は組み込み Agent 向けです。外部 Runner（Dify、n8n、Langflow、Coze など）では、各プラットフォーム独自のツールと実行機構を使用してください。
+</Note>

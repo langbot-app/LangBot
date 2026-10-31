@@ -80,13 +80,17 @@ async function main() {
   const evidenceDir = resolve(env.LBS_EVIDENCE_DIR || join(root, "reports", "evidence", runId));
   await mkdir(evidenceDir, { recursive: true });
   const startedAt = new Date();
-  const langbotRepo = resolve(root, env.LANGBOT_REPO || "../LangBot");
+  const langbotRepo = resolve(root, env.LANGBOT_REPO || "..");
   const stdoutLog = join(evidenceDir, "probe-stdout.log");
   const stderrLog = join(evidenceDir, "probe-stderr.log");
   const automationResultJson = join(evidenceDir, "automation-result.json");
   const resultJson = join(evidenceDir, "result.json");
   const timeoutMs = Number(env.LANGBOT_ASYNC_DB_READINESS_TIMEOUT_MS || "5000");
-  const command = { executable: "rtk", args: ["uv", "run", "python", "-c", script], cwd: langbotRepo };
+  const command = {
+    executable: "rtk",
+    args: [resolve(langbotRepo, ".venv/bin/python"), "-c", script],
+    cwd: langbotRepo,
+  };
   const result = {
     source: "automation",
     probe: "aiosqlite-readiness",

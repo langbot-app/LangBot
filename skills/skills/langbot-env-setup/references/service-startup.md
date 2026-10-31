@@ -24,7 +24,7 @@ Healthy startup includes:
 ```text
 Running on http://0.0.0.0:<backend-port>
 Connected to plugin runtime.
-Plugin langbot/local-agent initialized
+Plugin langbot-team/LocalAgent initialized
 ```
 
 Quick check:

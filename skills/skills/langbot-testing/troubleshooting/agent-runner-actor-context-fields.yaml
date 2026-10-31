@@ -1,9 +1,9 @@
 id: agent-runner-actor-context-fields
-title: "AgentRunner reads old actor.type and actor.id fields"
+title: "Runner reads old actor.type and actor.id fields"
 date: 2026-05-17
 symptoms:
   - "Pipeline Debug Chat shows Agent runner execution failed."
-  - "Backend logs show an AttributeError from an AgentRunner plugin."
+  - "Backend logs show an AttributeError from an Runner plugin."
 patterns:
   - "AttributeError: 'ActorContext' object has no attribute 'type'"
   - "AttributeError: 'ActorContext' object has no attribute 'id'"
@@ -15,8 +15,8 @@ fix_steps:
   - "Update runner code to read actor.actor_type and actor.actor_id."
   - "Keep getattr fallback to type/id only if compatibility with older host data is required."
   - "Restart LangBot or the plugin runtime so the updated plugin code is loaded."
-  - "Add a regression test that builds AgentRunContext with ActorContext(actor_type=..., actor_id=...)."
-verification: "Run dify-agent-debug-chat or another AgentRunner Debug Chat and confirm the assistant/bot message contains the expected sentinel while backend logs show Streaming completed."
+  - "Add a regression test that builds RunnerContext with ActorContext(actor_type=..., actor_id=...)."
+verification: "Run dify-agent-debug-chat or another Runner Debug Chat and confirm the assistant/bot message contains the expected sentinel while backend logs show Streaming completed."
 related_cases:
   - dify-agent-debug-chat
   - pipeline-debug-chat

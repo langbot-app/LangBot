@@ -12,13 +12,14 @@ metadata:
     zh_Hant: 企業微信內部機器人，請查看文件了解使用方式
   icon: wecom.png
 spec:
+  legacy: true
   categories:
     - popular
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wecom
-    en: https://link.langbot.app/en/platforms/wecom
-    ja: https://link.langbot.app/ja/platforms/wecom
+    zh: https://langbot.app/docs/zh/usage/platforms/wecom/wecom
+    en: https://langbot.app/docs/en/usage/platforms/wecom/wecom
+    ja: https://langbot.app/docs/ja/usage/platforms/wecom/wecom
   config:
     - name: webhook_url
       label:

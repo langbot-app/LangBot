@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
+import os
 import traceback
 import typing
 
@@ -26,12 +28,17 @@ from langbot.libs.openclaw_weixin_api.types import (
     WeixinMessage,
 )
 from langbot.pkg.entity.persistence import bot as persistence_bot
+from langbot.pkg.utils import httpclient
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+from langbot.pkg.api.http.context import ExecutionContext
+
+_MAX_OPENCLAW_COMPONENT_BYTES = 10 * 1024 * 1024
 
 
 class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -112,7 +119,12 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
 
             elif item.type == MessageItem.IMAGE and item.image_item:
                 if hasattr(item.image_item, '_downloaded_bytes') and item.image_item._downloaded_bytes:
-                    b64 = base64.b64encode(item.image_item._downloaded_bytes).decode('utf-8')
+                    b64 = (
+                        await asyncio.to_thread(
+                            base64.b64encode,
+                            item.image_item._downloaded_bytes,
+                        )
+                    ).decode('utf-8')
                     components.append(platform_message.Image(base64=f'data:image/jpeg;base64,{b64}'))
                 else:
                     components.append(platform_message.Unknown(text='[Image]'))
@@ -245,6 +257,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
     # context_token cache: from_user_id -> context_token
     _context_tokens: dict[str, str] = pydantic.PrivateAttr(default_factory=dict)
 
+    _typing_indicator: typing.Any = pydantic.PrivateAttr(default=None)
+
     _polling: bool = pydantic.PrivateAttr(default=False)
     _poll_task: typing.Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
     _bot_uuid: typing.Optional[str] = pydantic.PrivateAttr(default=None)
@@ -278,11 +292,36 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             return
         try:
             ap = self.logger.ap
-            await ap.persistence_mgr.execute_async(
-                sqlalchemy.update(persistence_bot.Bot)
-                .where(persistence_bot.Bot.uuid == self._bot_uuid)
-                .values(adapter_config=self.config)
-            )
+            execution_context = getattr(self.logger, 'execution_context', None)
+            if not isinstance(execution_context, ExecutionContext):
+                raise RuntimeError('Weixin Bot config persistence requires an ExecutionContext')
+            if execution_context.bot_uuid != self._bot_uuid:
+                raise RuntimeError('Weixin Bot UUID does not match its ExecutionContext')
+
+            async def persist() -> None:
+                binding = await ap.workspace_service.get_execution_binding(
+                    execution_context.workspace_uuid,
+                    expected_generation=execution_context.placement_generation,
+                )
+                if binding.instance_uuid != execution_context.instance_uuid:
+                    raise RuntimeError('Weixin Bot Workspace belongs to another LangBot instance')
+
+                await ap.persistence_mgr.execute_async(
+                    sqlalchemy.update(persistence_bot.Bot)
+                    .where(persistence_bot.Bot.workspace_uuid == execution_context.workspace_uuid)
+                    .where(persistence_bot.Bot.uuid == self._bot_uuid)
+                    .values(adapter_config=self.config)
+                )
+
+            cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+            if cloud_runtime:
+                tenant_uow = getattr(ap.persistence_mgr, 'tenant_uow', None)
+                if not callable(tenant_uow):
+                    raise RuntimeError('Cloud adapter persistence requires an explicit tenant UoW')
+                async with tenant_uow(execution_context.workspace_uuid):
+                    await persist()
+            else:
+                await persist()
         except Exception as e:
             await self.logger.warning(f'Failed to persist adapter config: {e}')
 
@@ -310,6 +349,18 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
 
         # Persist token to database so it survives restart
         await self._persist_config()
+
+    @contextlib.asynccontextmanager
+    async def processing_indicator(self, target_type, target_id):
+        if target_type not in ('person', 'friend'):
+            yield
+            return
+        from langbot.libs.openclaw_weixin_api.typing_indicator import TypingIndicator
+
+        if self._typing_indicator is None:
+            self._typing_indicator = TypingIndicator(self.client, lambda peer: self._context_tokens.get(peer, ''))
+        async with self._typing_indicator.processing(target_id):
+            yield
 
     async def send_message(
         self,
@@ -349,6 +400,7 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                 await self.logger.error(
                     f'Failed to send component {type(component).__name__}: {traceback.format_exc()}'
                 )
+                raise
 
     async def reply_message(
         self,
@@ -374,19 +426,30 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         path_val = getattr(component, 'path', None)
 
         if b64_val:
-            return base64.b64decode(b64_val)
+            max_encoded_chars = 4 * ((_MAX_OPENCLAW_COMPONENT_BYTES + 2) // 3) + 4
+            if len(b64_val) > max_encoded_chars:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            data = await asyncio.to_thread(base64.b64decode, b64_val)
+            if len(data) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            return data
         elif url_val and url_val.startswith(('http://', 'https://')):
-            import aiohttp
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url_val) as resp:
-                    if resp.status == 200:
-                        return await resp.read()
+            session = httpclient.get_session()
+            async with session.get(url_val) as resp:
+                if resp.status == 200:
+                    return await httpclient.read_limited(resp)
         elif path_val:
-            import asyncio
+            if await asyncio.to_thread(os.path.getsize, path_val) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
 
-            with open(path_val, 'rb') as f:
-                return await asyncio.to_thread(f.read)
+            def read_file() -> bytes:
+                with open(path_val, 'rb') as file:
+                    return file.read(_MAX_OPENCLAW_COMPONENT_BYTES + 1)
+
+            data = await asyncio.to_thread(read_file)
+            if len(data) > _MAX_OPENCLAW_COMPONENT_BYTES:
+                raise ValueError('OpenClaw media exceeds the size limit')
+            return data
         return None
 
     def register_listener(
@@ -431,6 +494,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             token=self.config.get('token', token),
         )
         self.bot_account_id = self.config.get('account_id', 'openclaw-weixin')
+        from langbot.libs.openclaw_weixin_api.typing_indicator import TypingIndicator
+
+        self._typing_indicator = TypingIndicator(self.client, lambda peer: self._context_tokens.get(peer, ''))
         self._polling = True
 
         # Start the long-poll loop
@@ -441,6 +507,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             await self._poll_task
         except asyncio.CancelledError:
             pass
+        finally:
+            if self._typing_indicator is not None:
+                await self._typing_indicator.close()
 
     async def _poll_loop(self):
         """Long-poll loop: call getUpdates continuously.
@@ -475,6 +544,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                         await self.logger.error('OpenClaw WeChat session expired, attempting re-login...')
                         try:
                             await self._do_login()
+                            if self._typing_indicator is not None:
+                                await self._typing_indicator.close()
+                                self._typing_indicator = None
                             # Rebuild client with new credentials
                             self.client = OpenClawWeixinClient(
                                 base_url=self.config.get('base_url', DEFAULT_BASE_URL),
@@ -517,6 +589,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         """Process a single inbound message from getUpdates."""
         if msg.context_token and msg.from_user_id:
             self._context_tokens[msg.from_user_id] = msg.context_token
+            while len(self._context_tokens) > 4096:
+                self._context_tokens.pop(next(iter(self._context_tokens)), None)
 
         # Download CDN media (files, images) before converting to LangBot events
         await self._download_media_items(msg)
@@ -566,12 +640,16 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
     async def kill(self) -> bool:
         """Stop the adapter."""
         self._polling = False
+        if self._typing_indicator is not None:
+            await self._typing_indicator.close()
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             try:
                 await self._poll_task
             except asyncio.CancelledError:
                 pass
+        self._poll_task = None
+        self._context_tokens.clear()
         await self.client.close()
         await self.logger.info('OpenClaw WeChat adapter stopped')
         return True

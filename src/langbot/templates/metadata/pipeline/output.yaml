@@ -106,11 +106,81 @@ stages:
           en_US: Failure Hint Text
           zh_Hans: 失败提示文本
         description:
-          en_US: The text to display when a request fails. Only effective when Exception Handling Strategy is set to "Show Failure Hint"
-          zh_Hans: 请求失败时显示的提示文本，仅在异常处理策略设置为"仅文字提示"时生效
+          en_US: Leave empty to use the Workspace language. Used for request and runner execution failures; custom text is not translated.
+          zh_Hans: 留空时使用工作区语言的默认提示。用于请求和运行器执行失败；自定义文本不会自动翻译。
         type: string
         required: false
-        default: 'Request failed.'
+        default: ''
+      - name: rate-limit-hint
+        label:
+          en_US: Rate Limit Hint
+          zh_Hans: 限速提示
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
+      - name: content-filter-hint
+        label:
+          en_US: Content Filter Hint
+          zh_Hans: 内容过滤提示
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
+      - name: content-filter-error-hint
+        label:
+          en_US: Content Check Failure Hint
+          zh_Hans: 内容检查失败提示
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
+      - name: tool-call-hint
+        label:
+          en_US: Tool Call Hint
+          zh_Hans: 工具调用提示
+        description:
+          en_US: "Leave empty to use the Workspace language. Use {tools} for tool names. Requires Track Function Calls."
+          zh_Hans: "留空时使用工作区语言的默认提示。 可用 {tools} 插入工具名称，需开启跟踪函数调用。"
+        type: string
+        required: false
+        default: ''
+      - name: runner-not-found-hint
+        label:
+          en_US: Runner Missing Hint
+          zh_Hans: 运行器不存在提示
+        description:
+          en_US: "Leave empty to use the Workspace language. Use {runner} for the runner ID."
+          zh_Hans: "留空时使用工作区语言的默认提示。 可用 {runner} 插入运行器 ID。"
+        type: string
+        required: false
+        default: ''
+      - name: runner-not-authorized-hint
+        label:
+          en_US: Runner Authorization Hint
+          zh_Hans: 运行器未授权提示
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
+      - name: runner-unavailable-hint
+        label:
+          en_US: Runner Unavailable Hint
+          zh_Hans: 运行器不可用提示
+        description:
+          en_US: "Leave empty to use the Workspace language."
+          zh_Hans: "留空时使用工作区语言的默认提示。"
+        type: string
+        required: false
+        default: ''
       - name: at-sender
         label:
           en_US: At Sender

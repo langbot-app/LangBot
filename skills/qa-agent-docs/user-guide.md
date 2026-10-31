@@ -61,7 +61,7 @@ bin/lbs fixture check
 ```
 
 `env doctor` 会检查 URL、路径、代理变量等。代理变量是可选项；只有大小写代理变量互相冲突时才会报错。失败不一定代表仓库坏了，通常说明本地 LangBot 没启动、代理不一致或浏览器 profile 不存在。
-`fixture check` 会检查仓库内测试 fixture 是否存在，例如 MCP stdio server、RAG 文档、多模态图片、qa-plugin-smoke 包和 QA AgentRunner 包。它也会校验 `.lbpkg` 是 zip 包，并检查 QA AgentRunner fixture 的入口文件未漂移。
+`fixture check` 会检查仓库内测试 fixture 是否存在，例如 MCP stdio server、RAG 文档、多模态图片、qa-plugin-smoke 包和 QA Runner 包。它也会校验 `.lbpkg` 是 zip 包，并检查 QA Runner fixture 的入口文件未漂移。
 
 4. 查看已有测试 case：
 
@@ -344,8 +344,8 @@ npx playwright install chromium
 脚本会尝试通过 `LANGBOT_PIPELINE_NAME` 从 Pipelines 页面进入目标 pipeline。两者都没有时，
 该自动化会返回 `blocked`，不会伪造通过。
 
-Runner 专用 case 不应复用通用 pipeline 变量。Local Agent、Codex AgentRunner 和
-Claude Code AgentRunner 这类 case 会通过 `automation_pipeline_url_env` /
+Runner 专用 case 不应复用通用 pipeline 变量。Local Agent、Codex Runner 和
+Claude Code Runner 这类 case 会通过 `automation_pipeline_url_env` /
 `automation_pipeline_name_env` 映射到 case-specific env，例如
 `LANGBOT_LOCAL_AGENT_PIPELINE_URL`。这些 case 如果缺少专用变量，会返回 `blocked`，
 不会退回到 `LANGBOT_PIPELINE_URL`，避免跑错 pipeline 后产生假阳性。

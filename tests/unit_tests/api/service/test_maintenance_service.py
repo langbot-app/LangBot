@@ -13,16 +13,40 @@ Source: src/langbot/pkg/api/http/service/maintenance.py
 
 from __future__ import annotations
 
+import contextlib
+import os
 import pytest
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from unittest.mock import AsyncMock, Mock, patch, MagicMock, call
 from types import SimpleNamespace
 import datetime
 from pathlib import Path
 
+import sqlalchemy
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.service.maintenance import MaintenanceService
+from langbot.pkg.api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
+from langbot.pkg.entity.persistence.workspace import Workspace
 
 
 pytestmark = pytest.mark.asyncio
+TEST_CONTEXT = ExecutionContext(
+    instance_uuid='test-instance',
+    workspace_uuid='test-workspace',
+    placement_generation=1,
+)
+
+
+@pytest.fixture(autouse=True)
+def assume_oss_singleton(monkeypatch):
+    async def is_oss_singleton(_self, _context):
+        return True
+
+    monkeypatch.setattr(MaintenanceService, '_is_oss_singleton', is_oss_singleton)
 
 
 def _create_mock_result(scalar_value=None):
@@ -32,6 +56,14 @@ def _create_mock_result(scalar_value=None):
     return result
 
 
+def _scoped_storage_manager():
+    prefix = 'instances/i/workspaces/w/generations/1/owners/upload/o/'
+    return SimpleNamespace(
+        scoped_prefix=Mock(return_value=prefix),
+        is_scoped_object_key=Mock(side_effect=lambda key, **_: key == f'{prefix}uploaded_file.txt'),
+    )
+
+
 class TestMaintenanceServiceCleanupExpiredFiles:
     """Tests for cleanup_expired_files method."""
 
@@ -39,6 +71,7 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         """Uses default retention days when config not set."""
         # Setup
         ap = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {}
         ap.storage_mgr = SimpleNamespace()
@@ -58,7 +91,9 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         service._cleanup_expired_log_files = Mock(return_value=0)  # NOT async!
 
         # Execute
-        result = await service.cleanup_expired_files()
+        result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._cleanup_expired_log_files.assert_called_once_with(3)
 
         # Verify - returns counts
         assert 'uploaded_files' in result
@@ -95,7 +130,9 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         service._cleanup_expired_log_files = Mock(return_value=3)  # NOT async
 
         # Execute
-        result = await service.cleanup_expired_files()
+        result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 14)
+        service._cleanup_expired_log_files.assert_called_once_with(7)
 
         # Verify
         assert result['uploaded_files'] == 2
@@ -120,15 +157,20 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         service = MaintenanceService(ap)
 
         # Mock the internal cleanup methods
-        service._cleanup_expired_uploaded_files = AsyncMock(return_value=1)
+        service._expired_s3_upload_candidates = AsyncMock(return_value=[{'key': 'scoped/expired-upload'}])
+        protected = Mock()
+        protected.scalars.return_value.all.return_value = []
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock(return_value=protected))
         service._cleanup_expired_log_files = Mock(return_value=0)  # NOT async
 
         # Execute
-        result = await service.cleanup_expired_files()
+        result = await service.cleanup_expired_files(TEST_CONTEXT)
 
         # Verify
         assert result['uploaded_files'] == 1
         assert result['log_files'] == 0
+        service._expired_s3_upload_candidates.assert_awaited_once_with(TEST_CONTEXT, 7)
+        s3_provider.delete.assert_awaited_once_with('scoped/expired-upload')
 
     async def test_cleanup_expired_files_invalid_retention(self):
         """Uses default for invalid retention config."""
@@ -159,11 +201,58 @@ class TestMaintenanceServiceCleanupExpiredFiles:
         service._cleanup_expired_log_files = Mock(return_value=0)  # NOT async
 
         # Execute
-        result = await service.cleanup_expired_files()
+        result = await service.cleanup_expired_files(TEST_CONTEXT)
+        service._cleanup_expired_uploaded_files.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._cleanup_expired_log_files.assert_called_once_with(3)
 
         # Verify - warning logged, defaults used
         assert ap.logger.warning.called
         assert 'uploaded_files' in result
+
+    async def test_cloud_cleanup_carries_scope_without_holding_database_session(self):
+        class ScopeOnlyPersistenceManager:
+            mode = SimpleNamespace(value='cloud_runtime')
+
+            def __init__(self):
+                self.active_workspace = None
+
+            @contextlib.asynccontextmanager
+            async def tenant_scope(self, workspace_uuid):
+                self.active_workspace = workspace_uuid
+                try:
+                    yield
+                finally:
+                    self.active_workspace = None
+
+            def current_session(self):
+                return None
+
+        persistence_mgr = ScopeOnlyPersistenceManager()
+        application = SimpleNamespace(
+            persistence_mgr=persistence_mgr,
+            instance_config=SimpleNamespace(data={}),
+            logger=SimpleNamespace(warning=Mock()),
+        )
+        service = MaintenanceService(application)
+
+        async def cleanup_uploads(_context, _retention_days):
+            assert persistence_mgr.active_workspace == TEST_CONTEXT.workspace_uuid
+            assert persistence_mgr.current_session() is None
+            return 2
+
+        def cleanup_logs(_retention_days):
+            assert persistence_mgr.active_workspace == TEST_CONTEXT.workspace_uuid
+            assert persistence_mgr.current_session() is None
+            return 1
+
+        service._cleanup_expired_uploaded_files = cleanup_uploads
+        service._cleanup_expired_log_files = cleanup_logs
+
+        assert await service.cleanup_expired_files(TEST_CONTEXT) == {
+            'uploaded_files': 2,
+            'log_files': 1,
+        }
+        assert persistence_mgr.active_workspace is None
 
 
 class TestMaintenanceServiceGetStorageAnalysis:
@@ -196,14 +285,32 @@ class TestMaintenanceServiceGetStorageAnalysis:
         service._expired_log_candidates = Mock(return_value=[])
 
         # Execute
-        result = await service.get_storage_analysis()
+        result = await service.get_storage_analysis(TEST_CONTEXT)
 
         # Verify
         assert 'generated_at' in result
         assert 'cleanup_policy' in result
         assert 'sections' in result
         assert 'database' in result
-        assert 'cleanup_candidates' in result
+        assert result['cleanup_policy'] == {'uploaded_file_retention_days': 7, 'log_retention_days': 3}
+        assert {
+            section['key']: (Path(section['path']).as_posix(), section['size_bytes'], section['file_count'])
+            for section in result['sections']
+        } == {
+            'database': ('data/langbot.db', 1000, 5),
+            'logs': ('data/logs', 1000, 5),
+            'storage': ('data/storage', 1000, 5),
+            'vector_store': ('data/chroma', 1000, 5),
+            'temp': ('data/temp', 1000, 5),
+        }
+        assert result['total_size_bytes'] == 5000
+        assert result['database'] == {
+            'type': 'sqlite',
+            'monitoring_counts': {'messages': 10, 'errors': 0},
+            'binary_storage': {'count': 5, 'size_bytes': 500},
+        }
+        assert result['cleanup_candidates'] == {'uploaded_files': [], 'log_files': []}
+        assert result['tasks'] == {'running': 0}
 
     async def test_get_storage_analysis_sections(self):
         """Returns all storage sections."""
@@ -229,17 +336,105 @@ class TestMaintenanceServiceGetStorageAnalysis:
         service._expired_log_candidates = Mock(return_value=[])
 
         # Execute
-        result = await service.get_storage_analysis()
+        result = await service.get_storage_analysis(TEST_CONTEXT)
 
-        # Verify - all sections present
+        # Verify - only LangBot-owned sections are scanned by this process.
         sections = {s['key'] for s in result['sections']}
         assert 'database' in sections
         assert 'logs' in sections
         assert 'storage' in sections
         assert 'vector_store' in sections
-        assert 'plugins' in sections
-        assert 'mcp' in sections
         assert 'temp' in sections
+        assert 'plugins' not in sections
+        assert 'mcp' not in sections
+        assert [process['key'] for process in result['processes']] == [
+            'langbot',
+            'plugin_runtime',
+            'box_runtime',
+        ]
+
+    async def test_get_storage_analysis_aggregates_runtime_owned_directories(self):
+        plugin_handler = SimpleNamespace(
+            get_storage_analysis=AsyncMock(
+                return_value={
+                    'size_bytes': 25,
+                    'directories': [
+                        {
+                            'key': 'artifacts',
+                            'path': 'runtime/data/plugin-runtime/artifacts',
+                            'kind': 'root',
+                            'exists': True,
+                            'size_bytes': 25,
+                            'file_count': 2,
+                            'error_count': 0,
+                        }
+                    ],
+                }
+            )
+        )
+        box_service = SimpleNamespace(
+            enabled=True,
+            get_storage_analysis=AsyncMock(
+                return_value={
+                    'size_bytes': 40,
+                    'directories': [
+                        {
+                            'key': 'workspace',
+                            'path': 'box/data/box/default/tenants/test',
+                            'kind': 'root',
+                            'exists': True,
+                            'size_bytes': 40,
+                            'file_count': 3,
+                            'error_count': 0,
+                        },
+                        {
+                            'key': 'mcp',
+                            'path': 'box/data/box/default/tenants/test/.mcp',
+                            'kind': 'detail',
+                            'parent_key': 'workspace',
+                            'exists': True,
+                            'size_bytes': 30,
+                            'file_count': 2,
+                            'error_count': 0,
+                        },
+                    ],
+                    'active_sessions': 1,
+                    'managed_processes': 2,
+                }
+            ),
+        )
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(data={}),
+            persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=_create_mock_result(scalar_value=0))),
+            logger=SimpleNamespace(warning=Mock()),
+            task_mgr=None,
+            plugin_connector=SimpleNamespace(
+                is_enable_plugin=True,
+                handler=plugin_handler,
+            ),
+            box_service=box_service,
+            skill_repository=SimpleNamespace(storage_root=Mock(return_value='/core/skills/tenants/test')),
+        )
+        service = MaintenanceService(ap)
+        service._path_size = Mock(return_value=10)
+        service._file_count = Mock(return_value=1)
+        service._monitoring_counts = AsyncMock(return_value={})
+        service._binary_storage_stats = AsyncMock(return_value={'count': 0, 'size_bytes': 0})
+        service._expired_uploaded_candidates = AsyncMock(return_value=[])
+        service._expired_log_candidates = Mock(return_value=[])
+
+        result = await service.get_storage_analysis(TEST_CONTEXT)
+
+        assert result['total_size_bytes'] == 125
+        assert next(section for section in result['sections'] if section['key'] == 'skills')['path'] == str(
+            Path('/core/skills/tenants/test')
+        )
+        assert result['processes'][1]['directories'][0]['key'] == 'artifacts'
+        assert result['processes'][2]['directories'][1]['key'] == 'mcp'
+        assert result['processes'][2]['managed_processes'] == 2
+        plugin_handler.get_storage_analysis.assert_awaited_once_with()
+        box_service.get_storage_analysis.assert_awaited_once_with(TEST_CONTEXT)
+        ap.skill_repository.storage_root.assert_called_once_with(TEST_CONTEXT)
 
     async def test_get_storage_analysis_postgresql(self):
         """Handles PostgreSQL database type."""
@@ -265,7 +460,7 @@ class TestMaintenanceServiceGetStorageAnalysis:
         service._expired_log_candidates = Mock(return_value=[])
 
         # Execute
-        result = await service.get_storage_analysis()
+        result = await service.get_storage_analysis(TEST_CONTEXT)
 
         # Verify
         assert result['database']['type'] == 'postgresql'
@@ -294,11 +489,15 @@ class TestMaintenanceServiceGetStorageAnalysis:
         service._expired_log_candidates = Mock(return_value=[{'name': 'old_log', 'size_bytes': 50}])
 
         # Execute
-        result = await service.get_storage_analysis()
+        result = await service.get_storage_analysis(TEST_CONTEXT)
 
         # Verify
-        assert len(result['cleanup_candidates']['uploaded_files']) == 1
-        assert len(result['cleanup_candidates']['log_files']) == 1
+        assert result['cleanup_candidates'] == {
+            'uploaded_files': [{'key': 'old_file', 'size_bytes': 100}],
+            'log_files': [{'name': 'old_log', 'size_bytes': 50}],
+        }
+        service._expired_uploaded_candidates.assert_awaited_once_with(TEST_CONTEXT, 7)
+        service._expired_log_candidates.assert_called_once_with(3)
 
 
 class TestMaintenanceServiceMonitoringCounts:
@@ -316,15 +515,12 @@ class TestMaintenanceServiceMonitoringCounts:
         service = MaintenanceService(ap)
 
         # Execute
-        result = await service._monitoring_counts()
+        result = await service._monitoring_counts(TEST_CONTEXT)
 
         # Verify - all table keys present
-        assert 'messages' in result
-        assert 'llm_calls' in result
-        assert 'embedding_calls' in result
-        assert 'errors' in result
-        assert 'sessions' in result
-        assert 'feedback' in result
+        assert result == dict.fromkeys(
+            ['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'errors', 'sessions', 'feedback'], 42
+        )
 
     async def test_monitoring_counts_zero_results(self):
         """Returns zero counts when tables empty."""
@@ -338,10 +534,12 @@ class TestMaintenanceServiceMonitoringCounts:
         service = MaintenanceService(ap)
 
         # Execute
-        result = await service._monitoring_counts()
+        result = await service._monitoring_counts(TEST_CONTEXT)
 
         # Verify - all zero
-        assert all(v == 0 for v in result.values())
+        assert result == dict.fromkeys(
+            ['messages', 'llm_calls', 'tool_calls', 'embedding_calls', 'errors', 'sessions', 'feedback'], 0
+        )
 
 
 class TestMaintenanceServiceBinaryStorageStats:
@@ -374,7 +572,7 @@ class TestMaintenanceServiceBinaryStorageStats:
         service = MaintenanceService(ap)
 
         # Execute
-        result = await service._binary_storage_stats()
+        result = await service._binary_storage_stats(TEST_CONTEXT)
 
         # Verify
         assert result['count'] == 10
@@ -404,11 +602,11 @@ class TestMaintenanceServiceBinaryStorageStats:
         service = MaintenanceService(ap)
 
         # Execute
-        result = await service._binary_storage_stats()
+        result = await service._binary_storage_stats(TEST_CONTEXT)
 
         # Verify - warning logged, size_bytes None or 0
         assert ap.logger.warning.called
-        assert result['count'] == 5
+        assert result == {'count': 5, 'size_bytes': None}
 
 
 class TestMaintenanceServicePathSize:
@@ -618,24 +816,33 @@ class TestMaintenanceServiceIsUploadedFileKey:
         """Returns True for valid upload file key."""
         # Setup
         ap = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
 
         # Execute - simple filename without path
-        result = service._is_uploaded_file_key('uploaded_file.txt')
+        ap.storage_mgr.scoped_prefix = Mock(side_effect=lambda context, *, owner_type: f'scoped/{owner_type}/')
+        ap.storage_mgr.is_scoped_object_key = Mock(return_value=True)
+        key = 'scoped/upload/uploaded_file.txt'
+        result = service._is_uploaded_file_key(TEST_CONTEXT, key)
 
         # Verify
         assert result is True
+        assert ap.storage_mgr.scoped_prefix.call_args_list == [
+            call(TEST_CONTEXT, owner_type=owner) for owner in ('upload_image', 'upload_document', 'upload')
+        ]
+        ap.storage_mgr.is_scoped_object_key.assert_called_once_with(key, expected_owner_type='upload')
 
     def test_is_uploaded_file_key_with_path(self):
         """Returns False for key with path separator."""
         # Setup
         ap = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
 
         # Execute - key with path
-        result = service._is_uploaded_file_key('path/to/file.txt')
+        result = service._is_uploaded_file_key(TEST_CONTEXT, 'path/to/file.txt')
 
         # Verify
         assert result is False
@@ -644,11 +851,12 @@ class TestMaintenanceServiceIsUploadedFileKey:
         """Returns False for plugin config prefix."""
         # Setup
         ap = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
 
         # Execute - plugin config file
-        result = service._is_uploaded_file_key('plugin_config_some_plugin.json')
+        result = service._is_uploaded_file_key(TEST_CONTEXT, 'plugin_config_some_plugin.json')
 
         # Verify
         assert result is False
@@ -662,6 +870,7 @@ class TestMaintenanceServiceExpiredLogCandidates:
         # Setup
         ap = SimpleNamespace()
         ap.logger = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
 
@@ -737,7 +946,7 @@ class TestMaintenanceServiceExpiredLogCandidates:
                 result = service._expired_log_candidates(3, include_paths=True)
 
         # Verify - path included
-        assert 'path' in result[0]
+        assert result[0]['path'] == '/data/logs/' + old_log_name
 
 
 class TestMaintenanceServiceExpiredLocalUploadCandidates:
@@ -748,60 +957,57 @@ class TestMaintenanceServiceExpiredLocalUploadCandidates:
         # Setup
         ap = SimpleNamespace()
         ap.logger = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
 
         with patch.object(Path, 'exists', return_value=False):
-            result = service._expired_local_upload_candidates(7)
+            result = service._expired_local_upload_candidates(TEST_CONTEXT, 7)
 
         # Verify
         assert result == []
 
-    def test_expired_local_upload_candidates_filters_uploaded(self):
-        """Only returns uploaded files matching pattern."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.logger = SimpleNamespace()
+    def test_expired_local_upload_candidates_filters_uploaded(self, tmp_path, monkeypatch):
+        """Only expired files below this Workspace's upload roots are candidates."""
+        monkeypatch.chdir(tmp_path)
+        prefix = Mock(side_effect=lambda context, *, owner_type: f'scoped/{context.workspace_uuid}/{owner_type}/')
+        ap = SimpleNamespace(logger=SimpleNamespace(warning=Mock()), storage_mgr=SimpleNamespace(scoped_prefix=prefix))
+        storage_root = Path('data/storage')
+        upload_root = storage_root / 'scoped/test-workspace/upload'
+        upload_root.mkdir(parents=True)
+        old = upload_root / 'valid_upload.txt'
+        old.write_bytes(b'x' * 100)
+        os.utime(old, (0, 0))
+        recent = upload_root / 'recent.txt'
+        recent.write_text('keep')
+        (upload_root / 'directory').mkdir()
+        foreign = storage_root / 'scoped/other-workspace/upload/foreign.txt'
+        foreign.parent.mkdir(parents=True)
+        foreign.write_text('keep')
+        os.utime(foreign, (0, 0))
 
-        service = MaintenanceService(ap)
-        # Mock _is_uploaded_file_key
-        service._is_uploaded_file_key = Mock(side_effect=lambda key: 'plugin_config_' not in key and '/' not in key)
+        result = MaintenanceService(ap)._expired_local_upload_candidates(TEST_CONTEXT, 7)
 
-        # Create mock files - one valid, one plugin config
-        mock_entry_valid = Mock(spec=Path)
-        mock_entry_valid.is_file = Mock(return_value=True)
-        mock_entry_valid.name = 'valid_upload.txt'
-        mock_stat = Mock()
-        mock_stat.st_size = 100
-        mock_stat.st_mtime = 0  # Very old
-        mock_entry_valid.stat = Mock(return_value=mock_stat)
-
-        mock_entry_plugin = Mock(spec=Path)
-        mock_entry_plugin.is_file = Mock(return_value=True)
-        mock_entry_plugin.name = 'plugin_config_test.json'
-        mock_stat2 = Mock()
-        mock_stat2.st_size = 200
-        mock_stat2.st_mtime = 0
-        mock_entry_plugin.stat = Mock(return_value=mock_stat2)
-
-        with patch.object(Path, 'exists', return_value=True):
-            with patch.object(Path, 'iterdir') as mock_iterdir:
-                mock_iterdir.return_value = [mock_entry_valid, mock_entry_plugin]
-                result = service._expired_local_upload_candidates(7)
-
-        # Verify - only valid upload included
-        assert len(result) == 1
-        assert result[0]['key'] == 'valid_upload.txt'
+        assert result == [
+            {
+                'key': 'scoped/test-workspace/upload/valid_upload.txt',
+                'size_bytes': 100,
+                'modified_at': '1970-01-01T00:00:00+00:00',
+            }
+        ]
+        assert prefix.call_args_list == [
+            call(TEST_CONTEXT, owner_type=owner) for owner in ('upload_image', 'upload_document', 'upload')
+        ]
+        assert recent.read_text() == foreign.read_text() == 'keep'
 
     def test_expired_local_upload_candidates_includes_path(self):
         """Includes path when include_paths=True."""
         # Setup
         ap = SimpleNamespace()
         ap.logger = SimpleNamespace()
+        ap.storage_mgr = _scoped_storage_manager()
 
         service = MaintenanceService(ap)
-        service._is_uploaded_file_key = Mock(return_value=True)
-
         mock_entry = Mock(spec=Path)
         mock_entry.is_file = Mock(return_value=True)
         mock_entry.name = 'old_file.txt'
@@ -810,11 +1016,178 @@ class TestMaintenanceServiceExpiredLocalUploadCandidates:
         mock_stat.st_size = 100
         mock_stat.st_mtime = 0
         mock_entry.stat = Mock(return_value=mock_stat)
+        mock_entry.relative_to = Mock(return_value=Path('scoped/old_file.txt'))
 
         with patch.object(Path, 'exists', return_value=True):
-            with patch.object(Path, 'iterdir') as mock_iterdir:
-                mock_iterdir.return_value = [mock_entry]
-                result = service._expired_local_upload_candidates(7, include_paths=True)
+            with patch.object(Path, 'rglob') as mock_rglob:
+                mock_rglob.return_value = [mock_entry]
+                result = service._expired_local_upload_candidates(
+                    TEST_CONTEXT,
+                    7,
+                    include_paths=True,
+                )
 
         # Verify - path included
-        assert 'path' in result[0]
+        assert result[0]['path'] == '/data/storage/old_file.txt'
+
+    def test_expired_local_upload_candidates_respects_run_limit(self):
+        ap = SimpleNamespace(
+            logger=SimpleNamespace(warning=Mock()),
+            storage_mgr=_scoped_storage_manager(),
+            instance_config=SimpleNamespace(data={'storage': {'cleanup': {'max_files_per_run': 2}}}),
+        )
+        service = MaintenanceService(ap)
+        entries = []
+        for index in range(3):
+            entry = Mock(spec=Path)
+            entry.is_file = Mock(return_value=True)
+            entry.stat = Mock(return_value=SimpleNamespace(st_size=100, st_mtime=0))
+            entry.relative_to = Mock(return_value=Path(f'scoped/old-{index}.txt'))
+            entries.append(entry)
+
+        with patch.object(Path, 'exists', return_value=True):
+            with patch.object(Path, 'rglob', return_value=entries):
+                result = service._expired_local_upload_candidates(TEST_CONTEXT, 7)
+
+        assert [item['key'] for item in result] == [
+            'scoped/old-0.txt',
+            'scoped/old-1.txt',
+        ]
+        ap.instance_config.data['storage']['cleanup']['max_files_per_run'] = 999999
+        assert service._max_files_per_run() == 10000
+
+
+ISOLATION_WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
+ISOLATION_WORKSPACE_B = '00000000-0000-0000-0000-00000000000b'
+
+
+def _tenant_context(workspace_uuid: str) -> ExecutionContext:
+    return ExecutionContext(
+        instance_uuid='instance',
+        workspace_uuid=workspace_uuid,
+        placement_generation=1,
+        trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+    )
+
+
+class _RealPersistenceManager:
+    def __init__(self, engine):
+        self.engine = engine
+
+    async def execute_async(self, *args, **kwargs):
+        async with self.engine.connect() as connection:
+            result = await connection.execute(*args, **kwargs)
+            await connection.commit()
+            return result
+
+
+@pytest.fixture
+async def tenant_maintenance_service(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "maintenance.db"}')
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            sqlalchemy.insert(Workspace),
+            [
+                {
+                    'uuid': ISOLATION_WORKSPACE_A,
+                    'instance_uuid': 'instance',
+                    'name': 'A',
+                    'slug': 'a',
+                    'source': 'cloud_projection',
+                },
+                {
+                    'uuid': ISOLATION_WORKSPACE_B,
+                    'instance_uuid': 'instance',
+                    'name': 'B',
+                    'slug': 'b',
+                    'source': 'cloud_projection',
+                },
+            ],
+        )
+        now = datetime.datetime.now(datetime.UTC).replace(tzinfo=None)
+        await connection.execute(
+            sqlalchemy.insert(MonitoringMessage),
+            [
+                {
+                    'id': 'message-a',
+                    'workspace_uuid': ISOLATION_WORKSPACE_A,
+                    'timestamp': now,
+                    'bot_id': 'bot',
+                    'bot_name': 'Bot',
+                    'pipeline_id': 'pipeline',
+                    'pipeline_name': 'Pipeline',
+                    'message_content': 'A',
+                    'session_id': 'same-session',
+                    'status': 'success',
+                    'level': 'info',
+                },
+                {
+                    'id': 'message-b',
+                    'workspace_uuid': ISOLATION_WORKSPACE_B,
+                    'timestamp': now,
+                    'bot_id': 'bot',
+                    'bot_name': 'Bot',
+                    'pipeline_id': 'pipeline',
+                    'pipeline_name': 'Pipeline',
+                    'message_content': 'B',
+                    'session_id': 'same-session',
+                    'status': 'success',
+                    'level': 'info',
+                },
+            ],
+        )
+        await connection.execute(
+            sqlalchemy.insert(BinaryStorage),
+            [
+                {
+                    'workspace_uuid': ISOLATION_WORKSPACE_A,
+                    'unique_key': 'a',
+                    'key': 'same',
+                    'owner_type': 'plugin',
+                    'owner': 'same',
+                    'value': b'aaa',
+                },
+                {
+                    'workspace_uuid': ISOLATION_WORKSPACE_B,
+                    'unique_key': 'b',
+                    'key': 'same',
+                    'owner_type': 'plugin',
+                    'owner': 'same',
+                    'value': b'bbbbb',
+                },
+            ],
+        )
+
+    application = SimpleNamespace(
+        persistence_mgr=_RealPersistenceManager(engine),
+        instance_config=SimpleNamespace(data={}),
+        logger=SimpleNamespace(warning=lambda *_: None),
+    )
+    yield MaintenanceService(application)
+    await engine.dispose()
+
+
+async def test_cleanup_requires_execution_context(tenant_maintenance_service):
+    with pytest.raises(WorkspaceRequiredError):
+        await tenant_maintenance_service.cleanup_expired_files(None)
+
+
+async def test_monitoring_counts_are_workspace_scoped(tenant_maintenance_service):
+    counts_a = await tenant_maintenance_service._monitoring_counts(_tenant_context(ISOLATION_WORKSPACE_A))
+    counts_b = await tenant_maintenance_service._monitoring_counts(_tenant_context(ISOLATION_WORKSPACE_B))
+    assert counts_a['messages'] == 1
+    assert counts_b['messages'] == 1
+
+
+async def test_binary_storage_stats_are_workspace_scoped(tenant_maintenance_service):
+    stats_a = await tenant_maintenance_service._binary_storage_stats(_tenant_context(ISOLATION_WORKSPACE_A))
+    stats_b = await tenant_maintenance_service._binary_storage_stats(_tenant_context(ISOLATION_WORKSPACE_B))
+    assert stats_a == {'count': 1, 'size_bytes': 3}
+    assert stats_b == {'count': 1, 'size_bytes': 5}
+
+
+async def test_path_helpers_handle_missing_paths(tenant_maintenance_service, tmp_path):
+    missing = tmp_path / 'missing'
+    assert tenant_maintenance_service._path_size(missing) == 0
+    assert tenant_maintenance_service._file_count(missing) == 0

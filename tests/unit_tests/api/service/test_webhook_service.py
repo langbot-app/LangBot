@@ -14,15 +14,23 @@ Source: src/langbot/pkg/api/http/service/webhook.py
 
 from __future__ import annotations
 
+import datetime
+
 import pytest
+import sqlalchemy
+from sqlalchemy.ext.asyncio import create_async_engine
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
 
+from langbot.pkg.api.http.authz import WorkspaceRequiredError
 from langbot.pkg.api.http.service.webhook import WebhookService
+from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.webhook import Webhook
+from langbot.pkg.entity.persistence.workspace import Workspace
 
 
 pytestmark = pytest.mark.asyncio
+WORKSPACE_UUID = 'workspace-a'
 
 
 def _create_mock_webhook(
@@ -42,11 +50,20 @@ def _create_mock_webhook(
     return webhook
 
 
-def _create_mock_result(items: list = None, first_item=None):
+def _create_mock_result(items: list = None, first_item=None, scalar_value=None):
     """Create mock result object for persistence queries."""
     result = Mock()
     result.all = Mock(return_value=items or [])
     result.first = Mock(return_value=first_item)
+    result.scalar = Mock(return_value=scalar_value)
+    result.rowcount = 1
+    return result
+
+
+def _create_write_result(rowcount: int = 1, inserted_id: int = 1):
+    result = Mock()
+    result.rowcount = rowcount
+    result.inserted_primary_key = [inserted_id]
     return result
 
 
@@ -71,7 +88,7 @@ class TestWebhookServiceGetWebhooks:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_webhooks()
+        result = await service.get_webhooks(WORKSPACE_UUID)
 
         # Verify
         assert result == []
@@ -100,12 +117,30 @@ class TestWebhookServiceGetWebhooks:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_webhooks()
+        result = await service.get_webhooks(WORKSPACE_UUID)
 
         # Verify
         assert len(result) == 2
         assert result[0]['name'] == 'Webhook 1'
         assert result[1]['name'] == 'Webhook 2'
+
+
+def _assert_webhook_write(ap, operation, expected):
+    statements = [
+        call.args[0]
+        for call in ap.persistence_mgr.execute_async.await_args_list
+        if getattr(call.args[0], f'is_{operation}')
+    ]
+    assert len(statements) == 1
+    statement = statements[0]
+    assert statement.table.name == Webhook.__tablename__
+    if operation == 'insert':
+        values = statement.compile().params
+        assert {key: values.get(key) for key in expected} == expected
+    else:
+        assert statement.whereclause.compare(
+            sqlalchemy.and_(Webhook.id == expected, Webhook.workspace_uuid == WORKSPACE_UUID)
+        )
 
 
 class TestWebhookServiceCreateWebhook:
@@ -119,6 +154,7 @@ class TestWebhookServiceCreateWebhook:
 
         # Mock insert result
         insert_result = Mock()
+        insert_result.inserted_primary_key = [1]
 
         # Mock select result for retrieving created webhook
         created_webhook = _create_mock_webhook(
@@ -137,6 +173,8 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
+                return _create_mock_result(scalar_value=0)  # Count
+            if call_count == 2:
                 return insert_result  # Insert
             return select_result  # Select
 
@@ -155,6 +193,7 @@ class TestWebhookServiceCreateWebhook:
 
         # Execute
         result = await service.create_webhook(
+            WORKSPACE_UUID,
             name='New Webhook',
             url='http://new.example.com/webhook',
             description='New Description',
@@ -166,6 +205,17 @@ class TestWebhookServiceCreateWebhook:
         assert result['url'] == 'http://new.example.com/webhook'
         assert result['description'] == 'New Description'
         assert result['enabled'] is True
+        _assert_webhook_write(
+            ap,
+            'insert',
+            {
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'New Webhook',
+                'url': 'http://new.example.com/webhook',
+                'description': 'New Description',
+                'enabled': True,
+            },
+        )
 
     async def test_create_webhook_defaults(self):
         """Creates webhook with default description and enabled."""
@@ -187,7 +237,9 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return Mock()  # Insert
+                return _create_mock_result(scalar_value=0)
+            if call_count == 2:
+                return _create_write_result()  # Insert
             return _create_mock_result(first_item=created_webhook)
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
@@ -204,11 +256,26 @@ class TestWebhookServiceCreateWebhook:
         service = WebhookService(ap)
 
         # Execute - only name and url required
-        result = await service.create_webhook(name='Minimal Webhook', url='http://minimal.example.com')
+        result = await service.create_webhook(
+            WORKSPACE_UUID,
+            name='Minimal Webhook',
+            url='http://minimal.example.com',
+        )
 
         # Verify defaults
         assert result['description'] == ''
         assert result['enabled'] is True
+        _assert_webhook_write(
+            ap,
+            'insert',
+            {
+                'workspace_uuid': WORKSPACE_UUID,
+                'name': 'Minimal Webhook',
+                'url': 'http://minimal.example.com',
+                'description': '',
+                'enabled': True,
+            },
+        )
 
     async def test_create_webhook_disabled(self):
         """Creates webhook with enabled=False."""
@@ -224,7 +291,9 @@ class TestWebhookServiceCreateWebhook:
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                return Mock()
+                return _create_mock_result(scalar_value=0)
+            if call_count == 2:
+                return _create_write_result()
             return _create_mock_result(first_item=created_webhook)
 
         ap.persistence_mgr.execute_async = AsyncMock(side_effect=mock_execute)
@@ -233,10 +302,52 @@ class TestWebhookServiceCreateWebhook:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.create_webhook(name='Disabled', url='http://disabled.com', enabled=False)
+        result = await service.create_webhook(
+            WORKSPACE_UUID,
+            name='Disabled',
+            url='http://disabled.com',
+            enabled=False,
+        )
 
         # Verify
         assert result['enabled'] is False
+        _assert_webhook_write(ap, 'insert', {'enabled': False, 'workspace_uuid': WORKSPACE_UUID})
+
+    async def test_create_webhook_rejects_workspace_at_capacity(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={'webhooks': {'max_per_workspace': 2}},
+            ),
+            persistence_mgr=SimpleNamespace(
+                execute_async=AsyncMock(return_value=_create_mock_result(scalar_value=2)),
+            ),
+        )
+
+        service = WebhookService(ap)
+
+        with pytest.raises(ValueError, match=r'Maximum number of webhooks \(2\) reached'):
+            await service.create_webhook(
+                WORKSPACE_UUID,
+                name='Too many',
+                url='https://example.invalid',
+            )
+
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+
+    async def test_max_per_workspace_clamps_invalid_and_oversized_values(self):
+        ap = SimpleNamespace(
+            instance_config=SimpleNamespace(
+                data={'webhooks': {'max_per_workspace': 999999}},
+            )
+        )
+        service = WebhookService(ap)
+        assert service.max_per_workspace() == 64
+
+        ap.instance_config.data['webhooks']['max_per_workspace'] = 0
+        assert service.max_per_workspace() == 1
+
+        ap.instance_config.data['webhooks']['max_per_workspace'] = 'invalid'
+        assert service.max_per_workspace() == 16
 
 
 class TestWebhookServiceGetWebhook:
@@ -262,7 +373,7 @@ class TestWebhookServiceGetWebhook:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_webhook(1)
+        result = await service.get_webhook(WORKSPACE_UUID, 1)
 
         # Verify
         assert result is not None
@@ -281,7 +392,7 @@ class TestWebhookServiceGetWebhook:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_webhook(999)
+        result = await service.get_webhook(WORKSPACE_UUID, 999)
 
         # Verify
         assert result is None
@@ -298,7 +409,7 @@ class TestWebhookServiceGetWebhook:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_webhook(0)
+        result = await service.get_webhook(WORKSPACE_UUID, 0)
 
         # Verify - should return None (no webhook with ID 0)
         assert result is None
@@ -307,101 +418,59 @@ class TestWebhookServiceGetWebhook:
 class TestWebhookServiceUpdateWebhook:
     """Tests for update_webhook method."""
 
-    async def test_update_webhook_name_only(self):
-        """Updates only the name field."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
+    @pytest.mark.parametrize(
+        'changes',
+        [
+            {'name': 'Updated Name'},
+            {'url': 'https://updated.example.com'},
+            {'description': 'Updated description'},
+            {'enabled': False},
+            {
+                'name': 'All Updated',
+                'url': 'https://all.updated.example.com',
+                'description': 'All updated description',
+                'enabled': False,
+            },
+        ],
+        ids=['name-only', 'url-only', 'description-only', 'enabled-only', 'all-fields'],
+    )
+    async def test_update_webhook_persists_requested_fields(self, tenant_webhook_service, changes):
+        """Persist requested fields without changing omitted fields or another Workspace."""
+        original = {
+            'name': 'Original Name',
+            'url': 'https://original.example.com',
+            'description': 'Original description',
+            'enabled': True,
+        }
+        created = await tenant_webhook_service.create_webhook(ISOLATION_WORKSPACE_A, **original)
+        other = await tenant_webhook_service.create_webhook(ISOLATION_WORKSPACE_B, **original)
 
-        service = WebhookService(ap)
+        assert await tenant_webhook_service.update_webhook(ISOLATION_WORKSPACE_A, created['id'], **changes) is True
 
-        # Execute
-        await service.update_webhook(1, name='Updated Name')
+        updated = await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id'], include_secret=True)
+        assert {field: updated[field] for field in original} == original | changes
+        assert updated['id'] == created['id']
+        assert updated['workspace_uuid'] == ISOLATION_WORKSPACE_A
+        assert (
+            await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_B, other['id'], include_secret=True) == other
+        )
 
-        # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
-
-    async def test_update_webhook_url_only(self):
-        """Updates only the url field."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
-
-        service = WebhookService(ap)
-
-        # Execute
-        await service.update_webhook(1, url='http://updated.example.com')
-
-        # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
-
-    async def test_update_webhook_description_only(self):
-        """Updates only the description field."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
-
-        service = WebhookService(ap)
-
-        # Execute
-        await service.update_webhook(1, description='Updated description')
-
-        # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
-
-    async def test_update_webhook_enabled_only(self):
-        """Updates only the enabled field."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
-
-        service = WebhookService(ap)
-
-        # Execute
-        await service.update_webhook(1, enabled=False)
-
-        # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
-
-    async def test_update_webhook_all_fields(self):
-        """Updates all fields at once."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
-
-        service = WebhookService(ap)
-
-        # Execute
-        await service.update_webhook(
-            1,
-            name='All Updated',
-            url='http://all.updated.com',
-            description='All updated description',
+    async def test_update_webhook_no_fields(self, tenant_webhook_service):
+        """An empty update reports scoped existence and leaves persisted values unchanged."""
+        created = await tenant_webhook_service.create_webhook(
+            ISOLATION_WORKSPACE_A,
+            'Unchanged',
+            'https://unchanged.example.com',
+            description='Keep this description',
             enabled=False,
         )
 
-        # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
-
-    async def test_update_webhook_no_fields(self):
-        """Does nothing when no fields provided."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
-
-        service = WebhookService(ap)
-
-        # Execute - no update parameters
-        await service.update_webhook(1)
-
-        # Verify - no execute call since no update_data
-        ap.persistence_mgr.execute_async.assert_not_called()
+        assert await tenant_webhook_service.update_webhook(ISOLATION_WORKSPACE_A, created['id']) is True
+        assert (
+            await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id'], include_secret=True)
+            == created
+        )
+        assert await tenant_webhook_service.update_webhook(ISOLATION_WORKSPACE_B, created['id']) is False
 
 
 class TestWebhookServiceDeleteWebhook:
@@ -412,30 +481,32 @@ class TestWebhookServiceDeleteWebhook:
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_write_result())
 
         service = WebhookService(ap)
 
         # Execute
-        await service.delete_webhook(1)
+        await service.delete_webhook(WORKSPACE_UUID, 1)
 
         # Verify
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        _assert_webhook_write(ap, 'delete', 1)
 
     async def test_delete_webhook_nonexistent_id(self):
         """Delete operation completes even for nonexistent ID."""
         # Setup
         ap = SimpleNamespace()
         ap.persistence_mgr = SimpleNamespace()
-        ap.persistence_mgr.execute_async = AsyncMock()
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=_create_write_result(rowcount=0))
 
         service = WebhookService(ap)
 
         # Execute - should not raise
-        await service.delete_webhook(999)
+        await service.delete_webhook(WORKSPACE_UUID, 999)
 
         # Verify - still called
-        ap.persistence_mgr.execute_async.assert_called_once()
+        ap.persistence_mgr.execute_async.assert_awaited_once()
+        _assert_webhook_write(ap, 'delete', 999)
 
 
 class TestWebhookServiceGetEnabledWebhooks:
@@ -453,55 +524,181 @@ class TestWebhookServiceGetEnabledWebhooks:
         service = WebhookService(ap)
 
         # Execute
-        result = await service.get_enabled_webhooks()
+        result = await service.get_enabled_webhooks(WORKSPACE_UUID)
 
         # Verify
         assert result == []
 
-    async def test_get_enabled_webhooks_filters_enabled(self):
-        """Returns only enabled webhooks."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
 
-        # All returned webhooks should be enabled (SQL filter)
-        webhook1 = _create_mock_webhook(webhook_id=1, name='Enabled 1', enabled=True)
-        webhook2 = _create_mock_webhook(webhook_id=2, name='Enabled 2', enabled=True)
+ISOLATION_WORKSPACE_A = '00000000-0000-0000-0000-00000000000a'
+ISOLATION_WORKSPACE_B = '00000000-0000-0000-0000-00000000000b'
 
-        mock_result = _create_mock_result([webhook1, webhook2])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(
-            side_effect=lambda model_cls, entity: {
-                'id': entity.id,
-                'name': entity.name,
-                'enabled': entity.enabled,
-            }
+
+class _RealPersistenceManager:
+    def __init__(self, engine):
+        self.engine = engine
+
+    async def execute_async(self, *args, **kwargs):
+        async with self.engine.connect() as connection:
+            result = await connection.execute(*args, **kwargs)
+            await connection.commit()
+            return result
+
+    @staticmethod
+    def serialize_model(model, data, masked_columns=None):
+        return {
+            column.name: (
+                getattr(data, column.name).isoformat()
+                if isinstance(getattr(data, column.name), datetime.datetime)
+                else getattr(data, column.name)
+            )
+            for column in model.__table__.columns
+            if column.name not in (masked_columns or [])
+        }
+
+
+@pytest.fixture
+async def tenant_webhook_service(tmp_path):
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "webhooks.db"}')
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            sqlalchemy.insert(Workspace),
+            [
+                {
+                    'uuid': ISOLATION_WORKSPACE_A,
+                    'instance_uuid': 'instance',
+                    'name': 'A',
+                    'slug': 'a',
+                    'source': 'cloud_projection',
+                },
+                {
+                    'uuid': ISOLATION_WORKSPACE_B,
+                    'instance_uuid': 'instance',
+                    'name': 'B',
+                    'slug': 'b',
+                    'source': 'cloud_projection',
+                },
+            ],
         )
+    service = WebhookService(SimpleNamespace(persistence_mgr=_RealPersistenceManager(engine)))
+    yield service
+    await engine.dispose()
 
-        service = WebhookService(ap)
 
-        # Execute
-        result = await service.get_enabled_webhooks()
+async def test_webhook_service_requires_workspace(tenant_webhook_service):
+    with pytest.raises(WorkspaceRequiredError):
+        await tenant_webhook_service.get_webhooks(None)
 
-        # Verify
-        assert len(result) == 2
-        assert all(w['enabled'] for w in result)
 
-    async def test_get_enabled_webhooks_filters_disabled(self):
-        """Does not return disabled webhooks."""
-        # Setup
-        ap = SimpleNamespace()
-        ap.persistence_mgr = SimpleNamespace()
+async def test_same_name_webhooks_are_isolated(tenant_webhook_service):
+    created_a = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'deploy',
+        'https://a.invalid',
+    )
+    created_b = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_B,
+        'deploy',
+        'https://b.invalid',
+    )
 
-        # Empty result because query filters on enabled=True
-        mock_result = _create_mock_result([])
-        ap.persistence_mgr.execute_async = AsyncMock(return_value=mock_result)
-        ap.persistence_mgr.serialize_model = Mock(return_value={})
+    assert created_a['workspace_uuid'] == ISOLATION_WORKSPACE_A
+    assert created_b['workspace_uuid'] == ISOLATION_WORKSPACE_B
+    assert [item['url'] for item in await tenant_webhook_service.get_webhooks(ISOLATION_WORKSPACE_A)] == ['***']
+    assert [item['url'] for item in await tenant_webhook_service.get_webhooks(ISOLATION_WORKSPACE_B)] == ['***']
+    assert [
+        item['url'] for item in await tenant_webhook_service.get_webhooks(ISOLATION_WORKSPACE_A, include_secret=True)
+    ] == ['https://a.invalid']
+    assert [
+        item['url'] for item in await tenant_webhook_service.get_webhooks(ISOLATION_WORKSPACE_B, include_secret=True)
+    ] == ['https://b.invalid']
 
-        service = WebhookService(ap)
 
-        # Execute
-        result = await service.get_enabled_webhooks()
+async def test_cross_workspace_id_guessing_is_not_found(tenant_webhook_service):
+    created = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'secret',
+        'https://a.invalid/hook',
+    )
+    webhook_id = created['id']
 
-        # Verify - should be empty (SQL would filter disabled)
-        assert result == []
+    assert await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_B, webhook_id) is None
+    assert not await tenant_webhook_service.update_webhook(
+        ISOLATION_WORKSPACE_B,
+        webhook_id,
+        name='stolen',
+    )
+    assert not await tenant_webhook_service.delete_webhook(ISOLATION_WORKSPACE_B, webhook_id)
+    assert (await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, webhook_id))['name'] == 'secret'
+
+
+async def test_update_and_delete_are_scoped(tenant_webhook_service):
+    enabled = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'keep enabled',
+        'https://a.invalid/enabled',
+    )
+    created = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'old',
+        'https://a.invalid/old',
+    )
+    assert await tenant_webhook_service.update_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        name='new',
+        enabled=False,
+    )
+    updated = await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id'], include_secret=True)
+    assert updated['name'] == 'new'
+    assert updated['enabled'] is False
+    assert updated['url'] == 'https://a.invalid/old'
+    assert [item['id'] for item in await tenant_webhook_service.get_enabled_webhooks(ISOLATION_WORKSPACE_A)] == [
+        enabled['id']
+    ]
+    assert await tenant_webhook_service.delete_webhook(ISOLATION_WORKSPACE_A, created['id'])
+    assert await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id']) is None
+
+
+async def test_masked_webhook_url_roundtrip_preserves_replace_and_clear(tenant_webhook_service):
+    created = await tenant_webhook_service.create_webhook(
+        ISOLATION_WORKSPACE_A,
+        'roundtrip',
+        'https://a.invalid/bearer-secret',
+    )
+
+    masked = await tenant_webhook_service.get_webhook(ISOLATION_WORKSPACE_A, created['id'])
+    assert masked['url'] == '***'
+    assert await tenant_webhook_service.update_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        name='preserved',
+        url=masked['url'],
+    )
+    preserved = await tenant_webhook_service.get_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        include_secret=True,
+    )
+    assert preserved['url'] == 'https://a.invalid/bearer-secret'
+
+    assert await tenant_webhook_service.update_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        url='https://a.invalid/replacement',
+    )
+    replaced = await tenant_webhook_service.get_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        include_secret=True,
+    )
+    assert replaced['url'] == 'https://a.invalid/replacement'
+
+    assert await tenant_webhook_service.update_webhook(ISOLATION_WORKSPACE_A, created['id'], url='')
+    cleared = await tenant_webhook_service.get_webhook(
+        ISOLATION_WORKSPACE_A,
+        created['id'],
+        include_secret=True,
+    )
+    assert cleared['url'] == ''

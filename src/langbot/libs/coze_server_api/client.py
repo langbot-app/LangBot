@@ -6,6 +6,22 @@ from typing import Dict, List, Any, AsyncGenerator
 import os
 from pathlib import Path
 
+from langbot.pkg.utils import httpclient
+
+_MAX_COZE_RESPONSE_BYTES = 16 * 1024 * 1024
+_MAX_COZE_EVENT_BYTES = 1024 * 1024
+_MAX_COZE_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _read_local_media_limited(path: Path) -> bytes:
+    if path.stat().st_size > _MAX_COZE_MEDIA_BYTES:
+        raise ValueError('Coze upload exceeds the size limit')
+    with path.open('rb') as handle:
+        body = handle.read(_MAX_COZE_MEDIA_BYTES + 1)
+    if len(body) > _MAX_COZE_MEDIA_BYTES:
+        raise ValueError('Coze upload exceeds the size limit')
+    return body
+
 
 class AsyncCozeAPIClient:
     def __init__(self, api_key: str, api_base: str = 'https://api.coze.cn'):
@@ -58,19 +74,24 @@ class AsyncCozeAPIClient:
         if isinstance(file, Path):
             if not file.exists():
                 raise ValueError(f'File not found: {file}')
-            with open(file, 'rb') as f:
-                file = f.read()
+            file = await asyncio.to_thread(_read_local_media_limited, file)
 
         # 处理文件路径字符串
         elif isinstance(file, str):
             if not os.path.isfile(file):
                 raise ValueError(f'File not found: {file}')
-            with open(file, 'rb') as f:
-                file = f.read()
+            file = await asyncio.to_thread(
+                _read_local_media_limited,
+                Path(file),
+            )
 
         # 处理文件对象
         elif hasattr(file, 'read'):
-            file = file.read()
+            file = await asyncio.to_thread(file.read, _MAX_COZE_MEDIA_BYTES + 1)
+        if not isinstance(file, (bytes, bytearray)):
+            raise ValueError('Unsupported Coze upload type')
+        if len(file) > _MAX_COZE_MEDIA_BYTES:
+            raise ValueError('Coze upload exceeds the size limit')
 
         session = await self.coze_session()
         url = f'{self.api_base}/v1/files/upload'
@@ -87,13 +108,18 @@ class AsyncCozeAPIClient:
                 if response.status == 401:
                     raise Exception('Coze API 认证失败，请检查 API Key 是否正确')
 
-                response_text = await response.text()
+                response_text = (
+                    await httpclient.read_limited(
+                        response,
+                        max_bytes=_MAX_COZE_EVENT_BYTES,
+                    )
+                ).decode('utf-8', errors='replace')
 
                 if response.status != 200:
                     raise Exception(f'文件上传失败，状态码: {response.status}, 响应: {response_text}')
                 try:
-                    result = await response.json()
-                except json.JSONDecodeError:
+                    result = json.loads(response_text)
+                except (json.JSONDecodeError, TypeError):
                     raise Exception(f'文件上传响应解析失败: {response_text}')
 
                 if result.get('code') != 0:
@@ -158,7 +184,15 @@ class AsyncCozeAPIClient:
                 if response.status != 200:
                     raise Exception(f'Coze API 流式请求失败，状态码: {response.status}')
 
+                total_bytes = 0
+                chunk_type = 'message'
+                chunk_data = ''
                 async for chunk in response.content:
+                    total_bytes += len(chunk)
+                    if total_bytes > _MAX_COZE_RESPONSE_BYTES:
+                        raise Exception('Coze API stream exceeds the runtime limit')
+                    if len(chunk) > _MAX_COZE_EVENT_BYTES:
+                        raise Exception('Coze API event exceeds the runtime limit')
                     chunk = chunk.decode('utf-8')
                     if chunk != '\n':
                         if chunk.startswith('event:'):

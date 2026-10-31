@@ -1,0 +1,27 @@
+apiVersion: langbot/v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: RunnerDemo
+  version: 0.2.1
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/RunnerDemo
+  label:
+    en_US: Runner Workshop
+    zh_Hans: 事件处理器示例工坊
+  description:
+    en_US: Two code-driven processors demonstrating typed events, action traces,
+      configuration, progress logs and failure handling. No model required.
+    zh_Hans: 两个高代码事件处理器，演示新版事件、多步动作、独立配置、进度日志和异常处理，无需模型。
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+      - path: components/runner/
+execution:
+  python:
+    path: main.py
+    attr: RunnerDemo
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

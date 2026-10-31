@@ -1,9 +1,17 @@
 from __future__ import annotations
 import asyncio
+from collections import OrderedDict
 import time
 import typing
 from .. import algo
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from ...pool import get_query_execution_context
+
+
+_MAX_SESSION_CONTAINERS = 10000
+_MIN_CONTAINER_TTL_SECONDS = 300
+_CLEANUP_INTERVAL_SECONDS = 60
+_MAX_EVICTION_PROBES = 64
 
 
 # 固定窗口算法
@@ -13,9 +21,11 @@ class SessionContainer:
     records: dict[int, int]
     """访问记录，key为每窗口长度的起始时间戳，value为访问次数"""
 
-    def __init__(self):
+    def __init__(self, ttl_seconds: int = _MIN_CONTAINER_TTL_SECONDS):
         self.wait_lock = asyncio.Lock()
         self.records = {}
+        self.last_accessed = time.monotonic()
+        self.ttl_seconds = ttl_seconds
 
 
 @algo.algo_class('fixwin')
@@ -28,7 +38,8 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
 
     async def initialize(self):
         self.containers_lock = asyncio.Lock()
-        self.containers = {}
+        self.containers = OrderedDict()
+        self._last_cleanup = time.monotonic()
 
     async def require_access(
         self,
@@ -39,14 +50,53 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 加锁，找容器
         container: SessionContainer = None
 
-        session_name = f'{launcher_type}_{launcher_id}'
+        execution_context = get_query_execution_context(query)
+        session_name = ':'.join(
+            (
+                execution_context.instance_uuid,
+                execution_context.workspace_uuid,
+                str(execution_context.placement_generation),
+                str(getattr(query, 'bot_uuid', '')),
+                str(getattr(query, 'pipeline_uuid', '')),
+                str(launcher_type),
+                str(launcher_id),
+            )
+        )
 
         async with self.containers_lock:
             container = self.containers.get(session_name)
 
             if container is None:
-                container = SessionContainer()
+                window_size = query.pipeline_config['safety']['rate-limit']['window-length']
+                ttl_seconds = max(int(window_size) * 2, _MIN_CONTAINER_TTL_SECONDS)
+                now_monotonic = time.monotonic()
+                if now_monotonic - self._last_cleanup >= _CLEANUP_INTERVAL_SECONDS:
+                    self._last_cleanup = now_monotonic
+                    for key, candidate in tuple(self.containers.items()):
+                        if (
+                            not candidate.wait_lock.locked()
+                            and now_monotonic - candidate.last_accessed >= candidate.ttl_seconds
+                        ):
+                            self.containers.pop(key, None)
+
+                if len(self.containers) >= _MAX_SESSION_CONTAINERS:
+                    for _ in range(min(_MAX_EVICTION_PROBES, len(self.containers))):
+                        oldest_key = next(iter(self.containers))
+                        oldest = self.containers[oldest_key]
+                        if oldest.wait_lock.locked():
+                            self.containers.move_to_end(oldest_key)
+                            continue
+                        self.containers.pop(oldest_key, None)
+                        break
+                if len(self.containers) >= _MAX_SESSION_CONTAINERS:
+                    # Every retained session is actively waiting. Reject this
+                    # admission instead of growing an attacker-controlled map.
+                    return False
+                container = SessionContainer(ttl_seconds=ttl_seconds)
                 self.containers[session_name] = container
+            else:
+                self.containers.move_to_end(session_name)
+            container.last_accessed = time.monotonic()
 
         # 等待锁
         async with container.wait_lock:
@@ -87,6 +137,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
                 container.records[now] = count + 1
 
             # 返回True
+            container.last_accessed = time.monotonic()
             return True
 
     async def release_access(

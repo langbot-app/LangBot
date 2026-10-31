@@ -1,0 +1,252 @@
+apiVersion: v1
+kind: KnowledgeEngine
+metadata:
+  name: langrag
+  label:
+    en_US: LangRAG
+    zh_Hans: LangRAG
+  description:
+    en_US: Simple Knowledge Engine with document chunking, vector, full-text, and hybrid retrieval
+    zh_Hans: 简单 RAG 引擎，支持文档分块及向量、全文、混合检索
+spec:
+  creation_schema:
+    - name: embedding_model_uuid
+      label:
+        en_US: Embedding Model
+        zh_Hans: 嵌入模型
+      description:
+        en_US: Select embedding model for text vectorization
+        zh_Hans: 选择用于文本向量化的嵌入模型
+      type: embedding-model-selector
+      required: true
+      default: ''
+    - name: index_type
+      label:
+        en_US: Index Type
+        zh_Hans: 索引类型
+      description:
+        en_US: 'Chunk: flat chunking; Parent-Child: two-level chunking for richer context; QA: LLM-generated question-answer pairs for better query matching'
+        zh_Hans: 'Chunk：平坦分块；Parent-Child：双层分块，检索返回更丰富上下文；QA：LLM 生成问答对，提升查询匹配质量'
+      type: select
+      required: false
+      default: chunk
+      options:
+        - name: chunk
+          label:
+            en_US: Chunk
+            zh_Hans: 分块
+        - name: parent_child
+          label:
+            en_US: Parent-Child
+            zh_Hans: 父子索引
+        - name: qa
+          label:
+            en_US: QA Index
+            zh_Hans: 问答索引
+    - name: chunk_size
+      label:
+        en_US: Chunk Size
+        zh_Hans: 分块大小
+      type: integer
+      required: false
+      default: 512
+    - name: overlap
+      label:
+        en_US: Chunk Overlap
+        zh_Hans: 分块重叠
+      type: integer
+      required: false
+      default: 50
+    - name: parent_chunk_size
+      label:
+        en_US: Parent Chunk Size
+        zh_Hans: 父块大小
+      description:
+        en_US: Size of parent chunks (only used with Parent-Child index type)
+        zh_Hans: 父块大小（仅在 Parent-Child 索引类型下生效）
+      type: integer
+      required: false
+      default: 2048
+      show_if:
+        field: index_type
+        operator: eq
+        value: parent_child
+    - name: child_chunk_size
+      label:
+        en_US: Child Chunk Size
+        zh_Hans: 子块大小
+      description:
+        en_US: Size of child chunks (only used with Parent-Child index type)
+        zh_Hans: 子块大小（仅在 Parent-Child 索引类型下生效）
+      type: integer
+      required: false
+      default: 256
+      show_if:
+        field: index_type
+        operator: eq
+        value: parent_child
+    - name: qa_llm_model_uuid
+      label:
+        en_US: QA Generation LLM
+        zh_Hans: QA 生成用 LLM
+      description:
+        en_US: LLM model for generating Q&A pairs (required when index type is QA)
+        zh_Hans: 用于生成问答对的 LLM 模型（索引类型为 QA 时需要）
+      type: llm-model-selector
+      required: false
+      default: ''
+      show_if:
+        field: index_type
+        operator: eq
+        value: qa
+    - name: questions_per_chunk
+      label:
+        en_US: Questions Per Chunk
+        zh_Hans: 每块生成问题数
+      description:
+        en_US: Number of Q&A pairs to generate per chunk (only used with QA index type)
+        zh_Hans: 每个文本块生成的问答对数量（仅在 QA 索引类型下生效）
+      type: integer
+      required: false
+      default: 1
+      show_if:
+        field: index_type
+        operator: eq
+        value: qa
+  retrieval_schema:
+    - name: top_k
+      label:
+        en_US: Top K
+        zh_Hans: 召回数量
+      type: integer
+      required: false
+      default: 5
+    - name: search_type
+      label:
+        en_US: Search Type
+        zh_Hans: 检索类型
+      description:
+        en_US: 'Vector: semantic similarity; Full-text: keyword matching; Hybrid: combined'
+        zh_Hans: 'Vector：语义相似度；Full-text：关键词匹配；Hybrid：混合检索'
+      type: select
+      required: false
+      default: vector
+      options:
+        - name: vector
+          label:
+            en_US: Vector
+            zh_Hans: 向量检索
+        - name: full_text
+          label:
+            en_US: Full-text
+            zh_Hans: 全文检索
+        - name: hybrid
+          label:
+            en_US: Hybrid
+            zh_Hans: 混合检索
+    - name: vector_weight
+      label:
+        en_US: Vector Search Weight
+        zh_Hans: 向量搜索权重
+      description:
+        en_US: 'Balance between vector and keyword search in hybrid mode (0.0 = keyword only, 1.0 = vector only)'
+        zh_Hans: '混合检索中向量搜索的权重（0.0 = 仅关键词，1.0 = 仅向量）'
+      type: float
+      required: false
+      default: 0.7
+      show_if:
+        field: search_type
+        operator: eq
+        value: hybrid
+    - name: query_rewrite
+      label:
+        en_US: Query Rewriting
+        zh_Hans: 查询重写
+      description:
+        en_US: 'Off: direct search; HyDE: hypothetical document; Multi-Query: query expansion; Step-Back: abstract generalization'
+        zh_Hans: 'Off：直接检索；HyDE：假设文档嵌入；Multi-Query：多查询扩展；Step-Back：回退抽象提问'
+      type: select
+      required: false
+      default: "off"
+      options:
+        - name: "off"
+          label: { en_US: "Off", zh_Hans: "关闭" }
+        - name: hyde
+          label: { en_US: "HyDE", zh_Hans: "HyDE（假设文档）" }
+        - name: multi_query
+          label: { en_US: "Multi-Query", zh_Hans: "多查询扩展" }
+        - name: step_back
+          label: { en_US: "Step-Back", zh_Hans: "回退提问" }
+    - name: rewrite_llm_model_uuid
+      label:
+        en_US: Query Rewrite LLM
+        zh_Hans: 查询重写 LLM
+      description:
+        en_US: LLM model for query rewriting (required when query rewriting is enabled)
+        zh_Hans: 用于查询重写的 LLM 模型（启用查询重写时需要）
+      type: llm-model-selector
+      required: false
+      default: ''
+      show_if:
+        field: query_rewrite
+        operator: neq
+        value: "off"
+    - name: rerank
+      label:
+        en_US: Reranking
+        zh_Hans: 重排序
+      description:
+        en_US: 'Off: no reranking; Rerank Model: use a LangBot rerank model; LLM: use a language model to rerank candidates by relevance'
+        zh_Hans: 'Off：不重排序；Rerank Model：使用 LangBot 重排序模型；LLM：使用大语言模型按相关性重排候选结果'
+      type: select
+      required: false
+      default: "off"
+      options:
+        - name: "off"
+          label: { en_US: "Off", zh_Hans: "关闭" }
+        - name: "rerank_model"
+          label: { en_US: "Rerank Model", zh_Hans: "重排序模型" }
+        - name: "llm"
+          label: { en_US: "LLM", zh_Hans: "LLM 重排序" }
+    - name: rerank_model_uuid
+      label:
+        en_US: Rerank Model
+        zh_Hans: 重排序模型
+      description:
+        en_US: LangBot rerank model for reranking retrieved candidates
+        zh_Hans: 用于对检索候选结果重排序的 LangBot 重排序模型
+      type: rerank-model-selector
+      required: false
+      default: ''
+      show_if:
+        field: rerank
+        operator: eq
+        value: "rerank_model"
+    - name: rerank_llm_model_uuid
+      label:
+        en_US: Rerank LLM
+        zh_Hans: 重排序 LLM
+      description:
+        en_US: LLM model for reranking retrieved candidates
+        zh_Hans: 用于对检索候选结果重排序的 LLM 模型
+      type: llm-model-selector
+      required: false
+      default: ''
+      show_if:
+        field: rerank
+        operator: eq
+        value: "llm"
+    - name: context_window
+      label:
+        en_US: Context Window
+        zh_Hans: 上下文窗口
+      description:
+        en_US: 'Number of adjacent chunks to include as context for each hit (0 = disabled). Requires vector store ID-based lookup support.'
+        zh_Hans: '为每个命中 chunk 附加的相邻 chunk 数量（0 = 禁用）。需要向量库支持按 ID 查询。'
+      type: integer
+      required: false
+      default: 0
+execution:
+  python:
+    path: langrag.py
+    attr: LangRAG

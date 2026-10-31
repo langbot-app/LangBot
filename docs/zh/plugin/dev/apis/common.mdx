@@ -1,0 +1,733 @@
+---
+title: "LangBot API"
+---
+
+模型、工具、知识库和存储等能力通过 `self.plugin` 访问。当前事件、回复和会话状态的访问方式见[上下文 API](/zh/plugin/dev/apis/agent-run)。
+
+重试、超时、数字思考预算、prompt caching、请求头和流式取消见 [LLM 请求配置](/zh/plugin/dev/apis/llm-requests)。
+
+## LangBot API
+
+这些 API 可在所有组件中通过 `self.plugin` 调用。访问方式如下：
+
+- 插件根目录`main.py`中：`self` 对象内部方法，这些 API 均由插件类父类 `BasePlugin` 提供。
+- 组件类中：`self.plugin` 对象内部方法。
+
+### 获取插件配置信息
+
+插件配置格式可在`manifest.yaml`中编写，用户需要在 LangBot 的插件管理中按照插件配置格式填写。之后插件代码可以调用此 API 获取插件配置信息。
+
+```python
+def get_config(self) -> dict[str, typing.Any]:
+    """Get the config of the plugin."""
+
+# 调用示例
+config = self.plugin.get_config()
+```
+
+### 获取 LangBot 版本
+
+获取 LangBot 版本号，返回格式为字符串`v<major>.<minor>.<patch>`。
+
+```python
+async def get_langbot_version(self) -> str:
+    """Get the langbot version"""
+
+# 调用示例
+langbot_version = await self.plugin.get_langbot_version()
+```
+
+### 获取已配置的机器人列表
+
+返回由所有机器人 UUID 组成的列表。
+
+```python
+async def get_bots(self) -> list[str]:
+    """Get all bots"""
+
+# 调用示例
+bots = await self.plugin.get_bots()
+```
+
+### 获取机器人信息
+
+获取机器人信息。
+
+```python
+async def get_bot_info(self, bot_uuid: str) -> dict[str, Any]:
+    """Get a bot info"""
+
+# 调用示例
+bot_info = await self.plugin.get_bot_info("de639861-be05-4018-859b-c2e2d3e0d603")
+
+# 返回示例
+{
+    "uuid": "de639861-be05-4018-859b-c2e2d3e0d603",
+    "name": "aiocqhttp",
+    "description": "由 LangBot v3 迁移而来",
+    "adapter": "aiocqhttp",
+    "enable": true,
+    "use_pipeline_name": "ChatPipeline",
+    "use_pipeline_uuid": "c30a1dca-e91c-452b-83ec-84d635a30028",
+    "created_at": "2025-05-10T13:53:08",
+    "updated_at": "2025-08-12T11:27:30",
+    "adapter_runtime_values": {  # 若该机器人正在运行中，则具有该字段
+        "bot_account_id": 960164003  # 机器人账号 ID
+    }
+}
+```
+
+### 发送主动消息
+
+通过机器人 UUID 和目标会话 ID 发送主动消息。
+
+消息链构造方式请参考[消息平台实体](/zh/plugin/dev/apis/messages)。
+
+```python
+async def send_message(
+    self,
+    bot_uuid: str,
+    target_type: str,
+    target_id: str,
+    message_chain: platform_message.MessageChain,
+) -> None:
+    """Send a message to a session"""
+
+# 调用示例
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
+)
+```
+
+### 获取已配置的 LLM 模型列表
+
+返回由所有已配置的 LLM 模型 UUID 组成的列表。
+
+```python
+async def get_llm_models(self) -> list[str]:
+    """Get all LLM models"""
+
+# 调用示例
+llm_models = await self.plugin.get_llm_models()
+```
+
+### 调用 LLM 模型
+
+调用 LLM 模型，返回 LLM 消息。非流式。
+
+```python
+async def invoke_llm(
+    self,
+    llm_model_uuid: str,
+    messages: list[provider_message.Message],
+    funcs: list[resource_tool.LLMTool] = [],
+    extra_args: dict[str, Any] = {},
+    timeout: float | None = None,
+    *,
+    reasoning_level: ReasoningLevel | None = None,
+) -> provider_message.Message:
+    """Invoke an LLM model"""
+
+# 调用示例
+llm_message = await self.plugin.invoke_llm(
+    llm_model_uuid="llm_model_uuid",
+    messages=[provider_message.Message(role="user", content="Hello, world!")],
+    funcs=[],
+    extra_args={},
+)
+```
+
+
+### 思考等级
+
+上述模型调用方法都支持可选的关键字参数 `reasoning_level`：
+
+```python
+response = await self.plugin.invoke_llm(
+    llm_model_uuid=model_uuid,
+    messages=[provider_message.Message(role="user", content="分析这个问题")],
+    reasoning_level="medium",
+)
+```
+
+可选值为 `provider_default`、`disabled`、`enabled`、`minimal`、`low`、`medium`、`high`、`xhigh`、`max`，具体取决于模型支持的等级。LangBot 校验能力并转换为供应商参数，不支持的等级会报错。
+
+- 不传或传 `None`：保持原有行为，使用模型配置及 `extra_args`。
+- 传 `provider_default`：不额外指定思考等级。
+- 传其他等级：仅作用于本次调用；不要再通过 `extra_args` 重复设置供应商的思考参数。
+
+Runner 应读取自己的配置，在每次模型调用时显式传入对应等级，包括备用模型和工具调用后的续答。LangBot 不会自动读取 Runner 配置中的思考等级。旧插件无需修改；显式使用新参数时，如果 Host 不支持，SDK 会在调用模型前提示升级。
+
+### 模型流式输出与用量
+
+| 方法 | 返回值 |
+| --- | --- |
+| `invoke_llm_with_usage(llm_model_uuid, messages, funcs=[], extra_args={}, timeout=None, *, reasoning_level=None)` | `LLMInvokeResult` |
+| `invoke_llm_stream(llm_model_uuid, messages, funcs=[], extra_args={}, *, reasoning_level=None)` | 异步迭代 `MessageChunk` |
+| `invoke_llm_stream_events(llm_model_uuid, messages, funcs=[], extra_args={}, *, reasoning_level=None)` | 异步迭代 `LLMStreamEvent` |
+
+
+参数与 `invoke_llm` 相同。`timeout` 单位为秒，非流式调用默认 120 秒。需要 token 用量时使用 `invoke_llm_with_usage`：
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.total_tokens)
+```
+
+`usage` 可为 `None`，其中 `prompt_tokens`、`completion_tokens`、`total_tokens` 也可能缺失，不代表用量为零。供应商附加的缓存等用量字段会保留。
+
+```python
+async for event in self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+):
+    if event.chunk is not None:
+        print(event.chunk.content)
+    if event.usage is not None:
+        print(event.usage.model_dump())
+```
+
+`LLMStreamEvent` 包含可选的 `chunk` 和 `usage`，末尾可能只有用量，没有文本。`invoke_llm_stream` 只返回文本或工具调用分块。`MessageChunk.content` 是当前片段，`all_content` 在提供时是累计文本；累计文本应用替换，增量文本才追加；`is_final` 为真时也可能仍有文本。模型流式调用不会直接发送平台消息，主动流式回复见[运行上下文 API](/zh/plugin/dev/apis/agent-run)。
+
+### 列出可用解析器
+
+列出宿主当前可用的 Parser 插件，可按 MIME 类型过滤。
+
+```python
+async def list_parsers(self, mime_type: str | None = None) -> list[dict[str, Any]]:
+    """List available Parser plugins"""
+
+# 调用示例
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+# 返回的每项包含 plugin_id、plugin_author、plugin_name、name、description、supported_mime_types
+```
+
+### 获取所有可用工具
+
+列出当前 LangBot 实例中所有可用的工具（包括插件工具和 MCP 工具）。
+
+```python
+async def list_tools(self) -> list[dict[str, Any]]:
+    """List all available tools
+
+    Returns:
+        工具列表，每个元素包含：
+        - name: 工具名称
+        - label: 工具显示名称（多语言）
+        - description: 工具描述（多语言）
+        - icon: 工具图标
+        - spec: 工具规格（包含 llm_prompt 和 parameters）
+    """
+
+# 调用示例
+tools = await self.plugin.list_tools()
+for tool in tools:
+    print(f"Tool: {tool['name']}")
+```
+
+### 获取工具详情
+
+获取特定工具的详细信息。
+
+```python
+async def get_tool_detail(self, tool_name: str) -> dict[str, Any]:
+    """Get detailed information about a specific tool
+
+    Args:
+        tool_name: 工具名称（metadata.name，例如 "get_weather_alerts"）
+
+    Returns:
+        工具详情 dict，包含 name、label、description、spec（含 parameters 和 llm_prompt）
+    """
+
+# 调用示例
+detail = await self.plugin.get_tool_detail("get_weather_alerts")
+print(detail['spec']['parameters'])
+```
+
+### 调用工具
+
+调用指定的工具。
+
+```python
+async def call_tool(
+    self,
+    tool_name: str,
+    parameters: dict[str, Any],
+    session: dict[str, Any],
+    query_id: int,
+) -> dict[str, Any]:
+    """Call a specific tool
+
+    Args:
+        tool_name: 工具名称（metadata.name）
+        parameters: 工具参数
+        session: 会话信息
+        query_id: 查询 ID
+
+    Returns:
+        工具返回的结果 dict
+    """
+
+# 调用示例
+result = await self.plugin.call_tool(
+    tool_name="get_weather_alerts",
+    parameters={"state": "CA"},
+    session={},
+    query_id=0,
+)
+print(result)
+```
+
+<Tip>
+工具名称使用 `metadata.name`（如 `echo_tool`、`get_weather_alerts`），不需要包含作者或插件名前缀。
+</Tip>
+
+### 设置插件持久化数据
+
+持久化存储插件数据。通过这个接口存储的数据，仅可被该插件访问。值需要自行转换为字节。
+
+```python
+async def set_plugin_storage(self, key: str, value: bytes) -> None:
+    """Set a plugin storage value"""
+
+# 调用示例
+await self.plugin.set_plugin_storage("key", b"value")
+```
+
+### 获取插件持久化数据
+
+```python
+async def get_plugin_storage(self, key: str) -> bytes:
+    """Get a plugin storage value"""
+
+# 调用示例
+plugin_storage = await self.plugin.get_plugin_storage("key")
+```
+
+### 获取插件所有持久化数据键
+
+```python
+async def get_plugin_storage_keys(self) -> list[str]:
+    """Get all plugin storage keys"""
+
+# 调用示例
+plugin_storage_keys = await self.plugin.get_plugin_storage_keys()
+```
+
+### 删除插件持久化数据
+
+```python
+async def delete_plugin_storage(self, key: str) -> None:
+    """Delete a plugin storage value"""
+
+# 调用示例
+await self.plugin.delete_plugin_storage("key")
+```
+
+### 获取工作空间持久化数据
+
+通过这个接口存储的数据，可被所有插件访问。值需要自行转换为字节。
+
+```python
+async def set_workspace_storage(self, key: str, value: bytes) -> None:
+    """Set a workspace storage value"""
+
+# 调用示例
+await self.plugin.set_workspace_storage("key", b"value")
+```
+
+### 获取工作空间持久化数据
+
+```python
+async def get_workspace_storage(self, key: str) -> bytes:
+    """Get a workspace storage value"""
+
+# 调用示例
+workspace_storage = await self.plugin.get_workspace_storage("key")
+```
+
+### 获取工作空间所有持久化数据键
+
+```python
+async def get_workspace_storage_keys(self) -> list[str]:
+    """Get all workspace storage keys"""
+
+# 调用示例
+workspace_storage_keys = await self.plugin.get_workspace_storage_keys()
+```
+
+### 删除工作空间持久化数据
+
+```python
+async def delete_workspace_storage(self, key: str) -> None:
+    """Delete a workspace storage value"""
+
+# 调用示例
+await self.plugin.delete_workspace_storage("key")
+```
+
+### 获取插件配置项文件数据
+
+```python
+async def get_config_file(self, file_key: str) -> bytes:
+    """Get a config file value"""
+
+# 调用示例
+file_bytes = await self.plugin.get_config_file("key")
+```
+
+请结合 [``file 或 array[file] 类型配置项``](/zh/plugin/dev/basic-info.html#type-file)使用。
+
+## 知识库 API
+
+这些 API 可在提供 `self.plugin` 的普通组件中访问，用于列出和检索 LangBot 实例中的所有知识库，不受流水线配置限制。
+
+### 列出所有知识库
+
+列出 LangBot 实例中所有可用的知识库。
+
+```python
+async def list_knowledge_bases(self) -> list[dict[str, Any]]:
+    """列出所有知识库
+
+    Returns:
+        知识库列表，每个元素包含：
+        - uuid: 知识库 UUID
+        - name: 知识库名称
+        - description: 知识库描述
+    """
+
+# 调用示例
+knowledge_bases = await self.plugin.list_knowledge_bases()
+for kb in knowledge_bases:
+    print(f"KB: {kb['name']} ({kb['uuid']})")
+```
+
+### 检索知识库
+
+从任意知识库中检索相关文档。
+
+```python
+async def retrieve_knowledge(
+    self,
+    kb_id: str,
+    query_text: str,
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """从知识库中检索
+
+    Args:
+        kb_id: 知识库 UUID（从 list_knowledge_bases 获取）
+        query_text: 检索查询文本
+        top_k: 返回结果数量（默认：5）
+        filters: 可选的元数据过滤条件
+
+    Returns:
+        检索结果条目列表
+    """
+
+# 调用示例
+results = await self.plugin.retrieve_knowledge(
+    kb_id="kb-uuid-here",
+    query_text="如何配置系统？",
+    top_k=3,
+)
+for entry in results:
+    print(entry)
+```
+
+<Tip>
+这些 API 不需要 `query_id`，可以在普通组件中使用（包括 Tool 组件），且可以访问所有知识库，不受当前流水线配置限制。
+</Tip>
+
+## RAG API
+
+这些 API 供 `KnowledgeEngine` 组件调用，用于访问 LangBot 宿主的嵌入模型、向量数据库和文件存储。访问方式：
+
+- 在 `KnowledgeEngine` 组件类中：`self.plugin` 对象内部方法。
+
+### 调用嵌入模型
+
+调用宿主已配置的嵌入模型生成文本向量。
+
+```python
+async def invoke_embedding(
+    self,
+    embedding_model_uuid: str,
+    texts: list[str],
+) -> list[list[float]]:
+    """调用嵌入模型生成向量
+
+    Args:
+        embedding_model_uuid: 嵌入模型 UUID
+        texts: 待嵌入的文本列表
+
+    Returns:
+        向量列表，每个输入文本对应一个向量
+    """
+
+# 调用示例
+vectors = await self.plugin.invoke_embedding("model_uuid", ["Hello", "World"])
+```
+
+### 向量写入
+
+将向量写入宿主的向量数据库。
+
+```python
+async def vector_upsert(
+    self,
+    collection_id: str,
+    vectors: list[list[float]],
+    ids: list[str],
+    metadata: list[dict[str, Any]] | None = None,
+    documents: list[str] | None = None,
+) -> None:
+    """向量写入
+
+    Args:
+        collection_id: 目标集合 ID
+        vectors: 向量列表
+        ids: 向量唯一标识列表
+        metadata: 可选的元数据列表
+        documents: 可选的原始文本文档列表。在支持全文/混合检索的
+            后端中，需要传入此参数以启用全文和混合检索。
+    """
+
+# 调用示例
+await self.plugin.vector_upsert(
+    collection_id="kb_uuid",
+    vectors=[[0.1, 0.2, ...], [0.3, 0.4, ...]],
+    ids=["chunk_0", "chunk_1"],
+    metadata=[{"document_id": "doc1"}, {"document_id": "doc1"}],
+    documents=["分块文本 0", "分块文本 1"],
+)
+```
+
+### 向量搜索
+
+在宿主的向量数据库中搜索相似向量。
+
+```python
+async def vector_search(
+    self,
+    collection_id: str,
+    query_vector: list[float],
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+    search_type: str = "vector",
+    query_text: str = "",
+) -> list[dict[str, Any]]:
+    """向量搜索
+
+    Args:
+        collection_id: 目标集合 ID
+        query_vector: 查询向量
+        top_k: 返回结果数量
+        filters: 可选的元数据过滤条件
+        search_type: 检索方式，可选 'vector'、'full_text'、'hybrid'
+        query_text: 原始查询文本，用于全文检索和混合检索
+
+    Returns:
+        搜索结果列表（包含 id, score, metadata 等字段）
+    """
+
+# 调用示例
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    top_k=5,
+    search_type="hybrid",
+    query_text="搜索查询",
+)
+# 返回格式: [{"id": "chunk_0", "score": 0.123, "metadata": {"document_id": "doc1", ...}}, ...]
+```
+
+<Info>
+`vector_search` 返回的每个结果为 dict，包含 `id`（向量 ID）、`score`（距离分数）和 `metadata`（写入时附带的元数据）三个字段。如果需要在检索结果中返回文本内容，请在摄取阶段将文本存入 metadata 中。
+</Info>
+
+### 向量删除
+
+从宿主的向量数据库中删除向量。
+
+```python
+async def vector_delete(
+    self,
+    collection_id: str,
+    file_ids: list[str] | None = None,
+    filters: dict[str, Any] | None = None,
+) -> int:
+    """向量删除
+
+    Args:
+        collection_id: 目标集合 ID
+        file_ids: 要删除的文件 ID 列表
+        filters: 可选的元数据过滤条件
+
+    Returns:
+        删除的条目数量
+    """
+
+# 调用示例
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    file_ids=["doc_001"],
+)
+```
+
+<Info>
+`filters` 参数支持 Chroma 风格的 `where` 语法进行元数据过滤。多个顶层键之间为 AND 关系。支持的运算符：`$eq`、`$ne`、`$gt`、`$gte`、`$lt`、`$lte`、`$in`、`$nin`。
+
+```python
+# 隐式 $eq
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_id": "abc"},
+)
+
+# 比较运算符
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"created_at": {"$gte": 1700000000}},
+)
+
+# 列表运算符
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_type": {"$in": ["pdf", "docx"]}},
+)
+
+# 按过滤条件删除
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    filters={"file_type": {"$eq": "pdf"}},
+)
+```
+
+**注意：** Chroma、Qdrant 和 SeekDB 存储完整的元数据，可以对任意字段进行过滤。Milvus 和 pgvector 仅存储 `text`、`file_id` 和 `chunk_uuid`，对其他字段的过滤将被静默忽略。
+</Info>
+
+从宿主存储中获取上传文件的内容。
+
+```python
+async def get_knowledge_file_stream(self, storage_path: str) -> bytes:
+    """获取文件内容
+
+    Args:
+        storage_path: 文件的存储路径（来自 FileObject.storage_path）
+
+    Returns:
+        文件内容的字节数据
+    """
+
+# 调用示例
+file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.storage_path)
+```
+
+
+## 其他资源 API
+
+以下方法同样通过 `self.plugin` 调用。
+
+### 调用重排模型
+
+```python
+async def invoke_rerank(
+    self, rerank_model_uuid: str, query: str, documents: list[str],
+    top_k: int | None = None, extra_args: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+) -> list[dict[str, Any]]:
+    ...
+
+scores = await self.plugin.invoke_rerank(
+    rerank_model_uuid=rerank_model_uuid,
+    query="How do I configure a bot?",
+    documents=["Bot configuration guide", "Plugin publishing guide"],
+    top_k=1,
+)
+```
+
+返回结果通常包含原文档索引 `index` 和相关性分数 `relevance_score`。
+
+### 调用解析器
+
+```python
+async def invoke_parser(
+    self, plugin_author: str, plugin_name: str, storage_path: str,
+    mime_type: str, filename: str, metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ...
+
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+if parsers:
+    parser = parsers[0]
+    parsed = await self.plugin.invoke_parser(
+        plugin_author=parser["plugin_author"],
+        plugin_name=parser["plugin_name"],
+        storage_path=storage_path,
+        mime_type="application/pdf",
+        filename="guide.pdf",
+    )
+```
+
+`storage_path` 是宿主存储中的文件路径，例如知识库摄取上下文的 `context.file_object.storage_path`，不是插件本地路径。返回字典包含 `text`、`sections`、`metadata`。
+
+### 列出向量记录
+
+```python
+async def vector_list(
+    self, collection_id: str, filters: dict[str, Any] | None = None,
+    limit: int = 20, offset: int = 0,
+) -> dict[str, Any]:
+    ...
+
+page = await self.plugin.vector_list(
+    collection_id=collection_id,
+    filters={"file_id": "doc_001"},
+    limit=20,
+    offset=0,
+)
+for item in page["items"]:
+    print(item["id"], item.get("metadata"))
+```
+
+返回 `items` 和 `total`。条目包含 `id`、`document`、`metadata`；`total` 是存储后端尽力提供的匹配数量。过滤条件使用上文的向量 API 格式。
+
+### 列出插件和命令
+
+```python
+manifests = await self.plugin.list_plugins_manifest()
+commands = await self.plugin.list_commands()
+```
+
+两个方法均不需要参数，分别返回宿主提供的插件清单列表和命令列表。
+
+### Box 沙箱
+
+这些方法通过 `self.plugin` 调用，作用于当前工作区。在运行器内调用时会自动携带本次运行的授权。
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await self.plugin.get_box_status()` | `BoxStatus` | `enabled`、`available`、数量上限 `limit`、已用 `used`、剩余 `remaining`、托管环境要求的 `required_reuse_key` 和不可用原因 `reason` |
+| `await self.plugin.list_boxes()` | `list[BoxSession]` | 可用 Box 的 `id` 和状态快照 `status`（`idle`、`running`、`closing`） |
+| `await self.plugin.acquire_box(reuse_key, options=None)` | `BoxSession` | 同一键复用已有 Box，否则在数量限制内创建；`options` 支持 `image` |
+
+数量未知时对应字段为 `None`。`remaining=0` 仍可以复用已有 Box；创建时由 Runtime 原子检查额度。运行器自行计算复用键，Host 不解释聊天模板；托管环境给出 `required_reuse_key` 时须使用该值。不同工作区的相同键不会共用 Box。
+
+获取 Box 后，通过[运行器上下文](/zh/plugin/dev/apis/agent-run#runner)绑定到本次运行，再导入附件和执行工具。

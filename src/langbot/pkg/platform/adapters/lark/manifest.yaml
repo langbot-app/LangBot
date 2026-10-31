@@ -1,0 +1,287 @@
+apiVersion: v1
+kind: MessagePlatformAdapter
+
+metadata:
+  name: lark-omni
+  label:
+    en_US: Lark / Feishu
+    zh_Hans: 飞书
+    zh_Hant: 飛書
+    ja_JP: Lark
+  description:
+    en_US: Lark/Feishu adapter with event-driven orchestration support, supporting self-built/store apps and WebSocket/Webhook modes.
+    zh_Hans: 飞书适配器，支持事件驱动编排、自建/商店应用和长连接/Webhook 两种通信模式。
+    zh_Hant: 飛書適配器，支援事件驅動編排、自建/商店應用和長連線/Webhook 兩種通訊模式。
+    ja_JP: イベント駆動の編成に対応した Lark アダプター。カスタム/ストアアプリと WebSocket/Webhook モードをサポートします。
+  icon: lark.svg
+
+spec:
+  categories:
+    - popular
+    - china
+    - global
+  help_links:
+    zh: https://langbot.app/docs/zh/usage/platforms/lark
+    en: https://langbot.app/docs/en/usage/platforms/lark
+    ja: https://langbot.app/docs/ja/usage/platforms/lark
+  config:
+    - name: domain
+      label:
+        en_US: Platform Domain
+        zh_Hans: 平台域名
+        zh_Hant: 平台域名
+        ja_JP: プラットフォームドメイン
+      description:
+        en_US: Select the open platform domain. Use Feishu for Chinese mainland, Lark for international
+        zh_Hans: 选择开放平台域名，国内使用飞书，海外使用 Lark
+        zh_Hant: 選擇開放平台域名，國內使用飛書，海外使用 Lark
+        ja_JP: オープンプラットフォームのドメインを選択。中国国内は飛書、海外は Lark を使用
+      type: select
+      options:
+      - name: https://open.feishu.cn
+        label:
+          en_US: Feishu (open.feishu.cn)
+          zh_Hans: 飞书 (open.feishu.cn)
+          zh_Hant: 飛書 (open.feishu.cn)
+          ja_JP: 飛書 (open.feishu.cn)
+      - name: https://open.larksuite.com
+        label:
+          en_US: Lark (open.larksuite.com)
+          zh_Hans: Lark (open.larksuite.com)
+          zh_Hant: Lark (open.larksuite.com)
+          ja_JP: Lark (open.larksuite.com)
+      - name: custom
+        label:
+          en_US: Custom
+          zh_Hans: 自定义
+          zh_Hant: 自定義
+          ja_JP: カスタム
+      required: false
+      default: https://open.feishu.cn
+    - name: custom_domain
+      label:
+        en_US: Custom Domain
+        zh_Hans: 自定义域名
+        zh_Hant: 自定義域名
+        ja_JP: カスタムドメイン
+      description:
+        en_US: Enter the full domain URL, e.g. https://open.example.com
+        zh_Hans: 输入完整的域名 URL，例如 https://open.example.com
+        zh_Hant: 輸入完整的域名 URL，例如 https://open.example.com
+        ja_JP: '完全なドメイン URL を入力（例: https://open.example.com）'
+      type: string
+      required: false
+      default: ''
+      show_if:
+        field: domain
+        operator: eq
+        value: custom
+    - name: one-click-create
+      label:
+        en_US: One-Click Create App
+        zh_Hans: 一键创建应用
+        zh_Hant: 一鍵建立應用
+        ja_JP: ワンクリックでアプリ作成
+      description:
+        en_US: Scan QR code to automatically create a Feishu app and fill in credentials
+        zh_Hans: 扫码自动创建飞书应用并填写凭据
+        zh_Hant: 掃碼自動建立飛書應用並填寫憑證
+        ja_JP: QRコードをスキャンしてFeishuアプリを自動作成し、認証情報を入力
+      type: qr-code-login
+      login_platform: feishu
+      required: false
+    - name: app_id
+      label:
+        en_US: App ID
+        zh_Hans: 应用ID
+        zh_Hant: 應用ID
+        ja_JP: アプリ ID
+      description:
+        en_US: Copy App ID from Credentials & Basic Info in the Lark developer console. Identifies the app used by this bot.
+        zh_Hans: 从飞书开放平台应用的「凭证与基础信息」复制 App ID，用于标识此机器人使用的应用。
+        zh_Hant: 從飛書開放平台應用的「憑證與基礎資訊」複製 App ID，用於識別此機器人使用的應用。
+        ja_JP: Lark 開発者コンソールの認証情報と基本情報から App ID をコピーします。このボットが使用するアプリを識別します。
+      type: string
+      required: true
+      default: ""
+    - name: app_secret
+      label:
+        en_US: App Secret
+        zh_Hans: 应用密钥
+        zh_Hant: 應用密鑰
+        ja_JP: アプリシークレット
+      description:
+        en_US: Copy App Secret from the same app's Credentials & Basic Info. Used with App ID to obtain API access tokens; this is not the webhook Encrypt Key.
+        zh_Hans: 从同一应用的「凭证与基础信息」复制 App Secret，与 App ID 配合获取 API 访问令牌；它不是 Webhook 的 Encrypt Key。
+        zh_Hant: 從同一應用的「憑證與基礎資訊」複製 App Secret，與 App ID 配合取得 API 存取權杖；它不是 Webhook 的 Encrypt Key。
+        ja_JP: 同じアプリの認証情報と基本情報から App Secret をコピーします。App ID と共に API アクセストークンを取得するために使用します。Webhook の Encrypt Key とは異なります。
+      type: string
+      required: true
+      default: ""
+    - name: enable-webhook
+      label:
+        en_US: Enable Webhook Mode
+        zh_Hans: 启用 Webhook 模式
+        zh_Hant: 啟用 Webhook 模式
+        ja_JP: Webhook モードを有効化
+      description:
+        en_US: Enable request URL callback mode. Disable it to use WebSocket long connection mode.
+        zh_Hans: 启用 Request URL 回调模式。关闭时使用 WebSocket 长连接模式。
+        zh_Hant: 啟用 Request URL 回調模式。關閉時使用 WebSocket 長連線模式。
+        ja_JP: Request URL コールバックモードを有効化します。無効時は WebSocket 長期接続を使用します。
+      type: boolean
+      required: true
+      default: false
+    - name: webhook_url
+      label:
+        en_US: Webhook Callback URL
+        zh_Hans: Webhook 回调地址
+        zh_Hant: Webhook 回調地址
+        ja_JP: Webhook コールバック URL
+      description:
+        en_US: Copy this URL to the Lark app event subscription request URL.
+        zh_Hans: 复制此地址并粘贴到飞书应用事件订阅的 Request URL 中。
+        zh_Hant: 複製此地址並貼到飛書應用事件訂閱的 Request URL 中。
+        ja_JP: この URL を Lark アプリのイベント購読 Request URL に貼り付けてください。
+      type: webhook-url
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: verification-token
+      label:
+        en_US: Verification Token
+        zh_Hans: 验证令牌（Verification Token）
+        zh_Hant: 驗證權杖（Verification Token）
+        ja_JP: 検証トークン（Verification Token）
+      description:
+        en_US: Copy Verification Token from Events & Callbacks > Encryption Strategy in the Lark developer console. Required when Encrypt Key is empty; plaintext callbacks are accepted only when their token matches. A token cannot replace signature verification when Encrypt Key is set.
+        zh_Hans: 从飞书开放平台应用的「事件与回调 → 加密策略」复制 Verification Token。Encrypt Key 为空时必填，明文回调仅在令牌一致时接受；设置 Encrypt Key 后仍必须通过签名校验，不能用此令牌替代。
+        zh_Hant: 從飛書開放平台應用的「事件與回調 → 加密策略」複製 Verification Token。Encrypt Key 為空時必填，明文回調僅在權杖一致時接受；設定 Encrypt Key 後仍必須通過簽章驗證，不能以此權杖替代。
+        ja_JP: Lark 開発者コンソールのイベントとコールバックの暗号化設定から Verification Token をコピーします。Encrypt Key が空の場合は必須で、トークンが一致する平文コールバックのみ受け付けます。Encrypt Key 設定時の署名検証は代替できません。
+      type: string
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: encrypt-key
+      label:
+        en_US: Encrypt Key
+        zh_Hans: 加密密钥
+        zh_Hant: 加密密鑰
+        ja_JP: 暗号化キー
+      description:
+        en_US: Copy Encrypt Key from Events & Callbacks > Encryption Strategy in the Lark developer console. Both sides must match. Used to verify callback signatures and decrypt encrypted payloads. If left empty on both sides, configure Verification Token for plaintext callbacks.
+        zh_Hans: 从飞书开放平台应用的「事件与回调 → 加密策略」复制 Encrypt Key，两边必须一致，用于回调签名校验和加密正文解密。两边均留空时，需填写 Verification Token 校验明文回调。
+        zh_Hant: 從飛書開放平台應用的「事件與回調 → 加密策略」複製 Encrypt Key，兩邊必須一致，用於回調簽章驗證與加密本文解密。兩邊均留空時，需填寫 Verification Token 驗證明文回調。
+        ja_JP: Lark 開発者コンソールのイベントとコールバックの暗号化設定から Encrypt Key をコピーし、両側で一致させます。署名検証と暗号化本文の復号に使用します。両側で空にする場合は、平文コールバック検証用の Verification Token を設定してください。
+      type: string
+      required: false
+      default: ""
+      show_if:
+        field: enable-webhook
+        operator: eq
+        value: true
+    - name: enable-stream-reply
+      label:
+        en_US: Enable Stream Reply Mode
+        zh_Hans: 启用飞书流式回复模式
+        zh_Hant: 啟用飛書串流回覆模式
+        ja_JP: ストリーミング返信モードを有効化
+      description:
+        en_US: Used for streaming replies from pipelines or plugins. If enabled, replies are rendered through an updating Lark card.
+        zh_Hans: 用于流水线和插件主动发起的流式回复。如果启用，将使用可更新的飞书卡片进行流式回复。
+        zh_Hant: 用於流水線和插件主動發起的串流回覆。如果啟用，將使用可更新的飛書卡片進行串流回覆。
+        ja_JP: パイプラインやプラグインのストリーミング返信に適用されます。有効にすると、更新可能な Lark カードでストリーミング返信します。
+      type: boolean
+      required: true
+      default: false
+    - name: app_type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+        zh_Hant: 應用類型
+        ja_JP: アプリタイプ
+      description:
+        en_US: Match the app type in the Lark developer console. Choose Self-built Application for an internal app, or Store Application for an ISV app distributed through the app store.
+        zh_Hans: 与飞书开放平台中的应用类型保持一致；企业内部使用的应用选择「自建应用」，通过应用商店分发的 ISV 应用选择「商店应用」。
+        zh_Hant: 與飛書開放平台中的應用類型保持一致；企業內部使用的應用選擇「自建應用」，透過應用商店發佈的 ISV 應用選擇「商店應用」。
+        ja_JP: Lark 開発者コンソールのアプリ種別に合わせます。社内用はカスタムアプリ、アプリストアで配布する ISV アプリはストアアプリを選択してください。
+      type: select
+      options:
+        - name: self
+          label:
+            en_US: Self-built Application
+            zh_Hans: 自建应用
+            zh_Hant: 自建應用
+            ja_JP: カスタムアプリ
+        - name: isv
+          label:
+            en_US: Store Application
+            zh_Hans: 商店应用
+            zh_Hant: 商店應用
+            ja_JP: ストアアプリ
+      required: false
+      default: self
+    - name: bot_added_welcome
+      label:
+        en_US: Bot Welcome Message
+        zh_Hans: 机器人进群欢迎语
+        zh_Hant: 機器人進群歡迎語
+        ja_JP: ボット参加時のウェルカムメッセージ
+      description:
+        en_US: Optional text to send when the bot joins a group. Enter your own welcome message and subscribe to im.chat.member.bot.added_v1 in Lark. Leave empty to disable.
+        zh_Hans: 机器人加入群聊时发送的可选文本，可自行填写欢迎语，并在飞书订阅 im.chat.member.bot.added_v1 事件；留空则不发送。
+        zh_Hant: 機器人加入群聊時傳送的選填文字，可自行填寫歡迎語，並在飛書訂閱 im.chat.member.bot.added_v1 事件；留空則不傳送。
+        ja_JP: ボットがグループに参加した際に送信する任意のメッセージです。文面を入力し、Lark で im.chat.member.bot.added_v1 を購読してください。空欄の場合は送信しません。
+      type: text
+      required: false
+      default: ""
+
+  supported_events:
+    - message.received
+    - bot.invited_to_group
+    - bot.removed_from_group
+    - group.member_joined
+    - group.member_left
+    - group.info_updated
+    - message.deleted
+    - message.reaction
+    - platform.specific
+
+  supported_apis:
+    required:
+      - send_message
+      - reply_message
+    optional:
+      - get_message
+      - get_group_info
+      - get_group_member_info
+      - get_user_info
+      - get_file_url
+      - call_platform_api
+      - interaction.request
+      - interaction.acknowledge
+
+  platform_specific_apis:
+    - action: check_tenant_access_token
+      description: { en_US: "Check whether the tenant access token can be obtained", zh_Hans: "检查 tenant access token 是否可获取" }
+    - action: refresh_app_access_token
+      description: { en_US: "Refresh store-app app access token", zh_Hans: "刷新商店应用 app access token" }
+    - action: refresh_tenant_access_token
+      description: { en_US: "Refresh store-app tenant access token", zh_Hans: "刷新商店应用 tenant access token" }
+    - action: get_chat
+      description: { en_US: "Get Lark chat metadata", zh_Hans: "获取飞书会话信息" }
+    - action: get_message
+      description: { en_US: "Get a Lark message", zh_Hans: "获取飞书消息" }
+    - action: get_message_resource
+      description: { en_US: "Download message image/file resource", zh_Hans: "下载消息图片/文件资源" }
+
+execution:
+  python:
+    path: ./adapter.py
+    attr: LarkAdapter

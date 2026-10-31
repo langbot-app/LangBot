@@ -1,4 +1,11 @@
-import { useState, useEffect, useCallback, useRef, Suspense } from 'react';
+import {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  Suspense,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Input } from '@/components/ui/input';
 import {
@@ -26,6 +33,7 @@ import {
   Book,
   FileText,
   AppWindow,
+  Bot,
   SlidersHorizontal,
   X,
   Info,
@@ -37,6 +45,8 @@ import {
 } from '@/components/ui/tooltip';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
+import { resolveInstalledState } from './marketplace-installed';
+import { useMarketplaceInstalledIndex } from './useMarketplaceInstalledIndex';
 import { RecommendationLists } from './RecommendationLists';
 import type { RecommendationList } from './RecommendationLists';
 import {
@@ -62,6 +72,26 @@ interface SortOption {
 // Persist the market filter conditions (type / component / tags / sort) across
 // visits via localStorage.
 const MARKET_FILTERS_KEY = 'langbot_market_filters';
+const MARKET_TYPE_VALUES = ['plugin', 'mcp', 'skill'];
+const MARKET_COMPONENT_VALUES = [
+  'Tool',
+  'Command',
+  'EventListener',
+  'KnowledgeEngine',
+  'Parser',
+  'Page',
+  'Runner',
+];
+
+function getComponentFilterFromQuery(
+  searchParams: Pick<URLSearchParams, 'get'>,
+): string | null {
+  const component = searchParams.get('component');
+  return component && MARKET_COMPONENT_VALUES.includes(component)
+    ? component
+    : null;
+}
+
 interface MarketFilters {
   typeFilter?: string;
   componentFilter?: string;
@@ -80,14 +110,16 @@ function loadMarketFilters(): MarketFilters {
 function MarketPageContent({
   installPlugin,
   headerActions,
+  installDisabled,
+  installDisabledTooltip,
 }: {
   installPlugin: (plugin: PluginV4) => void;
   headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
-  const [searchParams] = useSearchParams();
-
-  const validTypes = ['plugin', 'mcp', 'skill'];
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const extensionTypeOptions = [
     { value: 'all', label: t('market.filters.allFormats'), icon: null },
@@ -98,18 +130,34 @@ function MarketPageContent({
 
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(
-    () => loadMarketFilters().componentFilter ?? 'all',
+    () =>
+      getComponentFilterFromQuery(searchParams) ??
+      loadMarketFilters().componentFilter ??
+      'all',
   );
+  const [runnerUsage, setRunnerUsage] = useState(() => {
+    const value = searchParams.get('runner_usage');
+    return value === 'agent' || value === 'event' ? value : 'all';
+  });
+  const activeRunnerUsage =
+    componentFilter === 'Runner' && runnerUsage !== 'all'
+      ? (runnerUsage as 'agent' | 'event')
+      : undefined;
   const [typeFilter, setTypeFilter] = useState<string>(() => {
+    if (getComponentFilterFromQuery(searchParams)) {
+      return 'plugin';
+    }
     const type = searchParams.get('type');
-    if (type && validTypes.includes(type)) {
+    if (type && MARKET_TYPE_VALUES.includes(type)) {
       return type;
     }
     const saved = loadMarketFilters().typeFilter;
-    return saved && validTypes.includes(saved) ? saved : 'all';
+    return saved && MARKET_TYPE_VALUES.includes(saved) ? saved : 'all';
   });
   const activeAdvancedFilters =
-    (typeFilter === 'all' ? 0 : 1) + (componentFilter === 'all' ? 0 : 1);
+    (typeFilter === 'all' ? 0 : 1) +
+    (componentFilter === 'all' ? 0 : 1) +
+    (activeRunnerUsage ? 1 : 0);
   const [selectedTags, setSelectedTags] = useState<string[]>(
     () => loadMarketFilters().selectedTags ?? [],
   );
@@ -118,6 +166,8 @@ function MarketPageContent({
   const [recommendationLists, setRecommendationLists] = useState<
     RecommendationList[]
   >([]);
+  // Installed extensions from the sidebar; used to mark market cards.
+  const installedIndex = useMarketplaceInstalledIndex();
   const [plugins, setPlugins] = useState<PluginMarketCardVO[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -127,7 +177,7 @@ function MarketPageContent({
   // Per-format extension counts shown next to the type filter options.
   const [typeCounts, setTypeCounts] = useState<Record<string, number>>({});
   const [sortOption, setSortOption] = useState<string>(
-    () => loadMarketFilters().sortOption ?? 'install_count_desc',
+    () => loadMarketFilters().sortOption ?? 'hot_score_desc',
   );
 
   // Persist filter conditions so they survive navigation / reload.
@@ -154,6 +204,12 @@ function MarketPageContent({
 
   // 排序选项
   const sortOptions: SortOption[] = [
+    {
+      value: 'hot_score_desc',
+      label: t('market.sort.hottest'),
+      sortBy: 'hot_score',
+      sortOrder: 'DESC',
+    },
     {
       value: 'created_at_desc',
       label: t('market.sort.recentlyAdded'),
@@ -204,6 +260,11 @@ function MarketPageContent({
       label: t('market.componentName.Page'),
       icon: AppWindow,
     },
+    {
+      value: 'Runner',
+      label: t('market.componentName.Runner'),
+      icon: Bot,
+    },
   ];
 
   // 获取当前排序参数
@@ -211,7 +272,7 @@ function MarketPageContent({
     const option = sortOptions.find((opt) => opt.value === sortOption);
     return option
       ? { sortBy: option.sortBy, sortOrder: option.sortOrder }
-      : { sortBy: 'install_count', sortOrder: 'DESC' };
+      : { sortBy: 'hot_score', sortOrder: 'DESC' };
   }, [sortOption]);
 
   // 将API响应转换为VO对象
@@ -233,9 +294,11 @@ function MarketPageContent({
         description:
           extractI18nObject(plugin.description) || t('market.noDescription'),
         installCount: plugin.install_count || 0,
+        likeCount: plugin.like_count || 0,
         iconURL,
         githubURL: plugin.repository,
         version: plugin.latest_version,
+        certificationStatus: plugin.certification_status,
         components: plugin.components || {},
         tags: plugin.tags || [],
         type: plugin.type,
@@ -272,6 +335,7 @@ function MarketPageContent({
             type_filter: typeFilter === 'all' ? undefined : typeFilter,
             component_filter:
               componentFilter === 'all' ? undefined : componentFilter,
+            runner_usage: activeRunnerUsage,
             tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
           });
 
@@ -303,6 +367,7 @@ function MarketPageContent({
     [
       searchQuery,
       componentFilter,
+      activeRunnerUsage,
       selectedTags,
       pageSize,
       transformToVO,
@@ -429,49 +494,58 @@ function MarketPageContent({
   }, []);
 
   // Handle type filter change
-  const handleTypeFilterChange = useCallback((value: string) => {
-    setTypeFilter(value);
-    if (value !== 'plugin') {
-      setComponentFilter('all');
-    }
-    setCurrentPage(1);
-    setSelectedTags([]);
-    setPlugins([]);
+  const handleTypeFilterChange = useCallback(
+    (value: string) => {
+      setTypeFilter(value);
+      if (value !== 'plugin') {
+        setComponentFilter('all');
+      }
+      setCurrentPage(1);
+      setSelectedTags([]);
+      setPlugins([]);
 
-    // Update URL query param to keep it in sync
-    const params = new URLSearchParams(window.location.search);
-    if (value === 'all') {
-      params.delete('type');
-    } else {
-      params.set('type', value);
-    }
-    const newUrl = params.toString()
-      ? `${window.location.pathname}?${params.toString()}`
-      : window.location.pathname;
-    window.history.replaceState({}, '', newUrl);
-  }, []);
+      // Update URL query param to keep it in sync
+      const params = new URLSearchParams(searchParams);
+      if (value === 'all') {
+        params.delete('type');
+      } else {
+        params.set('type', value);
+      }
+      if (value !== 'plugin') {
+        params.delete('component');
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
-  const handleComponentFilterChange = useCallback((value: string) => {
-    setComponentFilter(value);
-    setCurrentPage(1);
-    setPlugins([]);
+  const handleComponentFilterChange = useCallback(
+    (value: string) => {
+      setComponentFilter(value);
+      setCurrentPage(1);
+      setPlugins([]);
 
-    if (value !== 'all') {
-      setTypeFilter('plugin');
-
-      const params = new URLSearchParams(window.location.search);
-      params.set('type', 'plugin');
-      const newUrl = params.toString()
-        ? `${window.location.pathname}?${params.toString()}`
-        : window.location.pathname;
-      window.history.replaceState({}, '', newUrl);
-    }
-  }, []);
+      const params = new URLSearchParams(searchParams);
+      if (value !== 'Runner') {
+        setRunnerUsage('all');
+        params.delete('runner_usage');
+      }
+      if (value === 'all') {
+        params.delete('component');
+      } else {
+        setTypeFilter('plugin');
+        params.set('type', 'plugin');
+        params.set('component', value);
+      }
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   // 当排序选项或组件筛选或类型筛选变化时重新加载数据
   useEffect(() => {
     fetchPlugins(1, !!searchQuery.trim(), true);
-  }, [sortOption, componentFilter, typeFilter]);
+  }, [sortOption, componentFilter, typeFilter, activeRunnerUsage]);
 
   // Tags 筛选变化时重新搜索
   useEffect(() => {
@@ -560,7 +634,27 @@ function MarketPageContent({
     };
   }, []);
 
-  const visiblePlugins = plugins;
+  // Annotate cards with installed state derived from the sidebar index. This is
+  // computed (rather than baked into `plugins`) so a finished install updates
+  // the badges as soon as the sidebar refreshes.
+  const visiblePlugins = useMemo(
+    () =>
+      plugins.map((plugin) => {
+        const state = resolveInstalledState(installedIndex, plugin);
+        if (
+          state.installed === plugin.installed &&
+          state.hasUpdate === plugin.hasUpdate
+        ) {
+          return plugin;
+        }
+        return new PluginMarketCardVO({
+          ...plugin,
+          installed: state.installed,
+          hasUpdate: state.hasUpdate,
+        });
+      }),
+    [plugins, installedIndex],
+  );
 
   // 加载更多
   const loadMore = useCallback(() => {
@@ -780,6 +874,38 @@ function MarketPageContent({
                     })}
                   </ToggleGroup>
                 </div>
+                {componentFilter === 'Runner' && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium text-muted-foreground">
+                      {t('market.runnerUsage')}
+                    </div>
+                    <ToggleGroup
+                      type="single"
+                      size="sm"
+                      value={runnerUsage}
+                      onValueChange={(value) => {
+                        if (!value) return;
+                        setRunnerUsage(value);
+                        setCurrentPage(1);
+                        setPlugins([]);
+                        const params = new URLSearchParams(searchParams);
+                        if (value === 'all') params.delete('runner_usage');
+                        else params.set('runner_usage', value);
+                        setSearchParams(params, { replace: true });
+                      }}
+                    >
+                      <ToggleGroupItem value="all">
+                        {t('market.runnerUsageAll')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="agent">
+                        {t('market.runnerUsageAgent')}
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="event">
+                        {t('market.runnerUsageEvent')}
+                      </ToggleGroupItem>
+                    </ToggleGroup>
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
 
@@ -840,6 +966,9 @@ function MarketPageContent({
               lists={recommendationLists}
               tagNames={tagNames}
               onInstall={handleInstallPlugin}
+              installDisabled={installDisabled}
+              installDisabledTooltip={installDisabledTooltip}
+              installedIndex={installedIndex}
             />
           )}
 
@@ -852,7 +981,7 @@ function MarketPageContent({
             {searchQuery ? t('market.noResults') : t('market.noPlugins')}
             {' · '}
             <a
-              href="https://github.com/langbot-app/langbot-plugin-demo/issues/new?template=plugin-request.yml"
+              href="https://github.com/langbot-app/LangBot/issues/new?template=plugin-request.yml"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
@@ -869,6 +998,8 @@ function MarketPageContent({
                   cardVO={plugin}
                   onInstall={handleInstallPlugin}
                   tagNames={tagNames}
+                  installDisabled={installDisabled}
+                  installDisabledTooltip={installDisabledTooltip}
                 />
               ))}
             </div>
@@ -888,7 +1019,7 @@ function MarketPageContent({
                   : t('market.allLoaded')}
                 {' · '}
                 <a
-                  href="https://github.com/langbot-app/langbot-plugin-demo/issues/new?template=plugin-request.yml"
+                  href="https://github.com/langbot-app/LangBot/issues/new?template=plugin-request.yml"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-primary hover:underline"
@@ -908,9 +1039,13 @@ function MarketPageContent({
 export default function MarketPage({
   installPlugin,
   headerActions,
+  installDisabled,
+  installDisabledTooltip,
 }: {
   installPlugin: (plugin: PluginV4) => void;
   headerActions?: React.ReactNode;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   return (
     <Suspense
@@ -925,6 +1060,8 @@ export default function MarketPage({
       <MarketPageContent
         installPlugin={installPlugin}
         headerActions={headerActions}
+        installDisabled={installDisabled}
+        installDisabledTooltip={installDisabledTooltip}
       />
     </Suspense>
   );

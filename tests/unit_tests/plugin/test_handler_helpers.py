@@ -10,6 +10,27 @@ from __future__ import annotations
 import pytest
 from unittest.mock import Mock, AsyncMock
 from importlib import import_module
+from types import SimpleNamespace
+
+
+@pytest.mark.parametrize(
+    'call_args',
+    [
+        {'num_retries': 0},
+        {'max_retries': 0},
+        {'timeout': 3},
+        {'request_policy': {'stream_idle_timeout': 2}},
+    ],
+)
+def test_llm_bridge_keeps_model_and_call_policy_layers_separate(call_args):
+    from langbot.pkg.provider.modelmgr.request_policy import RequestPolicy
+
+    model_args = {'temperature': 0.2, 'request_policy': {'retries': 2, 'read_timeout': 90}}
+    model = SimpleNamespace(model_entity=SimpleNamespace(extra_args=model_args))
+    merged = get_handler_module()._merge_model_extra_args(model, call_args, llm_policy=True)
+    assert RequestPolicy.resolve(model_args, merged) == RequestPolicy.resolve(model_args, call_args)
+    assert merged['temperature'] == 0.2
+    assert model_args['request_policy'] == {'retries': 2, 'read_timeout': 90}
 
 
 def get_handler_module():
@@ -86,41 +107,69 @@ class TestMakeRagErrorResponse:
 class TestCleanupPluginData:
     """Tests for cleanup_plugin_data method."""
 
-    @pytest.mark.asyncio
-    async def test_deletes_plugin_settings(self):
-        """Test that plugin settings are deleted."""
-        handler_module = get_handler_module()
+    @pytest.fixture
+    async def cleanup(self, plugin_db):
+        from langbot.pkg.entity.persistence.plugin import PluginSetting
+        from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+        from langbot_plugin.entities.io.context import InstallationBinding
 
-        mock_app = Mock()
-        mock_app.persistence_mgr = AsyncMock()
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-
-        # Mock the handler without connection (we only need ap)
-        handler_instance = Mock(spec=handler_module.RuntimeConnectionHandler)
-        handler_instance.ap = mock_app
-
-        # Call cleanup_plugin_data
-        await handler_module.RuntimeConnectionHandler.cleanup_plugin_data(
-            handler_instance, 'test-author', 'test-plugin'
+        plugin_db.add_all(
+            PluginSetting(workspace_uuid=workspace, plugin_author=author, plugin_name=name)
+            for workspace, author, name in [
+                ('workspace-a', 'test-author', 'test-plugin'),
+                ('workspace-b', 'test-author', 'test-plugin'),
+                ('workspace-a', 'other-author', 'test-plugin'),
+                ('workspace-a', 'test-author', 'other-plugin'),
+            ]
         )
-
-        # Verify plugin settings delete was called
-        calls = mock_app.persistence_mgr.execute_async.call_args_list
-        assert len(calls) >= 1
+        plugin_db.add_all(
+            BinaryStorage(
+                workspace_uuid=workspace, unique_key=key, key=key, owner_type=owner_type, owner=owner, value=b'data'
+            )
+            for workspace, key, owner_type, owner in [
+                ('workspace-a', 'target', 'plugin', 'test-author/test-plugin'),
+                ('workspace-b', 'other-workspace', 'plugin', 'test-author/test-plugin'),
+                ('workspace-a', 'other-owner', 'plugin', 'other-author/test-plugin'),
+                ('workspace-a', 'other-type', 'skill', 'test-author/test-plugin'),
+            ]
+        )
+        await plugin_db.flush()
+        app = Mock()
+        app.persistence_mgr.execute_async = plugin_db.execute
+        handler = get_handler_module().RuntimeConnectionHandler(Mock(), AsyncMock(), app)
+        binding = InstallationBinding(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+            installation_uuid='00000000-0000-4000-8000-000000000001',
+            runtime_revision=1,
+            artifact_digest='a' * 64,
+        )
+        with handler.installation_scope(binding):
+            await handler.cleanup_plugin_data('test-author', 'test-plugin')
+        return plugin_db
 
     @pytest.mark.asyncio
-    async def test_deletes_binary_storage(self):
+    async def test_deletes_plugin_settings(self, cleanup):
+        import sqlalchemy
+        from langbot.pkg.entity.persistence.plugin import PluginSetting
+
+        rows = (
+            await cleanup.execute(
+                sqlalchemy.select(PluginSetting.workspace_uuid, PluginSetting.plugin_author, PluginSetting.plugin_name)
+            )
+        ).all()
+        assert set(rows) == {
+            ('workspace-b', 'test-author', 'test-plugin'),
+            ('workspace-a', 'other-author', 'test-plugin'),
+            ('workspace-a', 'test-author', 'other-plugin'),
+        }
+
+    @pytest.mark.asyncio
+    async def test_deletes_binary_storage(self, cleanup):
         """Test that binary storage is deleted."""
-        handler_module = get_handler_module()
+        import sqlalchemy
+        from langbot.pkg.entity.persistence.bstorage import BinaryStorage
 
-        mock_app = Mock()
-        mock_app.persistence_mgr = AsyncMock()
-        mock_app.persistence_mgr.execute_async = AsyncMock()
-
-        handler_instance = Mock(spec=handler_module.RuntimeConnectionHandler)
-        handler_instance.ap = mock_app
-
-        await handler_module.RuntimeConnectionHandler.cleanup_plugin_data(handler_instance, 'author', 'plugin-name')
-
-        # Should have at least 2 calls: one for settings, one for binary storage
-        assert mock_app.persistence_mgr.execute_async.call_count >= 2
+        keys = (await cleanup.execute(sqlalchemy.select(BinaryStorage.unique_key))).scalars().all()
+        assert set(keys) == {'other-workspace', 'other-owner', 'other-type'}

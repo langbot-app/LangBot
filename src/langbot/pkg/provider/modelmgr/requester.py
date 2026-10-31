@@ -1,19 +1,41 @@
 from __future__ import annotations
 
+from contextlib import aclosing
+
 import abc
+import asyncio
 import typing
 import time
 
 from ...core import app
+from ...api.http.context import ExecutionContext
 from ...entity.persistence import model as persistence_model
+from ...workspace.errors import WorkspaceInvariantError
+from ...platform.image_urls import refresh_model_images
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
+from . import reasoning
+from . import request_policy
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 
 LLM_USAGE_QUERY_VARIABLE = '_llm_usage'
 STREAM_USAGE_QUERY_VARIABLE = '_stream_usage'
+
+
+def _ensure_same_execution_scope(
+    expected: ExecutionContext,
+    actual: ExecutionContext,
+    *,
+    resource: str,
+) -> None:
+    if (
+        actual.instance_uuid != expected.instance_uuid
+        or actual.workspace_uuid != expected.workspace_uuid
+        or actual.placement_generation != expected.placement_generation
+    ):
+        raise WorkspaceInvariantError(f'{resource} belongs to another Workspace execution scope')
 
 
 def _store_llm_usage(query: pipeline_query.Query | None, usage_info: dict | None) -> None:
@@ -39,184 +61,228 @@ class RuntimeProvider:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         provider_entity: persistence_model.ModelProvider,
         token_mgr: token.TokenManager,
         requester: ProviderAPIRequester,
     ):
+        if provider_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Provider belongs to another Workspace')
+        self.execution_context = execution_context
         self.provider_entity = provider_entity
         self.token_mgr = token_mgr
         self.requester = requester
 
+    def _validate_invocation(
+        self,
+        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel,
+        execution_context: ExecutionContext,
+    ) -> None:
+        _ensure_same_execution_scope(self.execution_context, execution_context, resource='Provider invocation')
+        _ensure_same_execution_scope(self.execution_context, model.execution_context, resource='Runtime model')
+        if model.provider is not self:
+            raise WorkspaceInvariantError('Runtime model is attached to another provider')
+
+    def _resolve_llm_execution_context(
+        self,
+        query: pipeline_query.Query | None,
+        execution_context: ExecutionContext | None,
+    ) -> ExecutionContext:
+        if query is not None:
+            from ...pipeline.pool import get_query_execution_context
+
+            query_context = get_query_execution_context(query)
+            if execution_context is not None:
+                _ensure_same_execution_scope(
+                    query_context,
+                    execution_context,
+                    resource='Explicit LLM invocation context',
+                )
+            return query_context
+        if execution_context is None:
+            raise WorkspaceInvariantError('LLM invocation requires an ExecutionContext when query is absent')
+        return execution_context
+
+    def _call_state(self, query, model, extra_args, context):
+        config = getattr(self.requester, 'requester_cfg', {})
+        policy = request_policy.RequestPolicy.resolve(config, model.model_entity.extra_args, extra_args)
+        if query is not None:
+            if query.variables is None:
+                query.variables = {}
+            query.variables.pop(LLM_USAGE_QUERY_VARIABLE, None)
+            query.variables.pop(STREAM_USAGE_QUERY_VARIABLE, None)
+        return request_policy.CallState(policy, request_policy.opaque_conversation_id(query, context))
+
+    async def _record_call(self, query, model, state, status, error):
+        state.mark('total_ms')
+        if query is None:
+            return
+        stream_usage = query.variables.pop(STREAM_USAGE_QUERY_VARIABLE, None)
+        usage = state.usage if state.usage is not None else stream_usage
+        if usage is not None:
+            _store_llm_usage(query, usage)
+        details = {'timing': dict(state.metrics), 'usage': usage, 'error': error}
+        query.variables['_llm_diagnostics'] = details
+        try:
+            from ...pipeline import monitoring_helper
+
+            await monitoring_helper.MonitoringHelper.record_llm_call(
+                ap=self.requester.ap,
+                query=query,
+                bot_id=query.bot_uuid or 'unknown',
+                bot_name=query.variables.get('_monitoring_bot_name', 'Unknown'),
+                pipeline_id=query.pipeline_uuid or 'unknown',
+                pipeline_name=query.variables.get('_monitoring_pipeline_name', 'Unknown'),
+                model_name=model.model_entity.name,
+                input_tokens=(usage or {}).get('prompt_tokens', 0) or 0,
+                output_tokens=(usage or {}).get('completion_tokens', 0) or 0,
+                duration_ms=int(state.metrics['total_ms']),
+                status=status,
+                error_message=error.get('message') if error else None,
+                message_id=query.variables.get('_monitoring_message_id'),
+                details=details,
+            )
+        except Exception as exc:
+            self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {exc}')
+
     async def invoke_llm(
         self,
-        query: pipeline_query.Query,
+        query: pipeline_query.Query | None,
         model: RuntimeLLMModel,
         messages: typing.List[provider_message.Message],
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
+        execution_context: ExecutionContext | None = None,
     ) -> provider_message.Message:
-        """Bridge method for invoking LLM with monitoring"""
-        # Start timing for monitoring
-        start_time = time.time()
-        input_tokens = 0
-        output_tokens = 0
-        status = 'success'
-        error_message = None
-
+        """Preserve the legacy Message return while owning retries and deadlines."""
+        context = self._resolve_llm_execution_context(query, execution_context)
+        self._validate_invocation(model, context)
+        state = self._call_state(query, model, extra_args, context)
+        status, error = 'success', None
         try:
-            # Call the underlying requester
-            result = await self.requester.invoke_llm(
-                query=query,
-                model=model,
-                messages=messages,
-                funcs=funcs,
-                extra_args=extra_args,
-                remove_think=remove_think,
-            )
-
-            # Try to extract token usage if the requester returns it
-            # For requesters that return tuple (message, usage_info)
-            if isinstance(result, tuple):
-                msg, usage_info = result
-                if usage_info:
-                    _store_llm_usage(query, usage_info)
-                    input_tokens = usage_info.get('prompt_tokens', usage_info.get('input_tokens', 0))
-                    output_tokens = usage_info.get('completion_tokens', usage_info.get('output_tokens', 0))
-                    # Attach usage info to message using object.__setattr__ to bypass pydantic validation
-                    try:
-                        object.__setattr__(msg, 'usage', usage_info)
-                    except (AttributeError, TypeError):
-                        pass  # If we can't set it, just skip it
-                return msg
-            else:
-                return result
-
-        except Exception as e:
+            while True:
+                state.metrics['attempts'] += 1
+                state.attempt_start = time.perf_counter()
+                try:
+                    attempt_messages = await state.wait(
+                        lambda: refresh_model_images(self.requester.ap, context, query, messages),
+                        'response',
+                        state.policy.total_timeout,
+                    )
+                    result = await state.wait(
+                        lambda: self.requester.invoke_llm(
+                            query=query,
+                            model=model,
+                            messages=attempt_messages,
+                            funcs=funcs,
+                            extra_args=extra_args,
+                            remove_think=remove_think,
+                        ),
+                        'response',
+                        state.policy.total_timeout,
+                    )
+                    state.mark('response_completed_ms')
+                    if isinstance(result, tuple):
+                        message, state.usage = result
+                        return message
+                    return result
+                except Exception as exc:
+                    if not await state.retry(exc):
+                        raise
+        except (asyncio.CancelledError, GeneratorExit):
+            status, error = 'error', {'code': 'cancelled', 'message': 'LLM invocation cancelled'}
+            raise
+        except Exception as exc:
             status = 'error'
-            error_message = str(e)
+            error = exc.as_dict() if isinstance(exc, request_policy.STRUCTURED_ERRORS) else {'code': 'provider_error'}
+            error['message'] = str(exc)
             raise
         finally:
-            # Record LLM call monitoring data (only if query is provided)
-            if query is not None:
-                duration_ms = int((time.time() - start_time) * 1000)
-
-                # Import monitoring helper
-                try:
-                    from ...pipeline import monitor
-
-                    # Get monitoring metadata from query variables
-                    if query.variables:
-                        bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
-                        pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
-                        message_id = query.variables.get('_monitoring_message_id')
-                    else:
-                        bot_name = 'Unknown'
-                        pipeline_name = 'Unknown'
-                        message_id = None
-
-                    await monitor.MonitoringHelper.record_llm_call(
-                        ap=self.requester.ap,
-                        query=query,
-                        bot_id=query.bot_uuid or 'unknown',
-                        bot_name=bot_name,
-                        pipeline_id=query.pipeline_uuid or 'unknown',
-                        pipeline_name=pipeline_name,
-                        model_name=model.model_entity.name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        duration_ms=duration_ms,
-                        status=status,
-                        error_message=error_message,
-                        message_id=message_id,
-                    )
-                except Exception as monitor_err:
-                    self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {monitor_err}')
+            await self._record_call(query, model, state, status, error)
 
     async def invoke_llm_stream(
         self,
-        query: pipeline_query.Query,
+        query: pipeline_query.Query | None,
         model: RuntimeLLMModel,
         messages: typing.List[provider_message.Message],
         funcs: typing.List[resource_tool.LLMTool] = None,
         extra_args: dict[str, typing.Any] = {},
         remove_think: bool = False,
-    ) -> provider_message.MessageChunk:
-        """Bridge method for invoking LLM stream with monitoring"""
-        # Start timing for monitoring
-        start_time = time.time()
-        status = 'success'
-        error_message = None
-        input_tokens = 0
-        output_tokens = 0
-
+        execution_context: ExecutionContext | None = None,
+    ) -> typing.AsyncIterator[provider_message.MessageChunk]:
+        """Never retry after a raw upstream event or a legacy adapter chunk."""
+        context = self._resolve_llm_execution_context(query, execution_context)
+        self._validate_invocation(model, context)
+        state = self._call_state(query, model, extra_args, context)
+        status, error = 'success', None
         try:
-            # Stream the response
-            async for chunk in self.requester.invoke_llm_stream(
-                query=query,
-                model=model,
-                messages=messages,
-                funcs=funcs,
-                extra_args=extra_args,
-                remove_think=remove_think,
-            ):
-                yield chunk
-            # Extract usage from stream if available (stored by LiteLLM requester)
-            if query:
-                if query.variables is None:
-                    query.variables = {}
-                if STREAM_USAGE_QUERY_VARIABLE in query.variables:
-                    usage_info = query.variables[STREAM_USAGE_QUERY_VARIABLE]
-                    _store_llm_usage(query, usage_info)
-                    input_tokens = usage_info.get('prompt_tokens', 0)
-                    output_tokens = usage_info.get('completion_tokens', 0)
-                    del query.variables[STREAM_USAGE_QUERY_VARIABLE]
-        except Exception as e:
+            while True:
+                state.metrics['attempts'] += 1
+                state.attempt_start = time.perf_counter()
+                try:
+                    attempt_messages = await state.wait(
+                        lambda: refresh_model_images(self.requester.ap, context, query, messages),
+                        'first_event',
+                        state.policy.total_timeout,
+                    )
+                    async with aclosing(
+                        self.requester.invoke_llm_stream(
+                            query=query,
+                            model=model,
+                            messages=attempt_messages,
+                            funcs=funcs,
+                            extra_args=extra_args,
+                            remove_think=remove_think,
+                        )
+                    ) as stream:
+                        while True:
+                            try:
+                                chunk = await state.wait(
+                                    lambda: anext(stream),
+                                    'total'
+                                    if getattr(self.requester, 'reports_raw_timing', False) is True
+                                    else ('stream_idle' if state.raw_started else 'first_event'),
+                                    state.policy.total_timeout
+                                    if getattr(self.requester, 'reports_raw_timing', False) is True
+                                    else (
+                                        state.policy.stream_idle_timeout
+                                        if state.raw_started
+                                        else state.policy.first_event_timeout
+                                    ),
+                                )
+                            except StopAsyncIteration:
+                                break
+                            if chunk is None:
+                                continue
+                            state.raw_started = True
+                            state.mark('first_event_ms')
+                            if chunk.content:
+                                state.mark('first_visible_chunk_ms')
+                            yield chunk
+                    state.mark('response_completed_ms')
+                    return
+                except Exception as exc:
+                    if not await state.retry(exc):
+                        raise
+        except (asyncio.CancelledError, GeneratorExit):
+            status, error = 'error', {'code': 'cancelled', 'message': 'LLM stream cancelled'}
+            raise
+        except Exception as exc:
             status = 'error'
-            error_message = str(e)
+            error = exc.as_dict() if isinstance(exc, request_policy.STRUCTURED_ERRORS) else {'code': 'provider_error'}
+            error['message'] = str(exc)
             raise
         finally:
-            # Record LLM call monitoring data (only if query is provided)
-            if query is not None:
-                duration_ms = int((time.time() - start_time) * 1000)
-
-                # Import monitoring helper
-                try:
-                    from ...pipeline import monitor
-
-                    # Get monitoring metadata from query variables
-                    if query.variables:
-                        bot_name = query.variables.get('_monitoring_bot_name', 'Unknown')
-                        pipeline_name = query.variables.get('_monitoring_pipeline_name', 'Unknown')
-                        message_id = query.variables.get('_monitoring_message_id')
-                    else:
-                        bot_name = 'Unknown'
-                        pipeline_name = 'Unknown'
-                        message_id = None
-
-                    await monitor.MonitoringHelper.record_llm_call(
-                        ap=self.requester.ap,
-                        query=query,
-                        bot_id=query.bot_uuid or 'unknown',
-                        bot_name=bot_name,
-                        pipeline_id=query.pipeline_uuid or 'unknown',
-                        pipeline_name=pipeline_name,
-                        model_name=model.model_entity.name,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        duration_ms=duration_ms,
-                        status=status,
-                        error_message=error_message,
-                        message_id=message_id,
-                    )
-                except Exception as monitor_err:
-                    self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM stream call: {monitor_err}')
+            await self._record_call(query, model, state, status, error)
 
     async def invoke_embedding(
         self,
         model: RuntimeEmbeddingModel,
         input_text: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
         knowledge_base_id: str | None = None,
         query_text: str | None = None,
         session_id: str | None = None,
@@ -224,6 +290,7 @@ class RuntimeProvider:
         call_type: str | None = None,
     ) -> typing.List[typing.List[float]]:
         """Bridge method for invoking embedding with monitoring"""
+        self._validate_invocation(model, execution_context)
         # Start timing for monitoring
         start_time = time.time()
         prompt_tokens = 0
@@ -259,6 +326,7 @@ class RuntimeProvider:
 
             try:
                 await self.requester.ap.monitoring_service.record_embedding_call(
+                    execution_context,
                     model_name=model.model_entity.name,
                     prompt_tokens=prompt_tokens,
                     total_tokens=total_tokens,
@@ -281,8 +349,11 @@ class RuntimeProvider:
         query: str,
         documents: typing.List[str],
         extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
     ) -> typing.List[dict]:
         """Bridge method for invoking rerank with monitoring"""
+        self._validate_invocation(model, execution_context)
         start_time = time.time()
         status = 'success'
 
@@ -319,13 +390,25 @@ class RuntimeLLMModel:
     provider: RuntimeProvider
     """提供商实例"""
 
+    reasoning_config_override: dict[str, typing.Any] | None
+    """Request-scoped reasoning policy supplied by the active pipeline."""
+
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.LLMModel,
         provider: RuntimeProvider,
+        reasoning_config_override: dict[str, typing.Any] | None = None,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='LLM model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('LLM model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('LLM model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
+        self.reasoning_config_override = reasoning_config_override
 
 
 class RuntimeEmbeddingModel:
@@ -339,9 +422,16 @@ class RuntimeEmbeddingModel:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.EmbeddingModel,
         provider: RuntimeProvider,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='Embedding model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Embedding model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('Embedding model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
 
@@ -357,9 +447,16 @@ class RuntimeRerankModel:
 
     def __init__(
         self,
+        execution_context: ExecutionContext,
         model_entity: persistence_model.RerankModel,
         provider: RuntimeProvider,
     ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='Rerank model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('Rerank model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('Rerank model references another provider')
+        self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
 
@@ -384,6 +481,17 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
     async def initialize(self):
         pass
 
+    async def aclose(self) -> None:
+        """Release requester-owned clients when its runtime provider retires.
+
+        Most built-in requesters are currently stateless, but provider
+        extensions may own connection pools or background resources. Keeping
+        the lifecycle hook on the base class lets Workspace generation changes
+        and application shutdown retire them deterministically.
+        """
+
+        return None
+
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any] | list[dict[str, typing.Any]]:
         """Scan models supported by the provider.
 
@@ -391,6 +499,13 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         can enumerate remote models should override this method.
         """
         raise NotImplementedError('This provider does not support model scanning')
+
+    def get_reasoning_capabilities(self, model: RuntimeLLMModel) -> dict[str, typing.Any]:
+        """Return normalized reasoning controls supported by a model."""
+        return reasoning.default_reasoning_capabilities(
+            supported='reasoning' in (model.model_entity.abilities or []),
+            source='manual' if 'reasoning' in (model.model_entity.abilities or []) else 'unknown',
+        )
 
     @abc.abstractmethod
     async def invoke_llm(
@@ -415,6 +530,20 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             llm_entities.Message: 返回消息对象
         """
         pass
+
+    async def count_tokens(
+        self,
+        model: RuntimeLLMModel,
+        messages: typing.List[provider_message.Message],
+        funcs: typing.List[resource_tool.LLMTool] = None,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> int:
+        """Count model input tokens before invoking the model.
+
+        Requesters should use the same provider/model conversion path as
+        ``invoke_llm`` so the preflight count matches the actual request shape.
+        """
+        raise NotImplementedError('This requester does not support token counting')
 
     async def invoke_llm_stream(
         self,

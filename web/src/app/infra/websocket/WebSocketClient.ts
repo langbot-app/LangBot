@@ -2,11 +2,15 @@
  * WebSocket客户端类
  * 用于管理WebSocket连接和消息处理
  */
+import { getActiveWorkspaceUuid } from '@/app/infra/http/workspaceContext';
+import { backendWebSocketURL } from './url';
+import type { MessageChainComponent } from '@/app/infra/entities/message';
+
 export interface WebSocketMessage {
   id: number;
   role: 'user' | 'assistant';
   content: string;
-  message_chain: Array<{ type: string; text?: string; target?: string }>;
+  message_chain: MessageChainComponent[];
   timestamp: string;
   is_final?: boolean;
   connection_id?: string;
@@ -14,12 +18,7 @@ export interface WebSocketMessage {
 
 export interface WebSocketResponse {
   type:
-    | 'connected'
-    | 'response'
-    | 'user_message'
-    | 'pong'
-    | 'broadcast'
-    | 'error';
+    'connected' | 'response' | 'user_message' | 'pong' | 'broadcast' | 'error';
   connection_id?: string;
   pipeline_uuid?: string;
   session_type?: string;
@@ -34,9 +33,31 @@ export class WebSocketClient {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectDelay = 3000; // 3秒重连间隔
+  private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private heartbeatIntervalMs = 30000; // 30秒
   private isConnecting = false; // 防止重复连接
+  private shouldReconnect = true;
+  private disconnectedByUser = false;
+  private workspaceUuid = getActiveWorkspaceUuid();
+  private handshakeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private recoveryListenersAttached = false;
+  private recover = () => {
+    if (
+      document.visibilityState === 'hidden' ||
+      this.disconnectedByUser ||
+      !this.shouldReconnect ||
+      this.isConnecting ||
+      this.isConnected()
+    )
+      return;
+    if (getActiveWorkspaceUuid() !== this.workspaceUuid) return;
+    void this.connect().catch(() => {});
+  };
+  private clearHandshakeTimeout() {
+    if (this.handshakeTimeout) clearTimeout(this.handshakeTimeout);
+    this.handshakeTimeout = null;
+  }
 
   // 事件回调
   private onConnectedCallback?: (data: WebSocketResponse) => void;
@@ -57,6 +78,13 @@ export class WebSocketClient {
   public connect(): Promise<string> {
     return new Promise((resolve, reject) => {
       try {
+        this.disconnectedByUser = false;
+        this.shouldReconnect = true;
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+          this.reconnectTimeout = null;
+        }
+
         // 防止重复连接
         if (
           this.isConnecting ||
@@ -76,33 +104,80 @@ export class WebSocketClient {
 
         this.isConnecting = true;
 
-        // 构建WebSocket URL
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // extract host from import.meta.env.VITE_API_BASE_URL
-        // If env var is undefined, use current page host (for production)
-        const host =
-          import.meta.env.VITE_API_BASE_URL?.split('://')[1] ||
-          window.location.host;
-        const url = `${protocol}//${host}/api/v1/pipelines/${this.pipelineId}/ws/connect?session_type=${this.sessionType}`;
-
-        this.ws = new WebSocket(url);
+        if (getActiveWorkspaceUuid() !== this.workspaceUuid) {
+          this.isConnecting = false;
+          this.shouldReconnect = false;
+          reject(new Error('Workspace changed'));
+          return;
+        }
+        const url = backendWebSocketURL(
+          import.meta.env.VITE_API_BASE_URL,
+          window.location.href,
+          `api/v1/pipelines/${encodeURIComponent(this.pipelineId)}/ws/connect`,
+        );
+        url.searchParams.set('session_type', this.sessionType);
+        const socket = new WebSocket(url.toString());
+        this.ws = socket;
+        if (!this.recoveryListenersAttached) {
+          window.addEventListener('online', this.recover);
+          window.addEventListener('focus', this.recover);
+          document.addEventListener('visibilitychange', this.recover);
+          this.recoveryListenersAttached = true;
+        }
+        this.clearHandshakeTimeout();
+        this.handshakeTimeout = setTimeout(() => {
+          if (this.ws !== socket || this.connectionId) return;
+          reject(new Error('WebSocket authentication timed out'));
+          socket.close();
+        }, 15000);
 
         // 连接打开
-        this.ws.onopen = () => {
-          this.reconnectAttempts = 0;
-          this.isConnecting = false;
-          this.startHeartbeat();
+        socket.onopen = () => {
+          if (this.disconnectedByUser || this.ws !== socket) {
+            socket.close();
+            return;
+          }
+          const token = this.token || localStorage.getItem('token');
+          const workspaceUuid = this.workspaceUuid;
+          if (!token || !workspaceUuid) {
+            const error = new Error('WebSocket认证信息缺失');
+            this.shouldReconnect = false;
+            this.onErrorCallback?.(error);
+            socket.close();
+            reject(error);
+            return;
+          }
+          socket.send(
+            JSON.stringify({
+              type: 'authenticate',
+              token,
+              workspace_uuid: workspaceUuid,
+            }),
+          );
         };
 
         // 接收消息
-        this.ws.onmessage = (event) => {
+        socket.onmessage = (event) => {
+          if (this.disconnectedByUser || this.ws !== socket) return;
           try {
             const data: WebSocketResponse = JSON.parse(event.data);
             this.handleMessage(data);
 
+            if (data.type === 'error' && !this.connectionId) {
+              reject(new Error(data.message || 'WebSocket连接失败'));
+              return;
+            }
+
             // 第一次连接成功
             if (data.type === 'connected' && data.connection_id) {
+              // Only a fully authenticated runtime connection should reset
+              // the retry budget. Resetting on TCP open makes server-side
+              // errors (for example a pipeline still loading) retry forever.
+              this.clearHandshakeTimeout();
+              this.isConnecting = false;
+              this.reconnectAttempts = 0;
               this.connectionId = data.connection_id;
+              this.startHeartbeat();
               resolve(data.connection_id);
             }
           } catch (error) {
@@ -112,22 +187,42 @@ export class WebSocketClient {
         };
 
         // 连接关闭
-        this.ws.onclose = () => {
+        socket.onclose = () => {
+          reject(new Error('WebSocket connection closed'));
+          if (this.ws !== socket) return;
+          this.clearHandshakeTimeout();
+          if (this.ws === socket) {
+            this.ws = null;
+            this.connectionId = null;
+          }
           this.isConnecting = false;
           this.stopHeartbeat();
+          if (this.disconnectedByUser) return;
           this.onCloseCallback?.();
 
           // 自动重连
-          if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            setTimeout(() => {
+          if (
+            this.shouldReconnect &&
+            getActiveWorkspaceUuid() === this.workspaceUuid
+          ) {
+            this.reconnectAttempts = Math.min(
+              this.reconnectAttempts + 1,
+              this.maxReconnectAttempts,
+            );
+            this.reconnectTimeout = setTimeout(() => {
+              this.reconnectTimeout = null;
+              if (!this.shouldReconnect || this.disconnectedByUser) return;
               this.connect().catch(console.error);
             }, this.reconnectDelay * this.reconnectAttempts);
           }
         };
 
         // 连接错误
-        this.ws.onerror = (event) => {
+        socket.onerror = (event) => {
+          if (this.disconnectedByUser || this.ws !== socket) {
+            reject(new Error('WebSocket连接已取消'));
+            return;
+          }
           console.error('WebSocket错误:', event);
           this.isConnecting = false;
           const error = new Error('WebSocket连接失败');
@@ -192,6 +287,13 @@ export class WebSocketClient {
       case 'error':
         const error = new Error(data.message || '未知错误');
         this.onErrorCallback?.(error);
+        // Authentication/resource errors happen before the `connected`
+        // handshake. Retrying them cannot recover and would leak error toasts
+        // after the user leaves the Pipeline page.
+        if (!this.connectionId) {
+          this.shouldReconnect = false;
+          this.ws?.close();
+        }
         break;
 
       default:
@@ -203,7 +305,7 @@ export class WebSocketClient {
    * 发送消息
    */
   public sendMessage(
-    messageChain: Array<{ type: string; text?: string; target?: string }>,
+    messageChain: MessageChainComponent[],
     stream: boolean = true,
   ) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -254,21 +356,32 @@ export class WebSocketClient {
    * 断开连接
    */
   public disconnect() {
+    this.disconnectedByUser = true;
+    this.clearHandshakeTimeout();
+    window.removeEventListener('online', this.recover);
+    window.removeEventListener('focus', this.recover);
+    document.removeEventListener('visibilitychange', this.recover);
+    this.recoveryListenersAttached = false;
+    this.shouldReconnect = false;
+    this.reconnectAttempts = this.maxReconnectAttempts;
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
     if (this.ws) {
       this.stopHeartbeat();
-
-      // 停止自动重连
-      this.reconnectAttempts = this.maxReconnectAttempts;
+      const socket = this.ws;
 
       // 发送断开消息
-      if (this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({ type: 'disconnect' }));
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'disconnect' }));
       }
 
-      this.ws.close();
       this.ws = null;
       this.connectionId = null;
       this.isConnecting = false;
+      socket.close();
     }
   }
 
@@ -283,7 +396,11 @@ export class WebSocketClient {
    * 获取连接状态
    */
   public isConnected(): boolean {
-    return this.ws !== null && this.ws.readyState === WebSocket.OPEN;
+    return (
+      this.ws !== null &&
+      this.ws.readyState === WebSocket.OPEN &&
+      this.connectionId !== null
+    );
   }
 
   // ===== 事件回调设置 =====

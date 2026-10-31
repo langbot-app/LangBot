@@ -1,0 +1,711 @@
+---
+title: "LangBot API"
+---
+
+モデル、ツール、ナレッジベース、ストレージには `self.plugin` を使用します。現在のイベント、返信、会話の状態については[コンテキスト API](/ja/plugin/dev/apis/agent-run) を参照してください。
+
+リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
+
+## LangBot API
+
+これらのAPIは、通常のプラグインコンポーネントで呼び出すことができます。アクセス方法:
+
+- プラグインルートディレクトリの`main.py`内: `self`オブジェクトの内部メソッド。これらのAPIはすべて、プラグインクラスの親クラス`BasePlugin`によって提供されます。
+- 通常のプラグインコンポーネントクラス内: `self.plugin`オブジェクトの内部メソッド。
+
+### プラグイン設定の取得
+
+プラグイン設定フォーマットは`manifest.yaml`に記述でき、ユーザーはLangBotのプラグイン管理でプラグイン設定フォーマットに従って入力する必要があります。プラグインコードはこのAPIを呼び出してプラグイン設定情報を取得できます。
+
+```python
+def get_config(self) -> dict[str, typing.Any]:
+    """プラグインの設定を取得する。"""
+
+# 使用例
+config = self.plugin.get_config()
+```
+
+### LangBotバージョンの取得
+
+LangBotのバージョン番号を取得します。`v<major>.<minor>.<patch>`形式の文字列として返されます。
+
+```python
+async def get_langbot_version(self) -> str:
+    """LangBotバージョンを取得する"""
+
+# 使用例
+langbot_version = await self.plugin.get_langbot_version()
+```
+
+### 設定済みBotリストの取得
+
+すべてのBot UUIDのリストを返します。
+
+```python
+async def get_bots(self) -> list[str]:
+    """すべてのBotを取得する"""
+
+# 使用例
+bots = await self.plugin.get_bots()
+```
+
+### Bot情報の取得
+
+Bot情報を取得します。
+
+```python
+async def get_bot_info(self, bot_uuid: str) -> dict[str, Any]:
+    """Bot情報を取得する"""
+
+# 使用例
+bot_info = await self.plugin.get_bot_info("de639861-be05-4018-859b-c2e2d3e0d603")
+
+# 返り値の例
+{
+    "uuid": "de639861-be05-4018-859b-c2e2d3e0d603",
+    "name": "aiocqhttp",
+    "description": "Migrated from LangBot v3",
+    "adapter": "aiocqhttp",
+    "enable": true,
+    "use_pipeline_name": "ChatPipeline",
+    "use_pipeline_uuid": "c30a1dca-e91c-452b-83ec-84d635a30028",
+    "created_at": "2025-05-10T13:53:08",
+    "updated_at": "2025-08-12T11:27:30",
+    "adapter_runtime_values": {  # Botが現在実行中の場合に存在
+        "bot_account_id": 960164003  # BotアカウントID
+    }
+}
+```
+
+### プロアクティブメッセージの送信
+
+Bot UUIDとターゲットセッションIDを通じてプロアクティブメッセージを送信します。
+
+メッセージチェーンの構築方法については、[メッセージプラットフォームエンティティ](/en/plugin/dev/apis/messages)を参照してください。
+
+```python
+async def send_message(
+    self,
+    bot_uuid: str,
+    target_type: str,
+    target_id: str,
+    message_chain: platform_message.MessageChain,
+) -> None:
+    """セッションにメッセージを送信する"""
+
+# 使用例
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
+)
+```
+
+### 設定済みLLMモデルリストの取得
+
+設定されたすべてのLLMモデルのUUIDのリストを返します。
+
+```python
+async def get_llm_models(self) -> list[str]:
+    """すべてのLLMモデルを取得する"""
+
+# 使用例
+llm_models = await self.plugin.get_llm_models()
+```
+
+### LLMモデルの呼び出し
+
+LLMモデルを呼び出し、LLMメッセージを返します。非ストリーミング。
+
+```python
+async def invoke_llm(
+    self,
+    llm_model_uuid: str,
+    messages: list[provider_message.Message],
+    funcs: list[resource_tool.LLMTool] = [],
+    extra_args: dict[str, Any] = {},
+    timeout: float | None = None,
+) -> provider_message.Message:
+    """LLMモデルを呼び出す"""
+
+# 使用例
+llm_message = await self.plugin.invoke_llm(
+    llm_model_uuid="llm_model_uuid",
+    messages=[provider_message.Message(role="user", content="Hello, world!")],
+    funcs=[],
+    extra_args={},
+)
+```
+
+
+### モデルのストリーミングと使用量
+
+| メソッド | 戻り値 |
+| --- | --- |
+| `invoke_llm_with_usage(llm_model_uuid, messages, funcs=[], extra_args={}, timeout=None)` | `LLMInvokeResult` |
+| `invoke_llm_stream(llm_model_uuid, messages, funcs=[], extra_args={})` | `MessageChunk` の非同期イテレーター |
+| `invoke_llm_stream_events(llm_model_uuid, messages, funcs=[], extra_args={})` | `LLMStreamEvent` の非同期イテレーター |
+
+
+引数は `invoke_llm` と同じです。`timeout` は秒数で、非ストリーミング呼び出しの既定値は 120 秒です。トークン使用量が必要な場合は `invoke_llm_with_usage` を使用します：
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.total_tokens)
+```
+
+`usage` は `None` の場合があり、`prompt_tokens`、`completion_tokens`、`total_tokens` も欠ける場合があります。未取得は使用量ゼロを意味しません。キャッシュなどの追加フィールドは保持されます。
+
+```python
+async for event in self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+):
+    if event.chunk is not None:
+        print(event.chunk.content)
+    if event.usage is not None:
+        print(event.usage.model_dump())
+```
+
+`LLMStreamEvent` は任意の `chunk` と `usage` を持ち、最後が使用量のみの場合もあります。`invoke_llm_stream` はメッセージ・ツール呼び出しのチャンクのみ返します。`MessageChunk.content` は現在の断片、`all_content` は提供される場合に累積テキストです。累積テキストは置換し、差分だけ追加します。`is_final` のチャンクにもテキストが含まれる場合があります。モデルのストリーミングはプラットフォームに送信しません。送信方法は[実行コンテキスト API](/ja/plugin/dev/apis/agent-run)を参照してください。
+
+### 利用可能な Parser の一覧取得
+
+ホスト上で現在利用可能な Parser プラグインを列挙します。MIME タイプで絞り込むこともできます。
+
+```python
+async def list_parsers(self, mime_type: str | None = None) -> list[dict[str, Any]]:
+    """List available Parser plugins"""
+
+# 使用例
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+# 各要素には plugin_id、plugin_author、plugin_name、name、description、supported_mime_types が含まれます
+```
+
+### 利用可能なツール一覧を取得
+
+現在の LangBot インスタンスで利用可能なすべてのツール（プラグインツールおよび MCP ツール）を取得します。
+
+```python
+async def list_tools(self) -> list[dict[str, Any]]:
+    """利用可能なすべてのツールを取得
+
+    Returns:
+        ツールのリスト。各要素に以下が含まれます：
+        - name: ツール名
+        - label: 表示名（多言語）
+        - description: ツールの説明（多言語）
+        - icon: ツールアイコン
+        - spec: ツール仕様（llm_prompt と parameters を含む）
+    """
+
+# 使用例
+tools = await self.plugin.list_tools()
+for tool in tools:
+    print(f"Tool: {tool['name']}")
+```
+
+### ツール詳細を取得
+
+特定のツールの詳細情報を取得します。
+
+```python
+async def get_tool_detail(self, tool_name: str) -> dict[str, Any]:
+    """特定のツールの詳細情報を取得
+
+    Args:
+        tool_name: ツール名（metadata.name、例: "get_weather_alerts"）
+
+    Returns:
+        ツール詳細 dict（name、label、description、spec を含む）
+    """
+
+# 使用例
+detail = await self.plugin.get_tool_detail("get_weather_alerts")
+print(detail['spec']['parameters'])
+```
+
+### ツールを呼び出す
+
+指定されたツールを呼び出します。
+
+```python
+async def call_tool(
+    self,
+    tool_name: str,
+    parameters: dict[str, Any],
+    session: dict[str, Any],
+    query_id: int,
+) -> dict[str, Any]:
+    """特定のツールを呼び出す
+
+    Args:
+        tool_name: ツール名（metadata.name）
+        parameters: ツールパラメータ
+        session: セッション情報
+        query_id: クエリ ID
+
+    Returns:
+        ツールの応答 dict
+    """
+
+# 使用例
+result = await self.plugin.call_tool(
+    tool_name="get_weather_alerts",
+    parameters={"state": "CA"},
+    session={},
+    query_id=0,
+)
+print(result)
+```
+
+<Tip>
+ツール名は `metadata.name`（例: `echo_tool`、`get_weather_alerts`）を使用します。作者やプラグイン名のプレフィックスは不要です。
+</Tip>
+
+### プラグイン永続データの設定
+
+プラグインデータを永続的に保存します。このインターフェースを通じて保存されたデータは、このプラグインのみがアクセスできます。値は手動でbytesに変換する必要があります。
+
+```python
+async def set_plugin_storage(self, key: str, value: bytes) -> None:
+    """プラグインストレージ値を設定する"""
+
+# 使用例
+await self.plugin.set_plugin_storage("key", b"value")
+```
+
+### プラグイン永続データの取得
+
+```python
+async def get_plugin_storage(self, key: str) -> bytes:
+    """プラグインストレージ値を取得する"""
+
+# 使用例
+plugin_storage = await self.plugin.get_plugin_storage("key")
+```
+
+### すべてのプラグイン永続データキーの取得
+
+```python
+async def get_plugin_storage_keys(self) -> list[str]:
+    """すべてのプラグインストレージキーを取得する"""
+
+# 使用例
+plugin_storage_keys = await self.plugin.get_plugin_storage_keys()
+```
+
+### プラグイン永続データの削除
+
+```python
+async def delete_plugin_storage(self, key: str) -> None:
+    """プラグインストレージ値を削除する"""
+
+# 使用例
+await self.plugin.delete_plugin_storage("key")
+```
+
+### ワークスペース永続データの取得
+
+このインターフェースを通じて保存されたデータは、すべてのプラグインがアクセスできます。値は手動でbytesに変換する必要があります。
+
+```python
+async def set_workspace_storage(self, key: str, value: bytes) -> None:
+    """ワークスペースストレージ値を設定する"""
+
+# 使用例
+await self.plugin.set_workspace_storage("key", b"value")
+```
+
+### ワークスペース永続データの取得
+
+```python
+async def get_workspace_storage(self, key: str) -> bytes:
+    """ワークスペースストレージ値を取得する"""
+
+# 使用例
+workspace_storage = await self.plugin.get_workspace_storage("key")
+```
+
+### すべてのワークスペース永続データキーの取得
+
+```python
+async def get_workspace_storage_keys(self) -> list[str]:
+    """すべてのワークスペースストレージキーを取得する"""
+
+# 使用例
+workspace_storage_keys = await self.plugin.get_workspace_storage_keys()
+```
+
+### ワークスペース永続データの削除
+
+```python
+async def delete_workspace_storage(self, key: str) -> None:
+    """ワークスペースストレージ値を削除する"""
+
+# 使用例
+await self.plugin.delete_workspace_storage("key")
+```
+
+### プラグインファイル型設定フィールドデータの取得
+
+```python
+async def get_config_file(self, file_key: str) -> bytes:
+    """設定ファイル値を取得する"""
+
+# 使用例
+file_bytes = await self.plugin.get_config_file("key")
+```
+
+これは[``fileまたはarray[file``](/en/plugin/dev/basic-info.html#type-file)型の設定フィールドと組み合わせて使用します。
+
+## ナレッジベース API
+
+これらのAPIは通常のコンポーネントから`self.plugin`経由でアクセスでき、パイプライン制限なしにLangBotインスタンス内のすべてのナレッジベースの一覧取得と検索が可能です。
+
+### すべてのナレッジベースの一覧取得
+
+LangBotインスタンスで利用可能なすべてのナレッジベースを一覧取得します。
+
+```python
+async def list_knowledge_bases(self) -> list[dict[str, Any]]:
+    """すべてのナレッジベースを一覧取得
+
+    Returns:
+        ナレッジベースのリスト、各要素は以下を含む：
+        - uuid: ナレッジベースUUID
+        - name: ナレッジベース名
+        - description: ナレッジベースの説明
+    """
+
+# 使用例
+knowledge_bases = await self.plugin.list_knowledge_bases()
+for kb in knowledge_bases:
+    print(f"KB: {kb['name']} ({kb['uuid']})")
+```
+
+### ナレッジベースからの検索
+
+任意のナレッジベースから関連ドキュメントを検索します。
+
+```python
+async def retrieve_knowledge(
+    self,
+    kb_id: str,
+    query_text: str,
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """ナレッジベースから検索
+
+    Args:
+        kb_id: ナレッジベースUUID（list_knowledge_basesから取得）
+        query_text: 検索クエリテキスト
+        top_k: 返す結果の数（デフォルト：5）
+        filters: オプションのメタデータフィルター
+
+    Returns:
+        検索結果エントリのリスト
+    """
+
+# 使用例
+results = await self.plugin.retrieve_knowledge(
+    kb_id="kb-uuid-here",
+    query_text="システムの設定方法は？",
+    top_k=3,
+)
+for entry in results:
+    print(entry)
+```
+
+<Tip>
+これらのAPIは`query_id`を必要とせず、通常のコンポーネント（Toolコンポーネントを含む）で使用できます。現在のパイプライン設定に制限されることなく、すべてのナレッジベースにアクセスできます。
+</Tip>
+
+## RAG API
+
+これらのAPIは`KnowledgeEngine`コンポーネントがLangBotホストの埋め込みモデル、ベクトルデータベース、ファイルストレージにアクセスするために使用できます。アクセス方法:
+
+- `KnowledgeEngine`コンポーネントクラス内: `self.plugin`オブジェクトの内部メソッド。
+
+### 埋め込みモデルの呼び出し
+
+ホストに設定された埋め込みモデルを使用してテキストのベクトルを生成します。
+
+```python
+async def invoke_embedding(
+    self,
+    embedding_model_uuid: str,
+    texts: list[str],
+) -> list[list[float]]:
+    """埋め込みモデルを使用してベクトルを生成
+
+    Args:
+        embedding_model_uuid: 埋め込みモデルUUID
+        texts: 埋め込むテキストのリスト
+
+    Returns:
+        ベクトルのリスト、入力テキストごとに1つ
+    """
+
+# 使用例
+vectors = await self.plugin.invoke_embedding("model_uuid", ["Hello", "World"])
+```
+
+### ベクトルの書き込み
+
+ホストのベクトルデータベースにベクトルを書き込みます。
+
+```python
+async def vector_upsert(
+    self,
+    collection_id: str,
+    vectors: list[list[float]],
+    ids: list[str],
+    metadata: list[dict[str, Any]] | None = None,
+    documents: list[str] | None = None,
+) -> None:
+    """ベクトルの書き込み
+
+    Args:
+        collection_id: ターゲットコレクションID
+        vectors: ベクトルのリスト
+        ids: ベクトルの一意識別子リスト
+        metadata: オプションのメタデータリスト
+        documents: オプションの生テキストドキュメントリスト。全文検索や
+            混合検索をサポートするバックエンドで必要です。
+    """
+
+# 使用例
+await self.plugin.vector_upsert(
+    collection_id="kb_uuid",
+    vectors=[[0.1, 0.2, ...], [0.3, 0.4, ...]],
+    ids=["chunk_0", "chunk_1"],
+    metadata=[{"document_id": "doc1"}, {"document_id": "doc1"}],
+    documents=["チャンクテキスト 0", "チャンクテキスト 1"],
+)
+```
+
+### ベクトル検索
+
+ホストのベクトルデータベースで類似ベクトルを検索します。
+
+```python
+async def vector_search(
+    self,
+    collection_id: str,
+    query_vector: list[float],
+    top_k: int = 5,
+    filters: dict[str, Any] | None = None,
+    search_type: str = "vector",
+    query_text: str = "",
+) -> list[dict[str, Any]]:
+    """ベクトル検索
+
+    Args:
+        collection_id: ターゲットコレクションID
+        query_vector: 類似性検索のクエリベクトル
+        top_k: 返す結果の数
+        filters: オプションのメタデータフィルター
+        search_type: 検索方式、'vector'、'full_text'、'hybrid' のいずれか
+        query_text: 生のクエリテキスト、全文検索と混合検索で使用
+
+    Returns:
+        検索結果のリスト（id, score, metadataなどを含むdict）
+    """
+
+# 使用例
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    top_k=5,
+    search_type="hybrid",
+    query_text="検索クエリ",
+)
+# 返却フォーマット: [{"id": "chunk_0", "score": 0.123, "metadata": {"document_id": "doc1", ...}}, ...]
+```
+
+<Info>
+`vector_search`が返す各結果はdictで、`id`（ベクトルID）、`score`（距離スコア）、`metadata`（upsert時に提供したメタデータ）の3つのフィールドを含みます。検索結果にテキスト内容が必要な場合は、取り込み時にmetadataにテキストを保存してください。
+</Info>
+
+### ベクトルの削除
+
+ホストのベクトルデータベースからベクトルを削除します。
+
+```python
+async def vector_delete(
+    self,
+    collection_id: str,
+    file_ids: list[str] | None = None,
+    filters: dict[str, Any] | None = None,
+) -> int:
+    """ベクトルの削除
+
+    Args:
+        collection_id: ターゲットコレクションID
+        file_ids: 削除するファイルIDのリスト
+        filters: オプションのメタデータフィルター
+
+    Returns:
+        削除されたアイテム数
+    """
+
+# 使用例
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    file_ids=["doc_001"],
+)
+```
+
+<Info>
+`filters`パラメータはChromaスタイルの`where`構文によるメタデータフィルタリングをサポートしています。複数のトップレベルキーはAND条件として結合されます。サポートされる演算子：`$eq`、`$ne`、`$gt`、`$gte`、`$lt`、`$lte`、`$in`、`$nin`。
+
+```python
+# 暗黙的な $eq
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_id": "abc"},
+)
+
+# 比較演算子
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"created_at": {"$gte": 1700000000}},
+)
+
+# リスト演算子
+results = await self.plugin.vector_search(
+    collection_id="kb_uuid",
+    query_vector=[0.1, 0.2, ...],
+    filters={"file_type": {"$in": ["pdf", "docx"]}},
+)
+
+# フィルターによる削除
+deleted = await self.plugin.vector_delete(
+    collection_id="kb_uuid",
+    filters={"file_type": {"$eq": "pdf"}},
+)
+```
+
+**注意：** Chroma、Qdrant、SeekDBは完全なメタデータを保存し、任意のフィールドでフィルタリングできます。MilvusとpgvectorはDB側に`text`、`file_id`、`chunk_uuid`のみ保存しており、それ以外のフィールドでのフィルタリングは無視されます。
+</Info>
+
+ホストストレージからアップロードされたファイルの内容を取得します。
+
+```python
+async def get_knowledge_file_stream(self, storage_path: str) -> bytes:
+    """ファイル内容を取得
+
+    Args:
+        storage_path: ファイルのストレージパス（FileObject.storage_pathから取得）
+
+    Returns:
+        ファイル内容のバイトデータ
+    """
+
+# 使用例
+file_bytes = await self.plugin.get_knowledge_file_stream(context.file_object.storage_path)
+```
+
+
+## その他のリソース API
+
+以下も `self.plugin` から呼び出します。
+
+### リランクモデルの呼び出し
+
+```python
+async def invoke_rerank(
+    self, rerank_model_uuid: str, query: str, documents: list[str],
+    top_k: int | None = None, extra_args: dict[str, Any] | None = None,
+    timeout: float = 60.0,
+) -> list[dict[str, Any]]:
+    ...
+
+scores = await self.plugin.invoke_rerank(
+    rerank_model_uuid=rerank_model_uuid,
+    query="How do I configure a bot?",
+    documents=["Bot configuration guide", "Plugin publishing guide"],
+    top_k=1,
+)
+```
+
+結果には通常、元の文書の `index` と関連度 `relevance_score` が含まれます。
+
+### パーサーの呼び出し
+
+```python
+async def invoke_parser(
+    self, plugin_author: str, plugin_name: str, storage_path: str,
+    mime_type: str, filename: str, metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    ...
+
+parsers = await self.plugin.list_parsers(mime_type="application/pdf")
+if parsers:
+    parser = parsers[0]
+    parsed = await self.plugin.invoke_parser(
+        plugin_author=parser["plugin_author"],
+        plugin_name=parser["plugin_name"],
+        storage_path=storage_path,
+        mime_type="application/pdf",
+        filename="guide.pdf",
+    )
+```
+
+`storage_path` はナレッジ取り込み時の `context.file_object.storage_path` など、ホストの保存先です。プラグインのローカルパスではありません。結果の辞書には `text`、`sections`、`metadata` が含まれます。
+
+### ベクトルレコード一覧
+
+```python
+async def vector_list(
+    self, collection_id: str, filters: dict[str, Any] | None = None,
+    limit: int = 20, offset: int = 0,
+) -> dict[str, Any]:
+    ...
+
+page = await self.plugin.vector_list(
+    collection_id=collection_id,
+    filters={"file_id": "doc_001"},
+    limit=20,
+    offset=0,
+)
+for item in page["items"]:
+    print(item["id"], item.get("metadata"))
+```
+
+`items` と `total` を返します。各項目は `id`、`document`、`metadata` を含み、`total` はストレージが取得可能な一致件数です。フィルターは上記のベクトル API と同じ形式です。
+
+### プラグインとコマンド一覧
+
+```python
+manifests = await self.plugin.list_plugins_manifest()
+commands = await self.plugin.list_commands()
+```
+
+いずれも引数なしで、ホストが提供するプラグインのマニフェスト一覧とコマンド一覧を返します。
+
+### Box サンドボックス
+
+`self.plugin` から現在のワークスペースに対して呼び出します。Runner 内では実行権限が自動的に引き継がれます。
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await self.plugin.get_box_status()` | `BoxStatus` | `enabled`、`available`、上限 `limit`、使用数 `used`、残数 `remaining`、任意の `required_reuse_key`、利用不可理由 `reason` |
+| `await self.plugin.list_boxes()` | `list[BoxSession]` | `id` と状態 `status`（`idle`、`running`、`closing`）のスナップショット |
+| `await self.plugin.acquire_box(reuse_key, options=None)` | `BoxSession` | 同一キーで再利用、または上限内で作成。`options` は `image` をサポート |
+
+不明な数量は `None` です。残数がゼロでも既存 Box の再利用は可能です。新規作成時の上限は Runtime が原子的に確認します。キーは Runner が計算しますが、`required_reuse_key` が返された場合はその値を使います。異なるワークスペース間では同じキーでも共有されません。
+
+取得後は[Runner コンテキスト](/ja/plugin/dev/apis/agent-run#runner)でバインドしてから、添付のインポートやツール実行を行います。

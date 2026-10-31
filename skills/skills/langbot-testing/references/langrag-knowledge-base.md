@@ -60,6 +60,19 @@ fixtures/rag/sentinel-doc.txt
 - Retrieve Test returns the uploaded document with the sentinel text.
 - Browser console has no unexpected errors.
 
+## Document Lifecycle Acceptance
+
+- Keep the public Host file UUID from upload/listing when calling file deletion. Core stores the engine-returned `document_id` separately in the server-owned `engine_document_id` column and sends it to the engine; do not overwrite the Host UUID or put this mapping in creation settings.
+- Wait for the ingestion task to finish before deletion. Pending/processing files reject deletion to avoid losing the tracking row while an upstream document is still being created.
+- Verify both the Host file-list readback and absence of the sentinel upstream. Core only removes its row after an explicit engine `True`; `False`, missing configuration, runtime errors, and unconfirmed absence remain failures with the row retained. A connector's `False` is not proof that the upstream document is absent.
+- Failed ingestion with an acknowledged engine ID retains it for cleanup. Historical failed files with no mapping still use the Host UUID fallback, subject to confirmed deletion. New unacknowledged/malformed responses are `interrupted`, not confirmed failures.
+- `interrupted` means Core cannot establish the remote ingestion outcome (cancellation, disconnect, timeout, lost acknowledgement, or abandoned pending/processing work). It is not proof of failure, successful ingestion, or remote quiescence. Core preserves the tracking row, any known engine ID, and its source upload; retention cleanup also protects pending/processing/interrupted uploads.
+- Runtime loading and normal file listing recover abandoned rows to `interrupted`. Reloading a KB object must preserve genuinely live tasks. Delayed old tasks cannot replay interrupted rows or overwrite them with completion; an observed late engine ID is still retained.
+- File deletion and whole-KB deletion reject interrupted work with operator guidance. Do not bypass this guard merely because the task list is empty or the Host restarted: the old SDK/plugin action may still write. There is deliberately no automatic retry, force-delete, or claim of a remote cancellation fence.
+- Recovery procedure: preserve a DB/storage backup; identify the exact Workspace, KB, Host file UUID, engine ID (if known), and installation; inspect that plugin/upstream operation; establish that the old operation has stopped or settled; then have an operator reconcile the confirmed upstream outcome and exact mapping before cleanup or re-upload. Never invent an opaque upstream ID or blindly set `failed` to unlock deletion. Lost historical uploads/IDs cannot be reconstructed by this change. Automatic cleanup of arbitrary connector orphans is outside this recovery contract.
+- SDK ingest/delete action signatures and envelopes are unchanged; old SDKs use the same conservative interrupted fallback. Existing acknowledged asynchronous-engine responses retain the legacy Host completion semantics (Host ingestion acknowledgement, not a guarantee that the upstream index is ready).
+- Migration `0025_rag_document_identity` leaves historical mappings null: it cannot reconstruct IDs previously discarded, nor restore already-deleted Host rows. Those require separately authorized investigation/recovery. Downgrading removes the mapping column and loses these identities; back up before rollback.
+
 ## Local-Agent RAG Check
 
 After retrieval passes:

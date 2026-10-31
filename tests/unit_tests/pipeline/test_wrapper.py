@@ -22,6 +22,7 @@ from tests.factories import (
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+from langbot_plugin.api.entities.builtin.provider.message import Message
 
 
 def get_wrapper_module():
@@ -109,7 +110,7 @@ class TestResponseWrapperMessageChain:
 
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.CONTINUE
-        assert len(results[0].new_query.resp_message_chain) == 1
+        assert [str(chain) for chain in results[0].new_query.resp_message_chain] == ['response']
 
     @pytest.mark.asyncio
     async def test_message_chain_direct_append_consumes_pending_plugin_source(self):
@@ -171,12 +172,7 @@ class TestResponseWrapperCommand:
         query.pipeline_config = pipeline_config
         query.resp_message_chain = []
 
-        # Create a command response message
-        command_resp = Mock()
-        command_resp.role = 'command'
-        command_resp.get_content_platform_message_chain = Mock(
-            return_value=platform_message.MessageChain([platform_message.Plain(text='Help info')])
-        )
+        command_resp = Message(role='command', content='Help info')
         query.resp_messages = [command_resp]
 
         results = []
@@ -185,8 +181,7 @@ class TestResponseWrapperCommand:
 
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.CONTINUE
-        # Check that prefix was added (via get_content_platform_message_chain)
-        command_resp.get_content_platform_message_chain.assert_called_once()
+        assert [str(chain) for chain in query.resp_message_chain] == ['[bot] Help info']
 
 
 class TestResponseWrapperPlugin:
@@ -223,10 +218,54 @@ class TestResponseWrapperPlugin:
 
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.CONTINUE
+        assert [str(chain) for chain in query.resp_message_chain] == ['Plugin response']
 
 
 class TestResponseWrapperAssistant:
     """Tests for assistant response wrapping."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('streaming', [False, True])
+    @pytest.mark.parametrize('prevent_default', [False, True])
+    async def test_returned_response_context_controls_delivery(self, streaming, prevent_default):
+        """Legacy response hooks can replace or block the actual outgoing chain."""
+        from langbot_plugin.api.entities.context import EventContext
+        from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+
+        app = FakeApp()
+        app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+        observed_hooks = []
+
+        async def edit_response(event, bound_plugins):
+            observed_hooks.append(event.event_name)
+            ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
+            ctx.event.reply_message_chain = platform_message.MessageChain(
+                [
+                    platform_message.Plain(text='plugin reply'),
+                ]
+            )
+            if prevent_default:
+                ctx.prevent_default()
+            return ctx
+
+        app.plugin_connector.emit_event = AsyncMock(side_effect=edit_response)
+        stage = get_wrapper_module().ResponseWrapper(app)
+        query = text_query('hello')
+        query.pipeline_config = make_wrapper_config()
+        message_class = MessageChunk if streaming else Message
+        query.resp_messages = [message_class(role='assistant', content='model reply')]
+        query.resp_message_chain = []
+        await stage.initialize(query.pipeline_config)
+
+        results = [result async for result in stage.process(query, 'ResponseWrapper')]
+
+        assert observed_hooks == ['NormalMessageResponded']
+        if prevent_default:
+            assert results[0].result_type == get_entities_module().ResultType.INTERRUPT
+            assert query.resp_message_chain == []
+        else:
+            assert results[0].result_type == get_entities_module().ResultType.CONTINUE
+            assert [str(chain) for chain in query.resp_message_chain] == ['plugin reply']
 
     @pytest.mark.asyncio
     async def test_assistant_content_response(self):
@@ -273,8 +312,11 @@ class TestResponseWrapperAssistant:
 
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.CONTINUE
-        # Event should have been emitted
-        app.plugin_connector.emit_event.assert_called()
+        assert [str(chain) for chain in query.resp_message_chain] == ['Hello back!']
+        app.plugin_connector.emit_event.assert_awaited_once()
+        event = app.plugin_connector.emit_event.await_args.args[0]
+        assert event.response_text == 'Hello back!'
+        assert event.funcs_called == []
 
     @pytest.mark.asyncio
     async def test_assistant_empty_content(self):
@@ -297,6 +339,7 @@ class TestResponseWrapperAssistant:
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
         assistant_resp.content = None
+        assistant_resp.attachments = None
         assistant_resp.tool_calls = None
         query.resp_messages = [assistant_resp]
 
@@ -342,24 +385,36 @@ class TestResponseWrapperAssistant:
         mock_tool_call = Mock()
         mock_tool_call.function = Mock()
         mock_tool_call.function.name = 'test_function'
+        other_tool_call = Mock()
+        other_tool_call.function.name = 'other_function'
 
         assistant_resp = Mock()
         assistant_resp.role = 'assistant'
         assistant_resp.content = 'Processing...'
-        assistant_resp.tool_calls = [mock_tool_call]
+        assistant_resp.tool_calls = [mock_tool_call, other_tool_call]
         assistant_resp.get_content_platform_message_chain = Mock(
             return_value=platform_message.MessageChain([platform_message.Plain(text='Processing...')])
         )
         query.resp_messages = [assistant_resp]
 
         results = []
+        delivered = []
         async for result in stage.process(query, 'ResponseWrapper'):
             results.append(result)
+            delivered.append(str(query.resp_message_chain[-1]))
 
         assert len(results) == 2
         for result in results:
             assert result.result_type == entities.ResultType.CONTINUE
         assert app.plugin_connector.emit_event.await_count == 2
+        expected = ['Processing...', 'Calling test_function, other_function...']
+        assert delivered == expected
+        events = [sent.args[0] for sent in app.plugin_connector.emit_event.await_args_list]
+        assert [event.response_text for event in events] == expected
+        assert [event.funcs_called for event in events] == [
+            ['test_function', 'other_function'],
+            ['test_function', 'other_function'],
+        ]
 
 
 class TestResponseWrapperInterrupt:

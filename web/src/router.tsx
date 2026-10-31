@@ -16,6 +16,7 @@ import SpaceCallbackPage from '@/app/auth/space/callback/page';
 import HomePage from '@/app/home/page';
 import MonitoringPage from '@/app/home/monitoring/page';
 import BotsPage from '@/app/home/bots/page';
+import AgentsPage from '@/app/home/agents/page';
 import PipelinesPage from '@/app/home/pipelines/page';
 import WorkflowsPage from '@/app/home/workflows/page';
 import PluginsPage from '@/app/home/plugins/page';
@@ -27,6 +28,8 @@ import ErrorPage from '@/components/ErrorPage';
 import BackendUnavailablePage from '@/components/BackendUnavailablePage';
 import PluginPagesPage from '@/app/home/plugin-pages/page';
 import RootLayout from '@/app/RootLayout';
+import AcceptInvitationPage from '@/app/invitations/accept/page';
+import WorkspaceSelectPage from '@/app/workspaces/select/page';
 
 const Loading = () => <div>Loading...</div>;
 
@@ -62,6 +65,14 @@ export const router = createBrowserRouter([
             <ResetPasswordPage />
           </ResetPasswordLayout>
         ),
+      },
+      {
+        path: '/invitations/accept',
+        element: <AcceptInvitationPage />,
+      },
+      {
+        path: '/workspaces/select',
+        element: <WorkspaceSelectPage />,
       },
       {
         path: '/wizard',
@@ -101,6 +112,16 @@ export const router = createBrowserRouter([
           <Suspense fallback={<Loading />}>
             <HomeLayout>
               <BotsPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/agents',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <AgentsPage />
             </HomeLayout>
           </Suspense>
         ),

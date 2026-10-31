@@ -1,0 +1,42 @@
+{
+  "repository": "langbot-app/LangBot",
+  "revision": "in-tree",
+  "contract": "Current dedicated-workspace and trusted shared-installation identity; see each plugin SHARED_RUNTIME.md.",
+  "files": {
+    "Runner/dify-agent/components/runner/default.py": "1a5901036d73fdeed8966660a539824a8aa37cb4843409cc5de37105ca36aa04",
+    "Runner/dify-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/dify-agent/pkg/dify_client.py": "607ed8d610d916e5b64ed20699e3de6e2216b238a5fecc9cabcdb75533b8dc56",
+    "Runner/n8n-agent/components/runner/default.py": "2719ec0a8ff779e90e61bd0209653fb9a1eab4b552877cfcbd4d3c9ce803fcf1",
+    "Runner/n8n-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/n8n-agent/pkg/n8n_client.py": "15149b2d4162b51a3a7427d639908130ea4179014067f04a459a8a71ca105c15",
+    "Runner/coze-agent/components/runner/default.py": "23f222bd1bf94682d44df021d56e6e69801fbe8ea5bac99693d0f1e2bce8f5e8",
+    "Runner/coze-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/coze-agent/pkg/coze_client.py": "379cb7f07f9931cc9de4cc40f8ebddea171c2a05383e662f6bd88ecdc5b3c317",
+    "Runner/tbox-agent/components/runner/default.py": "4c9fdf8cc10c916915036112ded8768a619a827ca4b5e6a3f05881a7d0e4492f",
+    "Runner/tbox-agent/pkg/scoped_identity.py": "5d03d0c56aaf3301bc5d594905ecf862151fa2abc73daba1a6596f0fdc16374a",
+    "Runner/tbox-agent/pkg/tbox_client.py": "0f09a3c70f773bc6377fd5b55a41d186dd15487d46aab3e61b837c08e15100a0"
+  },
+  "local_agent_files": {
+    "Runner/LocalAgent/assets/icon.svg": "7e1cb51793e898fca810ec72ba6fe9af377074f52139cdd56c93e87f3459f964",
+    "Runner/LocalAgent/components/runner/default.py": "49f80640d5b26442516b210cd9e65c452c9ce3a9909d6dbd1aa05e5bf3b232ac",
+    "Runner/LocalAgent/components/runner/default.yaml": "c1364cf0f211162bb701e27ed92b351fd9ff4cfa0b4469cfeb83ad58136cdf47",
+    "Runner/LocalAgent/main.py": "0cde45d7f6f411563fbded09be70d0a497c7c7999b5eaa27f83052383348277f",
+    "Runner/LocalAgent/manifest.yaml": "d4ccb50d83e83e452ab0b14822f245d5dc4bb85c7bc963ee467f299d4723063f",
+    "Runner/LocalAgent/pkg/__init__.py": "ce5142b4971e8d7945fb3c202bacbc28011b033de0ddcb612d5d29106d6985ec",
+    "Runner/LocalAgent/pkg/agent_core/__init__.py": "56e95f2391f796e17aee6a168603853ea78b59df97a136bfa33532aede2fa413",
+    "Runner/LocalAgent/pkg/agent_core/langbot.py": "6bc0e6ee89e8ba3705d14545169f25f54a0c56dc5da89bd8384b3e22e3f21fea",
+    "Runner/LocalAgent/pkg/agent_core/loop.py": "205226e2b6c434369df7260edcfddeaa7b022bf29318c61abec17f36a482ba7e",
+    "Runner/LocalAgent/pkg/agent_core/types.py": "78053571e662fd16d42b9f6bd506f282c54adec317cbc8cbf6ed0deab80df4e0",
+    "Runner/LocalAgent/pkg/box.py": "9c864f944a4c104ffa34ef7c12451152afe29324721965a69e4cefaeb9f2f125",
+    "Runner/LocalAgent/pkg/config.py": "8dee31aecbcdba4c1e79e1735499c3c7ee826ec395032b045169652b38216faf",
+    "Runner/LocalAgent/pkg/context_pipeline.py": "0afa1a4fbb60827f20f76ff97a21ca88ce3adf266d07201fefdd404fc6d2ce76",
+    "Runner/LocalAgent/pkg/messages.py": "620a0a225e95c5f2c8c6e977801413e553d4a1da3fb2ddea14e527ad41f7a3af",
+    "Runner/LocalAgent/pkg/model_calling.py": "3ebdb8900bb0de5b14e84bf027cc4ff01e59a4669d28dcede7ca3dcea3a3de4c",
+    "Runner/LocalAgent/pkg/rag.py": "ea407af8d4f6fe5b00cde72c7d85ccc541d6fc46254188c372351d93da4a1f0f",
+    "Runner/LocalAgent/pkg/run_assembly.py": "e1e2dd0029c976b6c0eb3763e5f94a369fd1909e8bf796a2cb84658c59727630",
+    "Runner/LocalAgent/pyproject.toml": "99f1c80dd3d5085c2e7836363e8aa4ad07308e7ae02622051946b7da27c3bcef",
+    "Runner/LocalAgent/requirements.txt": "ed1c13a389087b49644422f2e06f75ff9809412083c9d0d11fa6c750ea75c5b6",
+    "Runner/LocalAgent/uv.lock": "96ce3a806d40e282393d46fdc263ec2b1d03aff9f876786dadca12f02d08a6d0"
+  },
+  "root": "plugins"
+}

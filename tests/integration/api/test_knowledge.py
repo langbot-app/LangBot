@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
+from types import SimpleNamespace
 
 from tests.factories import FakeApp
 
@@ -69,7 +70,28 @@ def fake_knowledge_app():
     app.user_service = Mock()
     app.user_service.is_initialized = AsyncMock(return_value=True)
     app.user_service.verify_jwt_token = AsyncMock(return_value='test@example.com')
-    app.user_service.get_user_by_email = AsyncMock(return_value=Mock(email='test@example.com'))
+    account = SimpleNamespace(
+        uuid='00000000-0000-0000-0000-000000000001',
+        user='test@example.com',
+    )
+    app.user_service.get_authenticated_account = AsyncMock(return_value=account)
+    app.user_service.get_user_by_email = AsyncMock(return_value=account)
+    app.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                execution=SimpleNamespace(
+                    instance_uuid='instance-knowledge-api',
+                    placement_generation=1,
+                ),
+                workspace=SimpleNamespace(uuid='00000000-0000-0000-0000-00000000000a'),
+                membership=SimpleNamespace(
+                    uuid='00000000-0000-0000-0000-000000000010',
+                    role='owner',
+                    projection_revision=0,
+                ),
+            )
+        )
+    )
     app.apikey_service = Mock()
     app.apikey_service.verify_api_key = AsyncMock(return_value=True)
 
@@ -95,13 +117,13 @@ def fake_knowledge_app():
             'engine_plugin_id': 'test/engine',
         }
     )
-    app.knowledge_service.create_knowledge_base = AsyncMock(return_value={'uuid': 'new-kb-uuid'})
+    app.knowledge_service.create_knowledge_base = AsyncMock(return_value='new-kb-uuid')
     app.knowledge_service.update_knowledge_base = AsyncMock(return_value={})
     app.knowledge_service.delete_knowledge_base = AsyncMock()
     app.knowledge_service.get_files_by_knowledge_base = AsyncMock(
         return_value=[{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
     )
-    app.knowledge_service.store_file = AsyncMock(return_value={'task_id': 'test-task-id'})
+    app.knowledge_service.store_file = AsyncMock(return_value='test-task-id')
     app.knowledge_service.delete_file = AsyncMock()
     app.knowledge_service.retrieve_knowledge_base = AsyncMock(return_value=[{'content': 'test result', 'score': 0.95}])
 
@@ -109,6 +131,11 @@ def fake_knowledge_app():
     app.rag_mgr = Mock()
 
     return app
+
+
+@pytest.fixture(autouse=True)
+def reset_service_calls(fake_knowledge_app):
+    fake_knowledge_app.knowledge_service.reset_mock()
 
 
 @pytest.fixture(scope='module')
@@ -126,7 +153,7 @@ class TestKnowledgeBaseEndpoints:
     """Tests for /api/v1/knowledge/bases endpoints."""
 
     @pytest.mark.asyncio
-    async def test_get_knowledge_bases_success(self, quart_test_client):
+    async def test_get_knowledge_bases_success(self, quart_test_client, fake_knowledge_app):
         """GET /api/v1/knowledge/bases returns knowledge base list."""
         response = await quart_test_client.get(
             '/api/v1/knowledge/bases', headers={'Authorization': 'Bearer test_token'}
@@ -138,8 +165,24 @@ class TestKnowledgeBaseEndpoints:
         assert 'data' in data
         assert 'bases' in data['data']
 
+        called = fake_knowledge_app.knowledge_service.get_knowledge_bases
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ()
+        assert called.await_args.kwargs == {'include_secret': True}
+        assert data['data']['bases'] == [
+            {
+                'uuid': 'test-kb-uuid',
+                'name': 'Test Knowledge Base',
+                'description': 'Test KB description',
+                'engine_plugin_id': 'test/engine',
+                'created_at': '2024-01-01T00:00:00',
+                'updated_at': '2024-01-01T00:00:00',
+            }
+        ]
+
     @pytest.mark.asyncio
-    async def test_create_knowledge_base_success(self, quart_test_client):
+    async def test_create_knowledge_base_success(self, quart_test_client, fake_knowledge_app):
         """POST /api/v1/knowledge/bases creates new knowledge base."""
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases',
@@ -152,8 +195,15 @@ class TestKnowledgeBaseEndpoints:
         assert data['code'] == 0
         assert 'uuid' in data['data']
 
+        called = fake_knowledge_app.knowledge_service.create_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ({'name': 'New KB', 'engine_plugin_id': 'test/engine'},)
+        assert called.await_args.kwargs == {}
+        assert data['data'] == {'uuid': 'new-kb-uuid'}
+
     @pytest.mark.asyncio
-    async def test_get_single_knowledge_base_success(self, quart_test_client):
+    async def test_get_single_knowledge_base_success(self, quart_test_client, fake_knowledge_app):
         """GET /api/v1/knowledge/bases/{uuid} returns knowledge base."""
         response = await quart_test_client.get(
             '/api/v1/knowledge/bases/test-kb-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -164,8 +214,20 @@ class TestKnowledgeBaseEndpoints:
         assert data['code'] == 0
         assert 'base' in data['data']
 
+        called = fake_knowledge_app.knowledge_service.get_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid',)
+        assert called.await_args.kwargs == {'include_secret': True}
+        assert data['data']['base'] == {
+            'uuid': 'test-kb-uuid',
+            'name': 'Test Knowledge Base',
+            'description': 'Test KB description',
+            'engine_plugin_id': 'test/engine',
+        }
+
     @pytest.mark.asyncio
-    async def test_update_knowledge_base_success(self, quart_test_client):
+    async def test_update_knowledge_base_success(self, quart_test_client, fake_knowledge_app):
         """PUT /api/v1/knowledge/bases/{uuid} updates knowledge base."""
         response = await quart_test_client.put(
             '/api/v1/knowledge/bases/test-kb-uuid',
@@ -177,8 +239,14 @@ class TestKnowledgeBaseEndpoints:
         data = await response.get_json()
         assert data['code'] == 0
 
+        called = fake_knowledge_app.knowledge_service.update_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid', {'name': 'Updated KB'})
+        assert called.await_args.kwargs == {}
+
     @pytest.mark.asyncio
-    async def test_delete_knowledge_base_success(self, quart_test_client):
+    async def test_delete_knowledge_base_success(self, quart_test_client, fake_knowledge_app):
         """DELETE /api/v1/knowledge/bases/{uuid} deletes knowledge base."""
         response = await quart_test_client.delete(
             '/api/v1/knowledge/bases/test-kb-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -186,13 +254,20 @@ class TestKnowledgeBaseEndpoints:
 
         assert response.status_code == 200
 
+        called = fake_knowledge_app.knowledge_service.delete_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid',)
+        assert called.await_args.kwargs == {}
+        assert (await response.get_json())['code'] == 0
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestKnowledgeBaseFilesEndpoints:
     """Tests for knowledge base files endpoints."""
 
     @pytest.mark.asyncio
-    async def test_get_files_success(self, quart_test_client):
+    async def test_get_files_success(self, quart_test_client, fake_knowledge_app):
         """GET /api/v1/knowledge/bases/{uuid}/files returns files."""
         response = await quart_test_client.get(
             '/api/v1/knowledge/bases/test-kb-uuid/files', headers={'Authorization': 'Bearer test_token'}
@@ -203,8 +278,15 @@ class TestKnowledgeBaseFilesEndpoints:
         assert data['code'] == 0
         assert 'files' in data['data']
 
+        called = fake_knowledge_app.knowledge_service.get_files_by_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid',)
+        assert called.await_args.kwargs == {}
+        assert data['data']['files'] == [{'uuid': 'test-file-uuid', 'filename': 'test.pdf'}]
+
     @pytest.mark.asyncio
-    async def test_add_file_to_knowledge_base(self, quart_test_client):
+    async def test_add_file_to_knowledge_base(self, quart_test_client, fake_knowledge_app):
         """POST /api/v1/knowledge/bases/{uuid}/files adds file."""
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases/test-kb-uuid/files',
@@ -217,8 +299,15 @@ class TestKnowledgeBaseFilesEndpoints:
         assert data['code'] == 0
         assert 'task_id' in data['data']
 
+        called = fake_knowledge_app.knowledge_service.store_file
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid', 'test-file-id')
+        assert called.await_args.kwargs == {'parser_plugin_id': 'test/parser'}
+        assert data['data'] == {'task_id': 'test-task-id'}
+
     @pytest.mark.asyncio
-    async def test_delete_file_from_knowledge_base(self, quart_test_client):
+    async def test_delete_file_from_knowledge_base(self, quart_test_client, fake_knowledge_app):
         """DELETE /api/v1/knowledge/bases/{uuid}/files/{file_id}."""
         response = await quart_test_client.delete(
             '/api/v1/knowledge/bases/test-kb-uuid/files/test-file-uuid', headers={'Authorization': 'Bearer test_token'}
@@ -226,13 +315,20 @@ class TestKnowledgeBaseFilesEndpoints:
 
         assert response.status_code == 200
 
+        called = fake_knowledge_app.knowledge_service.delete_file
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid', 'test-file-uuid')
+        assert called.await_args.kwargs == {}
+        assert (await response.get_json())['code'] == 0
+
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestKnowledgeBaseRetrieveEndpoint:
     """Tests for knowledge base retrieval endpoint."""
 
     @pytest.mark.asyncio
-    async def test_retrieve_knowledge_success(self, quart_test_client):
+    async def test_retrieve_knowledge_success(self, quart_test_client, fake_knowledge_app):
         """POST /api/v1/knowledge/bases/{uuid}/retrieve."""
         response = await quart_test_client.post(
             '/api/v1/knowledge/bases/test-kb-uuid/retrieve',
@@ -244,6 +340,13 @@ class TestKnowledgeBaseRetrieveEndpoint:
         data = await response.get_json()
         assert data['code'] == 0
         assert 'results' in data['data']
+
+        called = fake_knowledge_app.knowledge_service.retrieve_knowledge_base
+        assert called.await_count == 1
+        assert called.await_args.args[0].workspace_uuid == '00000000-0000-0000-0000-00000000000a'
+        assert called.await_args.args[1:] == ('test-kb-uuid', 'test query', {'top_k': 5})
+        assert called.await_args.kwargs == {}
+        assert data['data']['results'] == [{'content': 'test result', 'score': 0.95}]
 
     @pytest.mark.asyncio
     async def test_retrieve_without_query_returns_error(self, quart_test_client):

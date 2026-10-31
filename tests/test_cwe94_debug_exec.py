@@ -12,12 +12,17 @@ This test verifies that:
 import ast
 import pathlib
 
+import pytest
+
+pytestmark = pytest.mark.security
+
 # Resolve project root (one level up from tests/)
 _PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 VULN_FILE = _PROJECT_ROOT / 'src' / 'langbot' / 'pkg' / 'api' / 'http' / 'controller' / 'groups' / 'system.py'
 
 
+@pytest.mark.contract('debug_exec_absent')
 def test_no_exec_call_in_system_controller():
     """Verify there is no exec() call in system.py that takes user input."""
     with open(VULN_FILE, 'r') as f:
@@ -38,6 +43,7 @@ def test_no_exec_call_in_system_controller():
     )
 
 
+@pytest.mark.contract('debug_route_absent')
 def test_no_debug_exec_route():
     """Verify the /debug/exec route is not registered."""
     with open(VULN_FILE, 'r') as f:

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: CozeAgent
+  version: 0.2.2
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent
+  label:
+    en_US: Coze Agent
+    zh_Hans: 扣子 Agent
+    zh_Hant: Coze Agent
+    ja_JP: Coze Agent
+    th_TH: Coze Agent
+    vi_VN: Coze Agent
+    es_ES: Agente Coze
+    ru_RU: Агент Coze
+  description:
+    en_US: Run a Coze bot as a LangBot Runner.
+    zh_Hans: 将扣子机器人作为 LangBot 运行器运行。
+    zh_Hant: 將 Coze 機器人作為 LangBot 運行器執行。
+    ja_JP: Coze ボットを LangBot Runner として実行します。
+    th_TH: เรียกใช้บอต Coze เป็น LangBot Runner
+    vi_VN: Chạy bot Coze dưới dạng LangBot Runner.
+    es_ES: Ejecuta un bot de Coze como LangBot Runner.
+    ru_RU: Запускает бота Coze как LangBot Runner.
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: CozeAgentPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

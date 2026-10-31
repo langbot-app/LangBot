@@ -1,0 +1,106 @@
+---
+title: "Webhooks"
+---
+
+Webhooks allow you to send bot message events to external services for processing.
+
+## Configure Webhooks
+
+1. In LangBot WebUI, click "API Integration" in the sidebar
+2. Switch to the "Webhooks" tab
+3. Click "+" to create a new webhook
+4. Fill in:
+   - **Name**: Webhook identifier
+   - **URL**: Target URL to receive events
+   - **Description**: Optional
+   - **Status**: Enable or disable
+
+## Event Format
+
+### Person Message (bot.person_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.person_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "Message content"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+### Group Message (bot.group_message)
+
+```json
+{
+  "uuid": "event-unique-id",
+  "event_type": "bot.group_message",
+  "data": {
+    "bot_uuid": "bot-uuid",
+    "adapter_name": "AdapterName",
+    "group": {
+      "id": "group-id",
+      "name": "Group Name"
+    },
+    "sender": {
+      "id": "user-id",
+      "name": "User Name"
+    },
+    "message": [
+      {
+        "type": "Plain",
+        "text": "Message content"
+      }
+    ],
+    "timestamp": 1234567890
+  }
+}
+```
+
+## Response Format
+
+Webhook services should return JSON:
+
+```json
+{
+  "status": "ok",
+  "skip_pipeline": false
+}
+```
+
+### Parameters
+
+- **status**: Processing status (recommend "ok")
+- **skip_pipeline**: Whether to skip LangBot pipeline processing
+  - `true`: Message won't continue in pipeline
+  - `false`: Message proceeds normally
+
+<Tip>
+`skip_pipeline` lets you completely take over message processing. When `true`, the message is only handled by your webhook service and won't trigger LangBot's AI features.
+</Tip>
+
+## Integration Example
+
+### Dify Workflow
+
+Use the [dify-plugin-langbot-trigger](https://github.com/langbot-app/dify-plugin-langbot-trigger) plugin to receive LangBot webhook events and create workflows in Dify.
+
+## Notes
+
+- Webhook URL must be accessible
+- Request timeout: 15 seconds
+- Failed requests don't affect normal processing
+- Multiple webhooks execute in parallel
+- Any webhook returning `skip_pipeline: true` skips pipeline processing

@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: update_profile
+  label:
+    en_US: UpdateProfile
+    zh_Hans: 更新画像
+  description:
+    en_US: Update the session's core profile information.
+    zh_Hans: 更新当前会话的核心画像信息。
+
+spec:
+  parameters:
+    type: object
+    properties:
+      scope:
+        type: string
+        enum:
+          - session
+          - speaker
+        description: "session: shared profile for the whole chat. speaker: profile for the current speaker."
+      field:
+        type: string
+        enum:
+          - name
+          - traits
+          - preferences
+          - notes
+        description: Which profile field to update.
+      action:
+        type: string
+        enum:
+          - set
+          - add
+          - remove
+        description: "set: replace the value. add: append to the list. remove: remove from the list."
+      value:
+        type: string
+        description: The value to set/add/remove.
+      fact_key:
+        type: string
+        description: Optional logical slot key for traits/preferences, such as "coffee_preference", "occupation", or "reply_language". Use this when the fact may be corrected later.
+      previous_value:
+        type: string
+        description: Optional previous value for the same fact when the user is explicitly correcting or revising it. Useful for preserving history when moving from an old fact to a new one.
+    required:
+      - field
+      - action
+      - value
+
+  llm_prompt: |
+    Update the session profile — shared context about this conversation (group chat or private chat).
+    Profile memory is L1: use it for stable, low-frequency, currently valid facts.
+    This tool can update either:
+    - the shared session profile for the whole chat
+    - the current speaker's profile for person-specific stable facts
+
+    Fields:
+    - name: A label for this session, or a participant's preferred name.
+    - traits: Key stable facts about a participant or the session.
+    - preferences: Communication preferences for the current speaker or the whole session.
+    - notes: Free-form notes, usually shared session context.
+
+    fact_key:
+    - Optional for traits/preferences.
+    - Use a stable logical key when the same fact may change over time.
+    - Good examples: "coffee_preference", "occupation", "reply_language", "timezone".
+    - Reusing the same fact_key lets the system keep the current value and preserve previous values as history.
+
+    previous_value:
+    - Optional, mainly for correction scenarios.
+    - Use it when the user explicitly replaces an earlier stable fact and you know the old value.
+    - Example: fact_key="coffee_preference", previous_value="Alice likes coffee", value="Alice does not like coffee".
+
+    Scopes:
+    - speaker: Use for stable facts about the current speaker, such as "Alice likes coffee" or "Alice is a software engineer".
+    - session: Use for shared context about the whole chat, such as "group for project X" or "respond in Chinese here".
+
+    Actions:
+    - set: Replace the field value entirely.
+    - add: Add an item to a list field (traits/preferences) or append to notes.
+    - remove: Remove an item from a list field or clear notes.
+
+    Important:
+    - When adding facts about a person in a group chat, prefer scope="speaker".
+    - When adding shared group context, use scope="session".
+    - When adding traits about specific people, include their name (e.g. "Alice likes coffee" not just "likes coffee").
+    - Do not write short-lived plans, deadlines, recent events, or one-off states into L1; use remember for those.
+    - Do not store secrets, credentials, one-time codes, unconfirmed sensitive claims, or harmful inferred labels.
+    - For traits/preferences that may later be corrected, prefer providing fact_key so the plugin can keep one current value plus history.
+    - When a user corrects, retracts, or negates a previously stored stable fact, do NOT keep contradictory current profile values in parallel.
+    - Prefer replacing the old current value. In practice, use the same fact_key with action="set" for the corrected current fact. If the old value is known, also provide previous_value so it is preserved as history.
+    - If the correction itself is historically important, also store it with the "remember" tool so the timeline is preserved.
+
+    Examples:
+    - Private chat L1 speaker profile: "Alice prefers concise technical answers."
+    - Group chat L1 session profile: "This group coordinates the LangBot release."
+    - Correction: if Alice says "Actually I prefer English replies, not Chinese", set the same reply_language fact_key to the new current value and pass the old value as previous_value if known.
+    - Not L1: "Alice has a meeting tomorrow at 10." Use remember instead.
+
+execution:
+  python:
+    path: update_profile.py
+    attr: UpdateProfile

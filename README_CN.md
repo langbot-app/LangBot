@@ -21,10 +21,10 @@
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
 <a href="https://langbot.app">官网</a> ｜
-<a href="https://link.langbot.app/zh/docs/features">特性</a> ｜
-<a href="https://link.langbot.app/zh/docs/guide">文档</a> ｜
-<a href="https://link.langbot.app/zh/docs/api">API</a> ｜
-<a href="https://space.langbot.app/cloud">Cloud</a> ｜
+<a href="https://langbot.app/docs/zh/insight/features">特性</a> ｜
+<a href="https://langbot.app/docs/zh/insight/guide">文档</a> ｜
+<a href="https://langbot.app/docs/zh/tags/readme">API</a> ｜
+<a href="https://cloud.langbot.app">Cloud</a> ｜
 <a href="https://space.langbot.app">扩展市场</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路线图</a>
 
@@ -49,9 +49,9 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 - **Web 管理面板** — 通过浏览器直观地配置、管理和监控机器人，无需手动编辑配置文件。
 - **多流水线架构** — 不同机器人用于不同场景，具备全面的监控和异常处理能力。
 
-[→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
+[→ 了解更多功能特性](https://langbot.app/docs/zh/insight/features)
 
-📍 实践指南：[5 分钟部署多平台 AI 机器人](https://blog.langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[将 DeepSeek 接入微信、企业微信与 Discord](https://blog.langbot.app/zh/blog/connect-deepseek-to-wechat/)、[让 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://blog.langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 构建多平台 AI 聊天机器人](https://blog.langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
+📍 实践指南：[5 分钟部署多平台 AI 机器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[将 DeepSeek 接入微信、企业微信与 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[让 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 构建多平台 AI 聊天机器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -63,9 +63,15 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ## 快速开始
 
+官方插件源码索引：[plugins/README.md](plugins/README.md) · [机器可读目录](plugins/catalog.json) · [插件独立上架流程](plugins/RELEASING.md)。插件保持独立安装，不随 Core 发版打包。
+
 ### ☁️ LangBot Cloud（推荐）
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — 免部署，开箱即用。
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+免部署，开箱即用。
 
 ### 一键启动
 
@@ -83,12 +89,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### 一键云部署
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手动部署](https://link.langbot.app/zh/docs/manual-deploy) · [宝塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/zh/deploy/langbot/kubernetes)
+**更多方式：** [Docker](https://langbot.app/docs/zh/deploy/langbot/docker) · [手动部署](https://langbot.app/docs/zh/deploy/langbot/manual) · [宝塔面板](https://langbot.app/docs/zh/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
 ---
 
@@ -141,7 +148,7 @@ docker compose --profile all up -d
 | [百宝箱Tbox](https://www.tbox.cn/open) | 智能体平台 | ✅ |
 | [七牛云Qiniu](https://www.qiniu.com/ai/agent) | 聚合平台 | ✅ |
 
-[→ 查看完整集成列表](https://link.langbot.app/zh/docs/features)
+[→ 查看完整集成列表](https://langbot.app/docs/zh/insight/features)
 
 ### TTS（语音合成）
 
@@ -170,21 +177,12 @@ docker compose --profile all up -d
 
 ---
 
-## 在线演示
-
-**立即体验：** https://demo.langbot.dev/
-- 邮箱：`demo@langbot.app`
-- 密码：`langbot123456`
-
-*注意：公开演示环境，请不要在其中填入任何敏感信息。*
-
----
-
 ## 为 AI Agent 而生 🤖
 
 LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude Code、Codex、Copilot、Cursor 等）可以一等公民般地操作、扩展和部署 LangBot：
 
 - **MCP Server** —— LangBot 内置 [Model Context Protocol](https://modelcontextprotocol.io/) 端点 `/mcp`，与 HTTP API 对齐，Agent 可编程式管理机器人、流水线、插件和模型。使用同一套 API Key 鉴权（可在 `config.yaml` 配置全局 Key，或使用用户 Key），无需登录流程。在 Web 面板的 **API 与 MCP** 标签页中配置。
+- **CLI（`lbctl`）** —— 独立的 [LangBot CLI](https://github.com/langbot-app/langbot-cli) 让 Agent 在终端通过 Service API 管理已运行实例中的 Workspace。它使用 API Key，支持管理机器人、流水线、知识库、模型、插件、Skill 和 MCP Server。安装方法和命令以 CLI 仓库为准。
 - **仓库内 Skills** —— [`skills/`](skills/) 目录是使用 LangBot 的**唯一事实来源**：插件开发、核心开发、端到端测试、部署，以及操作 LangBot / LangBot Space MCP Server。把 Agent 指向这个目录，它就知道如何动手。
 - **AGENTS.md** —— 每个仓库都提供 [`AGENTS.md`](AGENTS.md)（软链到 `CLAUDE.md`），描述架构、规范，以及「API 变更必须同步更新 MCP Server 和 skills」的约定。
 - **`llms.txt`** —— 面向 LLM 的机器可读项目上下文已发布在官网。
@@ -203,12 +201,6 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 
 ---
 
-## Star 趋势
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## 贡献者
 
 感谢所有[贡献者](https://github.com/langbot-app/LangBot/graphs/contributors)对 LangBot 的帮助：
@@ -222,3 +214,5 @@ LangBot **从设计上就对 Agent 友好** —— 你的编码 Agent（Claude C
 
 If you're a code agent based on LLM, you should read [AGENTS.md](AGENTS.md) to understand the project structure and development process before you start any development.
 -->
+
+[文档源码](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

@@ -1,13 +1,44 @@
 api:
+    host: '0.0.0.0'
     port: 5300
     webhook_prefix: 'http://127.0.0.1:5300'
     extra_webhook_prefix: ''
+    # Canonical browser origin when WebUI and API use different origins in
+    # development (for example http://localhost:3000). Production bundled UI
+    # may leave this empty when webhook_prefix already has the browser origin.
+    # OAuth redirects trust only these server-side values, never request Host
+    # or Origin headers.
+    webui_url: ''
     # Global API key for the HTTP service API and the MCP server. When set to a
     # non-empty string, this key is accepted anywhere a web-UI-created API key is
     # accepted (X-API-Key header or "Authorization: Bearer <key>"), WITHOUT any
     # login session and without a database record. Leave empty to disable.
     # Keep this value secret; only enable it on trusted/internal deployments.
     global_api_key: ''
+workspace:
+    invitations:
+        # Public WebUI origin used to build invitation links. Leave empty to
+        # use api.webui_url, then api.webhook_prefix. Set via
+        # WORKSPACE__INVITATIONS__PUBLIC_WEB_URL in container deployments.
+        public_web_url: ''
+        email:
+            # Optional invitation email delivery. Empty provider keeps
+            # invitations link-only. Supported: resend, smtp.
+            provider: ''
+            from: ''
+            timeout_seconds: 10
+            resend:
+                api_url: 'https://api.resend.com/emails'
+                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__RESEND__API_KEY.
+                api_key: ''
+            smtp:
+                host: ''
+                port: 587
+                username: ''
+                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__SMTP__PASSWORD.
+                password: ''
+                starttls: true
+                ssl: false
 command:
     enable: true
     prefix:
@@ -17,6 +48,68 @@ command:
 concurrency:
     pipeline: 20
     session: 1
+    # Hard admission limits for queued + running pipeline queries.
+    pending_queries: 1000
+    pending_queries_per_workspace: 100
+webhooks:
+    # Bound database materialization and per-message outbound fan-out.
+    # Existing rows above this limit remain deletable through the management
+    # API, but only this many enabled destinations are dispatched.
+    # Supports WEBHOOKS__MAX_PER_WORKSPACE (hard cap: 64).
+    max_per_workspace: 16
+    # Instance-wide request admission. Delivery fails open when every slot is
+    # occupied instead of retaining an unbounded queue of webhook tasks.
+    # Supports WEBHOOKS__MAX_INFLIGHT_REQUESTS (hard cap: 128).
+    max_inflight_requests: 16
+cloud:
+    # Operational safety ceilings for the one logical Cloud instance. These
+    # are not subscription entitlements. An authoritative directory update
+    # that would exceed them is rejected atomically rather than truncated.
+    directory:
+        # Tune downward from the measured production capacity curve. Core has
+        # an absolute safety ceiling of 5,000 active Workspaces.
+        max_active_workspaces: 1000
+        # Full snapshots contain current Workspaces only. Archived tombstones
+        # are delivered through bounded per-Workspace deltas.
+        max_snapshot_workspaces: 1000
+        # Aggregate memberships accepted in one signed snapshot or delta.
+        max_snapshot_memberships: 20000
+        # Signed control-plane envelope buffered by the closed adapter before
+        # JSON/JWS verification (32 MiB; absolute maximum 64 MiB).
+        max_response_bytes: 33554432
+    # Instance notice banner shown at the top of the Cloud WebUI. It is only
+    # rendered when this instance runs as a Cloud deployment, so self-hosted
+    # copies of this file never surface it. Every field is overridable through
+    # the environment (for example CLOUD__BANNER__ENABLED, and
+    # CLOUD__BANNER__CONTENT__ZH_HANS for one language of the copy).
+    banner:
+        # Master switch. False keeps the banner out of the UI entirely.
+        enabled: false
+        # Visual tone: info, warning, or maintenance.
+        level: info
+        # Let the reader hide the banner in the current browser session. A
+        # change of copy brings it back.
+        dismissible: true
+        # Append the "dedicated environment / self-hosting" links after the
+        # message. Turn off for a plain announcement.
+        show_links: true
+        # Inline link targets. Absolute http(s) URLs only; anything else falls
+        # back to these same defaults.
+        dedicated_url: 'https://space.langbot.app/cloud?environment=dedicated'
+        repository_url: 'https://github.com/langbot-app/LangBot'
+        # Optional per-language copy. A non-empty entry replaces the built-in
+        # message for that language; empty entries fall back to the built-in
+        # text. Keys use underscores because the environment override
+        # namespace cannot carry dashes. Plain text only, never markup.
+        content:
+            zh_Hans: ''
+            zh_Hant: ''
+            en_US: ''
+            ja_JP: ''
+            th_TH: ''
+            vi_VN: ''
+            es_ES: ''
+            ru_RU: ''
 proxy:
     http: ''
     https: ''
@@ -26,6 +119,15 @@ system:
     recovery_key: ''
     allow_modify_login_info: true
     disabled_adapters: []
+    blocking_executor:
+        # All asyncio.to_thread work shares this process-wide bounded pool.
+        # Both running threads and queued calls are capped to prevent tenant
+        # bursts from creating an unbounded queue of retained request objects.
+        max_workers: 8
+        max_pending: 128
+        # One trusted Workspace can occupy at most this many running + queued
+        # slots. This must not exceed half of max_workers.
+        max_inflight_per_scope: 4
     # Public outbound IP addresses of this LangBot deployment. Some platforms
     # (e.g. WeCom, WeChat Official Account, QQ Official API) require the
     # caller's IPs to be added to their trusted-IP / IP-whitelist settings.
@@ -37,15 +139,36 @@ system:
         max_bots: -1
         max_pipelines: -1
         max_extensions: -1
-        # When set to a non-empty string, every pipeline is forced to use this
-        # Box sandbox-scope template regardless of its own configuration, and
-        # the per-pipeline "Sandbox Scope" selector is locked in the web UI.
-        # Used by SaaS deployments to confine a tenant to a single shared
-        # sandbox (set to '{global}'). Empty string = no restriction.
-        force_box_session_id_template: ''
+        max_knowledge_bases: -1
     task_retention:
         # Keep at most this many completed async task records in memory
         completed_limit: 200
+        # Bound progress output retained by one task, including running tasks.
+        max_log_chars: 200000
+        # Protect the shared process from user-triggered operation storms.
+        max_active_user_tasks: 256
+        max_active_user_tasks_per_workspace: 8
+    session_retention:
+        # Process-local conversation sessions are a cache, not durable history.
+        max_entries: 2000
+        max_entries_per_workspace: 200
+        idle_ttl_seconds: 86400
+        max_conversations_per_session: 20
+        max_messages_per_conversation: 100
+    websocket_retention:
+        # Bound live browser sockets and per-Workspace fan-out in the shared process.
+        max_connections: 1024
+        max_connections_per_workspace: 32
+        # Idle proxy runtimes are evicted when this process-local cache fills.
+        max_workspace_proxies: 1024
+        max_conversations_per_workspace: 200
+        max_messages_per_conversation: 100
+        conversation_idle_ttl_seconds: 86400
+        send_queue_size: 100
+    response_limits:
+        # Defense in depth for tenant-configured upstream providers.
+        max_generated_chars: 1048576
+        max_stream_chunks: 100000
     jwt:
         expire: 604800
         secret: ''
@@ -54,18 +177,43 @@ database:
     sqlite:
         path: 'data/langbot.db'
     postgresql:
+        # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
+        # overrides the structured fields and preserves TLS/query options.
+        url: ''
         host: '127.0.0.1'
         port: 5432
         user: 'postgres'
         password: 'postgres'
         database: 'postgres'
+        # One bounded pool is shared by business data and Cloud pgvector.
+        pool_size: 10
+        max_overflow: 10
+        pool_timeout_seconds: 30
+        pool_recycle_seconds: 1800
+        # Applied only to Cloud runtime connections. The one-shot release
+        # migration uses its operator connection without these short limits.
+        statement_timeout_ms: 60000
+        lock_timeout_ms: 5000
+        idle_in_transaction_session_timeout_ms: 60000
+    cloud_migration:
+        # `langbot migrate --cloud` reads an operator-only PostgreSQL DSN from
+        # this environment variable. The operator role must differ from the
+        # runtime role above; never put its password in this file or CLI args.
+        operator_dsn_env: 'LANGBOT_CLOUD_MIGRATION_DSN'
 vdb:
     use: chroma
+    # Bound process-local collection/index handles across all Workspaces.
+    runtime_cache_limit: 1024
     qdrant:
         url: ''
         host: localhost
         port: 6333
         api_key: ''
+    # SeekDB is optional. Native/package installs need the `seekdb` extra:
+    # `uv sync --extra seekdb` (source) or
+    # `uvx --from 'langbot[seekdb]@latest' langbot` (PyPI).
+    # The official Docker image already includes it.
+    # Embedded-mode platform support depends on the native pylibseekdb wheels.
     seekdb:
         mode: embedded  # 'embedded' or 'server'
         # Embedded mode options:
@@ -82,13 +230,38 @@ vdb:
         token: ''
         db_name: ''
     pgvector:
+        # SaaS/shared-schema deployments reuse database.postgresql. OSS can
+        # keep this false when deliberately using an external pgvector DB.
+        use_business_database: false
+        # Release migrations create one partial ANN index per enabled value.
+        allowed_dimensions: [384, 512, 768, 1024, 1536, 3072]
         host: '127.0.0.1'
         port: 5433
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    valkey_search:
+        host: 'localhost'
+        port: 6379            # integration tests use 6380 -> valkey/valkey-bundle:9.1.0
+        db: 0
+        password: ''          # optional (toB auth)
+        username: ''          # optional (ACL user, toB)
+        tls: false            # optional (toB/SaaS)
+        index_algorithm: 'HNSW'   # HNSW | FLAT
+        distance_metric: 'COSINE' # COSINE | L2 | IP
+        request_timeout: 5000     # per-request timeout in ms (glide default 250ms is too low for KNN)
 storage:
     use: local
+    # Bound every object materialized into Core memory. Built-in Local/S3
+    # providers enforce this while reading (hard cap: 64 MiB).
+    max_object_read_bytes: 10485760
+    # Media content cache (images & attachments externalized from monitoring and pipelines)
+    media_cache:
+        # Retention for CAS files and historical inline images (defaults to 30 days).
+        # Inline images expire by record creation time; message text is retained.
+        retention_days: 30
+        # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
+        max_size_mb: 0
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true
@@ -98,21 +271,117 @@ storage:
         uploaded_file_retention_days: 7
         # LangBot log files older than this many days will be deleted
         log_retention_days: 3
+        # Bound per-Workspace file cleanup and diagnostic candidate lists.
+        # Supports STORAGE__CLEANUP__MAX_FILES_PER_RUN (hard cap: 10000).
+        max_files_per_run: 1000
     s3:
         endpoint_url: ''
         access_key_id: ''
         secret_access_key: ''
         region: 'us-east-1'
         bucket: 'langbot-storage'
+        # boto3 is synchronous; bound the number of operations delegated to
+        # worker threads so an S3 slowdown cannot saturate the process.
+        max_concurrency: 16
 plugin:
     enable: true
+    # Maximum time for the Runtime transport, handshake, and desired-state replay.
+    connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
+    # Console debug endpoint; its port is also passed to managed Runtime
+    # subprocesses (stdio / Windows) as --ws-debug-port so a second Core
+    # instance can listen elsewhere without Address already in use.
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
+    certification:
+        # Non-secret Ed25519 issuer key ring used to verify the SDK ZIP-comment
+        # certification envelope. Values are standard base64-encoded raw public
+        # keys; add keys during issuer rotation and remove retired IDs only after
+        # every affected archive has been upgraded.
+        trusted_public_keys: {}
+    worker:
+        # Instance-wide maximum for every plugin installation. Plugin
+        # manifests cannot raise or override these limits.
+        max_cpus: 1.0
+        max_memory_mb: 512
+        max_pids: 128
+        max_open_files: 256
+        max_file_size_mb: 512
+        # Instance-wide admission budgets. The effective worker count is the
+        # lowest of max_workers, max_total_cpus/max_cpus and
+        # max_total_memory_mb/max_memory_mb.
+        max_workers: 16
+        max_total_cpus: 8.0
+        max_total_memory_mb: 8192
+        # Includes disabled and historical installation fences retained to
+        # reject stale desired-state replay.
+        max_installations: 10000
+        # Restart storms are globally serialized by default. Repeated
+        # unexpected exits within the configured window open a Runtime-wide
+        # circuit; one half-open probe must remain stable before other
+        # installations may restart.
+        max_concurrent_restarts: 1
+        restart_failure_threshold: 8
+        restart_failure_window_seconds: 30.0
+        restart_circuit_open_seconds: 60.0
+        # Cloud shared Runtime sets this to true and fails closed unless
+        # delegated cgroup v2 controllers are available.
+        require_hard_limits: false
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760
+    runtime_ops:
+        # Cloud-only ops telemetry: aggregates this instance's plugin Runtime
+        # health, desired installations and reconcile failures and pushes them
+        # to the Space control plane for the internal ops dashboard. This is
+        # separate from product telemetry (space.disable_telemetry) and has no
+        # effect outside the cloud edition. Defaults to on for the cloud
+        # edition; set false to stop pushing samples.
+        enabled: true
+        # Seconds between samples pushed to Space.
+        interval_seconds: 30
+        # Per-request timeout for the Runtime /healthz probe and the upload.
+        timeout_seconds: 10
+        # Maximum number of failed installations included per sample.
+        max_failures: 5
+runner:
+    # Host-level admin permissions for trusted control plugins. These plugins
+    # can use existing plugin action handlers to inspect or manage Runner
+    # infrastructure across runner/plugin boundaries. Keep empty unless you
+    # fully trust the plugin identity.
+    #
+    # Example:
+    # admin_plugins:
+    #   - identity: langbot/agent-runner-control
+    #     permissions:
+    #       - agent_run:admin
+    #       - runtime:admin
+    admin_plugins: []
+mcp:
+    # Bound instance-wide MCP startup and shutdown bursts. Supports
+    # MCP__LIFECYCLE_CONCURRENCY and is clamped to a maximum of 128.
+    lifecycle_concurrency: 16
+    stdio:
+        # Independent gate for local stdio MCP transports. Cloud v2 sets
+        # MCP__STDIO__ENABLED=false even when Box Runtime is available.
+        enabled: true
 monitoring:
+    query_limits:
+        # Maximum records materialized by one paginated monitoring request.
+        # Supports MONITORING__QUERY_LIMITS__PAGE_ROWS (hard cap: 5000).
+        page_rows: 1000
+        # CSV exports are currently assembled in memory. Keep this lower than
+        # the historical 100000-row default (hard cap: 50000).
+        export_rows: 10000
+        # Maximum related records returned by one session/message detail view
+        # (hard cap: 10000). Aggregate statistics remain database-computed.
+        detail_rows: 2000
+        # Token charts are grouped in SQL and return only the newest buckets
+        # (hard cap: 10000). Supports an environment variable override.
+        timeseries_buckets: 1000
+        # Bound high-offset scans that can otherwise monopolize PostgreSQL CPU
+        # (hard cap: 10000000).
+        max_offset: 1000000
     auto_cleanup:
         # Enable automatic cleanup of expired monitoring records
         enabled: true
@@ -122,27 +391,89 @@ monitoring:
         check_interval_hours: 1
         # Number of expired rows to delete per table batch
         delete_batch_size: 1000
+        # Prevent one large Workspace backlog from monopolizing PostgreSQL.
+        # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
+        max_batches_per_table_per_run: 4
+skills:
+    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
+    # revisions remain available when Box is disabled.
+    # TODO(next-major): change the fresh-install default to './data/skills'
+    # after the online-upgrade window for the historical Box path closes.
+    root: './data/box/skills'
+
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
     # attempt to connect to a remote Box runtime nor start a local stdio Box
-    # subprocess. Disabling Box also disables every feature that depends on it:
-    # the native sandbox tools (exec/read/write/edit/glob/grep), the activate
-    # skill tool, skill add/edit, and stdio-mode MCP servers. Skills can still
-    # be listed read-only and http/sse MCP servers continue to work.
+    # subprocess. Disabling Box disables execution-backed features: native
+    # sandbox tools (exec/read/write/edit/glob/grep), agent-side skill
+    # registration, and stdio-mode MCP servers. Skill management, activation,
+    # and read-only package resources remain available without Box.
     enabled: true
-    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', or 'e2b'. Can be written via BOX__BACKEND.
+    # 'host' runs commands directly as the Box Runtime user without sandbox
+    # isolation. It is never auto-selected and is only for trusted local
+    # development. Can be written via BOX__BACKEND.
+    backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', 'e2b', or explicit unsafe 'host'.
     runtime:
+        # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
+        # runtimes. To protect an exposed endpoint, set the same strong secret
+        # in both LangBot and Box. Keep it out of this config file.
         endpoint: ''  # External Box Runtime base URL, e.g. 'ws://127.0.0.1:5410'. Leave empty for local auto-managed runtime.
+    limits:
+        max_sessions: 64
+        max_managed_processes: 64
+        max_completed_processes: 256
+        # Core scans a Workspace before and after quota-enforced executions.
+        # Fail closed instead of repeatedly walking an inode bomb.
+        # Supports BOX__LIMITS__MAX_WORKSPACE_ENTRIES (hard cap: 1000000).
+        max_workspace_entries: 100000
+        # Retained admission fences prevent replay after entitlement expiry or
+        # revocation. Fail closed before that monotonic state can grow without
+        # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.
+        max_admission_records: 100000
+        max_rpc_file_bytes: 20971520
+    # Cloud v2 overrides these values through the instance config/environment.
+    # OSS keeps admission disabled and preserves the existing multi-session
+    # local behavior. These limits are Runtime-owned and cannot be relaxed by
+    # a pipeline, Workspace entitlement, or tool call.
+    admission:
+        required: false
+        logical_session_id: 'global'
+        required_backend: 'nsjail'
+        max_sessions: 1
+        max_managed_processes: 0
+        max_grant_ttl_sec: 300
+        max_timeout_sec: 120
+        cpus: 1.0
+        memory_mb: 512
+        pids_limit: 128
+        read_only_rootfs: true
+        # OSS admission-disabled mode uses 0 for unlimited compatibility.
+        # Cloud bootstrap requires a positive hard quota.
+        workspace_quota_mb: 0
+        readiness_cache_sec: 15
     local:
-        profile: 'default'
+        profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
         host_root: './data/box'  # Base host directory for local workspace mounts. Docker deployments should override this with an absolute host path.
         default_workspace: ''  # Defaults to '<host_root>/default'. Relative paths are resolved under host_root.
-        skills_root: 'skills'  # Box-owned skill package directory. Relative paths are resolved under host_root.
         allowed_mount_roots:  # Defaults to ['<host_root>'] when left empty.
             - './data/box'
             - '/tmp'
         workspace_quota_mb: null  # Optional disk quota override (>= 0). null = profile default.
+        # Extra environment variables injected into every Box exec payload.
+        # The agent-supplied per-call env overrides matching keys. Values must be strings.
+        # Every sandbox command, including untrusted agent commands, can read them;
+        # do not put secrets here. Loaded at startup; ignored in multi-workspace deployments.
+        env: {}
+    # Default nsjail cgroup memory limit for each MCP stdio server process, in MB.
+    # Node.js MCP servers (npx/bunx) need more memory than Python ones because V8
+    # and WebAssembly modules (e.g. undici llhttp) reserve large virtual address
+    # space at startup. Setting this too low causes processes to be killed with
+    # return_code=137 (OOM kill); the symptom is "Box managed process exited
+    # unexpectedly" in the logs.  Raise on machines with ample RAM; lower only if
+    # you run exclusively Python (uvx) MCP servers.
+    # Can also be set via BOX__DEFAULT_MEMORY_MB. Default: 1536.
+    default_memory_mb: 1536
     docker:
         cpu_limit_enabled: true  # When false, Docker sandbox containers are started without --cpus. Memory and PID limits still apply.
     e2b:
@@ -157,4 +488,38 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
+    # Optional telemetry is enabled by default. Set true to disable usage,
+    # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false
+    # Per-event execution traces: off | failures | sampled | all.
+    # Every eligible execution is reported by default: one record per workflow
+    # node plus one terminal chain record. 'failures' keeps only broken chains;
+    # 'sampled' keeps broken chains plus about 1/N of successful ones, selected
+    # by event hash (N is execution_trace_sample); 'off' reports no executions.
+    # Unmatched/discarded platform events are never reported unless a plugin
+    # subscription matches. Matched delivery failures and valid interaction
+    # resumptions remain eligible, as do independent API/WebUI executions.
+    # Cloud uses 'all' but still applies this route eligibility filter.
+    execution_trace: all
+    execution_trace_sample: 20
+    # How often buffered execution records are uploaded, in seconds.
+    # Complete execution records are batched as {"records": [...]}; records are
+    # removed from the buffer only once the sender accepted them.
+    telemetry_flush_seconds: 180
+
+# Host-owned LLM policy. Models/calls may override through extra_args.request_policy.
+llm_request_policy:
+    retries: 0
+    total_timeout: 300
+    first_event_timeout: 120
+    stream_idle_timeout: 120
+    connect_timeout: 10
+    read_timeout: 120
+    write_timeout: 30
+    pool_timeout: 10
+    backoff_base: 0.5
+    backoff_max: 8
+    attribution: true
+    # Optional: x-session-id, x-litellm-session-id, x-langbot-conversation-id.
+    # OpenRouter uses x-session-id automatically; other providers default to none.
+    conversation_header: null

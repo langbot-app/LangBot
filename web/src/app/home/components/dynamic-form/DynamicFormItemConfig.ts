@@ -16,8 +16,13 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
   type: DynamicFormItemType;
   description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
+  allow_custom?: boolean;
   show_if?: IShowIfCondition;
   login_platform?: string;
+  url?: string;
+  download_filename?: string;
+  help_links?: Record<string, string>;
+  help_label?: I18nObject;
 
   constructor(params: IDynamicFormItemSchema) {
     this.id = params.id;
@@ -28,8 +33,13 @@ export class DynamicFormItemConfig implements IDynamicFormItemSchema {
     this.type = params.type;
     this.description = params.description;
     this.options = params.options;
+    this.allow_custom = params.allow_custom;
     this.show_if = params.show_if;
     this.login_platform = params.login_platform;
+    this.url = params.url;
+    this.download_filename = params.download_filename;
+    this.help_links = params.help_links;
+    this.help_label = params.help_label;
   }
 }
 
@@ -42,6 +52,17 @@ export function isDynamicFormItemType(
 }
 
 export function parseDynamicFormItemType(value: string): DynamicFormItemType {
+  const typeMap: Record<string, DynamicFormItemType> = {
+    [DynamicFormItemType.SELECT_LLM_MODEL]:
+      DynamicFormItemType.LLM_MODEL_SELECTOR,
+    [DynamicFormItemType.SELECT_KNOWLEDGE_BASES]:
+      DynamicFormItemType.KNOWLEDGE_BASE_MULTI_SELECTOR,
+    [DynamicFormItemType.NUMBER]: DynamicFormItemType.FLOAT,
+  };
+  if (value in typeMap) {
+    return typeMap[value];
+  }
+
   return isDynamicFormItemType(value) ? value : DynamicFormItemType.UNKNOWN;
 }
 

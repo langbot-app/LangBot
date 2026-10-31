@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Trang chủ</a> ｜
-<a href="https://link.langbot.app/en/docs/features">Tính năng</a> ｜
-<a href="https://link.langbot.app/en/docs/guide">Tài liệu</a> ｜
-<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/en/insight/features">Tính năng</a> ｜
+<a href="https://langbot.app/docs/en/insight/guide">Tài liệu</a> ｜
+<a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">Chợ Plugin</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Lộ trình</a>
 
@@ -48,9 +48,9 @@ LangBot là một **nền tảng mã nguồn mở, cấp sản xuất** để x�
 - **Bảng quản lý Web** — Cấu hình, quản lý và giám sát bot thông qua giao diện trình duyệt trực quan. Không cần chỉnh sửa YAML.
 - **Kiến trúc đa Pipeline** — Các bot khác nhau cho các kịch bản khác nhau, với giám sát toàn diện và xử lý ngoại lệ.
 
-[→ Tìm hiểu thêm về tất cả tính năng](https://link.langbot.app/en/docs/features)
+[→ Tìm hiểu thêm về tất cả tính năng](https://langbot.app/docs/en/insight/features)
 
-📍 Hướng dẫn thực hành: [triển khai bot AI đa nền tảng trong 5 phút](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [kết nối DeepSeek với WeChat, Discord và Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [chạy Dify Agent trên Discord, Telegram và Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) và [xây dựng chatbot với n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Hướng dẫn thực hành: [triển khai bot AI đa nền tảng trong 5 phút](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [kết nối DeepSeek với WeChat, Discord và Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [chạy Dify Agent trên Discord, Telegram và Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) và [xây dựng chatbot với n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -64,7 +64,11 @@ Nhấp vào các nút Star và Watch ở góc trên bên phải của kho lưu t
 
 ### ☁️ LangBot Cloud (Khuyên dùng)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — Không cần triển khai, sẵn sàng sử dụng.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+Không cần triển khai, sẵn sàng sử dụng.
 
 ### Khởi chạy một dòng
 
@@ -82,12 +86,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### Triển khai đám mây một cú nhấp
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Thêm tùy chọn:** [Docker](https://link.langbot.app/en/docs/docker) · [Thủ công](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+**Thêm tùy chọn:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [Thủ công](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -138,7 +143,7 @@ docker compose --profile all up -d
 | [302.AI](https://share.302ai.cn/SuTG99) | Cổng | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | Cổng | ✅ |
 
-[→ Xem tất cả tích hợp](https://link.langbot.app/en/docs/features)
+[→ Xem tất cả tích hợp](https://langbot.app/docs/en/insight/features)
 
 ---
 
@@ -152,14 +157,6 @@ docker compose --profile all up -d
 | **Đa nền tảng** | Một bot, tất cả nền tảng. Quản lý từ một bảng điều khiển duy nhất |
 
 ---
-
-## Demo trực tuyến
-
-**Thử ngay:** https://demo.langbot.dev/
-- Email: `demo@langbot.app`
-- Mật khẩu: `langbot123456`
-
-*Lưu ý: Môi trường demo công khai. Không nhập thông tin nhạy cảm.*
 
 ## Được xây dựng cho AI Agent 🤖
 
@@ -182,12 +179,6 @@ LangBot **thân thiện với agent ngay từ thiết kế** —— các coding 
 
 ---
 
-## Lịch sử Star
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## Người đóng góp
 
 Cảm ơn tất cả [người đóng góp](https://github.com/langbot-app/LangBot/graphs/contributors) đã giúp LangBot trở nên tốt hơn:
@@ -195,3 +186,5 @@ Cảm ơn tất cả [người đóng góp](https://github.com/langbot-app/LangB
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[Mã nguồn tài liệu](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

@@ -1,0 +1,30 @@
+---
+title: "LiteLoaderQQNT"
+description: "LiteLoaderQQNT（LLOneBot）経由で QQ を LangBot に接続。QQ のグループやチャット向け AI ボットを構築。"
+---
+
+OneBot 11 プロトコルを通じて接続します。アダプターとして ``OneBot v11`` を選択する必要があります。
+
+# LiteLoaderQQNT
+
+- [LiteLoaderQQNT の OneBot API プラグイン](https://github.com/LLOneBot/LLOneBot)は QQ クライアントに注入し、OneBot 11 プロトコルに変換します
+
+LiteLoaderQQNT のインストールチュートリアル：https://llonebot.github.io/zh-CN/guide/getting-started
+
+![Image 1](/images/zh/deploy/bots/qq/onebot/llonebot/llob_cfg.png)
+
+アドレスの IP アドレスが LangBot を実行しているホストのアドレスであることを確認してください（同じネットワークで実行している場合は、127.0.0.1 を使用します）
+
+## Lagrange 統合
+
+次に、LangBot 設定ページを開きます
+
+Bots をクリックし、次に Add をクリックします
+
+`Platform/Adapter Selection` で `OneBot v11` を選択します
+
+![napcat_webui_03](/images/zh/deploy/bots/qq/onebot/napcat/napcat_webui_03.png)
+
+<Info>
+注意：複数の docker コンテナに関連するネットワーク接続の問題がある場合は、[ネットワーク設定の詳細](/en/workshop/network-details)を参照してください
+</Info>

@@ -162,6 +162,10 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body {
+    overscroll-behavior: none;
+  }
   body {
     @apply bg-background text-foreground;
   }
@@ -187,6 +191,32 @@
   }
 }
 
-.react-flow__attribution {
-  opacity: 0.2 !important;
+/* Show one tour at a time while the sidebar introduction is open. */
+body:has([data-tour-modal='true']) [data-tour-modal='false'] {
+  display: none;
+}
+
+/* Reserve native scrollbar space before content overflows. Extending the
+   utilities also covers responsive variants, nested panels and popup menus.
+   Horizontal-only scrollers and custom overlay scroll areas stay unchanged. */
+@utility overflow-auto {
+  scrollbar-gutter: stable;
+}
+
+@utility overflow-y-auto {
+  scrollbar-gutter: stable;
+}
+
+@utility overflow-scroll {
+  scrollbar-gutter: stable;
+}
+
+@utility overflow-y-scroll {
+  scrollbar-gutter: stable;
+}
+
+@layer base {
+  textarea {
+    scrollbar-gutter: stable;
+  }
 }

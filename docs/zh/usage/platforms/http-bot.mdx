@@ -1,0 +1,232 @@
+---
+title: "HTTP 通用接入"
+description: "通过 HTTP 将任意后端系统接入 LangBot：以签名 Webhook 推入消息，在回调地址接收回复。面向服务间集成，无需长连接。"
+icon: "/images/platforms/http-bot.svg"
+---
+
+`HTTP 通用接入`（HTTP Bot）是一个面向**服务间集成**的通用适配器。任意后端系统（工单系统、CRM、内部工具、自研 Web 应用等）都可以通过它驱动 LangBot 流水线：
+
+- **入站**：你的后端将消息以签名方式 `POST` 到 LangBot 的固定地址；
+- **出站**：LangBot 把回复 `POST` 到你配置的回调地址。
+
+它**无需维持长连接**，并且完整保留流水线的两项原生能力：
+
+- **消息聚合（多条合一，N→1）**：用户连发多条消息，合并成一轮处理；
+- **多段回复（一问多答，1→M）**：一轮对话可产生多条回复（函数调用、插件多条消息、流式分片）。
+
+<Note>
+如果你要的是**浏览器内**的实时聊天组件，请使用[页面机器人](/zh/usage/platforms/webpage)。HTTP 通用接入是为后端到后端的集成设计的。
+</Note>
+
+## 工作原理
+
+```
+你的后端  ──(1) 推入签名消息──►  LangBot   /bots/<bot_uuid>
+                                （流水线运行：聚合 → 推理 → 回复）
+你的回调  ◄─(2) 推回签名回复──   LangBot   每段回复一次 POST
+```
+
+- **(1) 入站**是「先收下、后处理」：LangBot 立即返回 `202 Accepted`，**不会**在该响应里带流水线结果；
+- **(2) 出站**回复随后以独立的签名 POST 发到你的 `回调地址`，一轮对话可能产生多次回调；
+- 一切都以**你自定义的 `session_id`**（如工单号）为键，每个 `session_id` 对应一个独立会话。
+
+## 创建机器人
+
+打开 LangBot WebUI，进入**机器人 > 创建机器人**，填写名称，平台/适配器选择 `HTTP 通用接入`。
+
+## 配置项
+
+| 配置项 | 必填 | 说明 |
+|--------|------|------|
+| 入站签名密钥 | 是 | 你的后端用它对入站请求做 HMAC-SHA256 签名，LangBot 据此校验每个入站请求。 |
+| 出站回调地址 | 是 | LangBot 将回复 POST 到此地址。**仅取自此配置**，不允许在消息中覆盖（防 SSRF）。 |
+| 出站签名密钥 | 否 | LangBot 用它对回调签名，供你的接收端校验。留空则回退使用入站密钥。 |
+| 默认会话类型 | 否 | `person`（默认）或 `group`。 |
+| 强制入站签名校验 | 否 | 生产环境请保持开启。 |
+| 回调超时（秒） | 否 | 单次回调的 HTTP 超时，默认 15。 |
+| 回调最大重试次数 | 否 | 超时或 5xx 时按指数退避重试，默认 3。 |
+
+创建并绑定**流水线**、**启用**后，配置页会显示**入站 Webhook 地址**，形如 `https://your-langbot/bots/<bot_uuid>`，复制备用。
+
+## 签名方案
+
+两个方向都使用同一套零依赖的 HMAC-SHA256 方案：
+
+```
+signing_string = "{timestamp}." + 原始请求体字节
+signature      = "sha256=" + hex(HMAC_SHA256(secret, signing_string))
+```
+
+通过请求头传递：
+
+| 请求头 | 含义 |
+|--------|------|
+| `X-LB-Timestamp` | Unix 秒级时间戳。与服务端相差超过 **±300 秒**则拒绝。 |
+| `X-LB-Signature` | `sha256=<hex>`，对 `"{timestamp}." + body` 计算。 |
+| `X-LB-Idempotency-Key` | （可选，入站）幂等键；相同键重复提交返回 `409`。 |
+
+校验出站回调时同理，使用**出站密钥**（留空则用入站密钥）。
+
+## 发送第一条消息（curl）
+
+```bash
+BOT="https://your-langbot/bots/<bot_uuid>"
+SECRET="你的入站密钥"
+BODY='{"session_id":"ticket-10293","message":[{"type":"Plain","text":"导出功能在控制台一直失败。"}]}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"
+
+curl -sS -X POST "$BOT" \
+  -H "Content-Type: application/json" \
+  -H "X-LB-Timestamp: $TS" \
+  -H "X-LB-Signature: $SIG" \
+  -d "$BODY"
+# -> 202 {"code":0,"msg":"accepted","data":{"session_id":"ticket-10293","accepted_message_id":"in_...","aggregating":true}}
+```
+
+回复将稍后 POST 到你配置的回调地址。
+
+## 入站消息格式
+
+`POST /bots/{bot_uuid}`
+
+```json
+{
+  "session_id": "ticket-10293",
+  "session_type": "person",
+  "sender": { "id": "user-5567", "name": "Alice" },
+  "message": [
+    { "type": "Plain", "text": "导出功能在控制台一直失败。" },
+    { "type": "Image", "url": "https://example.com/screenshot.png" }
+  ]
+}
+```
+
+- `session_id`（**必填**）：你的稳定标识，1:1 映射到一个 LangBot 会话；
+- `message`（**必填**）：LangBot 消息链。文本用 `{"type":"Plain","text":"..."}`，图片用 `{"type":"Image","url":"..."}`（或 `base64`）；其余支持 `Voice`、`File`、`At`、`Quote`。
+
+<Warning>
+回调地址**不接受**写在消息体里，只取自机器人配置。这是有意为之：即便入站密钥泄露，攻击者也无法把回复重定向到任意地址。
+</Warning>
+
+### 消息聚合（N → 1）
+
+若流水线启用了**消息聚合**，用**相同的 `session_id`**在聚合窗口内连发多条消息，它们会被合并为**一轮**处理。无需任何特殊标记，复用 `session_id` 即可。
+
+## 出站回调格式
+
+LangBot 将每段回复 POST 到你的回调地址：
+
+```json
+{
+  "session_id": "ticket-10293",
+  "reply_to": "in_01H...",
+  "sequence": 1,
+  "is_final": false,
+  "stream": false,
+  "message": [ { "type": "Plain", "text": "正在排查……" } ],
+  "timestamp": "2026-06-22T09:00:01Z"
+}
+```
+
+你的接收端应尽快返回 `2xx`。非 2xx 或超时，LangBot 会按指数退避重试。
+
+### 多段回复（1 → M）
+
+一轮对话可能产生多次回调，对同一会话按 `sequence` 顺序送达：
+
+```
+seq=1 is_final=false  "正在查看导出日志……"
+seq=2 is_final=false  "发现 2 次失败的导出。"
+seq=3 is_final=true   "已修复，请重试。"
+```
+
+用 `session_id` + `sequence` 拼接；收到 `is_final: true` 表示本轮结束。
+
+## 重置会话
+
+为某个 `session_id` 开启全新会话（清空历史）：
+
+```
+POST /bots/{bot_uuid}/reset
+{ "session_id": "ticket-10293", "session_type": "person" }
+→ 200 { "code":0, "msg":"reset", "data": { "session_id":"ticket-10293", "removed": true } }
+```
+
+签名方式与入站消息一致。
+
+## 同步便利模式
+
+若你不需要流式/多段，只想在同一次 HTTP 调用里拿回复，可 POST 到 `/sync`。LangBot 会等待本轮结束，把所有回复段**折叠**成一个数组返回：
+
+```
+POST /bots/{bot_uuid}/sync
+{ "session_id": "ticket-10293", "message": [ { "type":"Plain", "text":"你好" } ] }
+→ 200 { "code":0, "msg":"ok",
+        "data": { "session_id":"ticket-10293", "reply_to":"in_...", "message": [ ... ] } }
+```
+
+<Warning>
+同步模式是**有损的**（丢失 `sequence` 与流式边界），且会阻塞最长 `回调超时 × 4` 秒。实时或多段场景请优先使用回调模式。每个 `session_id` 同一时刻只允许一个进行中的 `/sync`。
+</Warning>
+
+## 错误码
+
+```json
+{ "code": 40101, "msg": "invalid signature: signature_mismatch", "data": null }
+```
+
+| HTTP | code | 含义 |
+|------|------|------|
+| 202 | 0 | 已接受 |
+| 400 | 40001 | 请求体不合法 / 缺少 `session_id` 或 `message` |
+| 401 | 40101 | 签名错误或过期 |
+| 409 | 40901 | 幂等键重复 |
+| 413 | 41301 | 消息过大（>1 MiB） |
+| 500 | 50001 | 内部错误 |
+
+## 参考客户端与 5 分钟体验
+
+LangBot 主仓的 [`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) 提供了一个**交互式调试台**和 Python / TypeScript 参考客户端。
+
+### 交互式调试台（推荐先跑这个）
+
+[`playground.py`](https://github.com/langbot-app/LangBot/blob/master/examples/http-bot/playground.py) 是一个单文件网页应用:在浏览器里打字 → 自动签名后真实发往运行中的 `http_bot` 机器人 → 回复经回调实时显示在页面上,右侧调试面板展示签名、`202` 确认、以及每条回调的 `sequence` 与验签结果。
+
+```bash
+# 在 LangBot 仓库根目录,后端已在运行的前提下:
+PUBLIC_IP=<你的公网IP> ./.venv/bin/python examples/http-bot/playground.py
+# 然后打开  http://<你的公网IP>:8920/
+```
+
+启动时它会从 `data/langbot.db` 读取 API Key 与 `http_bot` 机器人,并通过 LangBot API 把该机器人的回调地址和密钥指向自身(机器人热加载,无需重启)。前提:有一个已启用、且绑定了可用流水线的 `http_bot` 机器人。
+
+### 命令行参考客户端
+
+[`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) 还提供了 Python 与 TypeScript 参考客户端（含回调接收器）：
+
+```bash
+cd examples/http-bot
+pip install flask requests
+
+# 终端 1：回调接收器（把机器人回调地址指向它，本地可用 cloudflared / ngrok 隧道）
+python client.py serve --port 8900 --secret SHARED_SECRET
+
+# 终端 2：推送一条消息
+python client.py push \
+  --url https://your-langbot/bots/<bot_uuid> \
+  --secret SHARED_SECRET \
+  --session ticket-1 \
+  --text "你好"
+```
+
+终端 1 会逐段打印回复（`[part ]` / `[FINAL]`）并带序号——这就是 1→M 多段回复、签名校验通过的实时效果。
+
+机器可读契约见主仓 [`docs/http-bot-openapi.json`](https://github.com/langbot-app/LangBot/blob/master/docs/http-bot-openapi.json)。
+
+## 安全清单
+
+- 生产环境保持**强制入站签名校验**开启；
+- 回调地址使用 **HTTPS**，且只能在配置中设置（不可逐条覆盖）；
+- 密钥按密码对待，通过控制台轮换；
+- 入站路由在框架层是无鉴权的（**有意设计**），安全完全依赖 HMAC 签名——公网部署绝不要关闭它。

@@ -17,6 +17,7 @@ interface PipelineMock {
   description: string;
   config: JsonRecord;
   emoji: string;
+  kind: 'agent' | 'pipeline';
   is_default: boolean;
   updated_at: string;
 }
@@ -29,6 +30,7 @@ interface KnowledgeBaseMock {
   knowledge_engine_plugin_id: string;
   creation_settings: JsonRecord;
   retrieval_settings: JsonRecord;
+  initialized: boolean;
   knowledge_engine: {
     plugin_id: string;
     name: {
@@ -62,18 +64,54 @@ interface BotMock {
   adapter: string;
   adapter_config: JsonRecord;
   use_pipeline_uuid?: string;
+  event_bindings: unknown[];
+  plugin_processors: unknown[];
   pipeline_routing_rules: unknown[];
   adapter_runtime_values: JsonRecord;
   updated_at: string;
 }
 
+export interface WorkspaceEntryMock {
+  workspace: {
+    uuid: string;
+    instance_uuid: string;
+    name: string;
+    slug: string;
+    type: 'personal' | 'team';
+    status: 'active';
+    source: 'local' | 'cloud_projection';
+  };
+  membership: {
+    uuid: string;
+    workspace_uuid: string;
+    account_uuid: string;
+    display_name: string;
+    email: string;
+    role: 'owner' | 'admin' | 'developer' | 'operator' | 'viewer';
+    status: 'active';
+    joined_at: string;
+    created_at: string;
+  };
+  permissions: string[];
+  placement_generation: number;
+}
+
 interface LangBotApiMockState {
+  authenticated: boolean;
+  withAssistant: boolean;
   bots: BotMock[];
   counters: Record<string, number>;
   knowledgeBases: KnowledgeBaseMock[];
   mcpServers: MCPServerMock[];
+  monitoringData: unknown;
+  monitoringSessions: unknown[];
   pipelines: PipelineMock[];
+  sessionAnalyses: Record<string, unknown>;
+  sessionMessages: Record<string, unknown[]>;
   skills: SkillMock[];
+  withAdapterEvents: boolean;
+  withRunnerToolSelector: boolean;
+  workspaces: WorkspaceEntryMock[];
 }
 
 function ok(data: unknown) {
@@ -105,6 +143,59 @@ function now() {
   return new Date().toISOString();
 }
 
+export function makeWorkspaceEntry(
+  uuid: string,
+  name: string,
+  source: 'local' | 'cloud_projection' = 'cloud_projection',
+): WorkspaceEntryMock {
+  const createdAt = now();
+  return {
+    workspace: {
+      uuid,
+      instance_uuid: 'instance-playwright',
+      name,
+      slug: uuid,
+      type: 'team',
+      status: 'active',
+      source,
+    },
+    membership: {
+      uuid: `membership-${uuid}`,
+      workspace_uuid: uuid,
+      account_uuid: 'account-playwright',
+      display_name: 'Playwright Admin',
+      email: 'admin@example.com',
+      role: 'owner',
+      status: 'active',
+      joined_at: createdAt,
+      created_at: createdAt,
+    },
+    permissions: [
+      'api_key.manage',
+      'audit.view',
+      'data.export',
+      'member.invite',
+      'member.remove',
+      'member.update_role',
+      'member.view',
+      'provider_secret.manage',
+      'resource.manage',
+      'resource.view',
+      'runtime.operate',
+      'workspace.view',
+    ],
+    placement_generation: 1,
+  };
+}
+
+function defaultWorkspaceEntry(): WorkspaceEntryMock {
+  return makeWorkspaceEntry(
+    'workspace-playwright',
+    'Playwright Workspace',
+    'local',
+  );
+}
+
 function nextId(state: LangBotApiMockState, prefix: string) {
   state.counters[prefix] = (state.counters[prefix] || 0) + 1;
   return `${prefix}-${state.counters[prefix]}`;
@@ -122,15 +213,138 @@ function emptyMonitoringData() {
     },
     messages: [],
     llmCalls: [],
+    toolCalls: [],
     embeddingCalls: [],
     sessions: [],
     errors: [],
     totalCount: {
       messages: 0,
       llmCalls: 0,
+      toolCalls: 0,
       embeddingCalls: 0,
       sessions: 0,
       errors: 0,
+    },
+  };
+}
+
+type RawMonitoringMessage = Record<string, unknown>;
+
+/** Mirror of the backend execution status groups so fixtures stay realistic. */
+function executionStatusGroup(status: string, source: 'agent' | 'pipeline') {
+  if (source === 'agent') {
+    if (status === 'failed' || status === 'timeout') return 'failed';
+    if (status === 'created' || status === 'queued') return 'queued';
+    if (status === 'claimed' || status === 'running') return 'running';
+    if (status === 'cancelled') return 'cancelled';
+    return status;
+  }
+  if (status === 'success') return 'completed';
+  if (status === 'error') return 'failed';
+  if (status === 'pending') return 'running';
+  if (status === 'discarded' || status === 'not_matched') return 'ignored';
+  return status;
+}
+
+/** Best-effort text extraction from a serialized message chain (mirrors backend). */
+function executionText(raw: unknown): string {
+  const source = String(raw ?? '');
+  try {
+    const parts: string[] = [];
+    const walk = (node: unknown, depth = 0): void => {
+      if (depth > 6) return;
+      if (Array.isArray(node)) {
+        node.forEach((item) => walk(item, depth + 1));
+      } else if (node && typeof node === 'object') {
+        for (const [key, value] of Object.entries(node)) {
+          if (key === 'text' && typeof value === 'string') parts.push(value);
+          else walk(value, depth + 1);
+        }
+      }
+    };
+    walk(JSON.parse(source));
+    return parts.join(' ').trim() || source;
+  } catch {
+    return source;
+  }
+}
+
+/** Derive the unified execution list from a mocked monitoring payload. */
+export function buildExecutionList(monitoringData: unknown) {
+  const payload = monitoringData as
+    { messages?: RawMonitoringMessage[] } | undefined;
+  const items = (payload?.messages ?? [])
+    .filter((message) => message.role !== 'assistant')
+    .map((message) => {
+      const status = String(message.status ?? 'success');
+      return {
+        source: 'pipeline' as const,
+        id: String(message.id),
+        event_id: null,
+        status,
+        status_group: executionStatusGroup(status, 'pipeline'),
+        title: executionText(message.message_content),
+        input_preview: executionText(message.message_content),
+        target_kind: 'pipeline' as const,
+        target_id: (message.pipeline_id as string) ?? null,
+        target_name: (message.pipeline_name as string) ?? null,
+        bot_id: (message.bot_id as string) ?? null,
+        bot_name: (message.bot_name as string) ?? null,
+        pipeline_id: (message.pipeline_id as string) ?? null,
+        pipeline_name: (message.pipeline_name as string) ?? null,
+        runner_id: (message.runner_name as string) ?? null,
+        conversation_id: null,
+        session_id: (message.session_id as string) ?? null,
+        created_at_ms: Date.parse(String(message.timestamp ?? '')) || null,
+        started_at_ms: null,
+        finished_at_ms: null,
+        duration_ms: null,
+        usage: null,
+        cost: null,
+        queue_name: null,
+        debug: false,
+        has_error: status === 'error',
+      };
+    });
+
+  const byStatus: Record<string, number> = {};
+  for (const item of items) {
+    byStatus[item.status_group] = (byStatus[item.status_group] ?? 0) + 1;
+  }
+  const completed = byStatus.completed ?? 0;
+  const failed = byStatus.failed ?? 0;
+  const denominator = completed + failed;
+
+  return {
+    items,
+    total: items.length,
+    limit: items.length,
+    offset: 0,
+    has_more: false,
+    summary: {
+      executions: {
+        total: items.length,
+        by_source: { agent: 0, pipeline: items.length },
+        by_status: byStatus,
+        completed,
+        failed,
+        running: byStatus.running ?? 0,
+        queued: byStatus.queued ?? 0,
+        cancelled: byStatus.cancelled ?? 0,
+        ignored: byStatus.ignored ?? 0,
+        waiting: 0,
+        success_rate:
+          denominator > 0
+            ? Math.round((completed / denominator) * 10000) / 100
+            : null,
+        denominator,
+        p50_duration_ms: null,
+        p95_duration_ms: null,
+        duration_sample: 0,
+        debug: 0,
+        real: items.length,
+      },
+      tokens: { total_tokens: 0, calls: 0, calls_with_usage: 0 },
     },
   };
 }
@@ -172,19 +386,171 @@ function makePipeline(
   data: JsonRecord,
   uuid = nextId(state, 'pipeline'),
 ): PipelineMock {
+  const kind =
+    data.kind === 'agent' || uuid.startsWith('agent-') ? 'agent' : 'pipeline';
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
+  const runnerConfig = {
+    model: {
+      primary: 'llm-valid',
+      fallbacks: [],
+    },
+    'enable-all-tools': false,
+    tools: ['unavailable_plugin_tool'],
+  };
+  const defaultConfig =
+    kind === 'agent'
+      ? {
+          runner: { id: runnerId, 'expire-time': 0 },
+          runner_config: { [runnerId]: runnerConfig },
+        }
+      : {
+          ai: {
+            runner: { id: runnerId, 'expire-time': 0 },
+            runner_config: { [runnerId]: runnerConfig },
+          },
+          trigger: {},
+          safety: {},
+          output: {},
+        };
   return {
     uuid,
     name: String(data.name || ''),
     description: String(data.description || ''),
-    config: (data.config as JsonRecord | undefined) || {
-      ai: {},
-      trigger: {},
-      safety: {},
-      output: {},
-    },
+    config: (data.config as JsonRecord | undefined) || defaultConfig,
     emoji: String(data.emoji || '⚙️'),
+    kind,
     is_default: false,
     updated_at: now(),
+  };
+}
+
+export function pipelineMetadata(withRunnerToolSelector = false) {
+  const runnerId = 'plugin:langbot-team/LocalAgent/default';
+  return {
+    configs: [
+      {
+        name: 'ai',
+        label: {
+          en_US: 'AI Feature',
+          zh_Hans: 'AI 能力',
+        },
+        stages: [
+          {
+            name: 'runner',
+            label: {
+              en_US: 'Runtime',
+              zh_Hans: '运行方式',
+            },
+            config: [
+              {
+                name: 'id',
+                label: {
+                  en_US: 'Runner',
+                  zh_Hans: '运行器',
+                },
+                type: 'select',
+                required: true,
+                default: runnerId,
+                options: [
+                  {
+                    name: runnerId,
+                    label: {
+                      en_US: 'Local Agent',
+                      zh_Hans: '本地 Agent',
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            name: runnerId,
+            label: {
+              en_US: 'Local Agent',
+              zh_Hans: '本地 Agent',
+            },
+            config: [
+              {
+                id: 'model',
+                name: 'model',
+                label: {
+                  en_US: 'Model',
+                  zh_Hans: '模型',
+                },
+                type: 'model-fallback-selector',
+                required: true,
+                default: {
+                  primary: 'llm-valid',
+                  fallbacks: [],
+                },
+              },
+              ...(withRunnerToolSelector
+                ? [
+                    {
+                      id: 'plugin:langbot-team/LocalAgent/default.tools',
+                      name: 'tools',
+                      label: {
+                        en_US: 'Tools',
+                        zh_Hans: '工具',
+                      },
+                      type: 'rich-tools-selector',
+                      required: false,
+                      default: [],
+                    },
+                  ]
+                : []),
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function agentMetadata(withRunnerToolSelector = false) {
+  const metadata = pipelineMetadata(withRunnerToolSelector);
+  return {
+    runner_config: metadata.configs[0],
+    kinds: [
+      {
+        name: 'agent',
+        supported_event_patterns: ['*'],
+        message_only: false,
+      },
+      {
+        name: 'pipeline',
+        supported_event_patterns: ['message.*'],
+        message_only: true,
+      },
+    ],
+  };
+}
+
+function providerModelList() {
+  return {
+    models: [
+      {
+        uuid: '',
+        name: 'Broken Empty UUID Model',
+        provider_uuid: 'provider-empty',
+        provider: {
+          uuid: 'provider-empty',
+          name: 'Broken Provider',
+          requester: 'mock-provider',
+        },
+      },
+      {
+        uuid: 'llm-valid',
+        name: 'Valid Mock Model',
+        provider_uuid: 'provider-valid',
+        provider: {
+          uuid: 'provider-valid',
+          name: 'Mock Provider',
+          requester: 'mock-provider',
+        },
+        abilities: ['func_call'],
+      },
+    ],
   };
 }
 
@@ -222,6 +588,10 @@ function makeKnowledgeBase(
     creation_settings: (data.creation_settings as JsonRecord | undefined) || {},
     retrieval_settings:
       (data.retrieval_settings as JsonRecord | undefined) || {},
+    initialized:
+      data.initialized === false || data.defer_initialization === true
+        ? false
+        : true,
     knowledge_engine: {
       plugin_id: engine.plugin_id,
       name: engine.name,
@@ -262,6 +632,8 @@ function makeBot(
     use_pipeline_uuid: data.use_pipeline_uuid
       ? String(data.use_pipeline_uuid)
       : undefined,
+    event_bindings: (data.event_bindings as unknown[] | undefined) || [],
+    plugin_processors: (data.plugin_processors as unknown[] | undefined) || [],
     pipeline_routing_rules:
       (data.pipeline_routing_rules as unknown[] | undefined) || [],
     adapter_runtime_values: {
@@ -272,7 +644,7 @@ function makeBot(
   };
 }
 
-function mockAdapters() {
+function mockAdapters(withAdapterEvents = false) {
   return [
     {
       name: 'playwright-adapter',
@@ -286,6 +658,17 @@ function mockAdapters() {
       },
       spec: {
         categories: ['testing'],
+        ...(withAdapterEvents
+          ? {
+              supported_events: [
+                'message.received',
+                'message.edited',
+                'group.member_joined',
+                'group.member_left',
+                'feedback.received',
+              ],
+            }
+          : {}),
         config: [],
       },
     },
@@ -321,21 +704,37 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   if (path === '/api/v1/user/account-info') {
     return fulfillJson(route, {
       initialized: true,
-      account_type: 'local',
-      has_password: true,
+      authenticated_invitation_acceptance_enabled: false,
+      invitation_registration_enabled: true,
+      password_login_enabled: true,
+      space_login_enabled: false,
     });
   }
 
   if (path === '/api/v1/user/check-token') {
-    return fulfillJson(route, { token: '' });
+    return fulfillJson(route, {
+      token: state.authenticated ? 'playwright-token' : '',
+    });
   }
 
   if (path === '/api/v1/user/auth') {
+    state.authenticated = true;
     return fulfillJson(route, { token: 'playwright-token' });
+  }
+
+  if (path === '/api/v1/user/space/callback') {
+    state.authenticated = true;
+    return fulfillJson(route, {
+      token: 'playwright-space-token',
+      user: 'admin@example.com',
+    });
   }
 
   if (path === '/api/v1/user/info') {
     return fulfillJson(route, {
+      // Most tests exercise an unlinked local user. Assistant tests opt into
+      // an account identity and mock its additional provider/conversation APIs.
+      account_uuid: state.withAssistant ? 'account-playwright' : null,
       user: 'admin@example.com',
       account_type: 'local',
       has_password: true,
@@ -346,8 +745,44 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { credits: null });
   }
 
+  if (path === '/api/v1/workspaces/bootstrap') {
+    return fulfillJson(route, { workspaces: state.workspaces });
+  }
+
+  if (path === '/api/v1/workspaces/current/language') {
+    return fulfillJson(route, {
+      language: 'en_US',
+      supported_languages: [
+        'en_US',
+        'zh_Hans',
+        'zh_Hant',
+        'ja_JP',
+        'es_ES',
+        'ru_RU',
+        'th_TH',
+        'vi_VN',
+      ],
+    });
+  }
+
+  if (path === '/api/v1/workspaces/current') {
+    const selectedWorkspaceUuid = request.headers()['x-workspace-id'];
+    const entry = state.workspaces.find(
+      (item) => item.workspace.uuid === selectedWorkspaceUuid,
+    );
+    return fulfillJson(route, entry || state.workspaces[0]);
+  }
+
+  if (path === '/api/v1/workspaces') {
+    return fulfillJson(route, {
+      workspaces: state.workspaces.map((entry) => entry.workspace),
+    });
+  }
+
   if (path === '/api/v1/platform/adapters') {
-    return fulfillJson(route, { adapters: mockAdapters() });
+    return fulfillJson(route, {
+      adapters: mockAdapters(state.withAdapterEvents),
+    });
   }
 
   if (path === '/api/v1/platform/bots') {
@@ -365,7 +800,7 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
 
   const botLogsMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)\/logs$/);
   if (botLogsMatch) {
-    return fulfillJson(route, { logs: [], total: 0 });
+    return fulfillJson(route, { logs: [], total_count: 0 });
   }
 
   const botMatch = path.match(/^\/api\/v1\/platform\/bots\/([^/]+)$/);
@@ -373,7 +808,12 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     const botId = decodeURIComponent(botMatch[1]);
 
     if (method === 'PUT') {
-      const bot = makeBot(state, parseJsonBody(route), botId);
+      const current = state.bots.find((item) => item.uuid === botId);
+      const bot = makeBot(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        botId,
+      );
       state.bots = [...state.bots.filter((item) => item.uuid !== botId), bot];
       return fulfillJson(route, {});
     }
@@ -389,8 +829,117 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     });
   }
 
+  if (path === '/api/v1/provider/models/llm') {
+    return fulfillJson(route, providerModelList());
+  }
+
+  if (path === '/api/v1/provider/models/embedding') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/provider/models/rerank') {
+    return fulfillJson(route, { models: [] });
+  }
+
+  if (path === '/api/v1/tools') {
+    return fulfillJson(route, {
+      tools: [
+        {
+          name: 'available_plugin_tool',
+          human_desc: 'Available plugin tool for frontend E2E tests.',
+          source: 'plugin',
+          source_id: 'qa/plugin-smoke',
+          source_name: 'qa/plugin-smoke',
+        },
+      ],
+    });
+  }
+
+  if (path === '/api/v1/agents/_/metadata') {
+    return fulfillJson(route, agentMetadata(true));
+  }
+
+  if (path === '/api/v1/agents') {
+    if (method === 'POST') {
+      const agent = makePipeline(state, parseJsonBody(route));
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agent.uuid),
+        agent,
+      ];
+      return fulfillJson(route, { uuid: agent.uuid, kind: agent.kind });
+    }
+
+    return fulfillJson(route, { agents: state.pipelines });
+  }
+
+  const agentDebugMatch = path.match(
+    /^\/api\/v1\/agents\/([^/]+)\/debug(?:\/stream)?$/,
+  );
+  if (agentDebugMatch) {
+    const payload = parseJsonBody(route);
+    const result = {
+      event_id: nextId(state, 'event'),
+      event_type: String(payload.event_type || 'message.received'),
+      conversation_id: String(payload.conversation_id || 'debug-session'),
+      final_text: 'Mock Agent response',
+      outputs: [
+        {
+          kind: 'message',
+          role: 'assistant',
+          text: 'Mock Agent response',
+        },
+      ],
+    };
+    if (path.endsWith('/stream')) {
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/x-ndjson',
+        body: JSON.stringify({ kind: 'completed', data: result }) + '\n',
+      });
+    }
+    return fulfillJson(route, result);
+  }
+
+  const agentMatch = path.match(/^\/api\/v1\/agents\/([^/]+)$/);
+  if (agentMatch) {
+    const agentId = decodeURIComponent(agentMatch[1]);
+
+    if (method === 'PUT') {
+      const current = state.pipelines.find((item) => item.uuid === agentId);
+      const agent = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        agentId,
+      );
+      state.pipelines = [
+        ...state.pipelines.filter((item) => item.uuid !== agentId),
+        agent,
+      ];
+      return fulfillJson(route, {});
+    }
+
+    if (method === 'DELETE') {
+      state.pipelines = state.pipelines.filter((item) => item.uuid !== agentId);
+      return fulfillJson(route, {});
+    }
+
+    const agent = state.pipelines.find((item) => item.uuid === agentId);
+    return fulfillJson(route, {
+      agent:
+        agent ||
+        makePipeline(
+          state,
+          {
+            name: agentId,
+            kind: agentId.startsWith('agent-') ? 'agent' : 'pipeline',
+          },
+          agentId,
+        ),
+    });
+  }
+
   if (path === '/api/v1/pipelines/_/metadata') {
-    return fulfillJson(route, { configs: [] });
+    return fulfillJson(route, pipelineMetadata(state.withRunnerToolSelector));
   }
 
   if (path === '/api/v1/pipelines') {
@@ -406,12 +955,27 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     return fulfillJson(route, { pipelines: state.pipelines });
   }
 
+  if (
+    /^\/api\/v1\/pipelines\/[^/]+\/ws\/messages\/(person|group)$/.test(path)
+  ) {
+    return fulfillJson(route, { messages: [] });
+  }
+
+  if (/^\/api\/v1\/pipelines\/[^/]+\/ws\/reset\/(person|group)$/.test(path)) {
+    return fulfillJson(route, { message: 'reset' });
+  }
+
   const pipelineMatch = path.match(/^\/api\/v1\/pipelines\/([^/]+)$/);
   if (pipelineMatch) {
     const pipelineId = decodeURIComponent(pipelineMatch[1]);
 
     if (method === 'PUT') {
-      const pipeline = makePipeline(state, parseJsonBody(route), pipelineId);
+      const current = state.pipelines.find((item) => item.uuid === pipelineId);
+      const pipeline = makePipeline(
+        state,
+        { ...(current || {}), ...parseJsonBody(route) },
+        pipelineId,
+      );
       state.pipelines = [
         ...state.pipelines.filter((item) => item.uuid !== pipelineId),
         pipeline,
@@ -477,7 +1041,18 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
     const baseId = decodeURIComponent(knowledgeBaseMatch[1]);
 
     if (method === 'PUT') {
-      const base = makeKnowledgeBase(state, parseJsonBody(route), baseId);
+      const current = state.knowledgeBases.find((item) => item.uuid === baseId);
+      const payload = parseJsonBody(route);
+      const base = makeKnowledgeBase(
+        state,
+        {
+          ...(current || {}),
+          ...payload,
+          initialized:
+            payload.initialize_engine === true ? true : current?.initialized,
+        },
+        baseId,
+      );
       state.knowledgeBases = [
         ...state.knowledgeBases.filter((item) => item.uuid !== baseId),
         base,
@@ -689,11 +1264,113 @@ async function handleBackendApi(route: Route, state: LangBotApiMockState) {
   }
 
   if (path === '/api/v1/monitoring/data') {
-    return fulfillJson(route, emptyMonitoringData());
+    return fulfillJson(route, state.monitoringData);
+  }
+
+  if (path === '/api/v1/monitoring/sessions') {
+    return fulfillJson(route, {
+      sessions: state.monitoringSessions,
+      total: state.monitoringSessions.length,
+    });
+  }
+
+  if (path === '/api/v1/monitoring/messages') {
+    const sessionId = url.searchParams.get('sessionId') || '';
+    const messages = state.sessionMessages[sessionId] || [];
+    return fulfillJson(route, {
+      messages,
+      total: messages.length,
+    });
+  }
+
+  const sessionAnalysisMatch = path.match(
+    /^\/api\/v1\/monitoring\/sessions\/([^/]+)\/analysis$/,
+  );
+  if (sessionAnalysisMatch) {
+    const sessionId = decodeURIComponent(sessionAnalysisMatch[1]);
+    return fulfillJson(
+      route,
+      state.sessionAnalyses[sessionId] || {
+        session_id: sessionId,
+        found: true,
+        tool_calls: [],
+      },
+    );
   }
 
   if (path === '/api/v1/monitoring/overview') {
-    return fulfillJson(route, emptyMonitoringData().overview);
+    const data = state.monitoringData as { overview?: unknown };
+    return fulfillJson(route, data.overview || emptyMonitoringData().overview);
+  }
+
+  if (path === '/api/v1/monitoring/executions') {
+    return fulfillJson(route, buildExecutionList(state.monitoringData));
+  }
+
+  const executionDetail = path.match(
+    /^\/api\/v1\/monitoring\/executions\/(agent|pipeline|event|auto)\/(.+)$/,
+  );
+  if (executionDetail) {
+    const [, , executionId] = executionDetail;
+    const payload = state.monitoringData as {
+      messages?: RawMonitoringMessage[];
+      llmCalls?: RawMonitoringMessage[];
+      toolCalls?: RawMonitoringMessage[];
+      errors?: RawMonitoringMessage[];
+    };
+    const row = buildExecutionList(payload).items.find(
+      (item) => item.id === executionId,
+    );
+    if (!row)
+      return route.fulfill({
+        status: 404,
+        json: { code: 404, msg: 'Execution not found' },
+      });
+    const root = (payload.messages ?? []).find(
+      (item) => item.id === executionId,
+    )!;
+    const content = (item: RawMonitoringMessage) => ({
+      ...item,
+      content: item.message_content,
+      timestamp_ms: Date.parse(String(item.timestamp)),
+      origin: item.role === 'assistant' ? 'delivery' : 'input',
+    });
+    const pages = Object.fromEntries(
+      Object.entries({
+        inputs: [content(root)],
+        outputs: [],
+        deliveries: (payload.messages ?? [])
+          .filter((item) => item.parent_message_id === executionId)
+          .map(content),
+        conversation: (payload.messages ?? [])
+          .filter(
+            (item) =>
+              item.session_id === root.session_id &&
+              item.bot_id === root.bot_id,
+          )
+          .map(content),
+        related: [],
+        events: [],
+        llm_calls: (payload.llmCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        tool_calls: (payload.toolCalls ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+        errors: (payload.errors ?? []).filter(
+          (item) => item.message_id === executionId,
+        ),
+      }).map(([key, items]) => [
+        key,
+        { items, next_offset: items.length, has_more: false },
+      ]),
+    );
+    return fulfillJson(route, {
+      source: row.source,
+      row,
+      pages,
+      legacy_context: true,
+    });
   }
 
   if (path === '/api/v1/monitoring/token-statistics') {
@@ -798,22 +1475,70 @@ async function handleCloudApi(route: Route) {
 
 export async function installLangBotApiMocks(
   page: Page,
-  options: { authenticated?: boolean; storage?: JsonRecord } = {},
+  options: {
+    authenticated?: boolean;
+    withAssistant?: boolean;
+    language?: string;
+    monitoringData?: unknown;
+    monitoringSessions?: unknown[];
+    sessionAnalyses?: Record<string, unknown>;
+    sessionMessages?: Record<string, unknown[]>;
+    storage?: JsonRecord;
+    withAdapterEvents?: boolean;
+    withRunnerToolSelector?: boolean;
+    workspaces?: WorkspaceEntryMock[];
+  } = {},
 ) {
-  const { authenticated = false, storage = {} } = options;
+  const {
+    authenticated = false,
+    withAssistant = false,
+    language = 'en-US',
+    monitoringData,
+    monitoringSessions,
+    sessionAnalyses,
+    sessionMessages,
+    storage = {},
+    withAdapterEvents = false,
+    withRunnerToolSelector = false,
+    workspaces = [defaultWorkspaceEntry()],
+  } = options;
   const state: LangBotApiMockState = {
+    authenticated,
+    withAssistant,
     bots: [],
     counters: {},
     knowledgeBases: [],
     mcpServers: [],
+    monitoringData: monitoringData || emptyMonitoringData(),
+    monitoringSessions: monitoringSessions || [],
     pipelines: [],
+    sessionAnalyses: sessionAnalyses || {},
+    sessionMessages: sessionMessages || {},
     skills: [],
+    withAdapterEvents,
+    withRunnerToolSelector,
+    workspaces,
   };
 
   await page.addInitScript(
-    ({ authenticated, storage }) => {
-      localStorage.setItem('langbot_language', 'en-US');
+    ({ authenticated, language, storage }) => {
+      localStorage.setItem('langbot_language', language);
       localStorage.setItem('extensions_group_by_type', 'false');
+      if (!Object.hasOwn(storage, 'langbot_sidebar_guide_v1')) {
+        localStorage.setItem('langbot_sidebar_guide_v1', 'completed');
+      }
+      const contextualGuides = [
+        'langbot_bot_detail_guide_v1',
+        'langbot_runner_setup_guide_v1',
+        'langbot_knowledge_detail_guide_v1',
+        'langbot_pipeline_setup_guide_v1',
+        'langbot_plugin_processor_setup_guide_v1',
+      ];
+      for (const guideKey of contextualGuides) {
+        if (!Object.hasOwn(storage, guideKey)) {
+          localStorage.setItem(guideKey, 'completed');
+        }
+      }
 
       if (authenticated) {
         localStorage.setItem('token', 'playwright-token');
@@ -827,7 +1552,7 @@ export async function installLangBotApiMocks(
         localStorage.setItem(key, String(value));
       }
     },
-    { authenticated, storage },
+    { authenticated, language, storage },
   );
 
   await page.route('**/api/v1/**', (route) => handleBackendApi(route, state));

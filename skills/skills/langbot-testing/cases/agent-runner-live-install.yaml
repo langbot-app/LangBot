@@ -1,5 +1,5 @@
 id: agent-runner-live-install
-title: "QA AgentRunner package installs and registers in LangBot"
+title: "QA Runner package installs and registers in LangBot"
 mode: probe
 area: release
 type: regression
@@ -25,7 +25,7 @@ automation_expected_tool: ""
 automation_expected_runner_id: "plugin:qa/agent-runner/default"
 steps:
   - "Run `rtk bin/lbs test run agent-runner-live-install --dry-run` first; remove `--dry-run` only after readiness points at a local test LangBot instance."
-  - "Automation authenticates the local test user, uploads the QA AgentRunner .lbpkg package, waits for the install task, and reads pipeline metadata."
+  - "Automation authenticates the local test user, uploads the QA Runner .lbpkg package, waits for the install task, and reads pipeline metadata."
 checks:
   - "automation-result.json status is pass."
   - "/api/v1/plugins lists qa/agent-runner after install."

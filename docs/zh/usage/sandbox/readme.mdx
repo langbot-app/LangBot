@@ -1,0 +1,81 @@
+---
+title: "沙箱 (Sandbox)"
+description: "LangBot Box Runtime 为内置 Agent 提供命令执行与文件工具，并可选择沙箱或可信本机后端。"
+---
+
+Box Runtime 给内置 Agent 一个统一的执行环境：跑命令、读写文件、运行长驻进程。日常 Agent 应用（数据处理、文件操作、运行用户代码、托管 stdio MCP）都依赖它。Docker、nsjail 和 E2B 后端提供沙箱隔离；显式选择的 Host 后端用于可信本地开发，不提供隔离。
+
+启用 Box 后，内置 Agent 会自动获得六个工具，无需在流水线里逐项开启。
+
+## 内置工具
+
+| 工具 | 用途 |
+|------|------|
+| `exec` | 在沙箱内执行 Shell 命令 |
+| `read` | 读取工作区文件 |
+| `write` | 创建或覆盖文件 |
+| `edit` | 字符串替换式修改文件 |
+| `glob` | 按 glob 模式查找文件 |
+| `grep` | 按正则搜索文件内容 |
+
+`exec` 在所选 Box 后端中运行；其余五个直接读写映射到 `/workspace` 的工作区目录。选择 Host 时，命令也直接运行在 Box Runtime 主机上。
+
+<Note>
+这些工具面向内置 Agent。使用 Dify、n8n、Langflow、Coze 等外部运行器时，请使用对应平台自己的工具机制。
+</Note>
+
+## 沙箱作用域
+
+在流水线 AI 配置中可选择沙箱在不同消息间如何共享。默认"每个会话"足够大多数场景使用。
+
+| 作用域 | 模板 | 共享范围 |
+|--------|------|---------|
+| 全局 | `{global}` | 所有用户共用一个沙箱 |
+| 每个会话（默认） | `{launcher_type}_{launcher_id}` | 同一群/私聊共用 |
+| 每个用户 | `{launcher_type}_{launcher_id}_{sender_id}` | 群里每位成员独立 |
+| 每个对话 | `{launcher_type}_{launcher_id}_{conversation_id}` | 按对话隔离 |
+| 每条消息 | `{query_id}` | 完全无状态 |
+
+<Warning>
+同一作用域内的命令共享文件系统状态。需要独立工作区请选择"每条消息"。作用域是会话复用规则，不是安全边界；Host 后端即使使用不同作用域，也没有主机级隔离。
+</Warning>
+
+## 生命周期
+
+| 情况 | 行为 |
+|------|------|
+| 空闲超过 5 分钟 | 自动清理 |
+| 有 Box 托管进程（如 stdio MCP）在跑 | 不清理，进程结束后才释放 |
+| 配置 `persistent: true` | 永不自动清理 |
+
+这些生命周期行为也适用于 Host。回收时会终止该会话的托管进程树并移除临时会话目录；映射到 `box.local.host_root` 的持久工作区不会被当作临时目录删除。Runtime 关闭或显式删除会话时也会执行清理。
+
+## 快速开始
+
+可信的 Linux / macOS 本地开发可以直接选择 Host，不需要安装 Docker：
+
+1. **写入 `config.yaml`**：
+   ```yaml
+   box:
+     enabled: true
+     backend: 'host'
+     local:
+       host_root: './data/box'
+   ```
+2. **启动 LangBot**：Box Runtime 自动启用
+3. **在流水线里**选择内置 Agent + 支持函数调用的模型
+
+之后 Agent 会自动获得六个工具。详细配置见[沙箱配置](./config)。
+
+<Warning>
+Host 会以 LangBot / Box Runtime 用户的权限直接执行命令，只能处理可信输入。需要执行不受信任的代码时，请将 `backend` 改为 `local`（自动选择 Docker / Nsjail）、`docker`、`nsjail` 或 `e2b`。
+</Warning>
+
+## 关闭 Box
+
+设置 `box.enabled: false`。所有依赖沙箱的能力（内置工具、Skill 创建/编辑/激活、stdio MCP）会一并停用；http/sse 模式的 MCP 不受影响。
+
+## 下一步
+
+- [沙箱配置](./config) — 后端、安全预设、挂载、环境变量
+- [运行时与扩展关系](./runtime-relationships) — 沙箱、Skills、MCP、插件如何分工

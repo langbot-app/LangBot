@@ -1,0 +1,149 @@
+---
+title: "调试插件运行时、CLI、SDK"
+---
+
+<Info>
+  插件运行时、CLI、SDK 开源在: https://github.com/langbot-app/langbot-plugin-sdk
+</Info>
+
+由于 LangBot 需要依赖 langbot-plugin-sdk 中定义的实体，我们推荐您在一个新建目录下打开 VS Code，将 LangBot 和 langbot-plugin-sdk（git clone https://github.com/langbot-app/langbot-plugin-sdk） 作为子目录放入其中，目录结构如下：
+
+```bash
+langbot-projects
+├── LangBot
+├── langbot-plugin-sdk
+```
+
+进入 LangBot 目录，安装依赖：
+
+```bash
+cd LangBot
+uv sync --dev
+```
+
+此时，uv 将自动为您创建虚拟环境(.venv)，若您的编辑器询问您是否使用此虚拟环境，请选择`是`。
+
+<img
+  width="600"
+  src="/images/zh/develop/confirm_venv.png"
+/>
+
+若未弹出，请手动在右下角设置 Python 解释器路径为该 venv 中的解释器。
+
+然后打开 VS Code 底部的终端，这将自动激活 venv。
+
+或者请您手动激活此虚拟环境：
+
+```bash
+# 请自行根据.venv路径来修改命令
+source .venv/bin/activate
+```
+
+## 启动插件运行时
+
+```bash
+python -m langbot_plugin.cli.__init__ rt
+```
+
+Plugin Runtime 接受以下参数：
+
+- `--debug-only`: 不启动`data/plugins`目录下的插件，仅允许通过调试连接加载插件。
+- `--ws-debug-port`: 监听的调试端口，默认是`5401`。
+- `--ws-control-port`: 监听的控制端口（供 LangBot 主程序连接），默认是`5400`。
+- `-s`: 使用`stdio`接受控制连接。**仅在生产环境使用**。
+- `--skip-deps-check`: 为了确保插件依赖均已安装，Runtime 会在每次启动时检查并安装所有已安装插件的依赖。携带此参数可禁用此检查。
+
+### 使 LangBot 使用您本地修改过的 langbot-plugin-sdk
+
+若您修改了诸如消息实体、插件数据定义等内容，需要将其更新到 LangBot 环境，以确保运行期间数据格式兼容。
+
+请在**确保已激活 LangBot 目录下的虚拟环境（.venv）的终端**中，切换目录到 langbot-plugin-sdk 目录下，执行：
+
+```bash
+uv pip install .
+```
+
+这将把您修改后的 langbot-plugin-sdk 安装到 LangBot 的环境。
+
+### 使 LangBot 连接到此运行时
+
+在 LangBot 的`data/config.yaml`中配置`plugin.runtime_ws_url`为`ws://localhost:5400/control/ws`。
+
+```yaml
+plugin:
+  runtime_ws_url: ws://localhost:5400/control/ws
+```
+
+并在已激活 LangBot 虚拟环境的终端中，直接使用 Python 启动主程序并携带参数`--standalone-runtime`（如：`python main.py --standalone-runtime`）。直接调用当前虚拟环境的 Python 不会再次同步依赖，因此不会把刚刚安装的本地 langbot-plugin-sdk 覆盖为远程版本。\
+重启 LangBot，将会使用 WebSocket 连接到此运行时。
+
+默认情况下无需配置 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN`：当 LangBot 与 Runtime 两端都未设置时，OSS 的本地控制连接直接建立。若部署环境需要为 5400 控制端口增加共享密钥，则应在两端配置同一个至少 32 位的高熵值。Runtime 端配置后，未携带相同密钥的 LangBot 会被拒绝；只在 LangBot 端配置并不会启用 Runtime 端的认证。
+
+### 使用 `lbp run` 调试插件
+
+多 Workspace 版本不再允许调试插件仅凭 `5401` 端口接入 Runtime。每个 Workspace 都有独立且会过期的调试密钥：
+
+1. 确认 LangBot 与 Plugin Runtime 已按上文启动并连接成功。
+2. 在 LangBot WebUI 的“插件”页面点击“调试信息”，复制调试 URL 和调试密钥。该操作需要当前 Workspace 的资源管理权限。
+3. 在插件项目的 `.env` 中配置：
+
+```bash
+DEBUG_RUNTIME_WS_URL=ws://localhost:5401/plugin/debug/ws
+PLUGIN_DEBUG_KEY=<从 WebUI 复制的调试密钥>
+```
+
+4. 在插件项目目录中启动：
+
+```bash
+python -m langbot_plugin.cli.__init__ run
+```
+
+也可以不写入 `.env`，改用 `python -m langbot_plugin.cli.__init__ run --plugin-debug-key '<调试密钥>'`。调试密钥按 Workspace 隔离且有效期为两小时；密钥过期、Runtime 重启或切换 Workspace 后，请回到 WebUI 重新获取。只配置 `DEBUG_RUNTIME_WS_URL` 会被 Runtime 拒绝。
+
+## 以 standalone 模式启动 Box Runtime
+
+Box Runtime 与 Plugin Runtime 的控制连接规则一致：OSS standalone 开发环境默认不强制配置 token，两端都未设置 `LANGBOT_BOX_CONTROL_TOKEN` 时可以直接连接：
+
+```bash
+# 终端 1：langbot-plugin-sdk 目录
+python -m langbot_plugin.cli.__init__ box
+```
+
+LangBot 的 `data/config.yaml` 使用本地 Box 地址：
+
+```yaml
+box:
+  enabled: true
+  backend: local
+  runtime:
+    endpoint: ws://127.0.0.1:5410
+```
+
+```bash
+# 终端 2：LangBot 目录
+python main.py --standalone-runtime --standalone-box
+```
+
+若需要保护暴露的 5410 端口，请在启动两个进程前分别设置完全相同、至少 32 位且不含空白的高熵值：
+
+```bash
+export LANGBOT_BOX_CONTROL_TOKEN='<两端完全相同的高熵密钥>'
+```
+
+Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBot。只在 LangBot 端设置不会启用 Box Runtime 端认证；显式配置但不足 32 位的值仍会被两端拒绝。不要把真实密钥提交到配置文件或 Git。
+
+## langbot-plugin-sdk 架构
+
+本代码库中包含以下内容：
+
+- `langbot_plugin.api`：插件相关实体和 API 定义。
+- `langbot_plugin.assets`：插件模板。
+- `langbot_plugin.cli`：插件开发 CLI 工具。
+- `langbot_plugin.entities`：插件系统中非 API 定义的相关实体。
+- `langbot_plugin.runtime`：插件运行时和底层通信（stdio 和 websocket）实现。
+
+## `lbp` CLI 工具
+
+CLI 工具提供 Runtime 启动、插件初始化、插件组件管理、Marketplace 交互等功能。
+
+详细的程序入口请查看[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/cli/__init__.py)。

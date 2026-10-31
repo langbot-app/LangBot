@@ -8,7 +8,7 @@ export default function MCPPage() {
   const detailId = searchParams.get('id');
 
   if (detailId) {
-    return <MCPDetailContent id={detailId} />;
+    return <MCPDetailContent key={detailId} id={detailId} />;
   }
 
   return (

@@ -1,0 +1,6 @@
+langbot-plugin>=0.7.4,<0.8
+PyPDF2>=3.0.0
+python-docx>=0.8.11
+chardet>=5.0.0
+markdown>=3.4.0
+beautifulsoup4>=4.11.0

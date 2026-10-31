@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
+import json
 import logging
 import os
 import struct
@@ -20,6 +22,8 @@ from typing import Optional
 from urllib.parse import quote
 
 import aiohttp
+
+from langbot.pkg.utils import httpclient
 
 from .types import (
     ApiError,
@@ -58,6 +62,51 @@ DEFAULT_BOT_TYPE = '3'
 
 # Maximum text length per message chunk (WeChat limit)
 MAX_TEXT_CHUNK_SIZE = 2000
+MAX_CDN_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+async def _response_text(response: aiohttp.ClientResponse) -> str:
+    body = await httpclient.read_limited(
+        response,
+        max_bytes=MAX_CDN_MEDIA_BYTES,
+    )
+    return body.decode('utf-8', errors='replace')
+
+
+async def _response_json(response: aiohttp.ClientResponse) -> dict:
+    payload = json.loads(await _response_text(response))
+    if not isinstance(payload, dict):
+        raise ApiError('OpenClaw API returned a non-object response', status=response.status)
+    return payload
+
+
+def _decrypt_cdn_payload(encrypted: bytes, aes_key: bytes) -> bytes:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.primitives.padding import PKCS7
+
+    cipher = Cipher(algorithms.AES(aes_key), modes.ECB())
+    decryptor = cipher.decryptor()
+    padded = decryptor.update(encrypted) + decryptor.finalize()
+    unpadder = PKCS7(128).unpadder()
+    return unpadder.update(padded) + unpadder.finalize()
+
+
+def _encrypt_cdn_payload(
+    file_bytes: bytes,
+) -> tuple[str, str, bytes, str]:
+    from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+    from cryptography.hazmat.primitives.padding import PKCS7
+
+    raw_key = os.urandom(16)
+    aes_key_hex = raw_key.hex()
+    encoded_key = base64.b64encode(aes_key_hex.encode('utf-8')).decode('utf-8')
+    padder = PKCS7(128).padder()
+    padded = padder.update(file_bytes) + padder.finalize()
+    cipher = Cipher(algorithms.AES(raw_key), modes.ECB())
+    encryptor = cipher.encryptor()
+    encrypted = encryptor.update(padded) + encryptor.finalize()
+    raw_md5 = hashlib.md5(file_bytes).hexdigest()
+    return aes_key_hex, encoded_key, encrypted, raw_md5
 
 
 def _random_wechat_uin() -> str:
@@ -125,12 +174,12 @@ class OpenClawWeixinClient:
             url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=timeout)
         ) as resp:
             if resp.status != 200:
-                text = await resp.text()
+                text = await _response_text(resp)
                 raise ApiError(
                     f'OpenClaw API error {resp.status}: {text}',
                     status=resp.status,
                 )
-            data = await resp.json(content_type=None)
+            data = await _response_json(resp)
 
         # Check for application-level errors in the response body
         errcode = data.get('errcode') or data.get('ret')
@@ -170,12 +219,12 @@ class OpenClawWeixinClient:
                 timeout=aiohttp.ClientTimeout(total=timeout),
             ) as resp:
                 if resp.status != 200:
-                    text = await resp.text()
+                    text = await _response_text(resp)
                     raise ApiError(
                         f'OpenClaw API error {resp.status}: {text}',
                         status=resp.status,
                     )
-                data = await resp.json(content_type=None)
+                data = await _response_json(resp)
 
         except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
             return GetUpdatesResponse(ret=0, msgs=[], get_updates_buf=get_updates_buf)
@@ -258,9 +307,6 @@ class OpenClawWeixinClient:
         Returns:
             Decrypted file bytes.
         """
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.primitives.padding import PKCS7
-
         if not media.encrypt_query_param:
             raise ApiError('CDN media has no encrypt_query_param', status=0)
         if not media.aes_key:
@@ -285,17 +331,14 @@ class OpenClawWeixinClient:
 
         async with session.get(cdn_url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
             if resp.status != 200:
-                text = await resp.text()
+                text = await _response_text(resp)
                 raise ApiError(f'CDN download failed: {resp.status} {text}', status=resp.status)
-            encrypted = await resp.read()
+            encrypted = await httpclient.read_limited(
+                resp,
+                max_bytes=MAX_CDN_MEDIA_BYTES,
+            )
 
-        # Decrypt AES-128-ECB with PKCS7 padding
-        cipher = Cipher(algorithms.AES(aes_key), modes.ECB())
-        decryptor = cipher.decryptor()
-        padded = decryptor.update(encrypted) + decryptor.finalize()
-
-        unpadder = PKCS7(128).unpadder()
-        return unpadder.update(padded) + unpadder.finalize()
+        return await asyncio.to_thread(_decrypt_cdn_payload, encrypted, aes_key)
 
     async def upload_media(
         self,
@@ -313,28 +356,13 @@ class OpenClawWeixinClient:
         Returns:
             CDNMedia with encrypt_query_param and aes_key for use in sendMessage.
         """
-        import hashlib
+        if len(file_bytes) > MAX_CDN_MEDIA_BYTES:
+            raise ApiError('CDN media exceeds the size limit', status=0)
 
-        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-        from cryptography.hazmat.primitives.padding import PKCS7
-
-        # 1. Generate random 16-byte AES key
-        raw_key = os.urandom(16)
-        aes_key_hex = raw_key.hex()  # 32-char hex string
-
-        # 2. Encode key for CDNMedia: base64(hex_string) — same for all media types
-        # Matches official SDK: Buffer.from(aeskey_hex).toString("base64")
-        encoded_key = base64.b64encode(aes_key_hex.encode('utf-8')).decode('utf-8')
-
-        # 3. Encrypt file with AES-128-ECB + PKCS7
-        padder = PKCS7(128).padder()
-        padded = padder.update(file_bytes) + padder.finalize()
-        cipher = Cipher(algorithms.AES(raw_key), modes.ECB())
-        encryptor = cipher.encryptor()
-        encrypted = encryptor.update(padded) + encryptor.finalize()
-
-        # 4. Get upload URL
-        raw_md5 = hashlib.md5(file_bytes).hexdigest()
+        aes_key_hex, encoded_key, encrypted, raw_md5 = await asyncio.to_thread(
+            _encrypt_cdn_payload,
+            file_bytes,
+        )
         filekey = os.urandom(16).hex()  # 32-char hex, matches official SDK
 
         upload_resp = await self.get_upload_url(
@@ -370,7 +398,7 @@ class OpenClawWeixinClient:
             timeout=aiohttp.ClientTimeout(total=120),
         ) as resp:
             if resp.status != 200:
-                text = await resp.text()
+                text = await _response_text(resp)
                 logger.error('CDN upload failed: status=%d url=%s body=%s', resp.status, cdn_url, text[:500])
                 raise ApiError(f'CDN upload failed: {resp.status} {text}', status=resp.status)
             download_param = resp.headers.get('x-encrypted-param', '')
@@ -491,12 +519,12 @@ class OpenClawWeixinClient:
 
         async with session.get(url, timeout=aiohttp.ClientTimeout(total=DEFAULT_API_TIMEOUT)) as resp:
             if resp.status != 200:
-                text = await resp.text()
+                text = await _response_text(resp)
                 raise ApiError(
                     f'Failed to fetch QR code: {resp.status} {text}',
                     status=resp.status,
                 )
-            data = await resp.json(content_type=None)
+            data = await _response_json(resp)
 
         logger.debug(
             'fetch_qrcode response: qrcode=%s, img=%s', data.get('qrcode'), bool(data.get('qrcode_img_content'))
@@ -536,12 +564,12 @@ class OpenClawWeixinClient:
                 url, headers=headers, timeout=aiohttp.ClientTimeout(total=DEFAULT_QR_POLL_TIMEOUT)
             ) as resp:
                 if resp.status != 200:
-                    text = await resp.text()
+                    text = await _response_text(resp)
                     raise ApiError(
                         f'Failed to poll QR status: {resp.status} {text}',
                         status=resp.status,
                     )
-                data = await resp.json(content_type=None)
+                data = await _response_json(resp)
                 logger.debug('QR status poll response: %s', data)
         except (asyncio.TimeoutError, aiohttp.ServerTimeoutError):
             return QRStatusResponse(status='wait')

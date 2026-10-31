@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: default
+  label:
+    en_US: Default
+    zh_Hans: Default
+execution:
+  python:
+    path: default.py
+    attr: DefaultEventListener

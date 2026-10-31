@@ -1,39 +1,39 @@
-/**
- * Copy text to clipboard with fallback support
- * Tries to use modern Clipboard API first, falls back to execCommand if not available
- *
- * @param text - The text to copy to clipboard
- * @returns Promise<boolean> - true if successful, false otherwise
- */
+/** Copy text using the Clipboard API, with a focus-trap-safe legacy fallback. */
 export async function copyToClipboard(text: string): Promise<boolean> {
-  // Try modern Clipboard API first
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    try {
+  try {
+    if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
       return true;
-    } catch (err) {
-      console.error('[Clipboard] Modern API failed, trying fallback:', err);
-      // Fall through to legacy method
     }
+  } catch {
+    // Permission/security errors can include sensitive text; do not log them.
   }
 
-  // Fallback to legacy execCommand method
+  const previousFocus = document.activeElement as HTMLElement | null;
+  const textArea = document.createElement('textarea');
   try {
-    const textArea = document.createElement('textarea');
     textArea.value = text;
     textArea.style.position = 'fixed';
     textArea.style.left = '-999999px';
     textArea.style.top = '-999999px';
-    document.body.appendChild(textArea);
-    textArea.focus();
+    // Radix modal focus scopes reject focus on elements appended to body.
+    const container =
+      previousFocus?.closest('[role="dialog"], [role="alertdialog"]') ??
+      document.body;
+    container.appendChild(textArea);
+    textArea.focus({ preventScroll: true });
     textArea.select();
-
-    const successful = document.execCommand('copy');
-    document.body.removeChild(textArea);
-
-    return successful;
-  } catch (err) {
-    console.error('[Clipboard] Fallback method failed:', err);
+    if (
+      document.activeElement !== textArea ||
+      textArea.selectionEnd !== text.length
+    )
+      return false;
+    return document.execCommand('copy');
+  } catch {
     return false;
+  } finally {
+    textArea.remove();
+    if (previousFocus?.isConnected)
+      previousFocus.focus({ preventScroll: true });
   }
 }

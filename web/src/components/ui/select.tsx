@@ -52,6 +52,7 @@ function SelectContent({
   className,
   children,
   position = 'popper',
+  onCloseAutoFocus,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
@@ -66,6 +67,19 @@ function SelectContent({
         )}
         position={position}
         {...props}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (event.defaultPrevented) return;
+          const content = event.target as HTMLElement;
+          const activeElement = content.ownerDocument.activeElement;
+          // Exit animations may finish after another control has taken focus.
+          if (
+            activeElement &&
+            activeElement !== content.ownerDocument.body &&
+            !content.contains(activeElement)
+          )
+            event.preventDefault();
+        }}
       >
         <SelectScrollUpButton />
         <SelectPrimitive.Viewport

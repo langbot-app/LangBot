@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import PluginDetailContent from './PluginDetailContent';
 import styles from './plugins.module.css';
 import { Button } from '@/components/ui/button';
-import { Power, Code, Copy, Check, Bug, Unlink } from 'lucide-react';
+import { Power, Code, Copy, Check, Bug, Unlink, Search, X } from 'lucide-react';
 import { copyToClipboard } from '@/app/utils/clipboard';
 import {
   Popover,
@@ -17,6 +17,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import LoadErrorState from '@/components/LoadErrorState';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Input } from '@/components/ui/input';
 import React, { useState, useRef, useEffect } from 'react';
@@ -36,7 +37,7 @@ export default function PluginConfigPage() {
   const detailId = searchParams.get('id');
 
   if (detailId) {
-    return <PluginDetailContent id={detailId} />;
+    return <PluginDetailContent key={detailId} id={detailId} />;
   }
 
   return <PluginListView />;
@@ -54,24 +55,30 @@ function PluginListView() {
   const [pluginSystemStatus, setPluginSystemStatus] =
     useState<ApiRespPluginSystemStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
+  const [statusError, setStatusError] = useState(false);
+  const [statusRevision, setStatusRevision] = useState(0);
   const [debugInfo, setDebugInfo] = useState<{
     debug_url: string;
     plugin_debug_key: string;
+    expires_at: string;
   } | null>(null);
   const [debugPopoverOpen, setDebugPopoverOpen] = useState(false);
   const [copiedDebugUrl, setCopiedDebugUrl] = useState(false);
   const [copiedDebugKey, setCopiedDebugKey] = useState(false);
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [installedSearchQuery, setInstalledSearchQuery] = useState('');
   const pluginInstalledRef = useRef<PluginInstalledComponentRef>(null);
 
   useEffect(() => {
     const fetchPluginSystemStatus = async () => {
       try {
         setStatusLoading(true);
+        setStatusError(false);
         const status = await httpClient.getPluginSystemStatus();
         setPluginSystemStatus(status);
       } catch (error) {
         console.error('Failed to fetch plugin system status:', error);
+        setStatusError(true);
         toast.error(t('plugins.failedToGetStatus'));
       } finally {
         setStatusLoading(false);
@@ -79,12 +86,21 @@ function PluginListView() {
     };
 
     void fetchPluginSystemStatus();
-  }, [t]);
+  }, [t, statusRevision]);
 
   useEffect(() => {
-    const onComplete = (_taskId: number, success: boolean, error?: string) => {
+    const onComplete = (
+      _taskId: number,
+      success: boolean,
+      error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
       if (success) {
-        toast.success(t('plugins.installSuccess'));
+        toast.success(
+          operation === 'upgrade'
+            ? t('plugins.updateSuccess')
+            : t('plugins.installSuccess'),
+        );
         pluginInstalledRef.current?.refreshPluginList();
         refreshPlugins();
       } else {
@@ -130,13 +146,13 @@ function PluginListView() {
   );
 
   const renderPluginConnectionErrorState = () => (
-    <div className="flex justify-center pt-[10vh] px-4">
-      <Alert variant="destructive" className="max-w-md">
-        <Unlink />
-        <AlertTitle>{t('plugins.connectionError')}</AlertTitle>
-        <AlertDescription>{t('plugins.connectionErrorDesc')}</AlertDescription>
-      </Alert>
-    </div>
+    <LoadErrorState
+      className="pt-[10vh]"
+      icon={<Unlink className="size-5" aria-hidden="true" />}
+      title={t('plugins.connectionError')}
+      description={t('plugins.connectionErrorDesc')}
+      onRetry={() => setStatusRevision((value) => value + 1)}
+    />
   );
 
   const renderLoadingState = () => (
@@ -149,6 +165,15 @@ function PluginListView() {
 
   if (statusLoading) {
     return renderLoadingState();
+  }
+
+  if (statusError) {
+    return (
+      <LoadErrorState
+        title={t('plugins.failedToGetStatus')}
+        onRetry={() => setStatusRevision((value) => value + 1)}
+      />
+    );
   }
 
   if (!pluginSystemStatus?.is_enable) {
@@ -178,6 +203,27 @@ function PluginListView() {
           </Tabs>
         </div>
         <div className="flex flex-row items-center gap-2 flex-wrap">
+          {/* Search installed extensions by label / name / author / description */}
+          <div className="relative w-full sm:w-56">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={installedSearchQuery}
+              onChange={(e) => setInstalledSearchQuery(e.target.value)}
+              placeholder={t('plugins.searchInstalled')}
+              aria-label={t('plugins.searchInstalled')}
+              className="pl-9 pr-8 text-sm"
+            />
+            {installedSearchQuery && (
+              <button
+                type="button"
+                aria-label={t('common.clear')}
+                onClick={() => setInstalledSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-2 px-1 sm:px-2">
             <Switch
               id="group-by-type"
@@ -226,6 +272,7 @@ function PluginListView() {
                   <Input
                     value={debugInfo?.debug_url || ''}
                     readOnly
+                    aria-label={t('plugins.debugUrl')}
                     className="flex-1 min-w-0 font-mono text-xs h-8"
                   />
                   <Button
@@ -254,6 +301,7 @@ function PluginListView() {
                         debugInfo?.plugin_debug_key || t('plugins.noDebugKey')
                       }
                       readOnly
+                      aria-label={t('plugins.debugKey')}
                       className="w-[220px] font-mono text-xs h-8"
                     />
                     <Button
@@ -275,6 +323,13 @@ function PluginListView() {
                       )}
                     </Button>
                   </div>
+                  {debugInfo?.expires_at && (
+                    <p className="text-xs text-muted-foreground pl-[58px]">
+                      {t('plugins.debugKeyExpires', {
+                        time: new Date(debugInfo.expires_at).toLocaleString(),
+                      })}
+                    </p>
+                  )}
                   {!debugInfo?.plugin_debug_key && (
                     <p className="text-xs text-muted-foreground ml-[58px]">
                       {t('plugins.debugKeyDisabled')}
@@ -292,6 +347,8 @@ function PluginListView() {
           ref={pluginInstalledRef}
           filterType={filterType}
           groupByType={groupByType}
+          searchQuery={installedSearchQuery}
+          onClearSearch={() => setInstalledSearchQuery('')}
         />
       </div>
     </div>

@@ -12,10 +12,26 @@ from collections.abc import AsyncGenerator
 
 import httpx
 
+from langbot.pkg.utils import httpclient
+
 from .errors import DeerFlowAPIError
 
 
 SSE_MAX_BUFFER_CHARS = 1_048_576
+SSE_MAX_TOTAL_BYTES = 16 * 1024 * 1024
+ERROR_BODY_MAX_BYTES = 1024 * 1024
+
+
+async def _read_error_body(response: httpx.Response) -> str:
+    body = bytearray()
+    async for chunk in response.aiter_bytes(8192):
+        body.extend(chunk)
+        if len(body) > ERROR_BODY_MAX_BYTES:
+            raise DeerFlowAPIError(
+                operation='read error response',
+                body='response exceeds the runtime limit',
+            )
+    return body.decode('utf-8', errors='replace')
 
 
 def _normalize_sse_newlines(text: str) -> str:
@@ -94,6 +110,7 @@ class AsyncDeerFlowClient:
         async with httpx.AsyncClient(
             trust_env=True,
             timeout=timeout,
+            event_hooks=httpclient.httpx_response_limit_hooks(),
         ) as client:
             response = await client.post(
                 url,
@@ -101,13 +118,14 @@ class AsyncDeerFlowClient:
                 json=payload,
             )
             if response.status_code not in (200, 201):
+                body = await httpclient.response_text(response)
                 raise DeerFlowAPIError(
                     operation='create thread',
                     status=response.status_code,
-                    body=response.text,
+                    body=body,
                     url=url,
                 )
-            return response.json()
+            return await httpclient.parse_json_response(response)
 
     async def delete_thread(self, thread_id: str, timeout: float = 20) -> None:
         """删除指定 thread"""
@@ -116,13 +134,15 @@ class AsyncDeerFlowClient:
         async with httpx.AsyncClient(
             trust_env=True,
             timeout=timeout,
+            event_hooks=httpclient.httpx_response_limit_hooks(),
         ) as client:
             response = await client.delete(url, headers=self.headers)
             if response.status_code not in (200, 202, 204, 404):
+                body = await httpclient.response_text(response)
                 raise DeerFlowAPIError(
                     operation='delete thread',
                     status=response.status_code,
-                    body=response.text,
+                    body=body,
                     url=url,
                     thread_id=thread_id,
                 )
@@ -163,19 +183,27 @@ class AsyncDeerFlowClient:
                 json=payload,
             ) as resp:
                 if resp.status_code != 200:
-                    body = await resp.aread()
                     raise DeerFlowAPIError(
                         operation='runs/stream request',
                         status=resp.status_code,
-                        body=body.decode('utf-8', errors='replace'),
+                        body=await _read_error_body(resp),
                         url=url,
                         thread_id=thread_id,
                     )
 
                 decoder = codecs.getincrementaldecoder('utf-8')('replace')
                 buffer = ''
+                total_bytes = 0
 
                 async for chunk in resp.aiter_bytes(8192):
+                    total_bytes += len(chunk)
+                    if total_bytes > SSE_MAX_TOTAL_BYTES:
+                        raise DeerFlowAPIError(
+                            operation='runs/stream response',
+                            body='response exceeds the runtime limit',
+                            url=url,
+                            thread_id=thread_id,
+                        )
                     buffer += _normalize_sse_newlines(decoder.decode(chunk))
 
                     while '\n\n' in buffer:

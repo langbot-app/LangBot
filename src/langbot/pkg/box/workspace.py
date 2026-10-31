@@ -1,41 +1,26 @@
 """Reusable workspace/session helpers built on top of Box.
 
-This module is the middle layer between the raw Box runtime primitives and
-application-specific flows such as skills or MCP stdio.
+This module is the middle layer between raw Box runtime primitives and
+application-specific consumers.
 
 It intentionally stays generic:
 - path and virtualenv rewriting are workspace concerns
 - Python project detection/bootstrap are workspace concerns
 - session exec / managed-process helpers are workspace concerns
 
-Higher layers add their own semantics on top, for example:
-- skills choose a stable per-skill session id and use repeated exec
-- MCP stdio chooses how to prepare dependencies and attaches to a managed process
+Higher layers add their own semantics on top; BoxWorkspaceSession retains only
+workspace, execution, and managed-process concepts.
 """
 
 from __future__ import annotations
 
 import os
-import textwrap
 from typing import Any
 
-PYTHON_MANIFEST_FILES = (
-    'requirements.txt',
-    'pyproject.toml',
-    'setup.py',
-    'setup.cfg',
-)
+from ..utils.python_workspace import list_python_manifest_files
+
 _VENV_DIRS = frozenset({'.venv', 'venv', 'env', '.env'})
 _VENV_BIN_DIRS = frozenset({'bin', 'Scripts'})
-
-
-def normalize_host_path(path: str | None) -> str:
-    if path is None:
-        return ''
-    stripped = str(path).strip()
-    if not stripped:
-        return ''
-    return os.path.realpath(os.path.abspath(stripped))
 
 
 def rewrite_mounted_path(path: str, host_path: str | None, *, mount_path: str = '/workspace') -> str:
@@ -98,13 +83,6 @@ def rewrite_venv_command(command: str, host_path: str | None, *, mount_path: str
     return rewrite_mounted_path(normalized_command, host_path, mount_path=mount_path)
 
 
-def list_python_manifest_files(host_path: str | None) -> list[str]:
-    normalized_root = normalize_host_path(host_path)
-    if not normalized_root:
-        return []
-    return [filename for filename in PYTHON_MANIFEST_FILES if os.path.isfile(os.path.join(normalized_root, filename))]
-
-
 def classify_python_workspace(host_path: str | None) -> str | None:
     """Return the generic Python workspace shape, without app-specific policy."""
     manifest_files = set(list_python_manifest_files(host_path))
@@ -115,151 +93,6 @@ def classify_python_workspace(host_path: str | None) -> str | None:
     if 'requirements.txt' in manifest_files:
         return 'requirements'
     return None
-
-
-def should_prepare_python_env(host_path: str | None) -> bool:
-    normalized_root = normalize_host_path(host_path)
-    if not normalized_root:
-        return False
-    if os.path.isdir(os.path.join(normalized_root, '.venv')):
-        return True
-    return bool(list_python_manifest_files(normalized_root))
-
-
-def wrap_python_command_with_env(command: str, *, mount_path: str = '/workspace') -> str:
-    """Wrap a command with a reusable sandbox-local Python env bootstrap.
-
-    This is the generic "workspace is a Python project" path used by mutable
-    workspaces such as skills. Read-only installation strategies stay in the
-    higher-level caller because they are application policy, not workspace
-    semantics.
-    """
-    bootstrap = textwrap.dedent(
-        f"""
-        set -e
-
-        _LB_VENV_DIR="{mount_path}/.venv"
-        _LB_META_DIR="{mount_path}/.langbot"
-        _LB_META_FILE="$_LB_META_DIR/python-env.json"
-        _LB_LOCK_DIR="$_LB_META_DIR/python-env.lock"
-        _LB_TMP_DIR="{mount_path}/.tmp"
-        _LB_PIP_CACHE_DIR="{mount_path}/.cache/pip"
-
-        mkdir -p "$_LB_META_DIR" "$_LB_TMP_DIR" "$_LB_PIP_CACHE_DIR"
-        _LB_SYSTEM_PYTHON="$(command -v python3 || command -v python || true)"
-        if [ -z "$_LB_SYSTEM_PYTHON" ]; then
-          echo "python3 or python is required to prepare the workspace Python environment" >&2
-          exit 127
-        fi
-
-        export TMPDIR="$_LB_TMP_DIR"
-        export TEMP="$_LB_TMP_DIR"
-        export TMP="$_LB_TMP_DIR"
-        export PIP_CACHE_DIR="$_LB_PIP_CACHE_DIR"
-
-        _lb_python_meta() {{
-          "$_LB_SYSTEM_PYTHON" - <<'PY'
-        import hashlib
-        import json
-        import os
-        import sys
-
-        root = "{mount_path}"
-        digest = hashlib.sha256()
-        manifest_files = []
-        for rel in ("requirements.txt", "pyproject.toml", "setup.py", "setup.cfg"):
-            path = os.path.join(root, rel)
-            if not os.path.isfile(path):
-                continue
-            manifest_files.append(rel)
-            with open(path, "rb") as handle:
-                digest.update(rel.encode("utf-8"))
-                digest.update(b"\\0")
-                digest.update(handle.read())
-                digest.update(b"\\0")
-
-        print(
-            json.dumps(
-                {{
-                    "python_executable": sys.executable,
-                    "python_version": list(sys.version_info[:3]),
-                    "manifest_files": manifest_files,
-                    "manifest_sha256": digest.hexdigest(),
-                }},
-                sort_keys=True,
-            )
-        )
-        PY
-        }}
-
-        _LB_CURRENT_META="$(_lb_python_meta)"
-        _LB_NEEDS_BOOTSTRAP=0
-
-        if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        elif [ ! -f "$_LB_META_FILE" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
-          _LB_NEEDS_BOOTSTRAP=1
-        fi
-
-        if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
-          _LB_LOCK_WAIT=0
-          while ! mkdir "$_LB_LOCK_DIR" 2>/dev/null; do
-            if [ "$_LB_LOCK_WAIT" -ge 120 ]; then
-              _LB_LOCK_OWNER="$(cat "$_LB_LOCK_DIR/pid" 2>/dev/null || true)"
-              if [ -n "$_LB_LOCK_OWNER" ] && kill -0 "$_LB_LOCK_OWNER" 2>/dev/null; then
-                echo "Timed out waiting for active Python environment lock: $_LB_LOCK_DIR" >&2
-                exit 1
-              fi
-              echo "Timed out waiting for Python environment lock, clearing stale lock: $_LB_LOCK_DIR" >&2
-              rm -rf "$_LB_LOCK_DIR" 2>/dev/null || true
-              if mkdir "$_LB_LOCK_DIR" 2>/dev/null; then
-                break
-              fi
-              echo "Timed out waiting for Python environment lock: $_LB_LOCK_DIR" >&2
-              exit 1
-            fi
-            sleep 1
-            _LB_LOCK_WAIT=$((_LB_LOCK_WAIT + 1))
-          done
-          printf '%s\\n' "$$" > "$_LB_LOCK_DIR/pid" 2>/dev/null || true
-
-          _lb_cleanup_lock() {{
-            rm -rf "$_LB_LOCK_DIR" >/dev/null 2>&1 || true
-          }}
-          trap _lb_cleanup_lock EXIT INT TERM
-
-          _LB_CURRENT_META="$(_lb_python_meta)"
-          _LB_NEEDS_BOOTSTRAP=0
-          if [ ! -x "$_LB_VENV_DIR/bin/python" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          elif [ ! -f "$_LB_META_FILE" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          elif [ "$(cat "$_LB_META_FILE")" != "$_LB_CURRENT_META" ]; then
-            _LB_NEEDS_BOOTSTRAP=1
-          fi
-
-          if [ "$_LB_NEEDS_BOOTSTRAP" -eq 1 ]; then
-            rm -rf "$_LB_VENV_DIR"
-            "$_LB_SYSTEM_PYTHON" -m venv "$_LB_VENV_DIR"
-            . "$_LB_VENV_DIR/bin/activate"
-            python -m pip install --upgrade pip setuptools wheel
-            if [ -f "{mount_path}/requirements.txt" ]; then
-              python -m pip install -r "{mount_path}/requirements.txt"
-            elif [ -f "{mount_path}/pyproject.toml" ] || [ -f "{mount_path}/setup.py" ] || [ -f "{mount_path}/setup.cfg" ]; then
-              python -m pip install "{mount_path}"
-            fi
-            printf '%s' "$_LB_CURRENT_META" > "$_LB_META_FILE"
-          fi
-        fi
-
-        export VIRTUAL_ENV="$_LB_VENV_DIR"
-        export PATH="$_LB_VENV_DIR/bin:$PATH"
-        {command}
-        """
-    ).strip()
-    return bootstrap + '\n'
 
 
 class BoxWorkspaceSession:
@@ -274,6 +107,7 @@ class BoxWorkspaceSession:
     def __init__(
         self,
         box_service,
+        execution_context,
         session_id: str,
         *,
         host_path: str | None = None,
@@ -290,6 +124,7 @@ class BoxWorkspaceSession:
         persistent: bool = False,
     ):
         self.box_service = box_service
+        self.execution_context = execution_context
         self.session_id = session_id
         self.host_path = host_path
         self.host_path_mode = host_path_mode
@@ -363,7 +198,7 @@ class BoxWorkspaceSession:
         timeout_sec: int | None = None,
     ):
         payload = self.build_exec_payload(cmd, workdir=workdir, env=env, timeout_sec=timeout_sec)
-        return await self.box_service.client.execute(self.box_service.build_spec(payload))
+        return await self.box_service.execute_in_context(self.execution_context, payload)
 
     async def execute_for_query(
         self,
@@ -378,7 +213,7 @@ class BoxWorkspaceSession:
         return await self.box_service.execute_spec_payload(payload, query)
 
     async def create_session(self):
-        return await self.box_service.create_session(self.build_session_payload())
+        return await self.box_service.create_session(self.execution_context, self.build_session_payload())
 
     def build_process_payload(
         self,
@@ -415,16 +250,26 @@ class BoxWorkspaceSession:
     ):
         payload = self.build_process_payload(command, args, env=env, cwd=cwd)
         payload['process_id'] = process_id
-        return await self.box_service.start_managed_process(self.session_id, payload)
+        return await self.box_service.start_managed_process(self.execution_context, self.session_id, payload)
 
     async def get_managed_process(self, process_id: str = 'default'):
-        return await self.box_service.get_managed_process(self.session_id, process_id)
+        return await self.box_service.get_managed_process(self.execution_context, self.session_id, process_id)
 
     async def stop_managed_process(self, process_id: str = 'default') -> None:
-        await self.box_service.stop_managed_process(self.session_id, process_id)
+        await self.box_service.stop_managed_process(self.execution_context, self.session_id, process_id)
 
-    def get_managed_process_websocket_url(self, process_id: str = 'default') -> str:
-        return self.box_service.get_managed_process_websocket_url(self.session_id, process_id)
+    async def get_managed_process_websocket_connection(
+        self,
+        process_id: str = 'default',
+    ) -> tuple[str, dict[str, str]]:
+        return await self.box_service.get_managed_process_websocket_connection(
+            self.execution_context,
+            self.session_id,
+            process_id,
+        )
 
     async def cleanup(self) -> None:
-        await self.box_service.client.delete_session(self.session_id)
+        await self.box_service.client.delete_session(
+            self.session_id,
+            action_context=self.box_service._action_context(self.execution_context),
+        )

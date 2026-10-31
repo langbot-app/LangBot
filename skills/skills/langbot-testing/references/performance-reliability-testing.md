@@ -35,7 +35,7 @@ Measure user experience and internal composition separately:
 
 - WebUI load and interaction latency.
 - Debug Chat send-to-first-visible-token and send-to-completion latency.
-- Pipeline, RAG, plugin runtime, MCP, AgentRunner, and persistence segment
+- Pipeline, RAG, plugin runtime, MCP, Runner, and persistence segment
   latency.
 - Queue wait time, concurrency, throughput, timeout rate, and p95/p99 latency.
 - Startup, plugin install, knowledge-base ingestion, migration, and recovery

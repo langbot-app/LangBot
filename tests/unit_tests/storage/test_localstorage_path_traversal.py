@@ -169,6 +169,15 @@ class TestPathTraversalPrevention:
             await provider.delete(key)
 
     @pytest.mark.asyncio
+    async def test_bounded_load_stops_after_limit(self, storage_provider):
+        provider, storage_path = storage_provider
+
+        with patch('langbot.pkg.storage.providers.localstorage.LOCAL_STORAGE_PATH', storage_path):
+            await provider.save('oversized.bin', b'12345')
+            with pytest.raises(ValueError, match='4-byte read limit'):
+                await provider.load_bounded('oversized.bin', max_bytes=4)
+
+    @pytest.mark.asyncio
     async def test_delete_dir_recursive_non_existing_dir(self, storage_provider):
         """delete_dir_recursive should handle non-existing directories gracefully."""
         provider, storage_path = storage_provider

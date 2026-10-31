@@ -1,6 +1,9 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Info, Clock, AlertCircle, Braces } from 'lucide-react';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { MessageDetails } from '../types/monitoring';
 
 interface MessageDetailsCardProps {
@@ -24,7 +27,7 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
     <div className="space-y-4 pl-8 border-l-2 border-border ml-4">
       {/* Context Info Section */}
       {details.message && (
-        <div className="bg-muted rounded-lg p-3">
+        <Card className="bg-muted rounded-lg border-0 p-3 gap-0">
           <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
             <Info className="w-4 h-4 mr-2" />
             {t('monitoring.messageList.viewDetails')}
@@ -79,12 +82,12 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
               </div>
             </div>
           </div>
-        </div>
+        </Card>
       )}
 
       {/* LLM Calls Section */}
       {details.llmCalls && details.llmCalls.length > 0 && (
-        <div className="bg-muted rounded-lg p-3">
+        <Card className="bg-muted rounded-lg border-0 p-3 gap-0">
           <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
             <Clock className="w-4 h-4 mr-2" />
             {t('monitoring.llmCalls.title')} ({details.llmCalls.length})
@@ -127,15 +130,16 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
                     <span className="font-medium text-foreground">
                       #{index + 1} {call.modelName}
                     </span>
-                    <span
-                      className={`ml-2 text-xs px-2 py-0.5 rounded ${
+                    <Badge
+                      className={cn(
+                        'ml-2',
                         call.status === 'success'
                           ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                      }`}
+                          : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+                      )}
                     >
                       {call.status}
-                    </span>
+                    </Badge>
                   </div>
                   <span className="text-xs text-muted-foreground">
                     {call.duration}ms
@@ -163,12 +167,12 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Errors Section */}
       {details.errors && details.errors.length > 0 && (
-        <div className="bg-muted rounded-lg p-3">
+        <Card className="bg-muted rounded-lg border-0 p-3 gap-0">
           <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-3 flex items-center">
             <AlertCircle className="w-4 h-4 mr-2" />
             {t('monitoring.errors.title')} ({details.errors.length})
@@ -198,52 +202,48 @@ export function MessageDetailsCard({ details }: MessageDetailsCardProps) {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Query Variables Section - Only show for non-local-agent runners */}
-      {queryVariables &&
-        Object.keys(queryVariables).length > 0 &&
-        details.message?.runnerName !== 'local-agent' && (
-          <div className="bg-muted rounded-lg p-3">
-            <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
-              <Braces className="w-4 h-4 mr-2" />
-              {t('monitoring.queryVariables.title')}
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-              {Object.entries(queryVariables).map(([key, value]) => (
-                <div key={key} className="bg-background rounded p-2">
-                  <div className="text-muted-foreground">{key}</div>
-                  <div
-                    className="font-medium text-foreground truncate"
-                    title={
-                      typeof value === 'string' ? value : JSON.stringify(value)
-                    }
-                  >
-                    {value === null || value === undefined ? (
-                      <span className="text-muted-foreground italic">null</span>
-                    ) : typeof value === 'string' ? (
-                      value || (
-                        <span className="text-muted-foreground italic">
-                          empty
-                        </span>
-                      )
-                    ) : (
-                      JSON.stringify(value)
-                    )}
-                  </div>
+      {/* Query Variables Section */}
+      {queryVariables && Object.keys(queryVariables).length > 0 && (
+        <Card className="bg-muted rounded-lg border-0 p-3 gap-0">
+          <h4 className="text-sm font-semibold text-foreground mb-3 flex items-center">
+            <Braces className="w-4 h-4 mr-2" />
+            {t('monitoring.queryVariables.title')}
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+            {Object.entries(queryVariables).map(([key, value]) => (
+              <div key={key} className="bg-background rounded p-2">
+                <div className="text-muted-foreground">{key}</div>
+                <div
+                  className="font-medium text-foreground truncate"
+                  title={
+                    typeof value === 'string' ? value : JSON.stringify(value)
+                  }
+                >
+                  {value === null || value === undefined ? (
+                    <span className="text-muted-foreground italic">null</span>
+                  ) : typeof value === 'string' ? (
+                    value || (
+                      <span className="text-muted-foreground italic">
+                        empty
+                      </span>
+                    )
+                  ) : (
+                    JSON.stringify(value)
+                  )}
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
-        )}
+        </Card>
+      )}
 
       {/* No data message */}
       {(!details.llmCalls || details.llmCalls.length === 0) &&
         (!details.errors || details.errors.length === 0) &&
-        (details.message?.runnerName === 'local-agent' ||
-          !queryVariables ||
-          Object.keys(queryVariables).length === 0) && (
+        (!queryVariables || Object.keys(queryVariables).length === 0) && (
           <div className="text-sm text-muted-foreground text-center py-4">
             {t('monitoring.messageDetails.noData')}
           </div>

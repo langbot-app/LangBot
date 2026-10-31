@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: word
+  label:
+    en_US: Word
+    zh_Hans: 背单词
+  description:
+    en_US: 'Spaced-repetition vocabulary review: add/review/grade/stats/list/del.'
+    zh_Hans: 'FSRS 背单词命令：添加、复习、评分、统计、列表、删除。'
+spec:
+execution:
+  python:
+    path: word.py
+    attr: WordCommand

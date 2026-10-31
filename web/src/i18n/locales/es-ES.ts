@@ -1,4 +1,482 @@
+import pipelineMigration from './pipeline-migration/es-ES';
 const esES = {
+  planRevision: {
+    subscribedOn: 'Fecha de suscripción: {{date}}',
+    latestQuota: 'Cuotas más recientes de este plan',
+    showLatest: 'Ver las cuotas más recientes de este plan',
+    showCurrent: 'Ver tu suscripción actual',
+    latestTab: 'Más reciente',
+    currentTab: 'Actual',
+    cancelToSubscribe:
+      'Cancela tu suscripción para acceder a las últimas cuotas el próximo período',
+
+    current: 'Current subscription: {{plan}} · revision {{revision}}',
+    owned: 'Purchased revision {{revision}}',
+    latest: 'Latest revision {{revision}}',
+    changed:
+      'Your purchased benefits and the latest version differ. Highlighted rows show the changes.',
+    same: 'Benefits match latest revision {{revision}}. Your purchased revision remains unchanged.',
+    unavailable:
+      'The latest plan is unavailable. Your purchased benefits remain in effect.',
+    benefit: 'Benefit',
+    change: 'Changed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
+    monthlyCredits: 'Monthly bonus credits',
+    retention: 'Chat history retention (days)',
+    unknown:
+      'Current subscription details are unavailable. Refresh or manage your subscription in Space; latest catalog benefits are not your purchased benefits.',
+    handoff:
+      'Manage your subscription in Space. Cancel automatic renewal before purchasing a new version. Prepaid subscriptions end automatically unless renewed before expiry.',
+    cancelFirst:
+      'Cancel automatic renewal in subscription management first. Cancellation preserves paid benefits until the end of the period, without a refund. After confirmation, you can purchase the latest version, effective when payment succeeds.',
+    canceled:
+      'Renewal is canceled. Paid benefits remain until the end of the period, without a refund. A new purchase applies its benefits when payment succeeds.',
+    prepaid:
+      'This prepaid subscription ends automatically. You can renew your current plan before expiry; after expiry, subscriptions use the latest quotas for each plan.',
+    renew: 'Renovar la suscripción actual',
+    buying: 'Purchasing revision {{revision}}.',
+    fields: {
+      bots_max: 'Bots',
+      members_max: 'Members',
+      pipelines_max: 'Processors',
+      plugins_max: 'Extensions',
+      knowledge_bases_max: 'Knowledge bases',
+      managed_sandbox_sessions_max: 'Sandbox sessions',
+    },
+  },
+  cloudPlans: {
+    subscriptionUnavailable: 'Suscripción no disponible',
+    subscriptionUnavailableHint:
+      'Este plan no acepta nuevas suscripciones. Elige otro plan. Las suscripciones existentes y sus renovaciones automáticas no se ven afectadas.',
+    platformNames: {
+      qqofficial: 'QQ Official API',
+      dingtalk: 'DingTalk',
+      discord: 'Discord',
+      telegram: 'Telegram',
+      lark: 'Lark',
+      slack: 'Slack',
+      kook: 'KOOK',
+      line: 'LINE',
+      wecom: 'WeCom',
+      wecombot: 'WeComBot',
+      wecomcs: 'WeComCustomerService',
+      officialaccount: 'Cuenta Oficial',
+      wechatpad: 'WeChatPad',
+      openclaw_weixin: 'OpenClaw WeChat',
+      aiocqhttp: 'OneBot v11',
+      satori: 'Satori',
+    },
+    manageSubscription: 'Gestionar suscripción',
+    downgradeUnavailable: 'No se puede cambiar al plan gratuito',
+    features: {
+      multiUserWorkspace: 'Espacio de trabajo multiusuario',
+      remoteE2BSandbox: 'Configuración de sandbox E2B remoto',
+      communitySupport: 'Soporte de la comunidad',
+      everythingInFree: 'Todas las funciones del plan gratuito',
+      alwaysOnSandbox: 'Un sandbox global siempre activo',
+      higherWorkspaceLimits: 'Límites superiores del espacio de trabajo',
+    },
+    title: 'Comparar planes',
+    description: 'Elige un plan para {{workspace}}',
+    billing: 'Ciclo de facturación',
+    monthly: 'Mensual',
+    annual: 'Anual',
+    currency: 'Moneda',
+    loading: 'Cargando planes…',
+    error: 'No se pudieron cargar los planes',
+    retry: 'Reintentar',
+    empty: 'No hay planes disponibles',
+    current: 'Plan actual',
+    recommended: 'Recomendado',
+    free: 'Gratis',
+    annualNote: 'Equivale a {{price}} / mes',
+    ownerOnly: 'Solo propietario o administrador',
+    choose: 'Continuar al pago',
+    handoff: 'Inicia sesión y paga en Space. Se conservará tu selección.',
+    quotas: 'Cuotas del espacio',
+    unlimited: 'Sin límite',
+    retention: 'Historial · {{count}} días',
+    retentionLabel: 'Retención del historial',
+    retentionHelp:
+      'El historial se elimina automáticamente al superar este periodo.',
+    credits: '{{count}} créditos de modelo al mes',
+    creditsLabel: 'Créditos mensuales',
+    creditsHelp:
+      'Los créditos se conceden cada mes de suscripción, también en los planes anuales.',
+    platforms: 'Plataformas principales compatibles',
+    excludedPlatforms: 'No compatibles: {{platforms}}',
+    allPlatforms: 'Todas las plataformas disponibles',
+    limits: {
+      bots: 'Bots',
+      pipelines: 'Procesadores',
+      knowledge_bases: 'Bases de conocimiento',
+      plugins: 'Extensiones',
+      members: 'Miembros',
+      managed_sandbox_sessions: 'Sesiones de sandbox gestionado',
+    },
+  },
+  workspaceLanguage: {
+    label: 'Idioma del espacio de trabajo',
+    description:
+      'Idioma de los mensajes del servidor y respuestas predeterminadas del bot. No cambia tu interfaz.',
+    saved: 'Idioma guardado',
+    saveFailed: 'No se pudo guardar el idioma',
+  },
+  inflight: {
+    autoCollapse: 'Plegar auto.',
+    empty: 'No hay eventos en proceso',
+    move: 'Arrastra verticalmente o usa las flechas',
+    botLogs: 'Registros del bot',
+    processorLogs: 'Registros del procesador',
+
+    title: 'En curso',
+    expand: 'Expandir',
+    collapse: 'Contraer',
+    reconnecting: 'Reconectando; se muestra el último estado recibido.',
+    details: 'Ver detalles',
+    debug: 'Evento de depuración',
+    limited:
+      'Se muestra un subconjunto. Consulte todas las ejecuciones en el panel.',
+    queued: 'En cola',
+    running: 'Procesando',
+    waiting: 'Esperando entrada',
+    tool: 'Ejecutando herramienta',
+    thinking: 'Pensando',
+    replying: 'Preparando respuesta',
+    generating: 'Generando respuesta',
+    completed: 'Completado',
+    failed: 'Fallido',
+    cancelled: 'Cancelado',
+    ignored: 'Ignorado',
+  },
+  assistant: {
+    movePosition: 'Mover el asistente horizontalmente',
+    resizeHeight: 'Ajustar la altura del asistente',
+    sessions: 'Conversaciones',
+    currentChat: 'Conversación actual',
+    stop: 'Detener tarea',
+    stopped:
+      'Detenido. Una herramienta en curso puede haber surtido efecto. Comprueba el recurso antes de reintentar.',
+    setupRequired:
+      'Inicia sesión con tu cuenta de LangBot o configura un modelo para empezar a usar el asistente del espacio de trabajo.',
+    loginAccount: 'Iniciar sesión en LangBot Account',
+    configureModels: 'Configurar modelos',
+    providerCheckFailed:
+      'No se pudieron comprobar los proveedores. Inténtalo de nuevo.',
+    retrySetup: 'Reintentar',
+    preparing: 'Preparando asistente…',
+    thinking: 'Modelo respondiendo · Ronda {{round}}',
+    executing: 'Ejecutando herramienta…',
+    toolRunning: 'En ejecución',
+    recommendationFailed:
+      'No se pudo cargar el modelo recomendado. Selecciona un modelo.',
+    expand: 'Expandir asistente del espacio de trabajo',
+    collapse: 'Contraer asistente del espacio de trabajo',
+    modelHint: 'Cambia el modelo del asistente para el próximo mensaje',
+    details: 'Ver datos sin procesar',
+    found: 'Se encontraron {{count}} elementos',
+    completed: 'Completado',
+    failed: 'Fallido',
+    denied: 'No ejecutado',
+    partial: 'Resultado parcial',
+    operationFailed:
+      'La operación falló. Revisa los detalles y el estado de los recursos antes de reintentar un cambio.',
+    operationDenied: 'Rechazado. Nada de este lote se ejecutó.',
+    openResource: 'Abrir recurso',
+    sendUnconfirmed:
+      'Entrega sin confirmar. Comprueba tu conexión y vuelve a abrir la conversación.',
+    draftPlaceholder: 'Escribe tu próximo mensaje mientras esperas…',
+    operations: {
+      create_pipeline: 'Crear Pipeline',
+      configure_pipeline: 'Configurar Pipeline',
+      create_knowledge_base: 'Crear base de conocimiento',
+      get_pipeline: 'Consultar Pipeline',
+      get_knowledge_schema: 'Consultar el esquema del motor de conocimiento',
+      list_operation_logs: 'Consultar el registro de operaciones',
+    },
+    resources: {
+      models: 'Buscar modelos de chat',
+      embedding_models: 'Buscar modelos de embeddings',
+      pipelines: 'Buscar Pipelines',
+      knowledge_bases: 'Buscar bases de conocimiento',
+      knowledge_engines: 'Buscar motores de conocimiento',
+    },
+    title: 'Asistente del espacio de trabajo',
+    subtitle: 'Crea y gestiona tus aplicaciones',
+    newChat: 'Nueva conversación',
+    close: 'Cerrar',
+    welcome:
+      'Dime qué quieres crear. Puedo revisar este espacio de trabajo y proponer configuraciones para bots, Agents, bases de conocimiento, Pipelines y más, y aplicarlas tras tu confirmación.',
+    discover:
+      '¿Qué modelos, bases de conocimiento y Pipelines hay disponibles?',
+    build:
+      'Ayúdame a crear una aplicación de preguntas y respuestas con base de conocimiento.',
+    toolResult: 'Resultado de la operación',
+    review: 'Revisa las operaciones exactas antes de ejecutarlas',
+    confirm: 'Confirmar y ejecutar',
+    decline: 'Rechazar',
+    working: 'Procesando…',
+    modelUnavailable:
+      'Modelo no disponible. Revisa su configuración y acceso, y luego inicia una nueva conversación.',
+    error:
+      'Este turno no se completó. Revisa los resultados de los recursos antes de iniciar una nueva conversación; los cambios no se reintentan automáticamente.',
+    running:
+      'Este turno sigue en ejecución o se interrumpió antes de guardar su resultado. Vuelve a abrir el asistente para actualizar; revisa los recursos antes de empezar de nuevo.',
+    placeholder: 'Describe tu aplicación…',
+    send: 'Enviar',
+  },
+  sidebarGuide: {
+    steps: {
+      monitoring: {
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+        title: 'Revisar la actividad',
+        description:
+          'Consulta la actividad de los bots, el uso de modelos, los mensajes y el rendimiento del sistema.',
+      },
+      bots: {
+        title: 'Conectar plataformas de chat',
+        description:
+          'Conecta LangBot a plataformas de chat y administra las conexiones de tus bots.',
+      },
+      pipelines: {
+        title: 'Configurar procesadores',
+        description:
+          'Crea flujos, Agents y configuraciones de procesadores de plugins reutilizables y conéctalos a tus bots.',
+      },
+      knowledge: {
+        title: 'Gestionar bases de conocimiento',
+        description:
+          'Organiza documentos y fuentes externas de conocimiento para mejorar las respuestas.',
+      },
+      plugins: {
+        title: 'Gestionar extensiones instaladas',
+        description:
+          'Administra plugins, servidores MCP y habilidades instalados y consulta su estado.',
+      },
+      'add-extension': {
+        title: 'Añadir extensiones',
+        description:
+          'Instala funciones desde el mercado, GitHub o un paquete local.',
+      },
+      models: {
+        title: 'Configurar modelos',
+        description:
+          'Configura proveedores y elige los modelos de lenguaje, embeddings y otros modelos que usa LangBot.',
+      },
+      'api-integration': {
+        title: 'Configurar acceso API',
+        description:
+          'Crea claves API y configura el acceso externo a los servicios de LangBot y MCP.',
+      },
+    },
+  },
+  guidedTour: {
+    eventDebugDescription:
+      'Elige un evento compatible, introduce datos de prueba y revisa la salida y los resultados de las herramientas. Las acciones de plataforma se simulan; los modelos y las demás herramientas se ejecutan según su configuración.',
+    pipeline: {
+      trigger: {
+        title: 'Elegir qué mensajes responder',
+        description:
+          'Los flujos procesan eventos de mensajes y responden automáticamente con IA. Configura los activadores de grupo, las reglas de chat privado y los filtros.',
+      },
+      ai: {
+        title: 'Configurar las funciones de IA',
+        description:
+          'Elige un ejecutor local o de una plataforma externa y configura su modelo, instrucciones, bases de conocimiento y otros parámetros.',
+      },
+      output: {
+        title: 'Ajustar las respuestas',
+        description:
+          'Configura reglas de salida, como el tratamiento de textos largos, para decidir cómo se entregan las respuestas.',
+      },
+      safety: {
+        title: 'Configurar controles de seguridad',
+        description:
+          'Activa filtros de contenido y límites de frecuencia según sea necesario.',
+      },
+      extensions: {
+        title: 'Elegir extensiones disponibles',
+        description:
+          'Selecciona los plugins, servidores MCP y habilidades que puede usar este flujo para ampliar el procesamiento y las herramientas.',
+      },
+      basic: {
+        title: 'Administrar el flujo',
+        description:
+          'Copia este flujo para crear otra configuración o elimina un flujo que ya no necesites.',
+      },
+      debug: {
+        title: 'Probar una conversación',
+        description:
+          'Envía mensajes de prueba para comprobar los activadores, las respuestas de IA y el procesamiento de salida. Los cambios se guardan antes de la prueba.',
+      },
+      monitoring: {
+        rangeDays: 'Últimos {{days}} días',
+        customRange: 'Periodo personalizado',
+        rangeStart: 'Inicio',
+        rangeEnd: 'Fin',
+        rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+        autoRefreshLabel: 'Actualización automática',
+        autoRefreshOff: 'Actualización: desactivada',
+        autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+        title: 'Revisar el historial',
+        description:
+          'Usa la pestaña junto al título para revisar conversaciones, pasos de procesamiento y errores cuando falten respuestas o sean inesperadas.',
+      },
+      save: {
+        title: 'Guardar y conectar un bot',
+        description:
+          'Guarda la configuración y asigna los eventos de mensaje recibido a este flujo en la página del bot.',
+      },
+    },
+    pluginProcessor: {
+      select: {
+        title: 'Elegir un ejecutor de plugin',
+        description:
+          'Elige un ejecutor compatible con el procesamiento de eventos. El autor del plugin declara los eventos admitidos y su lógica.',
+      },
+      parameters: {
+        title: 'Configurar parámetros del plugin',
+        description:
+          'Completa los ajustes del plugin. Puedes guardar varias configuraciones del mismo plugin para distintos bots o usos.',
+      },
+      debug: {
+        title: 'Probar el procesamiento de eventos',
+      },
+      logs: {
+        title: 'Revisar resultados',
+        description:
+          'Consulta el estado, el evento de entrada, los registros y los resultados de cada ejecución para investigar fallos.',
+      },
+      save: {
+        title: 'Guardar y vincular a un bot',
+        description:
+          'Tras guardar, añade esta configuración en la sección de procesadores de plugins del bot. Recibirá automáticamente los eventos declarados, sin rutas individuales.',
+      },
+    },
+    previous: 'Anterior',
+    label: 'Guía de uso',
+    progress: 'Paso {{current}} de {{total}}',
+    next: 'Siguiente',
+    finish: 'Finalizar guía',
+    skip: 'Omitir',
+    bot: {
+      connection: {
+        title: 'Elegir un método de conexión',
+        description:
+          'Elige un método compatible con este adaptador. Sus parámetros se actualizarán automáticamente.',
+      },
+      basic: {
+        title: 'Asignar un nombre al bot',
+        description:
+          'Usa un nombre reconocible para encontrar esta conexión en las rutas y los registros.',
+      },
+      adapter: {
+        title: 'Elegir un adaptador de plataforma',
+        description:
+          'Elige el adaptador de este bot. Configurarás la conexión y los parámetros de la plataforma después de crearlo.',
+      },
+      parameters: {
+        title: 'Configurar la plataforma',
+        description:
+          'Introduce las credenciales y los parámetros. Consulta la documentación del adaptador para los ajustes del lado de la plataforma.',
+        action: 'Abrir documentación del adaptador',
+      },
+      routing: {
+        title: 'Dirigir los eventos entrantes',
+        description: 'Elige qué procesador recibe cada evento de este bot.',
+      },
+      save: {
+        title: 'Guardar la configuración del bot',
+        description:
+          'Comprueba la conexión y las rutas de eventos, y guarda los cambios. Después puedes activar el bot.',
+      },
+      submit: {
+        title: 'Crear el bot',
+        description:
+          'Crea el bot desactivado y continúa configurando la conexión y los parámetros en su página.',
+      },
+    },
+    processorCreate: {
+      type: {
+        title: 'Elegir un tipo de procesador',
+        description:
+          'Los pipelines siguen un flujo de mensajes definido; los agentes deciden con modelos y herramientas, y los procesadores de plugins gestionan los eventos declarados.',
+      },
+      basic: {
+        title: 'Nombrar el procesador',
+        description:
+          'Asigna un nombre reconocible. El ejecutor y los eventos se configuran después de crear el procesador.',
+      },
+      submit: {
+        title: 'Crear y continuar la configuración',
+        description:
+          'Después de crear el procesador, configura el ejecutor, sus parámetros, los eventos y las herramientas que necesite.',
+      },
+    },
+    runner: {
+      debug: {
+        title: 'Probar el procesamiento de eventos',
+      },
+      select: {
+        title: 'Elegir o instalar un ejecutor',
+        description:
+          'Selecciona un ejecutor instalado o instala uno directamente desde la lista del mercado en este selector.',
+        action: 'Explorar ejecutores en el mercado',
+      },
+      parameters: {
+        title: 'Configurar los parámetros del ejecutor',
+        description:
+          'Introduce el modelo, las credenciales, la URL del servicio y los demás ajustes definidos por el ejecutor seleccionado.',
+      },
+      events: {
+        title: 'Configurar eventos y herramientas',
+        description:
+          'Abre Eventos y herramientas para elegir qué eventos recibe este agente y qué herramientas de plataforma o de LangBot puede usar.',
+      },
+    },
+    knowledge: {
+      basic: {
+        title: 'Describir la base de conocimiento',
+        description:
+          'Asigna un nombre y, si lo deseas, una descripción antes de elegir el motor de almacenamiento y búsqueda.',
+      },
+      engine: {
+        title: 'Revisar el motor de conocimiento',
+        description:
+          'Confirma el motor de esta base de conocimiento. Sus parámetros y opciones de búsqueda se configuran debajo.',
+        action: 'Explorar motores de conocimiento',
+      },
+      parameters: {
+        title: 'Configurar parámetros del motor',
+        description:
+          'Completa los ajustes de almacenamiento, modelo, credenciales o servicio externo que solicita el motor.',
+      },
+      retrieval: {
+        title: 'Configurar la búsqueda',
+        description:
+          'Define cómo busca el motor y devuelve contenido relevante a los procesadores.',
+      },
+      save: {
+        title: 'Guardar la base de conocimiento',
+        description:
+          'Comprueba los parámetros del motor y la búsqueda, y guarda la configuración.',
+      },
+      submit: {
+        title: 'Crear la base de conocimiento',
+        description:
+          'Crea la base de conocimiento y añade documentos o conecta fuentes compatibles con el motor elegido.',
+      },
+    },
+  },
+  pipelineMigration,
   sidebar: {
     home: 'Inicio',
     extensions: 'Extensiones',
@@ -15,6 +493,16 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
+    failureReasonNotRecorded:
+      'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
+    loadFailedTitle: 'No se pudo cargar el contenido',
+    loadFailedHint:
+      'Inténtalo de nuevo. Si el problema persiste, comprueba la conexión y el estado del servicio.',
+    customValue: 'Personalizado',
+    loadFailed: 'No se pudo cargar. Inténtalo de nuevo.',
+    search: 'Buscar',
+    previous: 'Anterior',
+    next: 'Siguiente',
     login: 'Iniciar sesión',
     logout: 'Cerrar sesión',
     accountOptions: 'Configuración',
@@ -31,6 +519,8 @@ const esES = {
     loginLoadErrorDesc:
       'No se puede conectar al backend de LangBot. Asegúrate de que el servicio esté en ejecución e inténtalo de nuevo.',
     retry: 'Reintentar',
+    showSecret: 'Mostrar secreto',
+    hideSecret: 'Ocultar secreto',
     enterEmail: 'Introduce la dirección de correo electrónico',
     enterPassword: 'Introduce la contraseña',
     invalidEmail:
@@ -43,9 +533,14 @@ const esES = {
     joinDiscord: 'Únete a Discord',
     create: 'Crear',
     edit: 'Editar',
+    editBasicInfo: 'Editar información básica',
+    editBasicInfoDescription: 'Cambia el nombre, la descripción y el icono.',
+    editBasicInfoDescriptionNoIcon: 'Cambia el nombre y la descripción.',
+    management: 'Administración',
     delete: 'Eliminar',
     add: 'Añadir',
     select: 'Seleccionar',
+    clear: 'Limpiar',
     skill: 'Habilidad',
     cancel: 'Cancelar',
     submit: 'Enviar',
@@ -68,8 +563,7 @@ const esES = {
     deleteError: 'Error al eliminar: ',
     addRound: 'Añadir ronda',
     copy: 'Copiar',
-    undo: 'Deshacer',
-    redo: 'Rehacer',
+    download: 'Descargar',
     copySuccess: 'Copiado correctamente',
     copyFailed: 'Error al copiar',
     test: 'Probar',
@@ -79,28 +573,47 @@ const esES = {
     privacyPolicy: 'Política de privacidad',
     and: 'y',
     dataCollectionPolicy: 'Política de recopilación de datos',
-    dataCollectionPolicyUrl: 'https://link.langbot.app/en/docs/data-policy',
+    dataCollectionPolicyUrl:
+      'https://langbot.app/docs/en/insight/data-collection-policy',
     loading: 'Cargando...',
     fieldRequired: 'Este campo es obligatorio',
     or: 'o',
-    loginWithSpace: 'Iniciar sesión con Space',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginRecommended:
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     loginLocal: 'Iniciar sesión con cuenta local',
     loginWithPassword: 'Iniciar sesión con contraseña',
-    spaceLoginTitle: 'Iniciar sesión con Space',
+    loginWithPasskey: 'Iniciar sesión con Passkey',
+    passkeyLoginSuccess: 'Passkey verificada con éxito, iniciando sesión...',
+    passkeyLoginFailed: 'Error al iniciar sesión con Passkey',
+    passkeyNotSupported:
+      'Passkey no es compatible en este navegador o dispositivo',
+    verify: 'Verificar',
+    back: 'Atrás',
+    totpChallengeTitle: 'Verificación en dos pasos',
+    totpChallengeDesc:
+      'Introduce el código de 6 dígitos de tu aplicación de autenticación para continuar',
+    totpUseRecoveryCode:
+      'Introduce uno de tus códigos de recuperación de un solo uso para continuar',
+    enterTotpCode: 'Introduce el código de 6 dígitos',
+    enterRecoveryCode: 'Introduce el código de recuperación',
+    useRecoveryCode: 'Usar un código de recuperación',
+    useTotpCode: 'Usar un código de autenticación',
+    totpInvalidCode: 'Código no válido o ya usado, inténtalo de nuevo',
+    totpVerifyFailed: 'La verificación en dos pasos falló, inténtalo de nuevo',
+    spaceLoginTitle: 'Iniciar sesión con una cuenta de LangBot',
     spaceLoginDescription:
       'Escanea el código QR o visita el enlace para autorizar',
     spaceLoginUserCode: 'Tu código',
     spaceLoginExpires: 'El código expira en {{seconds}} segundos',
     spaceLoginWaiting: 'Esperando autorización...',
     spaceLoginSuccess: 'Autorización exitosa',
-    spaceLoginFailed: 'Error de inicio de sesión con Space',
+    spaceLoginFailed: 'Error de inicio de sesión con una cuenta de LangBot',
     spaceLoginExpired:
       'El código de autorización ha expirado, por favor inténtalo de nuevo',
     spaceLoginCancel: 'Cancelar',
     spaceLoginVisitLink: 'Visitar enlace',
-    spaceLoginProcessing: 'Iniciando sesión con Space',
+    spaceLoginProcessing: 'Iniciando sesión con una cuenta de LangBot',
     spaceLoginProcessingDescription:
       'Por favor espera mientras completamos tu inicio de sesión...',
     spaceLoginSuccessDescription: 'Redirigiendo a LangBot...',
@@ -109,7 +622,7 @@ const esES = {
     backToLogin: 'Volver al inicio de sesión',
     backToHome: 'Volver al inicio',
     spaceAccountCannotChangePassword:
-      'Las cuentas de Space no pueden cambiar la contraseña aquí',
+      'Las cuentas de LangBot no pueden cambiar la contraseña aquí',
     theme: 'Tema',
     changePassword: 'Cambiar contraseña',
     currentPassword: 'Contraseña actual',
@@ -171,6 +684,7 @@ const esES = {
     actions: 'Acciones',
     apiKeyCreatedMessage:
       'Por favor copia esta clave API, si el botón no funciona, cópiala manualmente.',
+    apiKeyStoredSecurely: 'Secret shown only when created',
     none: 'Ninguno',
     more: 'Más ({{count}})',
     less: 'Menos',
@@ -184,6 +698,41 @@ const esES = {
     help: 'Obtener ayuda',
   },
   models: {
+    starModel: 'Marcar como favorito para nuevos procesadores',
+    unstarModel: 'Quitar de favoritos',
+    starModelFailed: 'No se pudo actualizar el modelo favorito',
+    codex: {
+      account: 'Suscripción de ChatGPT',
+      description:
+        'Inicia sesión con tu cuenta de ChatGPT. La suscripción es independiente de la facturación de la API de OpenAI; los modelos y límites dependen de tu plan.',
+      disconnected: 'Sin conexión',
+      loading: 'Comprobando conexión…',
+      starting: 'Iniciando sesión…',
+      pending: 'Esperando autorización',
+      connected: 'Conectado',
+      expired: 'El inicio de sesión ha caducado. Solicita un nuevo código.',
+      error:
+        'No se pudo iniciar sesión. Comprueba la conexión e inténtalo de nuevo.',
+      canceling: 'Cancelando inicio de sesión…',
+      saveAndSignIn: 'Guardar e iniciar sesión',
+      done: 'Listo',
+      instructions:
+        'Introduce este código en la página de OpenAI. Mantén este diálogo abierto hasta completar el inicio de sesión.',
+      copyCode: 'Copiar código',
+      copied: 'Copiado',
+      copyManually: 'Selecciona y copia el código manualmente.',
+      continueAtOpenAI: 'Continuar en OpenAI',
+      expiresAt: 'El código caduca a las {{time}}.',
+      retrying: 'Conexión interrumpida. Reintentando automáticamente…',
+      cancelSignIn: 'Cancelar inicio de sesión',
+      tryAgain: 'Reintentar',
+      signIn: 'Iniciar sesión',
+      reconnect: 'Reconectar',
+      disconnect: 'Desconectar',
+      disconnectConfirm:
+        '¿Desconectar este proveedor? Sus modelos dejarán de funcionar hasta que vuelvas a iniciar sesión. Esto no cancela tu suscripción de ChatGPT.',
+      confirmDisconnect: 'Confirmar desconexión',
+    },
     title: 'Modelos',
     description:
       'Configura y gestiona los modelos que se pueden usar en los Pipelines',
@@ -218,6 +767,19 @@ const esES = {
     selectModelAbilities: 'Seleccionar capacidades del modelo',
     visionAbility: 'Capacidad de visión',
     functionCallAbility: 'Llamada a funciones',
+    reasoningAbility: 'Razonamiento',
+    reasoningLevel: 'Nivel de razonamiento',
+    reasoningLevels: {
+      providerDefault: 'Usar valor predeterminado del proveedor',
+      disabled: 'Desactivado',
+      enabled: 'Activado',
+      minimal: 'Mínimo',
+      low: 'Bajo',
+      medium: 'Medio',
+      high: 'Alto',
+      xhigh: 'Extra alto',
+      max: 'Máximo',
+    },
     contextLength: 'Ventana de contexto',
     contextLengthPlaceholder: 'Desconocido',
     contextLengthInvalid: 'La ventana de contexto debe ser un entero positivo',
@@ -246,9 +808,10 @@ const esES = {
     llmModels: 'Modelos LLM',
     localProvider: 'Local',
     localProviderDescription: 'Modelos configurados y gestionados localmente',
-    spaceProviderDescription: 'Modelos sincronizados desde tu cuenta de Space',
+    spaceProviderDescription:
+      'Modelos sincronizados desde tu cuenta de LangBot',
     spaceDisabledForLocalAccount:
-      'Inicia sesión con Space para usar modelos en la nube',
+      'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
     syncModels: 'Sincronizar',
     syncSuccess:
       'Sincronización completa: {{created}} creados, {{updated}} actualizados',
@@ -286,12 +849,32 @@ const esES = {
     searchProviders: 'Buscar proveedores...',
     langbotModelsDescription: 'Modelos en la nube impulsados por LangBot Space',
     credits: 'Créditos',
-    loginWithSpace: 'Iniciar sesión con Space',
-    loginToUseModels: 'Inicia sesión con Space para usar modelos en la nube',
+    loginWithSpace: 'Iniciar sesión con una cuenta de LangBot',
+    loginToUseModels:
+      'Inicia sesión con una cuenta de LangBot para usar modelos en la nube',
+    ownerMustBindSpace:
+      'The Workspace owner must connect a LangBot Account for LangBot Models.',
+    usesOwnerSpaceBilling:
+      "Uses the Workspace owner's LangBot Account billing and credits.",
     noModels: 'No hay modelos configurados',
+    availability: {
+      available: 'Disponible en la última comprobación',
+      unavailable: 'No disponible en la última comprobación',
+      notChecked: 'Sin resultado de comprobación',
+      lastChecked: 'Comprobado {{time}}',
+    },
+    pricing: {
+      compact: '{{input}} / {{output}}',
+      inline: 'Entrada {{input}} · salida {{output}}',
+      title: 'Créditos por 1 M de tokens',
+      input: 'Entrada: {{credits}} créditos',
+      output: 'Salida: {{credits}} créditos',
+      unavailable:
+        'No se encontró el precio. Es posible que el modelo haya sido retirado.',
+    },
     langbotModels: 'Modelos LangBot',
     spaceTrialTooltip:
-      '¡Créditos de prueba gratuitos disponibles! Inicia sesión con Space para acceder a modelos en la nube sin configuración.',
+      '¡Créditos de prueba gratuitos disponibles! Inicia sesión con una cuenta de LangBot para acceder a modelos en la nube sin configuración.',
     unlockModels: 'Inicia sesión para usar',
     editProvider: 'Editar proveedor',
     addProvider: 'Añadir proveedor',
@@ -306,6 +889,8 @@ const esES = {
     providerSaveError: 'Error al guardar el proveedor: ',
     providerDeleted: 'Proveedor eliminado',
     providerDeleteError: 'Error al eliminar el proveedor: ',
+    deleteProviderCascadeConfirmation:
+      '¿Eliminar este proveedor y TODOS los modelos que contiene? Esta acción es irreversible y no se puede deshacer.',
     deleteProviderConfirmation:
       '¿Estás seguro de que deseas eliminar este proveedor?',
     loadError: 'Error al cargar datos',
@@ -326,6 +911,30 @@ const esES = {
     },
   },
   bots: {
+    pluginSubscriptions: {
+      incompleteEvents:
+        'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
+      description:
+        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas anteriores.',
+      empty: 'No hay procesadores vinculados.',
+      add: 'Añadir procesador de plugin',
+      existing: 'Elegir configuración',
+      new: 'Nueva configuración',
+      noExisting: 'No hay configuraciones disponibles. Crea una.',
+      shared:
+        'Los bots que usan la misma configuración comparten ajustes y estado de ejecución.',
+      saveHint: 'Guarda el bot para activar el vínculo.',
+      createAndBind: 'Crear y vincular',
+      created: 'Configuración creada. Guarda el bot para activar el vínculo.',
+      enable: 'Activar {{name}}',
+      remove: 'Desvincular {{name}}',
+      configure: 'Configurar',
+      logs: 'Ver registros',
+    },
+    applyFailed: 'Configuración guardada, pero no se pudo aplicar',
+    internalErrorHint:
+      'Se produjo un error interno. Consulta los registros del servidor con esta referencia.',
+    errorReference: 'Referencia del error: {{id}}',
     title: 'Bots',
     description:
       'Crea y gestiona Bots, que son los puntos de entrada para que LangBot se conecte con diversas plataformas',
@@ -338,18 +947,37 @@ const esES = {
     botNameRequired: 'El nombre del Bot no puede estar vacío',
     botDescriptionRequired: 'La descripción del Bot no puede estar vacía',
     adapterRequired: 'El adaptador no puede estar vacío',
+    connectionMode: 'Método de conexión',
+    connectionModeDescription:
+      'Elige un método de conexión compatible con este adaptador.',
+    connectionWebhook: 'Webhook',
+    connectionWebhookDescription:
+      'La plataforma envía eventos a una URL generada por LangBot.',
+    connectionPersistent: 'Conexión persistente',
+    connectionPersistentDescription:
+      'LangBot mantiene abierta una conexión saliente de socket o streaming.',
+    noAdaptersForConnectionMode:
+      'Ningún adaptador instalado admite este método de conexión.',
     defaultDescription: 'Un Bot',
     getBotConfigError: 'Error al obtener la configuración del Bot: ',
     saveSuccess: 'Guardado correctamente',
     saveError: 'Error al guardar: ',
-    createSuccess:
-      'Creado correctamente. Por favor, activa o modifica el Pipeline vinculado',
+    createSuccess: 'Creado correctamente. Configura el enrutamiento de eventos',
+    autoCreatedPipeline:
+      'Se ha creado un pipeline automáticamente y se han vinculado los eventos de mensajes',
     createError: 'Error al crear: ',
     deleteSuccess: 'Eliminado correctamente',
     deleteError: 'Error al eliminar: ',
     deleteConfirmation: '¿Estás seguro de que deseas eliminar este Bot?',
     platformAdapter: 'Selección de plataforma/adaptador',
     selectAdapter: 'Seleccionar adaptador',
+    saveAndEnable: 'Guardar y activar',
+    searchAdapters: 'Buscar adaptadores',
+    noMatchingAdapters: 'No se encontraron adaptadores coincidentes',
+    legacyAdapters: 'Adaptadores heredados',
+    legacyAdapterBadge: 'Heredado',
+    legacyAdaptersHint:
+      'Los adaptadores antiguos se centran en mensajes y conservan la compatibilidad con bots existentes.\nLos nuevos conectan la misma plataforma mediante eventos, incluidos mensajes y solicitudes de amistad o cambios de grupo compatibles.\nUsa los nuevos para bots nuevos. Los existentes pueden seguir con los antiguos. Al cambiar, revisa la conexión y las rutas; no se actualiza la cuenta de la plataforma.',
     adapterConfig: 'Configuración del adaptador',
     viewAdapterDocs: 'Ver documentación',
     bindPipeline: 'Vincular Pipeline',
@@ -362,6 +990,10 @@ const esES = {
     earlier: 'Anterior',
     dateFormat: '{{day}}/{{month}}',
     setBotEnableError: 'Error al establecer el estado de activación del Bot',
+    enabling: 'Activando…',
+    disabling: 'Desactivando…',
+    enableConfirmed: 'Activado',
+    disableConfirmed: 'Desactivado',
     log: 'Registro',
     configuration: 'Configuración',
     logs: 'Registros',
@@ -370,6 +1002,278 @@ const esES = {
     routingConnection: 'Enrutamiento y conexión',
     routingConnectionDescription:
       'Vincula el Pipeline que procesa los mensajes de este Bot',
+    routingHelp: {
+      title: '¿Qué es el enrutamiento de eventos?',
+      intro:
+        'Los bots reciben mensajes, solicitudes de amistad y eventos como unirse a un grupo.',
+      events: 'Eventos recibidos',
+      agents: 'Distintos agentes',
+      message: 'Mensaje recibido',
+      friend: 'Solicitud de amistad',
+      group: 'Entrada a un grupo',
+      messageAction: 'Agente de respuestas',
+      friendAction: 'Agente de revisión',
+      groupAction: 'Agente de bienvenida',
+      rules: 'Según tus reglas · Ejemplo',
+      instructions:
+        'Los agentes siguen tus instrucciones y usan herramientas para responder o revisar solicitudes.',
+      plugin:
+        'Para casos avanzados, los procesadores de plugins registran eventos en lote y los gestionan con código. Añade su configuración abajo.',
+      docs: 'Desarrolla tu propio procesador de plugins',
+      runnerDocs: 'Desarrolla tu propio ejecutor de Agent',
+      pause: 'Pausar',
+      play: 'Reproducir',
+    },
+    eventRouting: 'Enrutamiento de eventos',
+    eventRoutingDescription:
+      'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',
+    eventBindings: 'Rutas de eventos',
+    addEventBinding: 'Añadir ruta',
+    addBehavior: 'Añadir comportamiento',
+    commonScenarios: 'Escenarios habituales',
+    dragEventRoute: 'Arrastrar ruta {{index}}',
+    behaviorReplyMessages: 'Responder a mensajes',
+    behaviorReplyMessagesDescription:
+      'Procesa mensajes privados y mensajes de grupo que mencionen a este bot.',
+    behaviorWelcomeMembers: 'Dar la bienvenida a nuevos miembros',
+    behaviorWelcomeMembersDescription:
+      'Ejecuta un procesador cuando alguien se une a un grupo.',
+    behaviorHandleDepartures: 'Gestionar salidas de miembros',
+    behaviorHandleDeparturesDescription:
+      'Ejecuta un procesador cuando alguien sale o es expulsado.',
+    behaviorReviewFriendRequests: 'Revisar solicitudes de amistad',
+    behaviorReviewFriendRequestsDescription:
+      'Envía las nuevas solicitudes de amistad a un procesador.',
+    behaviorHandleModeration: 'Gestionar eventos de moderación',
+    behaviorHandleModerationDescription:
+      'Ejecuta un procesador cuando se restringe a un miembro del grupo.',
+    behaviorCustom: 'Configurar otro evento',
+    behaviorCustomDescription:
+      'Añade una ruta y elige entre los eventos admitidos por este adaptador.',
+    eventPattern: 'Evento',
+    eventPatternPlaceholder: 'Seleccionar evento',
+    targetType: 'Tipo de destino',
+    target: 'Procesador',
+    targetAgent: 'Agent',
+    targetPipeline: 'Flujo',
+    targetDiscard: 'Descartar',
+    selectTarget: 'Seleccionar procesador',
+    searchTarget: 'Buscar procesadores…',
+    noTargetFound: 'No se encontraron procesadores compatibles',
+    priority: 'Prioridad',
+    enabled: 'Activado',
+    eventBindingDescriptionPlaceholder: 'Descripción de la regla',
+    noEventBindings: 'No hay rutas de eventos',
+    unsupportedPipelineEvent:
+      'Los flujos solo admiten eventos message.received',
+    disable: 'Desactivar',
+    enable: 'Activar',
+    disabledBindings: 'Desactivado',
+    adapterEventsTitle: 'Eventos admitidos',
+    adapterEventsDescription: '{{count}} tipos de evento',
+    adapterEventsMore: '{{count}} más',
+    advancedEventValues: 'Ver todos',
+    eventGroup: 'Grupo',
+    eventGroupNames: {
+      wecomcs: 'Atención al cliente de WeCom',
+      bot: 'Estado del bot',
+      feedback: 'Comentarios',
+      friend: 'Amigos',
+      group: 'Grupos',
+      message: 'Mensajes',
+      platform: 'Plataforma',
+    },
+    routeConflictTitle: 'Algunas rutas se superponen',
+    routeConflictShadowed:
+      '{{shadowed}} podría no ejecutarse porque {{winner}} procesa primero los mismos eventos.',
+    routeConflictMore: 'Hay {{count}} conflictos de rutas adicionales.',
+    routeFallbackCatchAll: '{{route}} es la ruta general.',
+    routeFallbackIgnored:
+      'Se ignoran los eventos sin ruta coincidente. Añade una ruta general solo si todos los eventos necesitan un resultado explícito.',
+    matchRecords: 'Registros de coincidencias',
+    matchRecordsDescription:
+      'Último resultado de cada regla y eventos recientes sin coincidencia. Los registros en memoria se borran al reiniciar.',
+    testRoute: 'Comprobar ruta',
+    adapterEventDebugAction: 'Probar escucha',
+    adapterEventDebugTitle: 'Depuración de eventos de plataforma',
+    adapterEventDebugDescription:
+      'Genera un evento en {{platform}}. Aparecerá aquí cuando lo reciba el adaptador.',
+    adapterEventObserveOnly:
+      'Esta ventana solo observa eventos. Los eventos entrantes siguen las rutas actuales.',
+    adapterEventPreparing: 'Preparando',
+    adapterEventListening: 'Escuchando',
+    adapterEventListenerUnavailable: 'Escucha interrumpida',
+    adapterEventLoadFailed:
+      'No se pudieron leer los eventos. Comprueba que el bot está en ejecución y vuelve a intentarlo.',
+    adapterEventReceivedCount: '{{count}} eventos recibidos',
+    adapterEventClear: 'Limpiar',
+    adapterEventEmptyTitle: 'Esperando un evento de plataforma',
+    adapterEventEmptyDescription:
+      'Envía un mensaje o genera un evento en {{platform}}.',
+    adapterEventData: 'Ver datos del evento',
+    adapterEventNeedsSavedBot: 'Guarda el bot antes de escuchar eventos.',
+    adapterEventCurrentPlatform: 'la plataforma actual',
+    adapterConfigurationTest: 'Probar la configuración del adaptador',
+    adapterConfigurationTestDescription:
+      'Guarda y activa el bot; después genera un evento para comprobar la configuración.',
+    refreshRouteStatus: 'Actualizar estado',
+    routeStatusIdle: 'Aún sin ejecuciones',
+    routeStatusRefreshFailed: 'No se pudo actualizar el estado de la ruta.',
+    routeStatus: {
+      matched: 'Coincide',
+      delivered: 'Entregado',
+      discarded: 'Descartado',
+      failed: 'Fallido',
+      not_matched: 'Sin coincidencia',
+    },
+    routeStatusDetail: {
+      matched: 'Esta ruta coincide con el evento.',
+      delivered: 'El procesador recibió el evento.',
+      discarded: 'El evento se descartó intencionadamente.',
+      failed: 'La ruta no pudo completarse.',
+      not_matched: 'Ninguna ruta configurada coincide con el evento.',
+    },
+    routeFailure: {
+      binding_disabled: 'Esta ruta está desactivada.',
+      event_pattern_mismatch: 'El evento no coincide con esta ruta.',
+      filters_mismatch:
+        'Los datos de prueba no cumplen las condiciones de la ruta.',
+      lower_priority: 'Otra ruta coincidente tiene mayor prioridad.',
+      route_not_found: 'Ninguna ruta coincide con este evento.',
+      processor_incompatible:
+        'El procesador seleccionado no admite este evento.',
+      processor_not_found: 'El procesador seleccionado no está disponible.',
+      runner_failed: 'El ejecutor del Agent falló al procesar el evento.',
+      delivery_failed: 'El procesador terminó, pero la entrega falló.',
+    },
+    dryRunTitle: 'Comprobar ruta de eventos',
+    dryRunDescription:
+      'Elige un evento para ver con qué ruta y procesador coincide.',
+    dryRunEventType: 'Tipo de evento',
+    dryRunSampleReady: 'Evento de ejemplo listo',
+    dryRunSampleDescription:
+      'LangBot ha preparado datos de ejemplo para {{event}}. Normalmente puedes usarlos sin cambios.',
+    dryRunEditPayload: 'Datos de prueba',
+    dryRunHidePayload: 'Ocultar datos',
+    dryRunPayload: 'Datos de prueba (JSON)',
+    dryRunPayloadHint:
+      'Úsalos para probar condiciones de mensajes y conversaciones.',
+    dryRunPayloadJsonError: 'Introduce un JSON válido.',
+    dryRunPayloadObjectError: 'Los datos deben ser un objeto JSON.',
+    dryRunNeedsSavedBot: 'Guarda el bot antes de comprobar las rutas.',
+    dryRunFailed: 'No se pudo comprobar la ruta. Inténtalo más tarde.',
+    dryRunAction: 'Ver coincidencia',
+    dryRunRunning: 'Comprobando…',
+    dryRunMatched: 'Ruta coincidente',
+    dryRunNotMatched: 'Ninguna ruta coincide',
+    dryRunTarget: 'Procesador de destino',
+    dryRunNoTarget: 'Sin destino',
+    dryRunMatchedRule: 'Regla coincidente',
+    dryRunRuleIndex: 'Ruta {{index}}',
+    dryRunNoRule: 'Ninguna regla coincide',
+    dryRunDiagnostics: 'Pasos de diagnóstico',
+    dryRunDiagnosticSelected: 'Se seleccionó {{route}}.',
+    dryRunDiagnosticMatched: '{{route}} coincide. {{reason}}',
+    dryRunDiagnosticSkipped: 'Se omitió {{route}}. {{reason}}',
+    eventCustom: 'Evento personalizado',
+    eventWildcard: 'Todos los eventos',
+    eventNamespaceWildcard: '{{namespace}}.*',
+    eventNames: {
+      wecombot_enter_chat: 'Usuario entró al chat del bot',
+      wecombot_template_card_event: 'Interacción con tarjeta',
+      dingtalk_card_action: 'Interacción con tarjeta de DingTalk',
+      wecomcs_enter_session: 'Cliente entró en la conversación',
+      wecomcs_msg_send_fail: 'Fallo de envío de atención al cliente',
+      wecomcs_servicer_status_change: 'Disponibilidad del agente modificada',
+      wecomcs_session_status_change: 'Estado de conversación modificado',
+      wecomcs_reject_customer_msg_switch_change:
+        'Rechazo de mensajes modificado',
+      message_received: 'Mensaje recibido',
+      message_edited: 'Mensaje editado',
+      message_deleted: 'Mensaje eliminado',
+      message_reaction: 'Reacción a un mensaje',
+      feedback_received: 'Comentarios recibidos',
+      friend_request_received: 'Solicitud de amistad recibida',
+      friend_added: 'Amigo añadido',
+      group_member_joined: 'Miembro unido al grupo',
+      group_member_left: 'Miembro salió del grupo',
+      group_info_updated: 'Información del grupo actualizada',
+      group_member_banned: 'Miembro bloqueado',
+      bot_invited_to_group: 'Bot invitado al grupo',
+      bot_removed_from_group: 'Bot eliminado del grupo',
+      bot_muted: 'Bot silenciado',
+      bot_unmuted: 'Bot ya no silenciado',
+      platform_specific: 'Evento específico de la plataforma',
+    },
+    eventDescriptions: {
+      wecombot_enter_chat:
+        'Un usuario abrió el chat del bot. Úsalo para flujos de bienvenida.',
+      wecombot_template_card_event:
+        'Un usuario pulsó o envió una tarjeta. Las respuestas de formularios gestionados se procesan por separado.',
+      dingtalk_card_action:
+        'Clics y envíos de tarjetas; las valoraciones y los formularios gestionados se procesan por separado.',
+      wecomcs_enter_session:
+        'Un cliente abrió el enlace de atención; incluye origen y código de bienvenida.',
+      wecomcs_msg_send_fail:
+        'WeChat notificó un fallo de envío con el ID y el tipo de error.',
+      wecomcs_servicer_status_change:
+        'Un agente inició, detuvo o suspendió la atención.',
+      wecomcs_session_status_change:
+        'Un agente aceptó, transfirió, cerró o reabrió la conversación.',
+      wecomcs_reject_customer_msg_switch_change:
+        'Un agente activó o desactivó el rechazo de mensajes del cliente.',
+      all: 'Coincide con todos los eventos recibidos por este adaptador.',
+      namespace: 'Coincide con todos los eventos de {{group}}.',
+      namespace_bot:
+        'Coincide con invitaciones, expulsiones, silencios y otros cambios de estado del bot.',
+      namespace_feedback:
+        'Coincide con comentarios recibidos de la plataforma o de usuarios.',
+      namespace_friend: 'Coincide con solicitudes y cambios de amistad.',
+      namespace_group:
+        'Coincide con cambios de miembros y actualizaciones de información del grupo.',
+      namespace_message:
+        'Coincide con mensajes recibidos, editados, eliminados y reacciones.',
+      namespace_platform:
+        'Coincide con eventos específicos de plataforma proporcionados por un adaptador.',
+      custom: 'Evento personalizado o aún sin descripción.',
+      message_received: 'Un usuario o grupo envía un nuevo mensaje al bot.',
+      message_edited:
+        'La plataforma informa de un cambio en un mensaje existente.',
+      message_deleted: 'La plataforma informa de la eliminación de un mensaje.',
+      message_reaction: 'Un usuario añade o elimina una reacción a un mensaje.',
+      feedback_received:
+        'Se reciben comentarios de la plataforma o de un usuario.',
+      friend_request_received: 'Alguien solicita añadir al bot como amigo.',
+      friend_added: 'Se ha creado una relación de amistad.',
+      group_member_joined: 'Un miembro se une a un grupo donde está el bot.',
+      group_member_left: 'Un miembro abandona un grupo donde está el bot.',
+      group_info_updated:
+        'Han cambiado datos del grupo, como su nombre o propietario.',
+      group_member_banned: 'Un miembro del grupo es bloqueado o expulsado.',
+      bot_invited_to_group: 'El bot es invitado a un grupo.',
+      bot_removed_from_group: 'El bot es expulsado de un grupo.',
+      bot_muted: 'El bot es silenciado en un grupo.',
+      bot_unmuted: 'Se retira el silencio del bot en un grupo.',
+      platform_specific: 'Evento de plataforma específico del adaptador.',
+    },
+    conditions: 'Condiciones',
+    conditionsDescription:
+      'Deben cumplirse todas las condiciones. Déjalo vacío para activar siempre.',
+    conditionsEmpty: 'Sin condiciones: siempre se activa.',
+    addFilter: 'Añadir condición',
+    filterIsAtBot: 'Menciona a este bot',
+    mentionYes: 'Sí',
+    mentionNo: 'No',
+    filterChatType: 'Tipo de sesión',
+    filterChatId: 'ID de sesión',
+    filterMessageText: 'Texto del mensaje',
+    filterMessageElement: 'Elemento del mensaje',
+    operator_eq: 'es igual a',
+    operator_neq: 'no es igual a',
+    operator_contains: 'contiene',
+    operator_not_contains: 'no contiene',
+    operator_starts_with: 'empieza por',
+    operator_regex: 'expresión regular',
     routingRules: 'Reglas de enrutamiento condicional',
     routingRulesDescription:
       'Las reglas se evalúan en orden; la primera coincidencia enruta a su pipeline. Si ninguna coincide, se usa el pipeline predeterminado.',
@@ -435,6 +1339,13 @@ const esES = {
     imagesAttached: 'imagen(es) adjunta(s)',
     noLogs: 'Aún no hay registros',
     sessionMonitor: {
+      resetContext: 'Restablecer contexto',
+      resetDescription:
+        'Los mensajes nuevos comenzarán sin contexto previo. Se conservan el historial de monitoreo, los archivos y la memoria a largo plazo. Espere a que terminen las tareas activas.',
+      resetSuccess: 'Contexto restablecido.',
+      resetError:
+        'No se pudo restablecer. Espere a que terminen las tareas activas y vuelva a intentarlo.',
+
       title: 'Sesiones',
       sessions: 'Sesiones',
       noSessions: 'No se encontraron sesiones',
@@ -455,6 +1366,10 @@ const esES = {
       discarded: 'Descartado',
       userMessage: 'Usuario',
       botMessage: 'Asistente',
+      totalSessions: '{{count}} sesiones',
+      userSearch: 'ID o nombre de usuario',
+      startDate: 'Fecha de inicio',
+      endDate: 'Fecha de fin',
     },
     admins: {
       title: 'Admins',
@@ -472,10 +1387,352 @@ const esES = {
       deleteError: 'Failed to remove admin: ',
       noAdmins: 'No admins configured',
       setAdminTitle: 'Set as admin',
-      removeAdminTitle: 'Remove admin',
       adminBadge: 'Admin',
       configureAdmins: 'Manage Admins',
+      removeAdminTitle: 'Remove admin',
     },
+  },
+  agents: {
+    apiToolsSelectAll: 'Seleccionar todo',
+    monitoring: {
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+      runStatus: 'Estado de ejecución',
+      toolCalls: 'Llamadas a herramientas',
+      delivery: 'Envío de mensajes',
+      sendFailed: 'Error de envío',
+      sendCount: '{{count}} llamadas de envío correctas',
+      noSend: 'Sin envíos registrados',
+      noSteps: 'Aún no hay pasos registrados.',
+      recipient: 'Destinatario',
+      actionCompleted: 'Herramienta ejecutada correctamente.',
+      simulatedAction: 'Acción simulada; no se envió ningún mensaje real.',
+      description:
+        'Consulta el evento, la salida del modelo y las herramientas de cada tarea.',
+      empty:
+        'Sin ejecuciones. Activa un evento o ejecuta una prueba de depuración.',
+      input: 'Entrada inicial',
+      eventData: 'Datos del evento',
+      execution: 'Pasos de ejecución',
+      rawEvents: 'Eventos sin procesar',
+      inputUnavailable: 'No se registró la entrada de esta ejecución.',
+    },
+    eventProcessor: {
+      configurations: 'Configuraciones de procesadores de plugins',
+      configTab: 'Configuración',
+      logsTab: 'Registros',
+      noSettings: 'Este procesador de plugin no requiere configuración.',
+      createPageTitle: 'Crear procesador de eventos',
+      processWithPlugin: 'Procesar con código del plugin',
+      pluginSettings: 'Ajustes del plugin',
+      pluginSettingsDescription: 'Parámetros definidos por este plugin.',
+      selectToDebug: 'Selecciona un plugin arriba para iniciar la depuración.',
+      debugOutput: 'Salida del procesador',
+      debugDescription:
+        'Eventos de entrada, registros del plugin y resultados de acciones de esta prueba.',
+      debugNotice:
+        'El plugin procesa un evento de prueba. Las acciones de plataforma usan Mock y no envían mensajes reales; las demás herramientas se ejecutan según su configuración.',
+      create: 'Crear procesador de plugin',
+      type: 'Procesador de plugin',
+      description:
+        'Procesa eventos con código y lógica definidos por un plugin.',
+      component: 'Procesador de plugin',
+      selectComponent: 'Seleccionar un procesador de plugin',
+      unavailable: 'Componente no disponible',
+      noComponents: 'No hay plugins instalados que proporcionen procesadores.',
+      installPlugin: 'Instalar un plugin',
+      loadError: 'No se pudieron cargar los detalles.',
+      refresh: 'Actualizar',
+      runs: 'Ejecuciones',
+      noRuns: 'Sin ejecuciones. Vincula este procesador a un bot para empezar.',
+      bindBot: 'Vincular a un bot',
+      trace: 'Registros y flujo de mensajes',
+      selectRun: 'Selecciona una ejecución para ver los detalles.',
+      input: 'Evento recibido',
+      destination: 'Destino de entrega',
+      loadMore: 'Cargar más',
+      activation:
+        'Instala un plugin, crea una configuración de procesador y vincula un bot.',
+      status_timeout: 'Tiempo agotado',
+      status_pending: 'Pendiente',
+      status_running: 'En ejecución',
+      status_completed: 'Completado',
+      status_failed: 'Error',
+      status_cancelled: 'Cancelado',
+      status_queued: 'En cola',
+      trace_run_completed: 'Ejecución completada',
+      trace_run_failed: 'Ejecución fallida',
+      trace_tool_call_started: 'Acción iniciada',
+      trace_tool_call_completed: 'Resultado de la acción',
+    },
+    debugData: {
+      chatId: 'ID del chat',
+      feedbackType:
+        'Tipo de valoración (1: positiva, 2: negativa, 3: cancelar)',
+      title: 'Datos del evento',
+      form: 'Campos comunes',
+      json: 'JSON completo',
+      groupId: 'ID del grupo',
+      memberId: 'ID del miembro',
+      memberName: 'Nombre del miembro',
+      userId: 'ID del usuario',
+      userName: 'Nombre del usuario',
+      requesterId: 'ID del solicitante',
+      requesterName: 'Nombre del solicitante',
+      messageId: 'ID del mensaje',
+      duration: 'Duración (segundos)',
+      message: 'Contenido del mensaje',
+      newMessage: 'Contenido editado',
+      verificationMessage: 'Mensaje de verificación',
+      reaction: 'Reacción',
+      groupName: 'Nombre del grupo',
+      feedback: 'Comentarios',
+      rating: 'Puntuación',
+      eventName: 'Nombre del evento',
+      privateChat: 'Vacío para chat privado',
+      sampleUser: 'Usuario de prueba',
+      sampleMessage: 'Hola',
+      sampleFeedback: 'Muy útil',
+      invalidField: 'Revisa {{field}}',
+    },
+    title: 'Procesadores',
+    description:
+      'Crea procesadores reutilizables y úsalos en el enrutamiento de eventos del bot',
+    create: 'Crear procesador',
+    editAgent: 'Editar Agent',
+    selectFromSidebar: 'Selecciona un procesador en la barra lateral',
+    agentType: 'Agent',
+    agentTypeDescription:
+      'Usa un runner para procesar mensajes, miembros de grupo, amigos, retroalimentación y otros eventos de plataforma.',
+    pipelineType: 'Flujo de trabajo',
+    kindBadgeAgent: 'Agent',
+    kindBadgePipeline: 'Pipeline',
+    groupByKind: 'Agrupar por tipo',
+    groupByKindShort: 'Agrupar',
+    pipelineTypeDescription:
+      'Sigue un flujo fijo: recibir un mensaje, consultar a la IA y responder al usuario, con bases de conocimiento y plugins configurables. Solo procesa eventos de mensaje, para tareas con pasos claros y control del proceso.',
+    allEvents: 'Compatible con todos los eventos',
+    messageEventsOnly: 'Solo eventos de mensaje',
+    selectAgentRunner: 'Seleccionar ejecutor de Agent',
+    selectProcessorPlugin: 'Seleccionar plugin de procesamiento',
+    createBasicInfoDescription: 'Configura el nombre, icono y plugin',
+    chooseType: 'Elegir cómo funciona',
+    chooseTypeDescription:
+      'Elige primero el tipo de procesador. Podrás configurarlo después de crearlo.',
+    diagramHint: 'Cómo funciona',
+    agentDiagramTitle: 'Agent: decidir y actuar',
+    agentDiagramDescription:
+      'Un Agent recibe diversos eventos, usa modelos y herramientas para comprender la situación y decide qué hacer.',
+    pipelineDiagramTitle: 'Flujo: seguir pasos definidos',
+    pipelineDiagramDescription:
+      'Un flujo solo procesa eventos de mensajes y ejecuta los pasos en el orden configurado.',
+    pipelineDiagramFlow: 'Los mensajes siguen una secuencia fija',
+    diagramEvents: 'Eventos de plataforma',
+    diagramAgentCanUse: 'Disponible para el Agent',
+    diagramMessages: 'Mensajes',
+    diagramMembers: 'Miembros',
+    diagramFeedback: 'Comentarios',
+    diagramDecide: 'Comprender y decidir',
+    diagramModel: 'Usar modelo',
+    diagramTools: 'Usar herramientas',
+    diagramActions: 'Actuar',
+    diagramMessage: 'Mensaje',
+    diagramPreprocess: 'Preparar',
+    diagramAI: 'IA',
+    diagramPostprocess: 'Refinar',
+    diagramOutput: 'Salida',
+    basicInfo: 'Información básica',
+    basicInfoDescription: 'Establece el nombre, icono y descripción',
+    runnerSettings: 'Runner',
+    advanced: 'Avanzado',
+    eventsAndTools: 'Eventos y herramientas',
+    eventsAndToolsDescription:
+      'Define los eventos de activación y las herramientas disponibles.',
+    bindableEvents: 'Rango de eventos vinculables',
+    bindableEventsDescription:
+      'Limita qué rutas de eventos del bot pueden seleccionar este Agent. El valor predeterminado sirve para la mayoría de los casos.',
+    configuredEvents: 'Eventos añadidos',
+    configuredEventsCount: '{{count}} en total',
+    addEvent: 'Añadir evento',
+    removeEvent: 'Eliminar evento',
+    eventActions: 'Herramientas activadas automáticamente',
+    eventToolEnabled: 'Activado',
+    eventToolsEnabledCount: '{{count}} herramientas activadas',
+    noEventActions: 'No hay acciones disponibles para este evento.',
+    noEventsConfigured: 'No hay eventos añadidos',
+    noEventsConfiguredDescription: 'Ningún evento puede activar este Agent.',
+    noEventsConfiguredBadge: 'Sin eventos',
+    apiTools: 'Acceso a herramientas',
+    apiToolsDescription: 'Elige qué herramientas puede llamar este Agent.',
+    otherTools: 'Otras herramientas',
+    otherToolsDescription:
+      'Elige herramientas de plataforma, sandbox, MCP, plugins y habilidades.',
+    apiToolsSelected: '{{count}} seleccionadas',
+    apiToolsSecurityHint:
+      'Activa solo las herramientas que necesita este Agent.',
+    apiToolsSearch: 'Buscar herramientas…',
+    eventApiTools: 'Herramientas de eventos',
+    eventToolUnavailable: 'No disponible',
+    eventApiToolsDescription:
+      'Los destinos se fijan a partir del evento actual. El Agent solo proporciona los parámetros de acción.',
+    platformApiTools: 'Herramientas de plataforma',
+    platformApiToolsDescription:
+      'El Agent puede elegir los ID de usuario, grupo o mensaje. Concede solo lo necesario.',
+    apiToolEvents: 'Eventos',
+    apiToolParameters: 'Parámetros del Agent',
+    apiToolSource: 'Origen',
+    apiToolNoParameters: 'ninguno',
+    sandboxTools: 'Sandbox',
+    mcpTools: 'MCP',
+    pluginTools: 'Plugins',
+    skillTools: 'Habilidades',
+    langbotBuiltIn: 'LangBot',
+    apiToolDetails: 'Detalles',
+    apiToolHideDetails: 'Ocultar',
+    apiToolsNoResults: 'Ninguna API o herramienta coincide',
+    apiToolsCatalogUnavailable:
+      'El backend de LangBot no devolvió el catálogo de herramientas API. Comprueba que esté actualizado y reiniciado; esto no significa que la plataforma no tenga herramientas.',
+    hostToolsCatalogUnavailable:
+      'El catálogo de herramientas no está disponible temporalmente.',
+    apiToolRisk: {
+      read: 'Solo lectura',
+      write: 'Acción',
+      dangerous: 'Sensible',
+    },
+    supportedEvents: 'Rango de eventos',
+    supportedEventsDescription:
+      'Elige todos los eventos, un grupo o eventos concretos. Las rutas del bot solo mostrarán este Agent para los eventos compatibles.',
+    searchEvents: 'Buscar eventos…',
+    noEventsFound: 'No se encontraron eventos',
+    nameRequired: 'El nombre no puede estar vacío',
+    createSuccess: 'Creado correctamente',
+    createError: 'Error al crear: ',
+    loadError: 'Error al cargar: ',
+    saveSuccess: 'Guardado correctamente',
+    saveError: 'Error al guardar: ',
+    deleteSuccess: 'Eliminado correctamente',
+    deleteError: 'Error al eliminar: ',
+    deleteConfirmation: '¿Estás seguro de que deseas eliminar este Agent?',
+    dangerZone: 'Zona de peligro',
+    dangerZoneDescription: 'Acciones irreversibles y destructivas',
+    deleteAgentAction: 'Eliminar este Agent',
+    deleteAgentHint:
+      'Una vez eliminado, los eventos vinculados a él ya no podrán ejecutarse.',
+    noRunnerMetadata: 'No hay metadatos de Runner disponibles actualmente.',
+    runnerStatusLoading: 'Comprobando estado del ejecutor',
+    runnerStatusCheckFailed: 'No se pudo comprobar el estado del ejecutor',
+    runnerStatusCheckFailedDescription:
+      'Vuelve a comprobarlo. Si sigue fallando, revisa el backend y el entorno de ejecución de plugins.',
+    noRunnersAvailable: 'No hay ejecutores disponibles',
+    noRunnersAvailableDescription:
+      'Instala y activa una extensión de ejecutor antes de configurar este Agent.',
+    installedRunners: 'Ejecutores instalados',
+    marketplaceRunners: 'Plugins de ejecutores en el mercado',
+    viewMarketplace: 'Ver mercado',
+    restoringRunnerInstall:
+      'Restaurando la instalación del plugin y esperando al ejecutor…',
+    noInstalledRunners: 'Aún no hay extensiones de ejecutor instaladas.',
+    runnerDiagnosis: {
+      missing:
+        'No se encuentra el Runner seleccionado o su complemento. Instale o restaure el complemento.',
+      disabled:
+        'El complemento del Runner seleccionado está deshabilitado. Actívelo en Complementos.',
+      runtime:
+        'El entorno de ejecución de complementos no está disponible o está deshabilitado. Restablezca la conexión antes de ejecutar.',
+      repair: 'Gestionar complementos y entorno de ejecución',
+      draft:
+        'La reparación se abre en otra pestaña. La selección del Runner y el borrador sin guardar se conservan aquí.',
+    },
+    installingRunner: 'Instalando {{runner}}...',
+    runnerInstallSuccess:
+      '{{runner}} está instalado y listo para seleccionarse',
+    selectedRunnerUnavailable: 'El ejecutor seleccionado no está disponible',
+    selectedRunnerUnavailableDescription:
+      '{{runner}} no está registrado actualmente. Elige otro ejecutor o restaura su extensión.',
+    noRunnerSelected: 'Ningún ejecutor seleccionado',
+    runnerConfigIncomplete: 'Configuración del ejecutor incompleta',
+    runnerConfigIncompleteDescription:
+      'Completa los campos obligatorios: {{fields}}',
+    runnerReady: 'Ejecutor listo',
+    runnerReadyDescription:
+      '{{runner}} está registrado y el entorno de ejecución de plugins está conectado.',
+    debugTab: 'Depuración de eventos',
+    debugTitle: 'Depuración de eventos del Agent',
+    debugDescription:
+      'Ejecuta el Agent actual con un mensaje o evento de plataforma y revisa el resultado real.',
+    debugResetSession: 'Restablecer sesión',
+    debugEventType: 'Tipo de evento',
+    debugNoEventsTitle: 'No hay eventos para depurar',
+    debugNoEventsDescription:
+      'Añade primero un evento en Eventos y herramientas.',
+    debugMessageReceived: 'Mensaje recibido',
+    debugGroupMemberJoined: 'Miembro añadido al grupo',
+    debugGroupMemberLeft: 'Miembro salió del grupo',
+    debugFriendRequested: 'Solicitud de amistad recibida',
+    debugFeedbackReceived: 'Comentarios recibidos',
+    debugCustomEvent: 'Evento personalizado',
+    debugCustomEventType: 'Nombre del evento personalizado',
+    debugMessageInput: 'Entrada de conversación',
+    debugEventSummary: 'Resumen del evento',
+    debugInputPlaceholder: 'Introduce lo que debe procesar el Agent',
+    debugEventPayload: 'Datos del evento (JSON)',
+    debugSupportedEvents: 'El Agent admite',
+    debugRun: 'Ejecutar prueba',
+    debugSaveAndRun: 'Guardar y ejecutar',
+    debugRunning: 'En ejecución',
+    debugTranscript: 'Registro de depuración',
+    debugTranscriptDescription:
+      'Entradas y respuestas del Agent de esta sesión de depuración.',
+    debugEmptyTitle: 'Comprobar el comportamiento del Agent',
+    debugEmptyTranscript:
+      'Elige un evento, introduce datos de prueba y pulsa «Ejecutar prueba». Los resultados permanecen en esta página.',
+    debugAgentOutput: 'Salida del Agent',
+    debugReasoning: 'Pensando',
+    debugTextOutput: 'Salida de texto',
+    debugPlatformNotice:
+      'Las herramientas de plataforma usan Mock: el Agent realiza llamadas reales, pero las acciones se simulan sin enviar mensajes reales. Las demás herramientas se ejecutan según su configuración.',
+    debugToolSimulated: 'Simulación correcta · Mock',
+    debugStop: 'Detener depuración',
+    debugMockOptions: 'Escenario Mock (JSON)',
+    debugInvalidMock: 'El escenario Mock debe ser un objeto JSON válido.',
+    debugToolMockFailed: 'Fallo simulado · Mock',
+    debugMockOptionsHelp:
+      'De forma predeterminada, las llamadas tienen éxito. Asigna errores por nombre de herramienta en errors, datos de consulta en results y API no admitidas en unsupported_apis. Ejemplo: {"errors":{"event_reply":"Fallo de envío simulado"}}',
+    debugCancelled:
+      'Depuración detenida. Se conservan los registros anteriores.',
+    debugNoToolCalls:
+      'No se registraron llamadas a herramientas. Generar texto no implica haber enviado un mensaje.',
+    debugToolCount:
+      '{{count}} llamadas a herramientas registradas. Consulta su estado y resultados debajo.',
+    debugToolRunning: 'En ejecución',
+    debugToolCompleted: 'Completado',
+    debugToolFailed: 'Fallido',
+    debugToolInterrupted: 'Sin resultado devuelto',
+    debugToolArguments: 'Argumentos',
+    debugToolResult: 'Resultado',
+    debugTestInput: 'Entrada de prueba',
+    debugNoTextOutput: 'La ejecución terminó sin salida de texto.',
+    debugEventTypeRequired: 'Introduce un tipo de evento',
+    debugInputRequired: 'Introduce una entrada de conversación',
+    debugInvalidPayload: 'Los datos del evento deben ser un objeto JSON válido',
+    debugUnsupportedEvent: 'Este evento no está entre los que admite el Agent',
+    debugRunnerConfigInvalidDescription:
+      'La configuración del ejecutor está incompleta: {{message}}',
+    debugRunnerExecutionFailedDescription:
+      'La ejecución falló. Revisa el modelo y la configuración del ejecutor e inténtalo de nuevo.',
+    debugRunnerTimeoutDescription:
+      'Se agotó el tiempo de ejecución. Inténtalo más tarde o ajusta el tiempo límite del ejecutor.',
+    debugApiKeyRequired: 'Falta la clave API',
+    debugOpenRunnerConfig: 'Abrir configuración del ejecutor',
+    debugReviewRunnerConfig: 'Revisar configuración del ejecutor',
+    debugErrorDetails: 'Ver detalles del error',
+    debugRunFailed: 'Falló la depuración del Agent',
   },
   plugins: {
     title: 'Extensiones',
@@ -504,8 +1761,11 @@ const esES = {
     getPluginListError: 'Error al obtener la lista de plugins:',
     noPluginInstalled: 'No hay plugins instalados',
     noExtensionInstalled: 'No hay extensiones instaladas',
+    searchInstalled: 'Buscar extensiones instaladas',
+    noMatchingExtensions: 'Ninguna extensión coincide con "{{query}}"',
     loadingExtensions: 'Cargando extensiones...',
     groupByType: 'Agrupar por formato',
+    groupByTypeShort: 'Agrupar',
     pluginConfig: 'Configuración del plugin',
     pluginSort: 'Orden de plugins',
     pluginSortDescription:
@@ -528,9 +1788,11 @@ const esES = {
     debugInfoTitle: 'Información de depuración del plugin',
     debugUrl: 'URL de depuración',
     debugKey: 'Clave de depuración',
+    debugKeyExpires:
+      'Rota a las {{time}}; cada Workspace tiene una clave distinta',
     noDebugKey: '(No establecida)',
     debugKeyDisabled:
-      'La clave de depuración no está configurada, la depuración del plugin no requiere autenticación',
+      'La credencial de depuración no está disponible temporalmente',
     boxStatusTitle: 'Box Runtime',
     boxStatus: 'Estado',
     boxConnected: 'Conectado',
@@ -570,10 +1832,221 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      Runner: 'Ejecutor',
     },
     uploadLocal: 'Subir local',
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
+    spaceUpload: {
+      menuAction: 'Subir a la tienda de extensiones',
+      title: 'Subir plugin a la tienda de extensiones',
+      description:
+        'Compila el plugin en depuración {{author}}/{{name}} y publícalo en la tienda de extensiones.',
+      loadFailed: 'No se pudo cargar la información de subida del plugin',
+      spaceNotConnected:
+        'Este Workspace no está vinculado a una cuenta de LangBot. Vincúlala antes de subir.',
+      label: 'Nombre',
+      version: 'Versión',
+      pluginDescription: 'Descripción',
+      repository: 'Repositorio',
+      repositoryPublicHint:
+        'Al sincronizar con GitHub, un repositorio inexistente se crea y un repositorio privado existente pasa a ser público.',
+      author: 'Autor',
+      authorHint:
+        'Al publicar se usa esta identidad de autor en la tienda de extensiones.',
+      license: 'Licencia',
+      licensePlaceholder: 'Selecciona una licencia',
+      licenseNone: 'Sin especificar',
+      changelog: 'Registro de cambios',
+      syncGithub: 'Sincronizar con GitHub',
+      syncGithubHint:
+        'Confirma y sube el directorio de trabajo del plugin. Por defecto se reutiliza la configuración local de git; la URL y el token de abajo pueden sobrescribirla. Si indicas un token y el repositorio de GitHub no existe, se crea automáticamente.',
+      repoUrl: 'URL del repositorio (opcional)',
+      repoUrlHint: 'Déjala vacía para reutilizar el origin local de git.',
+      token: 'Token de acceso (opcional)',
+      tokenPlaceholder: 'Solo se usa para este push',
+      branch: 'Rama',
+      commitMessage: 'Mensaje de commit',
+      syncOnly: 'Sincronizar solo con GitHub',
+      gitSynced: 'Sincronizado con GitHub',
+      gitCommittedNoRemote:
+        'Confirmado localmente, pero no hay remoto configurado para subir',
+      gitNothing: 'No hay cambios que sincronizar',
+      gitFailed: 'Falló la sincronización con Git: ',
+      uploadSuccess: 'Plugin subido a la tienda de extensiones',
+      reviewOnSpace: 'Enviar a revisión en la tienda de extensiones',
+      uploadFailed: 'No se pudo subir el plugin: ',
+      basicInfo: 'Información básica',
+      changeIcon: 'Cambiar icono',
+      iconInvalidType: 'Elige un archivo de imagen',
+      iconTooLarge: 'El icono debe pesar menos de 10 MB',
+      labelRequired: 'Indica un nombre en al menos un idioma',
+      langEn: 'English',
+      langZhHans: 'Chino simplificado',
+      langZhHant: 'Chino tradicional',
+      langJa: 'Japonés',
+      langTh: 'Tailandés',
+      langVi: 'Vietnamita',
+      langEs: 'Español',
+      uploadButton: 'Subir a la tienda de extensiones',
+      notDebugHint:
+        'Solo se pueden subir plugins conectados para depuración. Inicia la depuración con `lbp run` primero.',
+      stepInfo: 'Información del plugin',
+      stepSettings: 'Notas de la versión',
+      stepConfirm: 'Confirmar subida',
+      stepResult: 'Resultado de la subida',
+      startUpload: 'Iniciar subida',
+      uploadingTitle: 'Subiendo al mercado de extensiones...',
+      uploadingDesc:
+        'Empaquetando los archivos locales del plugin, validando el manifiesto y sincronizando con LangBot Space...',
+      uploadSuccessTitle: '¡Plugin subido correctamente!',
+      uploadSuccessDesc:
+        'El plugin {{author}}/{{name}} (v{{version}}) se ha enviado a LangBot Space.',
+      reviewNoticeTitle: 'Aviso de revisión',
+      reviewNoticeDesc:
+        'El plugin ha entrado en la cola de revisión. Una vez aprobado, estará disponible públicamente en el mercado de extensiones.',
+      viewInSpace: 'Ver en el mercado de Space',
+      viewMyPlugins: 'Gestionar mis plugins',
+      finishAndClose: 'Listo',
+      retryUpload: 'Reintentar subida',
+      backToEdit: 'Volver a editar',
+      manifestNotice:
+        'La siguiente información se lee del manifiesto del plugin (manifest.yaml) solo para confirmación. Para modificarla, edite su archivo manifest y reinicie la depuración.',
+      manifestSource: 'Confirmado del manifiesto',
+      nextStep: 'Siguiente',
+      prevStep: 'Atrás',
+      nextToSettings: 'Siguiente: Notas de la versión',
+      nextToConfirm: 'Siguiente: Confirmar subida',
+      confirmAndUpload: 'Confirmar y subir al mercado de extensiones',
+      noDescription: 'Sin descripción',
+      noRepository: 'Sin repositorio especificado',
+      noLicense: 'Sin licencia especificada',
+      changelogPlaceholder:
+        'Ingrese las notas de lanzamiento de esta versión (nuevas funciones, correcciones, etc.)...',
+      changelogHint:
+        'El registro de cambios se mostrará en el historial de versiones del mercado de extensiones.',
+      reviewSummaryTitle: 'Revisión previa a la publicación',
+      reviewTargetMarket: 'Mercado de destino',
+      reviewTargetMarketValue: 'Mercado de extensiones (LangBot Space)',
+      reviewAccountStatus: 'Estado de la cuenta',
+      reviewAccountConnected: 'Conectado a la cuenta LangBot',
+      reviewAccountNotConnected: 'Cuenta no conectada (la subida fallará)',
+      spaceNotConnectedTitle: 'Cuenta del mercado no vinculada',
+      bindSpaceButton: 'Vincular cuenta ahora',
+      bindRequiredToProceed: 'Por favor vincula tu cuenta para continuar',
+      prerequisitesTitle: 'Requisitos previos de publicación',
+      prerequisitesDescription:
+        'Antes de publicar este plugin en el mercado, asegúrate de cumplir con los siguientes requisitos.',
+      req1Title: 'Requisito 1: Vincular cuenta de LangBot',
+      req1Desc:
+        'La instancia local de LangBot debe estar iniciada sesión o vinculada a LangBot Space.',
+      reqBound: 'Vinculado',
+      reqCompleted: 'Completado',
+      req2Title: 'Requisito 2: Crear identidad de creador en Space',
+      req2Desc:
+        'La cuenta de LangBot vinculada debe tener una identidad de creador y coincidir con el autor del plugin.',
+      req2WaitSpace:
+        'Completa primero el Requisito 1 (Vincular cuenta de LangBot)',
+      req2NoCreator:
+        'Esta cuenta de LangBot aún no tiene una identidad de creador',
+      req2Mismatch: 'Discrepancia en la identidad de creador',
+      req2MismatchDetail:
+        'Tu identificador de creador en Space es @{{creator}}, pero el autor del plugin es {{author}}.',
+      createCreatorButton: 'Crear identidad de creador',
+      manageCreatorButton: 'Ver ajustes de creador',
+      pendingReq: 'Pendiente',
+      autoProceedTip:
+        'Una vez cumplidos los requisitos, se abrirá automáticamente el asistente de publicación.',
+      refreshStatus: 'Actualizar estado',
+      reviewGitSync: 'Sincronización con GitHub',
+      reviewGitSyncEnabled: 'Habilitado (empujar a {{branch}})',
+      reviewGitSyncDisabled: 'Deshabilitado',
+      reviewChangelog: 'Notas de la versión',
+      reviewChangelogEmpty: '(Sin notas de versión)',
+      pluginIdentifier: 'Identificador del plugin',
+      banners: {
+        guideTitle: 'Instrucciones:',
+        disabledTooltip:
+          'Sigue las instrucciones del banner superior antes de subir',
+        bindButton: 'Conectar cuenta de LangBot',
+        reauthButton: 'Reautenticar cuenta',
+        createCreatorButton: 'Crear perfil de creador',
+        manageCreatorButton: 'Administrar perfil de creador',
+        viewMyPluginsButton: 'Ver mis plugins en Space',
+        refreshButton: 'Actualizar estado',
+        retryButton: 'Reintentar subida',
+        readyToUpload: {
+          title: 'Listo para publicar',
+          description:
+            'La cuenta de LangBot y el perfil de creador están listos. Revisa los detalles a continuación y confirma la subida.',
+        },
+        notConnected: {
+          title: 'Cuenta de LangBot no conectada',
+          description:
+            'Esta instancia local aún no está conectada a una cuenta de LangBot. Se requiere una cuenta de LangBot para verificar tu identidad.',
+          guide:
+            'Haz clic en "Conectar cuenta de LangBot" para iniciar sesión. Podrás publicar el plugin una vez conectada.',
+        },
+        noCreator: {
+          title: 'Perfil de creador de Space no creado',
+          description:
+            'La publicación en el marketplace requiere un perfil de creador para atribuir la autoría y mostrar tu página pública.',
+          guide:
+            'Haz clic en "Crear perfil de creador" para configurar tu slug, biografía y avatar. Luego regresa y haz clic en "Actualizar estado".',
+        },
+        authorMismatch: {
+          title:
+            'El autor del plugin no coincide con el identificador de creador',
+          description:
+            'El autor en manifest.yaml es "{{author}}", pero tu identificador en Space es "@{{creator}}". Deben coincidir exactamente.',
+          guide:
+            'Soluciones:\n1. Actualiza manifest.yaml y establece metadata.author en "{{creator}}";\n2. O cambia a la cuenta de LangBot que coincida con "{{author}}". Luego haz clic en "Actualizar estado".',
+        },
+        pendingReview: {
+          title: 'Ya existe un envío pendiente de revisión',
+          description:
+            'Un envío anterior de este plugin está actualmente en revisión. Espera a que finalice antes de enviar una nueva versión.',
+          guide:
+            'Haz clic en "Ver mis plugins en Space" para consultar el estado y los comentarios de la revisión.',
+        },
+        sessionExpired: {
+          title: 'La sesión de autenticación de Space ha expirado',
+          description:
+            'El token de acceso de Space ha expirado o es inválido. La autenticación ha fallado.',
+          guide:
+            'Haz clic en "Reautenticar cuenta" para iniciar sesión de nuevo e intenta subirlo otra vez.',
+        },
+        validationFailed: {
+          title: 'La validación del paquete del plugin falló',
+          description:
+            'Error en la inspección o verificación del paquete: {{detail}}',
+          guide:
+            'Comprueba los campos de manifest.yaml, el formato de versión semántica y los archivos de icono y README.',
+        },
+        genericError: {
+          title: 'Error al publicar el plugin',
+          description: '{{detail}}',
+          guide: 'Comprueba tu conexión de red o inténtalo más tarde.',
+        },
+      },
+      errors: {
+        noCreatorProfile:
+          'Debes configurar un perfil de creador en Space antes de subir plugins',
+        authorMismatch:
+          'El autor del plugin "{{author}}" no coincide con tu identificador de creador en Space "@{slug}"',
+        pendingReview:
+          'Ya tienes un envío de plugin pendiente de revisión. Espera a que finalice',
+        sessionExpired:
+          'La sesión de Space ha expirado. Vuelve a iniciar sesión',
+        notConnected: 'Conecta una cuenta de LangBot antes de subir plugins',
+        packageFailed:
+          'Error al compilar el paquete del plugin. Revisa el código y los archivos',
+        inspectFailed:
+          'Error al inspeccionar el manifiesto del plugin: {{detail}}',
+        certPrecheckFailed:
+          'Error en la verificación previa de certificación: {{detail}}',
+      },
+    },
     localPreview: {
       title: 'Previsualizar paquete de plugin local',
       unpacking: 'Descomprimiendo vista previa del paquete...',
@@ -590,6 +2063,7 @@ const esES = {
       ready:
         'El paquete del plugin está descomprimido. Confirma para iniciar la instalación.',
     },
+    uploadPluginOnly: 'Solo se admiten paquetes de plugin .lbpkg',
     dragToUpload: 'Arrastra el archivo del plugin aquí para subirlo',
     unsupportedFileType:
       'Tipo de archivo no soportado, solo se admiten archivos .lbpkg y .zip',
@@ -659,10 +2133,18 @@ const esES = {
     goToMarketplace: 'Ir a la tienda',
     installProgress: {
       title: 'Instalando {{name}}',
+      updateTitle: 'Actualizando {{name}}',
       titleGeneric: 'Instalación de Plugin',
+      titlePlugin: 'Instalando plugin {{name}}',
+      titleMCP: 'Instalando servidor MCP {{name}}',
+      titleSkill: 'Instalando skill {{name}}',
       overallProgress: 'Progreso general',
+      checkingUpdate: 'Buscando actualizaciones',
       downloading: 'Descargando Plugin',
+      validating: 'Validando paquete',
       installingDeps: 'Instalando dependencias',
+      applyingUpdate: 'Aplicando actualización',
+      activating: 'Iniciando y actualizando componentes',
       initializing: 'Inicializando configuración',
       launching: 'Iniciando Plugin',
       completed: 'Completado',
@@ -672,21 +2154,27 @@ const esES = {
       depsProgress:
         '{{installed}}/{{total}} instaladas · {{remaining}} restantes',
       installComplete: 'Plugin instalado correctamente',
+      updateComplete: 'Plugin actualizado correctamente',
+      installCompletePlugin: 'Plugin instalado correctamente',
+      installCompleteMCP: 'Servidor MCP instalado correctamente',
+      installCompleteSkill: 'Skill instalada correctamente',
       dismiss: 'Descartar',
       background: 'Ejecutar en segundo plano',
       taskQueue: 'Tareas de instalación',
       clearCompleted: 'Limpiar completados',
       noTasks: 'No hay tareas de instalación',
-      titlePlugin: 'Instalando plugin {{name}}',
-      titleMCP: 'Instalando servidor MCP {{name}}',
-      titleSkill: 'Instalando skill {{name}}',
-      installCompletePlugin: 'Plugin instalado correctamente',
-      installCompleteMCP: 'Servidor MCP instalado correctamente',
-      installCompleteSkill: 'Skill instalada correctamente',
     },
-    uploadPluginOnly: 'Solo se admiten paquetes de plugin .lbpkg',
   },
   market: {
+    certifiedPlugin: 'Plugin certificado',
+    certificationTooltip:
+      'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',
+    certificationLearnMore: 'Acerca de la certificación',
+
+    runnerUsage: 'Uso del ejecutor',
+    runnerUsageAll: 'Todos',
+    runnerUsageAgent: 'Agent / Flujo',
+    runnerUsageEvent: 'Procesador de plugin',
     searchPlaceholder: 'Buscar plugins...',
     searchPlaceholderCount:
       'Buscar {{count}} extensiones, capacidades o casos de uso...',
@@ -699,6 +2187,10 @@ const esES = {
     allLoaded: 'Todos los plugins mostrados',
     allLoadedCount: 'Se muestran las {{count}} extensiones',
     install: 'Instalar',
+    installCard: 'Instalar {{name}}',
+    installedCard: '{{name}} instalado',
+    installed: 'Instalado',
+    updateAvailable: 'Actualización disponible',
     installConfirm:
       '¿Estás seguro de que deseas instalar el plugin "{{name}}" ({{version}})?',
     downloadComplete: 'Descarga del plugin "{{name}}" completada',
@@ -713,6 +2205,7 @@ const esES = {
     notFound: 'No se encontró la información del plugin',
     sortBy: 'Ordenar por',
     sort: {
+      hottest: 'Más populares',
       recentlyAdded: 'Añadidos recientemente',
       recentlyUpdated: 'Actualizados recientemente',
       mostDownloads: 'Más descargas',
@@ -720,6 +2213,9 @@ const esES = {
     },
     downloads: 'descargas',
     download: 'Descargar',
+    like: 'Me gusta',
+    unlike: 'Ya no me gusta',
+    likeFailed: 'No se pudo actualizar el Me gusta. Inténtalo de nuevo.',
     repository: 'Repositorio',
     downloadFailed: 'Error en la descarga',
     noReadme: 'Este plugin no proporciona documentación README',
@@ -747,6 +2243,7 @@ const esES = {
       KnowledgeEngine: 'Motor de conocimiento',
       Parser: 'Analizador',
       Page: 'Página',
+      Runner: 'Ejecutor',
     },
     filterByType: 'Tipo',
     allTypes: 'Todos los tipos',
@@ -773,7 +2270,6 @@ const esES = {
       clearAll: 'Borrar todo',
       noTags: 'No hay etiquetas disponibles',
     },
-    installCard: 'Instalar {{name}}',
   },
   mcp: {
     title: 'MCP',
@@ -811,6 +2307,9 @@ const esES = {
     url: 'URL',
     headers: 'Encabezados',
     timeout: 'Tiempo de espera',
+    toolCallTimeout: 'Tiempo de espera de herramienta (segundos)',
+    toolCallTimeoutDescription:
+      'Espera máxima para una llamada de herramienta. Use 0 para no limitar. El valor predeterminado es 300 segundos.',
     addArgument: 'Añadir argumento',
     addEnvVar: 'Añadir variable de entorno',
     addHeader: 'Añadir encabezado',
@@ -826,6 +2325,15 @@ const esES = {
     connectionSuccess: 'Conexión exitosa',
     connectionFailed: 'Error de conexión, por favor verifica la URL',
     connectionFailedStatus: 'Conexión fallida',
+    connectionUnreachable:
+      'No se puede acceder al servidor MCP. Compruebe que esté iniciado y accesible.',
+    connectionTimeout:
+      'El servidor MCP no respondió a tiempo. Compruebe el servicio o aumente el tiempo de espera.',
+    connectionHttpError:
+      'El servidor MCP devolvió HTTP {{status}}. Compruebe los requisitos de acceso y los registros del servidor.',
+    oauthAuthorizationRequired: 'Se requiere autorización OAuth',
+    oauthAuthorizationRequiredSuggestion:
+      'Este servidor MCP requiere inicio de sesión con OAuth. Aún no está disponible; agregue manualmente un encabezado Authorization si el servidor lo permite.',
     boxDisabledStdioRefused:
       'Los servidores MCP en modo stdio requieren el sandbox de Box, desactivado en la configuración (box.enabled = false).',
     boxUnavailableStdioRefused:
@@ -833,6 +2341,9 @@ const esES = {
     boxStdioRefusedSuggestion:
       'Active Box (box.enabled = true) y asegúrese de que el runtime está conectado, o cambie este servidor a modo http/sse.',
     boxRequired: 'requiere Box',
+    disabledByPolicy: 'desactivado por la política',
+    stdioDisabledByPolicy:
+      'Stdio MCP está deshabilitado en este despliegue. Use un servidor MCP remoto.',
     stdioBlockedByBoxToast:
       'No se puede guardar el MCP en modo stdio mientras el sandbox de Box está desactivado o no disponible. Active Box o seleccione modo http/sse.',
     toolsFound: 'herramientas',
@@ -842,6 +2353,12 @@ const esES = {
     tabTools: 'Herramientas',
     tabResources: 'Recursos',
     tabDocs: 'Documentación',
+    tabLogs: 'Registros',
+    logsLevelAll: 'Todos los niveles',
+    logsRefresh: 'Actualizar',
+    logsAutoRefresh: 'Actualización automática',
+    logsEmpty:
+      'Aún no hay registros. Los registros de ejecución del servidor MCP aparecerán aquí.',
     noReadme: 'No hay documentación disponible',
     parseResultFailed: 'Error al analizar el resultado de la prueba',
     noResultReturned: 'La prueba no devolvió resultados',
@@ -918,6 +2435,7 @@ const esES = {
     basicInfo: 'Información básica',
     basicInfoDescription:
       'Establece el nombre, icono y descripción del Pipeline',
+    managementDescription: 'Copia o elimina este flujo.',
     aiCapabilities: 'IA',
     triggerConditions: 'Disparador',
     safetyControls: 'Seguridad',
@@ -959,6 +2477,10 @@ const esES = {
       addPlugin: 'Añadir plugin',
       selectPlugins: 'Seleccionar plugins',
       pluginsTitle: 'Plugins',
+      pluginScopeHint:
+        'Solo controla los escuchadores de eventos, herramientas y comandos de este pipeline; no afecta al Runner elegido en los ajustes de IA.',
+      runnerScopeHint:
+        'El Runner se elige aquí independientemente de los interruptores de plugins de extensiones. Su plugin debe estar instalado y disponible.',
       mcpServersTitle: 'Servidores MCP',
       mcpResourcesTitle: 'Recursos MCP',
       noMCPServersSelected: 'No hay servidores MCP seleccionados',
@@ -972,9 +2494,9 @@ const esES = {
       selectAll: 'Seleccionar todo',
       enableAllPlugins: 'Activar todos los plugins',
       enableAllMCPServers: 'Activar todos los servidores MCP',
+      enableAllSkills: 'Activar todas las skills',
       allPluginsEnabled: 'Todos los plugins activados',
       allMCPServersEnabled: 'Todos los servidores MCP activados',
-      enableAllSkills: 'Activar todas las skills',
       allSkillsEnabled: 'Todas las skills están activadas',
       skillsTitle: 'Skills',
       noSkillsSelected: 'No hay skills seleccionadas',
@@ -982,14 +2504,14 @@ const esES = {
       selectSkills: 'Seleccionar skills',
       noSkillsAvailable: 'No hay skills disponibles',
       mcpServersScopeTooltip:
-        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Local Agent.',
+        'Aquí solo se controla qué servidores MCP se vinculan al Pipeline. Las herramientas y recursos MCP concretos se eligen en AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Al activarlo, todos los servidores MCP configurados y habilitados serán candidatos para herramientas y recursos MCP en AI Feature.',
     },
-    localAgent: {
+    runner: {
       toolsTitle: 'Herramientas',
       toolsDescription:
-        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Local Agent.',
+        'Selecciona las herramientas de plugins, MCP e integradas disponibles para este Runner.',
       toolsScopeTooltip:
         'Las herramientas MCP solo provienen de servidores MCP vinculados en Extensiones. Vincula allí otro servidor para poder seleccionarlo aquí.',
       enableAllTools: 'Activar todas las herramientas',
@@ -1003,11 +2525,11 @@ const esES = {
       mcpToolsScopeTooltip:
         'Aquí solo se muestran herramientas de servidores MCP permitidos actualmente en Extensiones.',
       skillToolsScopeTooltip:
-        'Las herramientas de skill aparecen cuando el servicio de skills de LangBot y el backend de sandbox Box están disponibles. Permiten al agente activar o registrar skills.',
+        'La activación y los recursos de solo lectura funcionan sin Box. Registrar un skill desde el espacio del Agent aún requiere el sandbox Box.',
       selectTools: 'Seleccionar herramientas',
       resourcesTitle: 'Recursos',
       resourcesDescription:
-        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Local Agent.',
+        'Selecciona los recursos MCP y bases de conocimiento disponibles para este Runner.',
       knowledgeBases: 'Bases de conocimiento',
       mcpResources: 'Recursos MCP',
       mcpResourcesScopeTooltip:
@@ -1025,6 +2547,7 @@ const esES = {
       privateChat: 'Chat privado',
       groupChat: 'Chat grupal',
       send: 'Enviar',
+      saveAndSend: 'Guardar y enviar',
       reset: 'Reiniciar conversación',
       inputPlaceholder: 'Enviar mensaje {{type}}...',
       noMessages: 'Sin mensajes',
@@ -1038,8 +2561,8 @@ const esES = {
       atTips: 'Mencionar al Bot',
       streaming: 'Transmisión',
       streamOutput: 'Transmisión',
-      connected: 'WebSocket conectado',
-      disconnected: 'WebSocket desconectado',
+      connected: 'Conectado',
+      disconnected: 'Desconectado',
       connectionError: 'Error de conexión WebSocket',
       connectionFailed: 'Conexión WebSocket fallida',
       notConnected: 'WebSocket no conectado, por favor inténtalo más tarde',
@@ -1055,7 +2578,16 @@ const esES = {
       uploading: 'Subiendo...',
     },
     monitoring: {
-      title: 'Panel de control',
+      rangeDays: 'Últimos {{days}} días',
+      customRange: 'Periodo personalizado',
+      rangeStart: 'Inicio',
+      rangeEnd: 'Fin',
+      rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+      autoRefreshLabel: 'Actualización automática',
+      autoRefreshOff: 'Actualización: desactivada',
+      autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+      title: 'Registros de ejecución',
+      workbench: 'Configurar y depurar',
       description:
         'Ver registros de ejecución y errores de este Pipeline (últimas 24 horas)',
       detailedLogs: 'Registros detallados',
@@ -1144,6 +2676,25 @@ const esES = {
     knowledgeEngine: 'Motor de conocimiento',
     knowledgeEngineRequired: 'El motor de conocimiento es obligatorio',
     selectKnowledgeEngine: 'Seleccionar motor de conocimiento',
+    installedEngines: 'Motores de conocimiento instalados',
+    noInstalledEngines:
+      'Aún no hay plugins de motores de conocimiento instalados.',
+    marketplaceEngines: 'Plugins de motores de conocimiento en el mercado',
+    noMarketplaceEngines:
+      'No hay plugins de motores de conocimiento disponibles.',
+    loadingEngineCatalog: 'Cargando plugins del mercado…',
+    engineCatalogUnavailable:
+      'El mercado no está disponible temporalmente. Vuelve a abrir el selector para reintentar.',
+    viewMarketplace: 'Ver mercado',
+    installingEngine: 'Instalando {{engine}}…',
+    engineInstallSuccess:
+      '{{engine}} está instalado y listo para seleccionarse',
+    engineInstallFailed: 'Falló la instalación del motor. Inténtalo de nuevo.',
+    engineVersionUnavailable: 'Este plugin no tiene una versión instalable.',
+    engineInstallTimeout:
+      'La instalación continúa. Actualiza la página para comprobar el estado.',
+    engineRegistrationTimeout:
+      'El plugin está instalado, pero su motor aún no está listo.',
     builtInEngine: 'Motor integrado',
     cannotChangeKnowledgeEngine:
       'El motor de conocimiento no se puede cambiar después de la creación',
@@ -1209,13 +2760,13 @@ const esES = {
     adminAccountNote:
       'La cuenta que uses aquí se establecerá como cuenta de administrador',
     register: 'Registrarse',
-    initWithSpace: 'Inicializar con Space',
+    initWithSpace: 'Inicializar con una cuenta de LangBot',
     spaceRecommended:
       'Recomendado: Usa API de modelos oficiales estables y servicios en la nube',
     spaceInfoTip1:
       'Space proporciona servicios de autenticación unificada de cuentas sin subir ninguna de tu información sensible.',
     spaceInfoTip2:
-      'Iniciar sesión con una cuenta de Space te da acceso a los modelos de LangBot y otros servicios en la nube, incluyendo créditos gratuitos de llamadas a modelos para ayudarte a comenzar rápidamente.',
+      'Iniciar sesión con una cuenta de LangBot te da acceso a los modelos de LangBot y otros servicios en la nube, incluyendo créditos gratuitos de llamadas a modelos para ayudarte a comenzar rápidamente.',
     spaceInfoTip3:
       'Tu método de inicio de sesión no afecta otras funciones. Puedes configurar y usar modelos de otras fuentes en cualquier momento.',
     registerLocal: 'Registrar cuenta local',
@@ -1241,7 +2792,23 @@ const esES = {
       'Contraseña restablecida correctamente, por favor inicia sesión',
     resetFailed:
       'Error al restablecer la contraseña, por favor verifica tu correo y clave de recuperación',
+    secondFactorFailed:
+      'La verificación falló, comprueba el código e inténtalo de nuevo',
     backToLogin: 'Volver al inicio de sesión',
+    verifyWith: 'Verificar con',
+    methodRecoveryKey: 'Clave de recuperación',
+    methodTotp: 'Autenticador',
+    methodRecoveryCode: 'Código de recuperación',
+    totpCode: 'Código del autenticador',
+    totpCodeDescription:
+      'Introduce el código de 6 dígitos que muestra tu aplicación de autenticación',
+    totpCodeRequired: 'El código del autenticador no puede estar vacío',
+    enterTotpCode: 'Introduce el código de 6 dígitos',
+    recoveryCode: 'Código de recuperación',
+    recoveryCodeDescription:
+      'Introduce uno de los códigos de recuperación de un solo uso que guardaste al activar la verificación en dos pasos',
+    recoveryCodeRequired: 'El código de recuperación no puede estar vacío',
+    enterRecoveryCodeValue: 'Introduce el código de recuperación',
   },
   embedding: {
     description: 'Gestionar modelos Embedding para la vectorización de texto',
@@ -1273,30 +2840,310 @@ const esES = {
     passwordNotSet: 'No establecida',
     passwordSetDescription:
       'La contraseña está establecida, puedes iniciar sesión con correo y contraseña',
-    spaceStatus: 'Cuenta de Space',
+    spaceStatus: 'Cuenta de LangBot',
     spaceBound: 'Vinculada',
     spaceNotBound: 'No vinculada',
     spaceBoundDescription:
-      'Cuenta de Space vinculada, API de modelos oficiales y servicios en la nube disponibles',
-    bindSpace: 'Vincular cuenta de Space',
+      'Cuenta de LangBot vinculada, API de modelos oficiales y servicios en la nube disponibles',
+    bindSpace: 'Vincular cuenta de LangBot',
     bindSpaceDescription:
       'Vincular para usar API de modelos oficiales y servicios en la nube',
     bindSpaceButton: 'Vincular',
     bindSpaceConfirmTitle: 'Confirmar vinculación',
     bindSpaceConfirmDescription:
-      'Estás a punto de vincular tu instancia local a una cuenta de Space',
+      'Estás a punto de vincular tu instancia local a una cuenta de LangBot',
     bindSpaceWarning:
-      'Después de vincular, tu correo de inicio de sesión se cambiará de {{localEmail}} al correo de la cuenta de Space.',
-    bindSpaceSuccess: 'Cuenta de Space vinculada correctamente',
-    bindSpaceFailed: 'Error al vincular la cuenta de Space',
+      'Después de vincular, tu correo de inicio de sesión se cambiará de {{localEmail}} al correo de la cuenta de LangBot.',
+    bindSpaceSuccess: 'Cuenta de LangBot vinculada correctamente',
+    passkeySectionTitle: 'Llaves de acceso (Passkeys)',
+    passkeySectionDesc:
+      'Inicia sesión de forma segura sin contraseñas usando biometría o llaves de seguridad',
+    addPasskey: 'Añadir llave de acceso',
+    passkeyName: 'Nombre de la llave',
+    passkeyNamePlaceholder: 'p. ej., MacBook Touch ID, YubiKey',
+    passkeyCreated: 'Creada el {{date}}',
+    passkeyLastUsed: 'Último uso: {{date}}',
+    noPasskeys: 'No hay llaves de acceso registradas',
+    deletePasskeyConfirm:
+      '¿Seguro que deseas eliminar esta llave de acceso? Ya no podrás usarla para iniciar sesión.',
+    passkeyAddedSuccess: 'Llave de acceso añadida con éxito',
+    passkeyDeleteSuccess: 'Llave de acceso eliminada',
+    passkeyRenameSuccess: 'Nombre de llave de acceso modificado con éxito',
+    totpSectionTitle: 'Verificación en dos pasos',
+    totpSectionDesc:
+      'Añade una contraseña de un solo uso basada en tiempo como segundo factor de inicio de sesión',
+    totpEnabledDesc:
+      'Verificación en dos pasos activada · quedan {{count}} códigos de recuperación',
+    enableTotp: 'Activar',
+    manageTotp: 'Gestionar',
+    totpEnrollTitle: 'Activar la verificación en dos pasos',
+    totpEnrollDesc:
+      'Escanea el código QR con tu aplicación de autenticación y confirma el código generado',
+    totpStartEnroll: 'Generar secreto',
+    totpGeneratingSecret: 'Generando un nuevo secreto…',
+    totpManageTitle: 'Verificación en dos pasos',
+    totpManageDesc:
+      'Regenera tus códigos de recuperación o desactiva el segundo factor.',
+    totpRegenerateCodes: 'Regenerar códigos de recuperación',
+    totpRegenerateDesc:
+      'Introduce un código actual del autenticador o de recuperación para emitir un conjunto nuevo.',
+    totpRecoveryCodesRegenerated: 'Nuevos códigos de recuperación generados',
+    totpStatusDisabled: 'No activada',
+    totpCodesRemaining: 'Quedan {{count}} códigos de recuperación',
+    totpManagerSectionDesc:
+      'Los propietarios y administradores pueden revisar y restablecer el segundo factor de las cuentas de este espacio de trabajo.',
+    revokeTotp: 'Reasignar',
+    totpAdminResetTitle: 'Reasignar la verificación en dos pasos de {{user}}',
+    totpAdminResetDesc:
+      'Pide a la cuenta que escanee el código QR con su autenticador y que introduzca abajo el código de 6 dígitos para finalizar.',
+    totpAdminResetWarning:
+      'Al iniciar la reasignación, el autenticador actual de {{user}} deja de funcionar de inmediato.',
+    totpAdminResetHint:
+      'Si la cuenta no puede iniciar sesión ahora, puede escanear este código QR en cualquier aplicación de autenticación.',
+    totpAdminHandOverCodes:
+      'Entrega estos códigos de recuperación a {{user}}. Solo se muestran una vez.',
+    revokeTotpConfirm:
+      '¿Desactivar la verificación en dos pasos de {{user}}? Después podrá iniciar sesión solo con la contraseña.',
+    revokeTotpSuccess: 'Verificación en dos pasos restablecida',
+    you: 'tú',
+    noAccounts: 'No hay cuentas que mostrar',
+    totpRefreshSecret: 'Regenerar código QR',
+    totpQrAlt: 'Código QR de verificación en dos pasos',
+    totpEnterCode: 'Código de verificación',
+    enterCode: 'Introduce el código',
+    totpVerifyAndEnable: 'Verificar y activar',
+    totpOrRecoveryCode: 'Código del autenticador o de recuperación',
+    totpStatusEnabled: 'Verificación en dos pasos activada',
+    totpLastUsed: 'Última verificación: {{date}}',
+    totpNeverUsed: 'Aún no usado',
+    disableTotp: 'Desactivar la verificación en dos pasos',
+    disableTotpDesc:
+      'Introduce un código actual del autenticador o un código de recuperación para desactivar la verificación en dos pasos',
+    totpEnabledSuccess: 'Verificación en dos pasos activada',
+    totpDisabledSuccess: 'Verificación en dos pasos desactivada',
+    totpInvalidCode: 'Código no válido, compruébalo e inténtalo de nuevo',
+    totpRecoveryCodesTitle: 'Códigos de recuperación',
+    totpRecoveryCodesDesc:
+      'Guarda estos códigos de recuperación de un solo uso en un lugar seguro. Solo se muestran una vez.',
+    totpRecoveryCodesWarning:
+      'Cada código funciona una sola vez. Si pierdes el autenticador y estos códigos, perderás el acceso al inicio de sesión.',
+    totpSavedCodes: 'He guardado estos códigos',
+    regenerateRecoveryCodes: 'Regenerar códigos de recuperación',
+    bindSpaceFailed: 'Error al vincular la cuenta de LangBot',
     bindSpaceInvalidState:
       'Solicitud de vinculación no válida. Por favor, inténtalo de nuevo desde la configuración de la cuenta.',
     setPasswordHint:
       'Establece una contraseña para iniciar sesión con correo y contraseña',
     spaceEmailMismatch:
-      'El correo de inicio de sesión de Space no coincide con el correo de la cuenta local',
+      'El correo de la cuenta de LangBot no coincide con el correo de la cuenta local',
+    space_account_not_registeredTitle: 'Account not registered',
+    space_account_not_registered:
+      'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_account_binding_requiredTitle: 'LangBot Account connection required',
+    space_account_binding_required:
+      'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
+  },
+  workspace: {
+    title: 'Workspace',
+    description: 'Manage members, roles, and invitation links',
+    selectTitle: 'Choose a Workspace',
+    selectDescription: 'Select where you want to continue in LangBot.',
+    selectionLoadFailed:
+      'Your Workspaces could not be loaded. Please try again.',
+    switchWorkspace: 'Switch Workspace',
+    settings: 'Workspace Settings',
+    currentPlan: 'Current plan',
+    planUnavailable: 'Unavailable',
+    upgradePlan: 'Change or upgrade plan',
+    ossSingletonDescription:
+      'This self-hosted instance has one Workspace and can include multiple users.',
+    cloudManagedDescription: 'This Workspace is hosted by LangBot Cloud.',
+    loadFailed: 'Failed to load Workspace information',
+    members: 'Members',
+    you: 'You',
+    inviteMember: 'Invite a member',
+    inviteDescription:
+      'Create a one-time link to add another user to this Workspace.',
+    emailPlaceholder: 'member@example.com',
+    createInvitation: 'Create invitation',
+    invitationCreated: 'Invitation created',
+    delivery: {
+      sent: 'Invitation sent',
+      link_only: 'Invitation link created',
+      failed: 'Invitation link created, but email could not be sent',
+    },
+    invitationCreateFailed: 'Failed to create invitation',
+    oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
+    copyInvitation: 'Copy invitation link',
+    invitationCopied: 'Invitation link copied',
+    pendingInvitations: 'Pending invitations',
+    expiresAt: 'Expires {{date}}',
+    revokeInvitation: 'Revoke invitation',
+    invitationRevoked: 'Invitation revoked',
+    invitationRevokeFailed: 'Failed to revoke invitation',
+    acceptInvitation: 'Accept invitation',
+    invitedToWorkspace: 'You were invited to {{workspace}}',
+    checkingInvitation: 'Checking this invitation...',
+    invitationMissing: 'This invitation link is missing required information.',
+    invitationExpired: 'This invitation has expired.',
+    invitationAlreadyRevoked: 'This invitation was revoked.',
+    invitationAlreadyUsed: 'This invitation was already used.',
+    invitationInvalid: 'This invitation is invalid or no longer available.',
+    invitationAccepted: 'Invitation accepted',
+    invitationAcceptFailed: 'Failed to accept invitation',
+    invitationEmailMismatch:
+      'This invitation belongs to a different email address.',
+    existingAccountLoginRequired:
+      'An account already exists for this email. Sign in to continue.',
+    acceptAsCurrentAccount: 'Accept with current account',
+    authenticatedInvitationNotice:
+      'Sign out first, then sign in with the invited account. Your invitation will be preserved.',
+    logoutAndReturn: 'Sign out and return to this invitation',
+    switchAccount: 'Switch account',
+    registerAndAccept: 'Create account and accept',
+    alreadyHaveAccount: 'I already have an account',
+    confirmPassword: 'Confirm password',
+    passwordMinimum: 'Password must contain at least 8 characters.',
+    passwordMismatch: 'The passwords do not match.',
+    backToLogin: 'Back to sign in',
+    memberUpdated: 'Member role updated',
+    memberUpdateFailed: 'Failed to update member role',
+    removeMember: 'Remove member',
+    removeMemberConfirm: 'Remove this member from the Workspace?',
+    memberRemoved: 'Member removed',
+    memberRemoveFailed: 'Failed to remove member',
+    transferOwnership: 'Transfer ownership',
+    types: {
+      personal: 'Personal',
+      team: 'Team',
+    },
+    roles: {
+      owner: 'Owner',
+      admin: 'Admin',
+      developer: 'Developer',
+      operator: 'Operator',
+      viewer: 'Viewer',
+    },
   },
   monitoring: {
+    rangeDays: 'Últimos {{days}} días',
+    customRange: 'Periodo personalizado',
+    rangeStart: 'Inicio',
+    rangeEnd: 'Fin',
+    rangeHint: 'El inicio debe preceder al fin. Máximo: 365 días.',
+    autoRefreshLabel: 'Actualización automática',
+    autoRefreshOff: 'Actualización: desactivada',
+    autoRefreshEvery: 'Actualizar cada {{seconds}} s',
+    unified: {
+      inputs: 'Evento y entrada',
+      outputs: 'Resultados generados',
+      deliveries: 'Registros de envío',
+      conversation: 'Contexto de conversación',
+      related: 'Ejecuciones relacionadas',
+      events: 'Eventos de ejecución',
+      llm_calls: 'Llamadas al modelo',
+      tool_calls: 'Llamadas a herramientas',
+      errors: 'Errores',
+      payload: 'Detalles',
+      metadata: 'Información técnica',
+      loadMore: 'Cargar más',
+      noRecords: 'Sin registros',
+      contextHint:
+        'Otros mensajes no pertenecen necesariamente a esta ejecución.',
+      unhandled: 'Sin ejecución',
+      roles: {
+        user: 'Usuario',
+        assistant: 'Asistente',
+        system: 'Sistema',
+        tool: 'Herramienta',
+      },
+    },
+    execution: {
+      title: 'Ejecuciones',
+      subtitle:
+        'Cada evento entrante y la ejecución que activó, en agentes y pipelines.',
+      tabs: { executions: 'Ejecuciones' },
+      filters: {
+        source: 'Tipo',
+        sourceAll: 'Todos los tipos',
+        sourceAgent: 'Agentes',
+        sourcePipeline: 'Pipelines',
+        mode: 'Tráfico',
+        modeAll: 'Real + depuración',
+        modeLive: 'Solo real',
+        modeDebug: 'Solo depuración',
+        status: 'Estado',
+        statusAll: 'Todos los estados',
+      },
+      status: {
+        completed: 'Completada',
+        failed: 'Fallida',
+        running: 'En curso',
+        queued: 'En cola',
+        cancelled: 'Cancelada',
+        ignored: 'Ignorada',
+      },
+      // prettier-ignore
+      kind: {
+        agent: 'Agente',
+        pipeline: 'Pipeline',
+        processor: 'Procesador',
+      },
+      columns: {
+        time: 'Hora',
+        target: 'Procesador',
+        status: 'Estado',
+        duration: 'Duración',
+        tokens: 'Tokens',
+      },
+      debug: 'Depuración',
+      empty: 'No hay ejecuciones en este intervalo',
+      loading: 'Cargando ejecuciones...',
+      triggeredBy: 'Activada por {{trigger}}',
+      cards: {
+        latencyHint:
+          'P50/P95: cerca del 50%/95% termina dentro de este tiempo. Solo ejecuciones recientes de Agent completadas, sin espera en cola.',
+        tokensHint:
+          'Solo se suma el uso registrado. El total puede estar incompleto si el modelo no devuelve el uso.',
+        totalExecutions: 'Ejecuciones',
+        bySource: '{{agent}} de agentes · {{pipeline}} de pipelines',
+        successRate: 'Tasa de éxito de ejecución',
+        successRateHint:
+          'Éxitos ÷ (éxitos + fallos). Se excluyen ejecuciones en curso, ignoradas y canceladas.',
+        denominator: '{{completed}} de {{denominator}} finalizadas',
+        running: 'En curso',
+        queued: 'En cola',
+        waiting: 'Esperando entrada',
+        failed: 'Fallida',
+        ignored: 'Ignorada',
+        latency: 'Tiempo de ejecución',
+        p50: 'P50',
+        p95: 'P95',
+        sample: 'muestra de {{count}} ejecuciones',
+        tokens: 'Tokens',
+        coverage: 'uso registrado en {{withUsage}}/{{calls}} llamadas',
+        debugRuns: 'Incluye {{count}} ejecuciones de depuración',
+      },
+      detail: {
+        title: 'Ejecución',
+        timeline: 'Cronología',
+        executionId: 'ID de ejecución',
+        eventId: 'Evento',
+        queue: 'Cola',
+        runner: 'Runner',
+        created: 'Creada',
+        duration: 'Duración',
+        usage: 'Uso',
+        noEvents: 'No se registraron eventos de traza',
+        query: 'Mensaje entrante',
+        modelCalls: 'Llamadas al modelo',
+        toolCalls: 'Llamadas a herramientas',
+        errors: 'Errores',
+        loadError: 'No se pudo cargar la traza de ejecución',
+        openObject: 'Abrir objeto',
+        a11yDescription: 'Traza completa de esta ejecución',
+      },
+    },
     title: 'Panel de control',
     description:
       'Monitorea las actividades de los Bots, llamadas LLM y rendimiento del sistema',
@@ -1313,6 +3160,9 @@ const esES = {
       pipeline: 'Pipeline',
       allBots: 'Todos los Bots',
       selectBot: 'Seleccionar Bot',
+      processor: 'Procesador',
+      allProcessors: 'Todos los procesadores',
+      selectProcessor: 'Seleccionar procesador',
       allPipelines: 'Todos los Pipelines',
       selectPipeline: 'Seleccionar Pipeline',
       loading: 'Cargando...',
@@ -1334,9 +3184,18 @@ const esES = {
       embeddingCalls: 'Llamadas Embedding',
       modelCalls: 'Llamadas a modelos',
       tokens: 'Monitoreo de Tokens',
-      sessions: 'Análisis de sesiones',
       feedback: 'Comentarios de usuarios',
+      sessions: 'Análisis de sesiones',
       errors: 'Registros de errores',
+    },
+    pipelineTrace: {
+      received: 'Mensaje recibido',
+      processing: 'Procesamiento',
+      replies: 'Respuestas',
+      noSteps: 'No se registraron llamadas a modelos o herramientas',
+      success: 'Correcto',
+      error: 'Error',
+      pending: 'Pendiente',
     },
     messageList: {
       timestamp: 'Marca de tiempo',
@@ -1359,6 +3218,20 @@ const esES = {
       level: 'Nivel',
       runner: 'Ejecutor',
       viewConversation: 'Ver conversación',
+      turns: '{{count}} turnos de conversación',
+      userMessage: 'Usuario',
+      noUserMessage: 'No se registró entrada del usuario',
+      assistantMessage: 'Asistente',
+      assistantMessageCount: 'Asistente +{{count}}',
+      noAssistantMessage: 'No se registró respuesta del asistente',
+      messageCount: 'Mensajes',
+      conversationTrace: 'Flujo de conversación',
+      noLlmCalls: 'No se registraron llamadas al modelo',
+      roles: {
+        user: 'Usuario',
+        assistant: 'Asistente',
+        message: 'Mensaje',
+      },
     },
     llmCalls: {
       title: 'Llamadas LLM',
@@ -1372,6 +3245,17 @@ const esES = {
       totalTokens: 'Tokens totales',
       avgDuration: 'Duración promedio',
       calls: 'Llamadas',
+    },
+    toolCalls: {
+      title: 'Llamadas de herramientas',
+      totalCalls: 'Llamadas',
+      duration: 'Duración de herramientas',
+      errorCalls: 'Llamadas fallidas',
+      arguments: 'Argumentos',
+      result: 'Resultado',
+      noToolCalls: 'No se registraron llamadas de herramientas',
+      showDetails: 'Mostrar detalles',
+      hideDetails: 'Ocultar detalles',
     },
     tokens: {
       totalTokens: 'Tokens totales',
@@ -1484,7 +3368,17 @@ const esES = {
     queryVariables: {
       title: 'Variables de consulta',
     },
+    loadError: 'No se pudieron cargar los datos de monitoreo',
+    partialMessages:
+      'Se muestran {{shown}} de {{total}} mensajes. Las trazas de conversación pueden estar incompletas.',
+    partialModelCalls: 'Se muestran {{shown}} de {{total}} llamadas al modelo.',
+    partialToolCalls:
+      'Se muestran {{shown}} de {{total}} llamadas a herramientas. Las trazas de conversación pueden estar incompletas.',
+    partialErrors: 'Se muestran {{shown}} de {{total}} errores.',
     trafficChart: {
+      unavailable: 'Agregación de tráfico no disponible',
+      truncated:
+        'Rango de tráfico truncado. Selecciona un intervalo más corto.',
       title: 'Resumen de tráfico',
       messages: 'Mensajes',
       llmCalls: 'Llamadas LLM',
@@ -1512,9 +3406,9 @@ const esES = {
     statusDetail: 'Estado',
     pluginDisabled: 'El sistema de plugins está desactivado',
     boxDisabled:
-      'El sandbox de Box está desactivado en la configuración — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+      'El sandbox de Box está desactivado en la configuración — las herramientas de ejecución y MCP stdio no están disponibles',
     boxUnavailable:
-      'El sandbox de Box no está disponible — herramientas de sandbox, alta/edición de skills y MCP stdio no están disponibles',
+      'El sandbox de Box no está disponible — las herramientas de ejecución y MCP stdio no están disponibles',
     boxRequiredHint:
       'Esta función requiere el runtime de Box. Actívelo en la configuración (box.enabled = true) y asegúrese de que el runtime está conectado.',
     boxBackend: 'Backend',
@@ -1526,10 +3420,150 @@ const esES = {
   settingsDialog: {
     title: 'Configuración',
     nav: {
+      workspace: 'Workspace',
+      operationTrace: 'Registro',
       models: 'Modelos',
       api: 'API',
       storage: 'Almacenamiento',
       account: 'Cuenta',
+    },
+  },
+  operationTrace: {
+    title: 'Registro de operaciones',
+    description: 'Rastrea cambios y consultas de los administradores',
+    reset: 'Restablecer',
+    settingsUpdated: 'Configuración guardada',
+    settingsUpdateFailed: 'No se pudo guardar la configuración',
+    levelBadge: 'Nivel: {{level}}',
+    collectionSettings: 'Configuración de recopilación',
+    captureLevel: 'Nivel de captura',
+    retention: 'Retención',
+    retentionDays: 'Días de retención',
+    maxRows: 'Registros máximos',
+    dedupeWindow: 'Ventana de deduplicación (s)',
+    records: 'Registros de operación',
+    changesCount: '{{count}} cambio(s)',
+    hideDetails: 'Ocultar detalles',
+    export: 'Descargar registros',
+    exportFailed: 'No se pudieron descargar los registros',
+    empty: 'Aún no hay registros de operación',
+    systemActor: 'Sistema',
+    pageInfo: '{{from}}-{{to}} de {{total}}',
+    previousPage: 'Página anterior',
+    nextPage: 'Página siguiente',
+    filterAction: 'Acción',
+    filterAllActions: 'Todas las acciones',
+    filterResource: 'Recurso',
+    filterAllResources: 'Todos los recursos',
+    filterActor: 'Actor',
+    filterAllActors: 'Todos los actores',
+    loadFailed: 'No se pudieron cargar los registros de operaciones',
+    refresh: 'Actualizar',
+    save: 'Guardar',
+    redacted: 'Oculto',
+    tamperedBadge: 'Posible manipulación',
+    verifiedBadge: 'Verificado',
+    integrityFailedCount: '{{count}} hashes no coinciden',
+    chainFailedCount: '{{count}} enlaces rotos',
+    scanTruncated: 'Solo se verifican los últimos {{count}}',
+    emptyFiltered: 'Ningún registro requiere verificación',
+    mutationsOnly: 'Solo cambios',
+    today: 'Hoy',
+    yesterday: 'Ayer',
+    unknownDay: 'Fecha desconocida',
+    showDetails: 'Detalles',
+    moreChanges: '+{{count}} más',
+    elidedValue: '{{count}} caracteres',
+    levels: {
+      off: {
+        label: 'Sin registro',
+      },
+      mutation: {
+        label: 'Solo cambios',
+      },
+      read: {
+        label: 'Todo (incl. consultas)',
+      },
+    },
+    levelNames: {
+      off: 'Desactivado',
+      mutation: 'Solo cambios',
+      read: 'Todo',
+    },
+    resourceTypes: {
+      bot: 'Bot',
+      adapter: 'Adaptador',
+      model_provider: 'Proveedor de modelos',
+      llm_model: 'Modelo',
+      pipeline: 'Pipeline',
+      user: 'Usuario',
+      workspace: 'Espacio de trabajo',
+      monitoring: 'Monitorización',
+      webhook: 'Webhook',
+      api_key: 'Clave de API',
+      workspace_settings: 'Ajustes del espacio de trabajo',
+      member: 'Miembro',
+      member_invitation: 'Invitación de miembro',
+      operation_log: 'Registro de operaciones',
+      assistant_conversation: 'Conversación del asistente',
+      agent: 'Agente',
+      file: 'Archivo',
+      plugin: 'Extensión',
+      plugin_page: 'Página de extensión',
+      skill: 'Habilidad',
+      knowledge_base: 'Base de conocimiento',
+      mcp_server: 'Servidor MCP',
+      runtime: 'Entorno de ejecución',
+      system: 'Sistema',
+      resource: 'Recurso',
+    },
+    outcomes: {
+      ok: 'Correcto',
+      denied: 'Denegado',
+      error: 'Fallido',
+    },
+    actions: {
+      audit_log_view: 'Ver registros de operación',
+      settings_update: 'Actualizar ajustes de trazabilidad',
+      settings_view: 'Ver ajustes de trazabilidad',
+      member_invite: 'Invitar miembro',
+      member_role_update: 'Actualizar rol del miembro',
+      member_remove: 'Eliminar miembro',
+      member_view: 'Ver miembros',
+      plugin_view: 'Ver páginas de extensión',
+      plugin_config: 'Cambiar configuración de extensión',
+      plugin_install: 'Instalar extensión',
+      plugin_uninstall: 'Desinstalar extensión',
+      plugin_upgrade: 'Actualizar extensión',
+      page_view: 'Ver página de extensión',
+      skill_view: 'Ver habilidad',
+      skill_install: 'Instalar habilidad',
+      skill_uninstall: 'Desinstalar habilidad',
+      knowledge_base_view: 'Ver base de conocimiento',
+      knowledge_base_update: 'Cambiar base de conocimiento',
+      knowledge_base_delete: 'Eliminar base de conocimiento',
+      mcp_view: 'Ver servidor MCP',
+      mcp_config: 'Cambiar servidor MCP',
+      mcp_delete: 'Eliminar servidor MCP',
+      skill_update: 'Modificar habilidad',
+      file_view: 'Ver archivo',
+      ingest: 'Importar datos',
+      file_delete: 'Eliminar archivo de la base de conocimiento',
+      ingress: 'Entrada de mensajes externos',
+      codex_view: 'Ver autorización de Codex',
+      codex_authorize: 'Autorizar Codex',
+      embed: 'Sesión incrustada',
+      pipeline_extensions_update:
+        'Actualizar vinculaciones de extensiones del pipeline',
+      export: 'Exportar datos',
+      execute: 'Ejecutar tarea',
+      debug: 'Depurar tarea',
+      publish: 'Publicar recurso',
+      create: 'Crear recurso',
+      update: 'Actualizar recurso',
+      delete: 'Eliminar recurso',
+      view: 'Ver recurso',
+      probe: 'Sondear endpoint',
     },
   },
   storageAnalysis: {
@@ -1554,6 +3588,46 @@ const esES = {
     databaseType: 'Tipo de base de datos',
     days: 'días',
     missing: 'Falta',
+    notCreated: 'Aún no creado',
+    processStorage: 'Almacenamiento por proceso',
+    processStorageDescription:
+      'Cada entorno de ejecución mide sus propios directorios. Los detalles ya se incluyen en el total del directorio principal.',
+    directory: 'Directorio',
+    size: 'Tamaño',
+    files: 'Archivos',
+    runtimeUnavailable:
+      'Las estadísticas de almacenamiento del entorno de ejecución no están disponibles.',
+    noManagedDirectories: 'No se informaron directorios administrados.',
+    scanWarnings: '{{count}} entradas ilegibles',
+    boxActivity: '{{sessions}} sesiones · {{processes}} procesos administrados',
+    statusLabels: {
+      available: 'Disponible',
+      unavailable: 'No disponible',
+      disabled: 'Desactivado',
+      not_applicable: 'No aplicable',
+    },
+    sourceLabels: {
+      local_process: 'Medido por el proceso LangBot',
+      runtime_rpc:
+        'Medido por el entorno de ejecución mediante RPC autenticado',
+    },
+    scopeLabels: {
+      runtime_host: 'Host del entorno de ejecución',
+      sandbox_sessions: 'Sesiones de sandbox',
+    },
+    processNames: {
+      langbot: 'Proceso principal de LangBot',
+      plugin_runtime: 'Entorno de ejecución de plugins',
+      box_runtime: 'Entorno de ejecución de Box',
+    },
+    processDescriptions: {
+      langbot:
+        'Base de datos, registros, archivos subidos, datos vectoriales y archivos temporales.',
+      plugin_runtime:
+        'Paquetes de plugins, artefactos verificados, entornos de dependencias y datos privados de instalación.',
+      box_runtime:
+        'Espacios de trabajo de sandbox, procesos MCP, directorios de intercambio de adjuntos y habilidades.',
+    },
     expiredUploads: 'Subidas caducadas',
     expiredLogs: 'Registros caducados',
     noExpiredUploads: 'No hay archivos subidos caducados',
@@ -1566,6 +3640,21 @@ const esES = {
       plugins: 'Plugins',
       mcp: 'MCP',
       temp: 'Archivos temporales',
+      legacy_plugins: 'Paquetes de plugins antiguos',
+      artifacts: 'Artefactos de plugins verificados',
+      dependency_environments: 'Entornos de dependencias',
+      installations: 'Datos de instalación de plugins',
+      staging: 'Archivos provisionales de plugins',
+      rpc_transfer: 'Archivos de transferencia RPC',
+      workspace: 'Espacio de trabajo de sandbox',
+      inbox: 'Adjuntos entrantes',
+      outbox: 'Adjuntos salientes',
+      skills: 'Habilidades',
+      session_workspaces: 'Espacios de trabajo de sesiones sandbox',
+      session_caches: 'Cachés del entorno de sandbox',
+      session_temp: 'Archivos temporales de sandbox',
+      managed_process_workspaces:
+        'Espacios de procesos administrados (incluido MCP)',
     },
   },
   limitation: {
@@ -1575,828 +3664,12 @@ const esES = {
       'Se ha alcanzado el número máximo de Pipelines ({{max}}). Por favor, elimina un Pipeline existente antes de crear uno nuevo.',
     maxExtensionsReached:
       'Se ha alcanzado el número máximo de extensiones ({{max}}). Por favor, elimina un servidor MCP o plugin existente antes de añadir uno nuevo.',
-  },
-  wizard: {
-    sidebarDescription: 'Crea un Bot con pasos guiados',
-    loading: 'Cargando asistente...',
-    loadError: 'Error al cargar los datos del asistente',
-    skip: 'Omitir',
-    skipConfirmMessage:
-      'Puedes volver a acceder al asistente de inicio rápido desde el menú de cuenta más tarde, o crear un Bot manualmente.',
-    skipConfirmOk: 'Aceptar',
-    prev: 'Anterior',
-    next: 'Siguiente',
-    finish: 'Crear y desplegar',
-    confirmCreateBot: 'Confirmar, crear Bot',
-    createSuccess: '¡Pipeline creado y vinculado al Bot correctamente!',
-    botCreateSuccess: '¡Bot creado correctamente!',
-    botSaveSuccess: '¡Configuración del Bot guardada y activada!',
-    createError: 'Error al crear los recursos',
-    spaceAuthError: 'Error al iniciar la autorización de Space',
-    skipSaveError:
-      'Error al guardar el estado de omisión. Por favor, inténtalo de nuevo.',
-    completeSaveError:
-      'Error al guardar el estado de finalización. Por favor, inténtalo de nuevo.',
-    step: {
-      platform: 'Plataforma',
-      botConfig: 'Configuración del Bot',
-      aiEngine: 'Motor de IA',
-      done: 'Listo',
-    },
-    platform: {
-      title: 'Selecciona una plataforma',
-      description:
-        'Elige la plataforma de mensajería a la que se conectará tu Bot.',
-    },
-    botConfig: {
-      title: 'Configura tu Bot',
-      description:
-        'Configura tu Bot y verifica que funcione antes de continuar.',
-      saveBot: 'Guardar y activar Bot',
-      resaveBot: 'Volver a guardar configuración',
-      botSaved:
-        'Configuración del Bot guardada y activada. Consulta los registros para verificar la conexión.',
-      logsTitle: 'Registros del Bot',
-      logsDescription:
-        'Monitorea la actividad del Bot para verificar que la conexión con la plataforma funcione.',
-    },
-    aiEngine: {
-      title: 'Selecciona un motor de IA',
-      description:
-        'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
-    },
-    spaceBanner: {
-      message:
-        '¡Conéctate a LangBot Space para obtener créditos de prueba gratuitos y configuración instantánea sin esfuerzo!',
-      action: 'Autorizar con Space',
-    },
-    config: {
-      botInfo: 'Información del Bot',
-      botNamePlaceholder: 'Introduce el nombre del Bot',
-      botDescPlaceholder: 'Introduce la descripción del Bot (opcional)',
-      platformConfig: 'Configuración de {{platform}}',
-      aiConfig: 'Configuración de {{engine}}',
-    },
-    done: {
-      title: '¡Todo listo!',
-      description:
-        'Tu Bot ha sido creado y conectado al Pipeline de IA. Ahora puedes gestionarlo desde el panel de trabajo.',
-      backToWorkbench: 'Volver al panel de trabajo',
-    },
-  },
-  workflows: {
-    title: 'Conversación de Flujo de Trabajo',
-    description:
-      'Descripción',
-    createWorkflow: 'Crear Flujo de Trabajo',
-    selectFromSidebar: 'Seleccione un flujo de trabajo de la barra lateral',
-    editWorkflow: 'Editar Flujo de Trabajo',
-    newWorkflow: 'Nuevo Flujo de Trabajo',
-    getWorkflowListError: 'Error al obtener la lista de flujos de trabajo:',
-    workflowName: 'Nombre del Flujo de Trabajo',
-    workflowDescription: 'Descripción del Flujo de Trabajo',
-    workflowNameRequired: 'El nombre del flujo de trabajo no puede estar vacío',
-    defaultDescription: 'Un flujo de trabajo',
-    getWorkflowError: 'Error al obtener el flujo de trabajo:',
-    loadError: 'Error al cargar el flujo de trabajo',
-    saveSuccess: 'Guardado exitosamente',
-    saveError: 'Error al guardar:',
-    createSuccess: 'Flujo de trabajo creado exitosamente',
-    createError: 'Error al crear:',
-    deleteSuccess: 'Eliminado exitosamente',
-    deleteError: 'Error al eliminar:',
-    deleteConfirmation: '¿Está seguro de que desea eliminar este flujo de trabajo?',
-    copySuccess: 'Copiado exitosamente',
-    copyError: 'Error al copiar:',
-    export: 'Exportar',
-    import: 'Importar',
-    exportSuccess: 'Flujo de trabajo exportado',
-    importSuccess: 'Flujo de trabajo importado',
-    importError: 'Error al importar: formato de archivo inválido',
-    publish: 'Publicar',
-    publishSuccess: 'Publicado exitosamente',
-    publishError: 'Error al publicar',
-    configuration: 'Configuración',
-    executions: 'Registros de ejecución',
-    editor: 'Editor',
-    debugChat: 'ConversaciónDepurar',
-    basicInfo: 'Información básica',
-    basicInfoDesc: 'Configurar nombre, icono y descripción del flujo de trabajo',
-    basicInfoDescription: 'Configurar nombre y descripción del flujo de trabajo',
-    dangerZone: 'Zona peligrosa',
-    dangerZoneDesc: 'Operaciones irreversibles',
-    dangerZoneDescription: 'Operaciones irreversibles',
-    deleteWorkflowAction: 'Eliminar este flujo de trabajo',
-    deleteWorkflowHint:
-      'Después de eliminar, todas las configuraciones asociadas se eliminarán permanentemente y no se podrán recuperar.',
-    deleteWorkflow: 'EliminarFlujo de Trabajo',
-    deleteConfirm: 'ConfirmarEliminar',
-    deleteConfirmDesc:
-      '¿Está seguro de que desea eliminar el flujo de trabajo "{{name}}"? Esta operación no se puede deshacer.',
-    // Form component
-    name: 'Nombre',
-    namePlaceholder: 'EntradaFlujo de TrabajoNombre',
-    descriptionPlaceholder: 'Ingrese la descripción del flujo de trabajo (opcional)',
-    enabled: 'Habilitar',
-    enabledDesc: 'Una vez habilitado, el flujo de trabajo podrá ser activado para su ejecución',
-    loading: 'Cargando...',
-    info: 'Flujo de TrabajoInformación',
-    uuid: 'UUID',
-    version: 'Versión',
-    createdAt: 'Fecha de creación',
-    updatedAt: 'Fecha de actualización',
-    // Executions tab
-    totalExecutions: 'Total de {{count}} registros de ejecución',
-    statistics: 'Registros de monitoreo',
-    monitoringDescription: 'Ver historial de ejecución y errores de este flujo de trabajo (últimas 24 horas)',
-    monitoringTotalMessages: 'Total de mensajes',
-    monitoringErrorLogs: 'Registros de errores',
-    successfulCount: '{{count}} éxitos',
-    successRate: 'Tasa de éxito',
-    averageDuration: 'Duración promedio',
-    perExecution: 'Por ejecución',
-    failedExecutions: 'Número de fallos',
-    lastExecution: 'Última ejecución',
-    filterByStatus: 'Filtrar por estado',
-    allStatuses: 'Todos los estados',
-    manualTrigger: 'Activación manual',
-    executionId: 'Ejecutar ID',
-    status: 'Estado',
-    triggerType: 'Tipo de activación',
-    startedAt: 'Hora de inicio',
-    duration: 'Tiempo de espera',
-    noExecutions: 'No hay registros de ejecución',
-    executionDetails: 'Detalles de ejecución',
-    error: 'Error',
-    nodeExecutions: 'Registros de ejecución de nodos',
-    result: 'Resultado',
-    'status.pending': 'Pending',
-    'status.running': 'Running',
-    'status.completed': 'Completed',
-    'status.failed': 'Failed',
-    'status.cancelled': 'Cancelled',
-    // Editor component translations
-    nodePalette: 'Panel de nodos',
-    properties: 'Propiedades',
-    zoomIn: 'Acercar',
-    zoomOut: 'Alejar',
-    fitView: 'Ajustar vista',
-    unsavedChanges: 'Hay cambios sin guardar',
-    paste: 'Pegar',
-    deleted: 'Eliminado',
-    nothingToCopy: 'No hay nodos seleccionados para copiar',
-    nothingToPaste: 'El portapapeles está vacío',
-    copied: 'Se copiaron {{count}} nodos',
-    pasted: 'Se pegaron {{count}} nodos',
-    nodesSelected: '{{count}} nodos seleccionados',
-    edgesSelected: 'Seleccionado {{count}} conexiones',
-    // Node palette
-    searchNodes: 'Buscar nodos...',
-    loadingNodeTypes: 'Cargando tipos de nodos...',
-    noNodesFound: 'No se encontraron nodos coincidentes',
-    clearSearch: 'Limpiar búsqueda',
-    dragToAdd: 'Arrastrar nodo al lienzo para agregar',
-    // Property panel
-    selectNodeOrEdge: 'Seleccionar un nodo o conexión',
-    selectNodeOrEdgeHint:
-      'Haga clic en un nodo o conexión del lienzo para ver y editar sus propiedades',
-    edgeProperties: 'Propiedades de conexión',
-    nodeProperties: 'Propiedades del nodo',
-    condition: 'Rama de condición',
-    hasCondition: 'Configurado',
-    conditionPlaceholder:
-      'Ingrese expresión de condición, por ejemplo: output.success == true',
-    conditionHelp:
-      'Cuando la condición está vacía, esta conexión siempre se ejecutará. Soporta usar {{nombre de variable}} para referenciar variables de contexto.',
-    deleteEdge: 'Eliminar conexión',
-    deleteEdgeConfirm: '¿Está seguro de eliminar esta conexión?',
-    deleteEdgeConfirmDesc: 'Una vez eliminada, la conexión se eliminará permanentemente.',
-    nodeLabel: 'Nombre del nodo',
-    nodeLabelPlaceholder: 'Ingrese el nombre visible del nodo',
-    nodeId: 'ID del nodo',
-    inputOutputVariables: 'Variables de entrada/salida',
-    inputs: 'Entrada',
-    outputs: 'Salida',
-    availableVariables: 'Variables disponibles',
-    globalVariables: 'Variables globales',
-    messageContent: 'Mensaje simulado',
-    messageSender: 'Remitente',
-    platform: 'Plataforma',
-    sessionId: 'Sesión ID',
-    timestamp: 'Marca de tiempo',
-    nodeConfig: 'Configuración del nodo',
-    noConfigOptions: 'Este tipo de nodo no tiene opciones de configuración',
-    deleteNode: 'Eliminar nodo',
-    deleteNodeConfirm: '¿Está seguro de eliminar este nodo?',
-    deleteNodeConfirmDesc:
-      'Una vez eliminado, el nodo y todas sus conexiones se eliminarán permanentemente.',
-    // Node inputs/outputs i18n (for port labels)
-    nodeInputs: {
-      // Common inputs
-      input: 'Entrada',
-      message: 'Mensaje',
-      text: 'Texto',
-      query: 'Consulta SQL',
-      data: 'Datos',
-      condition: 'Rama de condición',
-      value: 'Valor',
-      // Trigger inputs
-      content: 'Contenido',
-      context: 'Contexto de depuración',
-      body: 'Cuerpo de la solicitud',
-      variables: 'Variables monitoreadas',
-      items: 'Lista de elementos',
-      arguments: 'Parámetro',
-      // AI/Process inputs
-      question: 'Pregunta del usuario',
-      parameters: 'Definición de parámetros',
-      key: 'Clave',
-      // Control inputs
-      case_1: 'Rama 1',
-      case_2: 'Rama 2',
-      branch_1: 'Salida de rama 1',
-      branch_2: 'Salida de rama 2',
-      // Action inputs
-      notification_id: 'ID de notificación',
-      // Integration inputs
-      key_template: 'Plantilla de clave',
-      hash_field: 'Campo hash',
-      server_name: 'Nombre del servidor',
-      tool_name: 'Nombre de herramienta',
-      arguments_template: 'Plantilla de parámetros',
-      scope: 'Ámbito',
-    payload: 'Carga útil',
-    input_value: 'Valor de entrada',
-    },
-    // Data type labels
-    'type.string': 'String',
-    'type.object': 'Object',
-    'type.array': 'Array',
-    'type.boolean': 'Boolean',
-    'type.number': 'Number',
-    'type.any': 'Any',
-    'type.datetime': 'DateTime',
-    nodes: {
-      trigger: 'Disparador',
-      triggerDescription: 'Nodo inicial del flujo de trabajo',
-      messageTrigger: 'Disparador de mensaje',
-      messageTriggerDescription: 'Se activa cuando se recibe un mensaje',
-      scheduleTrigger: 'Disparador programado',
-      scheduleTriggerDescription: 'Se activa según la programación',
-      cronTrigger: 'Disparador programado',
-      cronTriggerDescription: 'Activa el flujo de trabajo según un horario programado',
-      webhookTrigger: 'Activador Webhook',
-      webhookTriggerDescription: 'Se activa mediante solicitud HTTP',
-      eventTrigger: 'Disparador de evento',
-      eventTriggerDescription: 'Se activa cuando ocurre un evento del sistema',
-      process: 'IA/Procesamiento',
-      processDescription: 'Nodo de procesamiento de datos',
-      aiProcess: 'Procesamiento IA',
-      aiProcessDescription: 'Procesar mensajes usando modelo de IA',
-      llmCall: 'Llamada LLM',
-      llmCallDescription:
-        'Llamar al modelo de lenguaje grande para conversación o generación',
-      codeProcess: 'Procesamiento de código',
-      codeProcessDescription: 'Ejecutar código personalizado',
-      codeExecutor: 'Ejecutor de código',
-      codeExecutorDescription: 'Ejecutar código Python/JavaScript',
-      templateProcess: 'Procesamiento de plantilla',
-      templateProcessDescription: 'Formatear salida usando plantilla',
-      httpRequest: 'Solicitud HTTP',
-      httpRequestDescription: 'Enviar solicitud HTTP',
-      dataTransform: 'Transformación de datos',
-      dataTransformDescription: 'Transformar formato de datos',
-      questionClassifier: 'Clasificador de preguntas',
-      questionClassifierDescription:
-        'Usar LLM para clasificar preguntas del usuario en categorías predefinidas',
-      parameterExtractor: 'Extractor de parámetros',
-      parameterExtractorDescription:
-        'Usar LLM para extraer parámetros estructurados del texto',
-      knowledgeRetrieval: 'Recuperación de conocimiento',
-      knowledgeRetrievalDescription:
-        'Recuperar contenido relevante de la base de conocimiento',
-      textTemplate: 'Plantilla de texto',
-      textTemplateDescription:
-        'Generar texto usando plantilla',
-      jsonTransform: 'Transformación JSON',
-      jsonTransformDescription: 'Transformar datos JSON',
-      dataAggregator: 'Agregador de datos',
-      dataAggregatorDescription: 'Agregar múltiples fuentes de datos',
-      textSplitter: 'Divisor de texto',
-      textSplitterDescription: 'Dividir texto en fragmentos',
-      variableAssignment: 'Asignación de variable',
-      variableAssignmentDescription: 'Asignar valor a variable del flujo de trabajo',
-      control: 'Flujo de control',
-      controlDescription: 'Nodo de control de flujo',
-      condition: 'Rama de condición',
-      conditionDescription: 'Bifurcar según condición',
-      switch: 'Rama múltiple',
-      switchDescription: 'Selección de rama por múltiples condiciones',
-      loop: 'Bucle',
-      loopDescription: 'Ejecución repetida',
-      iterator: 'Iterador',
-      iteratorDescription: 'Iterar sobre elementos del array',
-      parallel: 'Procesamiento paralelo',
-      parallelDescription: 'Ejecutar múltiples ramas en paralelo',
-      wait: 'Esperar',
-      waitDescription: 'Esperar un tiempo especificado',
-      delay: 'Retraso',
-      delayDescription: 'Esperar un tiempo especificado',
-      merge: 'Fusionar',
-      mergeDescription: 'Fusionar múltiples ramas',
-      variableAggregator: 'Agregador de variables',
-      variableAggregatorDescription:
-        'Agregar salidas de variables de múltiples ramas',
-      action: 'Acción',
-      actionDescription: 'Nodo de ejecución de acciones',
-      sendMessage: 'Enviar mensaje',
-      sendMessageDescription: 'Enviar mensaje a la plataforma',
-      replyMessage: 'Responder mensaje',
-      replyMessageDescription:
-        'Responder al mensaje que activó el flujo de trabajo',
-      storeData: 'Almacenar datos',
-      storeDataDescription: 'Almacenar datos en la base de datos',
-      callPipeline: 'Llamar Pipeline',
-      callPipelineDescription: 'Llamar a un Pipeline existente',
-      setVariable: 'Establecer variable',
-      setVariableDescription: 'Establecer variable de contexto',
-      openingStatement: 'Mensaje de apertura',
-      openingStatementDescription:
-        'Proporcionar mensaje de apertura y preguntas sugeridas',
-      end: 'Fin',
-      endDescription: 'Marcar el fin de la ejecución del flujo de trabajo',
-      log: 'Registro',
-      logDescription: 'Registrar información en el log',
-      integration: 'Integración',
-      integrationDescription: 'Nodo de integración con plataformas de terceros',
-      difyWorkflow: 'Flujo de trabajo Dify',
-      difyWorkflowDescription: 'Llamar al flujo de trabajo de la plataforma Dify',
-      difyKnowledgeQuery: 'Base de conocimiento Dify',
-      difyKnowledgeQueryDescription: 'Consultar base de conocimiento Dify',
-      n8nWorkflow: 'Flujo de trabajo n8n',
-      n8nWorkflowDescription: 'Llamar al flujo de trabajo n8n',
-      langflowFlow: 'Flujo Langflow',
-      langflowFlowDescription: 'Llamar al flujo de Langflow',
-      cozeBot: 'Bot Coze',
-      cozeBotDescription: 'Llamar al Bot de Coze',
-      // Data & Tools integration nodes
-      databaseQuery: 'Consulta de base de datos',
-      databaseQueryDescription: 'Ejecutar consulta de base de datos',
-      redisOperation: 'Operación Redis',
-      redisOperationDescription: 'Ejecutar operación de caché Redis',
-      mcpTool: 'Herramienta MCP',
-      mcpToolDescription: 'Llamar herramienta MCP',
-      memoryStore: 'Almacén de memoria',
-      memoryStoreDescription: 'Almacenar y recuperar datos de la memoria del flujo de trabajo',
-    },
-    executionHistory: {
-      title: 'Conversación de Flujo de Trabajo',
-      noExecutions: 'No hay registros de ejecución',
-      status: 'Estado',
-      startTime: 'Hora de inicio',
-      duration: 'Duración',
-      running: 'Ejecutando',
-      completed: 'Completado',
-      failed: 'Fallido',
-      cancelled: 'Cancelado',
-      viewDetails: 'Ver detalles',
-      cancel: 'Cancelar ejecución',
-      retry: 'Reintentar',
-      nodeResults: 'Resultados de ejecución de nodos',
-    },
-    versions: {
-      title: 'Versiones del flujo de trabajo',
-      current: 'Versión actual',
-      rollback: 'Revertir a esta versión',
-      rollbackConfirm:
-        '¿Está seguro de revertir a esta versión? Los cambios actuales se perderán.',
-      rollbackSuccess: 'Reversión exitosa',
-      rollbackError: 'Error al revertir:',
-    },
-    // Debug and monitoring
-    debug: 'Debug',
-    debugMode: 'Modo de depuración',
-    debugPanel: 'Panel de depuración',
-    startDebug: 'Iniciar depuración',
-    pauseDebug: 'Pausar',
-    resumeDebug: 'Continuar',
-    stepDebug: 'Ejecución paso a paso',
-    stopDebug: 'Detener',
-    debugContext: 'Contexto de depuración',
-    simulatedMessage: 'Mensaje simulado',
-    simulatedMessagePlaceholder: 'Ingrese el contenido del mensaje a simular',
-    senderId: 'ID del remitente',
-    senderIdPlaceholder: 'Identificador único del remitente',
-    senderName: 'Nombre del remitente',
-    senderNamePlaceholder: 'Nombre visible del remitente',
-    conversationId: 'ID de sesión',
-    conversationIdPlaceholder: 'Identificador único de sesión',
-    isGroup: 'Chat grupal',
-    customVariables: 'Variables personalizadas',
-    addVariable: 'Agregar variable',
-    variableName: 'Nombre de variable',
-    variableValue: 'Valor de variable',
-    watchedVariables: 'Variables monitoreadas',
-    addWatchVariable: 'Agregar monitoreo',
-    nodeStates: 'Estado del nodo',
-    breakpoints: 'Puntos de interrupción',
-    toggleBreakpoint: 'Alternar punto de interrupción',
-    breakpointSet: 'Punto de interrupción configurado',
-    breakpointRemoved: 'Punto de interrupción eliminado',
-    debugLogs: 'Registros de depuración',
-    noLogs: 'Sin registros',
-    clearLogs: 'Limpiar registros',
-    autoScroll: 'Desplazamiento automático',
-    debugState: {
-      idle: 'Inactivo',
-      running: 'Ejecutando',
-      paused: 'Pausado',
-      completed: 'Completado',
-      error: 'Error',
-    },
-    nodeStatus: {
-      pending: 'Pendiente',
-      running: 'Ejecutando',
-      completed: 'Completado',
-      failed: 'Fallido',
-      skipped: 'Omitido',
-    },
-    debugDialog: {
-      title: 'Conversación de flujo de trabajo',
-      selectWorkflow: 'Seleccionar flujo de trabajo',
-      sessionType: 'Tipo de sesión',
-      privateChat: 'Chat privado',
-      groupChat: 'Chat grupal',
-      send: 'Enviar',
-      reset: 'Reiniciar conversación',
-      inputPlaceholder: 'Enviar mensaje de {{type}}...',
-      noMessages: 'Sin mensajes',
-      userMessage: 'Usuario',
-      botMessage: 'Bot',
-      sendFailed: 'Error al enviar',
-      resetSuccess: 'Conversación reiniciada',
-      resetFailed: 'Error al reiniciar',
-      loadMessagesFailed: 'Error al cargar mensajes',
-      loadWorkflowsFailed: 'Error al cargar flujos de trabajo',
-      atTips: 'Mencionar bot',
-      streaming: 'Transmisión',
-      streamOutput: 'Streaming',
-      connected: 'WebSocket conectado',
-      disconnected: 'WebSocket desconectado',
-      connectionError: 'Error de conexión WebSocket',
-      connectionFailed: 'Error de conexión WebSocket',
-      notConnected: 'WebSocket no conectado, por favor reintente más tarde',
-      imageUploadFailed: 'Error al subir imagen',
-      reply: 'Responder',
-      replyTo: 'Responder a',
-      showMarkdown: 'Renderizar',
-      showRaw: 'Texto sin formato',
-      allMembers: 'Todos los miembros',
-      file: 'Archivo',
-      voice: 'Voz',
-      uploadImage: 'Subir imagen',
-      uploading: 'Subiendo...',
-    },
-    // Execution history and monitoring
-    filterByDate: 'Filtrar por fecha',
-    allTime: 'Todo el tiempo',
-    today: 'Hoy',
-    lastWeek: 'Última semana',
-    lastMonth: 'Último mes',
-    showingExecutions: 'Mostrando {{shown}} / {{total}} registros',
-    rerun: 'Reejecutar',
-    rerunExecution: 'Reejecutar',
-    logs: 'Registros',
-    details: 'Detalles',
-    completedAt: 'Tiempo de finalización',
-    noNodeExecutions: 'Sin registros de ejecución de nodos',
-    // Node config field labels (used by DynamicFormComponent)
-    nodeConfigFields: {
-      // trigger.py - MessageTriggerNode
-      conditions: 'Condiciones de activación',
-      keyword_filter: 'Filtro de palabras clave',
-      regex_filter: 'Filtro de expresión regular',
-      min_length: 'Longitud mínima',
-      max_length: 'Longitud máxima',
-      require_mention: 'Requiere mencionar bot',
-      respond_rules: 'Reglas de respuesta grupal',
-      access_control: 'Control de acceso',
-      // trigger.py - CronTriggerNode
-      cron: 'Expresión Cron',
-      timezone: 'Zona horaria',
-      // trigger.py - WebhookTriggerNode
-      path: 'Ruta Webhook',
-      allowed_methods: 'Métodos HTTP permitidos',
-      content_type: 'Content-Type',
-      auth_type: 'Tipo de autenticación',
-      auth_key: 'Clave de autenticación',
-      validation: 'Validación de solicitud',
-      timeout: 'Tiempo de espera',
-      // trigger.py - EventTriggerNode
-      event_types: 'Tipo de evento',
-      filter: 'Filtro de evento',
-      debounce_ms: 'Tiempo de antirrebote',
-      // process.py - LLMCallNode
-      model: 'Modelo',
-      prompt_template: 'Plantilla de prompt',
-      system_prompt: 'Prompt del sistema',
-      temperature: 'Temperatura',
-      top_p: 'Top P',
-      frequency_penalty: 'Penalización de frecuencia',
-      presence_penalty: 'Penalización de presencia',
-      max_tokens: 'Máximo de tokens',
-      stop_sequences: 'Secuencias de parada',
-      seed: 'Semilla aleatoria',
-      stream: 'Salida en streaming',
-      use_conversation_history: 'Usar historial de conversación',
-      // process.py - CodeExecutorNode
-      language: 'Lenguaje de programación',
-      code: 'Código',
-      // process.py - HTTPRequestNode
-      url: 'URL de solicitud',
-      method: 'Método de solicitud',
-      auth_config: 'Configuración de autenticación',
-      // process.py - DataTransformNode
-      transform_type: 'Tipo de transformación',
-      template: 'Plantilla',
-      expression: 'Expresión',
-      output_type: 'Tipo de salida',
-      // process.py - QuestionClassifierNode
-      categories: 'Categorías',
-      instruction: 'Instrucción',
-      // process.py - ParameterExtractorNode
-      parameters: 'Definición de parámetros',
-      // process.py - KnowledgeRetrievalNode
-      knowledge_bases: 'Base de conocimiento',
-      top_k: 'Cantidad a devolver',
-      score_threshold: 'Umbral de similitud',
-      search_method: 'Método de búsqueda',
-      enable_citations: 'Habilitar citas',
-      // control.py - ConditionNode
-      condition_type: 'Tipo de condición',
-      condition_expression: 'Expresión de condición',
-      left_value: 'Valor izquierdo',
-      operator: 'Operador de comparación',
-      right_value: 'Valor derecho',
-      // control.py - SwitchNode
-      cases: 'Condiciones de rama',
-      // control.py - LoopNode
-      max_iterations: 'Máximo de iteraciones',
-      break_condition: 'Condición de interrupción',
-      // control.py - IteratorNode
-      parallel: 'Procesamiento paralelo',
-      max_concurrency: 'Máximo de concurrencia',
-      // control.py - ParallelNode
-      branches: 'Configuración de ramas',
-      wait_all: 'Esperar todas',
-      fail_fast: 'Fallo rápido',
-      // control.py - WaitNode
-      duration: 'Tiempo de espera',
-      duration_type: 'Unidad de tiempo',
-      // control.py - MergeNode
-      merge_strategy: 'Estrategia de fusión',
-      // control.py - VariableAggregatorNode
-      variable_mappings: 'Mapeo de variables',
-      aggregation_mode: 'Modo de agregación',
-      // action.py - SendMessageNode
-      target_type: 'Tipo de destino',
-      target_id: 'ID de destino',
-      platform: 'Plataforma',
-      message_type: 'Tipo de mensaje',
-      // action.py - ReplyMessageNode
-      reply_mode: 'Modo de respuesta',
-      message_template: 'Plantilla de mensaje',
-      long_text_processing: 'Procesamiento de texto largo',
-      force_delay: 'Retraso forzado',
-      // action.py - CallPipelineNode
-      pipeline_uuid: 'Pipeline',
-      inherit_context: 'Heredar contexto',
-      // action.py - StoreDataNode
-      storage_type: 'Tipo de almacenamiento',
-      ttl: 'Tiempo de expiración',
-      key_prefix: 'Prefijo de clave',
-      // action.py - SetVariableNode
-      variable_name: 'Nombre de variable',
-      variable_scope: 'Ámbito de variable',
-      set_variable_operation: 'Tipo de operación',
-      // action.py - OpeningStatementNode
-      statement: 'Declaración de apertura',
-      suggested_questions: 'Preguntas sugeridas',
-      show_suggestions: 'Mostrar sugerencias',
-      // action.py - EndNode
-      output_format: 'Formato de salida',
-      success_message: 'Mensaje de éxito',
-      // integration.py - DatabaseQueryNode
-      connection_type: 'Tipo de base de datos',
-      connection_string: 'Cadena de conexión',
-      query: 'Consulta SQL',
-      query_type: 'Tipo de consulta',
-      // integration.py - RedisOperationNode
-      connection_url: 'URL de conexión',
-      operation: 'Tipo de operación',
-      key_template: 'Plantilla de clave',
-      hash_field: 'Campo hash',
-      // integration.py - MCPToolNode
-      server_name: 'Nombre del servidor',
-      tool_name: 'Nombre de herramienta',
-      arguments_template: 'Plantilla de parámetros',
-      // integration.py - MemoryStoreNode
-      scope: 'Ámbito',
-      // integration.py - DifyWorkflowNode
-      'base-url': 'Base URL',
-      'api-key': 'API Key',
-      'app-type': 'App Type',
-      // integration.py - DifyKnowledgeQueryNode
-      dataset_id: 'ID de base de conocimiento',
-      // integration.py - N8nWorkflowNode
-      'webhook-url': 'Webhook URL',
-      // integration.py - LangflowFlowNode
-      'flow-id': 'Flow ID',
-      // integration.py - CozeBotNode
-      'bot-id': 'Bot ID',
-      'api-base': 'API Base URL',
-    },
-    // Node outputs i18n
-    nodeOutputs: {
-      // trigger.py - MessageTriggerNode
-      message: 'Mensaje',
-      sender_id: 'ID del remitente',
-      sender_name: 'Nombre del remitente',
-      platform: 'Plataforma',
-      conversation_id: 'ID de sesión',
-      is_group: 'Es chat grupal',
-      context: 'Contexto de depuración',
-      // trigger.py - CronTriggerNode
-      timestamp: 'Marca de tiempo',
-      schedule: 'Programación',
-      cron_timestamp: 'Marca de tiempo Cron',
-      cron_schedule: 'Expresión de programación Cron',
-      cron_context: 'Contexto Cron',
-      // trigger.py - WebhookTriggerNode
-      body: 'Cuerpo de la solicitud',
-      headers: 'Encabezados',
-      query: 'Consulta SQL',
-      method: 'Método de solicitud',
-      webhook_body: 'Cuerpo de solicitud Webhook',
-      webhook_headers: 'Encabezados de solicitud Webhook',
-      webhook_query: 'Parámetro de consulta Webhook',
-      webhook_method: 'Método de solicitud Webhook',
-      // trigger.py - EventTriggerNode
-      event_type: 'Tipo de evento',
-      event_data: 'Datos del evento',
-      event_timestamp: 'Marca de tiempo del evento',
-      // process.py - LLMCallNode
-      response: 'Respuesta',
-      usage: 'Estadísticas de uso de tokens',
-      prompt: 'Prompt/pregunta',
-      context_info: 'Información de contexto',
-      // process.py - CodeExecutorNode
-      output: 'Salida',
-      console: 'Salida de consola',
-      code_input: 'Entrada de código',
-      code_output: 'Salida de código',
-      // process.py - HTTPRequestNode
-      status_code: 'Código de estado',
-      http_body: 'Cuerpo de solicitud HTTP',
-      http_headers: 'Encabezados de solicitud HTTP',
-      http_response: 'Respuesta HTTP',
-      response_headers: 'Encabezados de respuesta',
-      // process.py - DataTransformNode
-      result: 'Resultado',
-      transform_input: 'Entrada de transformación',
-      transform_result: 'Resultado de transformación',
-      // process.py - QuestionClassifierNode
-      category: 'Resultado de categoría',
-      confidence: 'Confianza',
-      all_scores: 'Todas las puntuaciones',
-      question: 'Pregunta del usuario',
-      // process.py - ParameterExtractorNode
-      parameters: 'Definición de parámetros',
-      extraction_success: 'Extracción exitosa',
-      extract_text: 'Texto de entrada',
-      // process.py - KnowledgeRetrievalNode
-      documents: 'Documentos recuperados',
-      citations: 'Información de citas',
-      knowledge_context: 'Contexto fusionado',
-      knowledge_query: 'Consulta de recuperación',
-      // control.py - ConditionNode
-      true: 'Salida cuando la condición es verdadera',
-      false: 'Salida cuando la condición es falsa',
-      condition_input: 'Entrada de condición',
-      // control.py - SwitchNode
-      matched_case: 'Rama coincidente',
-      default: 'Rama predeterminada',
-      switch_input: 'Entrada del interruptor',
-      // control.py - LoopNode
-      item: 'Elemento actual',
-      index: 'Índice actual',
-      results: 'Resultado',
-      completed: 'Completado',
-      loop_items: 'Elementos de iteración',
-      // control.py - IteratorNode
-      is_first: '¿Es el primero?',
-      is_last: '¿Es el último?',
-      iterator_array: 'Array de entrada',
-      iterator_item: 'Elemento actual',
-      iterator_index: 'Índice actual',
-      // control.py - ParallelNode
-      errors: 'Lista de errores',
-      parallel_input: 'Entrada paralela',
-      parallel_results: 'Resultados de todas las ramas',
-      // control.py - WaitNode
-      wait_input: 'Entrada de paso',
-      wait_output: 'Salida de paso',
-      // control.py - MergeNode
-      merged: 'Resultado de fusión',
-      merge_array: 'Resultado de array',
-      merge_input_1: 'Entrada 1',
-      merge_input_2: 'Entrada 2',
-      merge_input_3: 'Entrada 3',
-      merge_input_4: 'Entrada 4',
-      // control.py - VariableAggregatorNode
-      aggregated: 'Variables agregadas',
-      aggregator_variables: 'Entrada de variable',
-      // action.py - SendMessageNode
-      status: 'Estado',
-      message_id: 'ID de mensaje',
-      target: 'ID de destino',
-      // action.py - ReplyMessageNode
-      reply_message: 'Contenido de respuesta',
-      // action.py - CallPipelineNode
-      pipeline_response: 'Respuesta del Pipeline',
-      pipeline_result: 'Resultado completo',
-      pipeline_query: 'Contenido de consulta',
-      context_data: 'Datos de contexto',
-      // action.py - StoreDataNode
-      store_status: 'Estado de almacenamiento',
-      store_key: 'Clave de almacenamiento',
-      store_value: 'Valor almacenado',
-      // action.py - SetVariableNode
-      variable_value: 'Valor de variable',
-      variable_result: 'Resultado de establecer variable',
-      // action.py - OpeningStatementNode
-      statement: 'Declaración de apertura',
-      suggested_questions: 'Preguntas sugeridas',
-      // action.py - EndNode
-      workflow_output: 'Salida del flujo de trabajo',
-      final_result: 'Resultado final',
-      // integration.py - DatabaseQueryNode
-      query_results: 'Resultados de consulta',
-      row_count: 'Número de filas',
-      query_success: 'Consulta exitosa',
-      query_params: 'Parámetros de consulta',
-      // integration.py - RedisOperationNode
-      redis_result: 'Resultado de Redis',
-      redis_success: 'Éxito de Redis',
-      redis_key: 'Clave de Redis',
-      redis_value: 'Valor de Redis',
-      error: 'Error',
-      plugin_input: 'Entrada del plugin',
-      // integration.py - MCPToolNode
-      tool_result: 'Resultado de herramienta',
-      tool_success: 'Éxito de herramienta',
-      mcp_arguments: 'Parámetro de herramienta',
-      // integration.py - MemoryStoreNode
-      memory_result: 'Resultado de memoria',
-      memory_success: 'Éxito de memoria',
-      memory_value: 'Valor almacenado',
-      // integration.py - DifyWorkflowNode
-      answer: 'Respuesta',
-      dify_success: 'Éxito de Dify',
-      dify_query: 'Entrada/consulta del usuario',
-      dify_conversation_id: 'ID de sesión',
-      // integration.py - DifyKnowledgeQueryNode
-      search_results: 'Resultados de búsqueda',
-      knowledge_base_query: 'Contenido de consulta',
-      // integration.py - N8nWorkflowNode
-      n8n_result: 'Resultado de N8n',
-      n8n_success: 'Éxito de N8n',
-      n8n_payload: 'Datos de entrada del flujo de trabajo',
-      // integration.py - LangflowFlowNode
-      flow_result: 'Resultado del flujo',
-      flow_success: 'Éxito del flujo',
-      langflow_input: 'Contenido de entrada',
-      // integration.py - CozeBotNode
-      bot_answer: 'Respuesta del bot',
-      bot_success: 'Éxito del bot',
-      coze_query: 'Entrada/consulta del usuario',
-      coze_conversation_id: 'ID de sesión',
-      bot_conversation_id: 'ID de sesión',
-    sender: 'Remitente',
-    event: 'Evento',
-    trigger_time: 'Tiempo de activación',
-    scores: 'Puntuaciones',
-    missing: 'Parámetro faltante',
-    parsed: 'Resultado analizado',
-    chunks: 'Fragmentos de texto',
-    count: 'Cantidad',
-    execution_id: 'ID de ejecución',
-    suggestions: 'Preguntas sugeridas',
-    embedding: 'Vector',
-    dimensions: 'Dimensiones',
-    intent: 'Intención',
-    entities: 'Entidades',
-    },
+    quotaLoadingTooltip:
+      'El uso del espacio de trabajo aún se está cargando. Espera antes de crear un recurso.',
+    quotaCheckFailed:
+      'No se pudo verificar la cuota actual del espacio de trabajo. Inténtalo de nuevo.',
+    createDisabledTooltip:
+      'Se alcanzó el límite de {{resource}} ({{max}}) de este espacio de trabajo. Elimina uno existente antes de crear otro.',
   },
   skills: {
     title: 'Skills',
@@ -2493,6 +3766,161 @@ const esES = {
     saveFileSuccess: 'Archivo guardado correctamente',
     saveFileError: 'Error al guardar el archivo: ',
   },
+  wizard: {
+    sidebarDescription: 'Crea un Bot con pasos guiados',
+    loading: 'Cargando asistente...',
+    loadError: 'Error al cargar los datos del asistente',
+    skip: 'Omitir',
+    skipConfirmMessage:
+      'Puedes volver a acceder al asistente de inicio rápido desde el menú de cuenta más tarde, o crear un Bot manualmente.',
+    skipConfirmOk: 'Aceptar',
+    prev: 'Anterior',
+    next: 'Siguiente',
+    finish: 'Crear y desplegar',
+    confirmCreateBot: 'Confirmar, crear Bot',
+    createSuccess: '¡Pipeline creado y vinculado al Bot correctamente!',
+    botCreateSuccess: '¡Bot creado correctamente!',
+    botSaveSuccess: '¡Configuración del Bot guardada y activada!',
+    createError: 'Error al crear los recursos',
+    skipSaveError:
+      'Error al guardar el estado de omisión. Por favor, inténtalo de nuevo.',
+    completeSaveError:
+      'Error al guardar el estado de finalización. Por favor, inténtalo de nuevo.',
+    step: {
+      platform: 'Plataforma',
+      botConfig: 'Configuración del Bot',
+      aiEngine: 'Motor de IA',
+      done: 'Listo',
+    },
+    platform: {
+      title: 'Selecciona una plataforma',
+      description:
+        'Elige la plataforma de mensajería a la que se conectará tu Bot.',
+    },
+    botConfig: {
+      title: 'Configura tu Bot',
+      description:
+        'Configura tu Bot y verifica que funcione antes de continuar.',
+      saveBot: 'Guardar y activar Bot',
+      resaveBot: 'Volver a guardar configuración',
+      botSaved:
+        'Configuración del Bot guardada y activada. Consulta los registros para verificar la conexión.',
+      waitingForMessage:
+        'El Bot está activado. Envíale un mensaje desde tu plataforma de mensajería para continuar.',
+      messageReceived:
+        'El Bot recibió un mensaje. Puedes continuar al siguiente paso.',
+      messageReceivedLocalAccountWarning:
+        'La conexión del Bot está configurada correctamente y recibió un mensaje. Como no has iniciado sesión con una cuenta de LangBot, las llamadas al modelo pueden fallar; continúa al siguiente paso para añadir tu propio modelo.',
+      pageBotPreviewFailed:
+        'No se pudo cargar el chat de prueba. Guarda la configuración de nuevo para reintentar.',
+      pageBotTestPrompt:
+        'El Bot de página está activado. Haz clic en la burbuja de chat de la esquina inferior derecha y envía un mensaje para verificar el flujo completo de la conversación.',
+      pageBotTestNotice:
+        'Solo para pruebas. Inserta el código en una página web externa real.',
+      webhookTestPrompt:
+        'La URL de devolución de llamada está lista. Configúrala en la plataforma externa y envía un mensaje real al Bot.',
+      httpTestPrompt:
+        'El Bot HTTP está activado. Envía aquí un mensaje entrante real para verificar la conexión.',
+      httpTestDefaultMessage: 'Hola, este es un mensaje de prueba de conexión.',
+      sendHttpTest: 'Enviar mensaje de prueba',
+      httpTestAccepted:
+        'El mensaje de prueba fue aceptado. Aparecerá en el registro en breve.',
+      httpTestMissingSecret:
+        'Introduce un secreto de firma entrante y guarda primero la configuración.',
+      httpTestFailed: 'No se pudo enviar el mensaje de prueba: {{error}}',
+      logsTitle: 'Registros del Bot',
+      logsDescription:
+        'Monitorea la actividad del Bot para verificar que la conexión con la plataforma funcione.',
+    },
+    aiEngine: {
+      defaultModelUnavailable:
+        'No hay un modelo predeterminado disponible. Inténtalo de nuevo.',
+      defaultRunnerUnavailable:
+        'Local Agent aún no está listo. Inténtalo de nuevo.',
+      preparingDefault: 'Preparando la IA predeterminada…',
+      title: 'Configura el motor de IA',
+      description:
+        'Elige el motor de IA que impulsará la inteligencia de tu Bot.',
+      optionalDescription:
+        'La IA ya está configurada. Puedes usarla o cambiar la conexión.',
+      externalTitle: 'Conectar un Agent de una plataforma externa',
+      externalDescription:
+        'Conecta Dify, n8n, Coze u otro Agent externo mediante un plugin Runner.',
+      ownModelTitle: 'Usar mi propio modelo',
+      ownModelDescription:
+        'Añade un proveedor y luego escanea o introduce manualmente un modelo para completar la configuración.',
+      ownModelSetupTitle: 'Añade tu propio modelo',
+      ownModelSetupDescription:
+        'Añade un proveedor de modelos. Los modelos de chat se detectan automáticamente, o puedes introducir un ID de modelo manualmente.',
+      addProviderTitle: 'Añadir proveedor',
+      addProviderDescription:
+        'Introduce los datos del proveedor y la clave de API usados para conectar y detectar modelos.',
+      selectModelTitle: 'Elige un modelo',
+      selectScannedModelTitle: 'Elige un modelo',
+      selectScannedModelDescription:
+        'El modelo seleccionado sustituirá al modelo principal del pipeline de este bot.',
+      scanModelMode: 'Detectar modelos',
+      manualModelMode: 'Añadir manualmente',
+      scanningModels: 'Detectando modelos disponibles…',
+      noScannedModels:
+        'No se encontraron modelos de chat disponibles. Revisa la configuración del proveedor.',
+      scanModelsFailed:
+        'No se pudieron detectar los modelos. Revisa la URL y la clave de API e inténtalo de nuevo.',
+      manualFallbackFailed:
+        'La detección automática falló. Introduce un ID de modelo compatible con el proveedor.',
+      manualFallbackEmpty:
+        'No se encontraron modelos. Introduce un ID de modelo compatible con el proveedor.',
+      manualModelId: 'ID del modelo',
+      manualModelIdPlaceholder: 'Por ejemplo: gpt-4o',
+      manualModelIdDescription:
+        'Introduce el parámetro de modelo utilizado en las solicitudes.',
+      manualModelOptions: 'Capacidades opcionales del modelo',
+      editProvider: 'Editar proveedor',
+      rescanModels: 'Volver a detectar modelos',
+      moreFeaturesTitle: 'Usar la configuración predeterminada',
+      moreFeaturesDescription:
+        'Usa Local Agent y el modelo recomendado. Podrás añadir herramientas y bases de conocimiento después.',
+      runnerDescription:
+        'Selecciona un Runner para el Agent externo y configura su conexión.',
+      backToChoices: 'Volver a las opciones',
+      backToList: 'Volver a la lista',
+      createExternal: 'Crear y vincular',
+      finishWithModel: 'Usar el modelo seleccionado y finalizar',
+      openWorkbench: 'Abrir área de trabajo',
+      loadingCatalog: 'Cargando extensiones de ejecutores...',
+      catalogUnavailable: 'El catálogo de ejecutores no está disponible',
+      catalogUnavailableDescription:
+        'Los ejecutores instalados siguen disponibles. Reintenta cargar el catálogo o explora las extensiones.',
+      noMarketplaceRunners: 'Ningún plugin de ejecutor coincide con este uso',
+      noMarketplaceRunnersDescription:
+        'Usa un ejecutor instalado o inténtalo más tarde.',
+      browseRunners: 'Explorar extensiones de ejecutores',
+      installAndContinue: 'Instalar y continuar',
+      installing: 'Instalando...',
+      useInstalled: 'Usar este ejecutor',
+      installedUnavailable: 'Instalado, ejecutor no disponible',
+      installSuccess: '{{runner}} instalado y seleccionado',
+      installFailed: 'No se pudo instalar la extensión de ejecutor',
+      versionUnavailable: 'El mercado no devolvió ninguna versión instalable.',
+      installTimeout:
+        'La instalación del ejecutor agotó el tiempo de espera. Revisa la tarea en Extensiones.',
+      registrationTimeout:
+        'La extensión se instaló, pero el ejecutor no se registró. Revisa el entorno de ejecución de plugins y reinténtalo.',
+    },
+    config: {
+      botInfo: 'Información del Bot',
+      botNamePlaceholder: 'Introduce el nombre del Bot',
+      botDescPlaceholder: 'Introduce la descripción del Bot (opcional)',
+      platformConfig: 'Configuración de {{platform}}',
+      aiConfig: 'Configuración de {{engine}}',
+    },
+    done: {
+      title: '¡Todo listo!',
+      description:
+        'Tu Bot ha sido creado y conectado al Pipeline de IA. Ahora puedes gestionarlo desde el panel de trabajo.',
+      backToWorkbench: 'Volver al panel de trabajo',
+    },
+  },
   addExtension: {
     installTitle: 'Instalar {{type}}',
     installConfirm: '¿Instalar {{type}} "{{name}}"?',
@@ -2560,6 +3988,9 @@ const esES = {
     loginSuccess:
       '¡Inicio de sesión correcto! El token se ha rellenado automáticamente',
     loginFailed: 'Error al iniciar sesión',
+    connecting: 'Conectando con el servicio de WeChat...',
+    waitingForScan: 'Esperando escaneo',
+    retry: 'Reintentar',
   },
   dingtalk: {
     createApp: 'Crear aplicación de DingTalk con un clic',
@@ -2587,11 +4018,33 @@ const esES = {
     robotNameNote:
       'El nombre del robot no puede obtenerse automáticamente. Introdúcelo manualmente.',
   },
+  qqofficial: {
+    createBinding: 'Vinculación QR con un clic para el bot oficial de QQ',
+    scanQRCode:
+      'Escanea el código QR siguiente con QQ móvil y autoriza la vinculación en «QQ Bot Assistant»',
+    waitingForScan: 'Esperando escaneo',
+    bindSuccess:
+      '¡Vinculación correcta! AppID y Secret se han rellenado automáticamente',
+    bindFailed: 'Error en la vinculación',
+    connecting: 'Conectando con el servicio de QQ...',
+    retry: 'Reintentar',
+    tokenNote:
+      'El campo Token no es utilizado por el adaptador actual; puedes dejarlo vacío.',
+    boundBy: 'Vinculado por el usuario QQ {{openid}}',
+  },
   pluginPages: {
     selectFromSidebar: 'Selecciona una página de plugin en la barra lateral',
     invalidPage: 'Página de plugin no válida',
   },
-
+  cloud_banner: {
+    message:
+      'Estás usando LangBot Cloud, el servicio gestionado. Para obtener recursos dedicados y cuotas mayores, considera usar',
+    dedicated_link: 'LangBot Cloud (entorno dedicado)',
+    cta_dedicated: 'ver los planes dedicados',
+    or: 'o',
+    self_hosted_link: 'la versión de código abierto autoalojada',
+    period: '.',
+    dismiss: 'Cerrar',
+  },
 };
-
 export default esES;

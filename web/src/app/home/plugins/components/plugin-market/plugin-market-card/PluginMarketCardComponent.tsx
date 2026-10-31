@@ -1,9 +1,18 @@
+import { CertifiedPluginBadge } from '@/components/market/CertifiedPluginBadge';
 import { PluginMarketCardVO } from './PluginMarketCardVO';
 import { useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import PluginComponentList from '../PluginComponentList';
 import { Badge } from '@/components/ui/badge';
-import { Info, Package, ExternalLink } from 'lucide-react';
+import {
+  Info,
+  Package,
+  ExternalLink,
+  Heart,
+  Loader2,
+  Check,
+  ArrowUp,
+} from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -11,20 +20,34 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import {
+  getMarketplaceExtensionLiked,
+  marketplaceExtensionKey,
+  subscribeMarketplaceLikeChanges,
+  toggleMarketplaceExtensionLike,
+} from '../marketplace-likes';
 
 export default function PluginMarketCardComponent({
   cardVO,
   onInstall,
   tagNames = {},
+  installDisabled = false,
+  installDisabledTooltip,
 }: {
   cardVO: PluginMarketCardVO;
   onInstall?: (cardVO: PluginMarketCardVO) => void;
   tagNames?: Record<string, string>;
+  installDisabled?: boolean;
+  installDisabledTooltip?: string;
 }) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [visibleTags, setVisibleTags] = useState(2);
   const [iconFailed, setIconFailed] = useState(!cardVO.iconURL);
+  const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(cardVO.likeCount);
+  const [isLiking, setIsLiking] = useState(false);
 
   const pluginDetailUrl = `https://space.langbot.app/market/${cardVO.author}/${cardVO.pluginName}`;
 
@@ -33,6 +56,9 @@ export default function PluginMarketCardComponent({
     const keys = Object.keys(cardVO.components);
     return keys.length > 0 && keys.every((k) => k === 'KnowledgeRetriever');
   })();
+
+  const isInstalled = !!cardVO.installed;
+  const hasUpdate = !!cardVO.hasUpdate;
 
   const showTypeBadge = cardVO.type;
   const typeLabel =
@@ -51,6 +77,37 @@ export default function PluginMarketCardComponent({
   useEffect(() => {
     setIconFailed(!cardVO.iconURL);
   }, [cardVO.iconURL]);
+
+  useEffect(() => {
+    setLikeCount(cardVO.likeCount);
+  }, [cardVO.likeCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getMarketplaceExtensionLiked(cardVO.type, cardVO.author, cardVO.pluginName)
+      .then((value) => {
+        if (!cancelled) setLiked(value);
+      })
+      .catch(() => {
+        // The count still renders if the viewer-state request is unavailable.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cardVO.author, cardVO.pluginName, cardVO.type]);
+
+  useEffect(() => {
+    const key = marketplaceExtensionKey(
+      cardVO.type,
+      cardVO.author,
+      cardVO.pluginName,
+    );
+    return subscribeMarketplaceLikeChanges((change) => {
+      if (change.key !== key) return;
+      setLiked(change.liked);
+      setLikeCount(change.likeCount);
+    });
+  }, [cardVO.author, cardVO.pluginName, cardVO.type]);
 
   useEffect(() => {
     const tags = cardVO.tags;
@@ -86,18 +143,71 @@ export default function PluginMarketCardComponent({
 
   const remainingTags = cardVO.tags ? cardVO.tags.length - visibleTags : 0;
   const handleInstallClick = () => {
+    if (installDisabled) return;
     onInstall?.(cardVO);
   };
 
-  return (
+  const handleLikeClick = async (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isLiking) return;
+    setIsLiking(true);
+    try {
+      const change = await toggleMarketplaceExtensionLike(
+        cardVO.type,
+        cardVO.author,
+        cardVO.pluginName,
+        !liked,
+      );
+      setLiked(change.liked);
+      setLikeCount(change.likeCount);
+    } catch {
+      toast.error(t('market.likeFailed'));
+    } finally {
+      setIsLiking(false);
+    }
+  };
+
+  // An already-installed extension turns its download affordance into a filled
+  // green circle-check, so the card reads as "installed" in place instead of
+  // offering another install.
+  const showInstalledMark = isInstalled && !hasUpdate;
+
+  // Bottom-right slot: the component list.
+  const bottomTrailing =
+    cardVO.components && Object.keys(cardVO.components).length > 0 ? (
+      <PluginComponentList
+        components={cardVO.components}
+        showComponentName={false}
+        showTitle={false}
+        useBadge={true}
+        t={t}
+        responsive={false}
+      />
+    ) : null;
+  const cardContent = (
     <div
-      role="button"
+      role={installDisabled ? 'group' : 'button'}
       tabIndex={0}
-      aria-label={t('market.installCard', { name: cardVO.label })}
-      className="w-[100%] h-[10rem] cursor-pointer bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] transition-shadow duration-200 outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)] relative"
+      aria-disabled={installDisabled}
+      aria-label={
+        isInstalled
+          ? t('market.installedCard', { name: cardVO.label })
+          : t('market.installCard', { name: cardVO.label })
+      }
+      className={`w-[100%] h-[10rem] bg-white rounded-[10px] border border-border shadow-[0px_1px_2px_0_rgba(0,0,0,0.06)] p-3 sm:p-[1rem] transition-shadow duration-200 outline-none dark:bg-[#1f1f22] dark:shadow-[0px_1px_2px_0_rgba(255,255,255,0.04)] relative ${
+        installDisabled
+          ? 'cursor-not-allowed opacity-60'
+          : 'cursor-pointer hover:shadow-[0px_2px_5px_0_rgba(0,0,0,0.08)] focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:hover:shadow-[0px_2px_5px_0_rgba(255,255,255,0.07)]'
+      }`}
       onClick={handleInstallClick}
       onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
+        if (
+          event.target === event.currentTarget &&
+          (event.key === 'Enter' || event.key === ' ')
+        ) {
           event.preventDefault();
           handleInstallClick();
         }
@@ -168,6 +278,9 @@ export default function PluginMarketCardComponent({
                     <span className="truncate">{typeLabel}</span>
                   </Badge>
                 )}
+                {cardVO.certificationStatus === 'issued' && (
+                  <CertifiedPluginBadge compact />
+                )}
               </div>
             </div>
 
@@ -177,6 +290,26 @@ export default function PluginMarketCardComponent({
           </div>
 
           <div className="flex flex-row items-start justify-center gap-1 flex-shrink-0">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title={t(liked ? 'market.unlike' : 'market.like')}
+              aria-label={t(liked ? 'market.unlike' : 'market.like')}
+              aria-pressed={liked}
+              disabled={isLiking}
+              className="h-7 min-w-7 gap-1 rounded-md px-1.5 text-muted-foreground hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+              onClick={handleLikeClick}
+            >
+              {isLiking ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Heart
+                  className={`h-3.5 w-3.5 ${liked ? 'fill-red-500 text-red-500' : ''}`}
+                />
+              )}
+              <span className="text-xs tabular-nums">{likeCount}</span>
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -223,23 +356,44 @@ export default function PluginMarketCardComponent({
           className="w-full flex flex-row items-center justify-between gap-2 px-0 sm:px-[0.4rem] flex-shrink-0 overflow-hidden"
         >
           <div className="flex flex-row items-center justify-start gap-2 min-w-0 overflow-hidden">
-            <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
-              <svg
-                className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] text-[#2563eb] dark:text-[#5b8def] flex-shrink-0"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
+            {hasUpdate ? (
+              <Badge
+                variant="outline"
+                className="h-5 px-1.5 sm:px-2 text-[0.65rem] sm:text-[0.7rem] flex items-center gap-1 font-medium flex-shrink-0 whitespace-nowrap text-amber-600 dark:text-amber-400 border-amber-500/40 bg-amber-500/10"
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7,10 12,15 17,10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              <div className="text-xs sm:text-sm text-[#2563eb] dark:text-[#5b8def] font-medium whitespace-nowrap">
-                {cardVO.installCount?.toLocaleString() ?? '0'}
+                <ArrowUp className="w-3 h-3 text-amber-500 dark:text-amber-400" />
+                <span>{t('market.updateAvailable')}</span>
+              </Badge>
+            ) : showInstalledMark ? (
+              <Badge
+                variant="outline"
+                className="h-5 px-1.5 sm:px-2 text-[0.65rem] sm:text-[0.7rem] flex items-center gap-1 font-medium flex-shrink-0 whitespace-nowrap text-green-600 dark:text-green-400 border-green-500/40 bg-green-500/10"
+              >
+                <Check
+                  className="w-3 h-3 text-green-500 dark:text-green-400"
+                  strokeWidth={2.5}
+                />
+                <span>{t('market.installed')}</span>
+              </Badge>
+            ) : (
+              <div className="flex flex-row items-center gap-[0.3rem] sm:gap-[0.4rem] flex-shrink-0">
+                <svg
+                  className="w-4 h-4 sm:w-[1.2rem] sm:h-[1.2rem] flex-shrink-0 text-[#2563eb] dark:text-[#5b8def]"
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7,10 12,15 17,10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                <div className="text-xs sm:text-sm font-medium whitespace-nowrap text-[#2563eb] dark:text-[#5b8def]">
+                  {cardVO.installCount?.toLocaleString() ?? '0'}
+                </div>
               </div>
-            </div>
+            )}
 
             {cardVO.tags && cardVO.tags.length > 0 && visibleTags > 0 && (
               <div className="flex flex-row items-center gap-1.5 overflow-hidden flex-shrink min-w-0">
@@ -279,20 +433,26 @@ export default function PluginMarketCardComponent({
             )}
           </div>
 
-          {cardVO.components && Object.keys(cardVO.components).length > 0 && (
+          {bottomTrailing ? (
             <div className="flex flex-row items-center gap-1 flex-shrink-0">
-              <PluginComponentList
-                components={cardVO.components}
-                showComponentName={false}
-                showTitle={false}
-                useBadge={true}
-                t={t}
-                responsive={false}
-              />
+              {bottomTrailing}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
+  );
+
+  if (!installDisabled || !installDisabledTooltip) return cardContent;
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>{cardContent}</TooltipTrigger>
+        <TooltipContent side="top" className="max-w-72 text-left">
+          {installDisabledTooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

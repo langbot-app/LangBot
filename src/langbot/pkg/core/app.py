@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import contextlib
 import traceback
 import os
+from typing import TYPE_CHECKING
 
 from ..platform import botmgr as im_mgr
 from ..platform.webhook_pusher import WebhookPusher
@@ -18,34 +20,50 @@ from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
 from ..pipeline import aggregator as message_aggregator
-from ..utils import version as version_mgr, proxy as proxy_mgr
+from ..utils import version as version_mgr, proxy as proxy_mgr, httpclient
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
 from ..api.http.service import user as user_service
 from ..api.http.service import space as space_service
+from ..api.http.service import totp as totp_service
 from ..api.http.service import model as model_service
 from ..api.http.service import provider as provider_service
 from ..api.http.service import pipeline as pipeline_service
+from ..api.http.service import agent as agent_service
 from ..api.http.service import bot as bot_service
 from ..api.http.service import knowledge as knowledge_service
 from ..api.http.service import mcp as mcp_service
 from ..api.http.service import apikey as apikey_service
 from ..api.http.service import webhook as webhook_service
 from ..api.http.service import monitoring as monitoring_service
-from ..api.http.service import workflow as workflow_service
+from ..operation_trace import service as workspace_settings_service
 from ..api.http.service import skill as skill_service
 from ..api.http.service import maintenance as maintenance_service
 from ..discover import engine as discover_engine
 from ..storage import mgr as storagemgr
-from ..utils import logcache
+from ..utils import bounded_executor, event_loop_monitor, logcache
 from . import taskmgr
 from . import entities as core_entities
 from ..rag.knowledge import kbmgr as rag_mgr
 from ..rag.service import RAGRuntimeService
 from ..vector import mgr as vectordb_mgr
+from ..skill import repository as skill_repository
 from ..telemetry import telemetry as telemetry_module
 from ..survey import manager as survey_module
 from ..skill import manager as skill_mgr
+from ..workspace import service as workspace_service_module
+from ..workspace import collaboration as workspace_collaboration_module
+from ..workspace import invitation_delivery as invitation_delivery_module
+from ..cloud import bootstrap as cloud_bootstrap_module
+from ..cloud import launch as cloud_launch_module
+from ..cloud import support_admin as cloud_support_admin_module
+from ..cloud import directory_projection as cloud_directory_projection_module
+from ..cloud import entitlements as cloud_entitlements_module
+from ..cloud import model_catalog as cloud_model_catalog_module
+from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+
+if TYPE_CHECKING:
+    from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
 
 
 class Application:
@@ -74,6 +92,7 @@ class Application:
     # TODO move to pipeline
     tool_mgr: llm_tool_mgr.ToolManager = None
     box_service: box_service_module.BoxService = None
+    skill_repository: skill_repository.SkillRepository = None
 
     # ======= Config manager =======
 
@@ -120,6 +139,25 @@ class Application:
 
     persistence_mgr: persistencemgr.PersistenceManager = None
 
+    workspace_service: workspace_service_module.WorkspaceService = None
+
+    workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
+
+    invitation_delivery_service: invitation_delivery_module.InvitationDeliveryService = None
+
+    space_launch_service: cloud_launch_module.SpaceLaunchService = None
+
+    support_admin_session_service: cloud_support_admin_module.SupportAdminSessionService = None
+
+    deployment: cloud_bootstrap_module.OpenSourceDeployment | cloud_bootstrap_module.VerifiedCloudDeployment = None
+
+    deployment_admission: cloud_bootstrap_module.DeploymentAdmissionGuard = None
+    directory_projection_service: cloud_directory_projection_module.DirectoryProjectionService | None = None
+    cloud_model_catalog_service: cloud_model_catalog_module.CloudModelCatalogSyncService | None = None
+    manifest_refresh_service: cloud_bootstrap_module.CloudManifestRefreshService | None = None
+
+    entitlement_resolver: cloud_entitlements_module.EntitlementResolver | None = None
+
     vector_db_mgr: vectordb_mgr.VectorDBManager = None
 
     http_ctrl: http_controller.HTTPController = None
@@ -131,6 +169,7 @@ class Application:
     # ========= HTTP Services =========
 
     user_service: user_service.UserService = None
+    totp_service: totp_service.TotpService = None
 
     space_service: space_service.SpaceService = None
 
@@ -143,6 +182,8 @@ class Application:
     provider_service: provider_service.ModelProviderService = None
 
     pipeline_service: pipeline_service.PipelineService = None
+
+    agent_service: agent_service.AgentService = None
 
     bot_service: bot_service.BotService = None
 
@@ -162,21 +203,197 @@ class Application:
 
     monitoring_service: monitoring_service.MonitoringService = None
 
+    workspace_settings_service: workspace_settings_service.WorkspaceSettingsService = None
+
     skill_service: skill_service.SkillService = None
 
     skill_mgr: skill_mgr.SkillManager = None
 
     maintenance_service: maintenance_service.MaintenanceService = None
 
+    # Agent runner subsystem
+    runner_registry: RunnerRegistry = None
+
+    runner_default_config_service: RunnerDefaultConfigService = None
+
+    agent_run_orchestrator: AgentRunOrchestrator = None
+
+    blocking_executor: bounded_executor.BoundedThreadPoolExecutor | None = None
+    event_loop_monitor: event_loop_monitor.EventLoopLagMonitor
+
     def __init__(self):
-        pass
+        self._shutdown_lock = asyncio.Lock()
+        self._shutdown_complete = False
+        self._shutdown_task: asyncio.Task | None = None
+        self.event_loop_monitor = event_loop_monitor.EventLoopLagMonitor()
+
+    def get_runtime_resource_stats(self) -> dict[str, object]:
+        """Return aggregate O(1) counters for liveness and soak validation."""
+
+        try:
+            asyncio_tasks = len(asyncio.all_tasks(self.event_loop))
+        except (RuntimeError, TypeError):
+            asyncio_tasks = 0
+
+        task_stats = self.task_mgr.get_stats() if self.task_mgr is not None else {}
+        query_pool_stats = {}
+        if self.query_pool is not None:
+            query_pool_stats = {
+                'queued': len(self.query_pool.queries),
+                'cached': len(self.query_pool.cached_queries),
+                'active_workspaces': len(self.query_pool.active_query_count_by_workspace),
+            }
+
+        model_stats = {}
+        if self.model_mgr is not None:
+            model_stats = {
+                'providers': len(self.model_mgr.provider_dict),
+                'llms': len(self.model_mgr.llm_model_dict),
+                'embeddings': len(self.model_mgr.embedding_model_dict),
+                'rerankers': len(self.model_mgr.rerank_model_dict),
+            }
+
+        runtime_stats = {
+            'bots': len(getattr(self.platform_mgr, '_bots_by_key', {})),
+            'pipelines': len(getattr(self.pipeline_mgr, '_pipelines_by_key', {})),
+            'knowledge_bases': len(getattr(self.rag_mgr, 'knowledge_bases', {})),
+            'message_aggregation_buffers': len(getattr(self.msg_aggregator, 'buffers', {})),
+            'message_aggregation_scopes': len(
+                getattr(
+                    self.msg_aggregator,
+                    '_buffer_counts_by_scope',
+                    {},
+                )
+            ),
+            'plugin_installations': len(
+                getattr(
+                    self.plugin_connector,
+                    '_known_desired_states',
+                    {},
+                )
+            ),
+            'plugin_runtime_connected': bool(
+                self.plugin_connector is not None
+                and getattr(self.plugin_connector, '_runtime_available', lambda: False)()
+            ),
+        }
+        mcp_loader = getattr(self.tool_mgr, 'mcp_tool_loader', None)
+        runtime_stats.update(
+            {
+                'mcp_sessions': len(getattr(mcp_loader, '_sessions', {})),
+                'mcp_host_tasks': len(getattr(mcp_loader, '_hosted_mcp_tasks', ())),
+                'mcp_dispatch_tasks': len(getattr(mcp_loader, '_host_dispatch_tasks', ())),
+                'mcp_projection_retirements': len(getattr(mcp_loader, '_pending_projection_retirements', ())),
+                'mcp_projection_reconcile_active': int(
+                    (
+                        projection_task := getattr(
+                            mcp_loader,
+                            '_projection_reconcile_task',
+                            None,
+                        )
+                    )
+                    is not None
+                    and not projection_task.done()
+                ),
+            }
+        )
+
+        directory_stats = {}
+        directory_snapshot = getattr(self.directory_projection_service, 'resource_snapshot', None)
+        if callable(directory_snapshot):
+            directory_stats = directory_snapshot()
+
+        database_stats = {}
+        database_snapshot = getattr(self.persistence_mgr, 'get_resource_stats', None)
+        if callable(database_snapshot):
+            database_stats = database_snapshot()
+
+        runtime_ops_stats = {}
+        runtime_ops_reporter = getattr(self.plugin_connector, 'runtime_ops_reporter', None)
+        if runtime_ops_reporter is not None:
+            runtime_ops_stats = runtime_ops_reporter.get_stats()
+
+        telemetry_stats = {}
+        telemetry_health = getattr(self.telemetry, 'health', None)
+        if callable(telemetry_health):
+            try:
+                telemetry_stats = telemetry_health()
+            except Exception:
+                telemetry_stats = {}
+
+        return {
+            'asyncio_tasks': asyncio_tasks,
+            'event_loop': self.event_loop_monitor.snapshot(),
+            'blocking_executor': (self.blocking_executor.snapshot() if self.blocking_executor is not None else {}),
+            'application_tasks': task_stats,
+            'database_pool': database_stats,
+            'directory': directory_stats,
+            'query_pool': query_pool_stats,
+            'models': model_stats,
+            'runtimes': runtime_stats,
+            'runtime_ops': runtime_ops_stats,
+            'telemetry': telemetry_stats,
+        }
 
     async def initialize(self):
         pass
 
-    async def run(self):
+    async def _initialize_plugin_runtime(self) -> None:
         try:
-            await self.plugin_connector.initialize_plugins()
+            await self.plugin_connector.initialize()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self.logger.warning(f'Plugin runtime unavailable during startup; reconnecting in background: {exc}')
+            self.plugin_connector.schedule_reconnect()
+
+    def _start_plugin_runtime_initialization(self) -> asyncio.Task | None:
+        task = getattr(self, '_plugin_runtime_initialization_task', None)
+        if task is not None and not task.done():
+            return task
+        # This is application lifecycle work, not a request side effect. It must
+        # not wait on PersistenceManager's after-commit gate at boot.
+        task = asyncio.create_task(
+            self._initialize_plugin_runtime(),
+            name='plugin-runtime-initialization',
+        )
+        self._plugin_runtime_initialization_task = task
+        return task
+
+    async def run(self):
+        from ..persistence.session_summary_backfill import initialize_application_summaries
+
+        await initialize_application_summaries(self)
+        self.event_loop_monitor.start()
+        from ..utils.execution_lease import maintain_execution_leases
+
+        self.task_mgr.create_task(
+            maintain_execution_leases(self),
+            name='execution-lease-maintenance',
+            scopes=[core_entities.LifecycleControlScope.APPLICATION],
+        )
+        try:
+            if (
+                self.directory_projection_service is not None
+                and getattr(self, 'directory_projection_task', None) is None
+            ):
+                self.directory_projection_task = self.task_mgr.create_task(
+                    self.directory_projection_service.run(),
+                    name='cloud-directory-projection',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+            if self.cloud_model_catalog_service is not None:
+                self.task_mgr.create_task(
+                    self.cloud_model_catalog_service.run(),
+                    name='cloud-model-catalog-sync',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
+            if self.manifest_refresh_service is not None:
+                self.task_mgr.create_task(
+                    self.manifest_refresh_service.run(),
+                    name='cloud-manifest-refresh',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
 
             # 后续可能会允许动态重启其他任务
             # 故为了防止程序在非 Ctrl-C 情况下退出，这里创建一个不会结束的协程
@@ -202,6 +419,7 @@ class Application:
                 name='http-api-controller',
                 scopes=[core_entities.LifecycleControlScope.APPLICATION],
             )
+            self._start_plugin_runtime_initialization()
 
             # Telemetry instance heartbeat (startup + daily); respects
             # space.disable_telemetry via TelemetryManager.send().
@@ -214,90 +432,171 @@ class Application:
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 
-            # Start monitoring data cleanup task if enabled
             monitoring_cfg = self.instance_config.data.get('monitoring', {})
             auto_cleanup_cfg = monitoring_cfg.get('auto_cleanup', {})
-            if auto_cleanup_cfg.get('enabled', True):
-                retention_days = self._get_positive_int_config(
-                    auto_cleanup_cfg.get('retention_days', 30),
-                    default=30,
-                    name='monitoring.auto_cleanup.retention_days',
-                )
-                delete_batch_size = self._get_positive_int_config(
-                    auto_cleanup_cfg.get('delete_batch_size', 1000),
-                    default=1000,
-                    name='monitoring.auto_cleanup.delete_batch_size',
-                )
-                check_interval_hours = self._get_positive_float_config(
+            monitoring_enabled = (
+                auto_cleanup_cfg.get('enabled', True)
+                or getattr(getattr(self, 'deployment', None), 'mode', None) == 'cloud'
+            )
+            retention_days = self._get_positive_int_config(
+                auto_cleanup_cfg.get('retention_days', 30),
+                default=30,
+                name='monitoring.auto_cleanup.retention_days',
+            )
+            delete_batch_size = self._get_positive_int_config(
+                auto_cleanup_cfg.get('delete_batch_size', 1000),
+                default=1000,
+                name='monitoring.auto_cleanup.delete_batch_size',
+            )
+            monitoring_interval_seconds = (
+                self._get_positive_float_config(
                     auto_cleanup_cfg.get('check_interval_hours', 1),
                     default=1,
                     name='monitoring.auto_cleanup.check_interval_hours',
                 )
-
-                async def monitoring_cleanup_loop():
-                    check_interval_seconds = check_interval_hours * 3600
-                    while True:
-                        try:
-                            deleted = await self.monitoring_service.cleanup_expired_records(
-                                retention_days,
-                                batch_size=delete_batch_size,
-                            )
-                            total_deleted = sum(deleted.values())
-                            if total_deleted > 0:
-                                self.logger.info(
-                                    f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
-                                    f'(retention={retention_days}d): {deleted}'
-                                )
-                        except Exception as e:
-                            self.logger.warning(f'Monitoring auto-cleanup error: {e}')
-                        await asyncio.sleep(check_interval_seconds)
-
-                self.task_mgr.create_task(
-                    monitoring_cleanup_loop(),
-                    name='monitoring-cleanup',
-                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
-                )
-
-            async def workflow_execution_cleanup_loop():
-                check_interval_seconds = 60
-                while True:
-                    try:
-                        cancelled = await self.workflow_service.cleanup_stale_executions()
-                        if cancelled > 0:
-                            self.logger.info(f'Workflow execution auto-cleanup: cancelled {cancelled} stale executions')
-                    except Exception as e:
-                        self.logger.warning(f'Workflow execution auto-cleanup error: {e}')
-                    await asyncio.sleep(check_interval_seconds)
-
-            self.task_mgr.create_task(
-                workflow_execution_cleanup_loop(),
-                name='workflow-execution-cleanup',
-                scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                * 3600
             )
-            # Start storage/log maintenance task if enabled
+
             storage_cleanup_cfg = self.instance_config.data.get('storage', {}).get('cleanup', {})
-            if storage_cleanup_cfg.get('enabled', True) and self.maintenance_service is not None:
-                check_interval_hours = self._get_positive_float_config(
+            storage_enabled = storage_cleanup_cfg.get('enabled', True) and self.maintenance_service is not None
+            storage_interval_seconds = (
+                self._get_positive_float_config(
                     storage_cleanup_cfg.get('check_interval_hours', 1),
                     default=1,
                     name='storage.cleanup.check_interval_hours',
                 )
+                * 3600
+            )
 
-                async def storage_cleanup_loop():
-                    check_interval_seconds = check_interval_hours * 3600
+            # Operation-log retention piggybacks on the shared maintenance loop
+            # instead of starting another long-lived task, so enabling
+            # traceability adds no scheduling cost of its own.
+            operation_log_cleanup_cfg = self.instance_config.data.get('operation_log', {}).get('auto_cleanup', {})
+            operation_log_enabled = (
+                operation_log_cleanup_cfg.get('enabled', True) and self.workspace_settings_service is not None
+            )
+            operation_log_interval_seconds = (
+                self._get_positive_float_config(
+                    operation_log_cleanup_cfg.get('check_interval_hours', 1),
+                    default=1,
+                    name='operation_log.auto_cleanup.check_interval_hours',
+                )
+                * 3600
+            )
+
+            maintenance_intervals: dict[str, float] = {}
+            if monitoring_enabled:
+                maintenance_intervals['monitoring'] = monitoring_interval_seconds
+            if storage_enabled:
+                maintenance_intervals['storage'] = storage_interval_seconds
+            if self.workspace_collaboration_service is not None:
+                maintenance_intervals['invitations'] = 3600.0
+            if operation_log_enabled:
+                maintenance_intervals['operation_logs'] = operation_log_interval_seconds
+
+            if maintenance_intervals:
+
+                async def resource_maintenance_loop():
+                    """Share tenant discovery and serialize periodic maintenance."""
+
+                    loop = asyncio.get_running_loop()
+                    started_at = loop.time()
+                    next_due = {name: started_at + interval for name, interval in maintenance_intervals.items()}
                     while True:
+                        await asyncio.sleep(max(min(next_due.values()) - loop.time(), 0.0))
+                        observed_at = loop.time()
+                        due = {name for name, due_at in next_due.items() if due_at <= observed_at}
+                        if not due:
+                            continue
                         try:
-                            deleted = await self.maintenance_service.cleanup_expired_files()
-                            total_deleted = sum(deleted.values())
-                            if total_deleted > 0:
-                                self.logger.info(f'Storage maintenance: deleted expired files: {deleted}')
-                        except Exception as e:
-                            self.logger.warning(f'Storage maintenance error: {e}')
-                        await asyncio.sleep(check_interval_seconds)
+                            bindings = await self.workspace_service.list_active_execution_bindings()
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as exc:
+                            self.logger.warning(f'Resource maintenance Workspace discovery failed: {exc}')
+                        else:
+                            for binding in bindings:
+                                context = ExecutionContext(
+                                    instance_uuid=binding.instance_uuid,
+                                    workspace_uuid=binding.workspace_uuid,
+                                    placement_generation=binding.placement_generation,
+                                    trigger_principal=PrincipalContext(PrincipalType.SYSTEM),
+                                )
+                                if 'monitoring' in due:
+                                    try:
+                                        deleted = await self.monitoring_service.cleanup_expired_records(
+                                            context,
+                                            retention_days,
+                                            batch_size=delete_batch_size,
+                                        )
+                                        total_deleted = sum(deleted.values())
+                                        if total_deleted > 0:
+                                            self.logger.info(
+                                                f'Monitoring auto-cleanup: deleted {total_deleted} expired records '
+                                                f'for Workspace {context.workspace_uuid} '
+                                                f'(retention={retention_days}d): {deleted}'
+                                            )
+                                    except asyncio.CancelledError:
+                                        raise
+                                    except Exception as exc:
+                                        self.logger.warning(
+                                            f'Monitoring auto-cleanup failed for '
+                                            f'Workspace {context.workspace_uuid}: {exc}'
+                                        )
+                                if 'storage' in due:
+                                    try:
+                                        deleted = await self.maintenance_service.cleanup_expired_files(context)
+                                        total_deleted = sum(deleted.values())
+                                        if total_deleted > 0:
+                                            self.logger.info(
+                                                f'Storage maintenance for Workspace {context.workspace_uuid}: '
+                                                f'cleaned expired storage data: {deleted}'
+                                            )
+                                    except asyncio.CancelledError:
+                                        raise
+                                    except Exception as exc:
+                                        self.logger.warning(
+                                            f'Storage maintenance failed for Workspace {context.workspace_uuid}: {exc}'
+                                        )
+                                if 'operation_logs' in due:
+                                    # Retention is per Workspace, so this must run
+                                    # inside the binding loop; left outside it only
+                                    # the last discovered Workspace would ever be
+                                    # pruned while the others grew unbounded.
+                                    try:
+                                        report = await self.workspace_settings_service.prune(
+                                            context.workspace_uuid,
+                                        )
+                                        removed = report['expired'] + report['trimmed']
+                                        if removed > 0:
+                                            self.logger.info(
+                                                f'Operation log auto-cleanup for Workspace '
+                                                f'{context.workspace_uuid}: removed {removed} records'
+                                            )
+                                    except asyncio.CancelledError:
+                                        raise
+                                    except Exception as exc:
+                                        self.logger.warning(
+                                            f'Operation log auto-cleanup failed for '
+                                            f'Workspace {context.workspace_uuid}: {exc}'
+                                        )
+                            if 'invitations' in due:
+                                try:
+                                    await self.workspace_collaboration_service.cleanup_expired_invitations(
+                                        active_bindings=bindings,
+                                    )
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(f'Expired Workspace invitation cleanup failed: {exc}')
+
+                        completed_at = loop.time()
+                        for name in due:
+                            next_due[name] = completed_at + maintenance_intervals[name]
 
                 self.task_mgr.create_task(
-                    storage_cleanup_loop(),
-                    name='storage-maintenance',
+                    resource_maintenance_loop(),
+                    name='resource-maintenance',
                     scopes=[core_entities.LifecycleControlScope.APPLICATION],
                 )
 
@@ -337,7 +636,82 @@ class Application:
             return default
         return parsed
 
+    async def shutdown(self):
+        """Stop application work and deterministically release runtime resources."""
+        async with self._shutdown_lock:
+            if self._shutdown_complete:
+                return
+
+            if self.task_mgr is not None:
+                self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
+            plugin_runtime_task = getattr(self, '_plugin_runtime_initialization_task', None)
+            if plugin_runtime_task is not None and not plugin_runtime_task.done():
+                plugin_runtime_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await plugin_runtime_task
+            with contextlib.suppress(Exception):
+                await self.event_loop_monitor.stop()
+            mcp_mount = getattr(self.http_ctrl, 'mcp_mount', None)
+            if mcp_mount is not None:
+                with contextlib.suppress(Exception):
+                    await mcp_mount.stop_session_manager()
+            if self.platform_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.platform_mgr.shutdown()
+            if self.tool_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.tool_mgr.shutdown()
+            if self.model_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.model_mgr.shutdown()
+            if self.box_service is not None:
+                with contextlib.suppress(Exception):
+                    await self.box_service.shutdown()
+            if self.plugin_connector is not None:
+                with contextlib.suppress(Exception):
+                    await self.plugin_connector.aclose()
+            if self.telemetry is not None:
+                with contextlib.suppress(Exception):
+                    await self.telemetry.shutdown()
+            if self.vector_db_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.vector_db_mgr.shutdown()
+            if self.storage_mgr is not None:
+                with contextlib.suppress(Exception):
+                    await self.storage_mgr.shutdown()
+            manifest_provider = getattr(self.deployment, 'manifest_provider', None)
+            if manifest_provider is not None:
+                with contextlib.suppress(Exception):
+                    await manifest_provider.aclose()
+
+            if self.task_mgr is not None:
+                tasks = [wrapper.task for wrapper in self.task_mgr.tasks if not wrapper.task.done()]
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+            with contextlib.suppress(Exception):
+                await httpclient.close_all()
+            persistence_shutdown = getattr(self.persistence_mgr, 'shutdown', None)
+            if callable(persistence_shutdown):
+                with contextlib.suppress(Exception):
+                    await persistence_shutdown()
+            else:
+                # Compatibility for lightweight test/application doubles.
+                persistence_db = getattr(self.persistence_mgr, 'db', None)
+                persistence_engine = getattr(persistence_db, 'engine', None)
+                if persistence_engine is not None:
+                    with contextlib.suppress(Exception):
+                        await persistence_engine.dispose()
+            self._shutdown_complete = True
+
     def dispose(self):
+        """Compatibility wrapper for callers that cannot await shutdown."""
+        if self._shutdown_complete:
+            return
+        loop = self.event_loop
+        if loop is not None and not loop.is_closed():
+            if self._shutdown_task is None or self._shutdown_task.done():
+                self._shutdown_task = loop.create_task(self.shutdown())
+            return
         if self.plugin_connector is not None:
             self.plugin_connector.dispose()
         if self.box_service is not None:
@@ -351,9 +725,9 @@ class Application:
         frontend_path = paths.get_frontend_path()
 
         if not os.path.exists(frontend_path):
-            self.logger.warning('WebUI 文件缺失，请根据文档部署：https://docs.langbot.app/zh')
+            self.logger.warning('WebUI 文件缺失，请根据文档部署：https://langbot.app/docs/zh')
             self.logger.warning(
-                'WebUI files are missing, please deploy according to the documentation: https://docs.langbot.app/en'
+                'WebUI files are missing, please deploy according to the documentation: https://langbot.app/docs/en'
             )
             return
 

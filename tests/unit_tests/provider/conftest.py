@@ -7,6 +7,10 @@ without calling real LLM APIs or network requests.
 
 from __future__ import annotations
 
+import json
+import inspect
+from typing import Any
+
 import pytest
 from unittest.mock import AsyncMock, Mock
 from types import SimpleNamespace
@@ -16,6 +20,18 @@ from langbot.pkg.provider.modelmgr import token
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.entity.persistence import model as persistence_model
 from langbot.pkg.discover import engine as discover_engine
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.entities import WorkspaceExecutionBinding
+
+
+TEST_INSTANCE_UUID = 'test-instance'
+TEST_WORKSPACE_UUID = 'test-workspace'
+TEST_GENERATION = 1
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid=TEST_INSTANCE_UUID,
+    workspace_uuid=TEST_WORKSPACE_UUID,
+    placement_generation=TEST_GENERATION,
+)
 
 
 class FakeProviderAPIRequester(requester.ProviderAPIRequester):
@@ -30,6 +46,67 @@ class FakeProviderAPIRequester(requester.ProviderAPIRequester):
         self._invoke_count = 0
         self._last_messages = None
         self._last_model = None
+        self._last_funcs = None
+        self._invoke_payloads = []
+        self._last_count_tokens_payload = None
+        self._count_tokens_payloads = []
+        self._scripted_llm_responses = []
+
+    @staticmethod
+    def _content_to_text(content) -> str:
+        if content is None:
+            return ''
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if isinstance(item, dict):
+                    text = item.get('text')
+                else:
+                    text = getattr(item, 'text', None)
+                if text:
+                    parts.append(str(text))
+            return ''.join(parts)
+        return str(content)
+
+    def queue_llm_responses(self, *responses: Any) -> None:
+        """Queue deterministic LLM responses for multi-turn tests."""
+        self._scripted_llm_responses.extend(responses)
+
+    async def _coerce_llm_response(
+        self,
+        response: Any,
+        *,
+        query: Any,
+        model: requester.RuntimeLLMModel,
+        messages: list,
+        funcs: list | None,
+        extra_args: dict,
+        remove_think: bool,
+    ):
+        """Convert scripted response values into provider Message objects."""
+        import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        if callable(response):
+            response = response(
+                query=query,
+                model=model,
+                messages=messages,
+                funcs=funcs,
+                extra_args=extra_args,
+                remove_think=remove_think,
+            )
+            if inspect.isawaitable(response):
+                response = await response
+
+        if isinstance(response, provider_message.Message):
+            return response
+        if isinstance(response, dict):
+            return provider_message.Message.model_validate(response)
+        if isinstance(response, str):
+            return provider_message.Message(role='assistant', content=response)
+        return response
 
     async def invoke_llm(
         self,
@@ -44,9 +121,29 @@ class FakeProviderAPIRequester(requester.ProviderAPIRequester):
         self._invoke_count += 1
         self._last_messages = messages
         self._last_model = model
+        self._last_funcs = funcs or []
+        self._invoke_payloads.append(
+            {
+                'messages': messages,
+                'funcs': funcs or [],
+                'extra_args': dict(extra_args or {}),
+                'remove_think': remove_think,
+            }
+        )
 
         # Import the message entity for response
         import langbot_plugin.api.entities.builtin.provider.message as provider_message
+
+        if self._scripted_llm_responses:
+            return await self._coerce_llm_response(
+                self._scripted_llm_responses.pop(0),
+                query=query,
+                model=model,
+                messages=messages,
+                funcs=funcs,
+                extra_args=extra_args,
+                remove_think=remove_think,
+            )
 
         return provider_message.Message(
             role='assistant',
@@ -69,6 +166,39 @@ class FakeProviderAPIRequester(requester.ProviderAPIRequester):
             role='assistant',
             content=[provider_message.ContentElement(type='text', text='Fake stream chunk')],
         )
+
+    async def count_tokens(
+        self,
+        model: requester.RuntimeLLMModel,
+        messages: list,
+        funcs=None,
+        extra_args={},
+    ) -> int:
+        """Return deterministic token estimates for token-free integration tests."""
+        payload: list[dict] = []
+        for message in messages:
+            payload.append(
+                {
+                    'role': getattr(message, 'role', ''),
+                    'content': self._content_to_text(getattr(message, 'content', None)),
+                    'tool_calls': getattr(message, 'tool_calls', None),
+                    'tool_call_id': getattr(message, 'tool_call_id', None),
+                }
+            )
+
+        for func in funcs or []:
+            payload.append(
+                {
+                    'name': getattr(func, 'name', ''),
+                    'description': getattr(func, 'description', ''),
+                    'parameters': getattr(func, 'parameters', {}),
+                }
+            )
+
+        self._last_count_tokens_payload = payload
+        self._count_tokens_payloads.append(payload)
+        text = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+        return max(1, (len(text) + 3) // 4)
 
     async def invoke_embedding(self, model, input_text: list, extra_args={}):
         """Return fake embedding vectors."""
@@ -157,6 +287,26 @@ def mock_app_for_modelmgr():
     app.llm_model_service = AsyncMock()
     app.embedding_models_service = AsyncMock()
     app.monitoring_service = AsyncMock()
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=WorkspaceExecutionBinding(
+                instance_uuid=TEST_INSTANCE_UUID,
+                workspace_uuid=TEST_WORKSPACE_UUID,
+                placement_generation=TEST_GENERATION,
+                write_fenced=False,
+                state='active',
+            )
+        ),
+        get_local_execution_binding=AsyncMock(
+            return_value=WorkspaceExecutionBinding(
+                instance_uuid=TEST_INSTANCE_UUID,
+                workspace_uuid=TEST_WORKSPACE_UUID,
+                placement_generation=TEST_GENERATION,
+                write_fenced=False,
+                state='active',
+            )
+        ),
+    )
 
     return app
 
@@ -184,6 +334,7 @@ def fake_persistence_data():
 
     providers = [
         persistence_model.ModelProvider(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid=provider_uuid,
             name='Test Provider',
             requester='fake-requester',
@@ -191,6 +342,7 @@ def fake_persistence_data():
             api_keys=['test-api-key-1', 'test-api-key-2'],
         ),
         persistence_model.ModelProvider(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid=provider_uuid2,
             name='Test Provider 2',
             requester='another-fake-requester',
@@ -201,6 +353,7 @@ def fake_persistence_data():
 
     llm_models = [
         persistence_model.LLMModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-llm-uuid-1',
             name='TestLLM-1',
             provider_uuid=provider_uuid,
@@ -208,6 +361,7 @@ def fake_persistence_data():
             extra_args={'temperature': 0.7},
         ),
         persistence_model.LLMModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-llm-uuid-2',
             name='TestLLM-2',
             provider_uuid=provider_uuid,
@@ -218,6 +372,7 @@ def fake_persistence_data():
 
     embedding_models = [
         persistence_model.EmbeddingModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-embedding-uuid-1',
             name='TestEmbedding-1',
             provider_uuid=provider_uuid,
@@ -227,6 +382,7 @@ def fake_persistence_data():
 
     rerank_models = [
         persistence_model.RerankModel(
+            workspace_uuid=TEST_WORKSPACE_UUID,
             uuid='test-rerank-uuid-1',
             name='TestRerank-1',
             provider_uuid=provider_uuid2,
@@ -252,6 +408,7 @@ def runtime_provider(fake_persistence_data, mock_app_for_modelmgr):
     requester_inst = FakeProviderAPIRequester(mock_app_for_modelmgr, {'base_url': provider_entity.base_url})
 
     return requester.RuntimeProvider(
+        execution_context=TEST_EXECUTION_CONTEXT,
         provider_entity=provider_entity,
         token_mgr=token_mgr,
         requester=requester_inst,
@@ -263,6 +420,7 @@ def runtime_llm_model(fake_persistence_data, runtime_provider):
     """Provides a RuntimeLLMModel instance for testing."""
     model_entity = fake_persistence_data['llm_models'][0]
     return requester.RuntimeLLMModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=runtime_provider,
     )
@@ -273,6 +431,7 @@ def runtime_embedding_model(fake_persistence_data, runtime_provider):
     """Provides a RuntimeEmbeddingModel instance for testing."""
     model_entity = fake_persistence_data['embedding_models'][0]
     return requester.RuntimeEmbeddingModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=runtime_provider,
     )
@@ -286,6 +445,7 @@ def runtime_rerank_model(fake_persistence_data, mock_app_for_modelmgr):
     requester_inst = AnotherFakeRequester(mock_app_for_modelmgr, {'base_url': provider_entity.base_url})
 
     provider = requester.RuntimeProvider(
+        execution_context=TEST_EXECUTION_CONTEXT,
         provider_entity=provider_entity,
         token_mgr=token_mgr,
         requester=requester_inst,
@@ -293,6 +453,7 @@ def runtime_rerank_model(fake_persistence_data, mock_app_for_modelmgr):
 
     model_entity = fake_persistence_data['rerank_models'][0]
     return requester.RuntimeRerankModel(
+        execution_context=TEST_EXECUTION_CONTEXT,
         model_entity=model_entity,
         provider=provider,
     )

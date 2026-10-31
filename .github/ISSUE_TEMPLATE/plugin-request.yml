@@ -1,0 +1,17 @@
+name: Plugin Request / 插件请求
+title: "[Plugin Request]: "
+labels: ["plugin-request"]
+description: "Request plugin or provide plugin idea / 请求特定功能插件或提供插件 idea。"
+body:
+  - type: input
+    attributes:
+      label: Plugin Name / 插件名称
+      description: Fill in the name of the plugin / 填写插件的名称
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Detailed description / 详细描述
+      description: Detailed description, the more detailed the better / 请详细描述您所需要的插件的功能
+    validations:
+      required: true

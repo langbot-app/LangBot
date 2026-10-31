@@ -23,14 +23,41 @@ import pytest
 from aiohttp.test_utils import TestServer
 
 from langbot_plugin.box.client import ActionRPCBoxClient
-from langbot_plugin.box.errors import BoxManagedProcessNotFoundError, BoxSessionNotFoundError
+from langbot_plugin.box.errors import (
+    BoxError,
+    BoxManagedProcessNotFoundError,
+    BoxSessionNotFoundError,
+)
 from langbot_plugin.box.models import BoxManagedProcessSpec, BoxManagedProcessStatus, BoxSpec
 from langbot_plugin.box.runtime import BoxRuntime
-from langbot_plugin.box.server import BoxServerHandler, create_ws_relay_app
+from langbot_plugin.box.security import (
+    BOX_CONTROL_TOKEN_HEADER,
+    BOX_INSTANCE_HEADER,
+    BOX_PLACEMENT_GENERATION_HEADER,
+    BOX_WORKSPACE_HEADER,
+)
+from langbot_plugin.box.server import (
+    BoxGenerationFence,
+    BoxServerHandler,
+    create_ws_relay_app,
+)
+from langbot_plugin.entities.io.context import ActionContext
 
 _logger = logging.getLogger('test.box.mcp_integration')
 
 _TEST_IMAGE = 'alpine:latest'
+_ACTION_CONTEXT = ActionContext(
+    instance_uuid='box-integration-instance',
+    workspace_uuid='box-integration-workspace',
+    placement_generation=1,
+)
+_CONTROL_TOKEN = 'box-integration-control-token-longer-than-32-bytes'
+_RELAY_HEADERS = {
+    BOX_CONTROL_TOKEN_HEADER: _CONTROL_TOKEN,
+    BOX_INSTANCE_HEADER: _ACTION_CONTEXT.instance_uuid,
+    BOX_WORKSPACE_HEADER: _ACTION_CONTEXT.workspace_uuid,
+    BOX_PLACEMENT_GENERATION_HEADER: str(_ACTION_CONTEXT.placement_generation),
+}
 
 
 # ── Skip helpers ──────────────────────────────────────────────────────
@@ -89,7 +116,26 @@ class _QueueConnection:
         pass
 
 
-async def _make_rpc_pair(runtime: BoxRuntime):
+class _TenantBoxClient(ActionRPCBoxClient):
+    async def _call(
+        self,
+        action,
+        data,
+        timeout=15.0,
+        action_context=None,
+    ):
+        return await super()._call(
+            action,
+            data,
+            timeout=timeout,
+            action_context=action_context or _ACTION_CONTEXT,
+        )
+
+
+async def _make_rpc_pair(
+    runtime: BoxRuntime,
+    generation_fence: BoxGenerationFence,
+):
     """Create an in-process RPC pair connected via queues."""
     from langbot_plugin.runtime.io.handler import Handler
 
@@ -98,14 +144,20 @@ async def _make_rpc_pair(runtime: BoxRuntime):
     client_conn = _QueueConnection(rx=s2c, tx=c2s)
     server_conn = _QueueConnection(rx=c2s, tx=s2c)
 
-    server_handler = BoxServerHandler(server_conn, runtime)
+    server_handler = BoxServerHandler(
+        server_conn,
+        runtime,
+        host_control_authenticated=True,
+        trusted_instance_uuid=_ACTION_CONTEXT.instance_uuid,
+        generation_fence=generation_fence,
+    )
     server_task = asyncio.create_task(server_handler.run())
 
     client_handler = Handler.__new__(Handler)
     Handler.__init__(client_handler, client_conn)
     client_task = asyncio.create_task(client_handler.run())
 
-    client = ActionRPCBoxClient(logger=_logger)
+    client = _TenantBoxClient(logger=_logger)
     client.set_handler(client_handler)
 
     return client, server_task, client_task
@@ -119,13 +171,22 @@ async def box_server():
     """Yield a (ws_relay_url, ActionRPCBoxClient) backed by a real BoxRuntime."""
     runtime = BoxRuntime(logger=_logger)
     await runtime.initialize()
+    generation_fence = BoxGenerationFence()
 
     # Start ws relay for managed process attach
-    ws_app = create_ws_relay_app(runtime)
+    ws_app = create_ws_relay_app(
+        runtime,
+        control_token=_CONTROL_TOKEN,
+        trusted_instance_uuid=_ACTION_CONTEXT.instance_uuid,
+        generation_fence=generation_fence,
+    )
     ws_server = TestServer(ws_app)
     await ws_server.start_server()
 
-    client, server_task, client_task = await _make_rpc_pair(runtime)
+    client, server_task, client_task = await _make_rpc_pair(
+        runtime,
+        generation_fence,
+    )
 
     ws_relay_url = str(ws_server.make_url(''))
     yield ws_relay_url, client
@@ -207,10 +268,14 @@ async def test_ws_stdio_attach_echo(box_server):
     await client.start_managed_process('mcp-int-ws', proc_spec)
 
     # Connect via WebSocket (ws relay)
-    ws_url = client.get_managed_process_websocket_url('mcp-int-ws', ws_relay_url)
+    ws_url = client.get_managed_process_websocket_url(
+        'mcp-int-ws',
+        ws_relay_url,
+        action_context=_ACTION_CONTEXT,
+    )
     session = aiohttp.ClientSession()
     try:
-        async with session.ws_connect(ws_url) as ws:
+        async with session.ws_connect(ws_url, headers=_RELAY_HEADERS) as ws:
             # Send a line
             await ws.send_str('hello from test')
 
@@ -222,6 +287,45 @@ async def test_ws_stdio_attach_echo(box_server):
         await session.close()
 
     await client.delete_session('mcp-int-ws')
+
+
+@requires_container
+@requires_socket
+@pytest.mark.asyncio
+async def test_ws_stdio_attach_closes_on_generation_advance(box_server):
+    """A real attached relay is revoked by the next placement RPC."""
+
+    ws_relay_url, client = box_server
+    spec = BoxSpec(
+        cmd='',
+        session_id='mcp-int-generation',
+        workdir='/tmp',
+        image=_TEST_IMAGE,
+    )
+    await client.create_session(spec)
+    await client.start_managed_process(
+        'mcp-int-generation',
+        BoxManagedProcessSpec(command='cat', args=[], cwd='/tmp'),
+    )
+    ws_url = client.get_managed_process_websocket_url(
+        'mcp-int-generation',
+        ws_relay_url,
+        action_context=_ACTION_CONTEXT,
+    )
+    second_context = _ACTION_CONTEXT.model_copy(update={'placement_generation': 2})
+
+    async with aiohttp.ClientSession() as session:
+        async with session.ws_connect(ws_url, headers=_RELAY_HEADERS) as ws:
+            assert await client.get_sessions(action_context=second_context) == []
+            close_message = await asyncio.wait_for(ws.receive(), timeout=5)
+            assert close_message.type in {
+                aiohttp.WSMsgType.CLOSE,
+                aiohttp.WSMsgType.CLOSING,
+                aiohttp.WSMsgType.CLOSED,
+            }
+
+    with pytest.raises(BoxError, match='Stale Box placement generation'):
+        await client.get_sessions(action_context=_ACTION_CONTEXT)
 
 
 # ── 3. Session cleanup removes container ─────────────────────────────

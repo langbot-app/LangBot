@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import LoadErrorState from '@/components/LoadErrorState';
+import { useEffect, useState, useRef } from 'react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -16,12 +17,31 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { DialogFooter } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '../../types';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { CustomApiError } from '@/app/infra/entities/common';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, Search } from 'lucide-react';
+import { providerPayload } from './codexPolicy';
+import { useCodexLogin } from './useCodexLogin';
+import CodexAccountSection from './CodexAccountSection';
 
 const getFormSchema = (t: (key: string) => string) =>
   z.object({
@@ -33,14 +53,16 @@ const getFormSchema = (t: (key: string) => string) =>
 
 interface ProviderFormProps {
   providerId?: string;
-  onFormSubmit: () => void;
+  onFormSubmit: (providerUuid: string) => void | Promise<void>;
   onFormCancel: () => void;
+  onProviderDeleted?: (providerUuid: string) => void | Promise<void>;
 }
 
 export default function ProviderForm({
   providerId,
   onFormSubmit,
   onFormCancel,
+  onProviderDeleted,
 }: ProviderFormProps) {
   const { t } = useTranslation();
   const formSchema = getFormSchema(t);
@@ -54,7 +76,31 @@ export default function ProviderForm({
       api_key: '',
     },
   });
-  const { setValue } = form;
+  const { reset } = form;
+  const isCodex = form.watch('requester') === 'openai-codex';
+  const [savedProviderId, setSavedProviderId] = useState(providerId);
+  const savedId = useRef(providerId);
+  const submitting = useRef(false);
+  const deleting = useRef(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [mutableProviderLoaded, setMutableProviderLoaded] = useState(false);
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>(
+    'loading',
+  );
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const mounted = useRef(true);
+  const login = useCodexLogin(isCodex, providerId);
+  const loginActive = ['starting', 'pending', 'canceling', 'loading'].includes(
+    login.phase,
+  );
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [requesterList, setRequesterList] = useState<
     {
@@ -68,72 +114,59 @@ export default function ProviderForm({
   >([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  const loadRequesters = useCallback(async () => {
-    const resp = await httpClient.getProviderRequesters();
-    setRequesterList(
-      resp.requesters
-        .filter((item) => item.name !== 'space-chat-completions')
-        .map((item) => ({
-          label: extractI18nObject(item.label),
-          value: item.name,
-          category: item.spec.provider_category || 'manufacturer',
-          defaultUrl:
-            item.spec.config
-              .find((c) => c.name === 'base_url')
-              ?.default?.toString() || '',
-          description: extractI18nObject(item.description),
-          alias: item.spec.alias || '',
-        })),
-    );
-  }, []);
-
-  const loadProvider = useCallback(
-    async (id: string) => {
-      const resp = await httpClient.getModelProvider(id);
-      const provider = resp.provider;
-
-      setValue('name', provider.name);
-      setValue('requester', provider.requester);
-      setValue('base_url', provider.base_url);
-      setValue('api_key', provider.api_keys?.[0] || '');
-    },
-    [setValue],
-  );
-
   useEffect(() => {
+    // Ignore both success and failure from a closed form or superseded attempt.
+    let canceled = false;
+    setLoadState('loading');
+    setMutableProviderLoaded(false);
+
     async function init() {
-      await loadRequesters();
-      if (providerId) {
-        await loadProvider(providerId);
+      try {
+        const [requesters, detail] = await Promise.all([
+          httpClient.getProviderRequesters(),
+          providerId ? httpClient.getModelProvider(providerId) : null,
+        ]);
+        if (canceled) return;
+        setRequesterList(
+          requesters.requesters
+            .filter((item) => item.name !== LANGBOT_MODELS_PROVIDER_REQUESTER)
+            .map((item) => ({
+              label: extractI18nObject(item.label),
+              value: item.name,
+              category: item.spec.provider_category || 'manufacturer',
+              defaultUrl:
+                item.spec.config
+                  .find((c) => c.name === 'base_url')
+                  ?.default?.toString() || '',
+              description: extractI18nObject(item.description),
+              alias: item.spec.alias || '',
+            })),
+        );
+        if (detail) {
+          const provider = detail.provider;
+          reset({
+            name: provider.name,
+            requester: provider.requester,
+            base_url: provider.base_url,
+            api_key: provider.api_keys?.[0] || '',
+          });
+          setMutableProviderLoaded(
+            provider.uuid === providerId &&
+              provider.requester !== LANGBOT_MODELS_PROVIDER_REQUESTER,
+          );
+        }
+        setLoadState('ready');
+      } catch {
+        if (!canceled) setLoadState('error');
       }
     }
-    init();
-  }, [providerId, loadProvider, loadRequesters]);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false);
-        setSearchQuery('');
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Focus search input when dropdown opens
-  useEffect(() => {
-    if (isOpen && searchInputRef.current) {
-      searchInputRef.current.focus();
-    }
-  }, [isOpen]);
+    void init();
+    return () => {
+      canceled = true;
+    };
+  }, [providerId, reset, loadAttempt]);
 
   // Filter requesters based on search query
   const filteredRequesters = requesterList.filter(
@@ -163,25 +196,101 @@ export default function ProviderForm({
   };
 
   async function handleFormSubmit(values: z.infer<typeof formSchema>) {
-    const data = {
-      name: values.name,
-      requester: values.requester,
-      base_url: values.base_url,
-      api_keys: values.api_key ? [values.api_key] : [],
-    };
-
+    if (
+      loadState !== 'ready' ||
+      submitting.current ||
+      deleting.current ||
+      (isCodex && loginActive)
+    )
+      return;
+    submitting.current = true;
+    const data = providerPayload(values);
     try {
-      if (providerId) {
-        await httpClient.updateModelProvider(providerId, data);
-        toast.success(t('models.providerSaved'));
+      if (savedId.current) {
+        await httpClient.updateModelProvider(savedId.current, data);
       } else {
-        await httpClient.createModelProvider(data);
-        toast.success(t('models.providerCreated'));
+        const response = await httpClient.createModelProvider(data);
+        savedId.current = response.uuid;
+        if (mounted.current) setSavedProviderId(response.uuid);
       }
-      onFormSubmit();
+      if (!mounted.current) return;
+      if (isCodex && login.phase !== 'connected') {
+        await login.start(savedId.current);
+      } else {
+        toast.success(t('models.providerSaved'));
+        await onFormSubmit(savedId.current);
+      }
     } catch (err) {
-      toast.error(t('models.providerSaveError') + (err as CustomApiError).msg);
+      if (mounted.current)
+        toast.error(
+          t('models.providerSaveError') + (err as CustomApiError).msg,
+        );
+    } finally {
+      submitting.current = false;
     }
+  }
+
+  async function handleDelete() {
+    if (
+      loadState !== 'ready' ||
+      !providerId ||
+      !mutableProviderLoaded ||
+      !onProviderDeleted ||
+      deleting.current ||
+      submitting.current ||
+      (isCodex && loginActive)
+    )
+      return;
+    deleting.current = true;
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await httpClient.deleteModelProvider(providerId, true);
+    } catch (err) {
+      const detail =
+        (err as CustomApiError | null)?.msg ||
+        (err instanceof Error ? err.message : '');
+      setDeleteError(t('models.providerDeleteError') + detail);
+      deleting.current = false;
+      setIsDeleting(false);
+      return;
+    }
+    toast.success(t('models.providerDeleted'));
+    await onProviderDeleted(providerId);
+  }
+
+  if (loadState !== 'ready') {
+    return (
+      <>
+        {loadState === 'loading' ? (
+          <div
+            role="status"
+            aria-label={t('common.loading')}
+            className="flex justify-center py-8"
+          >
+            <LoadingSpinner text={t('common.loading')} />
+          </div>
+        ) : (
+          <LoadErrorState compact title={t('models.loadError')} />
+        )}
+        <DialogFooter>
+          {loadState === 'error' && (
+            <Button
+              type="button"
+              onClick={() => {
+                setLoadState('loading');
+                setLoadAttempt((attempt) => attempt + 1);
+              }}
+            >
+              {t('common.retry')}
+            </Button>
+          )}
+          <Button type="button" variant="outline" onClick={onFormCancel}>
+            {t('common.cancel')}
+          </Button>
+        </DialogFooter>
+      </>
+    );
   }
 
   return (
@@ -200,7 +309,12 @@ export default function ProviderForm({
                 <span className="text-red-500">*</span>
               </FormLabel>
               <FormControl>
-                <Input {...field} />
+                <Input
+                  {...field}
+                  disabled={
+                    form.formState.isSubmitting || (isCodex && loginActive)
+                  }
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -220,45 +334,65 @@ export default function ProviderForm({
                   {t('models.requester')}
                   <span className="text-red-500">*</span>
                 </FormLabel>
-                <div ref={dropdownRef} className="relative">
+                <Popover
+                  open={isOpen}
+                  onOpenChange={(open) => {
+                    setIsOpen(open);
+                    if (!open) setSearchQuery('');
+                  }}
+                >
                   {/* Trigger button */}
-                  <button
-                    type="button"
-                    onClick={() => setIsOpen(!isOpen)}
-                    className={cn(
-                      'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
-                      isOpen && 'ring-2 ring-ring ring-offset-2',
-                    )}
-                  >
-                    {selectedRequester ? (
-                      <div className="flex items-center gap-2">
-                        <img
-                          src={httpClient.getProviderRequesterIconURL(
-                            selectedRequester.value,
-                          )}
-                          alt={selectedRequester.label}
-                          className="h-5 w-5 rounded"
-                        />
-                        <span>{selectedRequester.label}</span>
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground">
-                        {t('models.selectRequester')}
-                      </span>
-                    )}
-                    <ChevronDown
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      disabled={
+                        form.formState.isSubmitting ||
+                        (isCodex && (!!savedProviderId || loginActive))
+                      }
+                      aria-expanded={isOpen}
                       className={cn(
-                        'h-4 w-4 opacity-50 transition-transform',
-                        isOpen && 'rotate-180',
+                        'flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+                        isOpen && 'ring-2 ring-ring ring-offset-2',
                       )}
-                    />
-                  </button>
+                    >
+                      {selectedRequester ? (
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={httpClient.getProviderRequesterIconURL(
+                              selectedRequester.value,
+                            )}
+                            alt={selectedRequester.label}
+                            className="h-5 w-5 rounded"
+                          />
+                          <span>{selectedRequester.label}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {t('models.selectRequester')}
+                        </span>
+                      )}
+                      <ChevronDown
+                        className={cn(
+                          'h-4 w-4 opacity-50 transition-transform',
+                          isOpen && 'rotate-180',
+                        )}
+                      />
+                    </button>
+                  </PopoverTrigger>
 
-                  {/* Dropdown */}
+                  {/* Unmount on close so an exiting layer cannot eat Dialog Escape. */}
                   {isOpen && (
-                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md animate-in fade-in-0 zoom-in-95">
+                    <PopoverContent
+                      align="start"
+                      collisionPadding={8}
+                      className="flex max-h-[var(--radix-popover-content-available-height)] w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-16px)] flex-col overflow-hidden p-0"
+                      onOpenAutoFocus={(event) => {
+                        event.preventDefault();
+                        searchInputRef.current?.focus();
+                      }}
+                    >
                       {/* Search input */}
-                      <div className="flex items-center border-b px-3">
+                      <div className="flex shrink-0 items-center border-b px-3">
                         <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                         <input
                           ref={searchInputRef}
@@ -273,7 +407,13 @@ export default function ProviderForm({
                       </div>
 
                       {/* Options list */}
-                      <div className="max-h-[300px] overflow-y-auto p-1">
+                      <div
+                        className="min-h-0 max-h-[300px] overflow-y-auto overscroll-contain p-1"
+                        // The dialog's document-level scroll lock treats this portal as outside.
+                        // Keep native list scrolling without forwarding gestures to that lock.
+                        onWheel={(event) => event.stopPropagation()}
+                        onTouchMove={(event) => event.stopPropagation()}
+                      >
                         {Object.entries(groupedRequesters).map(
                           ([category, items]) => {
                             if (items.length === 0) return null;
@@ -286,6 +426,11 @@ export default function ProviderForm({
                                   <button
                                     key={r.value}
                                     type="button"
+                                    disabled={
+                                      !!providerId &&
+                                      r.value === 'openai-codex' &&
+                                      !isCodex
+                                    }
                                     onClick={() => {
                                       field.onChange(r.value);
                                       const req = requesterList.find(
@@ -335,9 +480,9 @@ export default function ProviderForm({
                           </div>
                         )}
                       </div>
-                    </div>
+                    </PopoverContent>
                   )}
-                </div>
+                </Popover>
                 <FormMessage />
                 {selectedRequester?.description && (
                   <p className="text-sm text-muted-foreground">
@@ -349,40 +494,131 @@ export default function ProviderForm({
           }}
         />
 
-        <FormField
-          control={form.control}
-          name="base_url"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('models.requestURL')}</FormLabel>
-              <FormControl>
-                <Input {...field} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {isCodex ? (
+          <CodexAccountSection login={login} providerId={savedProviderId} />
+        ) : (
+          <>
+            <FormField
+              control={form.control}
+              name="base_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('models.requestURL')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      disabled={
+                        form.formState.isSubmitting || (isCodex && loginActive)
+                      }
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-        <FormField
-          control={form.control}
-          name="api_key"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{t('models.apiKey')}</FormLabel>
-              <FormControl>
-                <Input {...field} type="password" />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+            <FormField
+              control={form.control}
+              name="api_key"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('models.apiKey')}</FormLabel>
+                  <FormControl>
+                    <Input {...field} type="password" />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </>
+        )}
 
-        <DialogFooter>
-          <Button type="submit">{t('common.save')}</Button>
-          <Button type="button" variant="outline" onClick={onFormCancel}>
-            {t('common.cancel')}
-          </Button>
+        <DialogFooter className="flex-row flex-wrap items-start justify-between sm:justify-between">
+          {providerId && mutableProviderLoaded && onProviderDeleted && (
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={
+                isDeleting ||
+                form.formState.isSubmitting ||
+                (isCodex && loginActive)
+              }
+              onClick={() => {
+                setDeleteError('');
+                setDeleteConfirmOpen(true);
+              }}
+            >
+              {t('common.delete')}
+            </Button>
+          )}
+          <div className="ml-auto flex flex-col gap-2 sm:flex-row">
+            {(!isCodex || !savedProviderId || login.phase === 'connected') && (
+              <Button
+                type="submit"
+                disabled={
+                  isDeleting ||
+                  form.formState.isSubmitting ||
+                  (isCodex && loginActive)
+                }
+              >
+                {isCodex
+                  ? t(
+                      login.phase === 'connected'
+                        ? 'models.codex.done'
+                        : 'models.codex.saveAndSignIn',
+                    )
+                  : t('common.save')}
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isDeleting}
+              onClick={onFormCancel}
+            >
+              {t('common.cancel')}
+            </Button>
+          </div>
         </DialogFooter>
+        <AlertDialog
+          open={deleteConfirmOpen}
+          onOpenChange={(open) => {
+            if (!deleting.current) setDeleteConfirmOpen(open);
+          }}
+        >
+          {deleteConfirmOpen && (
+            <AlertDialogContent className="max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+              <AlertDialogHeader>
+                <AlertDialogTitle>{t('common.delete')}</AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t('models.deleteProviderCascadeConfirmation')}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              {deleteError && (
+                <p
+                  role="alert"
+                  className="text-sm text-destructive break-words"
+                >
+                  {deleteError}
+                </p>
+              )}
+              <AlertDialogFooter>
+                <AlertDialogCancel disabled={isDeleting}>
+                  {t('common.cancel')}
+                </AlertDialogCancel>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeleting}
+                  aria-busy={isDeleting}
+                  onClick={handleDelete}
+                >
+                  {t('common.delete')}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          )}
+        </AlertDialog>
       </form>
     </Form>
   );

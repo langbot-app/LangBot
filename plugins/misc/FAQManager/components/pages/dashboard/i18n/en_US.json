@@ -1,0 +1,9 @@
+{
+  "title": "FAQ Dashboard",
+  "totalEntries": "Total Entries",
+  "avgAnswerLength": "Avg. Answer Length",
+  "chars": "chars",
+  "recentEntries": "Overview",
+  "noEntries": "No FAQ entries yet.",
+  "viewInManager": "Open FAQ Manager to view and edit entries."
+}

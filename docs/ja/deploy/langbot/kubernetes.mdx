@@ -1,0 +1,107 @@
+---
+title: "Kubernetes デプロイ"
+description: "Kubernetes 上に LangBot をデプロイし、スケーラブルで本番グレードの AI ボットホスティングを実現。"
+---
+
+<Warning>
+  事前に以下を理解しておく必要があります：
+
+  - Kubernetes クラスタの基本操作（`kubectl`、Namespace、Deployment、Service、PVC）
+  - コンテナ間ネットワークと永続ストレージの設定方法
+</Warning>
+
+LangBot リポジトリの `docker/` ディレクトリには、すぐに使える Kubernetes マニフェスト [`kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml) が用意されています。本ページはこのマニフェストのデプロイガイドで、Docker Compose デプロイと最も異なる部分である **Box サンドボックスランタイム** に焦点を当てます。
+
+## コンポーネント構成
+
+マニフェストは `langbot` ネームスペースに以下のコンポーネントを作成します：
+
+| コンポーネント | 説明 | ポート |
+| --- | --- | --- |
+| `langbot` | メインアプリ（WebUI + webhook） | 5300 / 2280-2290 |
+| `langbot-plugin-runtime` | プラグインランタイム | 5400 |
+| `langbot-box` | Box サンドボックスランタイム（任意） | 5410 |
+
+永続ストレージ：`langbot-data`、`langbot-plugins`、`langbot-plugin-runtime-data` の 3 つの PVC。Box ワークスペースのルートは PVC ではなくノード上の `hostPath`（`/app/data/box`）を使用します。
+
+## クイックスタート
+
+```bash
+# リポジトリをクローン
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+
+# すべてのコンポーネントをデプロイ
+kubectl apply -f kubernetes.yaml
+
+# 状態を確認
+kubectl get all -n langbot
+```
+
+ポートフォワードで WebUI にアクセスできます：
+
+```bash
+kubectl port-forward -n langbot svc/langbot 5300:5300
+# http://localhost:5300 にアクセス
+```
+
+本番環境では Ingress + TLS での公開を推奨します（マニフェストにはコメントアウトされた Ingress / LoadBalancer / NodePort の例が含まれているので、必要に応じてコメントを解除してください）。
+
+### SeekDB を使用する場合
+
+公式イメージにはオプションの SeekDB 依存関係がすでに含まれているため、専用イメージや追加のビルド引数は不要です。`vdb.use` を `seekdb` に設定すると有効になり、不要な場合はデフォルトの `chroma` のまま使用できます。
+
+## Box サンドボックスランタイム
+
+`langbot-box` は LangBot にコードサンドボックス機能を提供し、サンドボックスツール（`exec` / `read` / `write` / `edit` / `glob` / `grep`）、スキルの `activate` ツールと追加・編集、および stdio モードの MCP サーバーを支えます。これは**任意のコンポーネント**です：デプロイしなくても LangBot は動作し、ダッシュボードとスキル一覧は読み取り専用で表示されますが、上記の機能は無効になります。その場合は `langbot` に `BOX__ENABLED=false` を設定してください。
+
+### 仕組みと重要な制約
+
+LangBot 公式イメージには **Docker CLI のみ**が含まれています（dockerd も nsjail も含まれません）。そのため Box ランタイムは、マウントされたノードの Docker socket（`/var/run/docker.sock`）経由でサンドボックスコンテナを作成します。Pod 内で dockerd を実行するわけではありません。
+
+ここから**重要な制約**が生じます：実際にサンドボックスコンテナを作成するのは**ノード上の Docker デーモン**であり、bind-mount のパスを**ノードのファイルシステム**視点で解決します。したがって Box ワークスペースのルートは、以下の 3 か所で**同一の絶対パス**でなければなりません：
+
+1. ノード上の実際のパス
+2. `langbot-box` コンテナ内のマウントパス
+3. それが作成する各サンドボックスコンテナ内のマウントパス
+
+これがマニフェストで通常の PVC ではなく `hostPath`（`/app/data/box` に固定）を使う理由です：PVC のパスは Pod の mount namespace 内にしか存在せず、ノードの dockerd からは見えません。また `langbot` と `langbot-box` は `podAffinity` によって**同一ノード**にスケジュールされ、この hostPath を共有します。
+
+<Warning>
+  hostPath + 同一ノードアフィニティに依存するため、`langbot` は複数レプリカの水平スケーリングをサポートしません（`ReadWriteOnce` PVC と同じ制約）。高可用性が必要な場合は別のアーキテクチャを検討してください。
+</Warning>
+
+### 接続と設定
+
+- `langbot` は WebSocket で Box ランタイムに接続します。エンドポイントは ConfigMap の `BOX__RUNTIME__ENDPOINT: ws://langbot-box:5410` で指定します。
+
+<Note>
+  コンテナ内のデフォルトホスト名は `langbot_box`（アンダースコア付き）ですが、アンダースコアは有効な Kubernetes DNS 名ではありません。そのためマニフェストでは、有効な Service 名 `langbot-box` を使ってエンドポイントを**明示的に**指定する必要があり、コンテナ内のデフォルト値に依存できません。
+</Note>
+
+- Box ランタイムは自身の `box.local.*` / `BOX__*` 環境変数を**読み取りません**。設定は `langbot` が `BOX__LOCAL__*` を読み取り、INIT RPC で渡します。したがって `BOX__LOCAL__HOST_ROOT` / `DEFAULT_WORKSPACE` / `SKILLS_ROOT` / `ALLOWED_MOUNT_ROOTS` はすべて `langbot` Deployment に設定し、`HOST_ROOT` は両側の `box-root` マウントパス（`/app/data/box`）と一致させる必要があります。
+
+### セキュリティに関する注意
+
+ノードの Docker socket をマウントすると、Box ランタイム（およびサンドボックス内で実行される任意のコード）にノードへの**実質的な root 権限**を与えることになります。Box はこのワークロードを信頼できるノードにのみデプロイし、できればテイント/トレラレーションで隔離した専用ノードプールを使用してください。より強い隔離境界が必要な場合は、`box.backend` を `e2b` に切り替え（`E2B_API_KEY` を設定）、`docker.sock` のマウントと hostPath を削除します。詳細は[サンドボックス設定](/ja/usage/sandbox/config)を参照してください。
+
+### Box の準備完了を確認する
+
+```bash
+# Box ランタイムのログ（選択された backend が表示されるはず、例: "using backend: docker"）
+kubectl logs -n langbot -l app=langbot-box -f
+
+# langbot が Box ランタイムに接続したことを確認
+kubectl logs -n langbot -l app=langbot | grep -i "box runtime"
+```
+
+## サンドボックスが不要な場合
+
+サンドボックス機能が不要な場合は、マニフェストから `langbot-box` の Deployment / Service を削除し、`langbot` Deployment に `BOX__ENABLED=false` を設定して接続失敗の警告ログを回避してください。
+
+## 関連ドキュメント
+
+- [Docker デプロイ](/ja/deploy/langbot/docker)
+- [サンドボックスドキュメント](/ja/usage/sandbox/readme) と [サンドボックス設定](/ja/usage/sandbox/config)
+- [スキルシステムドキュメント](/ja/usage/skills/readme)
+- マニフェストのソースファイル：リポジトリ内の [`docker/kubernetes.yaml`](https://github.com/langbot-app/LangBot/blob/master/docker/kubernetes.yaml)

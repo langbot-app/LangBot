@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   Download,
   Package,
+  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
@@ -12,6 +13,8 @@ import {
   Puzzle,
   Server,
   Sparkles,
+  RefreshCcw,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -28,8 +31,12 @@ import {
 import { cn } from '@/lib/utils';
 
 const STAGE_ICONS: Record<string, React.ElementType> = {
+  [InstallStage.CHECKING]: RefreshCcw,
   [InstallStage.DOWNLOADING]: Download,
+  [InstallStage.VALIDATING]: ShieldCheck,
   [InstallStage.INSTALLING_DEPS]: Package,
+  [InstallStage.INITIALIZING]: Rocket,
+  [InstallStage.LAUNCHING]: Rocket,
   [InstallStage.DONE]: CheckCircle2,
   [InstallStage.ERROR]: XCircle,
 };
@@ -79,6 +86,9 @@ function TaskQueueItem({
   };
 
   const getInstallCompleteMessage = () => {
+    if (task.operation === 'upgrade') {
+      return t('plugins.installProgress.updateComplete');
+    }
     switch (task.extensionType) {
       case 'mcp':
         return t('plugins.installProgress.installCompleteMCP');
@@ -91,10 +101,19 @@ function TaskQueueItem({
 
   const stageLabel = (() => {
     switch (task.stage) {
+      case InstallStage.CHECKING:
+        return t('plugins.installProgress.checkingUpdate');
       case InstallStage.DOWNLOADING:
         return t('plugins.installProgress.downloading');
+      case InstallStage.VALIDATING:
+        return t('plugins.installProgress.validating');
       case InstallStage.INSTALLING_DEPS:
-        return t('plugins.installProgress.installingDeps');
+        return task.operation === 'upgrade'
+          ? t('plugins.installProgress.applyingUpdate')
+          : t('plugins.installProgress.installingDeps');
+      case InstallStage.INITIALIZING:
+      case InstallStage.LAUNCHING:
+        return t('plugins.installProgress.activating');
       case InstallStage.DONE:
         return isDone
           ? getInstallCompleteMessage()

@@ -1,9 +1,12 @@
+import EntityLoadState from '@/components/EntityLoadState';
+import LoadErrorState from '@/components/LoadErrorState';
 import { useSearchParams } from 'react-router-dom';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '@/components/providers/theme-provider';
+import { useAuthenticatedPluginAsset } from '@/hooks/useAuthenticatedPluginResource';
 
 /**
  * Plugin page that renders a plugin-provided HTML page in an iframe.
@@ -24,7 +27,10 @@ export default function PluginPagesPage() {
   const [searchParams] = useSearchParams();
   const id = searchParams.get('id');
   const { t } = useTranslation();
-  const { setDetailEntityName, pluginPages } = useSidebarData();
+  const { setDetailEntityName, pluginPages, refreshPlugins } = useSidebarData();
+  const [lookupCompleteForId, setLookupCompleteForId] = useState<string | null>(
+    null,
+  );
 
   // Find the matching page for breadcrumb
   const page = pluginPages.find((p) => p.id === id);
@@ -33,6 +39,18 @@ export default function PluginPagesPage() {
     setDetailEntityName(page?.name ?? id ?? '');
     return () => setDetailEntityName(null);
   }, [page, id, setDetailEntityName]);
+
+  useEffect(() => {
+    if (!id || page) return;
+    let cancelled = false;
+    setLookupCompleteForId(null);
+    refreshPlugins().finally(() => {
+      if (!cancelled) setLookupCompleteForId(id);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, page, refreshPlugins]);
 
   if (!id) {
     return (
@@ -54,9 +72,19 @@ export default function PluginPagesPage() {
 
   const author = parts[0];
   const pluginName = parts[1];
-  // Use the asset path from the page manifest, not the page ID
-  const assetPath = page?.path ?? parts.slice(2).join('/');
-  const pageId = parts.slice(2).join('/');
+  if (!page) {
+    if (lookupCompleteForId === id) {
+      return (
+        <div className="flex items-center justify-center h-full text-muted-foreground">
+          {t('pluginPages.invalidPage')}
+        </div>
+      );
+    }
+    return <EntityLoadState />;
+  }
+
+  const assetPath = page.path;
+  const pageId = page.pageId;
 
   return (
     <PluginPageIframe
@@ -80,11 +108,15 @@ function PluginPageIframe({
   pageId: string;
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadedAssetUrl, setLoadedAssetUrl] = useState('');
   const { resolvedTheme } = useTheme();
-  const { i18n } = useTranslation();
-
-  const assetUrl = httpClient.getPluginAssetURL(author, pluginName, pagePath);
+  const { t, i18n } = useTranslation();
+  const { url: assetUrl, error: assetError } = useAuthenticatedPluginAsset(
+    author,
+    pluginName,
+    pagePath,
+  );
+  const loading = !assetUrl || loadedAssetUrl !== assetUrl;
 
   // Send context (theme + language) to iframe
   // Use '*' as targetOrigin because sandboxed iframe has opaque (null) origin
@@ -170,23 +202,29 @@ function PluginPageIframe({
 
   return (
     <div className="flex flex-col h-full w-full">
-      {loading && (
-        <div className="flex items-center justify-center h-full text-muted-foreground">
-          Loading...
-        </div>
+      {assetError ? (
+        <LoadErrorState
+          title={t('plugins.loadFailed')}
+          className="flex-1"
+          onRetry={() => window.location.reload()}
+        />
+      ) : loading || !assetUrl ? (
+        <EntityLoadState />
+      ) : null}
+      {!assetError && assetUrl && (
+        <iframe
+          ref={iframeRef}
+          src={assetUrl}
+          className="flex-1 w-full border-0 rounded-md"
+          style={{ display: loading ? 'none' : 'block' }}
+          onLoad={() => {
+            setLoadedAssetUrl(assetUrl);
+            sendContext();
+          }}
+          sandbox="allow-scripts allow-forms"
+          title={`${author}/${pluginName} - ${pagePath}`}
+        />
       )}
-      <iframe
-        ref={iframeRef}
-        src={assetUrl}
-        className="flex-1 w-full border-0 rounded-md"
-        style={{ display: loading ? 'none' : 'block' }}
-        onLoad={() => {
-          setLoading(false);
-          sendContext();
-        }}
-        sandbox="allow-scripts allow-forms"
-        title={`${author}/${pluginName} - ${pagePath}`}
-      />
     </div>
   );
 }

@@ -1,0 +1,82 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: community
+  label:
+    en_US: Community concierge
+    zh_Hans: 社区助手
+  description:
+    en_US: Welcome members, handle demo commands, and record feedback with typed
+      handlers.
+    zh_Hans: 欢迎新成员、处理演示指令、记录反馈，展示类型化事件处理。
+spec:
+  usages: [event]
+  events:
+  - group.member_joined
+  - group.member_left
+  - message.received
+  - message.reaction
+  - feedback.received
+  - friend.request_received
+  config:
+  - name: language
+    type: select
+    label:
+      en_US: Output language
+      zh_Hans: 输出语言
+    default: zh_Hans
+    required: true
+    options:
+    - name: zh_Hans
+      label:
+        en_US: Simplified Chinese
+        zh_Hans: 简体中文
+    - name: en_US
+      label:
+        en_US: English
+        zh_Hans: 英语
+  - name: welcome_text
+    type: text
+    label:
+      en_US: Welcome message
+      zh_Hans: 欢迎文案
+    default: 欢迎加入！请友善交流，一起分享与学习。
+    required: true
+  - name: command_prefix
+    type: string
+    label:
+      en_US: Command prefix
+      zh_Hans: 指令前缀
+    default: /demo
+    required: true
+  - name: announce_departures
+    type: boolean
+    label:
+      en_US: Announce departures
+      zh_Hans: 发送退群通知
+    default: false
+    required: true
+  - name: delay_ms
+    type: integer
+    label:
+      en_US: Demo task duration (0–2000 ms)
+      zh_Hans: 演示任务时长（0–2000 毫秒）
+    default: 600
+    required: true
+  - name: allow_demo_failure
+    type: boolean
+    label:
+      en_US: Enable intentional failure demo
+      zh_Hans: 允许触发演示错误
+    default: false
+    required: true
+  capabilities:
+    tool_calling: true
+  permissions:
+    tools:
+    - detail
+    - call
+execution:
+  python:
+    path: community.py
+    attr: CommunityProcessor

@@ -2,7 +2,7 @@ id: aiosqlite-connect-hangs
 title: "aiosqlite connect hangs before ledger pytest starts"
 category: env_issue
 symptoms:
-  - "AgentRunner ledger pytest probe times out after collecting tests but before reporting a test result."
+  - "Runner ledger pytest probe times out after collecting tests but before reporting a test result."
   - "pytest stdout stops at a line like tests/unit_tests/agent/test_run_ledger_store.py."
   - "A direct aiosqlite.connect(':memory:') script prints its first line and then hangs."
 patterns:

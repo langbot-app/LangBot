@@ -1,0 +1,167 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: PowerContext
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/PowerContext
+  version: 0.1.2
+  label:
+    en_US: PowerContext
+    zh_Hans: PowerContext
+    zh_Hant: PowerContext
+    ja_JP: PowerContext
+    th_TH: PowerContext
+    vi_VN: PowerContext
+    es_ES: PowerContext
+    ru_RU: PowerContext
+  description:
+    en_US: Connect LangBot to a PowerContext Server for scoped context recall, source capture, and explicit memory tools.
+    zh_Hans: 将 LangBot 连接到 PowerContext Server，提供隔离的上下文召回、来源捕获和显式记忆工具。
+    zh_Hant: 將 LangBot 連接到 PowerContext Server，提供隔離的上下文召回、來源擷取與明確記憶工具。
+    ja_JP: LangBot を PowerContext Server に接続し、スコープ付きコンテキスト検索、ソース取得、明示的なメモリーツールを提供します。
+    th_TH: เชื่อมต่อ LangBot กับ PowerContext Server เพื่อเรียกคืนบริบทแบบแยกขอบเขต จับแหล่งข้อมูล และใช้เครื่องมือหน่วยความจำ
+    vi_VN: Kết nối LangBot với PowerContext Server để truy hồi ngữ cảnh theo phạm vi, thu thập nguồn và dùng công cụ bộ nhớ.
+    es_ES: Conecta LangBot con PowerContext Server para recuperación contextual aislada, captura de fuentes y herramientas de memoria explícita.
+    ru_RU: Подключает LangBot к PowerContext Server для изолированного поиска контекста, фиксации источников и явных операций с памятью.
+  icon: assets/icon.svg
+spec:
+  config:
+    - name: server_url
+      type: string
+      required: true
+      default: http://127.0.0.1:8000
+      label:
+        en_US: Server URL
+        zh_Hans: Server 地址
+      description:
+        en_US: PowerContext Server base URL without a path.
+        zh_Hans: PowerContext Server 基础地址，不包含路径。
+    - name: api_token
+      type: string
+      required: false
+      default: ''
+      label:
+        en_US: API Token
+        zh_Hans: API Token
+      description:
+        en_US: Bearer token for this installation's Server. Leave empty only when that Server requires no authentication. Never read from the process environment.
+        zh_Hans: 本安装所连接 Server 的 Bearer Token。仅在该 Server 无需鉴权时留空。不会从进程环境变量读取。
+    - name: allow_insecure_http
+      type: boolean
+      required: false
+      default: false
+      label:
+        en_US: Allow Remote HTTP
+        zh_Hans: 允许远程 HTTP
+      description:
+        en_US: Permit cleartext HTTP for non-loopback Servers. Prefer HTTPS.
+        zh_Hans: 允许访问非本机的明文 HTTP Server。建议使用 HTTPS。
+    - name: timeout_seconds
+      type: float
+      required: false
+      default: 8.0
+      label:
+        en_US: Request Timeout
+        zh_Hans: 请求超时秒数
+      description:
+        en_US: Per-request timeout, clamped to 0.5-60 seconds.
+        zh_Hans: 单次请求超时，限制在 0.5 到 60 秒。
+    - name: scope_id
+      type: string
+      required: false
+      default: ''
+      label:
+        en_US: Explicit Scope ID
+        zh_Hans: 固定 Scope ID
+      description:
+        en_US: Optional fixed Scope. When empty, the current LangBot identity binding is resolved.
+        zh_Hans: 可选固定 Scope。留空时解析当前 LangBot 身份的绑定。
+    - name: scope_mode
+      type: select
+      required: true
+      default: session
+      options:
+        - name: session
+          label:
+            en_US: Session
+            zh_Hans: 会话隔离
+        - name: speaker
+          label:
+            en_US: Speaker
+            zh_Hans: 说话人隔离
+        - name: bot
+          label:
+            en_US: Bot
+            zh_Hans: 机器人共享
+      label:
+        en_US: Scope Binding Mode
+        zh_Hans: Scope 绑定模式
+      description:
+        en_US: Host identity used to resolve a durable PowerContext Scope binding.
+        zh_Hans: 用于解析 PowerContext 持久 Scope 绑定的 LangBot 身份维度。
+    - name: allow_default_scope
+      type: boolean
+      required: false
+      default: false
+      label:
+        en_US: Allow Default Scope
+        zh_Hans: 允许默认 Scope
+      description:
+        en_US: Fall back to the Server default when no explicit or bound Scope exists. Disabled to prevent cross-chat leakage.
+        zh_Hans: 无固定或绑定 Scope 时回退到 Server 默认 Scope。默认关闭以防不同会话串数据。
+    - name: auto_recall
+      type: boolean
+      required: false
+      default: true
+      label:
+        en_US: Automatic Recall
+        zh_Hans: 自动召回
+      description:
+        en_US: Prepare and inject bounded historical context before each model call.
+        zh_Hans: 每次模型调用前准备并注入有界历史上下文。
+    - name: capture_user_messages
+      type: boolean
+      required: false
+      default: true
+      label:
+        en_US: Capture User Messages
+        zh_Hans: 捕获用户消息
+      description:
+        en_US: Store normal user turns as PowerContext Sources after recall.
+        zh_Hans: 召回完成后，将普通用户消息保存为 PowerContext Source。
+    - name: max_context_bytes
+      type: integer
+      required: false
+      default: 4000
+      label:
+        en_US: Maximum Context Bytes
+        zh_Hans: 最大上下文字节数
+      description:
+        en_US: Injection budget, clamped to the PowerContext 512-32768 byte contract.
+        zh_Hans: 注入预算，限制在 PowerContext 契约规定的 512 到 32768 字节。
+    - name: search_limit
+      type: integer
+      required: false
+      default: 5
+      label:
+        en_US: Tool Search Limit
+        zh_Hans: 工具搜索条数
+      description:
+        en_US: Default result limit for the powercontext_recall tool.
+        zh_Hans: powercontext_recall 工具的默认结果数量。
+  components:
+    EventListener:
+      fromDirs:
+        - path: components/event_listener/
+    Tool:
+      fromDirs:
+        - path: components/tools/
+    Command:
+      fromDirs:
+        - path: components/commands/
+execution:
+  python:
+    path: main.py
+    attr: PowerContextPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

@@ -1,0 +1,3 @@
+langbot-plugin
+openai>=1.0.0
+httpx>=0.24.0

@@ -5,6 +5,7 @@ import typing
 import datetime
 import re
 import traceback
+from collections import OrderedDict
 
 import botpy
 import botpy.message as botpy_message
@@ -40,7 +41,8 @@ event_handler_mapping = {
 }
 
 
-cached_message_ids = {}
+_CACHED_MESSAGE_ID_LIMIT = 10000
+cached_message_ids: OrderedDict[str, str] = OrderedDict()
 """由于QQ官方的消息id是字符串，而YiriMirai的消息id是整数，所以需要一个索引来进行转换"""
 
 id_index = 0
@@ -53,6 +55,8 @@ def save_msg_id(message_id: str) -> int:
     crt_index = id_index
     id_index += 1
     cached_message_ids[str(crt_index)] = message_id
+    while len(cached_message_ids) > _CACHED_MESSAGE_ID_LIMIT:
+        cached_message_ids.popitem(last=False)
     return crt_index
 
 
@@ -355,6 +359,7 @@ class OfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.cfg = cfg
         self.ap = ap
         self.logger = logger
+        self.cached_official_messages = OrderedDict()
 
         self.group_msg_seq = 1
         self.c2c_msg_seq = 1
@@ -490,6 +495,8 @@ class OfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 ],
             ):
                 self.cached_official_messages[str(message.id)] = message
+                while len(self.cached_official_messages) > 1000:
+                    self.cached_official_messages.popitem(last=False)
                 await callback(self.event_converter.target2yiri(message), self)
 
             for event_handler in event_handler_mapping[event_type]:
@@ -519,6 +526,8 @@ class OfficialAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await (await self.bot.start(**self.cfg))
 
     async def kill(self) -> bool:
+        self.cached_official_messages.clear()
         if not self.bot.is_closed():
             await self.bot.close()
             return True
+        return True

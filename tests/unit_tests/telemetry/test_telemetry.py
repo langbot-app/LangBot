@@ -6,7 +6,6 @@ Tests cover:
 - Early return conditions (disabled, empty config, no server)
 - URL construction (with actual URL verification)
 - HTTP request success/failure scenarios
-- Source code bug: send_tasks should be instance variable
 """
 
 from __future__ import annotations
@@ -84,7 +83,9 @@ class TestTelemetrySendEarlyReturn:
         manager.telemetry_config = {}
 
         # Should return without making HTTP calls
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         # No HTTP client should be created, no logs should be written
         mock_app.logger.debug.assert_not_called()
@@ -100,7 +101,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'disable_telemetry': True, 'url': 'https://example.com'}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -114,7 +117,9 @@ class TestTelemetrySendEarlyReturn:
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': ''}
 
-        await manager.send({'query_id': 'test'})
+        with patch.object(httpx, 'AsyncClient') as client:
+            await manager.send({'query_id': 'test'})
+        client.assert_not_called()
 
         mock_app.logger.debug.assert_not_called()
 
@@ -431,6 +436,7 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
+        mock_app.logger.warning.assert_not_called()
         mock_app.logger.debug.assert_called()
         # Verify debug message contains URL and status
         debug_call_args = mock_app.logger.debug.call_args[0][0]
@@ -459,8 +465,9 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
-        warning_call_args = mock_app.logger.warning.call_args[0][0]
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
+        warning_call_args = mock_app.logger.debug.call_args[0][0]
         assert 'status 500' in warning_call_args
 
     @pytest.mark.asyncio
@@ -488,9 +495,9 @@ class TestHTTPScenarios:
             await manager.send({'query_id': 'test'})
 
         # Source code calls warning twice for application errors
-        assert mock_app.logger.warning.call_count >= 1
+        assert mock_app.logger.debug.call_count >= 1
         # Check that one of the calls contains application error info
-        all_warnings = [call[0][0] for call in mock_app.logger.warning.call_args_list]
+        all_warnings = [call[0][0] for call in mock_app.logger.debug.call_args_list]
         assert any('400' in w for w in all_warnings), f'No warning contained error code 400: {all_warnings}'
 
     @pytest.mark.asyncio
@@ -516,8 +523,9 @@ class TestHTTPScenarios:
         with patch.object(httpx, 'AsyncClient', return_value=mock_client):
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
-        warning_call_args = mock_app.logger.warning.call_args[0][0]
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
+        warning_call_args = mock_app.logger.debug.call_args[0][0]
         assert 'timed out' in warning_call_args
 
     @pytest.mark.asyncio
@@ -542,7 +550,8 @@ class TestHTTPScenarios:
             # Should not raise exception
             await manager.send({'query_id': 'test'})
 
-        mock_app.logger.warning.assert_called()
+        mock_app.logger.warning.assert_not_called()
+        mock_app.logger.debug.assert_called()
 
     @pytest.mark.asyncio
     async def test_send_never_raises_exception(self):
@@ -551,7 +560,7 @@ class TestHTTPScenarios:
         mock_app = Mock()
         # Even logger may fail
         mock_app.logger = Mock()
-        mock_app.logger.warning = Mock(side_effect=Exception('Logger failed'))
+        mock_app.logger.debug = Mock(side_effect=Exception('Logger failed'))
 
         manager = telemetry.TelemetryManager(mock_app)
         manager.telemetry_config = {'url': 'https://example.com'}
@@ -569,52 +578,58 @@ class TestHTTPScenarios:
             await manager.send({'query_id': 'test'})
 
 
-class TestStartSendTask:
-    """Tests for start_send_task() method."""
-
+class TestTelemetryManagedRuntimeAuthentication:
     @pytest.mark.asyncio
-    async def test_start_send_task_creates_task(self):
-        """Test that start_send_task creates an asyncio task."""
+    async def test_send_includes_managed_runtime_token_header(self):
         telemetry = get_telemetry_module()
         mock_app = Mock()
         mock_app.logger = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {}
-
         manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {}
+        manager.telemetry_config = {'url': 'https://example.com'}
+        captured = {}
 
-        await manager.start_send_task({'query_id': 'test'})
+        async def mock_post(url, json, headers):
+            captured['headers'] = headers
+            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
 
-        # Task should be added to send_tasks list
-        assert len(manager.send_tasks) >= 1
+        mock_client = Mock()
+        mock_client.post = mock_post
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=None)
+        with (
+            patch.dict('os.environ', {'LANGBOT_TELEMETRY_INGEST_TOKEN': 'managed-runtime-secret'}),
+            patch.object(httpx, 'AsyncClient', return_value=mock_client),
+        ):
+            await manager.send({'event_type': 'instance_heartbeat'})
 
-        # Clean up the task
-        for task in manager.send_tasks:
-            if not task.done():
-                task.cancel()
-        manager.send_tasks.clear()
+        assert captured['headers'] == {'X-LangBot-Telemetry-Token': 'managed-runtime-secret'}
 
+
+class TestAuthenticatedWorkspaceReporter:
     @pytest.mark.asyncio
-    async def test_start_send_task_multiple_tasks(self):
-        """Test that multiple tasks are tracked."""
+    async def test_workspace_owner_access_token_is_sent_as_bearer(self):
         telemetry = get_telemetry_module()
         mock_app = Mock()
         mock_app.logger = Mock()
-        mock_app.instance_config = Mock()
-        mock_app.instance_config.data = {}
-
+        mock_app.user_service = Mock()
+        mock_app.user_service.get_workspace_owner = AsyncMock(
+            return_value=Mock(user='owner@example.com', space_access_token='expired-token')
+        )
+        mock_app.space_service = Mock()
+        mock_app.space_service.get_valid_access_token = AsyncMock(return_value='refreshed-workspace-owner-token')
         manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {}
+        manager.telemetry_config = {'url': 'https://example.com'}
 
-        await manager.start_send_task({'query_id': 'test1'})
-        await manager.start_send_task({'query_id': 'test2'})
-        await manager.start_send_task({'query_id': 'test3'})
+        response = Mock(status_code=200, text='')
+        response.json = Mock(return_value={'code': 0})
+        mock_client = Mock()
+        mock_client.post = Mock(return_value=response)
 
-        assert len(manager.send_tasks) >= 3
+        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
+            await manager.send({'query_id': 'q-1', 'workspace_uuid': 'workspace-1'})
 
-        # Clean up
-        for task in manager.send_tasks:
-            if not task.done():
-                task.cancel()
-        manager.send_tasks.clear()
+        mock_app.user_service.get_workspace_owner.assert_awaited_once_with('workspace-1')
+        mock_app.space_service.get_valid_access_token.assert_awaited_once_with('owner@example.com')
+        assert mock_client.post.call_args.kwargs['headers'] == {
+            'Authorization': 'Bearer refreshed-workspace-owner-token'
+        }

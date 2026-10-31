@@ -1,14 +1,117 @@
+from __future__ import annotations
+
 import quart
 import argon2
 import asyncio
-import traceback
+import datetime
+import hmac
+import time
+import uuid
+from urllib.parse import parse_qs, urlsplit
 
 from .. import group
 from .....entity.errors import account as account_errors
+from ...context import RequestContext
+from .....cloud.launch import SpaceLaunchError
+from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
+from ...service import totp as totp_module
+from .....utils import constants
+
+# Fixed-window admission quota for the unauthenticated reset-password endpoint (#2392).
+# The admission check and slot bump share ONE synchronous critical section with no await
+# points, so concurrent bursts within a single event loop cannot slip past accounting.
+# Every admitted attempt consumes quota (regardless of success), which throttles both the
+# legacy 24-bit keyspace exhaustion and brute-force on modern high-entropy keys.
+# NOTE: this state is process-local; multi-worker deployments need a shared limiter upstream.
+_MAX_RESET_ATTEMPTS_PER_WINDOW = 5
+_RESET_WINDOW_SECONDS = 15 * 60
+
+_reset_password_state: dict = {'window_started_at': 0.0, 'attempts': 0}
+
+
+def _admit_reset_attempt(now: float) -> bool:
+    """Atomically reserve one reset-password admission slot.
+
+    Must stay await-free: running to completion without suspension makes the
+    check-and-increment atomic under the single-threaded event loop.
+    """
+    st = _reset_password_state
+    if now - st['window_started_at'] >= _RESET_WINDOW_SECONDS:
+        st['window_started_at'] = now
+        st['attempts'] = 0
+    if st['attempts'] >= _MAX_RESET_ATTEMPTS_PER_WINDOW:
+        return False
+    st['attempts'] += 1
+    return True
 
 
 @group.group_class('user', '/api/v1/user')
 class UserRouterGroup(group.RouterGroup):
+    def _validate_space_redirect_uri(self, redirect_uri: str, *, bind: bool) -> str:
+        parsed = urlsplit(redirect_uri)
+        if (
+            parsed.scheme not in {'http', 'https'}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+            or parsed.path != '/auth/space/callback'
+        ):
+            raise ValueError('Invalid redirect_uri parameter')
+
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if bind:
+            if query != {'mode': ['bind']}:
+                raise ValueError('Invalid Space binding redirect_uri')
+        elif query:
+            raise ValueError('Invalid LangBot Account login redirect_uri')
+
+        return redirect_uri
+
+    def _resolve_server_origin(self) -> tuple[str, str]:
+        """Return the server-configured browser origin and WebAuthn RP ID.
+
+        WebAuthn's anti-phishing guarantee depends on the RP ID and expected
+        origin being values the *server* chose. Deriving them from the request
+        (a JSON `origin` field, the Origin/Referer headers, or the Host header)
+        lets a sibling host under the same registrable domain obtain a valid
+        assertion for the victim's credential. Resolution order matches the
+        OAuth/invitation rule: api.webui_url, then api.webhook_prefix, then the
+        configured API port on loopback. Request data is never consulted.
+        """
+        data = getattr(getattr(self.ap, 'instance_config', None), 'data', {}) or {}
+        api = data.get('api', {}) if isinstance(data.get('api', {}), dict) else {}
+
+        for key in ('webui_url', 'webhook_prefix'):
+            candidate = str(api.get(key, '') or '').strip()
+            if candidate:
+                parsed = urlsplit(candidate)
+                if parsed.scheme and parsed.netloc and parsed.hostname:
+                    return f'{parsed.scheme}://{parsed.netloc}', parsed.hostname
+
+        port = api.get('port', 5300)
+        return f'http://127.0.0.1:{port}', 'localhost'
+
+    def _passkey_supported(self) -> bool:
+        """Passkeys are an OSS-only feature.
+
+        Cloud deployments authenticate through their own account service, so
+        passkey registration and login are refused there outright rather than
+        merely hidden in the UI. Both flavours count as cloud: the multi-tenant
+        Cloud (``system.edition == 'cloud'``) and a standalone cloud-edition
+        instance (``deployment.mode == 'cloud'``).
+        """
+        if constants.edition not in ('community', 'oss'):
+            return False
+        deployment_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', None)
+        return deployment_mode != 'cloud'
+
+    def _passkey_disabled_response(self):
+        """Uniform refusal for every passkey route on a non-OSS edition."""
+        if self._passkey_supported():
+            return None
+        return self.http_status(403, 'edition_unsupported', 'Passkeys are only available in the OSS edition')
+
     async def initialize(self) -> None:
         @self.route('/init', methods=['GET', 'POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
@@ -23,36 +126,133 @@ class UserRouterGroup(group.RouterGroup):
             user_email = json_data['user']
             password = json_data['password']
 
-            await self.ap.user_service.create_user(user_email, password)
+            try:
+                await self.ap.user_service.create_user(user_email, password)
+            except ControlPlaneDirectoryRequiredError as exc:
+                return self.http_status(409, exc.code, str(exc))
+            except PublicRegistrationClosedError:
+                return self.http_status(409, 'registration_closed', 'System already initialized')
 
             return self.success()
 
         @self.route('/auth', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
-            json_data = await quart.request.json
+            if getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud':
+                return self.http_status(403, 'password_login_disabled', 'Password login is disabled on LangBot Cloud')
+            json_data = await quart.request.get_json(silent=True)
+            if not isinstance(json_data, dict) or not all(
+                isinstance(json_data.get(field), str) for field in ('user', 'password')
+            ):
+                return self.http_status(400, -1, 'Invalid request parameters')
+
+            user_email = json_data['user']
+            password = json_data['password']
+            totp_code = json_data.get('totp_code') or json_data.get('code')
 
             try:
-                token = await self.ap.user_service.authenticate(json_data['user'], json_data['password'])
+                token = await self.ap.user_service.authenticate(user_email, password, totp_code)
             except argon2.exceptions.VerifyMismatchError:
                 return self.fail(1, 'Invalid username or password')
+            except totp_module.TotpRequiredError:
+                # Primary factors passed, but the second factor is still missing.
+                # Issue a challenge instead of a session token.
+                challenge_token = await self.ap.user_service.issue_totp_login_challenge(user_email)
+                if challenge_token is None:
+                    return self.fail(1, 'A second factor is required')
+                return (
+                    quart.jsonify(
+                        {
+                            'code': 'totp_required',
+                            'msg': 'A TOTP second factor is required',
+                            'data': {'challenge_token': challenge_token},
+                        }
+                    ),
+                    401,
+                )
+            except totp_module.TotpInvalidCodeError:
+                return self.http_status(401, 'totp_invalid_code', 'Invalid TOTP or recovery code')
             except ValueError as e:
                 return self.fail(1, str(e))
 
             return self.success(data={'token': token})
 
-        @self.route('/check-token', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
-            token = await self.ap.user_service.generate_jwt_token(user_email)
+        # ---- TOTP second factor (login challenge) ----
+
+        @self.route('/totp/challenge', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Start a login second-factor challenge.
+
+            Always answers with a token, even for unknown or non-enrolled
+            Accounts: a distinguishable reply would let an unauthenticated caller
+            enumerate which emails have a second factor.
+            """
+            json_data = (await quart.request.json) or {}
+            user_email = json_data.get('user')
+
+            if not isinstance(user_email, str) or not user_email:
+                return self.fail(1, 'Missing user parameter')
+
+            challenge_token = await self.ap.user_service.issue_uniform_totp_login_challenge(user_email)
+            return self.success(data={'challenge_token': challenge_token})
+
+        @self.route('/totp/verify', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Complete the login second factor and return a session token.
+
+            A ``challenge_token`` is mandatory: it proves the password step ran
+            for this Account, so a bare code can never mint a session on its own.
+            """
+            json_data = (await quart.request.json) or {}
+            user_email = json_data.get('user')
+            code = json_data.get('code')
+            challenge_token = json_data.get('challenge_token')
+
+            if (
+                not isinstance(user_email, str)
+                or not user_email
+                or not isinstance(code, str)
+                or not code
+                or not isinstance(challenge_token, str)
+                or not challenge_token
+            ):
+                return self.fail(1, 'Missing user, code or challenge_token parameter')
+
+            verified = await self.ap.user_service.verify_totp_second_factor(
+                user_email,
+                code,
+                challenge_token=challenge_token,
+            )
+            if not verified:
+                return self.http_status(401, 'totp_invalid_code', 'Invalid TOTP or recovery code')
+
+            user_obj = await self.ap.user_service.get_user_by_email(user_email)
+            if user_obj is None:
+                return self.http_status(401, 'totp_invalid_code', 'Invalid TOTP or recovery code')
+
+            token = await self.ap.user_service.generate_jwt_token(user_obj)
+            return self.success(data={'token': token, 'user': user_obj.user})
+
+        @self.route('/check-token', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            token = await self.ap.user_service.generate_jwt_token(account)
 
             return self.success(data={'token': token})
 
         @self.route('/reset-password', methods=['POST'], auth_type=group.AuthType.NONE)
         async def _() -> str:
+            # Admit (or reject) BEFORE touching the body or any service call (#2392):
+            # rejecting requests never reach the slow path, and quota accounting happens
+            # synchronously at entry, closing the post-await race of burst requests.
+            if not _admit_reset_attempt(time.monotonic()):
+                return self.http_status(429, -1, 'Too many attempts, try again later')
+
             json_data = await quart.request.json
 
             user_email = json_data['user']
-            recovery_key = json_data['recovery_key']
             new_password = json_data['new_password']
+            # Second-factor method: 'recovery_key' (instance-wide, default),
+            # 'totp' (an authenticator code) or 'recovery_code' (a one-time code).
+            method = json_data.get('method') or 'recovery_key'
 
             # hard sleep 3s for security
             await asyncio.sleep(3)
@@ -65,15 +265,42 @@ class UserRouterGroup(group.RouterGroup):
             if user_obj is None:
                 return self.http_status(400, -1, 'User not found')
 
-            if recovery_key != self.ap.instance_config.data['system']['recovery_key']:
-                return self.http_status(403, -1, 'Invalid recovery key')
+            if method in ('totp', 'recovery_code'):
+                # Account-scoped second factor: a live TOTP code or, for the
+                # recovery_code method, a one-time recovery code.
+                allow_recovery = method == 'recovery_code'
+                second_factor = json_data.get('totp_code') or json_data.get('code')
+                if not isinstance(second_factor, str) or not second_factor:
+                    return self.http_status(400, -1, 'Missing TOTP or recovery code')
+
+                if not await self.ap.user_service.verify_totp_second_factor(
+                    user_email,
+                    second_factor,
+                    allow_recovery=allow_recovery,
+                ):
+                    return self.http_status(403, -1, 'Invalid TOTP or recovery code')
+            else:
+                recovery_key = json_data.get('recovery_key')
+                stored_key = self.ap.instance_config.data['system']['recovery_key']
+                try:
+                    key_matches = (
+                        isinstance(recovery_key, str)
+                        and isinstance(stored_key, str)
+                        and hmac.compare_digest(recovery_key.encode(), stored_key.encode())
+                    )
+                except UnicodeEncodeError:
+                    # JSON can contain lone surrogates, which are not valid UTF-8.
+                    key_matches = False
+
+                if not key_matches:
+                    return self.http_status(403, -1, 'Invalid recovery key')
 
             await self.ap.user_service.reset_password(user_email, new_password)
 
             return self.success(data={'user': user_email})
 
-        @self.route('/change-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
+        @self.route('/change-password', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
             # Check if password change is allowed
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
                 'allow_modify_login_info', True
@@ -87,13 +314,13 @@ class UserRouterGroup(group.RouterGroup):
             new_password = json_data['new_password']
 
             try:
-                await self.ap.user_service.change_password(user_email, current_password, new_password)
+                await self.ap.user_service.change_password(account.normalized_email, current_password, new_password)
             except argon2.exceptions.VerifyMismatchError:
                 return self.http_status(400, -1, 'Current password is incorrect')
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
 
-            return self.success(data={'user': user_email})
+            return self.success(data={'user': account.user})
 
         # Space OAuth endpoints (redirect flow)
 
@@ -101,15 +328,50 @@ class UserRouterGroup(group.RouterGroup):
         async def _() -> str:
             """Get Space OAuth authorization URL for redirect"""
             redirect_uri = quart.request.args.get('redirect_uri', '')
-            state = quart.request.args.get('state', '')
 
             if not redirect_uri:
                 return self.fail(1, 'Missing redirect_uri parameter')
+            if 'state' in quart.request.args:
+                return self.fail(1, 'Caller-supplied OAuth state is not allowed')
 
             try:
+                redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=False)
+                launch_workspace_uuid = quart.request.args.get('launch_workspace_uuid')
+                if launch_workspace_uuid:
+                    if not getattr(getattr(self.ap, 'deployment', None), 'multi_workspace_enabled', False):
+                        return self.fail(1, 'Space launch requires Cloud mode')
+                    try:
+                        uuid.UUID(launch_workspace_uuid)
+                    except ValueError:
+                        return self.fail(1, 'Invalid launch Workspace')
+                    state = await self.ap.user_service.issue_space_oauth_state(
+                        'login',
+                        launch_workspace_uuid=launch_workspace_uuid,
+                    )
+                else:
+                    state = await self.ap.user_service.issue_space_oauth_state('login')
                 authorize_url = self.ap.space_service.get_oauth_authorize_url(redirect_uri, state)
                 return self.success(data={'authorize_url': authorize_url})
-            except Exception as e:
+            except ValueError as e:
+                return self.fail(1, str(e))
+
+        @self.route('/space/bind-authorize-url', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Issue an account-bound, one-time Space OAuth redirect."""
+            redirect_uri = quart.request.args.get('redirect_uri', '')
+            if not redirect_uri:
+                return self.fail(1, 'Missing redirect_uri parameter')
+            if not account.uuid:
+                return self.http_status(403, 'account_required', 'An Account is required')
+            try:
+                redirect_uri = self._validate_space_redirect_uri(redirect_uri, bind=True)
+                state = await self.ap.user_service.issue_space_oauth_state(
+                    'bind',
+                    account_uuid=account.uuid,
+                )
+                authorize_url = self.ap.space_service.get_oauth_authorize_url(redirect_uri, state)
+                return self.success(data={'authorize_url': authorize_url})
+            except ValueError as e:
                 return self.fail(1, str(e))
 
         @self.route('/space/callback', methods=['POST'], auth_type=group.AuthType.NONE)
@@ -117,24 +379,86 @@ class UserRouterGroup(group.RouterGroup):
             """Handle OAuth callback - exchange code for tokens and authenticate"""
             json_data = await quart.request.json
             code = json_data.get('code')
+            state = json_data.get('state')
+            redirect_uri = json_data.get('redirect_uri') or (
+                quart.request.url_root.rstrip('/') + '/auth/space/callback'
+            )
+            launch_assertion = json_data.get('launch_assertion')
+            workspace_uuid = json_data.get('workspace_uuid')
+
+            if launch_assertion:
+                return await self._handle_space_direct_launch(
+                    str(launch_assertion),
+                    str(workspace_uuid or '') or None,
+                )
 
             if not code:
                 return self.fail(1, 'Missing authorization code')
+            if not state:
+                return self.fail(1, 'Missing state parameter')
+            if not str(code).startswith('v4_'):
+                return self.fail(1, 'Unsupported Space OAuth code contract')
 
             try:
+                redirect_uri = self._validate_space_redirect_uri(str(redirect_uri), bind=False)
+                consumed_state = await self.ap.user_service.consume_space_oauth_state_details(state, 'login')
                 # Exchange code for tokens
-                token_data = await self.ap.space_service.exchange_oauth_code(code)
+                launch_workspace_uuid = consumed_state.launch_workspace_uuid
+                workspace_uuids = [launch_workspace_uuid] if launch_workspace_uuid else []
+                workspace_created_ats: dict[str, int] = {}
+                if not workspace_uuids and getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') != 'cloud':
+                    binding = await self.ap.workspace_service.get_execution_binding()
+                    workspace_uuids = [binding.workspace_uuid]
+                    workspace_created_at = binding.workspace_created_at
+                    if workspace_created_at is not None:
+                        if workspace_created_at.tzinfo is None:
+                            workspace_created_at = workspace_created_at.replace(tzinfo=datetime.UTC)
+                        workspace_created_ats[binding.workspace_uuid] = int(workspace_created_at.timestamp())
+                token_data = await self.ap.space_service.exchange_oauth_code(
+                    code,
+                    workspace_uuids,
+                    workspace_created_ats,
+                    redirect_uri=redirect_uri,
+                )
                 access_token = token_data.get('access_token')
                 refresh_token = token_data.get('refresh_token')
                 expires_in = token_data.get('expires_in', 0)
+                cloud_workspace_uuid = token_data.get('cloud_workspace_uuid')
 
                 if not access_token:
                     return self.fail(1, 'Failed to get access token from Space')
 
-                # Authenticate and create/update local user
+                cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+                if cloud_mode and launch_workspace_uuid and launch_workspace_uuid != cloud_workspace_uuid:
+                    return self.fail(1, 'Space OAuth Workspace binding mismatch')
+                target_workspace_uuid = launch_workspace_uuid or cloud_workspace_uuid
+                if cloud_mode:
+                    if not target_workspace_uuid:
+                        return self.fail(1, 'Space OAuth response is missing the Cloud Workspace binding')
+                    await self.ap.directory_projection_service.reconcile_workspaces((target_workspace_uuid,))
+
+                # Authenticate only after the signed, exact Workspace delta has
+                # established the Account and membership runtime shadow rows.
                 jwt_token, user_obj = await self.ap.user_service.authenticate_space_user(
                     access_token, refresh_token, expires_in
                 )
+
+                if target_workspace_uuid:
+                    try:
+                        access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                            user_obj.uuid,
+                            target_workspace_uuid,
+                        )
+                    except Exception:
+                        self.ap.logger.warning('Rejected Space OAuth launch for unauthorized Workspace')
+                        return self.fail(1, 'Space OAuth failed')
+                    return self.success(
+                        data={
+                            'token': jwt_token,
+                            'user': user_obj.user,
+                            'workspace_uuid': access.workspace.uuid,
+                        }
+                    )
 
                 return self.success(
                     data={
@@ -142,58 +466,82 @@ class UserRouterGroup(group.RouterGroup):
                         'user': user_obj.user,
                     }
                 )
+            except ControlPlaneDirectoryRequiredError as e:
+                return self.http_status(409, e.code, str(e))
             except account_errors.AccountEmailMismatchError as e:
-                return self.fail(3, str(e))
-            except ValueError as e:
-                traceback.print_exc()
-                self.ap.logger.warning(f'Space OAuth callback failed: {e}')
-                return self.fail(1, str(e))
-            except Exception as e:
-                traceback.print_exc()
-                return self.fail(2, f'OAuth callback failed: {str(e)}')
+                return self.fail(getattr(e, 'code', 3), str(e))
+            except ValueError:
+                self.ap.logger.exception('Space OAuth callback failed')
+                return self.fail(1, 'Space OAuth failed')
+            except Exception:
+                raise
 
-        @self.route('/info', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
-            """Get current user information including account type"""
-            user_obj = await self.ap.user_service.get_user_by_email(user_email)
-
-            if user_obj is None:
-                return self.http_status(404, -1, 'User not found')
-
+        @self.route('/info', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Get current Account information without re-querying under Workspace RLS."""
             return self.success(
                 data={
-                    'user': user_obj.user,
-                    'account_type': user_obj.account_type,
-                    'has_password': bool(user_obj.password and user_obj.password.strip()),
+                    'account_uuid': account.uuid,
+                    'user': account.user,
+                    'account_type': account.account_type,
+                    'has_password': bool(account.password and account.password.strip()),
                 }
             )
 
         @self.route('/space-credits', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
-            """Get Space credits balance for current user"""
-            credits = await self.ap.space_service.get_credits(user_email)
-            return self.success(data={'credits': credits})
-
-        @self.route('/account-info', methods=['GET'], auth_type=group.AuthType.NONE)
-        async def _() -> str:
-            """Get account info for login page (account type and has_password)"""
-            if not await self.ap.user_service.is_initialized():
-                return self.success(data={'initialized': False})
-
-            user_obj = await self.ap.user_service.get_first_user()
-            if user_obj is None:
-                return self.success(data={'initialized': False})
-
+        async def _(request_context: RequestContext) -> str:
+            """Get Space credits using only the selected Workspace owner's credentials."""
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                request_context.account_uuid,
+                request_context.workspace_uuid,
+            )
+            owner = await self.ap.user_service.get_workspace_owner(access.workspace.uuid)
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            owner_has_local_space_credentials = bool(owner and owner.space_account_uuid)
+            # Cloud Accounts authenticate through LangBot Account, so every projected
+            # Workspace owner is already bound even when this Core has no local OAuth
+            # token row (model billing uses the owner's control-plane API key).
+            owner_space_bound = cloud_mode or owner_has_local_space_credentials
+            if cloud_mode:
+                catalog_service = getattr(self.ap, 'cloud_model_catalog_service', None)
+                credits = (
+                    catalog_service.get_workspace_credits(access.workspace.uuid)
+                    if catalog_service is not None
+                    else None
+                )
+            else:
+                credits = (
+                    await self.ap.space_service.get_credits(owner.user)
+                    if owner is not None and owner.space_account_uuid
+                    else None
+                )
             return self.success(
                 data={
-                    'initialized': True,
-                    'account_type': user_obj.account_type,
-                    'has_password': bool(user_obj.password and user_obj.password.strip()),
+                    'credits': credits,
+                    'owner_space_bound': owner_space_bound,
+                    'is_workspace_owner': access.membership.role == 'owner',
                 }
             )
 
-        @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(user_email: str) -> str:
+        @self.route('/account-info', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Return instance login capabilities without disclosing an account."""
+            if not await self.ap.user_service.is_initialized():
+                return self.success(data={'initialized': False})
+
+            capabilities = await self.ap.user_service.get_login_capabilities()
+            cloud_mode = getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+            if cloud_mode:
+                capabilities['password_login_enabled'] = False
+            capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
+            capabilities['invitation_registration_enabled'] = not cloud_mode
+            passkey_supported = self._passkey_supported()
+            capabilities['passkey_login_enabled'] = passkey_supported
+            capabilities['passkey_supported'] = passkey_supported
+            return self.success(data={'initialized': True, **capabilities})
+
+        @self.route('/set-password', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
             """Set password for Space account (first time) or change password"""
             # Check if modifying login info is allowed
             allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
@@ -209,13 +557,9 @@ class UserRouterGroup(group.RouterGroup):
             if not new_password:
                 return self.http_status(400, -1, 'New password is required')
 
-            user_obj = await self.ap.user_service.get_user_by_email(user_email)
-            if user_obj is None:
-                return self.http_status(404, -1, 'User not found')
-
             try:
-                await self.ap.user_service.set_password(user_email, new_password, current_password)
-                return self.success(data={'user': user_email})
+                await self.ap.user_service.set_password(account.normalized_email, new_password, current_password)
+                return self.success(data={'user': account.user})
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
             except argon2.exceptions.VerifyMismatchError:
@@ -233,21 +577,23 @@ class UserRouterGroup(group.RouterGroup):
 
             json_data = await quart.request.json
             code = json_data.get('code')
-            state = json_data.get('state')  # JWT token passed as state
+            state = json_data.get('state')
+            redirect_uri = json_data.get('redirect_uri') or (
+                quart.request.url_root.rstrip('/') + '/auth/space/callback?mode=bind'
+            )
 
             if not code:
                 return self.http_status(400, -1, 'Missing authorization code')
 
             if not state:
                 return self.http_status(400, -1, 'Missing state parameter')
+            if not str(code).startswith('v4_'):
+                return self.http_status(400, -1, 'Unsupported Space OAuth code contract')
 
-            # Verify state is a valid JWT token
             try:
-                user_email = await self.ap.user_service.verify_jwt_token(state)
+                user_obj = await self.ap.user_service.consume_space_oauth_state(state, 'bind')
             except Exception:
                 return self.http_status(401, -1, 'Invalid or expired state')
-
-            user_obj = await self.ap.user_service.get_user_by_email(user_email)
             if user_obj is None:
                 return self.http_status(404, -1, 'User not found')
 
@@ -255,8 +601,11 @@ class UserRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'Only local accounts can bind to Space')
 
             try:
-                updated_user = await self.ap.user_service.bind_space_account(user_email, code)
-                jwt_token = await self.ap.user_service.generate_jwt_token(updated_user.user)
+                redirect_uri = self._validate_space_redirect_uri(str(redirect_uri), bind=True)
+                updated_user = await self.ap.user_service.bind_space_account(
+                    user_obj.user, code, redirect_uri=redirect_uri
+                )
+                jwt_token = await self.ap.user_service.generate_jwt_token(updated_user)
                 return self.success(
                     data={
                         'token': jwt_token,
@@ -264,7 +613,551 @@ class UserRouterGroup(group.RouterGroup):
                         'account_type': updated_user.account_type,
                     }
                 )
-            except ValueError as e:
-                return self.http_status(400, -1, str(e))
+            except account_errors.AccountEmailMismatchError:
+                return self.http_status(
+                    409,
+                    'space_account_email_mismatch',
+                    'Bind the LangBot Account with the same email as this local Account',
+                )
+            except ValueError:
+                return self.http_status(400, -1, 'LangBot Account binding failed')
+            except Exception:
+                raise
+
+        # Passkeys belong to the Account, not to a Workspace: these routes are
+        # ACCOUNT_TOKEN scoped for the same reason as the second-factor routes
+        # below. Resolving the caller through the login name would also miss every
+        # Account whose login name is not its email.
+        @self.route('/passkey/register/options', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Generate WebAuthn registration options for current account."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            origin, rp_id = self._resolve_server_origin()
+
+            try:
+                options, challenge_token = await self.ap.user_service.generate_passkey_registration_options(
+                    account_uuid=account.uuid,
+                    rp_id=rp_id,
+                    origin=origin,
+                    rp_name='LangBot',
+                )
+                return self.success(data={'options': options, 'challenge_token': challenge_token})
             except Exception as e:
-                return self.http_status(500, -1, f'Failed to bind Space account: {str(e)}')
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/register/verify', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Verify WebAuthn registration response and save credential."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = await quart.request.json
+            challenge_token = json_data.get('challenge_token')
+            credential = json_data.get('credential') or json_data.get('response')
+            name = json_data.get('name')
+
+            if not challenge_token or not credential:
+                return self.fail(1, 'Missing challenge_token or credential')
+
+            try:
+                cred = await self.ap.user_service.verify_and_save_passkey_registration(
+                    challenge_token=challenge_token,
+                    credential_data=credential,
+                    name=name,
+                )
+                return self.success(
+                    data={
+                        'uuid': cred.uuid,
+                        'name': cred.name,
+                        'created_at': cred.created_at.isoformat() if cred.created_at else None,
+                    }
+                )
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/auth/options', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Generate WebAuthn authentication options for passkey login."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            json_data = (await quart.request.json) or {}
+            email = json_data.get('email')
+            origin, rp_id = self._resolve_server_origin()
+
+            try:
+                options, challenge_token = await self.ap.user_service.generate_passkey_authentication_options(
+                    rp_id=rp_id,
+                    origin=origin,
+                    email=email,
+                )
+                return self.success(data={'options': options, 'challenge_token': challenge_token})
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkey/auth/verify', methods=['POST'], auth_type=group.AuthType.NONE)
+        async def _() -> str:
+            """Verify WebAuthn authentication response and log in."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            json_data = await quart.request.json
+            challenge_token = json_data.get('challenge_token')
+            credential = json_data.get('credential') or json_data.get('response')
+
+            if not challenge_token or not credential:
+                return self.fail(1, 'Missing challenge_token or credential')
+
+            try:
+                token, user_obj = await self.ap.user_service.verify_passkey_authentication(
+                    challenge_token=challenge_token,
+                    credential_data=credential,
+                )
+                return self.success(
+                    data={
+                        'token': token,
+                        'user': user_obj.user,
+                    }
+                )
+            except Exception as e:
+                return self.fail(1, str(e))
+
+        @self.route('/passkeys', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """List registered passkeys for the current user."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            passkeys = await self.ap.user_service.get_user_passkeys(account.uuid)
+            return self.success(
+                data=[
+                    {
+                        'uuid': pk.uuid,
+                        'name': pk.name,
+                        'aaguid': pk.aaguid,
+                        'transports': pk.transports,
+                        'backed_up': pk.backed_up,
+                        'created_at': pk.created_at.isoformat() if pk.created_at else None,
+                        'last_used_at': pk.last_used_at.isoformat() if pk.last_used_at else None,
+                    }
+                    for pk in passkeys
+                ]
+            )
+
+        @self.route('/passkey/<passkey_uuid>', methods=['PATCH'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account, passkey_uuid: str) -> str:
+            """Rename a registered passkey."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = await quart.request.json
+            name = (json_data.get('name') or '').strip()
+            if not name:
+                return self.fail(1, 'Passkey name cannot be empty')
+
+            updated = await self.ap.user_service.rename_user_passkey(
+                account_uuid=account.uuid,
+                passkey_uuid=passkey_uuid,
+                new_name=name,
+            )
+            if not updated:
+                return self.http_status(404, -1, 'Passkey not found')
+            return self.success(data={'uuid': updated.uuid, 'name': updated.name})
+
+        @self.route('/passkey/<passkey_uuid>', methods=['DELETE'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account, passkey_uuid: str) -> str:
+            """Delete/revoke a registered passkey."""
+            denied = self._passkey_disabled_response()
+            if denied is not None:
+                return denied
+
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            deleted = await self.ap.user_service.delete_user_passkey(
+                account_uuid=account.uuid,
+                passkey_uuid=passkey_uuid,
+            )
+            if not deleted:
+                return self.http_status(404, -1, 'Passkey not found')
+            return self.success()
+
+        # ---- TOTP second factor (account settings) ----
+
+        # The second factor belongs to the Account, so these routes are
+        # ACCOUNT_TOKEN scoped. Requiring a Workspace would lock out an Account
+        # that has not been added to one yet.
+        @self.route('/totp/status', methods=['GET'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Report second-factor state without ever returning the secret."""
+            totp_service = self.ap.totp_service
+            credential = await totp_service.get_credential(account.uuid)
+            return self.success(
+                data={
+                    'enabled': bool(credential is not None and credential.confirmed_at is not None),
+                    'pending': bool(credential is not None and credential.confirmed_at is None),
+                    'confirmed_at': (
+                        credential.confirmed_at.isoformat() if credential and credential.confirmed_at else None
+                    ),
+                    'last_used_at': (
+                        credential.last_used_at.isoformat() if credential and credential.last_used_at else None
+                    ),
+                    'recovery_codes_remaining': (
+                        await totp_service.count_unused_recovery_codes(account.uuid) if credential else 0
+                    ),
+                }
+            )
+
+        @self.route('/totp/enroll', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Start TOTP enrolment; returns a server-rendered QR code only.
+
+            The shared secret is intentionally never returned to the client so it
+            cannot be read out of the browser or any proxy in between.
+            """
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = (await quart.request.json) or {}
+            # rotate=True (explicit refresh) mints a new secret; the default
+            # reuses any pending enrolment so duplicate requests cannot
+            # invalidate the QR code already displayed to the operator.
+            rotate = bool(json_data.get('rotate', False))
+
+            try:
+                enrollment = await self.ap.totp_service.begin_enrollment(account.uuid, account.user, rotate=rotate)
+            except totp_module.TotpError as e:
+                return self.http_status(409, e.code, str(e))
+
+            return self.success(
+                data={
+                    'uuid': enrollment.uuid,
+                    'qr_code_data_url': enrollment.qr_code_data_url,
+                    'algorithm': enrollment.algorithm,
+                    'digits': enrollment.digits,
+                    'period': enrollment.period,
+                }
+            )
+
+        @self.route('/totp/enroll/confirm', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Confirm enrolment with the first code; returns recovery codes once."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = (await quart.request.json) or {}
+            code = json_data.get('code')
+            if not isinstance(code, str) or not code:
+                return self.fail(1, 'Missing code parameter')
+
+            try:
+                result = await self.ap.totp_service.confirm_enrollment(account.uuid, code)
+            except totp_module.TotpNotEnrolledError as e:
+                return self.http_status(404, e.code, str(e))
+            except totp_module.TotpInvalidCodeError as e:
+                return self.http_status(400, e.code, str(e))
+            except totp_module.TotpError as e:
+                return self.http_status(409, e.code, str(e))
+
+            return self.success(data={'recovery_codes': result.codes})
+
+        @self.route('/totp/recovery-codes', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Regenerate recovery codes after a valid TOTP or recovery code."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = (await quart.request.json) or {}
+            code = json_data.get('code')
+            if not isinstance(code, str) or not code:
+                return self.fail(1, 'Missing code parameter')
+
+            try:
+                result = await self.ap.totp_service.regenerate_recovery_codes(account.uuid, code)
+            except totp_module.TotpNotEnrolledError as e:
+                return self.http_status(404, e.code, str(e))
+            except totp_module.TotpInvalidCodeError as e:
+                return self.http_status(403, e.code, str(e))
+
+            return self.success(data={'recovery_codes': result.codes})
+
+        @self.route('/totp/disable', methods=['POST'], auth_type=group.AuthType.ACCOUNT_TOKEN)
+        async def _(account) -> str:
+            """Disable TOTP, requiring a live TOTP or recovery code."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            json_data = (await quart.request.json) or {}
+            code = json_data.get('code')
+
+            try:
+                await self.ap.totp_service.disable(account.uuid, code=code)
+            except totp_module.TotpNotEnrolledError as e:
+                return self.http_status(404, e.code, str(e))
+            except totp_module.TotpInvalidCodeError as e:
+                return self.http_status(403, e.code, str(e))
+
+            return self.success()
+
+        # ---- TOTP oversight for owners and admins ----
+
+        async def _require_workspace_manager(request_context: RequestContext) -> None:
+            """Raise unless the caller's Workspace role is owner or admin."""
+
+            if request_context is None:
+                raise PermissionError('A Workspace context is required')
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                request_context.account_uuid,
+                request_context.workspace_uuid,
+            )
+            if access.membership.role not in ('owner', 'admin'):
+                raise PermissionError('Only Workspace owners and admins may manage other Accounts')
+
+        async def _require_target_in_workspace(
+            request_context: RequestContext,
+            target_account_uuid: str,
+        ) -> bool:
+            """Report whether the target Account belongs to the caller's Workspace.
+
+            A cross-Workspace Account is reported as absent, so the response never
+            confirms another tenant's Account existence.
+            """
+
+            try:
+                await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                    target_account_uuid,
+                    request_context.workspace_uuid,
+                )
+            except Exception:
+                return False
+            return True
+
+        @self.route('/totp/accounts', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(request_context: RequestContext) -> str:
+            """List the second-factor state of the caller's Workspace Accounts.
+
+            Oversight is a Workspace responsibility: owners and admins answer for
+            the Accounts that belong to their own Workspace and must never see
+            another tenant's Accounts.
+            """
+            try:
+                access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                    request_context.account_uuid,
+                    request_context.workspace_uuid,
+                )
+                if access.membership.role not in ('owner', 'admin'):
+                    raise PermissionError('Only Workspace owners and admins may manage other Accounts')
+                members = await self.ap.workspace_collaboration_service.list_members(
+                    request_context.workspace_uuid,
+                    access.membership,
+                )
+            except PermissionError as e:
+                return self.http_status(403, 'permission_denied', str(e))
+            except Exception:
+                return self.http_status(403, 'permission_denied', 'Not permitted')
+
+            accounts = await self.ap.totp_service.list_account_states(
+                account_uuids=[member.membership.account_uuid for member in members],
+            )
+            return self.success(data={'accounts': accounts})
+
+        @self.route('/totp/accounts/<target_account_uuid>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
+        async def _(request_context: RequestContext, target_account_uuid: str) -> str:
+            """Revoke another Account's second factor when its codes are lost."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            try:
+                await _require_workspace_manager(request_context)
+            except PermissionError as e:
+                return self.http_status(403, 'permission_denied', str(e))
+            except Exception:
+                return self.http_status(403, 'permission_denied', 'Not permitted')
+
+            if not await _require_target_in_workspace(request_context, target_account_uuid):
+                return self.http_status(404, 'account_not_found', 'Account not found')
+
+            revoked = await self.ap.totp_service.revoke_for_account(target_account_uuid)
+            if not revoked:
+                return self.http_status(404, 'totp_not_enrolled', 'TOTP is not enabled for that Account')
+            return self.success()
+
+        @self.route(
+            '/totp/accounts/<target_account_uuid>/enroll',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+        )
+        async def _(request_context: RequestContext, target_account_uuid: str) -> str:
+            """Start a forced re-binding of another Account's second factor.
+
+            Returns a server-rendered QR code so an owner/admin can walk the
+            Account through binding a new authenticator. The shared secret is
+            never returned to the client.
+            """
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            try:
+                await _require_workspace_manager(request_context)
+            except PermissionError as e:
+                return self.http_status(403, 'permission_denied', str(e))
+            except Exception:
+                return self.http_status(403, 'permission_denied', 'Not permitted')
+
+            if not await _require_target_in_workspace(request_context, target_account_uuid):
+                return self.http_status(404, 'account_not_found', 'Account not found')
+
+            target = await self.ap.totp_service.get_account(target_account_uuid)
+            if target is None:
+                return self.http_status(404, 'account_not_found', 'Account not found')
+
+            try:
+                enrollment = await self.ap.totp_service.begin_enrollment(target_account_uuid, target.user, force=True)
+            except totp_module.TotpError as e:
+                return self.http_status(409, e.code, str(e))
+
+            return self.success(
+                data={
+                    'uuid': enrollment.uuid,
+                    'qr_code_data_url': enrollment.qr_code_data_url,
+                    'algorithm': enrollment.algorithm,
+                    'digits': enrollment.digits,
+                    'period': enrollment.period,
+                }
+            )
+
+        @self.route(
+            '/totp/accounts/<target_account_uuid>/enroll/confirm',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+        )
+        async def _(request_context: RequestContext, target_account_uuid: str) -> str:
+            """Activate a forced re-binding with the first code; returns recovery codes once."""
+            allow_modify_login_info = self.ap.instance_config.data.get('system', {}).get(
+                'allow_modify_login_info', True
+            )
+            if not allow_modify_login_info:
+                return self.http_status(403, -1, 'Modifying login info is disabled')
+
+            try:
+                await _require_workspace_manager(request_context)
+            except PermissionError as e:
+                return self.http_status(403, 'permission_denied', str(e))
+            except Exception:
+                return self.http_status(403, 'permission_denied', 'Not permitted')
+
+            json_data = (await quart.request.json) or {}
+            code = json_data.get('code')
+            if not isinstance(code, str) or not code:
+                return self.fail(1, 'Missing code parameter')
+
+            if not await _require_target_in_workspace(request_context, target_account_uuid):
+                return self.http_status(404, 'account_not_found', 'Account not found')
+
+            try:
+                result = await self.ap.totp_service.confirm_enrollment(target_account_uuid, code)
+            except totp_module.TotpNotEnrolledError as e:
+                return self.http_status(404, e.code, str(e))
+            except totp_module.TotpInvalidCodeError as e:
+                return self.http_status(400, e.code, str(e))
+            except totp_module.TotpError as e:
+                return self.http_status(409, e.code, str(e))
+
+            return self.success(data={'recovery_codes': result.codes})
+
+    async def _handle_space_direct_launch(
+        self,
+        launch_assertion: str,
+        workspace_uuid: str | None,
+    ) -> str:
+        try:
+            launch = await self.ap.space_launch_service.consume_assertion(
+                launch_assertion,
+                expected_workspace_uuid=workspace_uuid,
+            )
+            if launch.get('launch_mode') == 'support_admin':
+                token = launch.get('support_admin_token')
+                if not token:
+                    raise SpaceLaunchError('Support admin launch session was not issued')
+                return self.success(
+                    data={
+                        'token': token,
+                        'workspace_uuid': launch['workspace_uuid'],
+                        'principal_type': 'support_admin',
+                        'actor_account_uuid': launch['actor_account_uuid'],
+                    }
+                )
+
+            projection_service = self.ap.directory_projection_service
+            if projection_service is None:
+                raise SpaceLaunchError('Cloud directory projection is unavailable')
+            await projection_service.reconcile_workspaces((launch['workspace_uuid'],))
+            account = await self.ap.user_service.get_user_by_uuid(launch['account_uuid'])
+            if account is None:
+                raise SpaceLaunchError('Launch Account is not projected into Core')
+            self.ap.user_service._require_active_account(account)
+            access = await self.ap.workspace_collaboration_service.resolve_account_workspace(
+                account.uuid,
+                launch['workspace_uuid'],
+            )
+            token = await self.ap.user_service.generate_jwt_token(account)
+            return self.success(
+                data={
+                    'token': token,
+                    'user': account.user,
+                    'workspace_uuid': access.workspace.uuid,
+                }
+            )
+        except SpaceLaunchError:
+            self.ap.logger.warning('Rejected Space direct-launch assertion')
+            return self.fail(1, 'Space launch failed')
+        except Exception:
+            self.ap.logger.exception('Space direct launch failed')
+            return self.fail(1, 'Space launch failed')

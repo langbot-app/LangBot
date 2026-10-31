@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: ScheNotify
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/ScheNotify
+  version: 0.2.6
+  description:
+    en_US: Schedule notifications with natural language. LLM can help you set 
+      reminders at specific times.
+    zh_Hans: 使用自然语言计划日程。LLM 可以帮助你在特定时间设置提醒。
+    zh_Hant: 定時通知插件，支援設定定時任務，在指定時間發送通知訊息。
+    ja_JP: スケジュール通知プラグイン。定期タスクを設定し、指定時刻に通知メッセージを送信します。
+    vi_VN: Plugin thông báo theo lịch, hỗ trợ thiết lập tác vụ định kỳ và gửi 
+      thông báo vào thời gian chỉ định.
+    th_TH: ปลั๊กอินแจ้งเตือนตามกำหนดเวลา 
+      รองรับการตั้งงานตามเวลาและส่งข้อความแจ้งเตือนตามเวลาที่กำหนด
+    es_ES: Plugin de notificaciones programadas que permite configurar tareas 
+      periódicas y enviar mensajes de notificación en horarios específicos.
+  label:
+    en_US: ScheNotify
+    zh_Hans: 日程提醒
+    zh_Hant: ScheNotify
+    ja_JP: ScheNotify
+    vi_VN: ScheNotify
+    th_TH: ScheNotify
+    es_ES: ScheNotify
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: language
+    type: select
+    label:
+      en_US: Language
+      zh_Hans: 语言
+    description:
+      en_US: Language for notification messages
+      zh_Hans: 通知消息的语言
+    required: false
+    default: zh_Hans
+    options:
+    - label:
+        en_US: English
+        zh_Hans: 英语
+      name: en_US
+    - label:
+        en_US: Chinese (Simplified)
+        zh_Hans: 简体中文
+      name: zh_Hans
+  components:
+    Command:
+      fromDirs:
+      - path: components/commands/
+    Tool:
+      fromDirs:
+      - path: components/tools/
+execution:
+  python:
+    path: main.py
+    attr: ScheNotify
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

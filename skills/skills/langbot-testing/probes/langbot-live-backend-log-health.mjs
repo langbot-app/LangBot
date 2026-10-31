@@ -139,10 +139,15 @@ async function main() {
     const text = await readFile(logPath, "utf8");
     scan = scanLines(text, since, startedAt.getFullYear());
     const failCount = scan.findings.filter((item) => item.severity === "fail").length;
-    status = failCount === 0 ? "pass" : "fail";
-    reason = status === "pass"
-      ? "Live backend log health passed; no fail-severity findings in the scanned window."
-      : "Live backend log health found fail-severity backend log findings.";
+    if (scan.scanned.length === 0) {
+      status = "env_issue";
+      reason = "Backend log health had no timestamped lines in the selected window; no health verdict is possible.";
+    } else {
+      status = failCount === 0 ? "pass" : "fail";
+      reason = status === "pass"
+        ? "Live backend log health passed; no fail-severity findings in the scanned window."
+        : "Live backend log health found fail-severity backend log findings.";
+    }
   }
 
   const warningCount = scan.findings.filter((item) => item.severity === "warning").length;
@@ -158,6 +163,11 @@ async function main() {
     finding_count: scan.findings.length,
   };
   const thresholds = {
+    scanned_line_count_min: {
+      actual: scan.scanned.length,
+      min: 1,
+      pass: scan.scanned.length >= 1,
+    },
     fail_count: { actual: failCount, max: 0, pass: failCount === 0 },
   };
 

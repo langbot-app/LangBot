@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
 import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { env } from "node:process";
 import {
   createBrowser,
+  ensureBrowserWorkspace,
   ensureEvidence,
   evidencePaths,
   exitCode,
@@ -46,6 +47,8 @@ const startupTimeoutSec = Number(env.LANGBOT_MCP_STARTUP_TIMEOUT_SEC || "300");
 const readyTimeoutMs = Number(env.LANGBOT_MCP_READY_TIMEOUT_MS || "360000");
 const backendUrl = env.LANGBOT_BACKEND_URL || "";
 const apiDiagnosticPath = resolve(paths.evidenceDir, "api-diagnostic.json");
+const envLocalPath = resolve("skills/.env.local");
+const serverUuidEnvKey = env.LANGBOT_MCP_SERVER_UUID_ENV_KEY || "LANGBOT_MCP_QA_STDIO_SERVER_UUID";
 
 let browser;
 const result = {
@@ -69,7 +72,8 @@ const result = {
     automation_result_json: paths.automationResultJson,
     result_json: paths.resultJson,
   },
-  evidence_collected: ["api_diagnostic"],
+  evidence_collected: ["screenshot", "console", "network", "api_diagnostic"],
+  wrote_env: false,
 };
 
 async function run() {
@@ -88,6 +92,12 @@ async function run() {
   const { page } = browser;
   await page.goto(env.LANGBOT_FRONTEND_URL, { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle", { timeout: 10_000 }).catch(() => {});
+  const workspace = await ensureBrowserWorkspace(page, backendUrl);
+  if (workspace.status !== "pass") {
+    result.status = workspace.status;
+    result.reason = workspace.reason;
+    return;
+  }
 
   const diagnostic = await page.evaluate(async ({
     backendUrl,
@@ -98,6 +108,7 @@ async function run() {
     fixtureArgs,
     startupTimeoutSec,
     readyTimeoutMs,
+    workspaceUuid,
   }) => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -117,6 +128,7 @@ async function run() {
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      "X-Workspace-Id": workspaceUuid,
     };
     const serverConfig = {
       name: serverName,
@@ -159,6 +171,7 @@ async function run() {
     const deadline = Date.now() + readyTimeoutMs;
     let lastTools = [];
     let lastRuntime = null;
+    let lastServer = null;
     while (Date.now() < deadline) {
       await new Promise((resolveReady) => setTimeout(resolveReady, 500));
       const tools = await getJson("/api/v1/tools");
@@ -167,7 +180,8 @@ async function run() {
         .map((tool) => tool.name || tool.tool_name || tool.function?.name || "")
         .filter(Boolean)
         .sort();
-      lastRuntime = server.json.data?.server?.runtime_info || null;
+      lastServer = server.json.data?.server || null;
+      lastRuntime = lastServer?.runtime_info || null;
       if (lastTools.includes(expectedTool)) break;
     }
 
@@ -177,6 +191,7 @@ async function run() {
       save_status: save.status,
       save_code: save.json.code ?? null,
       save_msg: save.json.msg || "",
+      server_uuid: lastServer?.uuid || save.json.data?.uuid || "",
       tool_names: lastTools,
       has_expected_tool: lastTools.includes(expectedTool),
       runtime_status: lastRuntime?.status || null,
@@ -187,7 +202,17 @@ async function run() {
       runtime_tool_count: lastRuntime?.tool_count ?? null,
       runtime_error: lastRuntime?.error_message || "",
     };
-  }, { backendUrl, serverName, expectedTool, fixturePath, fixtureCommand, fixtureArgs, startupTimeoutSec, readyTimeoutMs });
+  }, {
+    backendUrl,
+    serverName,
+    expectedTool,
+    fixturePath,
+    fixtureCommand,
+    fixtureArgs,
+    startupTimeoutSec,
+    readyTimeoutMs,
+    workspaceUuid: workspace.workspace_uuid,
+  });
 
   await writeFile(apiDiagnosticPath, `${JSON.stringify(diagnostic, null, 2)}\n`, "utf8");
   await safeScreenshot(page, paths.screenshot);
@@ -212,9 +237,45 @@ async function run() {
     result.reason = `MCP server ${serverName} did not expose ${expectedTool}. See ${apiDiagnosticPath}.`;
     return;
   }
+  if (!diagnostic.server_uuid) {
+    result.status = "fail";
+    result.reason = `MCP server ${serverName} exposed ${expectedTool}, but the server UUID was not returned. See ${apiDiagnosticPath}.`;
+    return;
+  }
+
+  await upsertEnvLocal(envLocalPath, {
+    [serverUuidEnvKey]: diagnostic.server_uuid,
+  });
+  result.wrote_env = true;
+  result.server_uuid = diagnostic.server_uuid;
+  result.server_uuid_env_key = serverUuidEnvKey;
 
   result.status = "pass";
   result.reason = `MCP server ${serverName} is connected and exposes ${expectedTool} through LangBot /api/v1/tools.`;
+}
+
+async function upsertEnvLocal(path, updates) {
+  let text = "";
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    text = "";
+  }
+
+  const lines = text ? text.split(/\r?\n/) : [];
+  const seen = new Set();
+  const updated = lines.map((line) => {
+    const match = line.match(/^([A-Z][A-Z0-9_]*)=/);
+    if (!match || !Object.prototype.hasOwnProperty.call(updates, match[1])) return line;
+    seen.add(match[1]);
+    return `${match[1]}=${updates[match[1]]}`;
+  });
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!seen.has(key)) updated.push(`${key}=${value}`);
+  }
+
+  await writeFile(path, `${updated.filter((line, index) => line || index < updated.length - 1).join("\n")}\n`, "utf8");
 }
 
 try {

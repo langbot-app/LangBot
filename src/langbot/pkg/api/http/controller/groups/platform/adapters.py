@@ -1,19 +1,291 @@
-import quart
-import mimetypes
+from langbot.pkg.i18n import t, DEFAULT_LANGUAGE
+from langbot.pkg.i18n.workspace import get_workspace_language
 import asyncio
+import dataclasses
+import mimetypes
+
+import quart
+
+from langbot.pkg.api.http.authz import Permission
+from langbot.pkg.api.http.context import RequestContext
+from langbot.pkg.cloud.plan_policy import workspace_entitlement, platform_feature_names, require_workspace_platform
+from langbot.pkg.core.errors import TaskCapacityError
+from langbot.pkg.utils import httpclient, importutil
+
 from ... import group
-from langbot.pkg.utils import importutil
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _AdapterSessionScope:
+    """Immutable tenant and principal binding for a credential exchange."""
+
+    instance_uuid: str
+    workspace_uuid: str
+    placement_generation: int
+    principal_type: str
+    account_uuid: str | None
+    api_key_uuid: str | None
+    support_session_id: str | None
+
+    @classmethod
+    def from_request_context(cls, request_context: RequestContext) -> '_AdapterSessionScope':
+        principal = request_context.principal
+        return cls(
+            instance_uuid=request_context.instance_uuid,
+            workspace_uuid=request_context.workspace_uuid,
+            placement_generation=request_context.placement_generation,
+            principal_type=principal.principal_type.value,
+            account_uuid=principal.account_uuid,
+            api_key_uuid=principal.api_key_uuid,
+            support_session_id=principal.support_session_id,
+        )
+
+    def matches(self, request_context: RequestContext) -> bool:
+        """Return whether a request is from the exact initiating tenant principal."""
+
+        return self == self.from_request_context(request_context)
+
+
+def _bind_session_scope(session: dict, request_context: RequestContext) -> None:
+    session['scope'] = _AdapterSessionScope.from_request_context(request_context)
+
+
+def _get_owned_session(
+    sessions: dict[str, dict],
+    session_id: str,
+    request_context: RequestContext,
+) -> dict | None:
+    """Resolve a session without revealing sessions owned by another scope."""
+
+    session = sessions.get(session_id)
+    scope = session.get('scope') if session is not None else None
+    if not isinstance(scope, _AdapterSessionScope) or not scope.matches(request_context):
+        return None
+    return session
+
+
+def _pop_owned_session(
+    sessions: dict[str, dict],
+    session_id: str,
+    request_context: RequestContext,
+) -> dict | None:
+    """Remove an owned session without allowing cross-scope cancellation."""
+
+    session = _get_owned_session(sessions, session_id, request_context)
+    if session is None:
+        return None
+    return sessions.pop(session_id, None)
+
+
+_MAX_ADAPTER_SESSIONS = 100
+# How often the credential-session sweeper enforces its TTL, independent of traffic.
+_CREDENTIAL_SWEEP_INTERVAL_SECONDS = 60
+_MAX_ADAPTER_SESSIONS_PER_WORKSPACE = 10
+
+
+def _scrub_credential_fields(session: dict) -> None:
+    """Overwrite credential fields before a session dict is dropped."""
+    for key in ('app_secret', 'client_secret', 'secret'):
+        if key in session:
+            session[key] = None
+
+
+def _sweep_credential_sessions(stores: 'list[tuple[dict, float]]') -> int:
+    """Evict sessions past their TTL and scrub the secrets they held.
+
+    Returns the number of evicted sessions. Each entry is ``(store, ttl)``; a
+    session is evicted when ``now - created_at > ttl``.
+    """
+    import time
+
+    now = time.time()
+    evicted = 0
+    for store, ttl in stores:
+        expired = [sid for sid, session in store.items() if now - session.get('created_at', 0) > ttl]
+        for sid in expired:
+            session = store.pop(sid, None)
+            if not session:
+                continue
+            task = session.get('task')
+            if task is not None and not task.done():
+                task.cancel()
+            _scrub_credential_fields(session)
+            evicted += 1
+    return evicted
+
+
+def _start_adapter_session_task(
+    ap,
+    coro,
+    *,
+    adapter: str,
+    session_id: str,
+    request_context: RequestContext,
+) -> asyncio.Task | None:
+    """Attach one credential exchange to tenant admission and app shutdown."""
+
+    try:
+        wrapper = ap.task_mgr.create_user_task(
+            coro,
+            kind='platform-adapter-credential-exchange',
+            name=f'{adapter}-credential-{session_id}',
+            label=f'{adapter} credential exchange',
+            instance_uuid=request_context.instance_uuid,
+            workspace_uuid=request_context.workspace_uuid,
+            placement_generation=request_context.placement_generation,
+        )
+    except TaskCapacityError:
+        coro.close()
+        return None
+    return wrapper.task
+
+
+def _make_room_for_session(
+    sessions: dict[str, dict],
+    request_context: RequestContext,
+) -> None:
+    """Bound credential-exchange sessions globally and per workspace."""
+
+    workspace_uuid = request_context.workspace_uuid
+    owned = [
+        (session_id, session)
+        for session_id, session in sessions.items()
+        if getattr(session.get('scope'), 'workspace_uuid', None) == workspace_uuid
+    ]
+    evict_workspace_session = len(owned) >= _MAX_ADAPTER_SESSIONS_PER_WORKSPACE
+    evict_global_session = len(sessions) >= _MAX_ADAPTER_SESSIONS
+    if not evict_workspace_session and not evict_global_session:
+        return
+
+    candidates = owned if evict_workspace_session else list(sessions.items())
+    session_id, _ = min(
+        candidates,
+        key=lambda item: float(item[1].get('created_at', 0.0)),
+    )
+    session = sessions.pop(session_id, None)
+    task = session.get('task') if session is not None else None
+    if task is not None and not task.done():
+        task.cancel()
+
+
+def _decrypt_qqofficial_secret(encrypted_b64: str, key: bytes) -> str:
+    """Decrypt the AppSecret returned by the QQ Official QR binding endpoint.
+
+    The base64 payload is laid out as `nonce (12 B) | ciphertext | tag (16 B)`.
+    `key` is the 32-byte AES-256 key locally generated when the bind task
+    was created and submitted as `key` to `q.qq.com/lite/create_bind_task`.
+    """
+    import base64
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    try:
+        raw = base64.b64decode(encrypted_b64)
+    except Exception as exc:
+        raise ValueError('Malformed encrypted credential') from exc
+    if len(key) != 32 or len(raw) <= 28:
+        raise ValueError('Invalid encrypted credential layout')
+    nonce, ciphertext, tag = raw[:12], raw[12:-16], raw[-16:]
+    try:
+        return AESGCM(key).decrypt(nonce, ciphertext + tag, None).decode('utf-8')
+    except Exception as exc:
+        raise ValueError('Failed to decrypt credential') from exc
 
 
 @group.group_class('adapters', '/api/v1/platform/adapters')
 class AdaptersRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
+        from ....service.slack_setup import get_slack_setup, SlackSetupError
+
+        slack_setup = get_slack_setup(self.ap)
+
+        @self.route(
+            '/slack/setup',
+            methods=['POST'],
+            permission=Permission.RESOURCE_MANAGE,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def slack_start(request_context: RequestContext):
+            data = await quart.request.get_json()
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid_input')
+            try:
+                result = await slack_setup.start(
+                    request_context,
+                    **{
+                        key: data[key]
+                        for key in (
+                            'bot_uuid',
+                            'access_token',
+                            'refresh_token',
+                            'webhook_url',
+                            'name',
+                            'socket_mode',
+                            'redirect_url',
+                        )
+                        if key in data
+                    },
+                )
+                return self.success(data=result)
+            except (SlackSetupError, TypeError) as exc:
+                return self.http_status(400, -1, str(exc) if isinstance(exc, SlackSetupError) else 'invalid_input')
+
+        @self.route(
+            '/slack/setup/<session_id>',
+            methods=['GET', 'DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+        )
+        async def slack_status(session_id: str, request_context: RequestContext):
+            try:
+                slack_setup.owned(request_context, session_id)
+                if quart.request.method == 'DELETE':
+                    slack_setup.discard(session_id)
+                    return self.success(data={})
+                response = await quart.make_response(self.success(data=slack_setup.status(request_context, session_id)))
+                response.headers['Cache-Control'] = 'no-store'
+                return response
+            except SlackSetupError:
+                return self.http_status(404, -1, 'session_not_found')
+
+        @self.route('/slack/setup/callback', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def slack_callback():
+            session = slack_setup.sessions.get(quart.request.args.get('state', ''))
+            locale = DEFAULT_LANGUAGE
+            if session is not None:
+                locale = await get_workspace_language(self.ap, session['context'].workspace_uuid)
+            try:
+                await slack_setup.finish(
+                    quart.request.args.get('state', ''),
+                    quart.request.args.get('code', ''),
+                    quart.request.args.get('error'),
+                )
+                message = t('Slack authorization completed. Return to LangBot to finish setup.', locale=locale)
+                status = 200
+            except SlackSetupError:
+                message = t('Slack authorization failed or expired. Return to LangBot for details.', locale=locale)
+                status = 400
+            return quart.Response(
+                message,
+                status=status,
+                content_type='text/plain; charset=utf-8',
+                headers={'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer'},
+            )
+
         @self.route('', methods=['GET'])
-        async def _() -> str:
-            return self.success(data={'adapters': self.ap.platform_mgr.get_available_adapters_info()})
+        async def _(request_context: RequestContext) -> str:
+            snapshot = await workspace_entitlement(self.ap, request_context.workspace_uuid)
+            adapters = self.ap.platform_mgr.get_available_adapters_info()
+            if snapshot is not None:
+                adapters = [
+                    a
+                    for a in adapters
+                    if not any(snapshot.features.get(f) is False for f in platform_feature_names(a['name']))
+                ]
+            return self.success(data={'adapters': adapters})
 
         @self.route('/<adapter_name>', methods=['GET'])
-        async def _(adapter_name: str) -> str:
+        async def _(adapter_name: str, request_context: RequestContext) -> str:
+            await require_workspace_platform(self.ap, request_context.workspace_uuid, adapter_name)
             adapter_info = self.ap.platform_mgr.get_available_adapter_info_by_name(adapter_name)
 
             if adapter_info is None:
@@ -37,6 +309,24 @@ class AdaptersRouterGroup(group.RouterGroup):
                 importutil.read_resource_file_bytes(icon_path), mimetype=mimetypes.guess_type(icon_path)[0]
             )
 
+        @self.route('/dingtalk/stream-card-template', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _() -> quart.Response:
+            filename = 'dingtalk_stream_card.json'
+            response = quart.Response(
+                importutil.read_resource_file_bytes(f'templates/{filename}'), mimetype='application/json'
+            )
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+
+        @self.route('/dingtalk/human-input-card-template', methods=['GET'], auth_type=group.AuthType.NONE)
+        async def _() -> quart.Response:
+            filename = 'dingtalk_human_input_card.json'
+            response = quart.Response(
+                importutil.read_resource_file_bytes(f'templates/{filename}'), mimetype='application/json'
+            )
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+
         # In-memory session store for active registrations
         _create_app_sessions: dict = {}
         _SESSION_TTL = 900  # 15 minutes
@@ -52,8 +342,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/lark/create-app', methods=['POST'])
-        async def _() -> str:
+        @self.route('/lark/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start Feishu one-click app registration. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -74,6 +364,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'error': None,
                 'created_at': time.time(),
             }
+            _bind_session_scope(session, request_context)
+            _make_room_for_session(_create_app_sessions, request_context)
             _create_app_sessions[session_id] = session
 
             def on_qr_code(info):
@@ -105,7 +397,16 @@ class AdaptersRouterGroup(group.RouterGroup):
                     session['status'] = 'error'
                     session['error'] = str(e)
 
-            task = asyncio.create_task(run_registration())
+            task = _start_adapter_session_task(
+                self.ap,
+                run_registration(),
+                adapter='lark',
+                session_id=session_id,
+                request_context=request_context,
+            )
+            if task is None:
+                _create_app_sessions.pop(session_id, None)
+                return self.http_status(429, -1, 'Too many active credential exchanges')
             session['task'] = task
 
             # Wait for QR code to be ready (max 10 seconds)
@@ -128,10 +429,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/lark/create-app/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/lark/create-app/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll registration status."""
-            session = _create_app_sessions.get(session_id)
+            _cleanup_expired_sessions()
+            session = _get_owned_session(_create_app_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -147,10 +453,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/lark/create-app/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/lark/create-app/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a registration session."""
-            session = _create_app_sessions.pop(session_id, None)
+            session = _pop_owned_session(_create_app_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -174,8 +486,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/weixin/login', methods=['POST'])
-        async def _() -> str:
+        @self.route('/weixin/login', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start WeChat QR code login. Returns session_id + QR code data URL."""
             import uuid
             import time
@@ -197,6 +509,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'error': None,
                 'created_at': time.time(),
             }
+            _bind_session_scope(session, request_context)
+            _make_room_for_session(_weixin_login_sessions, request_context)
             _weixin_login_sessions[session_id] = session
 
             client = OpenClawWeixinClient(
@@ -235,7 +549,16 @@ class AdaptersRouterGroup(group.RouterGroup):
                 finally:
                     await client.close()
 
-            task = asyncio.create_task(run_login())
+            task = _start_adapter_session_task(
+                self.ap,
+                run_login(),
+                adapter='weixin',
+                session_id=session_id,
+                request_context=request_context,
+            )
+            if task is None:
+                _weixin_login_sessions.pop(session_id, None)
+                return self.http_status(429, -1, 'Too many active credential exchanges')
             session['task'] = task
 
             # Wait for QR code to be ready (max 10 seconds)
@@ -258,10 +581,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/weixin/login/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/weixin/login/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll WeChat login status."""
-            session = _weixin_login_sessions.get(session_id)
+            _cleanup_expired_weixin_sessions()
+            session = _get_owned_session(_weixin_login_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -285,10 +613,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/weixin/login/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/weixin/login/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a WeChat login session."""
-            session = _weixin_login_sessions.pop(session_id, None)
+            session = _pop_owned_session(_weixin_login_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -312,8 +646,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/dingtalk/create-app', methods=['POST'])
-        async def _() -> str:
+        @self.route('/dingtalk/create-app', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start DingTalk one-click app creation via Device Flow. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -336,6 +670,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'device_code': None,
                 'interval': 5,
             }
+            _bind_session_scope(session, request_context)
+            _make_room_for_session(_dingtalk_sessions, request_context)
             _dingtalk_sessions[session_id] = session
 
             async def run_device_flow():
@@ -348,7 +684,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                             json={'source': 'langbot'},
                         ) as resp:
                             try:
-                                data = await resp.json()
+                                data = await httpclient.read_json_limited(resp)
                             except (aiohttp.ContentTypeError, ValueError):
                                 session['status'] = 'error'
                                 session['error'] = 'Invalid response from DingTalk service'
@@ -365,7 +701,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                             json={'nonce': nonce},
                         ) as resp:
                             try:
-                                data = await resp.json()
+                                data = await httpclient.read_json_limited(resp)
                             except (aiohttp.ContentTypeError, ValueError):
                                 session['status'] = 'error'
                                 session['error'] = 'Invalid response from DingTalk service'
@@ -396,7 +732,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                                 json={'device_code': device_code},
                             ) as poll_resp:
                                 try:
-                                    poll_data = await poll_resp.json()
+                                    poll_data = await httpclient.read_json_limited(poll_resp)
                                 except (aiohttp.ContentTypeError, ValueError):
                                     continue
 
@@ -432,7 +768,16 @@ class AdaptersRouterGroup(group.RouterGroup):
                     session['status'] = 'error'
                     session['error'] = str(e)
 
-            task = asyncio.create_task(run_device_flow())
+            task = _start_adapter_session_task(
+                self.ap,
+                run_device_flow(),
+                adapter='dingtalk',
+                session_id=session_id,
+                request_context=request_context,
+            )
+            if task is None:
+                _dingtalk_sessions.pop(session_id, None)
+                return self.http_status(429, -1, 'Too many active credential exchanges')
             session['task'] = task
 
             # Wait for QR code to be ready (max 10 seconds)
@@ -459,11 +804,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/dingtalk/create-app/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/dingtalk/create-app/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll DingTalk Device Flow status."""
             _cleanup_expired_dingtalk_sessions()
-            session = _dingtalk_sessions.get(session_id)
+            session = _get_owned_session(_dingtalk_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -479,10 +828,16 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/dingtalk/create-app/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/dingtalk/create-app/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a DingTalk Device Flow session."""
-            session = _dingtalk_sessions.pop(session_id, None)
+            session = _pop_owned_session(_dingtalk_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
@@ -506,8 +861,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 if session and session.get('task') and not session['task'].done():
                     session['task'].cancel()
 
-        @self.route('/wecombot/create-bot', methods=['POST'])
-        async def _() -> str:
+        @self.route('/wecombot/create-bot', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
             """Start WeComBot one-click creation via QR code. Returns session_id + QR code URL."""
             import uuid
             import time
@@ -531,6 +886,8 @@ class AdaptersRouterGroup(group.RouterGroup):
                 'scode': None,
                 'task': None,
             }
+            _bind_session_scope(session, request_context)
+            _make_room_for_session(_wecombot_sessions, request_context)
             _wecombot_sessions[session_id] = session
 
             async def run_qr_flow():
@@ -542,7 +899,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                             f'{WECOM_QC_GENERATE_URL}?source=langbot&plat=0',
                         ) as resp:
                             try:
-                                data = await resp.json()
+                                data = await httpclient.read_json_limited(resp)
                             except (aiohttp.ContentTypeError, ValueError):
                                 session['status'] = 'error'
                                 session['error'] = 'Invalid response from WeCom service'
@@ -569,7 +926,7 @@ class AdaptersRouterGroup(group.RouterGroup):
                                 f'{WECOM_QC_QUERY_URL}?scode={scode}',
                             ) as poll_resp:
                                 try:
-                                    poll_data = await poll_resp.json()
+                                    poll_data = await httpclient.read_json_limited(poll_resp)
                                 except (aiohttp.ContentTypeError, ValueError):
                                     continue
 
@@ -596,7 +953,16 @@ class AdaptersRouterGroup(group.RouterGroup):
                     session['status'] = 'error'
                     session['error'] = str(e)
 
-            task = asyncio.create_task(run_qr_flow())
+            task = _start_adapter_session_task(
+                self.ap,
+                run_qr_flow(),
+                adapter='wecombot',
+                session_id=session_id,
+                request_context=request_context,
+            )
+            if task is None:
+                _wecombot_sessions.pop(session_id, None)
+                return self.http_status(429, -1, 'Too many active credential exchanges')
             session['task'] = task
 
             # Wait for QR code to be ready (max 10 seconds)
@@ -623,11 +989,15 @@ class AdaptersRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/wecombot/create-bot/status/<session_id>', methods=['GET'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/wecombot/create-bot/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Poll WeComBot creation status."""
             _cleanup_expired_wecombot_sessions()
-            session = _wecombot_sessions.get(session_id)
+            session = _get_owned_session(_wecombot_sessions, session_id, request_context)
             if not session:
                 return self.http_status(404, -1, 'Session not found')
 
@@ -643,10 +1013,295 @@ class AdaptersRouterGroup(group.RouterGroup):
 
             return self.success(data=data)
 
-        @self.route('/wecombot/create-bot/<session_id>', methods=['DELETE'])
-        async def _(session_id: str) -> str:
+        @self.route(
+            '/wecombot/create-bot/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
             """Cancel and clean up a WeComBot creation session."""
-            session = _wecombot_sessions.pop(session_id, None)
+            session = _pop_owned_session(_wecombot_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
             if session and session.get('task') and not session['task'].done():
                 session['task'].cancel()
             return self.success(data={})
+
+        # -----------------------------------------------------------------------
+        # QQ Official QR Binding
+        # -----------------------------------------------------------------------
+
+        _qqofficial_sessions: dict = {}
+        _QQOFFICIAL_SESSION_TTL = 300  # 5 minutes (QQ bind QR validity window)
+
+        def _cleanup_expired_qqofficial_sessions():
+            import time
+
+            now = time.time()
+            expired = [
+                sid for sid, s in _qqofficial_sessions.items() if now - s.get('created_at', 0) > _QQOFFICIAL_SESSION_TTL
+            ]
+            for sid in expired:
+                session = _qqofficial_sessions.pop(sid, None)
+                if session and session.get('task') and not session['task'].done():
+                    session['task'].cancel()
+
+        @self.route('/qqofficial/bind', methods=['POST'], permission=Permission.RESOURCE_MANAGE)
+        async def _(request_context: RequestContext) -> str:
+            """Start QQ Official QR binding. Returns session_id + QR URL.
+
+            Flow: generate a local AES-256 key, register it with
+            `q.qq.com/lite/create_bind_task`, then poll
+            `q.qq.com/lite/poll_bind_result` until the user authorizes the
+            bind inside the QQ Bot Assistant on mobile QQ. The encrypted
+            AppSecret returned by the poll endpoint is decrypted with the
+            same key. The key never leaves this process.
+            """
+            import uuid
+            import time
+            import secrets
+            import base64
+            import aiohttp
+
+            QQ_BIND_BASE = 'https://q.qq.com'
+            _cleanup_expired_qqofficial_sessions()
+
+            bind_key_bytes = secrets.token_bytes(32)
+            bind_key = base64.b64encode(bind_key_bytes).decode('ascii')
+
+            session_id = str(uuid.uuid4())
+            session = {
+                'status': 'pending',
+                'qr_url': None,
+                'expire_at': None,
+                'appid': None,
+                'secret': None,
+                'user_openid': None,
+                'error': None,
+                'created_at': time.time(),
+                'task_id': None,
+                'bind_key_bytes': bind_key_bytes,
+                'interval': 2,
+            }
+            _bind_session_scope(session, request_context)
+            _make_room_for_session(_qqofficial_sessions, request_context)
+            _qqofficial_sessions[session_id] = session
+
+            async def run_qr_binding():
+                try:
+                    timeout = aiohttp.ClientTimeout(total=10)
+                    async with aiohttp.ClientSession(timeout=timeout) as http:
+                        # Step 1: create_bind_task — register our AES key, get task_id
+                        async with http.post(
+                            f'{QQ_BIND_BASE}/lite/create_bind_task',
+                            json={'key': bind_key},
+                            headers={'Accept': 'application/json'},
+                        ) as resp:
+                            try:
+                                data = await httpclient.read_json_limited(resp)
+                            except (aiohttp.ContentTypeError, ValueError):
+                                session['status'] = 'error'
+                                session['error'] = 'Invalid response from QQ bind service'
+                                return
+                            if int(data.get('retcode', -1)) != 0:
+                                session['status'] = 'error'
+                                session['error'] = (
+                                    data.get('msg') or data.get('message') or 'Failed to create bind task'
+                                )
+                                return
+                            task_id = str((data.get('data') or {}).get('task_id') or '').strip()
+                            if not task_id:
+                                session['status'] = 'error'
+                                session['error'] = 'Missing task_id in QQ response'
+                                return
+
+                        # The QR encodes a URL that mobile QQ opens inside the QQ Bot Assistant.
+                        # `source=langbot` is a courtesy attribution parameter so Tencent
+                        # can see LangBot adoption metrics, matching the convention used by
+                        # other third-party integrations (e.g. hermes-agent uses `source=hermes`).
+                        qr_url = f'{QQ_BIND_BASE}/qqbot/openclaw/connect.html?task_id={task_id}&_wv=2&source=langbot'
+                        session['task_id'] = task_id
+                        session['qr_url'] = qr_url
+                        session['expire_at'] = time.time() + _QQOFFICIAL_SESSION_TTL
+                        session['status'] = 'waiting'
+
+                        # Step 2: poll_bind_result until completed (status=2) or expired (3).
+                        deadline = time.time() + _QQOFFICIAL_SESSION_TTL
+                        while time.time() < deadline:
+                            await asyncio.sleep(session['interval'])
+
+                            async with http.post(
+                                f'{QQ_BIND_BASE}/lite/poll_bind_result',
+                                json={'task_id': task_id},
+                                headers={'Accept': 'application/json'},
+                            ) as poll_resp:
+                                try:
+                                    poll_data = await httpclient.read_json_limited(poll_resp)
+                                except (aiohttp.ContentTypeError, ValueError):
+                                    continue
+
+                            if int(poll_data.get('retcode', -1)) != 0:
+                                session['status'] = 'error'
+                                session['error'] = poll_data.get('msg') or poll_data.get('message') or 'Poll failed'
+                                return
+
+                            payload = poll_data.get('data') or {}
+                            try:
+                                raw_status = int(payload.get('status', 0))
+                            except (TypeError, ValueError):
+                                raw_status = 0
+
+                            if raw_status == 2:
+                                appid = str(payload.get('bot_appid') or '').strip()
+                                encrypted = str(payload.get('bot_encrypt_secret') or '').strip()
+                                if not appid or not encrypted:
+                                    session['status'] = 'error'
+                                    session['error'] = 'Incomplete credential payload'
+                                    return
+                                try:
+                                    session['secret'] = _decrypt_qqofficial_secret(
+                                        encrypted,
+                                        bind_key_bytes,
+                                    )
+                                except ValueError as exc:
+                                    session['status'] = 'error'
+                                    session['error'] = str(exc)
+                                    return
+                                session['appid'] = appid
+                                # The scanner's OpenID is returned alongside the credentials —
+                                # surfaced to the dashboard for audit / "bound by" display.
+                                session['user_openid'] = str(payload.get('user_openid') or '').strip() or None
+                                session['status'] = 'success'
+                                return
+
+                            if raw_status == 3:
+                                session['status'] = 'expired'
+                                session['error'] = 'QR code expired'
+                                return
+                            # status 0 / 1: still pending, continue polling
+
+                        session['status'] = 'expired'
+                        session['error'] = 'QR code expired'
+
+                except asyncio.CancelledError:
+                    return
+                except Exception as e:
+                    session['status'] = 'error'
+                    session['error'] = str(e)
+
+            task = _start_adapter_session_task(
+                self.ap,
+                run_qr_binding(),
+                adapter='qqofficial',
+                session_id=session_id,
+                request_context=request_context,
+            )
+            if task is None:
+                _qqofficial_sessions.pop(session_id, None)
+                return self.http_status(429, -1, 'Too many active credential exchanges')
+            session['task'] = task
+
+            # Wait up to 10s for the QR URL to be ready before responding.
+            for _ in range(20):
+                if session['qr_url'] or session['error']:
+                    break
+                await asyncio.sleep(0.5)
+
+            if session['error']:
+                task.cancel()
+                return self.http_status(502, -1, session['error'])
+
+            if not session['qr_url']:
+                task.cancel()
+                session['status'] = 'error'
+                session['error'] = 'Timeout waiting for QR code'
+                return self.http_status(504, -1, 'Timeout waiting for QR code')
+
+            return self.success(
+                data={
+                    'session_id': session_id,
+                    'qr_url': session['qr_url'],
+                    'expire_at': session['expire_at'],
+                }
+            )
+
+        @self.route(
+            '/qqofficial/bind/status/<session_id>',
+            methods=['GET'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
+            """Poll QQ Official QR binding status."""
+            _cleanup_expired_qqofficial_sessions()
+            session = _get_owned_session(_qqofficial_sessions, session_id, request_context)
+            if not session:
+                return self.http_status(404, -1, 'Session not found')
+
+            data = {'status': session['status']}
+
+            if session['status'] == 'success':
+                data['appid'] = session['appid']
+                data['secret'] = session['secret']
+                if session.get('user_openid'):
+                    data['user_openid'] = session['user_openid']
+                _qqofficial_sessions.pop(session_id, None)
+            elif session['status'] in ('error', 'expired'):
+                data['error'] = session['error']
+                _qqofficial_sessions.pop(session_id, None)
+
+            return self.success(data=data)
+
+        @self.route(
+            '/qqofficial/bind/<session_id>',
+            methods=['DELETE'],
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(session_id: str, request_context: RequestContext) -> str:
+            """Cancel and clean up a QQ Official QR binding session."""
+            session = _pop_owned_session(_qqofficial_sessions, session_id, request_context)
+            if session is None:
+                return self.http_status(404, -1, 'Session not found')
+            if session and session.get('task') and not session['task'].done():
+                session['task'].cancel()
+            return self.success(data={})
+
+        # ---- credential-session TTL enforcement ----
+        #
+        # Every store above holds a short-lived secret (app_secret,
+        # client_secret, bot secret) between the platform handshake and the
+        # caller persisting it. The per-route cleanups only run when another
+        # request arrives, so an abandoned flow would keep its secret in memory
+        # long past its validity window. This sweeper enforces the TTL on a
+        # timer instead, and scrubs the secret fields as it evicts.
+
+        def _credential_stores() -> list[tuple[dict, float]]:
+            return [
+                (_create_app_sessions, _SESSION_TTL),
+                (_dingtalk_sessions, _DINGTALK_SESSION_TTL),
+                (_wecombot_sessions, _WECOMBOT_SESSION_TTL),
+                (_qqofficial_sessions, _QQOFFICIAL_SESSION_TTL),
+            ]
+
+        def _sweep_now() -> int:
+            return _sweep_credential_sessions(_credential_stores())
+
+        async def _credential_session_sweeper() -> None:
+            """Enforce the session TTL on a timer, so it does not depend on traffic."""
+            import asyncio as _asyncio
+
+            while True:
+                await _asyncio.sleep(_CREDENTIAL_SWEEP_INTERVAL_SECONDS)
+                try:
+                    _sweep_now()
+                except Exception:  # pragma: no cover - a sweep must never kill the app
+                    _stdout_logger.exception('credential session sweep failed')
+
+        self._sweep_credential_sessions = _sweep_now
+        # Some embeddings (notably test harnesses) provide a task manager without
+        # create_task; the per-route cleanups still enforce the TTL there.
+        create_task = getattr(self.ap.task_mgr, 'create_task', None)
+        if callable(create_task):
+            create_task(
+                _credential_session_sweeper(),
+                name='platform-credential-session-sweeper',
+            )

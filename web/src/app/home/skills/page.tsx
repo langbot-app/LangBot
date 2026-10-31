@@ -5,11 +5,13 @@ import { Button } from '@/components/ui/button';
 import SkillDetailContent from '@/app/home/skills/SkillDetailContent';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function SkillsPage() {
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const detailId = searchParams.get('id');
@@ -17,12 +19,6 @@ export default function SkillsPage() {
   const { refreshSkills } = useSidebarData();
 
   const isCreateView = actionParam === 'create';
-  const {
-    available: boxAvailable,
-    hint: boxHint,
-    reason: boxReason,
-  } = useBoxStatus();
-
   useEffect(() => {
     if (!detailId && !isCreateView) {
       navigate('/home/add-extension', { replace: true });
@@ -30,7 +26,7 @@ export default function SkillsPage() {
   }, [detailId, isCreateView, navigate]);
 
   if (detailId) {
-    return <SkillDetailContent id={detailId} />;
+    return <SkillDetailContent key={detailId} id={detailId} />;
   }
 
   function handleCreatedSkill(skillName: string) {
@@ -61,24 +57,21 @@ export default function SkillsPage() {
           <Button variant="outline" onClick={handleCancel}>
             {t('common.cancel')}
           </Button>
-          <Button type="submit" form="skill-form" disabled={!boxAvailable}>
+          <Button type="submit" form="skill-form" disabled={!canManage}>
             {t('common.save')}
           </Button>
         </div>
       </div>
-      {!boxAvailable && (
-        <div className="pb-4 shrink-0">
-          <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-        </div>
-      )}
       <div className="min-h-0 flex-1">
-        <SkillForm
-          key="new-skill"
-          initSkillName={undefined}
-          layout="split"
-          onNewSkillCreated={handleCreatedSkill}
-          onSkillUpdated={() => {}}
-        />
+        <fieldset className="contents" disabled={!canManage}>
+          <SkillForm
+            key="new-skill"
+            initSkillName={undefined}
+            layout="split"
+            onNewSkillCreated={handleCreatedSkill}
+            onSkillUpdated={() => {}}
+          />
+        </fieldset>
       </div>
     </div>
   );

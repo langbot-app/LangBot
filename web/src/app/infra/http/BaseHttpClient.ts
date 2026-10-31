@@ -4,6 +4,13 @@ import axios, {
   AxiosResponse,
   AxiosError,
 } from 'axios';
+import i18n from 'i18next';
+import {
+  clearActiveWorkspaceUuid,
+  getActiveWorkspaceUuid,
+} from './workspaceContext';
+import { setCurrentWorkspaceSnapshot } from './currentWorkspaceStore';
+import { clearWorkspaceBootstrapSnapshot } from './workspaceBootstrapStore';
 
 type JSONValue = string | number | boolean | JSONObject | JSONArray | null;
 interface JSONObject {
@@ -21,6 +28,8 @@ export interface ResponseData<T = unknown> {
 export interface RequestConfig extends AxiosRequestConfig {
   isSSR?: boolean; // 服务端渲染标识
   retry?: number; // 重试次数
+  /** Account-scoped endpoints must not receive a stale Workspace selector. */
+  skipWorkspace?: boolean;
 }
 
 /**
@@ -71,12 +80,29 @@ export abstract class BaseHttpClient {
     // 请求拦截
     this.instance.interceptors.request.use(
       async (config) => {
+        // Account-only endpoints have no selected Workspace. Workspace routes
+        // resolve their persisted language and override this presentation hint.
+        // This is a LangBot backend hint, not part of the public Space API.
+        if (!this.disableToken) {
+          config.headers['X-LangBot-Language'] = i18n.language || 'en-US';
+        }
         // 客户端添加认证头
         if (typeof window !== 'undefined' && !this.disableToken) {
           const session = this.getSessionSync();
           if (session) {
             config.headers.Authorization = `Bearer ${session}`;
           }
+
+          const requestConfig = config as RequestConfig;
+          const workspaceUuid = getActiveWorkspaceUuid();
+          if (requestConfig.skipWorkspace) {
+            delete config.headers['X-Workspace-Id'];
+            delete config.headers['x-workspace-id'];
+          } else if (workspaceUuid) {
+            config.headers['X-Workspace-Id'] = workspaceUuid;
+          }
+
+          delete requestConfig.skipWorkspace;
         }
 
         return config;
@@ -98,8 +124,20 @@ export abstract class BaseHttpClient {
           switch (status) {
             case 401:
               if (typeof window !== 'undefined') {
+                // Only an existing authenticated session should be torn down and
+                // redirected. A 401 from a sign-in attempt (bad credentials or a
+                // pending second factor) must not reload the page, otherwise the
+                // TOTP challenge step would be lost.
+                const hadSession = Boolean(localStorage.getItem('token'));
                 localStorage.removeItem('token');
-                if (!error.request.responseURL.includes('/check-token')) {
+                localStorage.removeItem('userEmail');
+                clearActiveWorkspaceUuid();
+                setCurrentWorkspaceSnapshot(null);
+                clearWorkspaceBootstrapSnapshot();
+                if (
+                  hadSession &&
+                  !error.request.responseURL.includes('/check-token')
+                ) {
                   window.location.href = '/login';
                 }
               }
@@ -116,6 +154,9 @@ export abstract class BaseHttpClient {
             code: data?.code || status,
             msg: errMsg,
             data: data?.data || null,
+            request_id:
+              (data as { request_id?: string })?.request_id ||
+              error.response.headers['x-request-id'],
           });
         }
 
@@ -185,6 +226,14 @@ export abstract class BaseHttpClient {
     config?: RequestConfig,
   ): Promise<T> {
     return this.request<T>({ method: 'put', url, data, ...config });
+  }
+
+  public patch<T = unknown>(
+    url: string,
+    data?: object,
+    config?: RequestConfig,
+  ): Promise<T> {
+    return this.request<T>({ method: 'patch', url, data, ...config });
   }
 
   public delete<T = unknown>(url: string, config?: RequestConfig): Promise<T> {

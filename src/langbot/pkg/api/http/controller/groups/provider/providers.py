@@ -1,56 +1,217 @@
 import quart
 
+from ....authz import Permission, has_permission
+from ....context import RequestContext
+from ......operation_trace import service as settings_service
 from ... import group
+from .query import resolve_include_secret
 
 
 @group.group_class('models/providers', '/api/v1/provider/providers')
 class ModelProvidersRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
-        @self.route('', methods=['GET', 'POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
-            if quart.request.method == 'GET':
-                providers = await self.ap.provider_service.get_providers()
-                # Add model counts
-                for provider in providers:
-                    counts = await self.ap.provider_service.get_provider_model_counts(provider['uuid'])
-                    provider['llm_count'] = counts['llm_count']
-                    provider['embedding_count'] = counts['embedding_count']
-                    provider['rerank_count'] = counts['rerank_count']
-                return self.success(data={'providers': providers})
-            elif quart.request.method == 'POST':
-                json_data = await quart.request.json
-                provider_uuid = await self.ap.provider_service.create_provider(json_data)
-                return self.success(data={'uuid': provider_uuid})
+        # Subscription authorization is an interactive, browser-user-only surface.
+        @self.route(
+            '/<provider_uuid>/codex/status',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def codex_status(provider_uuid: str, request_context: RequestContext):
+            try:
+                return self.success(
+                    data=await self.ap.provider_service.codex_auth.status(request_context, provider_uuid)
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
 
         @self.route(
-            '/<provider_uuid>', methods=['GET', 'PUT', 'DELETE'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY
+            '/<provider_uuid>/codex/device',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
         )
-        async def _(provider_uuid: str) -> str:
-            if quart.request.method == 'GET':
-                provider = await self.ap.provider_service.get_provider(provider_uuid)
-                if provider is None:
-                    return self.http_status(404, -1, 'provider not found')
-                counts = await self.ap.provider_service.get_provider_model_counts(provider_uuid)
+        async def codex_device(provider_uuid: str, request_context: RequestContext):
+            try:
+                return self.success(
+                    data=await self.ap.provider_service.codex_auth.start(request_context, provider_uuid)
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<provider_uuid>/codex/device/poll',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def codex_poll(provider_uuid: str, request_context: RequestContext):
+            body = await quart.request.get_json()
+            if not isinstance(body, dict):
+                return self.http_status(400, -1, 'JSON object required')
+            try:
+                return self.success(
+                    data=await self.ap.provider_service.codex_auth.poll(
+                        request_context, provider_uuid, body.get('authorization_id')
+                    )
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<provider_uuid>/codex/auth',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def codex_disconnect(provider_uuid: str, request_context: RequestContext):
+            try:
+                await self.ap.provider_service.codex_auth.disconnect(request_context, provider_uuid)
+                return self.success()
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '/<provider_uuid>/codex/device/<authorization_id>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def codex_cancel(provider_uuid: str, authorization_id: str, request_context: RequestContext):
+            try:
+                await self.ap.provider_service.codex_auth.cancel(request_context, provider_uuid, authorization_id)
+                return self.success()
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            providers = await self.ap.provider_service.get_providers(
+                request_context,
+                include_secret=include_secret,
+            )
+            for provider in providers:
+                counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider['uuid'])
                 provider['llm_count'] = counts['llm_count']
                 provider['embedding_count'] = counts['embedding_count']
                 provider['rerank_count'] = counts['rerank_count']
-                return self.success(data={'provider': provider})
-            elif quart.request.method == 'PUT':
-                json_data = await quart.request.json
-                await self.ap.provider_service.update_provider(provider_uuid, json_data)
-                return self.success()
-            elif quart.request.method == 'DELETE':
-                try:
-                    await self.ap.provider_service.delete_provider(provider_uuid)
-                    return self.success()
-                except ValueError as e:
-                    return self.http_status(400, -1, str(e))
+            return self.success(data={'providers': providers})
 
-        @self.route('/<provider_uuid>/scan-models', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _(provider_uuid: str) -> str:
+        @self.route(
+            '',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            json_data = await quart.request.json
+            try:
+                provider_uuid = await self.ap.provider_service.create_provider(request_context, json_data)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={'uuid': provider_uuid})
+
+        @self.route(
+            '/<provider_uuid>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(provider_uuid: str, request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            provider = await self.ap.provider_service.get_provider(
+                request_context,
+                provider_uuid,
+                include_secret=include_secret,
+            )
+            if provider is None:
+                return self.http_status(404, -1, 'provider not found')
+            counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider_uuid)
+            provider['llm_count'] = counts['llm_count']
+            provider['embedding_count'] = counts['embedding_count']
+            provider['rerank_count'] = counts['rerank_count']
+            return self.success(data={'provider': provider})
+
+        @self.route(
+            '/<provider_uuid>',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(provider_uuid: str, request_context: RequestContext) -> str:
+            json_data = await quart.request.json
+            try:
+                previous = await self.ap.provider_service.get_provider(
+                    request_context,
+                    provider_uuid,
+                    include_secret=True,
+                )
+            except Exception:
+                previous = None
+            try:
+                await self.ap.provider_service.update_provider(request_context, provider_uuid, json_data)
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            # Record which provider was reconfigured and which fields moved;
+            # credential-looking keys are redacted by ``changed_fields``.
+            changes = settings_service.changed_fields(
+                previous if isinstance(previous, dict) else {},
+                json_data if isinstance(json_data, dict) else {},
+                ignore=('uuid', 'created_at', 'updated_at', 'llm_count', 'embedding_count', 'rerank_count'),
+            )
+            rule = settings_service.ACTION_RULES_BY_ACTION.get('update')
+            quart.g.operation_log_changes = changes
+            if rule is not None and changes:
+                quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
+            return self.success()
+
+        @self.route(
+            '/<provider_uuid>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(provider_uuid: str, request_context: RequestContext) -> str:
+            try:
+                cascade_values = quart.request.args.getlist('cascade')
+                if cascade_values:
+                    if len(cascade_values) != 1 or cascade_values[0] not in ('true', 'false'):
+                        return self.http_status(400, -1, 'cascade must be a single true or false value')
+                    await self.ap.provider_service.delete_provider(
+                        request_context, provider_uuid, cascade=cascade_values[0] == 'true'
+                    )
+                else:
+                    await self.ap.provider_service.delete_provider(request_context, provider_uuid)
+                return self.success()
+            except ValueError as e:
+                return self.http_status(400, -1, str(e))
+
+        @self.route(
+            '/<provider_uuid>/scan-models',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(provider_uuid: str, request_context: RequestContext) -> str:
             try:
                 model_type = quart.request.args.get('type')
-                result = await self.ap.provider_service.scan_provider_models(provider_uuid, model_type)
+                result = await self.ap.provider_service.scan_provider_models(request_context, provider_uuid, model_type)
                 return self.success(data=result)
             except ValueError as e:
                 return self.http_status(400, -1, str(e))

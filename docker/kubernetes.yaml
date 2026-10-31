@@ -1,9 +1,13 @@
 # Kubernetes Deployment for LangBot
 # This file provides Kubernetes deployment manifests for LangBot based on docker-compose.yaml
 #
-# Full deployment guide (zh/en/ja): https://docs.langbot.app -> Installation -> Kubernetes
+# Full deployment guide (zh/en/ja): https://langbot.app/docs -> Installation -> Kubernetes
 #
 # Usage:
+#   kubectl -n langbot create secret generic langbot-plugin-runtime-control \
+#     --from-literal=token="$(openssl rand -hex 32)"
+#   kubectl -n langbot create secret generic langbot-box-control \
+#     --from-literal=token="$(openssl rand -hex 32)"
 #   kubectl apply -f kubernetes.yaml
 #
 # Prerequisites:
@@ -78,6 +82,25 @@ spec:
   # storageClassName: your-storage-class
 
 ---
+# PersistentVolumeClaim for the v4 Plugin Runtime state
+# Holds the plugin artifact cache, per-plugin dependency environments, and
+# per-installation data. It must survive Pod restarts: rebuilding it forces
+# every installed plugin to be re-downloaded and its environment rebuilt.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: langbot-plugin-runtime-state
+  namespace: langbot
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # Uncomment and modify if you have a specific StorageClass
+  # storageClassName: your-storage-class
+
+---
 # ConfigMap for environment configuration
 apiVersion: v1
 kind: ConfigMap
@@ -87,6 +110,12 @@ metadata:
 data:
   TZ: "Asia/Shanghai"
   PLUGIN__RUNTIME_WS_URL: "ws://langbot-plugin-runtime:5400/control/ws"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS: "8"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING: "128"
+  SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE: "4"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS: "8"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING: "128"
+  LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE: "4"
   # Box sandbox runtime endpoint. LangBot connects to the Box runtime over
   # WebSocket. The hostname MUST match the langbot-box Service name. Note the
   # in-container default ("langbot_box") uses an underscore, which is an
@@ -127,9 +156,31 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: TZ
+        - name: LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-plugin-runtime-control
+              key: token
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
         volumeMounts:
         - name: plugin-data
           mountPath: /app/data/plugins
+        - name: plugin-runtime-state
+          mountPath: /app/data/plugin-runtime
         resources:
           requests:
             memory: "512Mi"
@@ -139,7 +190,8 @@ spec:
             cpu: "1000m"
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
-          tcpSocket:
+          httpGet:
+            path: /healthz
             port: 5400
           initialDelaySeconds: 30
           periodSeconds: 10
@@ -147,7 +199,8 @@ spec:
           failureThreshold: 3
         # Readiness probe to know when container is ready to accept traffic
         readinessProbe:
-          tcpSocket:
+          httpGet:
+            path: /healthz
             port: 5400
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -157,6 +210,9 @@ spec:
       - name: plugin-data
         persistentVolumeClaim:
           claimName: langbot-plugin-runtime-data
+      - name: plugin-runtime-state
+        persistentVolumeClaim:
+          claimName: langbot-plugin-runtime-state
       restartPolicy: Always
 
 ---
@@ -182,8 +238,9 @@ spec:
 # Deployment for LangBot Box (sandbox) runtime
 #
 # The Box runtime backs LangBot's sandbox tools (exec / read / write / edit /
-# glob / grep), the `activate` skill tool, skill add/edit, and stdio-mode MCP
-# servers. It is OPTIONAL: if you do not deploy it, set `BOX__ENABLED=false` on
+# glob / grep), Skill script execution, and stdio-mode MCP servers. Skill
+# activation, resources, and management remain Core-owned without Box. Box is
+# OPTIONAL: if you do not deploy it, set `BOX__ENABLED=false` on
 # the langbot Deployment (or `box.enabled: false` in config.yaml) so the
 # dashboard renders cleanly with sandbox features disabled.
 #
@@ -246,9 +303,28 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: TZ
+        - name: LANGBOT_BOX_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-box-control
+              key: token
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_WORKERS
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_PENDING
+        - name: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
         # The Box runtime does NOT read box.local.* / BOX__* from its own env;
-        # it receives its configuration from LangBot via the INIT RPC action.
-        # Do not add BOX__* here — they would be silently ignored.
+        # it receives its functional configuration from LangBot via INIT.
         volumeMounts:
         # Box workspace root — identical path on node, box, and sandbox
         # containers (see the IMPORTANT note above).
@@ -265,14 +341,18 @@ spec:
             memory: "1Gi"
             cpu: "1000m"
         livenessProbe:
-          tcpSocket:
+          httpGet:
+            path: /healthz
             port: 5410
           initialDelaySeconds: 20
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
-          tcpSocket:
+          httpGet:
+            # Unlike liveness, readiness validates the configured backend and
+            # all strict managed-mode isolation guarantees.
+            path: /readyz
             port: 5410
           initialDelaySeconds: 10
           periodSeconds: 5
@@ -319,6 +399,10 @@ metadata:
     app: langbot
 spec:
   replicas: 1
+  # Plugin Runtime has a single active LangBot control owner. Recreate avoids
+  # two LangBot pods fighting over that connection during a rolling update.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: langbot
@@ -352,6 +436,26 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: PLUGIN__RUNTIME_WS_URL
+        - name: LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-plugin-runtime-control
+              key: token
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_WORKERS
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_PENDING
+        - name: SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE
+          valueFrom:
+            configMapKeyRef:
+              name: langbot-config
+              key: SYSTEM__BLOCKING_EXECUTOR__MAX_INFLIGHT_PER_SCOPE
         # Box (sandbox) runtime endpoint. Connects LangBot to the langbot-box
         # Service over WebSocket. Remove this (and the langbot-box Deployment)
         # and set BOX__ENABLED=false if you do not want the sandbox.
@@ -360,16 +464,24 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: BOX__RUNTIME__ENDPOINT
+        # Same Secret as langbot-box. It authenticates the RPC and managed-
+        # process relay handshakes and is never put in a URL or RPC payload.
+        - name: LANGBOT_BOX_CONTROL_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: langbot-box-control
+              key: token
         # box.local.* config — forwarded to the Box runtime via INIT RPC. The
         # host_root MUST match the box-root hostPath mountPath below AND the box
-        # Deployment's box-root mountPath, so that skill package paths resolve
-        # identically on both sides and on the node's Docker daemon.
+        # Deployment's box-root mountPath, so generic package mount paths
+        # resolve identically on both sides and on the node's Docker daemon.
         - name: BOX__LOCAL__HOST_ROOT
           value: "/app/data/box"
         - name: BOX__LOCAL__DEFAULT_WORKSPACE
           value: "default"
-        - name: BOX__LOCAL__SKILLS_ROOT
-          value: "skills"
+        - name: SKILLS__ROOT
+          # TODO(next-major): use /app/data/skills after the legacy path window.
+          value: "/app/data/box/skills"
         - name: BOX__LOCAL__ALLOWED_MOUNT_ROOTS
           value: "/app/data/box"
         volumeMounts:
@@ -392,7 +504,7 @@ spec:
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
           httpGet:
-            path: /
+            path: /healthz
             port: 5300
           initialDelaySeconds: 60
           periodSeconds: 10
@@ -401,7 +513,7 @@ spec:
         # Readiness probe to know when container is ready to accept traffic
         readinessProbe:
           httpGet:
-            path: /
+            path: /healthz
             port: 5300
           initialDelaySeconds: 30
           periodSeconds: 5

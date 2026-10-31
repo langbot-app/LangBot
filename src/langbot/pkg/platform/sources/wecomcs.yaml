@@ -12,12 +12,13 @@ metadata:
     zh_Hant: 企業微信對外客服機器人，需要公網地址以接收訊息推送，請查看文件了解使用方式
   icon: wecom.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/wecomcs
-    en: https://link.langbot.app/en/platforms/wecomcs
-    ja: https://link.langbot.app/ja/platforms/wecomcs
+    zh: https://langbot.app/docs/zh/usage/platforms/wecom/wecomcs
+    en: https://langbot.app/docs/en/usage/platforms/wecom/wecomcs
+    ja: https://langbot.app/docs/ja/usage/platforms/wecom/wecomcs
   config:
     - name: webhook_url
       label:

@@ -1,0 +1,3356 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "LangBot Service API",
+    "description": "LangBot external service API documentation. These endpoints support API Key authentication for programmatic access to LangBot resources.\n\n**Authentication:**\n- User Token (via `Authorization: Bearer <token>`)\n- API Key (via `X-API-Key: <key>` or `Authorization: Bearer <key>`)\n\nAll endpoints in this document support both authentication methods unless otherwise noted.\n",
+    "version": "4.9.5",
+    "contact": {
+      "name": "LangBot",
+      "url": "https://langbot.app"
+    },
+    "license": {
+      "name": "AGPL-3.0",
+      "url": "https://github.com/langbot-app/LangBot/blob/master/LICENSE"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5300",
+      "description": "Local development server"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Model Providers",
+      "description": "Model provider management. Providers define API endpoints and keys; models reference providers via provider_uuid."
+    },
+    {
+      "name": "LLM Models",
+      "description": "Large Language Model (LLM) management. Each model is associated with a provider."
+    },
+    {
+      "name": "Embedding Models",
+      "description": "Embedding model management. Each model is associated with a provider."
+    },
+    {
+      "name": "Bots",
+      "description": "Bot instance management and messaging"
+    },
+    {
+      "name": "Pipelines",
+      "description": "Pipeline configuration management"
+    },
+    {
+      "name": "Knowledge Bases",
+      "description": "Knowledge base management"
+    },
+    {
+      "name": "Knowledge Engines",
+      "description": "Knowledge engine (plugin-provided) queries"
+    },
+    {
+      "name": "Parsers",
+      "description": "File parser (plugin-provided) queries"
+    },
+    {
+      "name": "Files",
+      "description": "File upload operations"
+    },
+    {
+      "name": "Plugins",
+      "description": "Plugin installation, configuration, and management"
+    },
+    {
+      "name": "System",
+      "description": "System information (no auth required)"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    },
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/system/info": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Get system information",
+        "description": "Get basic information about the LangBot instance, including its version and release type. This endpoint does not require authentication.",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "version": {
+                          "type": "string",
+                          "example": "v4.9.5"
+                        },
+                        "debug": {
+                          "type": "boolean"
+                        },
+                        "edition": {
+                          "type": "string",
+                          "example": "community"
+                        },
+                        "enable_marketplace": {
+                          "type": "boolean"
+                        },
+                        "cloud_service_url": {
+                          "type": "string"
+                        },
+                        "allow_modify_login_info": {
+                          "type": "boolean"
+                        },
+                        "disable_models_service": {
+                          "type": "boolean"
+                        },
+                        "limitation": {
+                          "type": "object"
+                        },
+                        "wizard_status": {
+                          "type": "string",
+                          "enum": [
+                            "none",
+                            "skipped",
+                            "completed"
+                          ]
+                        },
+                        "wizard_progress": {
+                          "type": "object",
+                          "nullable": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/providers": {
+      "get": {
+        "tags": [
+          "Model Providers"
+        ],
+        "summary": "List all model providers",
+        "description": "List all model providers, including the number of LLM and embedding models associated with each provider.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "providers": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ModelProvider"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Model Providers"
+        ],
+        "summary": "Create a model provider",
+        "description": "Create a new model provider.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProviderCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/providers/{provider_uuid}": {
+      "get": {
+        "tags": [
+          "Model Providers"
+        ],
+        "summary": "Get a model provider",
+        "parameters": [
+          {
+            "name": "provider_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "provider": {
+                          "$ref": "#/components/schemas/ModelProvider"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Model Providers"
+        ],
+        "summary": "Update a model provider",
+        "parameters": [
+          {
+            "name": "provider_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelProviderUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Model Providers"
+        ],
+        "summary": "Delete a model provider",
+        "description": "Delete a model provider. A provider cannot be deleted while it is still referenced by a model.",
+        "parameters": [
+          {
+            "name": "provider_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          },
+          "400": {
+            "description": "The provider is still referenced by one or more models and cannot be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/llm": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "List all LLM models",
+        "description": "List all large language models. Use provider_uuid to filter models by provider.",
+        "parameters": [
+          {
+            "name": "provider_uuid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by provider UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "models": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/LLMModel"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Create an LLM model",
+        "description": "Create a new large language model. The model must be associated with an existing provider.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMModelCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/llm/{model_uuid}": {
+      "get": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Get an LLM model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "$ref": "#/components/schemas/LLMModel"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Update an LLM model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LLMModelUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Delete an LLM model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/llm/{model_uuid}/test": {
+      "post": {
+        "tags": [
+          "LLM Models"
+        ],
+        "summary": "Test an LLM model",
+        "description": "Send a test request to the specified LLM model to verify that it is available.",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "Prompt text to use for the test",
+                    "example": "Hello"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/embedding": {
+      "get": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "List all embedding models",
+        "description": "List all embedding models. Use provider_uuid to filter models by provider.",
+        "parameters": [
+          {
+            "name": "provider_uuid",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Filter by provider UUID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "models": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/EmbeddingModel"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "Create an embedding model",
+        "description": "Create a new embedding model. The model must be associated with an existing provider.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingModelCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/embedding/{model_uuid}": {
+      "get": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "Get an embedding model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "model": {
+                          "$ref": "#/components/schemas/EmbeddingModel"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "Update an embedding model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingModelUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "Delete an embedding model",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/provider/models/embedding/{model_uuid}/test": {
+      "post": {
+        "tags": [
+          "Embedding Models"
+        ],
+        "summary": "Test an embedding model",
+        "description": "Send a test request to the specified embedding model to verify that it is available.",
+        "parameters": [
+          {
+            "name": "model_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "description": "Text to use for the test",
+                    "example": "Hello"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/bots": {
+      "get": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "List all bots",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "bots": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Bot"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Create a bot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/bots/{bot_uuid}": {
+      "get": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Get a bot",
+        "description": "Get bot details, including runtime information such as the webhook URL.",
+        "parameters": [
+          {
+            "name": "bot_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "bot": {
+                          "$ref": "#/components/schemas/Bot"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Update a bot",
+        "parameters": [
+          {
+            "name": "bot_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Delete a bot",
+        "parameters": [
+          {
+            "name": "bot_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/platform/bots/{bot_uuid}/logs": {
+      "post": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Get bot event logs",
+        "description": "Get event log entries for the specified bot.",
+        "parameters": [
+          {
+            "name": "bot_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "from_index": {
+                    "type": "integer",
+                    "description": "Starting index (-1 starts from the most recent entry)",
+                    "default": -1
+                  },
+                  "max_count": {
+                    "type": "integer",
+                    "description": "Maximum number of entries to return",
+                    "default": 10
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "logs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "total_count": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/platform/bots/{bot_uuid}/send_message": {
+      "post": {
+        "tags": [
+          "Bots"
+        ],
+        "summary": "Send a message through a bot",
+        "description": "Send a message to a target through the specified bot. This endpoint supports API Key authentication only.",
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "bot_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "target_type",
+                  "target_id",
+                  "message_chain"
+                ],
+                "properties": {
+                  "target_type": {
+                    "type": "string",
+                    "enum": [
+                      "person",
+                      "group"
+                    ],
+                    "description": "Target type"
+                  },
+                  "target_id": {
+                    "type": "string",
+                    "description": "Target ID (user ID or group ID)"
+                  },
+                  "message_chain": {
+                    "type": "array",
+                    "description": "Message chain",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": "string",
+                          "enum": [
+                            "Plain",
+                            "Image",
+                            "At",
+                            "Voice"
+                          ],
+                          "description": "Message element type"
+                        },
+                        "text": {
+                          "type": "string",
+                          "description": "Text content (Plain type)"
+                        },
+                        "url": {
+                          "type": "string",
+                          "description": "Image URL (Image type)"
+                        },
+                        "target": {
+                          "type": "string",
+                          "description": "Mention target ID (At type)"
+                        }
+                      }
+                    },
+                    "example": [
+                      {
+                        "type": "Plain",
+                        "text": "Hello, World!"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message sent successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "sent": {
+                          "type": "boolean",
+                          "example": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipelines": {
+      "get": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "List all pipelines",
+        "parameters": [
+          {
+            "name": "sort_by",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "created_at"
+            }
+          },
+          {
+            "name": "sort_order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ASC",
+                "DESC"
+              ],
+              "default": "DESC"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "pipelines": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Pipeline"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Create a pipeline",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipelines/_/metadata": {
+      "get": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Get pipeline metadata",
+        "description": "Get metadata describing the pipeline configuration, including configurable fields and their types.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "configs": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pipelines/{pipeline_uuid}": {
+      "get": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Get a pipeline",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "pipeline": {
+                          "$ref": "#/components/schemas/Pipeline"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Update a pipeline",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PipelineUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Delete a pipeline",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/pipelines/{pipeline_uuid}/copy": {
+      "post": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Copy a pipeline",
+        "description": "Copy an existing pipeline to create a new one.",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Copied successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/api/v1/pipelines/{pipeline_uuid}/extensions": {
+      "get": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Get pipeline extension configuration",
+        "description": "Get the plugins and MCP server configuration associated with a pipeline.",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "enable_all_plugins": {
+                          "type": "boolean"
+                        },
+                        "enable_all_mcp_servers": {
+                          "type": "boolean"
+                        },
+                        "bound_plugins": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "available_plugins": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "bound_mcp_servers": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "available_mcp_servers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Pipelines"
+        ],
+        "summary": "Update pipeline extension configuration",
+        "description": "Update the plugins and MCP servers associated with a pipeline.",
+        "parameters": [
+          {
+            "name": "pipeline_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enable_all_plugins": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "enable_all_mcp_servers": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "bound_plugins": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "bound_mcp_servers": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/bases": {
+      "get": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "List all knowledge bases",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "bases": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Create a knowledge base",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "engine_plugin_id": {
+                    "type": "string",
+                    "description": "Knowledge engine plugin ID (author/name format)"
+                  },
+                  "creation_settings": {
+                    "type": "object",
+                    "description": "Engine creation parameters"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "uuid": {
+                          "type": "string",
+                          "format": "uuid"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/bases/{kb_uuid}": {
+      "get": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Get a knowledge base",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "base": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Update a knowledge base",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Delete a knowledge base",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/bases/{kb_uuid}/files": {
+      "get": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "List knowledge base files",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "files": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Add a file to a knowledge base",
+        "description": "Associate an uploaded file with a knowledge base and begin parsing it. First upload the file through /api/v1/files/documents to obtain a file_id.",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file_id"
+                ],
+                "properties": {
+                  "file_id": {
+                    "type": "string",
+                    "description": "Uploaded file ID"
+                  },
+                  "parser_plugin_id": {
+                    "type": "string",
+                    "description": "Parser plugin ID to use (optional)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "task_id": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/bases/{kb_uuid}/files/{file_id}": {
+      "delete": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Remove a file from a knowledge base",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/bases/{kb_uuid}/retrieve": {
+      "post": {
+        "tags": [
+          "Knowledge Bases"
+        ],
+        "summary": "Retrieve from a knowledge base",
+        "description": "Perform semantic retrieval against a knowledge base and return relevant document chunks.",
+        "parameters": [
+          {
+            "name": "kb_uuid",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "query"
+                ],
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "Retrieval query text"
+                  },
+                  "retrieval_settings": {
+                    "type": "object",
+                    "description": "Retrieval parameters (such as top_k)",
+                    "properties": {
+                      "top_k": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/engines": {
+      "get": {
+        "tags": [
+          "Knowledge Engines"
+        ],
+        "summary": "List available knowledge engines",
+        "description": "List all plugin-provided knowledge engines, including their capabilities and configuration schemas.",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "engines": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/engines/{plugin_id}/creation-schema": {
+      "get": {
+        "tags": [
+          "Knowledge Engines"
+        ],
+        "summary": "Get the knowledge engine creation schema",
+        "description": "Get the JSON Schema for the specified knowledge engine's creation parameters.",
+        "parameters": [
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Plugin ID (author/name format)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "schema": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/engines/{plugin_id}/retrieval-schema": {
+      "get": {
+        "tags": [
+          "Knowledge Engines"
+        ],
+        "summary": "Get the knowledge engine retrieval schema",
+        "description": "Get the JSON Schema for the specified knowledge engine's retrieval parameters.",
+        "parameters": [
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Plugin ID (author/name format)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "schema": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/knowledge/parsers": {
+      "get": {
+        "tags": [
+          "Parsers"
+        ],
+        "summary": "List available parsers",
+        "description": "List all plugin-provided file parsers. Use mime_type to filter the results.",
+        "parameters": [
+          {
+            "name": "mime_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter parsers by MIME type"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "parsers": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/images": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload an image",
+        "description": "Upload an image file. Supported formats are jpg, jpeg, png, gif, and webp. The maximum file size is 10 MB.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Image file"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "file_key": {
+                          "type": "string",
+                          "description": "File identifier that can be used to reference the image"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/files/documents": {
+      "post": {
+        "tags": [
+          "Files"
+        ],
+        "summary": "Upload a document",
+        "description": "Upload a document file up to 10 MB. After the upload, use the file_id to associate the document with a knowledge base.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "file"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "Document file"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "file_id": {
+                          "type": "string",
+                          "description": "File ID that can be used to associate the document with a knowledge base"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plugins": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "List installed plugins",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "plugins": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/{author}/{plugin_name}": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Get plugin details",
+        "parameters": [
+          {
+            "name": "author",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "plugin": {
+                          "type": "object"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Delete a plugin",
+        "description": "Delete a plugin asynchronously and return the task ID.",
+        "parameters": [
+          {
+            "name": "author",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "delete_data",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Whether to delete the plugin data as well"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "task_id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/{author}/{plugin_name}/upgrade": {
+      "post": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Upgrade a plugin",
+        "description": "Upgrade a plugin to the latest version asynchronously and return the task ID.",
+        "parameters": [
+          {
+            "name": "author",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "task_id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/{author}/{plugin_name}/config": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Get plugin configuration",
+        "description": "Get the plugin's current configuration values and configuration schema.",
+        "parameters": [
+          {
+            "name": "author",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Update plugin configuration",
+        "parameters": [
+          {
+            "name": "author",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "plugin_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Plugin configuration key-value pairs"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/Success"
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/install/marketplace": {
+      "post": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Install a plugin from Marketplace",
+        "description": "Install a plugin from LangBot Marketplace asynchronously and return the task ID.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "plugin_id"
+                ],
+                "properties": {
+                  "plugin_id": {
+                    "type": "string",
+                    "description": "Marketplace plugin ID (author/name format)",
+                    "example": "kellz-dev/disaster-alert"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "task_id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/plugins/install/github": {
+      "post": {
+        "tags": [
+          "Plugins"
+        ],
+        "summary": "Install a plugin from GitHub",
+        "description": "Install a plugin from a GitHub repository asynchronously and return the task ID.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "url"
+                ],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "description": "GitHub repository URL",
+                    "example": "https://github.com/rocksclawbot/langbot-community-plugins/tree/main/disaster-alert"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "task_id": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tools": {
+      "get": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "List all available tools",
+        "description": "List all available tools in the current LangBot instance, including plugin tools and MCP tools.",
+        "operationId": "listTools",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tools": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ToolSummary"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tools/{tool_name}": {
+      "get": {
+        "tags": [
+          "Tools"
+        ],
+        "summary": "Get tool detail",
+        "description": "Get detailed information about a specific tool.",
+        "operationId": "getToolDetail",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "tool_name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Tool name"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "integer",
+                      "example": 0
+                    },
+                    "msg": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "tool": {
+                          "$ref": "#/components/schemas/ToolSummary"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tool not found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key"
+      },
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "ModelProvider": {
+        "type": "object",
+        "description": "Model provider. Defines the API endpoint and keys; models are associated through provider_uuid.",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "example": "OpenAI"
+          },
+          "requester": {
+            "type": "string",
+            "description": "Requester type",
+            "example": "openai-chat-completions"
+          },
+          "base_url": {
+            "type": "string",
+            "description": "API base URL",
+            "example": "https://api.openai.com/v1"
+          },
+          "api_keys": {
+            "type": "array",
+            "description": "List of API keys",
+            "items": {
+              "type": "string"
+            }
+          },
+          "llm_count": {
+            "type": "integer",
+            "description": "Number of associated LLM models"
+          },
+          "embedding_count": {
+            "type": "integer",
+            "description": "Number of associated embedding models"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ModelProviderCreate": {
+        "type": "object",
+        "required": [
+          "name",
+          "requester",
+          "base_url"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "OpenAI"
+          },
+          "requester": {
+            "type": "string",
+            "description": "Requester type. Use GET /api/v1/provider/requesters to list available requesters.",
+            "example": "openai-chat-completions"
+          },
+          "base_url": {
+            "type": "string",
+            "example": "https://api.openai.com/v1"
+          },
+          "api_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "sk-xxx"
+            ]
+          }
+        }
+      },
+      "ModelProviderUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "requester": {
+            "type": "string"
+          },
+          "base_url": {
+            "type": "string"
+          },
+          "api_keys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "LLMModel": {
+        "type": "object",
+        "description": "Large language model. Associated with a provider through provider_uuid and inherits the provider's API endpoint and keys.",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Model name (the model ID sent as the API model parameter)",
+            "example": "gpt-4o"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Associated provider UUID"
+          },
+          "abilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Model capability tags",
+            "example": [
+              "chat",
+              "vision",
+              "tool-use"
+            ]
+          },
+          "extra_args": {
+            "type": "object",
+            "description": "Additional parameters (such as temperature and max_tokens)"
+          },
+          "prefered_ranking": {
+            "type": "integer",
+            "description": "Priority ranking (higher values take precedence)",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LLMModelCreate": {
+        "type": "object",
+        "required": [
+          "name",
+          "provider_uuid"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Model name (model ID)",
+            "example": "gpt-4o"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Associated provider UUID"
+          },
+          "abilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "chat",
+              "vision"
+            ]
+          },
+          "extra_args": {
+            "type": "object"
+          },
+          "prefered_ranking": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      },
+      "LLMModelUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "abilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "extra_args": {
+            "type": "object"
+          },
+          "prefered_ranking": {
+            "type": "integer"
+          }
+        }
+      },
+      "EmbeddingModel": {
+        "type": "object",
+        "description": "Embedding model. Associated with a provider through provider_uuid.",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "description": "Model name (model ID)",
+            "example": "text-embedding-3-small"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Associated provider UUID"
+          },
+          "extra_args": {
+            "type": "object"
+          },
+          "prefered_ranking": {
+            "type": "integer",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "EmbeddingModelCreate": {
+        "type": "object",
+        "required": [
+          "name",
+          "provider_uuid"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "text-embedding-3-small"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "extra_args": {
+            "type": "object"
+          },
+          "prefered_ranking": {
+            "type": "integer",
+            "default": 0
+          }
+        }
+      },
+      "EmbeddingModelUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "provider_uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "extra_args": {
+            "type": "object"
+          },
+          "prefered_ranking": {
+            "type": "integer"
+          }
+        }
+      },
+      "Bot": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": "string",
+            "example": "telegram"
+          },
+          "config": {
+            "type": "object"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BotCreate": {
+        "type": "object",
+        "required": [
+          "name",
+          "adapter",
+          "config"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      },
+      "BotUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "adapter": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      },
+      "Pipeline": {
+        "type": "object",
+        "properties": {
+          "uuid": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PipelineCreate": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          }
+        }
+      },
+      "PipelineUpdate": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object"
+          },
+          "is_default": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": -1
+          },
+          "msg": {
+            "type": "string"
+          }
+        }
+      },
+      "ToolSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Tool name"
+          },
+          "label": {
+            "type": "object",
+            "description": "Display label (i18n)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "object",
+            "description": "Tool description (i18n)",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "icon": {
+            "type": "string",
+            "description": "Tool icon"
+          },
+          "spec": {
+            "type": "object",
+            "description": "Tool specification",
+            "properties": {
+              "llm_prompt": {
+                "type": "string"
+              },
+              "parameters": {
+                "type": "object",
+                "description": "JSON Schema for tool parameters"
+              }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Success": {
+        "description": "Operation completed successfully",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "integer",
+                  "example": 0
+                }
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Resource not found",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    }
+  }
+}

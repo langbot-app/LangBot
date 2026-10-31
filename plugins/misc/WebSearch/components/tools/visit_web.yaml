@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: visit_web
+  label:
+    en_US: VisitWeb
+    zh_Hans: VisitWeb
+  description:
+    en_US: 'Visit web with url'
+    zh_Hans: 'Visit web with url'
+spec:
+  parameters:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 'url to visit'
+      brief_len:
+        type: integer
+        description: 'max length of the plain text content, recommend 1024-4096, prefer 4096'
+    required:
+      - url
+  llm_prompt: |
+    "Call this function to search about the question before you answer any questions.
+    - Do not search through google.com at any time.
+    - If you need to search somthing, visit https://www.sogou.com/web?query=<something>.
+    - If user ask you to open a url (start with http:// or https://), visit it directly.
+    - Summary the plain content result by yourself, DO NOT directly output anything in the result you got.
+
+    Args:
+        url(str): url to visit
+        brief_len(int): max length of the plain text content, recommend 1024-4096, prefer 4096
+
+    Returns:
+        str: plain text content of the web page or error message(starts with 'error:')"
+execution:
+  python:
+    path: visit_web.py
+    attr: VisitWeb

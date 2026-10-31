@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">홈</a> ｜
-<a href="https://link.langbot.app/en/docs/features">기능</a> ｜
-<a href="https://link.langbot.app/en/docs/guide">문서</a> ｜
-<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/en/insight/features">기능</a> ｜
+<a href="https://langbot.app/docs/en/insight/guide">문서</a> ｜
+<a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">플러그인 마켓</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">로드맵</a>
 
@@ -48,9 +48,9 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 - **웹 관리 패널** — 직관적인 브라우저 인터페이스로 봇을 구성, 관리 및 모니터링. YAML 편집 불필요.
 - **멀티 파이프라인 아키텍처** — 다양한 시나리오에 맞는 다양한 봇 구성, 종합 모니터링 및 예외 처리.
 
-[→ 모든 기능 자세히 보기](https://link.langbot.app/en/docs/features)
+[→ 모든 기능 자세히 보기](https://langbot.app/docs/en/insight/features)
 
-📍 실전 가이드: [5분 만에 멀티 플랫폼 AI 봇 배포하기](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [DeepSeek를 WeChat, Discord, Telegram에 연결하기](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [Dify Agent를 Discord, Telegram, Slack에서 실행하기](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/), [n8n 기반 챗봇 만들기](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 실전 가이드: [5분 만에 멀티 플랫폼 AI 봇 배포하기](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [DeepSeek를 WeChat, Discord, Telegram에 연결하기](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [Dify Agent를 Discord, Telegram, Slack에서 실행하기](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/), [n8n 기반 챗봇 만들기](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -64,7 +64,11 @@ LangBot은 AI 기반 인스턴트 메시징 봇을 구축하기 위한 **오픈�
 
 ### ☁️ LangBot Cloud (추천)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — 배포 없이 바로 사용.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+배포 없이 바로 사용.
 
 ### 원라인 실행
 
@@ -82,12 +86,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### 원클릭 클라우드 배포
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**더 많은 옵션:** [Docker](https://link.langbot.app/en/docs/docker) · [수동 배포](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+**더 많은 옵션:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [수동 배포](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -138,7 +143,7 @@ docker compose --profile all up -d
 | [302.AI](https://share.302ai.cn/SuTG99) | 게이트웨이 | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | 게이트웨이 | ✅ |
 
-[→ 모든 통합 보기](https://link.langbot.app/en/docs/features)
+[→ 모든 통합 보기](https://langbot.app/docs/en/insight/features)
 
 ---
 
@@ -152,14 +157,6 @@ docker compose --profile all up -d
 | **멀티 플랫폼** | 하나의 봇으로 모든 플랫폼 지원. 단일 대시보드에서 관리 |
 
 ---
-
-## 라이브 데모
-
-**지금 체험:** https://demo.langbot.dev/
-- 이메일: `demo@langbot.app`
-- 비밀번호: `langbot123456`
-
-*참고: 공개 데모 환경입니다. 민감한 정보를 입력하지 마세요.*
 
 ## AI 에이전트를 위한 설계 🤖
 
@@ -182,12 +179,6 @@ LangBot은 **설계 단계부터 에이전트 친화적**입니다 —— 코딩
 
 ---
 
-## Star 추이
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## 기여자
 
 LangBot을 더 나은 프로젝트로 만들어 주신 모든 [기여자](https://github.com/langbot-app/LangBot/graphs/contributors)분들께 감사드립니다:
@@ -195,3 +186,5 @@ LangBot을 더 나은 프로젝트로 만들어 주신 모든 [기여자](https:
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[문서 소스](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

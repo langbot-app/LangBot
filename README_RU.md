@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">Главная</a> ｜
-<a href="https://link.langbot.app/en/docs/features">Возможности</a> ｜
-<a href="https://link.langbot.app/en/docs/guide">Документация</a> ｜
-<a href="https://link.langbot.app/en/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/en/insight/features">Возможности</a> ｜
+<a href="https://langbot.app/docs/en/insight/guide">Документация</a> ｜
+<a href="https://langbot.app/docs/en/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">Магазин плагинов</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">Дорожная карта</a>
 
@@ -48,9 +48,9 @@ LangBot — это **платформа с открытым исходным к�
 - **Веб-панель управления** — Настраивайте, управляйте и мониторьте ваших ботов через интуитивный браузерный интерфейс. Ручное редактирование YAML не требуется.
 - **Мультиконвейерная архитектура** — Разные боты для разных сценариев с комплексным мониторингом и обработкой исключений.
 
-[→ Подробнее обо всех возможностях](https://link.langbot.app/en/docs/features)
+[→ Подробнее обо всех возможностях](https://langbot.app/docs/en/insight/features)
 
-📍 Практические руководства: [развернуть мультиплатформенного ИИ-бота за 5 минут](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [подключить DeepSeek к WeChat, Discord и Telegram](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/), [запустить Dify Agent в Discord, Telegram и Slack](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/) и [создать чат-бота на n8n](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
+📍 Практические руководства: [развернуть мультиплатформенного ИИ-бота за 5 минут](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/), [подключить DeepSeek к WeChat, Discord и Telegram](https://langbot.app/en/blog/connect-deepseek-to-wechat/), [запустить Dify Agent в Discord, Telegram и Slack](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/) и [создать чат-бота на n8n](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/).
 
 ---
 
@@ -64,7 +64,11 @@ LangBot — это **платформа с открытым исходным к�
 
 ### ☁️ LangBot Cloud (Рекомендуется)
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — Без развёртывания, готово к использованию.
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+Без развёртывания, готово к использованию.
 
 ### Запуск одной командой
 
@@ -82,12 +86,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### Облачное развертывание одним кликом
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**Другие варианты:** [Docker](https://link.langbot.app/en/docs/docker) · [Ручная установка](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+**Другие варианты:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [Ручная установка](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -138,7 +143,7 @@ docker compose --profile all up -d
 | [ShengSuanYun](https://www.shengsuanyun.com/?from=CH_KYIPP758) | Платформа GPU | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | Шлюз | ✅ |
 
-[→ Смотреть все интеграции](https://link.langbot.app/en/docs/features)
+[→ Смотреть все интеграции](https://langbot.app/docs/en/insight/features)
 
 ---
 
@@ -152,14 +157,6 @@ docker compose --profile all up -d
 | **Мультиплатформенное присутствие** | Один бот — все платформы. Управляйте из единой панели |
 
 ---
-
-## Демо
-
-**Попробуйте прямо сейчас:** https://demo.langbot.dev/
-- Email: `demo@langbot.app`
-- Пароль: `langbot123456`
-
-*Примечание: Публичная демо-среда. Не вводите конфиденциальную информацию.*
 
 ## Создано для ИИ-агентов 🤖
 
@@ -182,12 +179,6 @@ LangBot **дружелюбен к агентам по своей архитек�
 
 ---
 
-## История Stars
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## Участники
 
 Спасибо всем [участникам](https://github.com/langbot-app/LangBot/graphs/contributors), которые помогли сделать LangBot лучше:
@@ -195,3 +186,5 @@ LangBot **дружелюбен к агентам по своей архитек�
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[Исходники документации](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

@@ -1,0 +1,313 @@
+---
+title: "完善配置信息"
+---
+
+## 修改清单文件
+
+插件目录下的`manifest.yaml`文件声明了插件的基础信息，这些信息会被展示到 LangBot UI 或插件市场等界面上。
+
+```yaml
+apiVersion: v1  # 请勿修改
+kind: Plugin  # 请勿修改
+metadata:
+  author: RockChinQ  # 作者，符合正则表达式 ^[a-zA-Z0-9_-]+$
+  name: HelloPlugin  # 插件名称，用于区分插件，符合正则表达式 ^[a-zA-Z0-9-]+$
+  repository: 'https://github.com/langbot-app/HelloPlugin'  # 插件仓库地址
+  version: 0.1.0  # 插件版本
+  description:
+    en_US: 'Hello LangBot Plugin'  # 插件描述，多语言
+    zh_Hans: 'Hello LangBot Plugin'
+  label:
+    en_US: HelloPlugin  # 插件标签，用于在界面上展示，多语言
+    zh_Hans: HelloPlugin
+  icon: assets/icon.svg  # 插件图标，默认使用 assets/icon.svg，可自行替换，支持各种图片格式
+spec:
+  config: []  # 插件所需配置项格式
+  components: {}  # 插件组件列表，无需手动修改
+execution:
+  python:
+    path: main.py  # 请勿修改
+    attr: HelloPlugin  # 请勿修改
+```
+
+如果需要申请认证并让多个安装共享运行，还需要在 `execution` 下声明 `sharedRuntime` 与 `componentModel`，见[认证插件与共享运行](/zh/plugin/certified-plugins)。
+
+插件多语言遵循 [RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646) 标准。目前支持的语言有：
+
+- `en_US` 英文 （必填）
+- `zh_Hans` 简体中文
+- `zh_Hant` 繁体中文
+- `ja_JP` 日语
+- `vi_VN` 越南语
+- `th_TH` 泰语
+- `es_ES` 西班牙语
+
+## 插件配置项格式
+
+在 `manifest.yaml` 文件中，`spec.config` 声明的字段将在 LangBot 渲染成配置项表单由用户填写，插件可通过 SDK 提供的 API 获取用户填写的配置项（见后文）。
+
+例如：
+
+```yaml
+spec:
+  config:
+    - name: github_token  # 必填；配置项名称，用于在插件中获取
+      type: string  # 必填；配置项类型，支持 string, integer, float, boolean, select, prompt-editor, llm-model-selector, bot-selector, tools-selector 等
+      label:  # 必填；配置项显示名称，支持多语言。语言代码采用 RFC 4646 标准。
+        en_US: Github Token
+        zh_Hans: Github Token
+      description:  # 配置项描述，支持多语言。可选。
+        en_US: Image downloading requires a Github token
+        zh_Hans: 如果不填的话，图片可能会下载失败
+      default: ''  # 配置项默认值，可选。
+      required: false  # 配置项是否必填，可选。
+      show_if:  # 配置项条件渲染（满足条件时才显示），可选。
+        field: mode
+        operator: eq
+        value: mode1
+    - name: mode
+      type: select
+      ...
+```
+
+配置项支持的各个类型及字段如下：
+
+### 条件渲染 (`show_if`)
+
+所有类型的配置项都支持通过 `show_if` 字段实现条件渲染。您可以根据同一个表单（或关联表单）中其他字段的值，来决定当前字段是否在界面上渲染显示。
+
+```yaml
+- name: advanced_setting
+  type: string
+  show_if:
+    field: mode          # 依赖的字段名称
+    operator: eq         # 判断操作符，支持 'eq' (等于), 'neq' (不等于), 'in' (包含于列表)
+    value: advanced      # 判断的标准值
+```
+
+> **注意：** 跨表单的级联关系（如 RAG 引擎中 `creation_schema` 的配置去读取 `retrieval_schema` 的值，反之亦然）在 LangBot 最新前端中已经受支持。
+
+### type: string
+
+字符串。可选配置 `options` 预选项——配置后会在输入框旁显示一个下拉按钮，用户可快速选择预设值填入输入框，也可以自由输入。
+
+```yaml
+- name: api_key
+  type: string
+  ...
+```
+
+带预选项：
+
+```yaml
+- name: api_url
+  type: string
+  options:  # 可选的预设值，以下拉按钮形式显示在输入框旁。
+    - name: "https://api.openai.com/v1"  # 选中时填入的值。
+      label:  # 显示名称，支持多语言。
+        en_US: OpenAI Official
+        zh_Hans: OpenAI 官方
+    - name: "https://api.deepseek.com/v1"
+      label:
+        en_US: DeepSeek
+        zh_Hans: DeepSeek
+  ...
+```
+
+### type: array[string]
+
+字符串数组。
+
+```yaml
+- name: tags
+  type: array[string]
+  ...
+```
+
+### type: integer
+
+整数。
+
+```yaml
+- name: progress
+  type: integer
+  ...
+```
+
+### type: float
+
+浮点数。
+
+```yaml
+- name: temperature
+  type: float
+  ...
+```
+
+### type: boolean
+
+布尔值。
+
+```yaml
+- name: is_enabled
+  type: boolean
+  ...
+```
+
+### type: select
+
+下拉框。需要配置 `options` 选项，表示下拉框的选项。每个选项会显示 `label` 作为主要文本，`name`（值）以小字显示在下方。
+
+```yaml
+- name: mode
+  type: select
+  allow_custom: true
+  options:  # 下拉框选项，支持多语言。
+    - name: mode1  # 值，在下拉框中以小字显示。
+      label:  # 显示名称，支持多语言。
+        en_US: Mode 1
+        zh_Hans: 模式 1
+    - name: mode2
+      label:  # 显示名称，支持多语言。
+        en_US: Mode 2
+        zh_Hans: 模式 2
+  ...
+```
+
+设置 `allow_custom: true` 可在预设之外提供“自定义”选项，仅选择该项时显示输入框。最终保存的是所选 `name` 或自定义字符串，不会保存“自定义”标记。此选项也适用于运行器的 `spec.config`。
+
+### type: prompt-editor
+
+提示词编辑器。会展示一个流水线配置页面的提示词编辑器，最终结果表示为 OpenAI 的 `messages` 格式。
+
+```yaml
+- name: prompt
+  type: prompt-editor
+  ...
+```
+
+### type: text
+
+大段文本。前端渲染为 textarea 以供用户输入，最终以 string 类型传递给插件。
+
+```yaml
+- name: prompt
+  type: text
+  ...
+```
+
+### type: file
+
+文件上传。支持最大 10MB 的文件上传，最终以 `{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}` 格式传递给插件。插件可使用 `get_config_file` API 获取文件内容。
+
+```yaml
+- name: config_file
+  type: file
+  accept: 'application/json'  # 可选，指定接受的文件 MIME 类型
+  ...
+```
+
+在插件中获取文件：
+
+```python
+# 从配置中获取文件信息
+file_config = self.get_config()['config_file']
+file_key = file_config['file_key']
+mimetype = file_config['mimetype']
+
+# {'file_input': {'file_key': 'plugin_config_d2234fd802054faf80babe0679a97fa9.json', 'mimetype': 'application/json'}}
+print(file_config)
+
+# 获取文件内容
+file_bytes = await self.get_config_file(file_key)
+```
+
+<Info>
+  常见 mimetype 与文件扩展名对应参考：[mdn 文档](https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Guides/MIME_types/Common_types)
+</Info>
+
+### type: array[file]
+
+多文件上传。与 file 类型类似，但支持上传多个文件，最终以 `[{"file_key": "xxxxx.xxx", "mimetype": "xxxxx"}]` 格式传递给插件。
+
+```yaml
+- name: resource_files
+  type: array[file]
+  accept: 'image/*'  # 可选，指定接受的文件 MIME 类型
+  ...
+```
+
+在插件中获取文件：
+
+```python
+# 从配置中获取文件列表
+files_config = self.get_config()['resource_files']
+
+for file_config in files_config:
+    file_key = file_config['file_key']
+    mimetype = file_config['mimetype']
+
+    # 获取文件内容
+    file_bytes = await self.get_config_file(file_key)
+```
+
+### type: llm-model-selector
+
+LLM 模型选择器。会展示一个 LLM 模型选择器，可选择已配置的 LLM 模型，最终结果表示为 LLM 模型 uuid。
+
+```yaml
+- name: model
+  type: llm-model-selector
+  ...
+```
+
+### type: bot-selector
+
+Bot 选择器。会展示一个 Bot 选择器，可选择已配置的 Bot，最终结果表示为 Bot uuid。
+
+```yaml
+- name: bot
+  type: bot-selector
+  ...
+```
+
+在插件中使用 Bot uuid：
+
+```python
+# 从配置中获取 Bot UUID
+bot_uuid = self.get_config()['bot']
+print(bot_uuid)  # 输出: '550e8400-e29b-41d4-a716-446655440000'
+```
+
+### type: tools-selector
+
+工具选择器。会展示一个多选工具选择器，可选择已注册的工具（插件工具和 MCP 工具），最终结果表示为工具名称数组。
+
+```yaml
+- name: selected_tools
+  type: tools-selector
+  ...
+```
+
+在插件中使用选中的工具名称：
+
+```python
+# 从配置中获取选中的工具名称列表
+selected_tools = self.get_config()['selected_tools']
+print(selected_tools)  # 输出: ['get_weather_alerts', 'web_search']
+
+# 调用选中的工具
+for tool_name in selected_tools:
+    result = await self.plugin.call_tool(
+        tool_name=tool_name,
+        parameters={"query": "hello"},
+        session={},
+        query_id=0,
+    )
+```
+
+## 接下来做什么
+
+该教程将指引您逐步完善插件功能。
+
+- 添加组件：插件组件是插件的核心功能单元，您可以根据需求[添加组件](/zh/plugin/dev/components/add)。

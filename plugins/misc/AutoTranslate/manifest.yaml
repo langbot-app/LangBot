@@ -1,0 +1,104 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: AutoTranslate
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AutoTranslate
+  version: 0.1.5
+  description:
+    en_US: Automatically detect foreign language messages and translate them using
+      LLM. Supports configurable target language and translation style.
+    zh_Hans: 自动检测外语消息并使用 LLM 翻译。支持配置目标语言和翻译风格。
+    zh_Hant: 自動翻譯插件，自動將非目標語言的訊息翻譯為目標語言後再發送給模型。
+    ja_JP: 自動翻訳プラグイン。対象言語以外のメッセージを自動的に翻訳してからモデルに送信します。
+    vi_VN: Plugin dịch tự động, tự động dịch tin nhắn không phải ngôn ngữ mục tiêu
+      sang ngôn ngữ mục tiêu trước khi gửi cho mô hình.
+    th_TH: ปลั๊กอินแปลอัตโนมัติ แปลข้อความที่ไม่ใช่ภาษาเป้าหมายเป็นภาษาเป้าหมายก่อนส่งให้โมเดล
+    es_ES: Plugin de traducción automática que traduce los mensajes en otros idiomas
+      al idioma objetivo antes de enviarlos al modelo.
+  label:
+    en_US: Auto Translate
+    zh_Hans: 自动翻译
+    zh_Hant: Auto Translate
+    ja_JP: Auto Translate
+    vi_VN: Auto Translate
+    th_TH: Auto Translate
+    es_ES: Auto Translate
+  icon: assets/icon.svg
+spec:
+  config:
+  - name: target_language
+    type: select
+    label:
+      en_US: Target Language
+      zh_Hans: 目标语言
+    description:
+      en_US: Translate foreign messages into this language
+      zh_Hans: 将外语消息翻译为此语言
+    required: false
+    default: zh_Hans
+    options:
+    - label:
+        en_US: Chinese (Simplified)
+        zh_Hans: 简体中文
+      name: zh_Hans
+    - label:
+        en_US: English
+        zh_Hans: 英语
+      name: en_US
+    - label:
+        en_US: Japanese
+        zh_Hans: 日语
+      name: ja_JP
+    - label:
+        en_US: Korean
+        zh_Hans: 韩语
+      name: ko_KR
+    - label:
+        en_US: French
+        zh_Hans: 法语
+      name: fr_FR
+    - label:
+        en_US: Spanish
+        zh_Hans: 西班牙语
+      name: es_ES
+  - name: model
+    type: llm-model-selector
+    label:
+      en_US: LLM Model
+      zh_Hans: LLM 模型
+    description:
+      en_US: Select the LLM model for translation. If not set, the first available
+        model will be used.
+      zh_Hans: 选择用于翻译的 LLM 模型。未设置时使用第一个可用模型。
+    required: false
+  - name: min_text_length
+    type: int
+    label:
+      en_US: Minimum Text Length
+      zh_Hans: 最短文本长度
+    description:
+      en_US: Skip messages shorter than this (default 4 chars)
+      zh_Hans: 跳过短于此长度的消息（默认 4 字符）
+    required: false
+    default: 4
+  - name: enable_private
+    type: bool
+    label:
+      en_US: Enable in Private Chat
+      zh_Hans: 在私聊中启用
+    description:
+      en_US: 'Also translate in private messages (default: group only)'
+      zh_Hans: 在私聊中也进行翻译（默认仅群聊）
+    required: false
+    default: false
+  components:
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: AutoTranslate
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

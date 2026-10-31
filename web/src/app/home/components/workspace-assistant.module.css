@@ -1,0 +1,238 @@
+/* Brief gestures separated by long rests keep the collapsed dock quiet. */
+.magic {
+  animation: assistant-wave 9s ease-in-out infinite;
+  transform-origin: bottom center;
+}
+
+.sparkle {
+  animation: assistant-sparkle 9s ease-in-out infinite;
+}
+
+.dock:hover .magic,
+.dock:hover .sparkle,
+.dock:focus-visible .magic,
+.dock:focus-visible .sparkle {
+  animation-play-state: paused;
+}
+
+@keyframes assistant-wave {
+  0%,
+  84%,
+  100% {
+    transform: translateY(0) rotate(0);
+  }
+  87% {
+    transform: translateY(-2px) rotate(-10deg);
+  }
+  90% {
+    transform: translateY(-2px) rotate(8deg);
+  }
+  93% {
+    transform: translateY(-1px) rotate(-5deg);
+  }
+  96% {
+    transform: translateY(0) rotate(0);
+  }
+}
+
+@keyframes assistant-sparkle {
+  0%,
+  86%,
+  100% {
+    transform: scale(1);
+  }
+  90% {
+    transform: scale(1.2) rotate(12deg);
+  }
+  96% {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .magic,
+  .sparkle {
+    animation: none;
+  }
+}
+
+.panel {
+  border-color: var(--border);
+  background: var(--background);
+  box-shadow: 0 -4px 20px #0000000d;
+  transform-origin: bottom center;
+  animation: assistant-arrive 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.closing {
+  animation: assistant-leave 180ms ease-in both;
+  pointer-events: none;
+}
+.dock {
+  animation: assistant-arrive 160ms ease-out both;
+}
+.conversationPanel {
+  height: min(420px, calc(100dvh - 48px));
+}
+.header {
+  background: var(--background);
+}
+.avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 10px;
+  color: #2288ee;
+  background: color-mix(in srgb, #2288ee 8%, var(--background));
+}
+.welcome {
+  padding: 6px 0;
+  display: grid;
+  gap: 8px;
+}
+.prompt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+  background: var(--muted);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease;
+}
+.promptIcon {
+  display: flex;
+  flex-shrink: 0;
+  color: #2288ee;
+}
+.prompt:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--border);
+}
+.prompt:focus-visible {
+  outline: 2px solid #2288ee;
+  outline-offset: 2px;
+}
+.prompt:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.userMessage {
+  background: color-mix(in srgb, #2288ee 8%, var(--background));
+  border-bottom-right-radius: 0;
+}
+.assistantMessage {
+  background: var(--muted);
+  border-bottom-left-radius: 0;
+}
+
+/* Use the debug dialog's Markdown styling, scaled to the compact assistant. */
+.messageContent:global(.markdown-body) {
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.messageContent:global(.markdown-body) :is(p, ul, ol, blockquote, pre, table) {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+.messageContent:global(.markdown-body) :is(h1, h2, h3, h4, h5, h6) {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.messageContent:global(.markdown-body) > :first-child {
+  margin-top: 0;
+}
+.messageContent:global(.markdown-body) > :last-child {
+  margin-bottom: 0;
+}
+.messageContent:global(.markdown-body) :is(ul, ol) {
+  padding-left: 1.5em;
+}
+.messageContent:global(.markdown-body) li + li {
+  margin-top: 4px;
+}
+.messageContent:global(.markdown-body) li > p {
+  margin-bottom: 4px;
+}
+.messageContent:global(.markdown-body) pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--background);
+  font-size: 12px;
+}
+.messageContent:global(.markdown-body) table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  font-size: 12px;
+}
+.messageContent:global(.markdown-body) :is(th, td) {
+  padding: 6px 8px;
+}
+
+.composer {
+  background: var(--muted);
+  border: 1px solid transparent;
+}
+.input {
+  border: 0;
+  box-shadow: none;
+}
+.send,
+.dock {
+  background: #2288ee;
+  box-shadow: none;
+}
+.send:hover:not(:disabled),
+.dock:hover {
+  background: #1878d8;
+}
+@keyframes assistant-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+@keyframes assistant-leave {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel,
+  .closing,
+  .dock {
+    animation: none;
+  }
+  .prompt,
+  .composer {
+    transition: none;
+  }
+  .prompt:hover:not(:disabled) {
+    transform: none;
+  }
+}

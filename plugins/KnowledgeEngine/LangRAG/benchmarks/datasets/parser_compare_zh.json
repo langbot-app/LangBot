@@ -1,0 +1,66 @@
+{
+  "id": "parser_compare_zh_v1",
+  "description": "Raw HTML dataset for comparing LangRAG's internal parser with the external GeneralParsers plugin.",
+  "documents": [
+    {
+      "id": "doc_parser_tables",
+      "filename": "parser_tables.html",
+      "mime_type": "text/html",
+      "title": "解析器表格能力",
+      "raw_content": "<html><body><main><article><h1>外部 Parser</h1><section><h2>结构化输出</h2><p>GeneralParsers 会输出 text、sections 和 metadata，供 LangRAG 直接摄入。</p><table><tr><th>字段</th><th>用途</th></tr><tr><td>sections</td><td>保留标题、页码和表格边界</td></tr><tr><td>metadata</td><td>记录页数、表格、图片和 vision 统计</td></tr></table></section></article></main></body></html>",
+      "content": "GeneralParsers 会输出 text、sections 和 metadata，sections 保留标题、页码和表格边界，metadata 记录页数、表格、图片和 vision 统计。",
+      "sections": [
+        {
+          "heading": "结构化输出",
+          "level": 2,
+          "page": 1,
+          "content": "GeneralParsers 会输出 text、sections 和 metadata，供 LangRAG 直接摄入。sections 保留标题、页码和表格边界。"
+        }
+      ]
+    },
+    {
+      "id": "doc_parser_images",
+      "filename": "parser_images.html",
+      "mime_type": "text/html",
+      "title": "图片识别能力",
+      "raw_content": "<html><body><main><article><h1>Vision 解析</h1><section><h2>图片占位符</h2><p>当没有启用 vision 模型时，GeneralParsers 会保留图片占位符和 alt 文本。</p><p>示例 <img src=\"data:image/png;base64,AAAA\" alt=\"架构图包含 OCR 和图片描述\"/> 完成。</p></section></article></main></body></html>",
+      "content": "当没有启用 vision 模型时，GeneralParsers 会保留图片占位符和 alt 文本。架构图包含 OCR 和图片描述。",
+      "sections": [
+        {
+          "heading": "图片占位符",
+          "level": 2,
+          "page": 1,
+          "content": "当没有启用 vision 模型时，GeneralParsers 会保留图片占位符和 alt 文本。架构图包含 OCR 和图片描述。"
+        }
+      ]
+    },
+    {
+      "id": "doc_parser_noise",
+      "filename": "office_notice.html",
+      "mime_type": "text/html",
+      "title": "办公室通知",
+      "raw_content": "<html><body><main><h1>办公室通知</h1><p>周五下午会议室维护，茶水间补充咖啡豆。这个文件用于作为解析器 benchmark 的干扰文档。</p></main></body></html>",
+      "content": "周五下午会议室维护，茶水间补充咖啡豆。这个文件用于作为解析器 benchmark 的干扰文档。"
+    }
+  ],
+  "queries": [
+    {
+      "id": "q_structured_sections",
+      "query": "GeneralParsers 的 sections 会保留哪些结构信息？",
+      "relevant_document_ids": ["doc_parser_tables"],
+      "relevant_headings": ["结构化输出"]
+    },
+    {
+      "id": "q_metadata",
+      "query": "metadata 会记录哪些解析统计？",
+      "relevant_document_ids": ["doc_parser_tables"],
+      "relevant_headings": ["结构化输出"]
+    },
+    {
+      "id": "q_image_placeholder",
+      "query": "没有 vision 模型时图片 alt 文本会如何处理？",
+      "relevant_document_ids": ["doc_parser_images"],
+      "relevant_headings": ["图片占位符"]
+    }
+  ]
+}

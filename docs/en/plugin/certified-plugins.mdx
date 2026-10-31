@@ -1,0 +1,227 @@
+---
+title: "Certified plugins and shared runtime"
+description: "What certification is, why it exists, when you need it, and the shared-runtime-v1 / stateless-v1 contract."
+---
+
+## What certification is
+
+Certification is a grant LangBot makes for **one exact, immutable plugin artifact**: that artifact is approved to run **shared across tenants** in LangBot Cloud.
+
+- Certification is bound to the artifact itself (a specific published version, identified by digest), not to a plugin name or an author. Publishing a new version does not carry the previous version's certification over.
+- Certification is not a quality score and not a security audit endorsement.
+
+## Why certification exists
+
+LangBot does not place plugins in shared mode by default. The reason is that sharing is keyed by artifact:
+
+- **Dedicated mode**: the plugin does not participate in sharing and runs on its own.
+- **Shared mode**: every installation of the same artifact digest shares one Worker.
+
+Sharing keeps the number of processes and the startup cost from growing linearly with the number of installations. The trade-off is that **one process handles calls from several Workspaces at once** — so a plugin that keeps tenant data on its instances will leak it between tenants.
+
+The platform therefore has to review this exact artifact, confirm it satisfies the stateless contract, and then pin that trust to the artifact with a signature before it may enter shared placement. That is what certification is for.
+
+## When you need certification
+
+**Most plugins do not need certification.** Skipping it does not stop you from publishing to the marketplace, and it does not stop users from installing your plugin — it simply runs in dedicated mode.
+
+| Your situation | Certification needed? |
+| --- | --- |
+| You only want to publish the plugin so users can install it | No |
+| The plugin needs process-local state across calls (for example a long-lived external session process) | No — and it should stay dedicated |
+| The plugin has background tasks, timers, or long-lived tenant caches | No — dedicated mode is the safer choice |
+| You want the Certified Plugin badge | Yes |
+| You want several installations of one artifact to share a process, reducing cost and startup overhead | Yes |
+| The plugin targets Cloud multi-tenant scenarios and you want shared placement | Yes |
+
+The test is a single question: **certification only makes sense if your code genuinely keeps no tenant or installation data on its instances.**
+
+## What certification changes
+
+After review passes:
+
+- The artifact is signed and installed in **shared mode**; multiple installations of the same digest share one Worker.
+- That Worker holds one `BasePlugin` object and one instance per declared component manifest (EventListener, Tool, Command, KnowledgeEngine, Parser, Page, Runner).
+- Each installation adds only a lightweight layer of configuration, authority and lifecycle context; the active one is selected per call.
+- You receive the Certified Plugin badge.
+- Self-hosted OSS ships without a certification issuer public key, so a certified artifact still runs dedicated on self-hosted instances.
+
+You also take on a standing obligation: **every later version must keep satisfying the stateless contract.** After changing code you submit a new version for review; certification does not renew itself.
+
+## What you must adapt
+
+### Declaration
+
+Declare both fields under `execution` in `manifest.yaml`:
+
+```yaml
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: your-name
+  name: YourPlugin
+  version: 0.1.1
+spec:
+  config: []
+  components: {}
+execution:
+  python:
+    path: main.py
+    attr: YourPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
+```
+
+| Field | Accepted value | Notes |
+| --- | --- | --- |
+| `execution.sharedRuntime` | `shared-runtime-v1` | This is the only accepted value; anything else fails manifest validation |
+| `execution.componentModel` | `stateless-v1` | This is the only accepted value |
+
+- Both fields **must be declared together**. A package that declares `sharedRuntime` without `componentModel` is rejected during certification validation.
+- The fields are recognised from **SDK 0.7.0** onwards. Earlier SDKs ignore them, so do not rely on an old SDK to tell you whether the declaration took effect.
+
+<Warning>
+A declaration is an application, not approval. It grants no badge and does not change how the plugin runs by itself.
+</Warning>
+
+### Stateless constraints
+
+- `BasePlugin.initialize()` and component `initialize()` are **process-scoped** and run once per Worker. At that point there is no "current installation" and no "current Workspace".
+- Component instances are called concurrently by different Workspaces, so every method must be re-entrant.
+- Read the active installation configuration per call: `self.get_config()` on `BasePlugin`, `self.get_plugin_config()` or `self.plugin.get_config()` in a component, and `ctx.config` in a Runner.
+- Never store configuration, credentials, Workspace or installation identity, or request data in instance fields or module-level globals.
+- Do not read and cache installation configuration in `initialize()`.
+- Reach storage, files, credentials, logs, models and other platform capabilities through the SDK Host APIs. Authority is resolved per call; do not cache it yourself.
+- Durable tenant state belongs in Host services. Runners use `ctx.state_get()` / `ctx.state_set()` and friends (this requires `ctx.context.available_apis.state` to be `true`). In-process caches may hold artifact-level public data only; if you must cache tenant data, the key has to include the complete installation identity and must be cleaned up when the installation is removed.
+- Do not start tenant-bearing background tasks or threads: the SDK does **not** track ownership of work you create. If you must detach work, keep a registry keyed by the installation binding and stop it in `on_installation_revoked()`. Once a handler returns, that invocation's context and run-associated calls are no longer valid.
+
+### One installation, many usages
+
+A Workspace installs each plugin once, but that single installation is reused by **several product objects**:
+
+| Component kind | What reuses it | What isolates it |
+| --- | --- | --- |
+| Runner in an Agent or Pipeline | every processor | `ctx.state.*` is already per-processor (scopes carry `binding_identity`, derived from the Agent UUID) |
+| KnowledgeEngine / Parser behind a knowledge base | every knowledge base | **your plugin must isolate by knowledge-base ID itself** |
+| Tool / Command / EventListener / Page | several processors, conversations or page requests | read per call; never accumulate on the instance |
+
+The platform storage key is `(instance, Workspace, owner type, plugin, key)` and carries **no processor or knowledge-base dimension**. So whenever your plugin persists or caches anything, it must put the product object's identity into the key:
+
+- **Config**: read per call (`ctx.config`, or the task-local `self.get_plugin_config()`); never cache it on the instance.
+- **Persistence**: keys must include the product identity (processor identity / knowledge-base ID / conversation identity).
+- **Process-local caches**: keys must include both the full installation binding **and** the product identity, and must be released when the installation is revoked (below).
+- **Locks and fences**: key them by `(installation, product object)`. **A failure in one processor or knowledge base must not block the others of the same installation.**
+- **Failure grading**: only a dispatched mutation with an unknown outcome should enter a state that needs manual reconciliation; deterministic validation errors and pre-dispatch cancellation must not affect later calls.
+- **Logs and telemetry**: a diagnostic failure must not affect the work, and tenant data must not be written into a process-wide singleton.
+
+### When an installation is revoked
+
+Under shared placement one object graph serves every installation of the artifact, so **revoking one installation does not destroy it**. The plugin must release binding-keyed process-local state itself:
+
+```python
+class MyPlugin(BasePlugin):
+    def __init__(self) -> None:
+        super().__init__()
+        self._caches: dict[str, Cache] = {}
+
+    async def on_installation_revoked(self, binding) -> None:
+        self._caches.pop(binding.installation_uuid, None)
+```
+
+- **Fires for** uninstall, disable, Workspace removal and upgrade (the superseded binding is revoked). It runs only under shared placement; dedicated workers are shut down, so their process-local state disappears with the process.
+- **There is no active invocation**, so Host APIs (storage, config, binding lookups) are unavailable — you can only release process-local state, and the installation is identified by the argument.
+- Exceptions are logged and **never block revocation**.
+- It requires an SDK version that provides `BasePlugin.on_installation_revoked`; on older versions the hook is simply never called.
+
+### Allowed / forbidden
+
+| Concern | Allowed | Forbidden |
+| --- | --- | --- |
+| Reading config | Read per call (`self.get_plugin_config()`, `ctx.config`) | Reading in `initialize()` and keeping it on `self` |
+| Connection pools / HTTP clients | Shared pools without tenant credentials | Baking an installation's endpoint or API key into the instance |
+| Caching | Artifact-level public data; or keys including the full installation identity and supporting cleanup | A module-level `dict` keyed by Workspace or user that persists |
+| Cross-invocation state | Host services (`ctx.state_*` in a Runner) | Instance fields, module globals |
+| Background work | None | Holding an invocation's context or its run-associated calls after the handler returned |
+| Logging | `ctx.log()` or SDK logging APIs | A module-level background thread printing tenant config or credentials |
+
+### Common anti-patterns
+
+**1. Reading installation config during initialization**
+
+```python
+async def initialize(self):
+    self.endpoint = self.plugin.config["endpoint"]  # process-scoped init has no active installation
+    self.api_key = self.plugin.config["api_key"]
+```
+
+Shared initialization has no installation configuration, so this reads empty or stale values.
+
+**2. Caching tenant data in a module global**
+
+```python
+_CACHE = {}  # keyed by Workspace or user; persists across installations and tenants
+
+async def call(self, params, **kwargs):
+    if params["user"] not in _CACHE:
+        _CACHE[params["user"]] = await fetch(params["user"])
+```
+
+**3. Keeping work alive after the handler returns**
+
+```python
+async def call(self, params, **kwargs):
+    config = self.get_plugin_config()
+    asyncio.create_task(self._upload_later(config))  # handler already returned; context and authority are gone
+    return ok()
+```
+
+**4. Treating instance fields as a config container**
+
+```python
+async def initialize(self):
+    self.default_endpoint = "https://api.example.com"  # a public constant is fine
+    self.last_config = {}  # writing installation config here is not
+```
+
+The correct shape:
+
+```python
+class LookupTool(Tool):
+    async def initialize(self):
+        # artifact-level objects only, no tenant information
+        self.transport = StatelessHTTPTransport()
+
+    async def call(self, params, **kwargs):
+        config = self.get_plugin_config()  # read for the active installation on every call
+        return await self.transport.lookup(config["endpoint"], params)
+```
+
+### Runners in particular
+
+Runners have the most tension with the stateless contract, because a runner naturally tends to keep sessions and context in the process.
+
+- A `RunnerContext` is **valid only for the current run**. Do not keep it, or anything derived from it, on the instance for reuse across calls.
+- Session state a Runner needs across calls belongs in `ctx.state_get()` / `ctx.state_set()` (scopes: `conversation`, `actor`, `subject`, `runner`) or another Host-provided store — not in instance fields.
+- After a handler returns, do not keep using `ctx` in background tasks, and do not keep using run-associated calls made through `self.plugin`.
+- If your Runner fundamentally depends on process-local state across calls (for example a long-lived external session process), **do not declare `stateless-v1`** and stay on a dedicated Worker.
+
+See [Runner context](/en/plugin/dev/apis/agent-run) for the full context API.
+
+## Self-check and submission
+
+Verify each item before submitting:
+
+- [ ] Both fields are declared in `manifest.yaml` with the exact accepted values.
+- [ ] A repository-wide search confirms there are no module-level mutable globals.
+- [ ] `initialize()` performs process-scoped setup only and reads no installation config.
+- [ ] Every piece of installation config is read at call time.
+- [ ] No task or thread keeps running after a handler returns.
+- [ ] Cross-call state goes through Host APIs (`ctx.state_*` in a Runner).
+
+### How to submit
+
+Certification uses the same path as publishing, with no extra process: declare the two fields above in `manifest.yaml`, then submit a **new version** with `lbp publish` as usual (a published version cannot have the declaration added later). LangBot Space checks the exact submitted package, runs an advisory code review, and issues the Certified Plugin badge after human approval; certification is bound to the reviewed version and checksum.
+
+If the review finds that the release cannot meet the requirements, publish it as an unsigned normal plugin first and fix the findings in a later immutable version.
+
+If this check shows your plugin is not a good fit for sharing, just publish it as a normal plugin — certification is optional. See [Publish to the marketplace](/en/plugin/dev/publish/market) for the publishing flow.

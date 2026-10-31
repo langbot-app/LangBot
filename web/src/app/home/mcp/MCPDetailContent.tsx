@@ -1,3 +1,4 @@
+import EntityLoadState from '@/components/EntityLoadState';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -26,19 +27,21 @@ import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataCo
 import { useTranslation } from 'react-i18next';
 import { Server, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 type MCPRuntimeState = 'connected' | 'connecting' | 'error';
 type MCPConnectionState =
-  | 'connected'
-  | 'connecting'
-  | 'error'
-  | 'disabled'
-  | 'disconnected';
+  'connected' | 'connecting' | 'error' | 'disabled' | 'disconnected';
 
 export default function MCPDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
+  const canOperate =
+    currentWorkspace?.permissions.includes('runtime.operate') ?? false;
   const { refreshMCPServers, mcpServers, setDetailEntityName } =
     useSidebarData();
   const server = mcpServers.find((s) => s.id === id);
@@ -68,6 +71,8 @@ export default function MCPDetailContent({ id }: { id: string }) {
 
   // Enable state managed here so the header switch works
   const [serverEnabled, setServerEnabled] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [enableLoaded, setEnableLoaded] = useState(false);
   const [detailRuntimeStatus, setDetailRuntimeStatus] =
     useState<MCPRuntimeState | null>(null);
@@ -114,14 +119,18 @@ export default function MCPDetailContent({ id }: { id: string }) {
   useEffect(() => {
     if (!isCreateMode) {
       setDetailRuntimeStatus(null);
-      httpClient.getMCPServer(id).then((res) => {
-        const server = res.server ?? res;
-        setServerEnabled(server.enable ?? true);
-        setDetailRuntimeStatus(server.runtime_info?.status ?? null);
-        setEnableLoaded(true);
-      });
+      setLoadFailed(false);
+      httpClient
+        .getMCPServer(id)
+        .then((res) => {
+          const server = res.server ?? res;
+          setServerEnabled(server.enable ?? true);
+          setDetailRuntimeStatus(server.runtime_info?.status ?? null);
+          setEnableLoaded(true);
+        })
+        .catch(() => setLoadFailed(true));
     }
-  }, [id, isCreateMode]);
+  }, [id, isCreateMode, loadAttempt]);
 
   const handleEnableToggle = useCallback(
     async (checked: boolean) => {
@@ -156,6 +165,10 @@ export default function MCPDetailContent({ id }: { id: string }) {
     refreshMCPServers();
     navigate(`/home/mcp?id=${encodeURIComponent(serverName)}`);
   }
+
+  const handlePersistedTestComplete = useCallback(async () => {
+    await refreshMCPServers();
+  }, [refreshMCPServers]);
 
   function confirmDelete() {
     httpClient
@@ -208,21 +221,25 @@ export default function MCPDetailContent({ id }: { id: string }) {
             </Badge>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => navigate('/home/add-extension')}
-            >
-              {t('common.cancel')}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => formRef.current?.testMcp()}
-              disabled={mcpTesting}
-            >
-              {t('common.test')}
-            </Button>
+            {canOperate && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => navigate('/home/add-extension')}
+              >
+                {t('common.cancel')}
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => formRef.current?.testMcp()}
+                disabled={mcpTesting}
+              >
+                {t('common.test')}
+              </Button>
+            )}
             <Button
               type="submit"
               form="mcp-form"
@@ -239,15 +256,17 @@ export default function MCPDetailContent({ id }: { id: string }) {
         </div>
 
         <div className="min-h-0 flex-1">
-          <MCPForm
-            ref={formRef}
-            initServerName={undefined}
-            layout="split"
-            onFormSubmit={handleFormSubmit}
-            onNewServerCreated={handleNewServerCreated}
-            onTestingChange={setMcpTesting}
-            onSaveBlockedChange={setSaveBlockedByBox}
-          />
+          <fieldset className="contents" disabled={!canManage}>
+            <MCPForm
+              ref={formRef}
+              initServerName={undefined}
+              layout="split"
+              onFormSubmit={handleFormSubmit}
+              onNewServerCreated={handleNewServerCreated}
+              onTestingChange={setMcpTesting}
+              onSaveBlockedChange={setSaveBlockedByBox}
+            />
+          </fieldset>
         </div>
       </div>
     );
@@ -270,6 +289,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
             id="mcp-enable-switch"
             checked={serverEnabled}
             onCheckedChange={handleEnableToggle}
+            disabled={!canManage}
           />
         </div>
       </CardContent>
@@ -308,6 +328,12 @@ export default function MCPDetailContent({ id }: { id: string }) {
   );
 
   // ==================== Edit Mode ====================
+  if (loadFailed)
+    return (
+      <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
+    );
+  if (!enableLoaded) return <EntityLoadState />;
+
   return (
     <>
       <div className="flex h-full flex-col">
@@ -331,40 +357,47 @@ export default function MCPDetailContent({ id }: { id: string }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => formRef.current?.testMcp()}
-              disabled={mcpTesting}
-            >
-              {t('common.test')}
-            </Button>
-            <Button
-              type="submit"
-              form="mcp-form"
-              disabled={!formDirty || saveBlockedByBox}
-            >
-              {t('common.save')}
-            </Button>
+            {canOperate && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => formRef.current?.testMcp()}
+                disabled={mcpTesting}
+              >
+                {t('common.test')}
+              </Button>
+            )}
+            {canManage && (
+              <Button
+                type="submit"
+                form="mcp-form"
+                disabled={!formDirty || saveBlockedByBox}
+              >
+                {t('common.save')}
+              </Button>
+            )}
           </div>
         </div>
 
         <div className="min-h-0 flex-1">
-          <MCPForm
-            ref={formRef}
-            initServerName={id}
-            layout="split"
-            sideHeader={enableControl}
-            sideFooter={editActions}
-            onFormSubmit={handleFormSubmit}
-            onNewServerCreated={handleNewServerCreated}
-            onDirtyChange={setFormDirty}
-            onTestingChange={setMcpTesting}
-            onSaveBlockedChange={setSaveBlockedByBox}
-            onRuntimeInfoChange={(runtimeInfo) =>
-              setDetailRuntimeStatus(runtimeInfo?.status ?? null)
-            }
-          />
+          <fieldset className="contents" disabled={!canManage}>
+            <MCPForm
+              ref={formRef}
+              initServerName={id}
+              layout="split"
+              sideHeader={enableControl}
+              sideFooter={canManage ? editActions : undefined}
+              onFormSubmit={handleFormSubmit}
+              onNewServerCreated={handleNewServerCreated}
+              onDirtyChange={setFormDirty}
+              onTestingChange={setMcpTesting}
+              onSaveBlockedChange={setSaveBlockedByBox}
+              onRuntimeInfoChange={(runtimeInfo) =>
+                setDetailRuntimeStatus(runtimeInfo?.status ?? null)
+              }
+              onPersistedTestComplete={handlePersistedTestComplete}
+            />
+          </fieldset>
         </div>
       </div>
 

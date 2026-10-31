@@ -1,0 +1,262 @@
+---
+title: "故障排查"
+description: "收集 LangBot 本地部署和使用过程中的常见故障、症状、原因与解决办法；当前包含 Docker 部署问题。"
+---
+
+本文用于集中记录常见故障的排查路径。当前先覆盖 Docker 部署时容易遇到的问题，后续可以继续补充模型、机器人适配器、MCP、Skill 等章节。
+
+以下命令默认在 `LangBot/docker` 目录执行。
+
+## Docker 部署
+
+### 启动前快速确认
+
+需要使用沙箱、stdio MCP 托管、Skill 添加/编辑等能力时，请使用 `all` profile 启动：
+
+```bash
+docker compose --profile all up -d
+```
+
+确认服务状态：
+
+```bash
+docker compose --profile all ps
+```
+
+正常情况下应看到：
+
+- `langbot`：WebUI 和后端服务，默认映射 `5300` 和 `2280-2285`。
+- `langbot_plugin_runtime`：插件运行时，默认映射 `5401`。
+- `langbot_box`：Box Runtime 控制面，用于创建沙箱容器。
+
+如果只运行 `docker compose up`，不会启动 `langbot_box`，stdio MCP、Skill 添加/编辑和部分沙箱能力将不可用。
+
+### 端口被占用
+
+#### 症状
+
+- `docker compose up` 报端口绑定失败。
+- WebUI 无法访问 `http://127.0.0.1:5300`。
+- 日志中出现 `port is already allocated`、`bind: address already in use` 等信息。
+
+#### 处理方式
+
+先确认占用端口的进程。Linux/macOS：
+
+```bash
+lsof -i :5300
+lsof -i :5401
+```
+
+Windows PowerShell：
+
+```powershell
+Get-NetTCPConnection -LocalPort 5300,5401 | Select-Object LocalPort,OwningProcess
+Get-Process -Id <PID>
+```
+
+如果确认是旧的 LangBot、插件运行时或测试进程，可以停止该进程后重新启动：
+
+```bash
+docker compose --profile all up -d
+```
+
+如果不能停止占用进程，请修改 `docker-compose.yaml` 中对应端口映射，避免与现有服务冲突。
+
+### Box Runtime 未启动或不可用
+
+#### 症状
+
+- 页面或日志提示 `No sandbox backend (Docker/nsjail/E2B) is ready`。
+- stdio 模式 MCP 一直不可用。
+- Skill 无法安装、激活或编辑。
+
+#### 常见原因
+
+- 没有使用 `--profile all` 或 `--profile box` 启动。
+- `langbot_box` 没有运行。
+- 当前用户或 Docker Desktop 无法访问 Docker。
+- Linux 主机上当前用户没有 Docker socket 权限。
+
+#### 处理方式
+
+确认 `langbot_box` 已启动：
+
+```bash
+docker compose --profile all ps
+docker logs langbot_box --tail 100
+```
+
+确认 Docker 可用：
+
+```bash
+docker info
+```
+
+Linux 上如果当前用户不能访问 Docker，可加入 `docker` 用户组后重新登录：
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+docker info
+```
+
+之后重新创建容器：
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+### Box 根目录挂载失败
+
+#### 症状
+
+- 日志中出现 `host_path is outside allowed_mount_roots`。
+- 日志中出现 `host_path must point to an existing directory on the host`。
+- Docker Desktop 环境中，Box 根目录被解析为 `/run/desktop/...` 后被拒绝。
+- stdio MCP 或 Skill 相关沙箱容器无法创建。
+
+#### 原因
+
+`langbot_box` 会通过宿主机 Docker socket 创建沙箱容器。沙箱容器看到的是宿主机路径，因此 Box 根目录的“宿主机路径”和“容器内路径”必须保持一致，并且该路径必须位于 `allowed_mount_roots` 内。
+
+#### 处理方式
+
+在 `LangBot/docker/.env` 中设置一个 Docker 能挂载、且不会被 Box 安全规则拒绝的绝对路径：
+
+```env
+LANGBOT_BOX_ROOT=/var/lib/langbot/box
+```
+
+Windows Docker Desktop 可以使用 Docker VM 可识别的路径，例如：
+
+```env
+LANGBOT_BOX_ROOT=/host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+确保目录存在后重建容器：
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+如果之前已经手动修改过 `docker/data/config.yaml`，请同步检查：
+
+```yaml
+box:
+  local:
+    host_root: /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+    allowed_mount_roots:
+      - /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+### 大量 stdio MCP 启动失败或长时间 connecting
+
+#### 症状
+
+- MCP 状态停留在 `connecting` 或变为 `error`。
+- `docker logs langbot_box` 中出现 `Cannot fork`。
+- 同时安装较多 stdio 模式 MCP 后，原本可用的 MCP 也开始启动失败。
+
+#### 原因
+
+stdio MCP 会运行在 Box 沙箱中。默认 Box profile 的 PID 限制较低，同时启动多个 `npx`、`uvx` MCP 时可能达到沙箱进程数限制。
+
+#### 处理方式
+
+在 `docker/data/config.yaml` 中把 Box profile 调整为资源更高的内置 profile：
+
+```yaml
+box:
+  local:
+    profile: network_extended
+```
+
+然后停止 LangBot 和 Box，删除旧共享沙箱，让新配置生效。
+
+Linux/macOS：
+
+```bash
+docker compose --profile all stop langbot langbot_box
+docker rm -f $(docker ps -aq --filter "name=langbot-box-mcp-shared")
+docker compose --profile all up -d --force-recreate
+```
+
+Windows PowerShell：
+
+```powershell
+docker compose --profile all stop langbot langbot_box
+docker ps -a --filter "name=langbot-box-mcp-shared" --format "{{.Names}}" | ForEach-Object { docker rm -f $_ }
+docker compose --profile all up -d --force-recreate
+```
+
+等待 MCP 冷启动完成后，在 MCP 管理页面确认状态为 `connected`，并检查工具数量是否大于 `0`。
+
+### MCP 已安装但没有工具或无法连接
+
+#### 症状
+
+- MCP 已出现在列表中，但状态是 `error` 或长期 `connecting`。
+- 工具数量为 `0`。
+- 远程 MCP 日志中出现 `401 Unauthorized`、连接超时或握手失败。
+
+#### 常见原因
+
+- 远程 MCP 需要 API Key 或 OAuth 授权，但未配置。
+- MCP 包首次通过 `npx` 或 `uvx` 冷启动，依赖下载时间较长。
+- 当前 Docker 网络无法访问对应 MCP 服务或包仓库。
+- stdio MCP 沙箱资源不足。
+
+#### 处理方式
+
+优先在 LangBot Space 中选择无需密钥或已正确配置密钥的 MCP。对于需要密钥的 MCP，请在安装配置中补齐环境变量、请求头或 URL 参数。
+
+查看运行时日志：
+
+```bash
+docker logs langbot --tail 200
+docker logs langbot_box --tail 200
+```
+
+如果确认某个 MCP 无法在当前环境连接，请在 MCP 管理页面禁用或删除它，避免影响排查结果。
+
+### 镜像标签或镜像源不一致
+
+#### 症状
+
+- `docker compose ps` 显示服务仍在使用旧镜像。
+- 修改了镜像源或标签后，重启仍未生效。
+- `langbot`、`langbot_plugin_runtime`、`langbot_box` 使用了不同镜像标签。
+
+#### 处理方式
+
+保持三个 LangBot 服务的镜像标签一致，然后重新拉取并重建：
+
+```bash
+docker pull rockchin/langbot:latest
+docker compose --profile all up -d --force-recreate
+```
+
+如果你明确需要部署其他标签，请确保 `docker-compose.yaml` 中 `langbot`、`langbot_plugin_runtime`、`langbot_box` 三处镜像同时修改。
+
+### 部署后验证
+
+完成修复后建议做一次完整检查：
+
+```bash
+docker compose --profile all ps
+docker inspect langbot langbot_plugin_runtime langbot_box --format '{{.Name}} {{.Config.Image}} {{.State.Status}}'
+```
+
+确认 WebUI 可访问：
+
+```bash
+curl -I http://127.0.0.1:5300/
+```
+
+在页面中继续确认：
+
+- 可以正常登录。
+- Box / 沙箱能力可用。
+- MCP 列表中的目标 MCP 状态为 `connected`。
+- stdio MCP 的工具数量正常显示。

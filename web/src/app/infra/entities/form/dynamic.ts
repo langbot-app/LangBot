@@ -27,6 +27,8 @@ export interface IDynamicFormItemSchema {
   type: DynamicFormItemType;
   description?: I18nObject | string;
   options?: IDynamicFormItemOption[];
+  /** Allow an editable value in addition to the declared select options. */
+  allow_custom?: boolean;
   /** When the condition matches, the field is rendered. Same evaluator as
    *  ``disable_if`` — supports the ``__system.*`` namespace via
    *  ``DynamicFormComponent.systemContext``. */
@@ -39,11 +41,22 @@ export interface IDynamicFormItemSchema {
   disable_if?: IShowIfCondition;
   /** Tooltip shown next to the field label when ``disable_if`` is active. */
   disabled_tooltip?: I18nObject;
+  /** Optional overrides evaluated in order when ``disable_if`` matches.
+   *  The first matching ``when`` wins; otherwise use ``disabled_tooltip``.
+   *  Conditions use the same operators and value lookup as ``disable_if``. */
+  disabled_tooltip_overrides?: {
+    when: IShowIfCondition;
+    tooltip: I18nObject;
+  }[];
 
   /** when type is PLUGIN_SELECTOR, the scopes is the scopes of components(plugin contains), the default is all */
   scopes?: string[];
   accept?: string; // For file type: accepted MIME types
   login_platform?: string; // For qr-code-login type: platform identifier (e.g. 'feishu', 'weixin')
+  url?: string; // For download-link type: relative or absolute download URL
+  download_filename?: string; // Optional filename for download-link type
+  help_links?: Record<string, string>; // Optional docs links for display-only fields
+  help_label?: I18nObject; // Optional label for help_links
 }
 
 export enum DynamicFormItemType {
@@ -75,6 +88,12 @@ export enum DynamicFormItemType {
   WEBHOOK_URL = 'webhook-url',
   EMBED_CODE = 'embed-code',
   QR_CODE_LOGIN = 'qr-code-login',
+  DOWNLOAD_LINK = 'download-link',
+  // Plugin manifest type aliases for compatibility
+  SELECT_LLM_MODEL = 'select-llm-model',
+  SELECT_KNOWLEDGE_BASES = 'select-knowledge-bases',
+  NUMBER = 'number',
+  JSON = 'json',
 }
 
 export interface IFileConfig {

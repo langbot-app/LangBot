@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Human Takeover</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+
+    /* ===== 自定义滚动条(符合 LangBot 设计语言) ===== */
+    .session-list, .messages, .info-panel, .composer textarea {
+      scrollbar-width: thin;
+      scrollbar-color: var(--langbot-border, #d4d4d8) transparent;
+    }
+    .session-list::-webkit-scrollbar,
+    .messages::-webkit-scrollbar,
+    .info-panel::-webkit-scrollbar,
+    .composer textarea::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .session-list::-webkit-scrollbar-track,
+    .messages::-webkit-scrollbar-track,
+    .info-panel::-webkit-scrollbar-track,
+    .composer textarea::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .session-list::-webkit-scrollbar-thumb,
+    .messages::-webkit-scrollbar-thumb,
+    .info-panel::-webkit-scrollbar-thumb,
+    .composer textarea::-webkit-scrollbar-thumb {
+      background: var(--langbot-border, #d4d4d8);
+      border-radius: 6px;
+    }
+    .session-list::-webkit-scrollbar-thumb:hover,
+    .messages::-webkit-scrollbar-thumb:hover,
+    .info-panel::-webkit-scrollbar-thumb:hover,
+    .composer textarea::-webkit-scrollbar-thumb:hover {
+      background: var(--langbot-text-muted, #a1a1aa);
+    }
+    .session-list::-webkit-scrollbar-corner,
+    .messages::-webkit-scrollbar-corner,
+    .info-panel::-webkit-scrollbar-corner,
+    .composer textarea::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+    body {
+      background: var(--langbot-bg, #f7f8fa);
+      color: var(--langbot-text, #0a0a0a);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+    .app {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+    }
+
+    /* ===== 左栏:会话列表 ===== */
+    .sidebar {
+      width: 300px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--langbot-border, #e5e7eb);
+      background: var(--langbot-bg-card, #ffffff);
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .sidebar-title { font-size: 15px; font-weight: 600; }
+    .tabs {
+      display: flex;
+      padding: 8px 12px 0;
+      gap: 6px;
+    }
+    .tab {
+      flex: 1;
+      padding: 7px 0;
+      text-align: center;
+      border-radius: 8px 8px 0 0;
+      cursor: pointer;
+      color: var(--langbot-text-muted, #6b7280);
+      font-size: 13px;
+      transition: background .15s, color .15s;
+    }
+    .tab.active {
+      color: var(--langbot-accent, #2563eb);
+      font-weight: 600;
+      background: var(--langbot-bg, #f3f4f6);
+    }
+    .search-box { padding: 8px 12px; }
+    .search-box input {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--langbot-border, #e5e7eb);
+      border-radius: 8px;
+      background: var(--langbot-bg, #f7f8fa);
+      color: var(--langbot-text, #0a0a0a);
+      outline: none;
+      font-size: 13px;
+    }
+    .session-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
+    .session-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background .12s;
+      position: relative;
+    }
+    .session-item:hover { background: var(--langbot-bg, #f3f4f6); }
+    .session-item.active { background: var(--langbot-bg, #eef2ff); }
+    .avatar {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .avatar.group { border-radius: 12px; }
+    .session-meta { flex: 1; min-width: 0; }
+    .session-name {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .session-preview {
+      color: var(--langbot-text-muted, #9ca3af);
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #10b981; flex-shrink: 0;
+    }
+    .avatar-wrap { position: relative; flex-shrink: 0; }
+    .unread-dot {
+      position: absolute;
+      top: -2px; right: -2px;
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #ef4444;
+      border: 2px solid var(--langbot-bg-card, #fff);
+      z-index: 2;
+    }
+    .session-item.unread .session-name { font-weight: 700; }
+    .badge-group {
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      background: var(--langbot-bg, #f3f4f6);
+      color: var(--langbot-text-muted, #6b7280);
+    }
+
+    /* ===== 中区:聊天 ===== */
+    .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .chat-header {
+      padding: 12px 18px;
+      border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+      background: var(--langbot-bg-card, #ffffff);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .chat-title { font-size: 15px; font-weight: 600; flex: 1; }
+    .countdown {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      background: var(--langbot-bg, #f3f4f6);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .countdown.show { display: flex; }
+    .countdown.warning { background: #fef2f2; color: #dc2626; animation: blink 1s infinite; }
+    @keyframes blink { 50% { opacity: .55; } }
+    .ring {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--langbot-accent, #2563eb);
+      border-top-color: transparent;
+      animation: spin 1.2s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity .15s, background .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary { background: var(--langbot-accent, #2563eb); color: #fff; }
+    .btn-danger { background: #ef4444; color: #fff; }
+    .btn-ghost {
+      background: transparent;
+      color: var(--langbot-text-muted, #6b7280);
+      border: 1px solid var(--langbot-border, #e5e7eb);
+    }
+    .icon-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      color: var(--langbot-text-muted, #6b7280);
+      padding: 6px;
+      border-radius: 8px;
+      font-size: 18px;
+      line-height: 1;
+    }
+    .icon-btn:hover { background: var(--langbot-bg, #f3f4f6); }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .msg-row { display: flex; gap: 10px; max-width: 78%; }
+    .msg-row.user { align-self: flex-start; }
+    .msg-row.ai { align-self: flex-end; flex-direction: row-reverse; }
+    .msg-row.human { align-self: flex-end; flex-direction: row-reverse; }
+    .msg-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .msg-body { min-width: 0; }
+    .msg-sender {
+      font-size: 11px;
+      color: var(--langbot-text-muted, #9ca3af);
+      margin-bottom: 3px;
+    }
+    .bubble {
+      padding: 9px 13px;
+      border-radius: 12px;
+      word-break: break-word;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .user .bubble { background: var(--langbot-bg-card, #fff); border: 1px solid var(--langbot-border, #e5e7eb); }
+    .ai .bubble { background: var(--langbot-accent, #2563eb); color: #fff; }
+    .human .bubble { background: #10b981; color: #fff; }
+    .bubble img { max-width: 220px; border-radius: 8px; display: block; }
+    .msg-time { font-size: 10px; color: var(--langbot-text-muted, #c0c4cc); margin-top: 3px; }
+
+    /* ===== 输入区 ===== */
+    .composer {
+      border-top: 1px solid var(--langbot-border, #e5e7eb);
+      padding: 12px 16px;
+      background: var(--langbot-bg-card, #ffffff);
+    }
+    .composer-tip {
+      font-size: 12px;
+      color: var(--langbot-text-muted, #9ca3af);
+      margin-bottom: 8px;
+      display: none;
+    }
+    .composer-tip.show { display: block; }
+    .preview-strip { display: flex; gap: 8px; margin-bottom: 8px; }
+    .preview-thumb {
+      position: relative;
+      width: 60px; height: 60px;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--langbot-border, #e5e7eb);
+    }
+    .preview-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .preview-thumb .remove {
+      position: absolute; top: 2px; right: 2px;
+      background: rgba(0,0,0,.6); color: #fff;
+      border-radius: 50%; width: 16px; height: 16px;
+      font-size: 11px; line-height: 16px; text-align: center;
+      cursor: pointer;
+    }
+    .composer-row { display: flex; align-items: flex-end; gap: 8px; }
+    .composer textarea {
+      flex: 1;
+      resize: none;
+      border: 1px solid var(--langbot-border, #e5e7eb);
+      border-radius: 10px;
+      padding: 9px 12px;
+      font-family: inherit;
+      font-size: 14px;
+      background: var(--langbot-bg, #f7f8fa);
+      color: var(--langbot-text, #0a0a0a);
+      outline: none;
+      max-height: 98px;
+      line-height: 1.5;
+      overflow-y: auto;
+    }
+    .composer textarea:disabled { opacity: .6; }
+
+    /* ===== 右栏:信息面板 ===== */
+    .info-panel {
+      width: 280px;
+      flex-shrink: 0;
+      border-left: 1px solid var(--langbot-border, #e5e7eb);
+      background: var(--langbot-bg-card, #ffffff);
+      overflow-y: auto;
+      transition: width .2s, opacity .2s;
+    }
+    .info-panel.collapsed { width: 0; opacity: 0; overflow: hidden; border: none; }
+    .info-header {
+      padding: 16px;
+      text-align: center;
+      border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+    }
+    .info-avatar {
+      width: 64px; height: 64px; margin: 0 auto 10px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 26px; font-weight: 600;
+    }
+    .info-avatar.group { border-radius: 18px; }
+    .info-name { font-size: 16px; font-weight: 600; }
+    .info-sub { font-size: 12px; color: var(--langbot-text-muted, #9ca3af); margin-top: 3px; }
+    .info-section { padding: 14px 16px; }
+    .info-section h4 {
+      margin: 0 0 10px; font-size: 12px; font-weight: 600;
+      color: var(--langbot-text-muted, #9ca3af); text-transform: uppercase;
+    }
+    .info-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
+    .info-row .k { color: var(--langbot-text-muted, #9ca3af); }
+    .member-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; cursor: pointer; border-radius: 8px;
+    }
+    .member-item:hover { background: var(--langbot-bg, #f3f4f6); }
+    .member-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
+    }
+
+    .empty {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      color: var(--langbot-text-muted, #9ca3af); flex-direction: column; gap: 12px;
+      text-align: center;
+    }
+    .empty-icon { width: 56px; height: 56px; opacity: .35; }
+    .empty-icon svg { width: 100%; height: 100%; display: block; }
+
+    /* ===== 信息卡片浮层 ===== */
+    .card-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.25);
+      display: none;
+      align-items: center; justify-content: center;
+      z-index: 50;
+    }
+    .card-overlay.show { display: flex; }
+    .info-card {
+      background: var(--langbot-bg-card, #fff);
+      border-radius: 16px;
+      padding: 22px;
+      width: 300px;
+      box-shadow: 0 12px 40px rgba(0,0,0,.2);
+    }
+    .info-card .card-avatar {
+      width: 72px; height: 72px; margin: 0 auto 12px;
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 30px; font-weight: 600;
+    }
+    .info-card.group-card .card-avatar { border-radius: 20px; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,.82); color: #fff;
+      padding: 10px 18px; border-radius: 10px; font-size: 13px;
+      opacity: 0; transition: opacity .25s; z-index: 100; pointer-events: none;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <!-- 左栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <span class="sidebar-title" data-i18n="appTitle">人工接管</span>
+        <button class="btn btn-ghost" id="clearBtn" data-i18n="clearStorage">清理存储</button>
+      </div>
+      <div class="tabs">
+        <div class="tab active" data-tab="all" data-i18n="tabAll">全部</div>
+        <div class="tab" data-tab="person" data-i18n="tabPerson">私聊</div>
+        <div class="tab" data-tab="group" data-i18n="tabGroup">群聊</div>
+      </div>
+      <div class="search-box">
+        <input type="text" id="searchInput" data-i18n="searchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索会话...">
+      </div>
+      <div class="session-list" id="sessionList"></div>
+    </div>
+
+    <!-- 中区 -->
+    <div class="chat">
+      <div class="chat-header" id="chatHeader" style="display:none;">
+        <span class="chat-title" id="chatTitle"></span>
+        <div class="countdown" id="countdown">
+          <span class="ring"></span>
+          <span id="countdownText">10:00</span>
+        </div>
+        <button class="btn btn-primary" id="takeoverBtn" data-i18n="takeover">接管</button>
+        <button class="icon-btn" id="toggleInfoBtn" title="信息">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
+        </button>
+      </div>
+      <div class="messages" id="messages" style="display:none;"></div>
+      <div class="empty" id="chatEmpty">
+        <div class="empty-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+        </div>
+        <div data-i18n="selectSession">请选择一个会话开始</div>
+      </div>
+      <div class="composer" id="composer" style="display:none;">
+        <div class="composer-tip" id="composerTip" data-i18n="takeoverTip">已接管,消息将以人工身份发送,AI 已被阻断。</div>
+        <div class="preview-strip" id="previewStrip"></div>
+        <div class="composer-row">
+          <button class="icon-btn" id="imageBtn" title="图片">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </button>
+          <input type="file" id="imageInput" accept="image/*" style="display:none;">
+          <button class="icon-btn" id="fileBtn" title="文件">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+          </button>
+          <input type="file" id="fileInput" style="display:none;">
+          <textarea id="msgInput" rows="1" data-i18n="inputPlaceholder" data-i18n-attr="placeholder" placeholder="输入消息..."></textarea>
+          <button class="btn btn-primary" id="sendBtn" title="发送">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            <span data-i18n="send" style="vertical-align:middle;margin-left:4px">发送</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右栏:信息面板 -->
+    <div class="info-panel collapsed" id="infoPanel"></div>
+  </div>
+
+  <!-- 信息卡片浮层 -->
+  <div class="card-overlay" id="cardOverlay">
+    <div class="info-card" id="infoCard"></div>
+  </div>
+
+  <!-- 确认对话框 -->
+  <div class="card-overlay" id="confirmOverlay">
+    <div class="info-card">
+      <div class="info-name" style="text-align:center;margin-bottom:8px" data-i18n="confirmTitle">确认操作</div>
+      <div class="info-sub" id="confirmMsg" style="text-align:center;margin-bottom:16px"></div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-ghost" id="confirmCancel" style="flex:1" data-i18n="cancel">取消</button>
+        <button class="btn btn-danger" id="confirmOk" style="flex:1" data-i18n="confirm">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    var state = {
+      sessions: [],
+      filter: 'all',
+      search: '',
+      current: null,        // 当前选中的 session_key(用户意图)
+      currentData: null,    // 当前会话消息数据(仅当 currentKey === current 时可信)
+      currentKey: null,     // currentData 所属的 session_key(响应归属)
+      loadSeq: 0,           // 会话加载的递增序号,用于丢弃过期响应
+      loading: false,       // 当前会话的消息是否仍在加载
+      pendingImage: null,   // base64 data url(属于 attachmentOwner.image)
+      pendingFile: null,    // {base64, name}(属于 attachmentOwner.file)
+      attachmentOwner: { image: null, file: null },  // 附件所属的 session_key
+      drafts: {},           // session_key -> {text, image, file}:按会话保存的草稿
+      draftGen: 0,          // 草稿代次:切换/清空/显式清除时递增,作废在途附件读取
+      timer: null,          // 倒计时定时器
+      remaining: 0,
+      timeout: 600,
+      pollTimer: null,
+    };
+
+    function t(key, fb) { return langbot.t(key, fb); }
+
+    function colorOf(seed) {
+      var colors = ['#4f46e5','#0891b2','#db2777','#ea580c','#16a34a','#7c3aed','#0d9488','#d97706'];
+      var s = String(seed || '');
+      var sum = 0;
+      for (var i = 0; i < s.length; i++) sum += s.charCodeAt(i);
+      return colors[sum % colors.length];
+    }
+    function initial(name) {
+      var s = String(name || '?').trim();
+      return s ? s[0].toUpperCase() : '?';
+    }
+    function fmtTime(ts) {
+      if (!ts) return '';
+      var d = new Date(ts * 1000);
+      var p = function(n){ return n < 10 ? '0'+n : n; };
+      return p(d.getHours()) + ':' + p(d.getMinutes());
+    }
+    function fmtMMSS(sec) {
+      sec = Math.max(0, sec | 0);
+      var m = (sec / 60) | 0, s = sec % 60;
+      var p = function(n){ return n < 10 ? '0'+n : n; };
+      return p(m) + ':' + p(s);
+    }
+    function showToast(msg) {
+      var el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(function(){ el.classList.remove('show'); }, 2000);
+    }
+
+    // ====== 会话列表 ======
+    async function loadSessions() {
+      try {
+        var res = await langbot.api('/sessions', null, 'GET');
+        var newSessions = (res && res.sessions) || [];
+        // 检测新出现的未处理会话 → 人工接管提醒
+        if (state.unreadKnown) {
+          newSessions.forEach(function(s) {
+            if (s.unread && !state.unreadKnown[s.session_key]) {
+              var tip = t('triggerAlert', '收到需人工处理的消息') + ': ' + s.name +
+                (s.triggered_word ? (' [' + s.triggered_word + ']') : '');
+              showToast(tip);
+            }
+          });
+        }
+        state.unreadKnown = {};
+        newSessions.forEach(function(s) {
+          if (s.unread) state.unreadKnown[s.session_key] = true;
+        });
+        state.sessions = newSessions;
+        renderSessions();
+      } catch (e) { showToast('加载会话失败: ' + e); }
+    }
+
+    function renderSessions() {
+      var list = document.getElementById('sessionList');
+      var items = state.sessions.filter(function(s) {
+        if (state.filter !== 'all' && s.type !== state.filter) return false;
+        if (state.search && (s.name || '').toLowerCase().indexOf(state.search) < 0) return false;
+        return true;
+      });
+      list.innerHTML = '';
+      if (!items.length) {
+        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--langbot-text-muted,#9ca3af);font-size:13px;">' + t('noSessions','暂无会话') + '</div>';
+        return;
+      }
+      items.forEach(function(s) {
+        var el = document.createElement('div');
+        el.className = 'session-item' + (s.session_key === state.current ? ' active' : '') + (s.unread ? ' unread' : '');
+        var isGroup = s.type === 'group';
+        el.innerHTML =
+          '<div class="avatar-wrap">' +
+            '<div class="avatar ' + (isGroup ? 'group' : '') + '" style="background:' + colorOf(s.target_id) + '" data-avatar="1">' + initial(s.name) + '</div>' +
+            (s.unread ? '<span class="unread-dot" title="' + escapeAttr(t('unhandled','未处理') + (s.triggered_word ? (': ' + s.triggered_word) : '')) + '"></span>' : '') +
+          '</div>' +
+          '<div class="session-meta">' +
+            '<div class="session-name">' + escapeHtml(s.name) +
+              (isGroup ? ' <span class="badge-group">' + t('group','群') + '</span>' : '') +
+              (s.takeover_active ? ' <span class="dot" title="' + t('takenOver','已接管') + '"></span>' : '') +
+            '</div>' +
+            '<div class="session-preview">' + escapeHtml(s.last_msg_preview || '') + '</div>' +
+          '</div>';
+        el.querySelector('.avatar').addEventListener('click', function(ev) {
+          ev.stopPropagation();
+          openSession(s.session_key);
+          if (isGroup) showGroupCard(s.session_key); else showUserCard(s.session_key, null);
+        });
+        el.addEventListener('click', function() { openSession(s.session_key); });
+        list.appendChild(el);
+      });
+    }
+
+    function escapeHtml(str) {
+      return String(str == null ? '' : str)
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;');
+    }
+
+    // ====== 草稿归属 ======
+    // 输入框与附件只属于当前会话。切换会话时保存上一个会话的草稿并恢复目标
+    // 会话的草稿,同时递增草稿代次:上一个会话里尚未读完的附件读取就此作废,
+    // 否则 A 选的附件会在切到 B 之后才读出来,被当成 B 的附件发出去。
+    function emptyDraft() { return { text: '', image: null, file: null }; }
+
+    function draftSlot(key) {
+      if (!key) return null;
+      if (!state.drafts[key]) state.drafts[key] = emptyDraft();
+      return state.drafts[key];
+    }
+
+    function composerText() {
+      var el = document.getElementById('msgInput');
+      return el ? el.value : '';
+    }
+
+    // 把当前输入框与附件状态记到 key 名下
+    function saveDraft(key) {
+      var slot = draftSlot(key);
+      if (!slot) return;
+      slot.text = composerText();
+      slot.image = state.pendingImage || null;
+      slot.file = state.pendingFile || null;
+    }
+
+    // 用 key 名下的草稿重写输入框与附件预览
+    function restoreDraft(key) {
+      var slot = draftSlot(key);
+      var input = document.getElementById('msgInput');
+      if (input) input.value = slot ? (slot.text || '') : '';
+      state.pendingImage = slot ? (slot.image || null) : null;
+      state.pendingFile = slot ? (slot.file || null) : null;
+      state.attachmentOwner = {
+        image: state.pendingImage ? key : null,
+        file: state.pendingFile ? key : null
+      };
+      resetAttachmentInputs();
+      renderPreview();
+      if (input) autoGrow(input);
+    }
+
+    // 输入框与附件被清空时同步会话草稿槽(仅当前会话的槽)
+    function syncDraftSlot() {
+      var slot = state.drafts[state.current];
+      if (!slot) return;
+      slot.text = composerText();
+      slot.image = state.pendingImage || null;
+      slot.file = state.pendingFile || null;
+    }
+
+    // 清空输入框与附件预览(显式清除,因此在途附件读取一并作废)
+    function clearComposer() {
+      var input = document.getElementById('msgInput');
+      if (input) input.value = '';
+      state.pendingImage = null;
+      state.pendingFile = null;
+      state.attachmentOwner = { image: null, file: null };
+      state.draftGen++;
+      resetAttachmentInputs();
+      renderPreview();
+      if (input) autoGrow(input);
+    }
+
+    function resetAttachmentInputs() {
+      var ii = document.getElementById('imageInput');
+      if (ii) ii.value = '';
+      var fi = document.getElementById('fileInput');
+      if (fi) fi.value = '';
+    }
+
+    // 附件读取开始时捕获不可变的会话键与草稿代次;回调写入前必须两者都仍然成立
+    function captureAttachmentOwner() {
+      return { key: state.current, gen: state.draftGen };
+    }
+
+    function commitAttachment(owner, field, apply) {
+      // 读取期间切换了会话或清空了草稿:这个附件不再属于任何可见的会话,丢弃
+      if (!owner.key || owner.key !== state.current || owner.gen !== state.draftGen) {
+        resetAttachmentInputs();
+        return false;
+      }
+      apply();
+      state.attachmentOwner[field] = owner.key;
+      syncDraftSlot();
+      renderPreview();
+      return true;
+    }
+
+    // 发送成功后只清掉这次确实发出去的那部分输入:等待回复期间操作员新输入的
+    // 文字、新加入的附件必须保留(它们还没有被发出去)。
+    function consumeSentDraft(text, image, fileBase64) {
+      var input = document.getElementById('msgInput');
+      var cleared = false;
+      if (input && input.value === text) {
+        input.value = '';
+        cleared = true;
+      }
+      if (state.pendingImage && state.pendingImage === image) {
+        state.pendingImage = null;
+        state.attachmentOwner.image = null;
+        cleared = true;
+      }
+      if (state.pendingFile && state.pendingFile.base64 === fileBase64) {
+        state.pendingFile = null;
+        state.attachmentOwner.file = null;
+        cleared = true;
+      }
+      if (!cleared) return;
+      state.draftGen++;  // 这次草稿已经发出,针对它的在途附件读取作废
+      syncDraftSlot();
+      resetAttachmentInputs();
+      renderPreview();
+      if (input) autoGrow(input);
+    }
+
+    // ====== 打开会话 ======
+    async function openSession(key) {
+      if (!key) return;
+      var prev = state.current;
+      var changed = prev !== key;
+      state.current = key;
+      // 切换会话:立即清空上一个会话的展示状态,并作废所有在途响应,
+      // 否则旧会话迟到的响应会被画到新会话上(显示 A、发送却指向 B)。
+      state.loadSeq++;
+      state.loading = !!key;
+      state.currentData = null;
+      state.currentKey = null;
+      if (changed) {
+        // 草稿按会话保存/恢复,并让上一个会话里仍在读取中的附件作废,
+        // 只清空 pending 值不足以阻止迟到的读取回调把 A 的附件写进来。
+        saveDraft(prev);
+        state.draftGen++;
+        restoreDraft(key);
+      } else {
+        draftSlot(key);
+      }
+      clearConversationUI();
+      updateComposerEnabled();
+      renderSessions();
+      document.getElementById('chatEmpty').style.display = 'none';
+      document.getElementById('chatHeader').style.display = 'flex';
+      document.getElementById('composer').style.display = 'block';
+      document.getElementById('messages').style.display = 'flex';
+      await loadMessages(key);
+    }
+
+    // 清空中区/右栏中属于上一个会话的展示状态
+    function clearConversationUI() {
+      document.getElementById('chatTitle').textContent = '';
+      document.getElementById('messages').innerHTML = '';
+      document.getElementById('infoPanel').innerHTML = '';
+      updateTakeoverUI(false, 0);
+    }
+
+    // 当前展示的数据是否确实属于当前选中的会话(发送/接管前必须成立)
+    function currentDataMatches() {
+      return !!(state.current && state.currentData && state.currentKey === state.current);
+    }
+
+    // 消息未加载完成、正在发送,或展示数据与目标会话不一致时禁止发送
+    function updateComposerEnabled() {
+      var btn = document.getElementById('sendBtn');
+      if (!btn) return;
+      btn.disabled = !!(state.loading || state.sending || !currentDataMatches());
+    }
+
+    async function loadMessages(key) {
+      var target = key || state.current;
+      if (!target) return;
+      // 每次加载携带不可变的目标键与递增序号,只有仍属于当前会话
+      // 且未被更新请求取代的响应才允许写入 UI。
+      var seq = ++state.loadSeq;
+      var isCurrent = function () {
+        return seq === state.loadSeq && state.current === target;
+      };
+      if (state.current === target) {
+        state.loading = true;
+        updateComposerEnabled();
+      }
+      try {
+        var data = await langbot.api('/messages', { session_key: target }, 'GET');
+        if (!isCurrent()) return;  // 过期响应:会话已切换或有更新的加载,直接丢弃
+        state.currentData = data;
+        state.currentKey = (data && data.session_key) || target;
+        state.timeout = data.takeover_timeout || 600;
+        renderMessages(data);
+        renderInfoPanel(data);
+        updateTakeoverUI(data.takeover_active, data.takeover_remaining);
+      } catch (e) {
+        if (isCurrent()) showToast('加载消息失败: ' + e);
+      } finally {
+        if (isCurrent()) {
+          state.loading = false;
+          updateComposerEnabled();
+        }
+      }
+    }
+
+    function renderMessages(data) {
+      document.getElementById('chatTitle').textContent = data.name || data.session_key;
+      var box = document.getElementById('messages');
+      box.innerHTML = '';
+      var isGroup = data.type === 'group';
+      (data.messages || []).forEach(function(m) {
+        var row = document.createElement('div');
+        row.className = 'msg-row ' + m.role;
+        var avatarSeed = m.role === 'user' ? (m.sender_id || data.name) : m.role;
+        var avatarName = m.role === 'ai' ? 'AI' : (m.role === 'human' ? (t('agent','人工')) : (m.sender_name || data.name));
+        var showSender = isGroup && m.role === 'user';
+        var content;
+        if (m.content_type === 'image') {
+          content = '<img src="' + escapeAttr(m.content) + '" alt="image">';
+        } else if (m.content_type === 'file') {
+          content = '<span style="display:inline-flex;align-items:center;gap:6px">' +
+            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
+            escapeHtml(m.content) + '</span>';
+        } else {
+          content = escapeHtml(m.content);
+        }
+        row.innerHTML =
+          '<div class="msg-avatar" style="background:' + colorOf(avatarSeed) + '">' + initial(avatarName) + '</div>' +
+          '<div class="msg-body">' +
+            (showSender ? '<div class="msg-sender">' + escapeHtml(m.sender_name || m.sender_id) + '</div>' : '') +
+            '<div class="bubble">' + content + '</div>' +
+            '<div class="msg-time">' + fmtTime(m.ts) + '</div>' +
+          '</div>';
+        if (m.role === 'user' && m.sender_id) {
+          row.querySelector('.msg-avatar').style.cursor = 'pointer';
+          row.querySelector('.msg-avatar').addEventListener('click', function() {
+            if (isGroup) showUserCard(data.session_key, m.sender_id);
+            else showUserCard(data.session_key, null);
+          });
+        }
+        box.appendChild(row);
+      });
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
+
+    // ====== 接管 / 倒计时 ======
+    function updateTakeoverUI(active, remaining) {
+      var btn = document.getElementById('takeoverBtn');
+      var cd = document.getElementById('countdown');
+      var tip = document.getElementById('composerTip');
+      if (active) {
+        btn.textContent = t('cancelTakeover', '取消接管');
+        btn.className = 'btn btn-danger';
+        cd.classList.add('show');
+        tip.classList.add('show');
+        startCountdown(remaining);
+      } else {
+        btn.textContent = t('takeover', '接管');
+        btn.className = 'btn btn-primary';
+        cd.classList.remove('show');
+        tip.classList.remove('show');
+        stopCountdown();
+      }
+    }
+
+    function startCountdown(remaining) {
+      stopCountdown();
+      state.remaining = remaining || 0;
+      tickCountdown();
+      state.timer = setInterval(tickCountdown, 1000);
+    }
+    function tickCountdown() {
+      var cd = document.getElementById('countdown');
+      document.getElementById('countdownText').textContent = fmtMMSS(state.remaining);
+      if (state.remaining <= 60) cd.classList.add('warning');
+      else cd.classList.remove('warning');
+      if (state.remaining <= 0) {
+        stopCountdown();
+        // 倒计时归零,后端会自动取消;刷新状态
+        loadMessages();
+        loadSessions();
+        return;
+      }
+      state.remaining--;
+    }
+    function stopCountdown() {
+      if (state.timer) { clearInterval(state.timer); state.timer = null; }
+    }
+
+    async function toggleTakeover() {
+      if (!state.current) return;
+      // 展示数据必须属于当前会话,否则接管操作可能作用在别的会话上
+      if (!currentDataMatches()) return;
+      var target = state.current;
+      var active = state.currentData && state.currentData.takeover_active;
+      try {
+        var res = await langbot.api('/takeover', { session_key: target }, active ? 'DELETE' : 'POST');
+        if (state.current !== target || state.currentKey !== target) return;  // 旧会话的响应,丢弃
+        if (state.currentData) {
+          state.currentData.takeover_active = res.takeover_active;
+          state.currentData.takeover_remaining = res.takeover_remaining;
+        }
+        updateTakeoverUI(res.takeover_active, res.takeover_remaining);
+        loadSessions();
+        showToast(res.takeover_active ? t('takeoverOn','已接管') : t('takeoverOff','已取消接管'));
+      } catch (e) {
+        if (state.current === target) showToast('操作失败: ' + e);
+      }
+    }
+
+    // ====== 发送消息 ======
+    async function sendMessage() {
+      if (!state.current) return;
+      if (state.sending || state.loading) return;
+      // 发送前校验:展示的数据必须属于当前会话,否则人工回复会被投给另一个会话
+      if (!currentDataMatches()) {
+        showToast(t('sessionNotReady', '当前会话尚未加载完成'));
+        return;
+      }
+      // 时间戳去抖:500ms 内的重复触发一律忽略(防输入法回车/双重监听)
+      var now = Date.now();
+      if (state.lastSendAt && now - state.lastSendAt < 500) return;
+      var input = document.getElementById('msgInput');
+      var rawText = input.value;
+      var text = rawText.trim();
+      var target = state.current;  // 本次发送的不可变目标
+      // 发送前再次校验归属:只带出确实属于本次目标会话的附件
+      var ownedImage = state.attachmentOwner.image === target ? (state.pendingImage || '') : '';
+      var ownedFile = state.attachmentOwner.file === target ? state.pendingFile : null;
+      if (!text && !ownedImage && !ownedFile) return;
+      var sendGen = state.draftGen;  // 本次发送的草稿代次
+      var sentImage = ownedImage || null;
+      var sentFile = ownedFile ? ownedFile.base64 : null;
+      state.lastSendAt = now;
+      state.sending = true;
+      var btn = document.getElementById('sendBtn');
+      btn.disabled = true;
+      try {
+        var res = await langbot.api('/reply', {
+          session_key: target,
+          text: text,
+          image_base64: ownedImage,
+          file_base64: ownedFile ? ownedFile.base64 : '',
+          file_name: ownedFile ? ownedFile.name : ''
+        }, 'POST');
+        // 回复结果、输入清理与附件清理都绑定发送时会话与草稿代次:
+        // 期间切到了 B,A 的结果既不能把 B 显示成已接管,也不能清掉操作员
+        // 在 B 里新打的草稿/新选的附件。
+        if (state.current === target && state.draftGen === sendGen) {
+          consumeSentDraft(rawText, sentImage, sentFile);
+          state.drafts[target] = emptyDraft();  // 已发送的草稿不再随会话保存
+        }
+        if (state.current === target && state.currentKey === target && state.currentData &&
+            res && res.takeover_active !== undefined) {
+          // 接管标志只能写回它自己的会话(A 的回复不能把 B 显示成已接管)
+          state.currentData.takeover_active = res.takeover_active;
+          updateTakeoverUI(res.takeover_active, res.takeover_remaining);
+        }
+        if (state.current === target) await loadMessages(target);
+        loadSessions();
+      } catch (e) {
+        showToast(t('sendFailed','发送失败') + ': ' + e);
+      } finally {
+        state.sending = false;
+        updateComposerEnabled();
+      }
+    }
+
+    function handleImageFile(file) {
+      if (!file) return;
+      var owner = captureAttachmentOwner();
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        commitAttachment(owner, 'image', function() {
+          state.pendingImage = e.target.result; // data:image/...;base64,...
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+    function renderPreview() {
+      var strip = document.getElementById('previewStrip');
+      strip.innerHTML = '';
+      if (state.pendingImage) {
+        var div = document.createElement('div');
+        div.className = 'preview-thumb';
+        div.innerHTML = '<img src="' + escapeAttr(state.pendingImage) + '"><span class="remove">×</span>';
+        div.querySelector('.remove').addEventListener('click', clearPendingImage);
+        strip.appendChild(div);
+      }
+      if (state.pendingFile) {
+        var fdiv = document.createElement('div');
+        fdiv.className = 'preview-thumb';
+        fdiv.style.cssText = 'width:auto;padding:6px 10px;display:flex;align-items:center;gap:6px;font-size:12px;';
+        fdiv.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
+          '<span style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escapeHtml(state.pendingFile.name) + '</span>' +
+          '<span class="remove" style="position:static;background:transparent;color:inherit">×</span>';
+        fdiv.querySelector('.remove').addEventListener('click', clearPendingFile);
+        strip.appendChild(fdiv);
+      }
+    }
+    function clearPendingImage() {
+      state.pendingImage = null;
+      state.attachmentOwner.image = null;
+      state.draftGen++;  // 显式清除:在途的图片读取作废
+      syncDraftSlot();
+      document.getElementById('imageInput').value = '';
+      renderPreview();
+    }
+
+    function handleFileSelected(file) {
+      if (!file) return;
+      var owner = captureAttachmentOwner();
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        commitAttachment(owner, 'file', function() {
+          state.pendingFile = { base64: e.target.result, name: file.name };
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+    function clearPendingFile() {
+      state.pendingFile = null;
+      state.attachmentOwner.file = null;
+      state.draftGen++;  // 显式清除:在途的文件读取作废
+      syncDraftSlot();
+      var fi = document.getElementById('fileInput');
+      if (fi) fi.value = '';
+      renderPreview();
+    }
+
+    function autoGrow(el) {
+      el.style.height = 'auto';
+      el.style.height = Math.min(el.scrollHeight, 98) + 'px';
+    }
+
+    // ====== 信息面板 / 卡片 ======
+    function renderInfoPanel(data) {
+      var panel = document.getElementById('infoPanel');
+      var isGroup = data.type === 'group';
+      var html =
+        '<div class="info-header">' +
+          '<div class="info-avatar ' + (isGroup ? 'group' : '') + '" style="background:' + colorOf(data.session_key) + '">' + initial(data.name) + '</div>' +
+          '<div class="info-name">' + escapeHtml(data.name) + '</div>' +
+          '<div class="info-sub">' + (isGroup ? t('group','群聊') : t('person','私聊')) + ' · ' + escapeHtml(data.session_key) + '</div>' +
+        '</div>';
+      if (isGroup) {
+        var members = data.members || {};
+        var ids = Object.keys(members);
+        html += '<div class="info-section"><h4>' + t('members','成员') + ' (' + ids.length + ')</h4>';
+        ids.forEach(function(id) {
+          html += '<div class="member-item" data-mid="' + escapeAttr(id) + '">' +
+            '<div class="member-avatar" style="background:' + colorOf(id) + '">' + initial(members[id]) + '</div>' +
+            '<span>' + escapeHtml(members[id]) + '</span></div>';
+        });
+        html += '</div>';
+      }
+      panel.innerHTML = html;
+      panel.querySelectorAll('.member-item').forEach(function(el) {
+        el.addEventListener('click', function() {
+          showUserCard(data.session_key, el.getAttribute('data-mid'));
+        });
+      });
+    }
+
+    async function showUserCard(sessionKey, memberId) {
+      try {
+        var body = { session_key: sessionKey };
+        if (memberId) body.member_id = memberId;
+        var info = await langbot.api('/user_info', body, 'GET');
+        var html =
+          '<div class="card-avatar" style="background:' + colorOf(info.id) + '">' + initial(info.name) + '</div>' +
+          '<div class="info-name" style="text-align:center">' + escapeHtml(info.name) + '</div>' +
+          '<div class="info-sub" style="text-align:center;margin-bottom:12px">' + t('userCard','用户信息') + '</div>' +
+          '<div class="info-row"><span class="k">' + t('userId','ID') + '</span><span>' + escapeHtml(info.id) + '</span></div>';
+        if (info.from_group) {
+          html += '<div class="info-row"><span class="k">' + t('fromGroup','所在群') + '</span><span>' + escapeHtml(info.from_group) + '</span></div>';
+        }
+        if (info.bot_name) {
+          html += '<div class="info-row"><span class="k">Bot</span><span>' + escapeHtml(info.bot_name) + '</span></div>';
+        }
+        if (info.adapter) {
+          html += '<div class="info-row"><span class="k">' + t('adapter','适配器') + '</span><span>' + escapeHtml(info.adapter) + '</span></div>';
+        }
+        html += '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeCard()">' + t('close','关闭') + '</button>';
+        var card = document.getElementById('infoCard');
+        card.className = 'info-card';
+        card.innerHTML = html;
+        document.getElementById('cardOverlay').classList.add('show');
+      } catch (e) { showToast('获取用户信息失败: ' + e); }
+    }
+
+    async function showGroupCard(sessionKey) {
+      try {
+        var info = await langbot.api('/group_info', { session_key: sessionKey }, 'GET');
+        var html =
+          '<div class="card-avatar" style="background:' + colorOf(info.id) + '">' + initial(info.name) + '</div>' +
+          '<div class="info-name" style="text-align:center">' + escapeHtml(info.name) + '</div>' +
+          '<div class="info-sub" style="text-align:center;margin-bottom:12px">' + t('groupCard','群聊信息') + '</div>' +
+          '<div class="info-row"><span class="k">' + t('groupId','群号') + '</span><span>' + escapeHtml(info.id) + '</span></div>' +
+          '<div class="info-row"><span class="k">' + t('memberCount','成员数') + '</span><span>' + info.member_count + '</span></div>';
+        if (info.bot_name) html += '<div class="info-row"><span class="k">Bot</span><span>' + escapeHtml(info.bot_name) + '</span></div>';
+        if (info.adapter) html += '<div class="info-row"><span class="k">' + t('adapter','适配器') + '</span><span>' + escapeHtml(info.adapter) + '</span></div>';
+        html += '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeCard()">' + t('close','关闭') + '</button>';
+        var card = document.getElementById('infoCard');
+        card.className = 'info-card group-card';
+        card.innerHTML = html;
+        document.getElementById('cardOverlay').classList.add('show');
+      } catch (e) { showToast('获取群信息失败: ' + e); }
+    }
+
+    window.closeCard = function() {
+      document.getElementById('cardOverlay').classList.remove('show');
+    };
+
+    // ====== 清理存储 ======
+    function showConfirm(msg, onOk) {
+      document.getElementById('confirmMsg').textContent = msg;
+      state.confirmCb = onOk;
+      document.getElementById('confirmOverlay').classList.add('show');
+    }
+    function hideConfirm() {
+      document.getElementById('confirmOverlay').classList.remove('show');
+      state.confirmCb = null;
+    }
+
+    function clearStorage() {
+      showConfirm(t('confirmClear', '确定清理所有会话与消息数据吗?此操作不可恢复。'), doClearStorage);
+    }
+
+    async function doClearStorage() {
+      hideConfirm();
+      try {
+        await langbot.api('/clear', null, 'DELETE');
+        state.current = null;
+        state.currentData = null;
+        state.currentKey = null;
+        state.loadSeq++;
+        state.loading = false;
+        state.drafts = {};   // 草稿随会话数据一起清除
+        clearComposer();     // 并作废仍在读取中的附件
+        updateComposerEnabled();
+        document.getElementById('chatHeader').style.display = 'none';
+        document.getElementById('composer').style.display = 'none';
+        document.getElementById('chatEmpty').style.display = 'flex';
+        document.getElementById('messages').style.display = 'none';
+        document.getElementById('messages').innerHTML = '';
+        document.getElementById('infoPanel').classList.add('collapsed');
+        stopCountdown();
+        await loadSessions();
+        showToast(t('cleared', '已清理'));
+      } catch (e) { showToast('清理失败: ' + e); }
+    }
+
+    // ====== 事件绑定 ======
+    function bindEvents() {
+      if (state.bound) return;
+      state.bound = true;
+      document.querySelectorAll('.tab').forEach(function(tab) {
+        tab.addEventListener('click', function() {
+          document.querySelectorAll('.tab').forEach(function(x){ x.classList.remove('active'); });
+          tab.classList.add('active');
+          state.filter = tab.getAttribute('data-tab');
+          renderSessions();
+        });
+      });
+      document.getElementById('searchInput').addEventListener('input', function(e) {
+        state.search = e.target.value.toLowerCase();
+        renderSessions();
+      });
+      document.getElementById('clearBtn').addEventListener('click', clearStorage);
+      document.getElementById('takeoverBtn').addEventListener('click', toggleTakeover);
+      document.getElementById('sendBtn').addEventListener('click', sendMessage);
+      document.getElementById('toggleInfoBtn').addEventListener('click', function() {
+        document.getElementById('infoPanel').classList.toggle('collapsed');
+      });
+      var input = document.getElementById('msgInput');
+      input.addEventListener('input', function() { autoGrow(input); });
+      input.addEventListener('compositionstart', function() { state.composing = true; });
+      input.addEventListener('compositionend', function() { state.composing = false; });
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !state.composing && e.keyCode !== 229) {
+          e.preventDefault();
+          e.stopPropagation();
+          sendMessage();
+        }
+      });
+      document.getElementById('imageBtn').addEventListener('click', function() {
+        document.getElementById('imageInput').click();
+      });
+      document.getElementById('imageInput').addEventListener('change', function(e) {
+        handleImageFile(e.target.files[0]);
+      });
+      document.getElementById('fileBtn').addEventListener('click', function() {
+        document.getElementById('fileInput').click();
+      });
+      document.getElementById('fileInput').addEventListener('change', function(e) {
+        handleFileSelected(e.target.files[0]);
+      });
+      document.getElementById('cardOverlay').addEventListener('click', function(e) {
+        if (e.target.id === 'cardOverlay') closeCard();
+      });
+      document.getElementById('confirmCancel').addEventListener('click', hideConfirm);
+      document.getElementById('confirmOk').addEventListener('click', function() {
+        var cb = state.confirmCb;
+        hideConfirm();
+        if (typeof cb === 'function') cb();
+      });
+      document.getElementById('confirmOverlay').addEventListener('click', function(e) {
+        if (e.target.id === 'confirmOverlay') hideConfirm();
+      });
+    }
+
+    // ====== 轮询(刷新列表与当前会话接管状态) ======
+    function startPolling() {
+      state.pollTimer = setInterval(async function() {
+        await loadSessions();
+        var target = state.current;
+        if (!target) return;
+        try {
+          var st = await langbot.api('/takeover_status', { session_key: target }, 'GET');
+          // 轮询回写必须仍属于当前会话,且当前展示的数据也是该会话,
+          // 否则旧会话的快照会覆盖新会话的状态。
+          if (state.current !== target || !currentDataMatches()) return;
+          var wasActive = state.currentData.takeover_active;
+          state.currentData.takeover_active = st.takeover_active;
+          state.currentData.takeover_remaining = st.takeover_remaining;
+          // 同步倒计时基准(避免漂移)
+          if (st.takeover_active) state.remaining = st.takeover_remaining;
+          if (wasActive !== st.takeover_active) {
+            updateTakeoverUI(st.takeover_active, st.takeover_remaining);
+          }
+        } catch (e) { /* ignore */ }
+      }, 5000);
+    }
+
+    langbot.onReady(function(ctx) {
+      langbot.applyI18n();
+      bindEvents();
+      loadSessions();
+      startPolling();
+    });
+    langbot.onLanguageChange(function() {
+      langbot.applyI18n();
+      renderSessions();
+      if (currentDataMatches()) {
+        renderMessages(state.currentData);
+        updateTakeoverUI(state.currentData.takeover_active, state.currentData.takeover_remaining);
+      }
+    });
+  </script>
+</body>
+</html>

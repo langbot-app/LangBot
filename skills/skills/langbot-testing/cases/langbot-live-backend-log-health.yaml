@@ -16,14 +16,14 @@ skills:
 env:
   - LANGBOT_BACKEND_URL
 automation: skills/langbot-testing/probes/langbot-live-backend-log-health.mjs
-metrics_thresholds_json: '{"fail_count":{"max":0}}'
+metrics_thresholds_json: '{"scanned_line_count":{"min":1},"fail_count":{"max":0}}'
 load_profile_json: '{"lookback_seconds":300,"log_source":"LANGBOT_BACKEND_LOG or latest LANGBOT_REPO/data/logs/langbot-*.log"}'
 steps:
   - "Confirm the selected LangBot backend log belongs to the intended test target."
   - "Run `rtk bin/lbs test run langbot-live-backend-log-health --dry-run` first; remove `--dry-run` after checking evidence directory and log source."
   - "Automation scans the recent backend log window for fail-severity runtime findings such as Traceback, ImportError, ERROR, unclosed sessions, and unawaited coroutines."
 checks:
-  - "automation-result.json status is pass only when fail_count is 0."
+  - "automation-result.json status is pass only when at least one timestamped line is scanned and fail_count is 0."
   - "metrics_summary includes scanned_line_count, fail_count, warning_count, and finding_count."
   - "findings.json and scanned-backend.log are written under LBS_EVIDENCE_DIR."
 evidence_required:
@@ -33,6 +33,7 @@ evidence_required:
 diagnostics:
   - "Set LANGBOT_BACKEND_LOG to an explicit log path when the latest log file is not the run target."
   - "Set LANGBOT_BACKEND_LOG_SINCE or LANGBOT_BACKEND_LOG_LOOKBACK_SECONDS to control the scan window."
+  - "A zero-line scan is env_issue, not pass; point LANGBOT_BACKEND_LOG at the active service output or widen the lookback."
   - "This probe measures runtime log health; it does not prove user-facing Debug Chat, plugin, model, or RAG behavior."
 success_patterns:
   - "Live backend log health passed"

@@ -1,0 +1,19 @@
+node_modules
+.mintlify/
+.DS_Store
+/.omc
+.mintlify-last/
+
+# Per-user Claude Code settings (skill symlinks under .claude/skills/ stay tracked)
+.claude/settings.local.json
+
+# Python build/test cache
+__pycache__/
+*.py[cod]
+
+# Deterministic Fumapress generated inputs and output
+/content/
+/public/
+/dist/
+.waku/
+.fumapress/

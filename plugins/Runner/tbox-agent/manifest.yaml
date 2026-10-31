@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: TboxAgent
+  version: 0.2.2
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/tbox-agent
+  label:
+    en_US: Tbox Agent
+    zh_Hans: 百宝箱 Agent
+    zh_Hant: Tbox Agent
+    ja_JP: Tbox Agent
+    th_TH: Tbox Agent
+    vi_VN: Tbox Agent
+    es_ES: Agente Tbox
+    ru_RU: Агент Tbox
+  description:
+    en_US: Run an Ant Tbox application as a LangBot Runner.
+    zh_Hans: 将蚂蚁百宝箱应用作为 LangBot 运行器运行。
+    zh_Hant: 將螞蟻 Tbox 應用程式作為 LangBot 運行器執行。
+    ja_JP: Ant Tbox アプリを LangBot Runner として実行します。
+    th_TH: เรียกใช้แอป Ant Tbox เป็น LangBot Runner
+    vi_VN: Chạy ứng dụng Ant Tbox dưới dạng LangBot Runner.
+    es_ES: Ejecuta una aplicación Ant Tbox como LangBot Runner.
+    ru_RU: Запускает приложение Ant Tbox как LangBot Runner.
+  icon: assets/icon.png
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: TboxAgentPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

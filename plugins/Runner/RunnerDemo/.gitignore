@@ -1,0 +1,10 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.lbpkg
+dist/
+data/
+
+.ruff_cache/

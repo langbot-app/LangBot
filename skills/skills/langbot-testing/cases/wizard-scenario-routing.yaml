@@ -1,0 +1,57 @@
+id: wizard-scenario-routing
+title: "Quick Start filters channels by the selected bot scenario"
+mode: agent-browser
+area: wizard
+type: feature
+priority: p0
+risk: medium
+ci_eligible: false
+tags:
+  - wizard
+  - eba
+  - event-routing
+  - productization
+skills:
+  - langbot-env-setup
+  - langbot-testing
+env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+automation: scripts/e2e/wizard-scenario-routing.mjs
+automation_env:
+  - LANGBOT_FRONTEND_URL
+  - LANGBOT_BACKEND_URL
+  - LANGBOT_BROWSER_PROFILE
+  - LANGBOT_CHROMIUM_EXECUTABLE
+preconditions:
+  - "The target is a local test instance where a disabled temporary Bot and Agent may be created and deleted."
+steps:
+  - "Open Quick Start and select Reply to messages."
+  - "Confirm HTTP Bot is available for the message scenario."
+  - "Select Welcome new members."
+  - "Confirm a compatible channel remains visible and HTTP Bot is removed."
+  - "Create a disabled temporary Bot and Agent, persist a group.member_joined route, and read it back through the API."
+  - "Verify the scenario and channel layout at desktop and mobile widths."
+checks:
+  - "UI: Scenario selection appears before channel selection."
+  - "UI: Reply to messages includes HTTP Bot."
+  - "UI: Welcome new members includes a compatible event-capable channel."
+  - "UI: Welcome new members excludes HTTP Bot because it does not declare group.member_joined support."
+  - "UI: The selected non-message scenario is labeled as an Agent behavior."
+  - "Console: No unexpected frontend errors appear during the flow."
+  - "Network: Adapter discovery returns without a 5xx response."
+  - "API: A non-message event route to an Agent is normalized and persisted."
+  - "Cleanup: The temporary Bot and Agent are deleted after evidence is collected."
+  - "Isolation: Wizard progress writes are stubbed in the browser and do not change backend state."
+evidence_required:
+  - ui
+  - screenshot
+  - console
+  - api_diagnostic
+diagnostics:
+  - "The temporary Bot remains disabled, so the case cannot connect to an external messaging platform."
+  - "A passing adapter API response without the visible filtered channel list is not a pass."
+troubleshooting:
+  - backend-not-listening
+  - proxy-env-mismatch

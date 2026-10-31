@@ -12,6 +12,8 @@ import {
 } from '@/components/ui/form';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import DynamicFormItemComponent from '@/app/home/components/dynamic-form/DynamicFormItemComponent';
+import { normalizeDynamicFormValuesForSave } from '@/app/home/components/dynamic-form/DynamicFormSaveValues';
+import { shouldShowN8nConfigField } from '@/app/home/components/dynamic-form/N8nAuthFieldVisibility';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { maybeTranslateKey } from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
 
@@ -151,12 +153,9 @@ export default function N8nAuthFormComponent({
     // Emit initial form values on mount so the parent form's
     // initializedStagesRef registers this stage (matches DynamicFormComponent).
     const formValues = form.getValues();
-    const initialFinalValues = itemConfigList.reduce(
-      (acc, item) => {
-        acc[item.name] = formValues[item.name] ?? item.default;
-        return acc;
-      },
-      {} as Record<string, string>,
+    const initialFinalValues = normalizeDynamicFormValuesForSave(
+      itemConfigList,
+      formValues as Record<string, unknown>,
     );
     onSubmitRef.current?.(initialFinalValues);
     previousInitialValues.current = initialFinalValues as Record<
@@ -172,12 +171,9 @@ export default function N8nAuthFormComponent({
 
       // 获取完整的表单值，确保包含所有默认值
       const formValues = form.getValues();
-      const finalValues = itemConfigList.reduce(
-        (acc, item) => {
-          acc[item.name] = formValues[item.name] ?? item.default;
-          return acc;
-        },
-        {} as Record<string, string>,
+      const finalValues = normalizeDynamicFormValuesForSave(
+        itemConfigList,
+        formValues as Record<string, unknown>,
       );
 
       onSubmitRef.current?.(finalValues);
@@ -187,29 +183,9 @@ export default function N8nAuthFormComponent({
   }, [form, itemConfigList]);
 
   // 根据认证类型过滤表单项
-  const filteredConfigList = itemConfigList.filter((config) => {
-    // 始终显示webhook-url、auth-type、timeout和output-key
-    if (
-      ['webhook-url', 'auth-type', 'timeout', 'output-key'].includes(
-        config.name,
-      )
-    ) {
-      return true;
-    }
-
-    // 根据认证类型显示相应的表单项
-    if (authType === 'basic' && config.name.startsWith('basic-')) {
-      return true;
-    }
-    if (authType === 'jwt' && config.name.startsWith('jwt-')) {
-      return true;
-    }
-    if (authType === 'header' && config.name.startsWith('header-')) {
-      return true;
-    }
-
-    return false;
-  });
+  const filteredConfigList = itemConfigList.filter((config) =>
+    shouldShowN8nConfigField(config.name, authType),
+  );
 
   return (
     <Form {...form}>

@@ -1,22 +1,160 @@
 from __future__ import annotations
 
+from .....i18n import t
+
+import asyncio
 import base64
-import io
+import collections.abc
+import copy
 import quart
 import re
 import httpx
 import uuid
 import os
 import zipfile
-import yaml
 from urllib.parse import urlparse
 import posixpath
 import sqlalchemy
 
 from .....core import taskmgr
 from .....entity.persistence import plugin as persistence_plugin
+from ...authz import Permission
+from ...context import ExecutionContext, RequestContext
+from .....operation_trace import service as settings_service
 from .. import group
+from .....workspace.errors import WorkspaceNotFoundError
+from langbot_plugin.entities.io.errors import ActionCallError
+from .....plugin.github import validate_github_plugin_install_info
+from .....plugin.archive import inspect_plugin_archive_metadata
+from .....utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
+
+
+_SECRET_MASK = '***'
+_MISSING_SECRET = object()
+_SENSITIVE_CONFIG_NAMES = frozenset(
+    {
+        'api_key',
+        'apikey',
+        'auth',
+        'authorization',
+        'cookie',
+        'credentials',
+        'database_url',
+        'dsn',
+        'key',
+        'proxy_authorization',
+        'set_cookie',
+    }
+)
+_SENSITIVE_CONFIG_TOKENS = frozenset(
+    {
+        'credential',
+        'credentials',
+        'passwd',
+        'password',
+        'secret',
+        'token',
+    }
+)
+_SENSITIVE_KEY_QUALIFIERS = frozenset(
+    {
+        'access',
+        'api',
+        'auth',
+        'bearer',
+        'client',
+        'debug',
+        'encryption',
+        'private',
+        'signing',
+    }
+)
+
+
+def _normalize_config_key(key: object) -> str:
+    value = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', str(key or ''))
+    return re.sub(r'[^a-zA-Z0-9]+', '_', value).strip('_').lower()
+
+
+def _is_sensitive_config_key(key: object) -> bool:
+    normalized = _normalize_config_key(key)
+    if normalized in _SENSITIVE_CONFIG_NAMES:
+        return True
+    tokens = frozenset(token for token in normalized.split('_') if token)
+    if tokens & _SENSITIVE_CONFIG_TOKENS:
+        return True
+    return 'key' in tokens and bool(tokens & _SENSITIVE_KEY_QUALIFIERS)
+
+
+def _mask_secret_structure(value):
+    """Mask every non-empty leaf while preserving container structure."""
+
+    if isinstance(value, dict):
+        return {key: _mask_secret_structure(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_mask_secret_structure(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_mask_secret_structure(item) for item in value)
+    if value is None or value == '':
+        return value
+    return _SECRET_MASK
+
+
+def redact_plugin_secrets(value):
+    """Return a recursively redacted copy of plugin-facing data."""
+
+    if isinstance(value, dict):
+        return {
+            key: (_mask_secret_structure(item) if _is_sensitive_config_key(key) else redact_plugin_secrets(item))
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [redact_plugin_secrets(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(redact_plugin_secrets(item) for item in value)
+    return value
+
+
+def restore_plugin_secret_placeholders(value, current_value=_MISSING_SECRET, *, sensitive: bool = False):
+    """Restore masked leaves from the current config before a management write."""
+
+    if sensitive and value == _SECRET_MASK:
+        if current_value is _MISSING_SECRET:
+            raise ValueError('Masked plugin secret has no existing value')
+        return copy.deepcopy(current_value)
+    if isinstance(value, dict):
+        current_mapping = current_value if isinstance(current_value, dict) else {}
+        return {
+            key: restore_plugin_secret_placeholders(
+                item,
+                current_mapping.get(key, _MISSING_SECRET),
+                sensitive=sensitive or _is_sensitive_config_key(key),
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        current_items = current_value if isinstance(current_value, (list, tuple)) else ()
+        return [
+            restore_plugin_secret_placeholders(
+                item,
+                current_items[index] if index < len(current_items) else _MISSING_SECRET,
+                sensitive=sensitive,
+            )
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, tuple):
+        current_items = current_value if isinstance(current_value, (list, tuple)) else ()
+        return tuple(
+            restore_plugin_secret_placeholders(
+                item,
+                current_items[index] if index < len(current_items) else _MISSING_SECRET,
+                sensitive=sensitive,
+            )
+            for index, item in enumerate(value)
+        )
+    return value
+
 
 # Resolve the built-in page SDK JS from the langbot_plugin package
 _PAGE_SDK_PATH = None
@@ -28,6 +166,16 @@ try:
         _PAGE_SDK_PATH = _candidate
 except Exception:
     pass
+
+
+def _is_plugin_not_installed(exc: BaseException) -> bool:
+    """True when the connector reports a plugin absent from the resolved Workspace.
+
+    The connector raises a plain ``ValueError`` for this case, so resource routes
+    answer 404 instead of surfacing a 500 the WebUI would have to swallow.
+    """
+
+    return 'is not installed in this workspace' in str(exc).lower()
 
 
 def _normalize_plugin_asset_path(filepath: str) -> str | None:
@@ -148,17 +296,92 @@ class PluginsRouterGroup(group.RouterGroup):
             'subdir': subdir,
         }
 
-    async def _check_extensions_limit(self) -> str | None:
+    async def _check_extensions_limit(self, request_context: RequestContext) -> str | None:
         """Check if extensions limit is reached. Returns error response if limit exceeded, None otherwise."""
-        limitation = self.ap.instance_config.data.get('system', {}).get('limitation', {})
+        await self.ap.plugin_connector.require_workspace_context(request_context)
+        from ...service.workspace_limits import workspace_limits
+
+        limitation = await workspace_limits(self.ap, request_context.workspace_uuid)
         max_extensions = limitation.get('max_extensions', -1)
         if max_extensions >= 0:
             plugins = await self.ap.plugin_connector.list_plugins()
-            mcp_servers = await self.ap.mcp_service.get_mcp_servers()
+            mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context)
             total_extensions = len(plugins) + len(mcp_servers)
             if total_extensions >= max_extensions:
-                return self.http_status(400, -1, f'Maximum number of extensions ({max_extensions}) reached')
+                return self.http_status(
+                    400,
+                    -1,
+                    t('Maximum number of {resource} ({limit}) reached', resource=t('extensions'), limit=max_extensions),
+                )
         return None
+
+    @staticmethod
+    def _task_scope(request_context: RequestContext) -> dict[str, str | int]:
+        return {
+            'instance_uuid': request_context.instance_uuid,
+            'workspace_uuid': request_context.workspace_uuid,
+            'placement_generation': request_context.placement_generation,
+        }
+
+    async def _run_fenced_plugin_operation(
+        self,
+        execution_context: ExecutionContext,
+        operation: collections.abc.Callable[[], collections.abc.Awaitable],
+    ):
+        """Revalidate a captured task context immediately before Runtime I/O."""
+
+        persistence_mgr = getattr(self.ap, 'persistence_mgr', None)
+        tenant_scope = getattr(persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            async with tenant_scope(execution_context.workspace_uuid):
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
+                return await operation()
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
+        return await operation()
+
+    async def _require_authenticated_plugin_runtime_context(
+        self,
+        request_context: RequestContext,
+    ) -> ExecutionContext:
+        """Fence an authenticated resource request to its injected Workspace."""
+        return await self.ap.plugin_connector.require_workspace_context(request_context)
+
+    async def _require_public_plugin_runtime_context(self) -> ExecutionContext:
+        """Resolve public assets only for the OSS singleton Workspace.
+
+        Public image and iframe requests cannot carry the WebUI bearer token.
+        They therefore remain available for the one-Workspace Core deployment,
+        but fail closed instead of guessing a Workspace when multi-Workspace
+        policy is active.
+        """
+
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        policy = getattr(workspace_service, 'policy', None)
+        if workspace_service is None or policy is None or getattr(policy, 'multi_workspace_enabled', False):
+            raise WorkspaceNotFoundError('Plugin resource not found')
+        binding = await workspace_service.get_local_execution_binding()
+        execution_context = ExecutionContext(
+            instance_uuid=binding.instance_uuid,
+            workspace_uuid=binding.workspace_uuid,
+            placement_generation=binding.placement_generation,
+        )
+        return await self.ap.plugin_connector.require_workspace_context(execution_context)
+
+    async def _get_stored_plugin_config(
+        self,
+        request_context: RequestContext,
+        author: str,
+        plugin_name: str,
+        plugin: dict,
+    ):
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_plugin.PluginSetting.config)
+            .where(persistence_plugin.PluginSetting.workspace_uuid == request_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.plugin_author == author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+        persisted_config = result.scalar_one_or_none()
+        return persisted_config if persisted_config is not None else plugin['plugin_config']
 
     async def initialize(self) -> None:
         @self.route('/_sdk/page-sdk.js', methods=['GET'], auth_type=group.AuthType.NONE)
@@ -170,103 +393,447 @@ class PluginsRouterGroup(group.RouterGroup):
                 return quart.Response(content, mimetype='application/javascript')
             return quart.Response('// SDK not found', status=404, mimetype='application/javascript')
 
-        @self.route('', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            await self._require_authenticated_plugin_runtime_context(request_context)
             plugins = await self.ap.plugin_connector.list_plugins()
 
-            return self.success(data={'plugins': plugins})
+            return self.success(data={'plugins': redact_plugin_secrets(plugins)})
 
-        @self.route('/debug-info', methods=['GET'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        @self.route(
+            '/debug-info',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Get plugin debug information including debug URL and key"""
-            debug_info = await self.ap.plugin_connector.get_debug_info()
+            execution_context = await self._require_authenticated_plugin_runtime_context(request_context)
+            debug_info = await self.ap.plugin_connector.get_debug_info(execution_context)
 
             # Get debug URL from config
             plugin_config = self.ap.instance_config.data.get('plugin', {})
-            debug_url = plugin_config.get('display_plugin_debug_url', 'http://localhost:5401')
+            debug_url = plugin_config.get(
+                'display_plugin_debug_url',
+                'ws://localhost:5401/plugin/debug/ws',
+            )
+            parsed_debug_url = urlparse(debug_url)
+            if parsed_debug_url.scheme in {'http', 'https'}:
+                debug_url = parsed_debug_url._replace(
+                    scheme='wss' if parsed_debug_url.scheme == 'https' else 'ws',
+                    path=parsed_debug_url.path or '/plugin/debug/ws',
+                ).geturl()
 
             return self.success(
                 data={
                     'debug_url': debug_url,
                     'plugin_debug_key': debug_info.get('plugin_debug_key', ''),
+                    'expires_at': debug_info.get('expires_at', ''),
                 }
             )
+
+        async def _space_access_token_for_workspace(
+            request_context: RequestContext,
+        ) -> str | None:
+            """Resolve the Workspace owner's or requesting account's LangBot Space token, if bound.
+
+            Every step is best-effort: a Space account is optional for the
+            underlying LangBot install, so an unavailable identity service must
+            not turn the upload page's metadata read into a 500.
+            """
+            try:
+                user_service = getattr(self.ap, 'user_service', None)
+                space_service = getattr(self.ap, 'space_service', None)
+                if user_service is None or space_service is None:
+                    return None
+                if request_context.account_uuid:
+                    account = await user_service.get_user_by_uuid(request_context.account_uuid)
+                    if account and account.account_type == 'space':
+                        token = await space_service.get_valid_access_token(account.user)
+                        if token:
+                            return token
+                owner = await user_service.get_workspace_owner(request_context.workspace_uuid)
+                if owner is None:
+                    return None
+                return await space_service.get_valid_access_token(owner.user)
+            except Exception:
+                return None
+
+        async def _resolve_upload_target(author: str, plugin_name: str) -> dict | None:
+            """Resolve a plugin for the upload page, preferring debug connections.
+
+            A plugin shown as "debugging" is not persisted as an installation, so
+            it is looked up through the OSS debug bridge first; installed plugins
+            remain a fallback so the page also works for local/marketplace ones.
+            """
+            connector = self.ap.plugin_connector
+            for resolver in (
+                getattr(connector, 'get_debug_plugin_info', None),
+                getattr(connector, 'get_plugin_info', None),
+            ):
+                if resolver is None:
+                    continue
+                try:
+                    info = await resolver(author, plugin_name)
+                except Exception:
+                    self.ap.logger.exception('Failed to resolve plugin %s/%s for upload', author, plugin_name)
+                    continue
+                if info:
+                    return info
+            return None
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload/config',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Metadata and connection state for the "upload to Space" page."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            plugin = await _resolve_upload_target(author, plugin_name)
+            if plugin is None:
+                return self.http_status(404, -1, 'plugin not found')
+
+            metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {}) or {}
+            access_token = await _space_access_token_for_workspace(request_context)
+            space_connected = False
+            has_creator_profile = False
+            creator_slug = None
+            author_matches = False
+
+            if access_token:
+                try:
+                    space_service = getattr(self.ap, 'space_service', None)
+                    if space_service is not None:
+                        token_valid, creator_profile = await space_service.get_creator_profile(access_token)
+                        if token_valid:
+                            space_connected = True
+                            if creator_profile and creator_profile.get('slug'):
+                                has_creator_profile = True
+                                creator_slug = creator_profile['slug']
+                                plugin_author = metadata.get('author', author)
+                                if plugin_author and creator_slug and plugin_author.lower() == creator_slug.lower():
+                                    author_matches = True
+                except Exception:
+                    self.ap.logger.exception('Failed to retrieve creator profile for space-upload/config')
+
+            return self.success(
+                data={
+                    'debug': bool(plugin.get('debug')),
+                    'metadata': {
+                        'author': metadata.get('author', author),
+                        'name': metadata.get('name', plugin_name),
+                        'label': metadata.get('label'),
+                        'description': metadata.get('description'),
+                        'version': metadata.get('version'),
+                        'repository': metadata.get('repository'),
+                        'license': metadata.get('license'),
+                    },
+                    'space_connected': space_connected,
+                    'has_creator_profile': has_creator_profile,
+                    'creator_slug': creator_slug,
+                    'author_matches': author_matches,
+                    'cloud_service_url': self.ap.instance_config.data.get('space', {}).get(
+                        'web_url',
+                        self.ap.instance_config.data.get('space', {}).get('url', 'https://space.langbot.app'),
+                    ),
+                }
+            )
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Build the debug plugin and publish it to LangBot Space.
+
+            Optionally synchronises the working directory to GitHub first, so the
+            published plugin and the repository stay aligned.
+            """
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            try:
+                data = await quart.request.get_json(silent=True) or {}
+            except Exception:
+                data = {}
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            overrides = data.get('manifest_overrides') or {}
+            if not isinstance(overrides, dict):
+                return self.http_status(400, -1, 'manifest_overrides must be an object')
+
+            sync_github = data.get('sync_github') is True
+            git_result: dict | None = None
+
+            try:
+                package_result = await self.ap.plugin_connector.get_plugin_package(
+                    author,
+                    plugin_name,
+                    manifest_overrides=overrides,
+                )
+            except Exception as exc:
+                self.ap.logger.warning('Building package for %s/%s failed: %s', author, plugin_name, exc)
+                message = str(exc)
+                if 'build_plugin_package' in message and 'not found' in message.lower():
+                    message = (
+                        'The debugging plugin process does not support packaging yet. '
+                        'Update the LangBot plugin SDK used by `lbp run` and restart it.'
+                    )
+                return self.http_status(400, -1, message)
+
+            package_bytes = package_result.get('package') or b''
+            if not package_bytes:
+                return self.http_status(400, -1, 'Failed to build the plugin package')
+
+            if sync_github:
+                try:
+                    git_result = await self.ap.plugin_connector.git_sync_plugin(
+                        author,
+                        plugin_name,
+                        repo_url=str(data.get('repo_url') or ''),
+                        token=str(data.get('token') or ''),
+                        branch=str(data.get('branch') or ''),
+                        commit_message=str(data.get('commit_message') or ''),
+                        manifest_overrides=overrides,
+                    )
+                except Exception as exc:
+                    self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
+                    return self.http_status(400, -1, f'Git sync failed: {exc}')
+
+            access_token = await _space_access_token_for_workspace(request_context)
+            if not access_token:
+                return self.http_status(
+                    400,
+                    -1,
+                    'Please connect a LangBot Space account before uploading plugins',
+                )
+
+            space_service = getattr(self.ap, 'space_service', None)
+            if space_service is not None:
+                token_valid, creator_profile = await space_service.get_creator_profile(access_token)
+                if not token_valid:
+                    return self.http_status(401, -1, 'Space login session has expired. Please re-authenticate.')
+                if not creator_profile or not creator_profile.get('slug'):
+                    return self.http_status(
+                        400, -1, 'Please set up a creator profile on Space before uploading plugins.'
+                    )
+                creator_slug = creator_profile.get('slug')
+                if author and creator_slug and author.lower() != creator_slug.lower():
+                    return self.http_status(
+                        400,
+                        -1,
+                        f"Plugin author '{author}' does not match your Space creator slug '@{creator_slug}'.",
+                    )
+
+            try:
+                submission = await self.ap.space_service.publish_plugin(
+                    access_token,
+                    package_bytes,
+                    filename=package_result.get('filename') or 'plugin.lbpkg',
+                    changelog=str(data.get('changelog') or ''),
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+
+            quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
+            return self.success(
+                data={
+                    'submission': submission,
+                    'git': git_result,
+                    'filename': package_result.get('filename', ''),
+                }
+            )
+
+        @self.route(
+            '/<author>/<plugin_name>/space-upload/git-sync',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            """Synchronise only the debug plugin's working directory to GitHub."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            try:
+                data = await quart.request.get_json(silent=True) or {}
+            except Exception:
+                data = {}
+            if not isinstance(data, dict):
+                return self.http_status(400, -1, 'invalid request body')
+
+            overrides = data.get('manifest_overrides') or {}
+            if not isinstance(overrides, dict):
+                return self.http_status(400, -1, 'manifest_overrides must be an object')
+
+            try:
+                git_result = await self.ap.plugin_connector.git_sync_plugin(
+                    author,
+                    plugin_name,
+                    repo_url=str(data.get('repo_url') or ''),
+                    token=str(data.get('token') or ''),
+                    branch=str(data.get('branch') or ''),
+                    commit_message=str(data.get('commit_message') or ''),
+                    manifest_overrides=overrides,
+                )
+            except Exception as exc:
+                self.ap.logger.warning('Git sync failed for %s/%s: %s', author, plugin_name, exc)
+                return self.http_status(400, -1, str(exc))
+
+            return self.success(data={'git': git_result})
 
         @self.route(
             '/<author>/<plugin_name>/upgrade',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
         )
-        async def _(author: str, plugin_name: str) -> str:
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
             ctx = taskmgr.TaskContext.new()
+            ctx.metadata.update(
+                {
+                    'plugin_name': f'{author}/{plugin_name}',
+                    'install_source': 'marketplace',
+                    'operation': 'upgrade',
+                    'progress_percent': 3,
+                }
+            )
+            ctx.set_current_action('checking for latest version')
             wrapper = self.ap.task_mgr.create_user_task(
-                self.ap.plugin_connector.upgrade_plugin(author, plugin_name, task_context=ctx),
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.upgrade_plugin(author, plugin_name, task_context=ctx),
+                ),
                 kind='plugin-operation',
                 name=f'plugin-upgrade-{plugin_name}',
                 label=f'Upgrading plugin {plugin_name}',
                 context=ctx,
+                **self._task_scope(request_context),
             )
             return self.success(data={'task_id': wrapper.id})
 
         @self.route(
             '/<author>/<plugin_name>',
-            methods=['GET', 'DELETE'],
+            methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
         )
-        async def _(author: str, plugin_name: str) -> str:
-            if quart.request.method == 'GET':
-                plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
-                if plugin is None:
-                    return self.http_status(404, -1, 'plugin not found')
-                return self.success(data={'plugin': plugin})
-            elif quart.request.method == 'DELETE':
-                delete_data = quart.request.args.get('delete_data', 'false').lower() == 'true'
-                ctx = taskmgr.TaskContext.new()
-                wrapper = self.ap.task_mgr.create_user_task(
-                    self.ap.plugin_connector.delete_plugin(
-                        author, plugin_name, delete_data=delete_data, task_context=ctx
-                    ),
-                    kind='plugin-operation',
-                    name=f'plugin-remove-{plugin_name}',
-                    label=f'Removing plugin {plugin_name}',
-                    context=ctx,
-                )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
+            if plugin is None:
+                return self.http_status(404, -1, 'plugin not found')
+            return self.success(data={'plugin': redact_plugin_secrets(plugin)})
 
-                return self.success(data={'task_id': wrapper.id})
+        @self.route(
+            '/<author>/<plugin_name>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
+            delete_data = quart.request.args.get('delete_data', 'false').lower() == 'true'
+            ctx = taskmgr.TaskContext.new()
+            wrapper = self.ap.task_mgr.create_user_task(
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.delete_plugin(
+                        author,
+                        plugin_name,
+                        delete_data=delete_data,
+                        task_context=ctx,
+                    ),
+                ),
+                kind='plugin-operation',
+                name=f'plugin-remove-{plugin_name}',
+                label=f'Removing plugin {plugin_name}',
+                context=ctx,
+                **self._task_scope(request_context),
+            )
+            return self.success(data={'task_id': wrapper.id})
 
         @self.route(
             '/<author>/<plugin_name>/config',
-            methods=['GET', 'PUT'],
+            methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
             plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
             if plugin is None:
                 return self.http_status(404, -1, 'plugin not found')
 
-            if quart.request.method == 'GET':
-                result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(persistence_plugin.PluginSetting.config)
-                    .where(persistence_plugin.PluginSetting.plugin_author == author)
-                    .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+            config = await self._get_stored_plugin_config(
+                request_context,
+                author,
+                plugin_name,
+                plugin,
+            )
+            return self.success(data={'config': redact_plugin_secrets(config)})
+
+        @self.route(
+            '/<author>/<plugin_name>/config',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            plugin = await self.ap.plugin_connector.get_plugin_info(author, plugin_name)
+            if plugin is None:
+                return self.http_status(404, -1, 'plugin not found')
+            current_config = await self._get_stored_plugin_config(
+                request_context,
+                author,
+                plugin_name,
+                plugin,
+            )
+            try:
+                incoming_config = await quart.request.json
+            except Exception:
+                incoming_config = None
+            try:
+                config = restore_plugin_secret_placeholders(
+                    incoming_config,
+                    current_config,
                 )
-                persisted_config = result.scalar_one_or_none()
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            await self.ap.plugin_connector.set_plugin_config(author, plugin_name, config)
 
-                config = persisted_config if persisted_config is not None else plugin['plugin_config']
-                return self.success(data={'config': config})
-            elif quart.request.method == 'PUT':
-                data = await quart.request.json
-
-                await self.ap.plugin_connector.set_plugin_config(author, plugin_name, data)
-
-                return self.success(data={})
+            # Record which plugin was reconfigured and which keys actually moved.
+            # The diff is computed over the *requested* payload (secrets restored
+            # from the stored config) so a masked ``***`` round-trip never shows
+            # up as a change; sensitive keys are redacted by ``changed_fields``.
+            config_changes = settings_service.changed_fields(
+                current_config if isinstance(current_config, dict) else {},
+                config if isinstance(config, dict) else {},
+            )
+            rule = settings_service.ACTION_RULES_BY_ACTION.get('plugin_config')
+            quart.g.operation_log_resource_id = f'{author}/{plugin_name}'
+            quart.g.operation_log_changes = config_changes
+            if rule is not None and config_changes:
+                quart.g.operation_log_summary = settings_service.build_summary(rule, config_changes)
+            return self.success(data={})
 
         @self.route(
             '/<author>/<plugin_name>/readme',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
             language = quart.request.args.get('language', 'en')
             readme = await self.ap.plugin_connector.get_plugin_readme(author, plugin_name, language=language)
             return self.success(data={'readme': readme})
@@ -275,8 +842,10 @@ class PluginsRouterGroup(group.RouterGroup):
             '/<author>/<plugin_name>/logs',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.AUDIT_VIEW,
         )
-        async def _(author: str, plugin_name: str) -> quart.Response:
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
             try:
                 limit = int(quart.request.args.get('limit', 200))
             except (TypeError, ValueError):
@@ -286,18 +855,71 @@ class PluginsRouterGroup(group.RouterGroup):
             return self.success(data={'logs': logs})
 
         @self.route(
+            '/<author>/<plugin_name>/authenticated-icon',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(
+            author: str,
+            plugin_name: str,
+            request_context: RequestContext,
+        ) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            try:
+                icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+                if not icon_data or not icon_data.get('plugin_icon_base64'):
+                    return quart.Response('Icon not found', status=404)
+            except (ValueError, ActionCallError) as exc:
+                # A plugin that is not installed for this Workspace is a missing
+                # resource, not a server fault: the WebUI asks for icons by plugin
+                # identity and must be able to fall back silently.
+                if isinstance(exc, ActionCallError) or _is_plugin_not_installed(exc):
+                    return quart.Response('Icon not found', status=404)
+                raise
+            icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
+            return quart.Response(icon_bytes, mimetype=icon_data.get('mime_type', 'image/svg+xml'))
+
+        @self.route(
+            '/<author>/<plugin_name>/authenticated-assets/<path:filepath>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(
+            author: str,
+            plugin_name: str,
+            filepath: str,
+            request_context: RequestContext,
+        ) -> quart.Response:
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            asset_path = _normalize_plugin_asset_path(filepath)
+            if asset_path is None:
+                return quart.Response('Asset not found', status=404)
+            try:
+                asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+            except (ValueError, ActionCallError):
+                return quart.Response('Asset not found', status=404)
+            if not asset_data.get('asset_base64'):
+                return quart.Response('Asset not found', status=404)
+            asset_bytes = await asyncio.to_thread(base64.b64decode, asset_data['asset_base64'])
+            return quart.Response(asset_bytes, mimetype=asset_data['mime_type'])
+
+        @self.route(
             '/<author>/<plugin_name>/icon',
             methods=['GET'],
             auth_type=group.AuthType.NONE,
         )
         async def _(author: str, plugin_name: str) -> quart.Response:
-            icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
-            icon_base64 = icon_data['plugin_icon_base64']
-            mime_type = icon_data['mime_type']
-
-            icon_data = base64.b64decode(icon_base64)
-
-            return quart.Response(icon_data, mimetype=mime_type)
+            try:
+                await self._require_public_plugin_runtime_context()
+                icon_data = await self.ap.plugin_connector.get_plugin_icon(author, plugin_name)
+                if not icon_data or not icon_data.get('plugin_icon_base64'):
+                    return quart.Response('Icon not found', status=404)
+                icon_bytes = await asyncio.to_thread(base64.b64decode, icon_data['plugin_icon_base64'])
+                return quart.Response(icon_bytes, mimetype=icon_data.get('mime_type', 'image/svg+xml'))
+            except (ValueError, ActionCallError, WorkspaceNotFoundError):
+                return quart.Response('Icon not found', status=404)
 
         @self.route(
             '/<author>/<plugin_name>/assets/<path:filepath>',
@@ -305,16 +927,23 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.NONE,
         )
         async def _(author: str, plugin_name: str, filepath: str) -> quart.Response:
-            asset_path = _normalize_plugin_asset_path(filepath)
-            if asset_path is None:
-                return quart.Response('Asset not found', status=404)
+            try:
+                await self._require_public_plugin_runtime_context()
+                asset_path = _normalize_plugin_asset_path(filepath)
+                if asset_path is None:
+                    return quart.Response('Asset not found', status=404)
 
-            asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
-            if not asset_data.get('asset_base64'):
+                asset_data = await self.ap.plugin_connector.get_plugin_assets(author, plugin_name, asset_path)
+                if not asset_data.get('asset_base64'):
+                    return quart.Response('Asset not found', status=404)
+                asset_bytes = await asyncio.to_thread(
+                    base64.b64decode,
+                    asset_data['asset_base64'],
+                )
+                mime_type = asset_data['mime_type']
+                resp = quart.Response(asset_bytes, mimetype=mime_type)
+            except (ValueError, ActionCallError, WorkspaceNotFoundError):
                 return quart.Response('Asset not found', status=404)
-            asset_bytes = base64.b64decode(asset_data['asset_base64'])
-            mime_type = asset_data['mime_type']
-            resp = quart.Response(asset_bytes, mimetype=mime_type)
             # CSP for HTML pages served to sandboxed iframes (opaque origin).
             # 'self' doesn't work in sandboxed iframes — use actual server origin.
             if mime_type and mime_type.startswith('text/html'):
@@ -334,9 +963,11 @@ class PluginsRouterGroup(group.RouterGroup):
             '/<author>/<plugin_name>/page-api',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
         )
-        async def _(author: str, plugin_name: str) -> str:
+        async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Forward a page API request to the plugin."""
+            await self._require_authenticated_plugin_runtime_context(request_context)
             data = await quart.request.json
             if not isinstance(data, dict):
                 return self.http_status(400, -1, 'invalid request body')
@@ -357,9 +988,15 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, result['error'])
             return self.success(data=result.get('data'))
 
-        @self.route('/github/releases', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        @self.route(
+            '/github/releases',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Get releases from a GitHub repository URL"""
+            await self._require_authenticated_plugin_runtime_context(request_context)
             data = await quart.request.json
             repo_url = data.get('repo_url', '')
 
@@ -400,10 +1037,11 @@ class PluginsRouterGroup(group.RouterGroup):
                     trust_env=True,
                     follow_redirects=True,
                     timeout=10,
+                    event_hooks=httpclient.httpx_response_limit_hooks(),
                 ) as client:
                     response = await client.get(url)
                     response.raise_for_status()
-                    releases = response.json()
+                    releases = await httpclient.parse_json_response(response)
 
                 # Format releases data for frontend
                 formatted_releases = []
@@ -427,16 +1065,18 @@ class PluginsRouterGroup(group.RouterGroup):
                         'source_subdir': requested_subdir,
                     }
                 )
-            except httpx.RequestError as e:
-                return self.http_status(500, -1, f'Failed to fetch releases: {str(e)}')
+            except httpx.RequestError:
+                raise
 
         @self.route(
             '/github/release-assets',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
         )
-        async def _() -> str:
+        async def _(request_context: RequestContext) -> str:
             """Get assets from a specific GitHub release"""
+            await self._require_authenticated_plugin_runtime_context(request_context)
             data = await quart.request.json
             owner = data.get('owner', '')
             repo = data.get('repo', '')
@@ -452,12 +1092,13 @@ class PluginsRouterGroup(group.RouterGroup):
                     trust_env=True,
                     follow_redirects=True,
                     timeout=10,
+                    event_hooks=httpclient.httpx_response_limit_hooks(),
                 ) as client:
                     response = await client.get(
                         url,
                     )
                     response.raise_for_status()
-                    release = response.json()
+                    release = await httpclient.parse_json_response(response)
 
                 # Format assets data for frontend
                 formatted_assets = []
@@ -484,42 +1125,66 @@ class PluginsRouterGroup(group.RouterGroup):
                 # )
 
                 return self.success(data={'assets': formatted_assets})
-            except httpx.RequestError as e:
-                return self.http_status(500, -1, f'Failed to fetch release assets: {str(e)}')
+            except httpx.RequestError:
+                raise
 
-        @self.route('/install/github', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        @self.route(
+            '/install/github',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Install plugin from GitHub release asset"""
-            limit_error = await self._check_extensions_limit()
+            limit_error = await self._check_extensions_limit(request_context)
             if limit_error is not None:
                 return limit_error
 
-            data = await quart.request.json
-            asset_url = data.get('asset_url', '')
-            owner = data.get('owner', '')
-            repo = data.get('repo', '')
-            release_tag = data.get('release_tag', '')
+            data = await quart.request.json or {}
+            try:
+                install_info = validate_github_plugin_install_info(
+                    {
+                        'asset_url': data.get('asset_url'),
+                        'asset_id': data.get('asset_id'),
+                        'release_id': data.get('release_id'),
+                        'owner': data.get('owner'),
+                        'repo': data.get('repo'),
+                        'release_tag': data.get('release_tag'),
+                        'github_url': f'https://github.com/{data.get("owner", "")}/{data.get("repo", "")}',
+                    }
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
 
-            if not asset_url:
-                return self.http_status(400, -1, 'Missing asset_url parameter')
+            owner = install_info['owner']
+            repo = install_info['repo']
+            release_tag = install_info['release_tag']
+            # Name the installed extension in the trace. GitHub installs carry
+            # owner/repo in the body, which the audit identity resolver can also
+            # read, but publishing it here keeps the trace correct regardless of
+            # how the request was encoded.
+            quart.g.operation_log_resource_id = f'{owner}/{repo}'
+
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{owner}/{repo}'
             ctx.metadata['install_source'] = 'github'
-            install_info = {
-                'asset_url': asset_url,
-                'owner': owner,
-                'repo': repo,
-                'release_tag': release_tag,
-                'github_url': f'https://github.com/{owner}/{repo}',
-            }
 
             wrapper = self.ap.task_mgr.create_user_task(
-                self.ap.plugin_connector.install_plugin(PluginInstallSource.GITHUB, install_info, task_context=ctx),
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.install_plugin(
+                        PluginInstallSource.GITHUB,
+                        install_info,
+                        task_context=ctx,
+                    ),
+                ),
                 kind='plugin-operation',
                 name='plugin-install-github',
                 label=f'Installing plugin from GitHub {owner}/{repo}@{release_tag}',
                 context=ctx,
+                **self._task_scope(request_context),
             )
 
             return self.success(data={'task_id': wrapper.id})
@@ -528,9 +1193,10 @@ class PluginsRouterGroup(group.RouterGroup):
             '/install/marketplace',
             methods=['POST'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
         )
-        async def _() -> str:
-            limit_error = await self._check_extensions_limit()
+        async def _(request_context: RequestContext) -> str:
+            limit_error = await self._check_extensions_limit(request_context)
             if limit_error is not None:
                 return limit_error
 
@@ -538,23 +1204,38 @@ class PluginsRouterGroup(group.RouterGroup):
 
             plugin_author = data.get('plugin_author', '')
             plugin_name = data.get('plugin_name', '')
+            quart.g.operation_log_resource_id = f'{plugin_author}/{plugin_name}'
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
             ctx.metadata['install_source'] = 'marketplace'
             wrapper = self.ap.task_mgr.create_user_task(
-                self.ap.plugin_connector.install_plugin(PluginInstallSource.MARKETPLACE, data, task_context=ctx),
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.install_plugin(
+                        PluginInstallSource.MARKETPLACE,
+                        data,
+                        task_context=ctx,
+                    ),
+                ),
                 kind='plugin-operation',
                 name='plugin-install-marketplace',
                 label=f'Installing plugin from marketplace {plugin_author}/{plugin_name}',
                 context=ctx,
+                **self._task_scope(request_context),
             )
 
             return self.success(data={'task_id': wrapper.id})
 
-        @self.route('/install/local', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
-            limit_error = await self._check_extensions_limit()
+        @self.route(
+            '/install/local',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            limit_error = await self._check_extensions_limit(request_context)
             if limit_error is not None:
                 return limit_error
 
@@ -563,83 +1244,88 @@ class PluginsRouterGroup(group.RouterGroup):
                 return self.http_status(400, -1, 'file is required')
 
             file_bytes = file.read()
+            form = await quart.request.form
+            administrator_force = form.get('administrator_force', '').strip().lower() == 'true'
+            # A local upload is multipart with no JSON body, so the archive
+            # filename is the only identity available for the trace.
+            quart.g.operation_log_resource_id = file.filename or 'local plugin'
+            execution_context = await self.ap.plugin_connector.require_workspace_context(request_context)
 
             data = {
                 'plugin_file': file_bytes,
+                'administrator_force': administrator_force,
             }
 
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = file.filename or 'local plugin'
             ctx.metadata['install_source'] = 'local'
             wrapper = self.ap.task_mgr.create_user_task(
-                self.ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, data, task_context=ctx),
+                self._run_fenced_plugin_operation(
+                    execution_context,
+                    lambda: self.ap.plugin_connector.install_plugin(
+                        PluginInstallSource.LOCAL,
+                        data,
+                        task_context=ctx,
+                    ),
+                ),
                 kind='plugin-operation',
                 name='plugin-install-local',
                 label=f'Installing plugin from local {file.filename}',
                 context=ctx,
+                **self._task_scope(request_context),
             )
 
             return self.success(data={'task_id': wrapper.id})
 
-        @self.route('/install/local/preview', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY)
-        async def _() -> str:
+        @self.route(
+            '/install/local/preview',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            await self._require_authenticated_plugin_runtime_context(request_context)
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')
 
             file_bytes = file.read()
             try:
-                with zipfile.ZipFile(io.BytesIO(file_bytes)) as zf:
-                    names = [name for name in zf.namelist() if not name.endswith('/')]
-                    manifest_name = next(
-                        (
-                            name
-                            for name in names
-                            if name.replace('\\', '/').strip('/').lower() in ('manifest.yaml', 'manifest.yml')
-                        ),
-                        None,
-                    )
-                    if manifest_name is None:
-                        return self.http_status(400, -1, 'manifest.yaml is required')
+                manifest, requirements, names = await asyncio.to_thread(
+                    inspect_plugin_archive_metadata,
+                    file_bytes,
+                )
+                spec = manifest.get('spec') or {}
+                components = spec.get('components') or {}
+                component_counts = self._count_plugin_components(components, names)
+                component_types = list(component_counts.keys())
 
-                    manifest = yaml.safe_load(zf.read(manifest_name).decode('utf-8')) or {}
-                    requirements: list[str] = []
-                    requirements_name = next(
-                        (name for name in names if name.replace('\\', '/').strip('/').lower() == 'requirements.txt'),
-                        None,
-                    )
-                    if requirements_name is not None:
-                        requirements = [
-                            line.strip()
-                            for line in zf.read(requirements_name).decode('utf-8', errors='ignore').splitlines()
-                            if line.strip() and not line.strip().startswith('#')
-                        ]
+                return self.success(
+                    data={
+                        'filename': file.filename or 'local plugin',
+                        'size': len(file_bytes),
+                        'manifest': manifest,
+                        'metadata': manifest.get('metadata') or {},
+                        'component_types': component_types,
+                        'component_counts': component_counts,
+                        'requirements': requirements,
+                        'file_count': len(names),
+                    }
+                )
+            except (zipfile.BadZipFile, ValueError) as exc:
+                return self.http_status(400, -1, str(exc) or 'invalid .lbpkg file')
+            except Exception:
+                raise
 
-                    spec = manifest.get('spec') or {}
-                    components = spec.get('components') or {}
-                    component_counts = self._count_plugin_components(components, names)
-                    component_types = list(component_counts.keys())
-
-                    return self.success(
-                        data={
-                            'filename': file.filename or 'local plugin',
-                            'size': len(file_bytes),
-                            'manifest': manifest,
-                            'metadata': manifest.get('metadata') or {},
-                            'component_types': component_types,
-                            'component_counts': component_counts,
-                            'requirements': requirements,
-                            'file_count': len(names),
-                        }
-                    )
-            except zipfile.BadZipFile:
-                return self.http_status(400, -1, 'invalid .lbpkg file')
-            except Exception as exc:
-                return self.http_status(500, -1, f'Failed to preview plugin package: {exc}')
-
-        @self.route('/config-files', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
+        @self.route(
+            '/config-files',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
             """Upload a file for plugin configuration"""
+            await self._require_authenticated_plugin_runtime_context(request_context)
             file = (await quart.request.files).get('file')
             if file is None:
                 return self.http_status(400, -1, 'file is required')
@@ -650,25 +1336,37 @@ class PluginsRouterGroup(group.RouterGroup):
             if len(file_bytes) > MAX_FILE_SIZE:
                 return self.http_status(400, -1, 'file size exceeds 10MB limit')
 
-            # Generate unique file key with original extension
-            original_filename = file.filename
+            original_filename = file.filename or 'config.bin'
             _, ext = os.path.splitext(original_filename)
-            file_key = f'plugin_config_{uuid.uuid4().hex}{ext}'
-
-            # Save file using storage manager
-            await self.ap.storage_mgr.storage_provider.save(file_key, file_bytes)
+            logical_key = f'plugin_config_{uuid.uuid4().hex}{ext}'
+            file_key = await self.ap.storage_mgr.save_scoped(
+                request_context,
+                owner_type='plugin_config',
+                owner=request_context.workspace_uuid,
+                key=logical_key,
+                value=file_bytes,
+            )
 
             return self.success(data={'file_key': file_key})
 
-        @self.route('/config-files/<file_key>', methods=['DELETE'], auth_type=group.AuthType.USER_TOKEN)
-        async def _(file_key: str) -> str:
+        @self.route(
+            '/config-files/<path:file_key>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(file_key: str, request_context: RequestContext) -> str:
             """Delete a plugin configuration file"""
-            # Only allow deletion of files with plugin_config_ prefix for security
-            if not file_key.startswith('plugin_config_'):
+            await self._require_authenticated_plugin_runtime_context(request_context)
+            if not self.ap.storage_mgr.is_scoped_object_key(file_key, expected_owner_type='plugin_config'):
                 return self.http_status(400, -1, 'invalid file key')
 
             try:
-                await self.ap.storage_mgr.storage_provider.delete(file_key)
+                await self.ap.storage_mgr.delete_scoped_object_key(
+                    request_context,
+                    file_key,
+                    expected_owner_type='plugin_config',
+                )
                 return self.success(data={'deleted': True})
-            except Exception as e:
-                return self.http_status(500, -1, f'failed to delete file: {str(e)}')
+            except Exception:
+                raise

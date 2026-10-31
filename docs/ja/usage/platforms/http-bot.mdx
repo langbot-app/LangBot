@@ -1,0 +1,232 @@
+---
+title: "HTTP ボット"
+description: "任意のバックエンドを HTTP で LangBot に接続：署名付き Webhook でメッセージを送信し、コールバック URL で返信を受信。サーバー間連携、長時間接続不要。"
+icon: "/images/platforms/http-bot.svg"
+---
+
+`HTTP ボット`アダプターは、**任意のバックエンドシステム**を LangBot パイプラインに接続します。チケットシステム、CRM、社内ツール、自作 Web アプリなど、すべてこれを通じてパイプラインを駆動できます。
+
+- **受信**：バックエンドが署名付きメッセージを LangBot の固定 URL に `POST` します；
+- **送信**：LangBot が返信を設定済みのコールバック URL に `POST` します。
+
+**長時間接続は不要**で、パイプラインの 2 つのネイティブ機能を完全に保持します。
+
+- **メッセージ集約（N→1）**：ユーザーが連続して複数のメッセージを送ると、1 ターンにまとめて処理；
+- **マルチパート返信（1→M）**：1 ターンで複数の返信が発生し得る（関数呼び出し、複数メッセージのプラグイン、ストリーミング分割）。
+
+<Note>
+**ブラウザ内**のリアルタイムチャットウィジェットが必要な場合は、[ページボット](/ja/usage/platforms/webpage)を使用してください。HTTP ボットはバックエンド間連携のために設計されています。
+</Note>
+
+## 仕組み
+
+```
+バックエンド  ──(1) 署名付きメッセージを POST──►  LangBot   /bots/<bot_uuid>
+                                              （パイプライン：集約 → 推論 → 返信）
+コールバック  ◄─(2) 署名付き返信を POST──────   LangBot   返信パートごとに 1 回 POST
+```
+
+- **(1) 受信**は「まず受け取り、後で処理」：LangBot は即座に `202 Accepted` を返し、そのレスポンスにパイプライン結果は**含めません**；
+- **(2) 送信**返信は後で、独立した署名付き POST としてあなたの `callback_url` に届きます。1 ターンで複数回のコールバックが発生し得ます；
+- すべては**あなたが指定する `session_id`**（例：チケット番号）をキーとし、各 `session_id` は 1 つの独立したセッションに対応します。
+
+## ボットの作成
+
+LangBot WebUI で**ボット > ボット作成**に進み、名前を入力し、プラットフォーム/アダプターに `HTTP ボット` を選択します。
+
+## 設定項目
+
+| 設定項目 | 必須 | 説明 |
+|----------|------|------|
+| 受信署名シークレット | はい | バックエンドが受信リクエストの HMAC-SHA256 署名に使用。LangBot は受信ごとに検証します。 |
+| 送信コールバック URL | はい | LangBot が返信を POST する先。**設定からのみ**取得し、メッセージ単位で上書き不可（SSRF 対策）。 |
+| 送信署名シークレット | いいえ | LangBot がコールバックの署名に使用。空の場合は受信シークレットを使用。 |
+| デフォルトセッションタイプ | いいえ | `person`（既定）または `group`。 |
+| 受信署名を必須にする | いいえ | 本番環境では有効のままに。 |
+| コールバックタイムアウト（秒） | いいえ | コールバックごとの HTTP タイムアウト、既定 15。 |
+| コールバック最大リトライ回数 | いいえ | タイムアウトまたは 5xx 時に指数バックオフでリトライ、既定 3。 |
+
+**パイプライン**にバインドして**有効化**すると、設定ページに**受信 Webhook URL**（`https://your-langbot/bots/<bot_uuid>` の形式）が表示されます。コピーしてください。
+
+## 署名スキーム
+
+両方向で同じ依存関係なしの HMAC-SHA256 スキームを使用します。
+
+```
+signing_string = "{timestamp}." + 生のリクエストボディのバイト列
+signature      = "sha256=" + hex(HMAC_SHA256(secret, signing_string))
+```
+
+ヘッダーで送信します。
+
+| ヘッダー | 意味 |
+|----------|------|
+| `X-LB-Timestamp` | Unix 秒。サーバー時刻と **±300 秒**以上離れていると拒否。 |
+| `X-LB-Signature` | `"{timestamp}." + body` に対する `sha256=<hex>`。 |
+| `X-LB-Idempotency-Key` | （任意、受信）重複排除キー。再送は `409` を返す。 |
+
+送信コールバックの検証も同様に、**送信シークレット**（空なら受信シークレット）を使用します。
+
+## 最初のメッセージを送る（curl）
+
+```bash
+BOT="https://your-langbot/bots/<bot_uuid>"
+SECRET="あなたの受信シークレット"
+BODY='{"session_id":"ticket-10293","message":[{"type":"Plain","text":"ダッシュボードでエクスポートが失敗し続けます。"}]}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -r | cut -d' ' -f1)"
+
+curl -sS -X POST "$BOT" \
+  -H "Content-Type: application/json" \
+  -H "X-LB-Timestamp: $TS" \
+  -H "X-LB-Signature: $SIG" \
+  -d "$BODY"
+# -> 202 {"code":0,"msg":"accepted","data":{"session_id":"ticket-10293","accepted_message_id":"in_...","aggregating":true}}
+```
+
+返信はまもなく設定済みのコールバック URL に POST されます。
+
+## 受信リクエスト形式
+
+`POST /bots/{bot_uuid}`
+
+```json
+{
+  "session_id": "ticket-10293",
+  "session_type": "person",
+  "sender": { "id": "user-5567", "name": "Alice" },
+  "message": [
+    { "type": "Plain", "text": "ダッシュボードでエクスポートが失敗し続けます。" },
+    { "type": "Image", "url": "https://example.com/screenshot.png" }
+  ]
+}
+```
+
+- `session_id`（**必須**）：あなたの安定した識別子、1 つの LangBot セッションに 1:1 対応；
+- `message`（**必須**）：LangBot メッセージチェーン。テキストは `{"type":"Plain","text":"..."}`、画像は `{"type":"Image","url":"..."}`（または `base64`）；その他 `Voice`、`File`、`At`、`Quote` をサポート。
+
+<Warning>
+コールバック URL はボディでは**受け付けず**、ボット設定からのみ取得します。これは意図的な設計です：受信シークレットが漏洩しても、攻撃者が返信を任意のホストにリダイレクトすることはできません。
+</Warning>
+
+### メッセージ集約（N → 1）
+
+パイプラインで**メッセージ集約**が有効な場合、**同じ `session_id`** で集約ウィンドウ内に複数のメッセージを送ると、**1 ターン**にまとめられます。特別なフラグは不要、`session_id` を再利用するだけです。
+
+## 送信コールバック形式
+
+LangBot は各返信パートをコールバック URL に POST します。
+
+```json
+{
+  "session_id": "ticket-10293",
+  "reply_to": "in_01H...",
+  "sequence": 1,
+  "is_final": false,
+  "stream": false,
+  "message": [ { "type": "Plain", "text": "調査中です…" } ],
+  "timestamp": "2026-06-22T09:00:01Z"
+}
+```
+
+受信側は速やかに `2xx` を返してください。2xx 以外やタイムアウトの場合、LangBot は指数バックオフでリトライします。
+
+### マルチパート返信（1 → M）
+
+1 ターンで複数のコールバックが発生し得て、同一セッションには `sequence` 順で届きます。
+
+```
+seq=1 is_final=false  "エクスポートログを確認中…"
+seq=2 is_final=false  "失敗したエクスポートが 2 件見つかりました。"
+seq=3 is_final=true   "修正しました。再試行してください。"
+```
+
+`session_id` + `sequence` で結合します。`is_final: true` が届いたらそのターンは完了です。
+
+## セッションのリセット
+
+ある `session_id` の会話を新規に開始（履歴を破棄）します。
+
+```
+POST /bots/{bot_uuid}/reset
+{ "session_id": "ticket-10293", "session_type": "person" }
+→ 200 { "code":0, "msg":"reset", "data": { "session_id":"ticket-10293", "removed": true } }
+```
+
+署名方法は受信メッセージと同じです。
+
+## 同期便利モード
+
+ストリーミング/マルチパートが不要で、同じ HTTP 呼び出しで返信を受け取りたい場合は `/sync` に POST します。LangBot はターンの終了を待ち、すべての返信パートを 1 つの配列に**まとめて**返します。
+
+```
+POST /bots/{bot_uuid}/sync
+{ "session_id": "ticket-10293", "message": [ { "type":"Plain", "text":"こんにちは" } ] }
+→ 200 { "code":0, "msg":"ok",
+        "data": { "session_id":"ticket-10293", "reply_to":"in_...", "message": [ ... ] } }
+```
+
+<Warning>
+同期モードは**ロスあり**（`sequence` とストリーミング境界が失われる）で、最大 `コールバックタイムアウト × 4` 秒ブロックします。リアルタイムやマルチパートの場合はコールバックモードを優先してください。`session_id` ごとに進行中の `/sync` は 1 つのみです。
+</Warning>
+
+## エラーコード
+
+```json
+{ "code": 40101, "msg": "invalid signature: signature_mismatch", "data": null }
+```
+
+| HTTP | code | 意味 |
+|------|------|------|
+| 202 | 0 | 受理 |
+| 400 | 40001 | ボディ不正 / `session_id` または `message` 欠如 |
+| 401 | 40101 | 署名が不正または期限切れ |
+| 409 | 40901 | 冪等キーの重複 |
+| 413 | 41301 | メッセージが大きすぎる（>1 MiB） |
+| 500 | 50001 | 内部エラー |
+
+## リファレンスクライアントと 5 分デモ
+
+メインリポジトリの [`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) には**インタラクティブなプレイグラウンド**と Python / TypeScript のリファレンスクライアントがあります。
+
+### インタラクティブ・プレイグラウンド（まずこれを実行）
+
+[`playground.py`](https://github.com/langbot-app/LangBot/blob/master/examples/http-bot/playground.py) は単一ファイルの Web アプリです:ブラウザでメッセージを入力 → 署名して**稼働中**の `http_bot` ボットへ POST → 返信がページにストリーム表示され、右側のデバッグパネルに署名・`202` 確認・各コールバックの `sequence` と検証結果が表示されます。
+
+```bash
+# LangBot リポジトリのルートで、バックエンドが稼働している状態で:
+PUBLIC_IP=<あなたのホストIP> ./.venv/bin/python examples/http-bot/playground.py
+# その後  http://<あなたのホストIP>:8920/  を開く
+```
+
+起動時に `data/langbot.db` から API Key と `http_bot` ボットを読み取り、LangBot API 経由でそのボットの `callback_url` とシークレットを自分自身に向けます(ボットはライブリロード、再起動不要)。有効化され、動作するパイプラインにバインドされた `http_bot` ボットが必要です。
+
+### コマンドラインのリファレンスクライアント
+
+[`examples/http-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/http-bot) には Python と TypeScript のリファレンスクライアント（コールバックレシーバー付き）もあります。
+
+```bash
+cd examples/http-bot
+pip install flask requests
+
+# ターミナル 1：コールバックレシーバー（ボットの callback_url をここに向ける。ローカルは cloudflared / ngrok で）
+python client.py serve --port 8900 --secret SHARED_SECRET
+
+# ターミナル 2：メッセージを送信
+python client.py push \
+  --url https://your-langbot/bots/<bot_uuid> \
+  --secret SHARED_SECRET \
+  --session ticket-1 \
+  --text "こんにちは"
+```
+
+ターミナル 1 が各返信パート（`[part ]` / `[FINAL]`）をシーケンス番号付きで表示します——これが署名検証済みの 1→M マルチパート返信のライブ動作です。
+
+機械可読の契約はメインリポジトリの [`docs/http-bot-openapi.json`](https://github.com/langbot-app/LangBot/blob/master/docs/http-bot-openapi.json) にあります。
+
+## セキュリティチェックリスト
+
+- 本番環境では**受信署名を必須にする**を有効に；
+- コールバック URL は **HTTPS** を使用し、設定でのみ指定（メッセージ単位の上書き不可）；
+- シークレットはパスワードと同様に扱い、ダッシュボードでローテーション；
+- 受信ルートはフレームワークレベルで未認証です（**意図的な設計**）。セキュリティは完全に HMAC 署名に依存するため、公開デプロイでは絶対に無効化しないでください。

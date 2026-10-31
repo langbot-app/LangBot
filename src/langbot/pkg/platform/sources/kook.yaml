@@ -12,12 +12,13 @@ metadata:
     zh_Hant: KOOK 適配器（原開黑啦），支援頻道訊息和私聊訊息
   icon: kook.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/kook
-    en: https://link.langbot.app/en/platforms/kook
-    ja: https://link.langbot.app/ja/platforms/kook
+    zh: https://langbot.app/docs/zh/usage/platforms/kook
+    en: https://langbot.app/docs/en/usage/platforms/kook
+    ja: https://langbot.app/docs/ja/usage/platforms/kook
   config:
     - name: token
       label:

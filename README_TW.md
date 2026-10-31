@@ -21,9 +21,9 @@
 [![star](https://gitcode.com/RockChinQ/LangBot/star/badge.svg)](https://gitcode.com/RockChinQ/LangBot)
 
 <a href="https://langbot.app">官網</a> ｜
-<a href="https://link.langbot.app/zh/docs/features">特性</a> ｜
-<a href="https://link.langbot.app/zh/docs/guide">文件</a> ｜
-<a href="https://link.langbot.app/zh/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/zh/insight/features">特性</a> ｜
+<a href="https://langbot.app/docs/zh/insight/guide">文件</a> ｜
+<a href="https://langbot.app/docs/zh/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">外掛市場</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">路線圖</a>
 
@@ -50,9 +50,9 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 - **Web 管理面板** — 透過瀏覽器直觀地配置、管理和監控機器人，無需手動編輯設定檔。
 - **多流水線架構** — 不同機器人用於不同場景，具備全面的監控和異常處理能力。
 
-[→ 了解更多功能特性](https://link.langbot.app/zh/docs/features)
+[→ 了解更多功能特性](https://langbot.app/docs/zh/insight/features)
 
-📍 實踐指南：[5 分鐘部署多平台 AI 機器人](https://blog.langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[將 DeepSeek 接入微信、企業微信與 Discord](https://blog.langbot.app/zh/blog/connect-deepseek-to-wechat/)、[讓 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://blog.langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 建構多平台 AI 聊天機器人](https://blog.langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
+📍 實踐指南：[5 分鐘部署多平台 AI 機器人](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes/)、[將 DeepSeek 接入微信、企業微信與 Discord](https://langbot.app/zh/blog/connect-deepseek-to-wechat/)、[讓 Dify Agent 跑在 Discord、Telegram 和 Slack 上](https://langbot.app/zh/blog/dify-agent-discord-telegram-slack/)，以及[用 n8n 建構多平台 AI 聊天機器人](https://langbot.app/zh/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -66,7 +66,11 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 
 ### ☁️ LangBot Cloud（推薦）
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — 免部署，開箱即用。
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+免部署，開箱即用。
 
 ### 一鍵啟動
 
@@ -84,12 +88,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### 一鍵雲端部署
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/zh-CN/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**更多方式：** [Docker](https://link.langbot.app/zh/docs/docker) · [手動部署](https://link.langbot.app/zh/docs/manual-deploy) · [寶塔面板](https://link.langbot.app/zh/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/zh/deploy/langbot/kubernetes)
+**更多方式：** [Docker](https://langbot.app/docs/zh/deploy/langbot/docker) · [手動部署](https://langbot.app/docs/zh/deploy/langbot/manual) · [寶塔面板](https://langbot.app/docs/zh/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/zh/deploy/langbot/kubernetes)
 
 ---
 
@@ -154,7 +159,7 @@ docker compose --profile all up -d
 |-----------|------|
 | 阿里雲百煉 | [外掛](https://github.com/Thetail001/LangBot_BailianTextToImagePlugin) |
 
-[→ 查看完整整合列表](https://link.langbot.app/zh/docs/features)
+[→ 查看完整整合列表](https://langbot.app/docs/zh/insight/features)
 
 ---
 
@@ -168,14 +173,6 @@ docker compose --profile all up -d
 | **多平台觸達** | 一個機器人，覆蓋所有平台。透過統一面板集中管理 |
 
 ---
-
-## 線上演示
-
-**立即體驗：** https://demo.langbot.dev/
-- 信箱：`demo@langbot.app`
-- 密碼：`langbot123456`
-
-*注意：公開演示環境，請不要在其中填入任何敏感資訊。*
 
 ## 為 AI Agent 而生 🤖
 
@@ -200,12 +197,6 @@ LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude C
 
 ---
 
-## Star 趨勢
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## 貢獻者
 
 感謝所有[貢獻者](https://github.com/langbot-app/LangBot/graphs/contributors)對 LangBot 的幫助：
@@ -213,3 +204,5 @@ LangBot **從設計上就對 Agent 友善** —— 你的編碼 Agent（Claude C
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[文件原始碼](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

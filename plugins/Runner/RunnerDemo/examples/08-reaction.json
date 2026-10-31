@@ -1,0 +1,18 @@
+{
+  "event_type": "message.reaction",
+  "data": {
+    "user": {
+      "id": "demo-alice",
+      "nickname": "Alice"
+    },
+    "message_id": "message-01",
+    "reaction": "👍",
+    "is_add": true,
+    "chat_id": "demo-community",
+    "chat_type": "group",
+    "group": {
+      "id": "demo-community",
+      "name": "Runner Workshop"
+    }
+  }
+}

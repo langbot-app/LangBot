@@ -1,0 +1,110 @@
+name: Core Smoke
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [master, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tools:
+    name: Regression tools
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install PyYAML==6.0.3
+      - name: Check regression tools
+        run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
+
+  smoke:
+    name: Core smoke (60s)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked dependencies
+        run: uv sync --dev --frozen
+      - name: Prepare CLI and sandbox image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .smoke-bin
+          gh release download v0.3.0 --repo langbot-app/langbot-cli --dir .smoke-bin \
+            --pattern lbctl_linux_amd64 --pattern checksums.txt
+          cd .smoke-bin
+          sha256sum --check --ignore-missing checksums.txt
+          chmod +x lbctl_linux_amd64
+          docker pull python:3.12-alpine
+      - name: Prepare real services and run the 60-second smoke
+        run: |
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
+            --lbctl .smoke-bin/lbctl_linux_amd64 --plugins plugins --output .qa/core-smoke
+      - name: Publish gate result
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          root = Path('.qa/core-smoke')
+          path = root / 'gate/gate.json'
+          manifest = root / 'plugins/manifest.json'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as out:
+              if manifest.exists():
+                  for plugin in json.loads(manifest.read_text())['plugins']:
+                      out.write(f"Plugin: `{plugin['id']}@{plugin['version']}`; installation readback: `{plugin.get('installed', 'not confirmed')}`.\n\n")
+              if path.exists():
+                  data = json.loads(path.read_text())
+                  out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
+                            f"{data.get('elapsed_seconds', 0):.2f}/60 seconds; {data.get('requests', 0)} requests.\n")
+                  if data.get('infrastructure_error'):
+                      out.write('Preparation or teardown failed; inspect service logs.\n')
+                  for error in data.get('coverage_errors', []):
+                      out.write(f"Coverage evidence error: {error}\n")
+                  out.write('Service/dependency preparation is outside the 60-second execution budget.\n')
+              else:
+                  out.write('Core smoke did not produce a verdict; inspect preparation failure.\n')
+          PY
+      - name: Preserve verdicts and resource samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-smoke-${{ github.run_id }}
+          path: |
+            .qa/core-smoke/gate/gate.json
+            .qa/core-smoke/gate/resources.jsonl
+            .qa/core-smoke/gate/suite.log
+            .qa/core-smoke/gate/suite/cases.json
+            .qa/core-smoke/gate/suite/summary.json
+            .qa/core-smoke/gate/suite/health.json
+            .qa/core-smoke/gate/suite/cleanup-checks.json
+            .qa/core-smoke/gate/suite/coverage.json
+            .qa/core-smoke/gate/suite/coverage.md
+            .qa/core-smoke/gate/suite/cycles.json
+            .qa/core-smoke/gate/suite/execution.json
+            .qa/core-smoke/plugins/manifest.json
+            .qa/core-smoke/plugins/*-build.log
+            .qa/core-smoke/*.log
+          if-no-files-found: warn
+          retention-days: 7

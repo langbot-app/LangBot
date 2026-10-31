@@ -18,6 +18,9 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+from langbot.pkg.utils import httpclient
+
+_MAX_GATEWAY_MESSAGE_BYTES = 1024 * 1024
 
 
 class SatoriMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -63,7 +66,15 @@ class SatoriMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
                             padding = 4 - len(raw_b64) % 4
                             if padding != 4:
                                 raw_b64 += '=' * padding
-                            image_bytes = base64.b64decode(raw_b64)
+                            max_encoded_chars = 4 * ((10 * 1024 * 1024 + 2) // 3) + 4
+                            if len(raw_b64) > max_encoded_chars:
+                                raise ValueError('Satori image exceeds the 10 MiB limit')
+                            image_bytes = await asyncio.to_thread(
+                                base64.b64decode,
+                                raw_b64,
+                            )
+                            if len(image_bytes) > 10 * 1024 * 1024:
+                                raise ValueError('Satori image exceeds the 10 MiB limit')
                             uploaded_url = await adapter.upload_image(image_bytes, mime_type)
                             if uploaded_url:
                                 await adapter.logger.info(f'Satori 图片上传成功: {len(image_bytes)} 字节')
@@ -492,7 +503,7 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             raise ValueError(f'WebSocket URL必须以ws://或wss://开头: {self.endpoint}')
 
         try:
-            self.ws = await websockets.connect(self.endpoint)
+            self.ws = await websockets.connect(self.endpoint, max_size=_MAX_GATEWAY_MESSAGE_BYTES)
             await asyncio.sleep(0.1)
 
             await self.send_identify()
@@ -584,7 +595,7 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     async def handle_message(self, message: str):
         """Handle WebSocket message"""
         try:
-            data = json.loads(message)
+            data = await asyncio.to_thread(json.loads, message)
             op = data.get('op')
             body = data.get('body', {})
 
@@ -831,9 +842,10 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         try:
             async with self.session.request(method, url, headers=headers, json=data) as response:
                 if response.status == 200:
-                    return await response.json()
+                    result = await httpclient.read_json_limited(response)
+                    return result if isinstance(result, dict) else None
                 else:
-                    text = await response.text()
+                    text = await httpclient.read_text_limited(response)
                     await self.logger.error(f'Satori API 请求失败: {response.status} - {text}')
                     return None
         except Exception as e:
@@ -889,7 +901,7 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             async with self.session.post(url, headers=headers, data=form_data) as response:
                 if response.status == 200:
-                    result = await response.json()
+                    result = await httpclient.read_json_limited(response)
                     # The response should contain the URL of the uploaded file
                     if isinstance(result, dict) and 'url' in result:
                         return result['url']
@@ -899,7 +911,7 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                         await self.logger.warning(f'Satori 图片上传响应格式未知: {result}')
                         return None
                 else:
-                    text = await response.text()
+                    text = await httpclient.read_text_limited(response)
                     await self.logger.error(f'Satori 图片上传失败: {response.status} - {text}')
                     return None
         except Exception as e:
@@ -911,6 +923,8 @@ class SatoriAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         self.running = False
         if self.heartbeat_task:
             self.heartbeat_task.cancel()
+            await asyncio.gather(self.heartbeat_task, return_exceptions=True)
+            self.heartbeat_task = None
         if self.ws:
             try:
                 await self.ws.close()

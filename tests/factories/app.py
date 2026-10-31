@@ -82,6 +82,9 @@ class FakeApp:
     def _create_mock_persistence_manager(self):
         persistence_mgr = AsyncMock()
         persistence_mgr.execute_async = AsyncMock()
+        # AsyncMock invents arbitrary callable attributes on access. Keep the
+        # optional production UoW hook explicitly absent unless a test opts in.
+        persistence_mgr.tenant_uow = None
         return persistence_mgr
 
     def _create_mock_query_pool(self):
@@ -125,6 +128,8 @@ class FakeApp:
         """Mock SkillManager that returns no skill index addition by default."""
         skill_mgr = Mock()
         skill_mgr.skills = {}
+        skill_mgr.ensure_loaded = AsyncMock()
+        skill_mgr.get_skills = Mock(return_value=[])
         skill_mgr.build_skill_aware_prompt_addition = Mock(return_value='')
         skill_mgr.get_skill_index = Mock(return_value=[])
         return skill_mgr

@@ -1,5 +1,6 @@
 import sqlalchemy
 
+from ...persistence.media import MediaReferenceText, MediaReferenceJSON
 from .base import Base
 
 
@@ -9,21 +10,74 @@ class MonitoringMessage(Base):
     __tablename__ = 'monitoring_messages'
 
     id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
     bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
-    message_content = sqlalchemy.Column(sqlalchemy.Text, nullable=False)
+    message_content = sqlalchemy.Column(MediaReferenceText, nullable=False)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    execution_owner_id = sqlalchemy.Column(sqlalchemy.String(36), nullable=True, index=True)
+    execution_lease_expires_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True, index=True)
+    """Host process lease, independent of execution duration and remote queue claims."""
+
     status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # success, error, pending
     level = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # info, warning, error, debug
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
     runner_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # Runner name for this query
-    variables = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # Query variables as JSON string
+    variables = sqlalchemy.Column(MediaReferenceText, nullable=True)  # Query variables as JSON string
     role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True, default='user')  # user, assistant
+    event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    run_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    parent_message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+
+    __table_args__ = (
+        sqlalchemy.Index('ix_monitoring_messages_summary_event', 'workspace_uuid', 'bot_id', 'event_id', 'role'),
+        # Time-windowed aggregates must not fetch execution metadata past historical payloads.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_timestamp',
+            'workspace_uuid',
+            'timestamp',
+            'id',
+            'status',
+            'role',
+            'bot_id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+            'pipeline_id',
+        ),
+        sqlalchemy.Index('ix_monitoring_messages_media_ttl', 'workspace_uuid', 'timestamp', 'id'),
+        sqlalchemy.Index('ix_monitoring_messages_workspace_session', 'workspace_uuid', 'session_id'),
+        # Execution membership must not traverse historical payload overflow pages.
+        sqlalchemy.Index(
+            'ix_monitoring_messages_execution_filter',
+            'workspace_uuid',
+            'status',
+            'role',
+            'bot_id',
+            'id',
+            'session_id',
+            'parent_message_id',
+            'run_id',
+        ),
+        sqlalchemy.Index(
+            'ix_monitoring_messages_conversation_page', 'workspace_uuid', 'bot_id', 'session_id', 'timestamp', 'id'
+        ),
+        sqlalchemy.Index(
+            'ix_monitoring_messages_workspace_status_lease',
+            'workspace_uuid',
+            'status',
+            'execution_lease_expires_at',
+        ),
+    )
 
 
 class MonitoringLLMCall(Base):
@@ -32,6 +86,11 @@ class MonitoringLLMCall(Base):
     __tablename__ = 'monitoring_llm_calls'
 
     id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
     model_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     input_tokens = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
@@ -48,14 +107,58 @@ class MonitoringLLMCall(Base):
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
+    details = sqlalchemy.Column(MediaReferenceJSON, nullable=True)
+
+    __table_args__ = (
+        sqlalchemy.Index('ix_monitoring_llm_calls_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_llm_calls_workspace_session', 'workspace_uuid', 'session_id'),
+    )
+
+
+class MonitoringToolCall(Base):
+    """Tool call records"""
+
+    __tablename__ = 'monitoring_tool_calls'
+
+    id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
+    tool_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    tool_source = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # native, plugin, mcp, skill
+    duration = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # milliseconds
+    status = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)  # success, error
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
+    pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
+    arguments = sqlalchemy.Column(MediaReferenceText, nullable=True)
+    result = sqlalchemy.Column(MediaReferenceText, nullable=True)
+    error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+
+    __table_args__ = (
+        sqlalchemy.Index('ix_monitoring_tool_calls_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_tool_calls_workspace_session', 'workspace_uuid', 'session_id'),
+    )
+
 
 class MonitoringSession(Base):
     """Session tracking records"""
 
     __tablename__ = 'monitoring_sessions'
 
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        primary_key=True,
+    )
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, index=True)
     session_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
-    bot_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     bot_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     pipeline_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     pipeline_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
@@ -67,6 +170,69 @@ class MonitoringSession(Base):
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     user_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # User display name
 
+    metadata_timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+    metadata_role = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)
+    metadata_source_key = sqlalchemy.Column(sqlalchemy.String(512), nullable=True)
+    base_snapshot = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    source_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0, server_default='0')
+
+    __table_args__ = (
+        sqlalchemy.Index('ix_monitoring_sessions_workspace_activity', 'workspace_uuid', 'last_activity'),
+        sqlalchemy.Index('ix_monitoring_sessions_workspace_active', 'workspace_uuid', 'is_active'),
+        sqlalchemy.Index('ix_monitoring_sessions_workspace_bot', 'workspace_uuid', 'bot_id', 'last_activity'),
+    )
+
+
+class MonitoringSessionReceipt(Base):
+    """Retained message identities and replaceable, optionally detached event credits."""
+
+    __tablename__ = 'monitoring_session_receipts'
+
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36), sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'), primary_key=True
+    )
+    bot_id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    source_key = sqlalchemy.Column(sqlalchemy.String(512), primary_key=True)
+    session_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    event_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
+    role = sqlalchemy.Column(sqlalchemy.String(50), nullable=False)
+    covered = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, server_default='false')
+    timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
+    candidate_snapshot = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
+    source_timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=True)
+
+    __table_args__ = (
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'bot_id', 'session_id'],
+            ['monitoring_sessions.workspace_uuid', 'monitoring_sessions.bot_id', 'monitoring_sessions.session_id'],
+            ondelete='CASCADE',
+        ),
+        sqlalchemy.Index('ix_session_receipts_session', 'workspace_uuid', 'bot_id', 'session_id'),
+        sqlalchemy.Index('ix_session_receipts_expiry', 'workspace_uuid', 'timestamp', 'bot_id', 'source_key'),
+    )
+
+
+# Only uncovered ingress needs a replaceable metadata candidate. C/BINARY order
+# agrees with UTF-8 source-key ordering in the projection on both databases.
+sqlalchemy.Index(
+    'ix_session_receipts_candidate',
+    MonitoringSessionReceipt.workspace_uuid,
+    MonitoringSessionReceipt.bot_id,
+    MonitoringSessionReceipt.session_id,
+    MonitoringSessionReceipt.source_timestamp.desc(),
+    MonitoringSessionReceipt.source_key.collate('C').desc(),
+    postgresql_where=MonitoringSessionReceipt.candidate_snapshot.is_not(None),
+).ddl_if(dialect='postgresql')
+sqlalchemy.Index(
+    'ix_session_receipts_candidate',
+    MonitoringSessionReceipt.workspace_uuid,
+    MonitoringSessionReceipt.bot_id,
+    MonitoringSessionReceipt.session_id,
+    MonitoringSessionReceipt.source_timestamp.desc(),
+    MonitoringSessionReceipt.source_key.collate('BINARY').desc(),
+    sqlite_where=MonitoringSessionReceipt.candidate_snapshot.is_not(None),
+).ddl_if(dialect='sqlite')
+
 
 class MonitoringError(Base):
     """Error log records"""
@@ -74,6 +240,11 @@ class MonitoringError(Base):
     __tablename__ = 'monitoring_errors'
 
     id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
     error_type = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     error_message = sqlalchemy.Column(sqlalchemy.Text, nullable=False)
@@ -85,6 +256,11 @@ class MonitoringError(Base):
     stack_trace = sqlalchemy.Column(sqlalchemy.Text, nullable=True)
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)  # Associated message ID
 
+    __table_args__ = (
+        sqlalchemy.Index('ix_monitoring_errors_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_errors_workspace_session', 'workspace_uuid', 'session_id'),
+    )
+
 
 class MonitoringEmbeddingCall(Base):
     """Embedding call records"""
@@ -92,6 +268,11 @@ class MonitoringEmbeddingCall(Base):
     __tablename__ = 'monitoring_embedding_calls'
 
     id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
     model_name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
     prompt_tokens = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)
@@ -107,6 +288,19 @@ class MonitoringEmbeddingCall(Base):
     message_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     call_type = sqlalchemy.Column(sqlalchemy.String(50), nullable=True)  # embedding, retrieve
 
+    __table_args__ = (
+        sqlalchemy.Index(
+            'ix_monitoring_embedding_calls_workspace_timestamp',
+            'workspace_uuid',
+            'timestamp',
+        ),
+        sqlalchemy.Index(
+            'ix_monitoring_embedding_calls_workspace_kb',
+            'workspace_uuid',
+            'knowledge_base_id',
+        ),
+    )
+
 
 class MonitoringFeedback(Base):
     """User feedback records (like/dislike) from AI Bot conversations"""
@@ -114,8 +308,13 @@ class MonitoringFeedback(Base):
     __tablename__ = 'monitoring_feedback'
 
     id = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
     timestamp = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, index=True)
-    feedback_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, unique=True, index=True)
+    feedback_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=False, index=True)
     feedback_type = sqlalchemy.Column(sqlalchemy.Integer, nullable=False)  # 1=like, 2=dislike
     feedback_content = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # User feedback text
     inaccurate_reasons = sqlalchemy.Column(sqlalchemy.Text, nullable=True)  # JSON list of inaccurate reasons
@@ -129,3 +328,13 @@ class MonitoringFeedback(Base):
     stream_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True, index=True)
     user_id = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)
     platform = sqlalchemy.Column(sqlalchemy.String(255), nullable=True)  # e.g., wecom
+
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint(
+            'workspace_uuid',
+            'feedback_id',
+            name='uq_monitoring_feedback_workspace_feedback_id',
+        ),
+        sqlalchemy.Index('ix_monitoring_feedback_workspace_timestamp', 'workspace_uuid', 'timestamp'),
+        sqlalchemy.Index('ix_monitoring_feedback_workspace_session', 'workspace_uuid', 'session_id'),
+    )

@@ -9,6 +9,8 @@ Run: uv run pytest tests/integration/api/test_smoke.py -q
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from unittest.mock import MagicMock, AsyncMock, Mock
 
@@ -86,7 +88,7 @@ def fake_api_app():
             'api': {'port': 5300},
             'plugin': {'enable_marketplace': True},
             'space': {'url': 'https://space.langbot.app'},
-            'system': {'allow_modify_login_info': True, 'limitation': {}},
+            'system': {'allow_modify_login_info': True, 'recovery_key': 'recovery-secret', 'limitation': {}},
         }
     )
 
@@ -160,17 +162,7 @@ class TestHealthEndpoint:
 
         assert response.status_code == 200
         data = await response.get_json()
-        assert data == {'code': 0, 'msg': 'ok'}
-
-    @pytest.mark.asyncio
-    async def test_healthz_no_auth_required(self, quart_test_client):
-        """
-        /healthz doesn't require authentication.
-
-        Tests that AuthType.NONE endpoints work without headers.
-        """
-        response = await quart_test_client.get('/healthz')
-        assert response.status_code == 200
+        assert data == {'code': 0, 'msg': 'ok', 'resources': {}}
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -239,33 +231,42 @@ class TestInvalidPayload:
     """Tests for error handling with invalid payloads."""
 
     @pytest.mark.asyncio
-    async def test_missing_json_body(self, quart_test_client):
-        """
-        POST endpoint without JSON body handles gracefully.
-        """
-        # /api/v1/user/auth expects JSON with 'user' and 'password'
+    async def test_missing_json_body(self, quart_test_client, fake_api_app):
+        """A missing login body is rejected before authentication."""
         response = await quart_test_client.post('/api/v1/user/auth')
 
-        # Should return error (500, 400, or 401) with stable JSON structure
-        assert response.status_code in (400, 500, 401)
-        data = await response.get_json()
-
-        # Verify error response has expected structure
-        assert 'code' in data
-        assert 'msg' in data
+        assert response.status_code == 400
+        assert await response.get_json() == {'code': -1, 'msg': 'Invalid request parameters'}
+        fake_api_app.user_service.authenticate.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_invalid_json_structure(self, quart_test_client):
-        """
-        POST with wrong JSON structure returns stable error.
-        """
-        response = await quart_test_client.post('/api/v1/user/auth', json={'wrong_field': 'value'})
+    @pytest.mark.parametrize(
+        'payload',
+        [
+            {'wrong_field': 'value'},
+            [],
+            {'user': None, 'password': 'secret'},
+            {'user': 'owner@example.com', 'password': 42},
+        ],
+    )
+    async def test_invalid_json_structure(self, quart_test_client, fake_api_app, payload):
+        """Malformed credential fields never reach the authentication service."""
+        response = await quart_test_client.post('/api/v1/user/auth', json=payload)
 
-        # Should return error with stable JSON structure
-        assert response.status_code in (400, 500, 401)
-        data = await response.get_json()
-        assert 'code' in data
-        assert 'msg' in data
+        assert response.status_code == 400
+        assert await response.get_json() == {'code': -1, 'msg': 'Invalid request parameters'}
+        fake_api_app.user_service.authenticate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('password', ['', 'existing-password'])
+    async def test_string_credentials_reach_authentication(self, quart_test_client, fake_api_app, password):
+        response = await quart_test_client.post(
+            '/api/v1/user/auth', json={'user': 'owner@example.com', 'password': password}
+        )
+
+        assert response.status_code == 200
+        assert (await response.get_json())['data']['token'] == 'fake_token'
+        fake_api_app.user_service.authenticate.assert_awaited_once_with('owner@example.com', password, None)
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')
@@ -287,6 +288,100 @@ class TestUserInitEndpoint:
         assert data['code'] == 0
         assert data['msg'] == 'ok'
         assert data['data']['initialized'] is False
+
+    @pytest.mark.asyncio
+    async def test_account_info_exposes_instance_capabilities_not_first_account(self, quart_test_client, fake_api_app):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': True, 'space_login_enabled': False}
+        )
+        fake_api_app.user_service.get_first_user = AsyncMock(
+            side_effect=AssertionError('public login bootstrap must not inspect an account')
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'authenticated_invitation_acceptance_enabled': False,
+            'invitation_registration_enabled': True,
+            'password_login_enabled': True,
+            'space_login_enabled': False,
+            'passkey_login_enabled': True,
+            'passkey_supported': True,
+        }
+        fake_api_app.user_service.get_login_capabilities.assert_awaited_once_with()
+        fake_api_app.user_service.get_first_user.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_account_info_enables_authenticated_invitation_acceptance_in_cloud(
+        self, quart_test_client, fake_api_app
+    ):
+        fake_api_app.deployment = SimpleNamespace(mode='cloud')
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': True, 'space_login_enabled': True}
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'authenticated_invitation_acceptance_enabled': True,
+            'invitation_registration_enabled': False,
+            'password_login_enabled': False,
+            'space_login_enabled': True,
+            # Passkeys are OSS-only: a cloud deployment must advertise neither
+            # passkey login nor passkey support, and the routes refuse it.
+            'passkey_login_enabled': False,
+            'passkey_supported': False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_account_info_enables_local_invitation_registration_for_oauth_only_oss(
+        self, quart_test_client, fake_api_app
+    ):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_login_capabilities = AsyncMock(
+            return_value={'password_login_enabled': False, 'space_login_enabled': True}
+        )
+
+        response = await quart_test_client.get('/api/v1/user/account-info')
+
+        assert response.status_code == 200
+        data = await response.get_json()
+        assert data['data'] == {
+            'initialized': True,
+            'authenticated_invitation_acceptance_enabled': False,
+            'invitation_registration_enabled': True,
+            'password_login_enabled': False,
+            'space_login_enabled': True,
+            'passkey_login_enabled': True,
+            'passkey_supported': True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_recovery_key_resets_any_existing_account(self, quart_test_client, fake_api_app, monkeypatch):
+        fake_api_app.user_service.is_initialized.return_value = True
+        fake_api_app.user_service.get_user_by_email.return_value = Mock(user='member@example.com')
+        fake_api_app.user_service.reset_password = AsyncMock()
+        monkeypatch.setattr('langbot.pkg.api.http.controller.groups.user.asyncio.sleep', AsyncMock())
+
+        response = await quart_test_client.post(
+            '/api/v1/user/reset-password',
+            json={
+                'user': 'member@example.com',
+                'recovery_key': 'recovery-secret',
+                'new_password': 'new-member-password',
+            },
+        )
+
+        assert response.status_code == 200
+        fake_api_app.user_service.reset_password.assert_awaited_once_with('member@example.com', 'new-member-password')
 
 
 @pytest.mark.usefixtures('mock_circular_import_chain')

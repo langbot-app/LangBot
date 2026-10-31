@@ -1,0 +1,131 @@
+---
+title: "HTTPリバースプロキシの設定またはゲートウェイ経由でのLangBotへのアクセス"
+---
+
+LangBotにはHTTPSサービス用の組み込みSSLサポートがありません。ドメイン名をLangBotインスタンスに解決する必要がある場合、またはHTTPSを使用してLangBot WebUIとさまざまなボット用のWebhookアドレスにアクセスする必要がある場合は、このドキュメントを参照してNGINXまたはCaddyをデプロイし、HTTPリバースプロキシを実装してください。
+
+公開IPアドレスを持つホストにLangBotをデプロイし、ドメイン名を購入し、ドメイン名をホストの公開IPに解決する必要があります。
+
+<Tip>
+**設定が面倒ですか？** [LangBot Cloud](https://space.langbot.app/cloud) にはドメインと HTTPS が組み込まれています。サーバーやドメインの購入、リバースプロキシの設定は不要です。登録するだけで Slack、LINE、WeCom などの Webhook プラットフォームをすぐに使用できます。
+</Tip>
+
+<Warning>
+QQ公式ボット、WeChat公式アカウント、WeCom、Slack、LINEなどのWebhookコールバックアドレスが必要なボットを使用する必要がある場合は、このドキュメントに従ってHTTPリバースプロキシを設定する必要があります。
+</Warning>
+
+## Caddy
+
+Caddyは、自動HTTPS証明書申請と更新、リバースプロキシ、自動DNS解決設定をサポートする最新のHTTPサーバーです。
+
+[Caddyインストールドキュメント](https://caddy2.dengxiaolong.com/docs/install)。お使いのオペレーティングシステムに対応するインストール手順を選択して、インストールを進めてください。
+
+### Caddyfileの設定
+
+このドキュメントでは、LangBotをデプロイするためにUbuntuシステムを使用することを前提としています。システムでは、Caddyfileのデフォルトの場所は`/etc/caddy/Caddyfile`です。
+vimまたはnanoを使用してCaddyfileを編集し、次のようにCaddyfileに記入します:
+
+```json
+your.domain.com {
+        reverse_proxy 127.0.0.1:5300
+}
+```
+
+<Info>
+CaddyとLangBotがコンテナを使用してデプロイされている場合は、[コンテナネットワーク設定の詳細](/en/workshop/network-details)を確認してください
+</Info>
+
+これで、ブラウザを通じて`https://your.domain.com`でLangBot WebUIにアクセスできます。
+
+### ボットコールバックアドレスプレフィックスの設定
+
+QQ公式ボット、WeChat公式アカウント、WeCom、Slack、LINEなどのWebhookコールバックアドレスが必要なボットを使用する必要がある場合は、data/config.yamlファイルで`api.webhook_prefix`をドメイン名に設定してください。例: `https://your.domain.com`。
+
+その後、ボット管理ページに正しく表示されたコールバックアドレスが表示されます。
+
+## NGINX
+
+NGINXも一般的に使用されるHTTPサーバーおよびリバースプロキシツールであり、LangBotへのHTTPSアクセスを実装するために使用できます。
+
+### NGINXのインストール
+
+Ubuntuでは、次のコマンドでNGINXをインストールできます:
+
+```bash
+sudo apt update
+sudo apt install nginx
+```
+
+### SSL証明書の準備
+
+[Let's Encrypt](https://letsencrypt.org/)を使用して無料のSSL証明書を申請できます。証明書を取得するには、[Certbot](https://certbot.eff.org/)ツールの使用をお勧めします:
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx
+```
+
+プロンプトに従ってドメイン名を入力すると、証明書の申請とNGINXの設定が自動的に完了します。以下の内容を参照してNGINX設定を完了してください。
+
+### NGINXリバースプロキシの設定
+
+LangBotのパイプラインデバッグ機能では、WebSocket接続を使用する必要があるため、NGINXをWebSocketをサポートするように設定する必要があります。
+
+NGINX設定ファイル`/etc/nginx/sites-available/langbot`を編集します(vimまたはnanoエディターを使用できます):
+
+```nginx
+# WebSocket接続アップグレードマッピング(serverブロックの外側に配置)
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
+}
+
+server {
+    listen 80;
+    server_name your.domain.com;
+    # HTTPトラフィックをHTTPSにリダイレクト
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl;
+    server_name your.domain.com;
+
+    ssl_certificate /etc/letsencrypt/live/your.domain.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/your.domain.com/privkey.pem;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    # LangBotインスタンスへのリバースプロキシ
+    location / {
+        proxy_pass http://127.0.0.1:5300;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocketサポート
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 86400;
+    }
+}
+```
+
+`your.domain.com`を実際のドメイン名に置き換えてください。
+
+この設定を有効にし、NGINXを再起動します:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/langbot /etc/nginx/sites-enabled/langbot
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### ボットコールバックアドレスプレフィックスの設定
+
+同様に、`data/config.yaml`設定ファイルで`api.webhook_prefix`を`https://your.domain.com`に設定すると、ボットWebhookコールバックアドレスが正しくなります。
+
+上記の設定を完了すると、`https://your.domain.com`を通じてLangBot WebUIとボットWebhookサービスに安全にアクセスできます。

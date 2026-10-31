@@ -12,12 +12,13 @@ metadata:
     zh_Hant: 微信公眾號適配器，需要公網地址以接收訊息推送，請查看文件了解使用方式
   icon: officialaccount.png
 spec:
+  legacy: true
   categories:
     - china
   help_links:
-    zh: https://link.langbot.app/zh/platforms/officialaccount
-    en: https://link.langbot.app/en/platforms/officialaccount
-    ja: https://link.langbot.app/ja/platforms/officialaccount
+    zh: https://langbot.app/docs/zh/usage/platforms/wxoa
+    en: https://langbot.app/docs/en/usage/platforms/wxoa
+    ja: https://langbot.app/docs/ja/usage/platforms/wxoa
   config:
     - name: webhook_url
       label:

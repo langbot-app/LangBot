@@ -8,7 +8,7 @@ export default function BotConfigPage() {
   const detailId = searchParams.get('id');
 
   if (detailId) {
-    return <BotDetailContent id={detailId} />;
+    return <BotDetailContent key={detailId} id={detailId} />;
   }
 
   return (

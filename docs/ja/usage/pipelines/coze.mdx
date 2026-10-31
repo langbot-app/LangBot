@@ -1,0 +1,52 @@
+---
+title: "Coze APIの統合"
+description: "Coze を LangBot と統合。Coze のボットやエージェントを Discord・Telegram・WeChat 等に接続。"
+---
+
+このドキュメントでは、CozeプラットフォームからTokenとBot IDを取得し、LangBotパイプライン設定に入力する方法を説明します。
+
+## 1. TokenとBot IDの取得
+
+1. Cozeプラットフォームにログインし、開発者コンソールに入ります。
+![Coze Application API Key](/images/zh/deploy/pipelines/coze/coze07.png)
+
+2. 「API管理」でトークンを作成してコピーします。
+![Coze Application API Key](/images/zh/deploy/pipelines/coze/coze06.png)
+
+<Info>
+Coze認証では、coze.cnは「サービスIDと認証情報」を通じた長期認証をサポートしていますが、coze.comはPersonal Access Tokenのみを提供しています。
+</Info>
+
+3. プロジェクト開発セクションから自分のエージェントを選択します(または新しいエージェントを作成します)。取得したIDが`bot_id`です。
+![Coze bot_id](/images/zh/deploy/pipelines/coze/coze05.png)
+
+* エージェントを公開する際は、必ずAPIオプションを選択してください
+![Coze Application API Key](/images/zh/deploy/pipelines/coze/coze04.png)
+
+以下の2つの情報を安全に保管してください:
+- **token**: Cozeプラットフォームで生成されたトークン
+- **bot_id**: Bot ID
+
+## 2. LangBotでの設定入力
+
+1. LangBot WebUIを開き、パイプラインの設定ページに移動します(または新しいパイプラインを作成してその設定ページに入ります)
+
+2. 「AI機能」で、ランナーとして`Coze API`を選択します
+
+3. ランナーの設定項目に入力します:
+   - **token**: CozeプラットフォームからコピーしたAPIトークンを貼り付けます
+   - **bot_id**: 対応するBot IDを貼り付けます
+   - 使用しているCozeサイトに応じて`API Base URL`を選択してください: coze.cnの場合は`https://api.coze.cn`を入力してください; coze.comの場合は`https://api.coze.com`を入力してください
+
+   ![パイプライン設定](/images/zh/deploy/pipelines/coze/coze08.png)
+
+4. 「保存」をクリックして設定を完了します
+
+完了すると、このパイプライン内でCozeエージェントを呼び出して対話処理ができます
+
+## よくある質問(FAQ)
+
+- **保存が失敗するか、呼び出しがエラーを返す**: トークンとbot_idが正しく、余分なスペースが含まれていないことを確認してください
+- **`Coze API`を選択できない**: 現在のバージョンがこのランナーをサポートしているか確認してください。まだサポートされていない場合は、Cozeランナーを含むバージョンにアップグレードしてください
+
+一般的なパイプライン設定の詳細については、[対話パイプライン設定の変更](/ja/usage/pipelines/readme)を参照してください

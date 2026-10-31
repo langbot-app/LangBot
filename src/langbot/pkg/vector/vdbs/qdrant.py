@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from qdrant_client import AsyncQdrantClient, models
 from langbot.pkg.core import app
-from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.vdb import VectorDatabase, remember_bounded_set, runtime_cache_limit
 from langbot.pkg.vector.filter_utils import normalize_filter
 
 
@@ -52,6 +52,11 @@ class QdrantVectorDatabase(VectorDatabase):
             self.client = AsyncQdrantClient(host=host, port=int(port), api_key=api_key)
 
         self._collections: set[str] = set()
+        self._runtime_cache_limit = runtime_cache_limit(ap)
+
+    async def close(self) -> None:
+        self._collections.clear()
+        await self.client.close()
 
     async def _ensure_collection(self, collection: str, vector_size: int) -> None:
         if collection in self._collections:
@@ -59,14 +64,14 @@ class QdrantVectorDatabase(VectorDatabase):
 
         exists = await self.client.collection_exists(collection)
         if exists:
-            self._collections.add(collection)
+            remember_bounded_set(self._collections, collection, self._runtime_cache_limit)
             return
 
         await self.client.create_collection(
             collection_name=collection,
             vectors_config=models.VectorParams(size=vector_size, distance=models.Distance.COSINE),
         )
-        self._collections.add(collection)
+        remember_bounded_set(self._collections, collection, self._runtime_cache_limit)
         self.ap.logger.info(f"Qdrant collection '{collection}' created with dim={vector_size}.")
 
     async def get_or_create_collection(self, collection: str):

@@ -7,6 +7,12 @@
   // Read config from script tag data attributes
   var scriptEl = document.currentScript;
   var scriptTitle = scriptEl ? scriptEl.getAttribute("data-title") : null;
+  var scriptTestNotice = scriptEl
+    ? scriptEl.getAttribute("data-test-notice")
+    : null;
+  var scriptAutoOpen = scriptEl
+    ? scriptEl.getAttribute("data-auto-open") === "true"
+    : false;
 
   // ========== i18n ==========
   var I18N = {
@@ -168,6 +174,17 @@
     bubbleIcon: "__LANGBOT_BUBBLE_ICON__",
   };
 
+  // Wizard previews must use the browser-visible backend URL. Behind a TLS
+  // proxy the server's request URL can be HTTP even when widget.js uses HTTPS.
+  // External embeds retain their configured public webhook prefix.
+  if (scriptEl && scriptEl.src) {
+    var scriptUrl = new URL(scriptEl.src, document.baseURI);
+    if (scriptUrl.searchParams.get("preview") === "wizard") {
+      CONFIG.baseUrl = scriptUrl.origin;
+      CONFIG.logoUrl = CONFIG.baseUrl + "/api/v1/embed/logo";
+    }
+  }
+
   // ========== Styles ==========
   var STYLES =
     '\
@@ -192,6 +209,7 @@
     .lb-header-btn { background: none; border: none; color: #fff; cursor: pointer; padding: 4px; border-radius: 6px; display: flex; align-items: center; justify-content: center; opacity: 0.8; transition: opacity 0.15s; }\
     .lb-header-btn:hover { opacity: 1; }\
     .lb-header-btn svg { width: 18px; height: 18px; fill: currentColor; }\
+    .lb-test-notice { padding: 8px 16px; border-bottom: 1px solid #fde68a; background: #fffbeb; color: #92400e; font-size: 12px; line-height: 1.5; text-align: center; flex-shrink: 0; }\
     .lb-messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }\
     .lb-messages::-webkit-scrollbar { width: 6px; }\
     .lb-messages::-webkit-scrollbar-track { background: transparent; }\
@@ -303,11 +321,61 @@
     '<svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM6 20V4h7v5h5v11H6z"/><path d="M8 17l2.5-3.5L13 17l2-2.5L18 17H8z"/></svg>';
 
   // ========== State ==========
+  function createSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+
+    var bytes = new Uint8Array(16);
+    if (!window.crypto || typeof window.crypto.getRandomValues !== "function") {
+      throw new Error("Secure random number generation is unavailable");
+    }
+    window.crypto.getRandomValues(bytes);
+    bytes[6] = (bytes[6] & 15) | 64;
+    bytes[8] = (bytes[8] & 63) | 128;
+    var hex = Array.prototype.map
+      .call(bytes, function (value) {
+        return value.toString(16).padStart(2, "0");
+      })
+      .join("");
+    return (
+      hex.slice(0, 8) +
+      "-" +
+      hex.slice(8, 12) +
+      "-" +
+      hex.slice(12, 16) +
+      "-" +
+      hex.slice(16, 20) +
+      "-" +
+      hex.slice(20)
+    );
+  }
+
+  function getOrCreateSessionId() {
+    var storageKey = "langbot_embed_session_" + CONFIG.botUuid;
+    try {
+      var stored = window.sessionStorage.getItem(storageKey);
+      if (
+        /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+          stored || "",
+        )
+      )
+        return stored;
+      var created = createSessionId();
+      window.sessionStorage.setItem(storageKey, created);
+      return created;
+    } catch (e) {
+      return createSessionId();
+    }
+  }
+
   var state = {
     isOpen: false,
     isConnected: false,
     ws: null,
     connectionId: null,
+    sessionToken: null,
+    sessionId: getOrCreateSessionId(),
     reconnectAttempts: 0,
     heartbeatTimer: null,
     messages: [],
@@ -315,6 +383,9 @@
     isStreaming: false,
     streamingMsgId: null,
     historyLoaded: false,
+    hasConnected: false,
+    messageVersion: 0,
+    historyReloadTimer: null,
     pendingImage: null,
     feedbackState: {},
   };
@@ -464,16 +535,15 @@
       return;
     }
 
-    var protocol = CONFIG.baseUrl.indexOf("https") === 0 ? "wss:" : "ws:";
-    var host = CONFIG.baseUrl.replace(/^https?:\/\//, "");
-    var url =
-      protocol +
-      "//" +
-      host +
-      "/api/v1/embed/" +
-      CONFIG.botUuid +
-      "/ws/connect?session_type=" +
-      CONFIG.sessionType;
+    var endpoint = new URL(CONFIG.baseUrl || "/", window.location.href);
+    endpoint.protocol = endpoint.protocol === "https:" || endpoint.protocol === "wss:" ? "wss:" : "ws:";
+    endpoint.pathname = endpoint.pathname.replace(/\/$/, "") +
+      "/api/v1/embed/" + encodeURIComponent(CONFIG.botUuid) + "/ws/connect";
+    endpoint.search = "";
+    endpoint.hash = "";
+    endpoint.searchParams.set("session_type", CONFIG.sessionType);
+    endpoint.searchParams.set("session_id", state.sessionId);
+    var url = endpoint.toString();
 
     try {
       state.ws = new WebSocket(url);
@@ -484,7 +554,12 @@
 
     state.ws.onopen = function () {
       state.reconnectAttempts = 0;
-      startHeartbeat();
+      state.ws.send(
+        JSON.stringify({
+          type: "authenticate",
+          token: state.sessionToken || "",
+        }),
+      );
     };
 
     state.ws.onmessage = function (event) {
@@ -520,6 +595,9 @@
       case "connected":
         state.isConnected = true;
         state.connectionId = data.connection_id;
+        if (state.hasConnected) loadHistory(true);
+        state.hasConnected = true;
+        startHeartbeat();
         updateStatusDot();
         updateSendBtn();
         break;
@@ -575,9 +653,10 @@
               .replace(/\s+/g, " ")
               .trim();
             if (
-              prevContent === content ||
-              prevContent.indexOf(content) >= 0 ||
-              content.indexOf(prevContent) >= 0
+              prevContent &&
+              (prevContent === content ||
+                prevContent.indexOf(content) >= 0 ||
+                content.indexOf(prevContent) >= 0)
             )
               return;
           }
@@ -587,6 +666,7 @@
 
     if (existingIdx >= 0) {
       state.messages[existingIdx] = msg;
+      state.messageVersion++;
       updateMessageEl(existingIdx, msg);
     } else {
       addMessage(msg);
@@ -656,16 +736,27 @@
   }
 
   // ========== Message History ==========
-  function loadHistory() {
-    if (state.historyLoaded) return;
+  function scheduleHistoryReload() {
+    if (state.historyReloadTimer) clearTimeout(state.historyReloadTimer);
+    state.historyReloadTimer = setTimeout(function () {
+      state.historyReloadTimer = null;
+      loadHistory(true);
+    }, 100);
+  }
+
+  function loadHistory(force) {
+    if (state.historyLoaded && !force) return;
     state.historyLoaded = true;
+    var messageVersion = state.messageVersion;
 
     var url =
       CONFIG.baseUrl +
       "/api/v1/embed/" +
       CONFIG.botUuid +
       "/messages/" +
-      CONFIG.sessionType;
+      CONFIG.sessionType +
+      "?session_id=" +
+      encodeURIComponent(state.sessionId);
     var headers = {};
     if (state.sessionToken)
       headers["Authorization"] = "Bearer " + state.sessionToken;
@@ -675,6 +766,16 @@
       })
       .then(function (json) {
         if (json.code === 0 && json.data && json.data.messages) {
+          if (force && messageVersion !== state.messageVersion) {
+            scheduleHistoryReload();
+            return;
+          }
+          if (force) {
+            state.messages = [];
+            state.isStreaming = false;
+            state.streamingMsgId = null;
+            renderMessages();
+          }
           var msgs = json.data.messages;
           for (var i = 0; i < msgs.length; i++) {
             addMessage(msgs[i], true);
@@ -693,13 +794,16 @@
       "/api/v1/embed/" +
       CONFIG.botUuid +
       "/reset/" +
-      CONFIG.sessionType;
+      CONFIG.sessionType +
+      "?session_id=" +
+      encodeURIComponent(state.sessionId);
     var headers = {};
     if (state.sessionToken)
       headers["Authorization"] = "Bearer " + state.sessionToken;
     fetch(url, { method: "POST", headers: headers })
       .then(function () {
         state.messages = [];
+        state.messageVersion++;
         state.isStreaming = false;
         state.streamingMsgId = null;
         state.historyLoaded = true;
@@ -713,6 +817,7 @@
   // ========== UI Rendering ==========
   function addMessage(msg, silent) {
     state.messages.push(msg);
+    if (!silent) state.messageVersion++;
     var el = createMessageEl(msg);
     if (els.welcome) {
       els.welcome.style.display = "none";
@@ -1151,6 +1256,17 @@
     // Root container
     var root = document.createElement("div");
     root.id = "langbot-widget-root";
+    root.langbotDestroy = function () {
+      wsDisconnect();
+      if (state.historyReloadTimer) {
+        clearTimeout(state.historyReloadTimer);
+        state.historyReloadTimer = null;
+      }
+      root.remove();
+    };
+    root.langbotOpen = function () {
+      if (!state.isOpen) togglePanel();
+    };
     document.body.appendChild(root);
 
     var shadow = root.attachShadow({ mode: "open" });
@@ -1158,6 +1274,11 @@
     // Styles
     var style = document.createElement("style");
     style.textContent = STYLES;
+    // Keep the wizard navigation accessible while the chat preview is open.
+    if (scriptTestNotice) {
+      style.textContent +=
+        ".lb-bubble { bottom: 84px; } .lb-panel { bottom: 152px; max-height: calc(100vh - 172px); } @media (max-width: 480px) { .lb-panel { bottom: 64px; height: calc(100vh - 64px); max-height: calc(100vh - 64px); } }";
+    }
     shadow.appendChild(style);
 
     // Chat bubble button
@@ -1239,6 +1360,14 @@
     header.appendChild(headerActions);
     panel.appendChild(header);
 
+    if (scriptTestNotice) {
+      var testNotice = document.createElement("div");
+      testNotice.className = "lb-test-notice";
+      testNotice.setAttribute("role", "note");
+      testNotice.textContent = scriptTestNotice;
+      panel.appendChild(testNotice);
+    }
+
     // Messages area
     var messages = document.createElement("div");
     messages.className = "lb-messages";
@@ -1297,6 +1426,8 @@
     panel.appendChild(inputArea);
 
     shadow.appendChild(panel);
+
+    if (scriptAutoOpen) root.langbotOpen();
   }
 
   // ========== Initialize ==========

@@ -99,7 +99,7 @@ LangBot 是异步且集成度高的系统，有些问题不会直接表现为页
 
 ```text
 Action list_plugins call timed out
-Action list_agent_runners call timed out
+Action list_runners call timed out
 Action invoke_llm_stream call timed out
 ```
 

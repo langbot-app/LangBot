@@ -20,6 +20,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { backendClient } from '@/app/infra/http';
 import { PanelToolbar } from '../settings-dialog/panel-layout';
 
@@ -29,6 +30,24 @@ interface StorageSection {
   exists: boolean;
   size_bytes: number;
   file_count: number;
+}
+
+interface RuntimeStorageDirectory extends StorageSection {
+  kind: 'root' | 'detail';
+  parent_key?: string;
+  error_count?: number;
+  scope?: 'runtime_host' | 'sandbox_sessions';
+}
+
+interface RuntimeStorageProcess {
+  key: 'langbot' | 'plugin_runtime' | 'box_runtime';
+  status: 'available' | 'unavailable' | 'disabled' | 'not_applicable';
+  source: 'local_process' | 'runtime_rpc';
+  size_bytes: number | null;
+  directories: RuntimeStorageDirectory[];
+  error?: string;
+  active_sessions?: number | null;
+  managed_processes?: number | null;
 }
 
 interface CleanupCandidate {
@@ -46,6 +65,8 @@ interface StorageAnalysis {
     log_retention_days: number;
   };
   sections: StorageSection[];
+  processes?: RuntimeStorageProcess[];
+  total_size_bytes?: number;
   database: {
     type: string;
     monitoring_counts: Record<string, number>;
@@ -114,7 +135,9 @@ export default function StorageAnalysisPanel({
 
   const totalBytes = useMemo(() => {
     return (
-      analysis?.sections.reduce((sum, item) => sum + item.size_bytes, 0) ?? 0
+      analysis?.total_size_bytes ??
+      analysis?.sections.reduce((sum, item) => sum + item.size_bytes, 0) ??
+      0
     );
   }, [analysis]);
 
@@ -168,6 +191,8 @@ export default function StorageAnalysisPanel({
             </div>
           )}
 
+          {loading && !analysis && <StorageAnalysisSkeleton />}
+
           {analysis && (
             <>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
@@ -219,41 +244,28 @@ export default function StorageAnalysisPanel({
                 </div>
               </section>
 
-              <section>
-                <h2 className="mb-2 text-sm font-medium">
-                  {t('storageAnalysis.sections')}
-                </h2>
-                <div className="overflow-hidden rounded-md border">
-                  {analysis.sections.map((section) => (
-                    <div
-                      key={section.key}
-                      className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b px-3 py-2 text-sm last:border-b-0"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-medium">
-                          {t(`storageAnalysis.sectionNames.${section.key}`)}
-                        </div>
-                        <div className="break-all text-xs text-muted-foreground">
-                          {section.path || '-'}
-                        </div>
-                      </div>
-                      {section.exists ? (
-                        <span />
-                      ) : (
-                        <Badge variant="outline" className="self-center">
-                          {t('storageAnalysis.missing')}
-                        </Badge>
-                      )}
-                      <div className="self-center tabular-nums">
-                        {formatBytes(section.size_bytes)}
-                      </div>
-                      <div className="self-center text-muted-foreground tabular-nums">
-                        {section.file_count}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+              {analysis.processes?.length ? (
+                <section>
+                  <div className="mb-3">
+                    <h2 className="text-sm font-medium">
+                      {t('storageAnalysis.processStorage')}
+                    </h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t('storageAnalysis.processStorageDescription')}
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    {analysis.processes.map((process) => (
+                      <RuntimeStorageGroup
+                        key={process.key}
+                        process={process}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <LegacyStorageSections sections={analysis.sections} />
+              )}
 
               <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <MetricPanel
@@ -283,6 +295,171 @@ export default function StorageAnalysisPanel({
         </div>
       </ScrollArea>
     </div>
+  );
+}
+
+function StorageAnalysisSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden="true">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <Skeleton key={index} className="h-24 rounded-md" />
+        ))}
+      </div>
+      {Array.from({ length: 3 }).map((_, index) => (
+        <div key={index} className="space-y-3 rounded-md border p-4">
+          <Skeleton className="h-5 w-40" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RuntimeStorageGroup({ process }: { process: RuntimeStorageProcess }) {
+  const { t } = useTranslation();
+  const available = process.status === 'available';
+
+  return (
+    <div className="overflow-hidden rounded-md border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b bg-muted/20 px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold">
+              {t(`storageAnalysis.processNames.${process.key}`)}
+            </h3>
+            <Badge variant={available ? 'secondary' : 'outline'}>
+              {t(`storageAnalysis.statusLabels.${process.status}`)}
+            </Badge>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t(`storageAnalysis.processDescriptions.${process.key}`)}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {t(`storageAnalysis.sourceLabels.${process.source}`)}
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-base font-semibold tabular-nums">
+            {formatBytes(process.size_bytes)}
+          </div>
+          {process.key === 'box_runtime' && available && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t('storageAnalysis.boxActivity', {
+                sessions: process.active_sessions ?? 0,
+                processes: process.managed_processes ?? 0,
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!available ? (
+        <div className="px-4 py-4 text-sm text-muted-foreground">
+          {process.error || t('storageAnalysis.runtimeUnavailable')}
+        </div>
+      ) : process.directories.length === 0 ? (
+        <div className="px-4 py-6 text-center text-sm text-muted-foreground">
+          {t('storageAnalysis.noManagedDirectories')}
+        </div>
+      ) : (
+        <div>
+          <div className="hidden grid-cols-[minmax(0,1fr)_100px_90px] gap-4 border-b px-4 py-2 text-xs text-muted-foreground sm:grid">
+            <span>{t('storageAnalysis.directory')}</span>
+            <span className="text-right">{t('storageAnalysis.size')}</span>
+            <span className="text-right">{t('storageAnalysis.files')}</span>
+          </div>
+          {process.directories.map((directory) => (
+            <div
+              key={directory.key}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[minmax(0,1fr)_100px_90px] sm:gap-4"
+            >
+              <div
+                className={`min-w-0 ${
+                  directory.kind === 'detail'
+                    ? 'ml-3 border-l-2 border-muted pl-3'
+                    : ''
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">
+                    {t(`storageAnalysis.sectionNames.${directory.key}`)}
+                  </span>
+                  {!directory.exists && (
+                    <Badge variant="outline" className="font-normal">
+                      {t('storageAnalysis.notCreated')}
+                    </Badge>
+                  )}
+                  {!!directory.error_count && (
+                    <Badge variant="outline" className="font-normal">
+                      {t('storageAnalysis.scanWarnings', {
+                        count: directory.error_count,
+                      })}
+                    </Badge>
+                  )}
+                  {directory.scope && (
+                    <Badge variant="outline" className="font-normal">
+                      {t(`storageAnalysis.scopeLabels.${directory.scope}`)}
+                    </Badge>
+                  )}
+                </div>
+                <div className="mt-1 break-all font-mono text-xs text-muted-foreground">
+                  {directory.path || '-'}
+                </div>
+              </div>
+              <div className="self-center text-right tabular-nums">
+                {formatBytes(directory.size_bytes)}
+              </div>
+              <div className="col-span-2 self-center text-right text-xs text-muted-foreground tabular-nums sm:col-span-1 sm:text-sm">
+                {directory.file_count}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LegacyStorageSections({ sections }: { sections: StorageSection[] }) {
+  const { t } = useTranslation();
+  return (
+    <section>
+      <h2 className="mb-2 text-sm font-medium">
+        {t('storageAnalysis.sections')}
+      </h2>
+      <div className="overflow-hidden rounded-md border">
+        {sections.map((section) => (
+          <div
+            key={section.key}
+            className="grid grid-cols-[1fr_auto_auto_auto] gap-3 border-b px-3 py-2 text-sm last:border-b-0"
+          >
+            <div className="min-w-0">
+              <div className="font-medium">
+                {t(`storageAnalysis.sectionNames.${section.key}`)}
+              </div>
+              <div className="break-all text-xs text-muted-foreground">
+                {section.path || '-'}
+              </div>
+            </div>
+            {section.exists ? (
+              <span />
+            ) : (
+              <Badge variant="outline" className="self-center">
+                {t('storageAnalysis.missing')}
+              </Badge>
+            )}
+            <div className="self-center tabular-nums">
+              {formatBytes(section.size_bytes)}
+            </div>
+            <div className="self-center text-muted-foreground tabular-nums">
+              {section.file_count}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 

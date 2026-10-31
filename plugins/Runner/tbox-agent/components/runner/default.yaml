@@ -1,0 +1,72 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Tbox
+    zh_Hans: 百宝箱
+  description:
+    en_US: Run an Ant Tbox application as a LangBot Runner.
+    zh_Hans: 将蚂蚁百宝箱应用作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: user-id-source
+      label:
+        en_US: Provider User Identity
+        zh_Hans: 供应商用户身份
+      description:
+        en_US: Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
+        zh_Hans: 默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
+      type: select
+      required: false
+      default: sender
+      options:
+        - name: sender
+          label: {en_US: Sender, zh_Hans: 发送者}
+        - name: legacy-bot
+          label: {en_US: Native identity compatibility, zh_Hans: 原生身份兼容}
+    - name: remove-think
+      label:
+        en_US: Hide reasoning
+        zh_Hans: 隐藏思考过程
+      description:
+        en_US: Hide reasoning fields and think blocks without removing answer or tool content.
+        zh_Hans: 隐藏推理字段和思考块，保留正文和工具内容。
+      type: boolean
+      required: false
+      default: false
+    - name: api-key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+      type: secret
+      required: true
+      default: ''
+    - name: app-id
+      label:
+        en_US: App ID
+        zh_Hans: 应用 ID
+      type: string
+      required: true
+      default: ''
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_Hans: 超时时间
+      type: number
+      required: false
+      default: 120
+  capabilities:
+    streaming: true
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: true
+    interrupt: false
+  permissions:
+    storage:
+      - plugin
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

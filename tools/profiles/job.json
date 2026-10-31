@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "lbctl": "lbctl",
+  "suite": "groups.json",
+  "deployment": {
+    "version": "v4.11.0",
+    "port": 15351
+  },
+  "vars": {
+    "plugin_dir": "/path/to/plugin-zips"
+  },
+  "mock_image": "python:3.12-alpine",
+  "cleanup": "on-success",
+  "purge_data": true
+}

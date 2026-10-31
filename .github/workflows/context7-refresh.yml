@@ -1,0 +1,54 @@
+name: Refresh Context7 docs
+
+# Re-index the public documentation in Context7 whenever the English docs change.
+# Requires a repository secret CONTEXT7_API_KEY (context7.com/dashboard) and a
+# Context7 library registered for this repository; both are one-time owner steps.
+# Until the secret exists every run is a no-op instead of a failure.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "docs/en/**"
+      - "context7.json"
+      - ".github/workflows/context7-refresh.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: context7-refresh
+  cancel-in-progress: true
+
+jobs:
+  refresh:
+    name: Refresh Context7 library
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      CONTEXT7_API_KEY: ${{ secrets.CONTEXT7_API_KEY }}
+      CONTEXT7_LIBRARY: /langbot-app/langbot
+    steps:
+      - name: Skip when the Context7 API key is not configured
+        if: env.CONTEXT7_API_KEY == ''
+        run: |
+          echo "CONTEXT7_API_KEY is not configured; skipping the Context7 refresh."
+          echo "Add the secret and register the library, then re-run this workflow."
+
+      - name: Trigger Context7 refresh
+        if: env.CONTEXT7_API_KEY != ''
+        run: |
+          set -euo pipefail
+          body=$(printf '{"libraryName":"%s"}' "$CONTEXT7_LIBRARY")
+          code=$(curl -sS -o "$RUNNER_TEMP/refresh.json" -w '%{http_code}' \
+            -X POST https://context7.com/api/v1/refresh \
+            -H 'Content-Type: application/json' \
+            -H "Authorization: Bearer ${CONTEXT7_API_KEY}" \
+            -d "$body")
+          cat "$RUNNER_TEMP/refresh.json"
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "Context7 refresh failed with HTTP $code" >&2
+            exit 1
+          fi
+          echo "Requested a refresh of ${CONTEXT7_LIBRARY}."

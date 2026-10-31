@@ -5,6 +5,7 @@ import {
   ModelProvider,
   ProviderScanDebugInfo,
   ScannedProviderModel,
+  ReasoningConfig,
 } from '@/app/infra/entities/api';
 
 export type ExtraArg = {
@@ -16,16 +17,18 @@ export type ExtraArg = {
 
 export type ModelType = 'llm' | 'embedding' | 'rerank';
 
+export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
+  level: 'provider_default',
+};
+
 export interface ProviderModels {
   llm: LLMModel[];
   embedding: EmbeddingModel[];
   rerank: RerankModel[];
 }
 
-export interface TestResult {
-  success: boolean;
-  duration: number;
-}
+export type TestResult =
+  { success: true; duration: number } | { success: false; message: string };
 
 export type SelectedScannedModel = {
   model: ScannedProviderModel;
@@ -53,12 +56,14 @@ export interface ModelItemProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onTest: (
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) => Promise<void>;
   isSubmitting: boolean;
   isTesting: boolean;
@@ -90,6 +95,7 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onScanModels: (modelType?: ModelType) => Promise<ScanModelsResult>;
@@ -105,6 +111,7 @@ export interface ProviderCardProps {
     name: string,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
     contextLength?: number | null,
   ) => Promise<void>;
   onOpenDeleteConfirm: (modelId: string) => void;
@@ -115,6 +122,7 @@ export interface ProviderCardProps {
     modelType: ModelType,
     abilities: string[],
     extraArgs: ExtraArg[],
+    reasoningConfig: ReasoningConfig,
   ) => Promise<void>;
   isSubmitting: boolean;
   isTesting: boolean;

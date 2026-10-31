@@ -22,8 +22,13 @@ export function getPresetDateRange(option: TimeRangeOption): DateRange | null {
     case 'last7Days':
       from.setDate(now.getDate() - 7);
       break;
+    case 'last90Days':
+    case 'last180Days':
+    case 'last365Days':
     case 'last30Days':
-      from.setDate(now.getDate() - 30);
+      from.setTime(
+        now.getTime() - Number(option.match(/\d+/)?.[0] ?? 30) * 86400000,
+      );
       break;
     default:
       return null;
@@ -115,4 +120,54 @@ export function parseUTCTimestamp(timestamp: string): Date {
     return new Date(timestamp);
   }
   return new Date(timestamp + 'Z');
+}
+
+/**
+ * Resolve a monitoring time window to ISO start/end strings.
+ *
+ * Single source of the window semantics for the dashboard, the unified
+ * execution list, and the feedback queries.
+ */
+export function resolveMonitoringWindow(
+  timeRange: TimeRangeOption,
+  customDateRange: DateRange | null,
+): { startTime: string; endTime: string } {
+  const now = new Date();
+  let startTime: Date | null = null;
+
+  switch (timeRange) {
+    case 'lastHour':
+      startTime = new Date(now.getTime() - 60 * 60 * 1000);
+      break;
+    case 'last6Hours':
+      startTime = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+      break;
+    case 'last24Hours':
+      startTime = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+      break;
+    case 'last7Days':
+      startTime = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      break;
+    case 'last90Days':
+    case 'last180Days':
+    case 'last365Days':
+    case 'last30Days':
+      startTime = new Date(
+        now.getTime() - Number(timeRange.match(/\d+/)?.[0] ?? 30) * 86400000,
+      );
+      break;
+    case 'custom':
+      if (customDateRange) {
+        startTime = customDateRange.from;
+      }
+      break;
+  }
+
+  const endTime =
+    timeRange === 'custom' && customDateRange ? customDateRange.to : now;
+
+  return {
+    startTime: (startTime ?? now).toISOString(),
+    endTime: endTime.toISOString(),
+  };
 }

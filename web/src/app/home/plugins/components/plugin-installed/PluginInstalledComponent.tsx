@@ -2,6 +2,7 @@ import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import ExtensionCardComponent from './ExtensionCardComponent';
+import PluginSpaceUploadDialog from './PluginSpaceUploadDialog';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -21,7 +22,11 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { Loader2, Puzzle, Server, Sparkles } from 'lucide-react';
+import { Loader2, Puzzle, Search, Server, Sparkles } from 'lucide-react';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 
 export interface PluginInstalledComponentRef {
   refreshPluginList: () => void;
@@ -57,17 +62,35 @@ export const FilterOptions = [
   },
 ];
 
+function sortExtensionsWithDebugFirst(
+  items: ExtensionCardVO[],
+): ExtensionCardVO[] {
+  return [...items].sort((a, b) => {
+    const aDebug = Boolean(a.debug);
+    const bDebug = Boolean(b.debug);
+    if (aDebug !== bDebug) return aDebug ? -1 : 1;
+    return (a.label || a.name).localeCompare(b.label || b.name, undefined, {
+      sensitivity: 'base',
+    });
+  });
+}
+
 interface PluginInstalledComponentProps {
   filterType: FilterType;
   groupByType: boolean;
+  /** Free-text filter over label / name / author / description. */
+  searchQuery?: string;
+  /** Invoked when the user clears the search from the empty state. */
+  onClearSearch?: () => void;
 }
 
 const PluginInstalledComponent = forwardRef<
   PluginInstalledComponentRef,
   PluginInstalledComponentProps
->(({ filterType, groupByType }, ref) => {
+>(({ filterType, groupByType, searchQuery = '', onClearSearch }, ref) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { addTask, setSelectedTaskId } = usePluginInstallTasks();
   const { refreshPlugins, refreshMCPServers, refreshSkills } = useSidebarData();
   const [extensionList, setExtensionList] = useState<ExtensionCardVO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -78,14 +101,12 @@ const PluginInstalledComponent = forwardRef<
   const [targetExtension, setTargetExtension] =
     useState<ExtensionCardVO | null>(null);
   const [deleteData, setDeleteData] = useState<boolean>(false);
+  const [spaceUploadTarget, setSpaceUploadTarget] =
+    useState<ExtensionCardVO | null>(null);
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
-      const successMessage =
-        operationType === ExtensionOperationType.DELETE
-          ? t('plugins.deleteSuccess')
-          : t('plugins.updateSuccess');
-      toast.success(successMessage);
+      toast.success(t('plugins.deleteSuccess'));
       setShowOperationModal(false);
       getExtensionList();
       refreshPlugins();
@@ -152,7 +173,9 @@ const PluginInstalledComponent = forwardRef<
               version: meta.version ?? '',
               enabled: plugin.enabled,
               type: marketplacePlugin?.type || 'plugin',
-              iconURL: httpClient.getPluginIconURL(author, name),
+              // Icon is resolved by ExtensionCardComponent through the shared
+              // installed-plugin hook (authenticated fetch in multi-Workspace
+              // deployments); the public /icon route 404s there.
               install_source: plugin.install_source,
               install_info: plugin.install_info,
               status: plugin.status,
@@ -197,7 +220,7 @@ const PluginInstalledComponent = forwardRef<
         }
       }
 
-      setExtensionList(extensions);
+      setExtensionList(sortExtensionsWithDebugFirst(extensions));
     } catch (error) {
       console.error('Failed to fetch extension list:', error);
       if (!silent) setExtensionList([]);
@@ -282,35 +305,56 @@ const PluginInstalledComponent = forwardRef<
       return;
     }
 
-    const apiCall =
-      operationType === ExtensionOperationType.DELETE
-        ? httpClient.removePlugin(
-            targetExtension.author,
-            targetExtension.name,
-            deleteData,
-          )
-        : httpClient.upgradePlugin(
-            targetExtension.author,
-            targetExtension.name,
+    if (operationType === ExtensionOperationType.UPDATE) {
+      httpClient
+        .upgradePlugin(targetExtension.author, targetExtension.name)
+        .then((res) => {
+          addTask({
+            taskId: res.task_id,
+            pluginName: `${targetExtension.author}/${targetExtension.name}`,
+            source: 'marketplace',
+            extensionType: 'plugin',
+            operation: 'upgrade',
+          });
+          setSelectedTaskId(
+            pluginTaskKey(res.task_id, 'marketplace', 'upgrade'),
           );
+          setShowOperationModal(false);
+          setTargetExtension(null);
+          asyncTask.reset();
+        })
+        .catch((error) => {
+          toast.error(t('plugins.updateError') + error.message);
+        });
+      return;
+    }
 
-    apiCall
+    httpClient
+      .removePlugin(targetExtension.author, targetExtension.name, deleteData)
       .then((res) => {
         asyncTask.startTask(res.task_id);
       })
       .catch((error) => {
-        const errorMessage =
-          operationType === ExtensionOperationType.DELETE
-            ? t('plugins.deleteError') + error.message
-            : t('plugins.updateError') + error.message;
-        toast.error(errorMessage);
+        toast.error(t('plugins.deleteError') + error.message);
       });
   }
 
-  const filteredExtensions = extensionList.filter((ext) => {
-    if (filterType === 'all') return true;
-    return ext.type === filterType;
-  });
+  // Match the query against the fields a user can actually see on the card
+  // (label / name / author) plus the description, case-insensitively.
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const filteredExtensions = sortExtensionsWithDebugFirst(
+    extensionList.filter((ext) => {
+      if (filterType !== 'all' && ext.type !== filterType) return false;
+      if (!normalizedQuery) return true;
+      return [ext.label, ext.name, ext.author, ext.description].some((field) =>
+        (field || '').toLowerCase().includes(normalizedQuery),
+      );
+    }),
+  );
+
+  const clearSearch = () => {
+    onClearSearch?.();
+  };
 
   const showGrouped = groupByType && filterType === 'all';
   const groupOrder: ExtensionType[] = ['plugin', 'mcp', 'skill'];
@@ -318,7 +362,9 @@ const PluginInstalledComponent = forwardRef<
     .map((type) => ({
       type,
       labelKey: FilterOptions.find((o) => o.value === type)!.labelKey,
-      items: filteredExtensions.filter((ext) => ext.type === type),
+      items: sortExtensionsWithDebugFirst(
+        filteredExtensions.filter((ext) => ext.type === type),
+      ),
     }))
     .filter((g) => g.items.length > 0);
 
@@ -461,10 +507,26 @@ const PluginInstalledComponent = forwardRef<
         </div>
       ) : filteredExtensions.length === 0 ? (
         <div className="flex flex-col items-center justify-center text-muted-foreground min-h-[60vh] w-full gap-2">
-          <Puzzle className="h-[3rem] w-[3rem]" />
-          <div className="text-lg mb-2">
-            {t('plugins.noExtensionInstalled')}
-          </div>
+          {normalizedQuery ? (
+            <>
+              <Search className="h-[3rem] w-[3rem]" />
+              <div className="text-lg mb-2">
+                {t('plugins.noMatchingExtensions', {
+                  query: searchQuery.trim(),
+                })}
+              </div>
+              <Button variant="outline" size="sm" onClick={clearSearch}>
+                {t('common.clear')}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Puzzle className="h-[3rem] w-[3rem]" />
+              <div className="text-lg mb-2">
+                {t('plugins.noExtensionInstalled')}
+              </div>
+            </>
+          )}
         </div>
       ) : showGrouped ? (
         <div className="flex flex-col gap-4 pb-4">
@@ -490,6 +552,7 @@ const PluginInstalledComponent = forwardRef<
                           ? () => handleExtensionUpdate(vo)
                           : undefined
                       }
+                      onUploadToSpace={() => setSpaceUploadTarget(vo)}
                     />
                   </div>
                 ))}
@@ -511,11 +574,27 @@ const PluginInstalledComponent = forwardRef<
                       ? () => handleExtensionUpdate(vo)
                       : undefined
                   }
+                  onUploadToSpace={() => setSpaceUploadTarget(vo)}
                 />
               </div>
             );
           })}
         </div>
+      )}
+
+      {spaceUploadTarget && (
+        <PluginSpaceUploadDialog
+          author={spaceUploadTarget.author}
+          name={spaceUploadTarget.name}
+          open
+          onOpenChange={(open) => {
+            if (!open) setSpaceUploadTarget(null);
+          }}
+          onUploaded={() => {
+            getExtensionList(true);
+            refreshPlugins();
+          }}
+        />
       )}
     </>
   );

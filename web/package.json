@@ -6,6 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "test:unit": "node --test tests/unit/*.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint .",
     "format": "prettier --write ."
@@ -17,20 +18,32 @@
     ]
   },
   "overrides": {
-    "js-yaml": ">=4.2.0 <5",
+    "js-yaml": ">=4.3.2 <5",
     "form-data": ">=4.0.6",
     "@radix-ui/react-focus-scope": "1.1.7",
     "flatted": ">=3.4.2",
-    "follow-redirects": ">=1.16.0",
+    "follow-redirects": ">=1.16.1",
     "minimatch@>=3.0.0 <3.1.3": "3.1.3",
     "minimatch@>=9.0.0 <9.0.7": "9.0.7",
     "picomatch@>=2.0.0 <2.3.2": "2.3.2",
-    "picomatch@>=4.0.0 <4.0.4": "4.0.4"
+    "picomatch@>=4.0.0 <4.0.4": "4.0.4",
+    "brace-expansion@<1.1.21": "1.1.21",
+    "brace-expansion@>=3.0.0 <5.0.12": "5.0.12",
+    "minimatch@3.1.3": {
+      "brace-expansion": "1.1.21"
+    },
+    "minimatch@9.0.7": {
+      "brace-expansion": "5.0.12"
+    },
+    "nanoid@<3.3.18": "3.3.18",
+    "@humanfs/node": ">=0.16.8",
+    "source-map-js": ">=1.2.2"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@fingerprintjs/fingerprintjs": "^4.6.2",
     "@hookform/resolvers": "^5.0.1",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-avatar": "^1.1.11",
@@ -46,20 +59,23 @@
     "@radix-ui/react-scroll-area": "^1.2.9",
     "@radix-ui/react-select": "^2.2.4",
     "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slider": "^1.4.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.2.4",
     "@radix-ui/react-tabs": "^1.1.11",
     "@radix-ui/react-toggle": "^1.1.8",
     "@radix-ui/react-toggle-group": "^1.1.9",
     "@radix-ui/react-tooltip": "^1.2.7",
+    "@remixicon/react": "^4.9.0",
+    "@simplewebauthn/browser": "^14.0.0",
     "@tailwindcss/postcss": "^4.1.5",
     "@tanstack/react-table": "^8.21.3",
     "@types/js-yaml": "^4.0.9",
     "@vitejs/plugin-react": "^6.0.1",
-    "@xyflow/react": "^12.10.2",
-    "axios": "^1.16.0",
+    "axios": "^1.20.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "highlight.js": "^11.11.1",
     "i18next": "^25.1.2",
     "i18next-browser-languagedetector": "^8.1.0",
@@ -67,15 +83,16 @@
     "js-yaml": ">=4.2.0 <5",
     "lodash": "^4.18.0",
     "lucide-react": "^0.507.0",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.31",
     "qrcode": "^1.5.4",
+    "radix-ui": "^1.6.0",
     "react": "19.2.1",
     "react-dom": "19.2.1",
     "react-hook-form": "^7.56.3",
     "react-i18next": "^15.5.1",
     "react-markdown": "^10.1.0",
     "react-photo-view": "^1.2.7",
-    "react-router-dom": "^7.15.0",
+    "react-router-dom": "^7.18.4",
     "react-syntax-highlighter": "^16.1.0",
     "recharts": "2.15.4",
     "rehype-autolink-headings": "^7.1.0",
@@ -88,9 +105,8 @@
     "tailwind-merge": "^3.2.0",
     "tailwindcss": "^4.1.5",
     "uuidjs": "^5.1.0",
-    "vite": "^8.0.16",
-    "zod": "^3.24.4",
-    "zustand": "^5.0.12"
+    "vite": "^8.3.4",
+    "zod": "^3.24.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.0",
@@ -121,14 +137,21 @@
   "packageManager": "pnpm@8.9.2+sha512.b9d35fe91b2a5854dadc43034a3e7b2e675fa4b56e20e8e09ef078fa553c18f8aed44051e7b36e8b8dd435f97eb0c44c4ff3b44fc7c6fa7d21e1fac17bbe661e",
   "pnpm": {
     "overrides": {
-      "js-yaml": ">=4.2.0 <5",
+      "js-yaml": ">=4.3.2 <5",
       "form-data": ">=4.0.6",
       "minimatch@>=3.0.0 <3.1.3": "3.1.3",
       "minimatch@>=9.0.0 <9.0.7": "9.0.7",
       "picomatch@>=2.0.0 <2.3.2": "2.3.2",
       "picomatch@>=4.0.0 <4.0.4": "4.0.4",
       "flatted": ">=3.4.2",
-      "follow-redirects": ">=1.16.0"
+      "follow-redirects": ">=1.16.1",
+      "brace-expansion@<1.1.21": "1.1.21",
+      "brace-expansion@>=3.0.0 <5.0.12": "5.0.12",
+      "minimatch@3.1.3>brace-expansion": "1.1.21",
+      "minimatch@9.0.7>brace-expansion": "5.0.12",
+      "nanoid@<3.3.18": "3.3.18",
+      "@humanfs/node": ">=0.16.8",
+      "source-map-js": ">=1.2.2"
     }
   }
 }

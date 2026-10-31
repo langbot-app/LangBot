@@ -9,11 +9,33 @@ Tests cover:
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from types import SimpleNamespace
+
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 
 from tests.factories import text_query
+from langbot_plugin.entities.io.context import InstallationBinding, PluginExecutionMode
+
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.workspace.errors import WorkspaceNotFoundError
+
+
+TEST_EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
+TEST_INSTALLATION_BINDING = InstallationBinding(
+    instance_uuid=TEST_EXECUTION_CONTEXT.instance_uuid,
+    workspace_uuid=TEST_EXECUTION_CONTEXT.workspace_uuid,
+    placement_generation=TEST_EXECUTION_CONTEXT.placement_generation,
+    installation_uuid='00000000-0000-4000-8000-000000000001',
+    runtime_revision=1,
+    artifact_digest='a' * 64,
+)
 
 
 def get_connector_module():
@@ -29,6 +51,7 @@ def create_mock_app():
     mock_app.instance_config.data = {'plugin': {'enable': True}}
     mock_app.persistence_mgr = AsyncMock()
     mock_app.persistence_mgr.execute_async = AsyncMock()
+    mock_app.persistence_mgr.tenant_uow = None
     return mock_app
 
 
@@ -39,7 +62,69 @@ def create_mock_connector():
     async def mock_disconnect_callback(conn):
         pass
 
-    return connector.PluginRuntimeConnector(create_mock_app(), mock_disconnect_callback)
+    instance = connector.PluginRuntimeConnector(create_mock_app(), mock_disconnect_callback)
+    instance._execution_context.set(TEST_EXECUTION_CONTEXT)
+    instance._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING])
+    instance._target_binding = AsyncMock(return_value=TEST_INSTALLATION_BINDING)
+    instance._load_workspace_settings = AsyncMock(return_value=[])
+    instance.require_workspace_context = AsyncMock(side_effect=lambda context: context)
+    instance._prepare_workspace_context = AsyncMock(return_value=(TEST_EXECUTION_CONTEXT, []))
+    return instance
+
+
+def configure_handler(connector, runtime_handler):
+    runtime_handler.installation_scope = Mock(side_effect=lambda _binding: nullcontext())
+    connector.handler = runtime_handler
+    return runtime_handler
+
+
+async def _collect_agent_results(connector, context):
+    return [
+        result
+        async for result in connector.run_runner(
+            'qa',
+            'agent-runner',
+            'default',
+            context,
+        )
+    ]
+
+
+class TestRunAgent:
+    @pytest.mark.asyncio
+    async def test_revalidates_trusted_execution_context(self):
+        connector = create_mock_connector()
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
+
+        class RuntimeHandler:
+            installation_scope = Mock(side_effect=lambda _binding: nullcontext())
+
+            async def run_runner(self, *_args):
+                yield {'type': 'run.completed'}
+
+        configure_handler(connector, RuntimeHandler())
+
+        results = await _collect_agent_results(
+            connector,
+            {'conversation': {'workspace_id': TEST_EXECUTION_CONTEXT.workspace_uuid}},
+        )
+
+        assert results == [{'type': 'run.completed'}]
+        connector.require_workspace_context.assert_awaited_once_with(TEST_EXECUTION_CONTEXT)
+
+    @pytest.mark.asyncio
+    async def test_rejects_payload_workspace_mismatch(self):
+        connector = create_mock_connector()
+        connector._current_execution_context = AsyncMock(return_value=TEST_EXECUTION_CONTEXT)
+        configure_handler(connector, AsyncMock())
+
+        with pytest.raises(WorkspaceNotFoundError, match='Plugin resource not found'):
+            await _collect_agent_results(
+                connector,
+                {'conversation': {'workspace_id': 'workspace-other'}},
+            )
+
+        connector.require_workspace_context.assert_not_awaited()
 
 
 class TestListPlugins:
@@ -63,12 +148,31 @@ class TestListPlugins:
         assert result == []
 
     @pytest.mark.asyncio
+    async def test_returns_empty_while_runtime_is_disconnected(self):
+        connector = create_mock_connector()
+
+        result = await connector.list_plugins()
+
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_after_managed_transport_disconnects(self):
+        connector = create_mock_connector()
+        connector.handler = AsyncMock()
+        connector._transport_task = Mock()
+
+        result = await connector.list_plugins()
+
+        assert result == []
+        connector.handler.list_plugins.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_calls_handler_list_plugins(self):
         """Test that handler.list_plugins is called."""
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.list_plugins = AsyncMock(
             return_value=[{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
         )
@@ -77,6 +181,7 @@ class TestListPlugins:
 
         connector.handler.list_plugins.assert_called_once()
         assert result == [{'manifest': {'manifest': {'metadata': {'author': 'test', 'name': 'plugin'}}}}]
+        connector._load_workspace_settings.assert_awaited_once_with(TEST_EXECUTION_CONTEXT)
 
     @pytest.mark.asyncio
     async def test_filters_by_component_kinds(self):
@@ -84,7 +189,7 @@ class TestListPlugins:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.list_plugins = AsyncMock(
             return_value=[
                 {
@@ -111,7 +216,7 @@ class TestListPlugins:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.list_plugins = AsyncMock(
             return_value=[
                 {
@@ -136,6 +241,43 @@ class TestListPlugins:
 
 class TestPluginDiagnostics:
     @pytest.mark.asyncio
+    async def test_prevent_postorder_stops_later_installations_and_restores_query(self):
+        from langbot_plugin.api.entities.events import PersonMessageReceived
+
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = PersonMessageReceived(
+            query=query,
+            launcher_type=query.launcher_type.value,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            message_event=query.message_event,
+            message_chain=query.message_chain,
+        )
+        second_binding = TEST_INSTALLATION_BINDING.model_copy(
+            update={
+                'installation_uuid': '00000000-0000-4000-8000-000000000002',
+            }
+        )
+        connector._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING, second_binding])
+
+        async def stop_following_plugins(event_context, include_plugins=None):
+            event_context['is_prevent_postorder'] = True
+            return {'event_context': event_context, 'emitted_plugins': ['first']}
+
+        runtime_handler = configure_handler(connector, Mock())
+        runtime_handler.emit_event = AsyncMock(side_effect=stop_following_plugins)
+
+        returned = await connector.emit_event(event)
+
+        runtime_handler.emit_event.assert_awaited_once()
+        assert returned.is_prevented_postorder()
+        assert not returned.is_prevented_default()
+        assert returned.event.query is query
+        assert 'query' not in returned.event.model_dump()
+        assert returned._emitted_plugins == ['first']
+
+    @pytest.mark.asyncio
     async def test_emit_event_preserves_response_sources(self):
         connector = create_mock_connector()
         query = text_query('hello')
@@ -158,7 +300,7 @@ class TestPluginDiagnostics:
                 'response_sources': response_sources,
             }
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
 
         fake_event_ctx = Mock()
@@ -202,7 +344,7 @@ class TestPluginDiagnostics:
                 ],
             }
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.emit_event = AsyncMock(side_effect=emit_event_response)
 
         fake_event_ctx = Mock()
@@ -225,7 +367,7 @@ class TestPluginDiagnostics:
             connector_module.context.EventContext.from_event = original_from_event
             connector_module.context.EventContext.model_validate = original_model_validate
 
-        assert '_response_sources' not in vars(event_ctx)
+        assert event_ctx._response_sources == []
         assert event_ctx._emitted_plugins == [
             {'manifest': {'metadata': {'author': 'tester', 'name': 'demo'}}},
         ]
@@ -240,7 +382,7 @@ class TestPluginDiagnostics:
         mock_app = create_mock_app()
         mock_app.instance_config.data = {'plugin': {'enable': False}}
         connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
 
         await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
 
@@ -249,7 +391,7 @@ class TestPluginDiagnostics:
     @pytest.mark.asyncio
     async def test_notify_plugin_diagnostic_is_best_effort(self):
         connector = create_mock_connector()
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.notify_plugin_diagnostic = AsyncMock(side_effect=RuntimeError('action not found'))
 
         await connector.notify_plugin_diagnostic({'code': 'response_delivery_failed'})
@@ -284,7 +426,7 @@ class TestListKnowledgeEngines:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.list_knowledge_engines = AsyncMock(
             return_value=[{'plugin_id': 'author/engine', 'name': 'Engine'}]
         )
@@ -293,6 +435,12 @@ class TestListKnowledgeEngines:
 
         connector.handler.list_knowledge_engines.assert_called_once()
         assert result == [{'plugin_id': 'author/engine', 'name': 'Engine'}]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_while_runtime_is_disconnected(self):
+        connector = create_mock_connector()
+
+        assert await connector.list_knowledge_engines() == []
 
 
 class TestListParsers:
@@ -321,7 +469,7 @@ class TestListParsers:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.list_parsers = AsyncMock(
             return_value=[{'plugin_id': 'author/parser', 'supported_mime_types': ['text/plain']}]
         )
@@ -330,6 +478,12 @@ class TestListParsers:
 
         connector.handler.list_parsers.assert_called_once()
         assert result == [{'plugin_id': 'author/parser', 'supported_mime_types': ['text/plain']}]
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_while_runtime_is_disconnected(self):
+        connector = create_mock_connector()
+
+        assert await connector.list_parsers() == []
 
 
 class TestCallParser:
@@ -341,7 +495,7 @@ class TestCallParser:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.parse_document = AsyncMock(return_value={'content': 'parsed'})
 
         result = await connector.call_parser(
@@ -368,7 +522,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.rag_ingest_document = AsyncMock(return_value={'status': 'success'})
 
         result = await connector.call_rag_ingest('author/engine', {'file': 'test.pdf'})
@@ -382,7 +536,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.retrieve_knowledge = AsyncMock(
             return_value={
                 'results': [
@@ -411,7 +565,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.get_rag_creation_schema = AsyncMock(return_value={'properties': {'name': {'type': 'string'}}})
 
         result = await connector.get_rag_creation_schema('author/engine')
@@ -425,7 +579,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.get_rag_retrieval_schema = AsyncMock(
             return_value={'properties': {'top_k': {'type': 'integer'}}}
         )
@@ -441,7 +595,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.rag_on_kb_create = AsyncMock(return_value={'status': 'ok'})
 
         await connector.rag_on_kb_create('author/engine', 'kb-uuid', {'model': 'test'})
@@ -454,7 +608,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.rag_on_kb_delete = AsyncMock(return_value={'status': 'ok'})
 
         await connector.rag_on_kb_delete('author/engine', 'kb-uuid')
@@ -467,7 +621,7 @@ class TestRAGMethods:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.rag_delete_document = AsyncMock(return_value=True)
 
         result = await connector.call_rag_delete_document('author/engine', 'doc-uuid', 'kb-uuid')
@@ -546,8 +700,13 @@ class TestDisabledPluginEarlyReturns:
         mock_app.instance_config.data = {'plugin': {'enable': False}}
 
         connector = connector_module.PluginRuntimeConnector(mock_app, mock_disconnect)
+        execution_context = connector_module.ExecutionContext(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
 
-        result = await connector.get_debug_info()
+        result = await connector.get_debug_info(execution_context)
 
         assert result == {}
 
@@ -561,7 +720,7 @@ class TestGetPluginInfo:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.get_plugin_info = AsyncMock(return_value={'manifest': {'metadata': {'name': 'plugin'}}})
 
         result = await connector.get_plugin_info('author', 'plugin')
@@ -569,22 +728,71 @@ class TestGetPluginInfo:
         connector.handler.get_plugin_info.assert_called_once_with('author', 'plugin')
         assert result == {'manifest': {'metadata': {'name': 'plugin'}}}
 
+    @pytest.mark.asyncio
+    async def test_returns_none_when_plugin_is_not_installed(self):
+        connector = create_mock_connector()
+        configure_handler(connector, AsyncMock())
+        connector._target_binding = AsyncMock(
+            side_effect=ValueError('Plugin author/plugin is not installed in this Workspace')
+        )
+
+        result = await connector.get_plugin_info('author', 'plugin')
+
+        assert result is None
+        connector.handler.get_plugin_info.assert_not_awaited()
+
 
 class TestSetPluginConfig:
     """Tests for set_plugin_config method."""
 
     @pytest.mark.asyncio
-    async def test_calls_handler_set_plugin_config(self):
-        """Test that handler.set_plugin_config is called."""
+    async def test_updates_revision_then_applies_desired_state(self):
+        """Config changes are fenced by a new runtime revision."""
         get_connector_module()
         connector = create_mock_connector()
+        connector.ap.deployment.mode = 'cloud'
 
-        connector.handler = AsyncMock()
-        connector.handler.set_plugin_config = AsyncMock(return_value={'status': 'ok'})
+        configure_handler(connector, AsyncMock())
+        connector.handler.register_installation_binding = Mock()
+        connector.handler.apply_plugin_installation = AsyncMock(return_value={'state': 'running'})
+        setting = SimpleNamespace(
+            installation_uuid=TEST_INSTALLATION_BINDING.installation_uuid,
+            runtime_revision=1,
+            artifact_digest=TEST_INSTALLATION_BINDING.artifact_digest,
+            enabled=True,
+            install_info={
+                '_artifact_storage': 'tenant_binary_storage_v1',
+                '_certification': {
+                    'artifact_digest': TEST_INSTALLATION_BINDING.artifact_digest,
+                    'normalized_digest': 'b' * 64,
+                    'verification': 'valid',
+                    'certificate_runtime_profile': 'shared-runtime-v1',
+                    'certificate_component_model': 'stateless-v1',
+                    'certificate_id': 'ed25519:trusted-issuer',
+                    'runtime_profile': 'shared-runtime-v1',
+                    'admission_code': 'CERTIFIED_PLUGIN_SHARED_ELIGIBLE',
+                },
+            },
+        )
+        connector._setting_for_plugin = AsyncMock(return_value=(TEST_EXECUTION_CONTEXT, setting))
+        connector.ap.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=1))
 
         await connector.set_plugin_config('author', 'plugin', {'setting': 'value'})
 
-        connector.handler.set_plugin_config.assert_called_once_with('author', 'plugin', {'setting': 'value'})
+        applied_binding = connector.handler.apply_plugin_installation.await_args.args[0]
+        assert applied_binding.runtime_revision == 2
+        assert applied_binding.installation_uuid == TEST_INSTALLATION_BINDING.installation_uuid
+        connector.handler.register_installation_binding.assert_called_once_with(
+            applied_binding,
+            plugin_author='author',
+            plugin_name='plugin',
+        )
+        connector.handler.apply_plugin_installation.assert_awaited_once_with(
+            applied_binding,
+            artifact_package=None,
+            enabled=True,
+            execution_mode=PluginExecutionMode.SHARED_CERTIFIED,
+        )
 
 
 class TestPingPluginRuntime:
@@ -608,9 +816,86 @@ class TestPingPluginRuntime:
         get_connector_module()
         connector = create_mock_connector()
 
-        connector.handler = AsyncMock()
+        configure_handler(connector, AsyncMock())
         connector.handler.ping = AsyncMock(return_value={'status': 'ok'})
 
         await connector.ping_plugin_runtime()
 
         connector.handler.ping.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_empty_event_selection_keeps_workspace_preparation_and_query():
+    from langbot_plugin.api.entities.events import PersonMessageReceived
+
+    connector = create_mock_connector()
+    runtime_handler = configure_handler(connector, Mock())
+    runtime_handler.emit_event = AsyncMock()
+    query = text_query('hello')
+    event = PersonMessageReceived(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        message_event=query.message_event,
+        message_chain=query.message_chain,
+    )
+
+    returned = await connector.emit_event(event, bound_plugins=[])
+
+    connector._prepare_workspace_context.assert_awaited_once()
+    connector._operation_bindings.assert_not_awaited()
+    runtime_handler.emit_event.assert_not_awaited()
+    assert returned.event.query is query
+    assert returned._emitted_plugins == []
+    assert returned._response_sources == []
+    assert not returned.is_prevented_default()
+    assert not returned.is_prevented_postorder()
+
+    connector._prepare_workspace_context.side_effect = WorkspaceNotFoundError('Plugin resource not found')
+    with pytest.raises(WorkspaceNotFoundError):
+        await connector.emit_event(event, bound_plugins=[])
+    runtime_handler.emit_event.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('batch_support', [True, False, None])
+async def test_event_dispatch_negotiates_batch_and_retains_query(batch_support):
+    from langbot_plugin.api.entities.events import PersonMessageReceived
+
+    connector = create_mock_connector()
+    runtime_handler = configure_handler(connector, Mock())
+    runtime_handler.supports_event_batch = batch_support
+    bindings = [
+        TEST_INSTALLATION_BINDING,
+        TEST_INSTALLATION_BINDING.model_copy(update={'installation_uuid': '00000000-0000-4000-8000-000000000002'}),
+    ]
+    connector._operation_bindings.return_value = bindings
+    query = text_query('hello')
+    event = PersonMessageReceived(
+        query=query,
+        launcher_type=query.launcher_type.value,
+        launcher_id=query.launcher_id,
+        sender_id=query.sender_id,
+        message_event=query.message_event,
+        message_chain=query.message_chain,
+    )
+
+    async def emit(event_context, include_plugins=None, **kwargs):
+        if batch_support is True:
+            assert kwargs == {'installation_bindings': bindings}
+        else:
+            assert kwargs == {}
+        return {
+            'event_context': event_context,
+            'emitted_plugins': ['listener'],
+            'response_sources': [{'kind': 'reply'}],
+        }
+
+    runtime_handler.emit_event = AsyncMock(side_effect=emit)
+    returned = await connector.emit_event(event)
+    count = 1 if batch_support is True else 2
+    assert runtime_handler.emit_event.await_count == count
+    assert returned.event.query is query
+    assert returned._emitted_plugins == ['listener'] * count
+    assert returned._response_sources == [{'kind': 'reply'}] * count

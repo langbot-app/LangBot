@@ -19,9 +19,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/langbot-app/LangBot?style=social)](https://github.com/langbot-app/LangBot/stargazers)
 
 <a href="https://langbot.app">ホーム</a> ｜
-<a href="https://link.langbot.app/ja/docs/features">機能</a> ｜
-<a href="https://link.langbot.app/ja/docs/guide">ドキュメント</a> ｜
-<a href="https://link.langbot.app/ja/docs/api">API</a> ｜
+<a href="https://langbot.app/docs/ja/insight/features">機能</a> ｜
+<a href="https://langbot.app/docs/ja/insight/guide">ドキュメント</a> ｜
+<a href="https://langbot.app/docs/ja/tags/readme">API</a> ｜
 <a href="https://space.langbot.app">プラグインマーケット</a> ｜
 <a href="https://langbot.featurebase.app/roadmap">ロードマップ</a>
 
@@ -48,9 +48,9 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 - **Web管理パネル** — 直感的なブラウザインターフェースからボットの設定、管理、監視が可能。YAML編集は不要。
 - **マルチパイプラインアーキテクチャ** — 異なるシナリオに異なるボットを配置し、包括的な監視と例外処理を実現。
 
-[→ すべての機能について詳しく見る](https://link.langbot.app/ja/docs/features)
+[→ すべての機能について詳しく見る](https://langbot.app/docs/ja/insight/features)
 
-📍 実践ガイド: [5分でマルチプラットフォームAIボットをデプロイ](https://blog.langbot.app/en/blog/deploy-ai-bot-in-5-minutes/)、[DeepSeekをWeChat・Discord・Telegramに接続](https://blog.langbot.app/en/blog/connect-deepseek-to-wechat/)、[Dify AgentをDiscord・Telegram・Slackで動かす](https://blog.langbot.app/en/blog/dify-agent-discord-telegram-slack/)、[n8n連携チャットボットを構築](https://blog.langbot.app/en/blog/n8n-multi-platform-ai-chatbot/)。
+📍 実践ガイド: [5分でマルチプラットフォームAIボットをデプロイ](https://langbot.app/en/blog/deploy-ai-bot-in-5-minutes/)、[DeepSeekをWeChat・Discord・Telegramに接続](https://langbot.app/en/blog/connect-deepseek-to-wechat/)、[Dify AgentをDiscord・Telegram・Slackで動かす](https://langbot.app/en/blog/dify-agent-discord-telegram-slack/)、[n8n連携チャットボットを構築](https://langbot.app/en/blog/n8n-multi-platform-ai-chatbot/)。
 
 ---
 
@@ -64,7 +64,11 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 ### ☁️ LangBot Cloud（推奨）
 
-**[LangBot Cloud](https://space.langbot.app/cloud)** — デプロイ不要、すぐに使えます。
+[![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
+
+[cloud.langbot.app](https://cloud.langbot.app)
+
+デプロイ不要、すぐに使えます。
 
 ### ワンライン起動
 
@@ -82,12 +86,13 @@ cd LangBot/docker
 docker compose --profile all up -d
 ```
 
+
 ### ワンクリッククラウドデプロイ
 
 [![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/en-US/templates/ZKTBDH)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.app/template/yRrAyL?referralCode=vogKPF)
 
-**その他:** [Docker](https://link.langbot.app/en/docs/docker) · [手動デプロイ](https://link.langbot.app/en/docs/manual-deploy) · [BTPanel](https://link.langbot.app/en/docs/bt-panel) · [Kubernetes](https://docs.langbot.app/en/deploy/langbot/kubernetes)
+**その他:** [Docker](https://langbot.app/docs/en/deploy/langbot/docker) · [手動デプロイ](https://langbot.app/docs/en/deploy/langbot/manual) · [BTPanel](https://langbot.app/docs/en/deploy/langbot/one-click/bt) · [Kubernetes](https://langbot.app/docs/en/deploy/langbot/kubernetes)
 
 ---
 
@@ -138,7 +143,7 @@ docker compose --profile all up -d
 | [302.AI](https://share.302ai.cn/SuTG99) | ゲートウェイ | ✅ |
 | [Qiniu](https://www.qiniu.com/ai/agent) | ゲートウェイ | ✅ |
 
-[→ すべての統合を表示](https://link.langbot.app/en/docs/features)
+[→ すべての統合を表示](https://langbot.app/docs/en/insight/features)
 
 ---
 
@@ -152,14 +157,6 @@ docker compose --profile all up -d
 | **マルチプラットフォーム展開** | 1つのボットで全プラットフォームに対応。単一のダッシュボードから管理 |
 
 ---
-
-## ライブデモ
-
-**今すぐ試す:** https://demo.langbot.dev/
-- メール: `demo@langbot.app`
-- パスワード: `langbot123456`
-
-*注意: 公開デモ環境です。機密情報を入力しないでください。*
 
 ## AI エージェントのために 🤖
 
@@ -182,12 +179,6 @@ LangBot は **設計段階からエージェントフレンドリー** です。
 
 ---
 
-## Star 推移
-
-[![Star History Chart](https://api.star-history.com/svg?repos=langbot-app/LangBot&type=Date)](https://star-history.com/#langbot-app/LangBot&Date)
-
----
-
 ## コントリビューター
 
 LangBot をより良くするために貢献してくださったすべての[コントリビューター](https://github.com/langbot-app/LangBot/graphs/contributors)に感謝します:
@@ -195,3 +186,5 @@ LangBot をより良くするために貢献してくださったすべての[�
 <a href="https://github.com/langbot-app/LangBot/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=langbot-app/LangBot" />
 </a>
+
+[ドキュメントのソース](https://github.com/langbot-app/LangBot/tree/master/docs) · [langbot-docs archive](https://github.com/langbot-app/langbot-docs)

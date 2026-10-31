@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: qa_plugin_fail
+  label:
+    en_US: QA Plugin Fail
+    zh_Hans: QA 插件失败工具
+  description:
+    en_US: Raises a deterministic error for local-agent tool error recovery tests.
+    zh_Hans: 为 local-agent 工具错误恢复测试抛出确定性错误。
+spec:
+  parameters:
+    type: object
+    properties:
+      text:
+        type: string
+        description: Text included in the deterministic failure message.
+    required:
+      - text
+  llm_prompt: Always fail with a deterministic qa-plugin-smoke error for tool error recovery tests.
+execution:
+  python:
+    path: qa_plugin_fail.py
+    attr: QAPluginFailTool

@@ -422,7 +422,7 @@ When a plugin doesn't work:
 3. **Verify plugin loaded**: `GET /api/v1/plugins` — should list your plugin
 4. **Test person mode first**: `session_type=person` always triggers pipeline, isolating trigger rule issues
 5. **Check trigger rules**: Group mode requires @bot, prefix match, or random% to enter pipeline
-6. **Verify model configured**: Pipeline's `config.ai.local-agent.model.primary` must point to a valid model UUID with working API keys
+6. **Verify model configured**: Pipeline's `config.ai.runner_config[config.ai.runner.id].model.primary` must point to a valid model UUID with working API keys
 
 ## Publishing Plugins
 

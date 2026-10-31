@@ -20,6 +20,7 @@ export function BotLogListComponent({
   autoExpandImages = false,
   hideDetailedLogsLink = false,
   hideToolbar = false,
+  onMessageReceived,
 }: {
   botId: string;
   /** When true, log entries with images are rendered expanded by default */
@@ -28,6 +29,8 @@ export function BotLogListComponent({
   hideDetailedLogsLink?: boolean;
   /** When true, hides the entire toolbar (auto-refresh, level filter, detailed logs link) */
   hideToolbar?: boolean;
+  /** Called after an inbound person/group message appears in the bot log. */
+  onMessageReceived?: () => void;
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -41,6 +44,8 @@ export function BotLogListComponent({
   ]);
   const listContainerRef = useRef<HTMLDivElement>(null);
   const botLogListRef = useRef<BotLog[]>(botLogList);
+  const onMessageReceivedRef = useRef(onMessageReceived);
+  onMessageReceivedRef.current = onMessageReceived;
 
   const logLevels = [
     { value: 'error', label: 'ERROR' },
@@ -108,6 +113,9 @@ export function BotLogListComponent({
     manager.subscribeLogPush(handleBotLogPush);
     manager.loadFirstPage().then((response) => {
       setBotLogList(response.reverse());
+      if (response.some((log) => Boolean(log.message_session_id))) {
+        onMessageReceivedRef.current?.();
+      }
     });
     listenScroll();
   }
@@ -138,6 +146,9 @@ export function BotLogListComponent({
 
   function handleBotLogPush(response: BotLog[]) {
     setBotLogList(response.reverse());
+    if (response.some((log) => Boolean(log.message_session_id))) {
+      onMessageReceivedRef.current?.();
+    }
   }
 
   const handleScroll = useCallback(

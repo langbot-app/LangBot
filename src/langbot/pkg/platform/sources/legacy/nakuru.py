@@ -311,15 +311,17 @@ class NakuruAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         try:
             import requests
 
-            resp = requests.get(
-                url='http://{}:{}/get_login_info'.format(self.cfg['host'], self.cfg['http_port']),
+            resp = await asyncio.to_thread(
+                requests.get,
+                'http://{}:{}/get_login_info'.format(self.cfg['host'], self.cfg['http_port']),
                 headers={'Authorization': 'Bearer ' + self.cfg['token'] if 'token' in self.cfg else ''},
                 timeout=5,
                 proxies=None,
             )
             if resp.status_code == 403:
                 raise Exception('go-cqhttp拒绝访问，请检查配置文件中nakuru适配器的配置')
-            self.bot_account_id = int(resp.json()['data']['user_id'])
+            response_data = await httpclient.parse_json_response(resp)
+            self.bot_account_id = int(response_data['data']['user_id'])
         except Exception:
             raise Exception('获取go-cqhttp账号信息失败, 请检查是否已启动go-cqhttp并配置正确')
         await self.bot._run()

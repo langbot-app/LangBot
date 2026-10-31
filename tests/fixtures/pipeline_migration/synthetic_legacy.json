@@ -1,0 +1,11 @@
+{
+  "local-agent": {"model": {"primary": "synthetic-model", "fallbacks": []}, "max-round": 10, "prompt": [{"role": "system", "content": "Synthetic prompt"}], "enable-all-tools": false, "tools": []},
+  "dify-service-api": {"base-url": "https://dify.invalid/v1", "api-key": "synthetic-key", "app-type": "chat", "base-prompt": "Synthetic prompt"},
+  "coze-api": {"api-key": "synthetic-key", "bot-id": "synthetic-bot", "api-base": "https://api.coze.cn", "auto_save_history": false, "timeout": 120},
+  "dashscope-app-api": {"api-key": "synthetic-key", "app-id": "synthetic-app", "app-type": "agent", "references_quote": "Synthetic references"},
+  "n8n-service-api": {"webhook-url": "https://n8n.invalid/hook?token=synthetic", "auth-type": "none", "timeout": 120, "output-key": "response", "response-handling": "reply"},
+  "langflow-api": {"base-url": "https://langflow.invalid", "api-key": "synthetic-key", "flow-id": "synthetic-flow", "input_type": "chat", "output_type": "chat", "tweaks": "{}"},
+  "deerflow-api": {"api-base": "https://deerflow.invalid", "api-key": "synthetic-key", "auth-header": "", "assistant-id": "lead_agent", "model-name": "synthetic-model", "thinking-enabled": false, "plan-mode": false, "subagent-enabled": false, "max-concurrent-subagents": 3, "timeout": 300, "recursion-limit": 1000},
+  "tbox-app-api": {"api-key": "synthetic-key", "app-id": "synthetic-app"},
+  "weknora-api": {"base-url": "https://weknora.invalid/api/v1", "api-key": "synthetic-key", "app-type": "agent", "knowledge-base-ids": ["remote-kb"], "web-search-enabled": false}
+}

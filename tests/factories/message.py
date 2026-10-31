@@ -14,6 +14,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 # Counter for generating unique IDs
@@ -169,10 +170,12 @@ def _base_query(
         'bot_uuid': 'test-bot-uuid',
         'pipeline_config': {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                    'prompt': 'test-prompt',
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                        'prompt': 'test-prompt',
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},
@@ -194,7 +197,20 @@ def _base_query(
     for key, value in overrides.items():
         base_data[key] = value
 
-    return pipeline_query.Query.model_construct(**base_data)
+    query = pipeline_query.Query.model_construct(**base_data)
+    object.__setattr__(
+        query,
+        '_execution_context',
+        ExecutionContext(
+            instance_uuid='test-instance',
+            workspace_uuid='test-workspace',
+            placement_generation=1,
+            bot_uuid=query.bot_uuid,
+            pipeline_uuid=query.pipeline_uuid,
+            query_uuid=query.query_uuid,
+        ),
+    )
+    return query
 
 
 def text_query(
@@ -417,10 +433,12 @@ def query_with_config(
     if pipeline_config is None:
         pipeline_config = {
             'ai': {
-                'runner': {'runner': 'local-agent'},
-                'local-agent': {
-                    'model': {'primary': 'test-model-uuid', 'fallbacks': []},
-                    'prompt': 'test-prompt',
+                'runner': {'id': 'plugin:langbot-team/LocalAgent/default'},
+                'runner_config': {
+                    'plugin:langbot-team/LocalAgent/default': {
+                        'model': {'primary': 'test-model-uuid', 'fallbacks': []},
+                        'prompt': 'test-prompt',
+                    },
                 },
             },
             'output': {'misc': {'at-sender': False, 'quote-origin': False}},

@@ -9,9 +9,9 @@ const appRoutes = [
     bodyText: 'Select a bot from the sidebar',
   },
   {
-    path: '/home/pipelines',
-    heading: 'Pipelines',
-    bodyText: 'Select a pipeline from the sidebar',
+    path: '/home/agents',
+    heading: 'Processors',
+    bodyText: 'Select a processor from the sidebar',
   },
   {
     path: '/home/extensions',
@@ -59,10 +59,17 @@ test.describe('authenticated app shell', () => {
     await page.goto('/home/monitoring');
 
     await expect(page).toHaveURL(/\/home\/monitoring$/);
-    await expect(page.getByText('Total Messages').first()).toBeVisible();
+    // The unified execution view is the default entry point.
+    await expect(page.getByRole('tab', { name: 'Executions' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+    await expect(
+      page.getByText('Execution Success Rate').first(),
+    ).toBeVisible();
     await expect(
       page.getByRole('tab', { name: 'Message Records' }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole('tab', { name: 'Token Monitoring' }),
     ).toBeVisible();
@@ -84,10 +91,10 @@ test.describe('authenticated app shell', () => {
     await page.getByRole('button', { name: 'Debug Info' }).click();
 
     await expect(page.getByText('Plugin Debug Information')).toBeVisible();
-    await expect(page.getByRole('textbox').nth(0)).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Debug URL' })).toHaveValue(
       'ws://127.0.0.1:5300/plugin/debug',
     );
-    await expect(page.getByRole('textbox').nth(1)).toHaveValue(
+    await expect(page.getByRole('textbox', { name: 'Debug Key' })).toHaveValue(
       'test-debug-key',
     );
   });
@@ -130,4 +137,38 @@ test.describe('authenticated app shell', () => {
       'Summarize the conversation in five concise bullet points.',
     );
   });
+});
+
+test('token monitoring displays structured API failures and retries the request', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  let failed = true;
+  let requests = 0;
+  await page.route(
+    '**/api/v1/monitoring/token-statistics?**',
+    async (route) => {
+      requests++;
+      if (failed)
+        return route.fulfill({
+          status: 503,
+          json: { code: 1, msg: 'Token aggregation unavailable' },
+        });
+      await route.fallback();
+    },
+  );
+  await page.goto('/home/monitoring');
+  await page.getByRole('tab', { name: 'Token Monitoring' }).click();
+  const error = page
+    .getByRole('alert')
+    .filter({ hasText: 'Token aggregation unavailable' });
+  await expect(error).toBeVisible();
+  const beforeRetry = requests;
+  failed = false;
+  await error.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect.poll(() => requests).toBeGreaterThan(beforeRetry);
+  await expect(error).toHaveCount(0);
+  await expect(
+    page.getByText('No token usage in the selected time range'),
+  ).toBeVisible();
 });

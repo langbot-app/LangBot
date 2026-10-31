@@ -1,0 +1,170 @@
+---
+title: "5 分钟部署你的 AI 机器人到 Discord、Telegram 和微信"
+description: "手把手教你部署 LangBot —— 开源平台，一条 Docker 命令即可将 20+ 大模型接入 13+ 即时通讯平台。"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/deploy-ai-bot-in-5-minutes).
+
+发布于 2026-02-17 · 作者：LangBot Team
+
+![LangBot 控制面板](/images/articles/source/images/covers/deploy-ai-bot.png)
+
+如果你能让 GPT-5、Claude、DeepSeek 和 Gemini 同时在你的 Discord 服务器、Telegram 群组和微信中回答问题呢？
+
+不需要折腾 API。不需要开发好几周。只需要一条 Docker 命令。
+
+这就是 **LangBot** —— GitHub 上已经突破 **15,000 Stars** 的开源项目。
+
+## 每个人都会遇到的问题
+
+你想在团队的聊天工具里加个 AI 助手。也许是 Telegram 上的客服机器人，也许是 Discord 里的编程助手，也许是企业微信或飞书群里的知识库问答机器人。
+
+然后现实来了：
+
+- 每个平台都有自己的 Bot API、Webhook 格式和认证流程
+- 你需要处理消息队列、会话管理、错误恢复
+- 切换大模型供应商意味着重写整个集成层
+- 加上 RAG 或工具调用又是一个独立项目
+
+LangBot 用一个统一的平台解决了所有这些问题。
+
+## LangBot 的独特之处
+
+### 13+ 即时通讯平台，一套代码
+
+部署一个 LangBot 实例，即可连接：
+
+**海外平台：** Discord、Telegram、Slack、LINE、WhatsApp
+**国内平台：** 微信公众号、企业微信、QQ、飞书、钉钉、KOOK
+
+每个平台都有独立的适配器 —— 你只需要在 WebUI 中填入 Bot Token 即可上线。
+
+![LangBot 机器人管理页面](/images/articles/source/images/article-mcp/13-bot-page.png)
+
+### 20+ 大模型，零锁定
+
+通过 **LangBot Space**，开箱即用 20 个云端模型 —— 无需管理 API Key：
+
+- **Claude**（Opus 4.6、Sonnet 4.5、Haiku 4.5）
+- **GPT**（GPT-5.2、GPT-5-mini、GPT-4.1-mini）
+- **Gemini**（3 Pro、2.5 Pro、2.5 Flash）
+- **DeepSeek**（R1、V3）
+- **Grok**（4、4.1）
+- **Qwen**（通义千问 3 Max）
+
+也可以添加自己的模型供应商 —— OpenAI 兼容接口、Ollama 本地模型，随心选择。
+
+![模型选择](/images/articles/source/images/article-mcp/08-model-select.png)
+
+### 内置 Agent 与工具调用
+
+LangBot 的本地 Agent 不仅仅是聊天封装 —— 它是一个完整的智能体运行时：
+
+- **多轮对话** —— 可配置的上下文记忆
+- **函数调用 / 工具使用** —— LLM 驱动的动作执行
+- **MCP（模型上下文协议）** —— 连接 100+ 预置工具
+- **知识库（RAG）** —— 内置向量检索
+
+![流水线 AI 配置](/images/articles/source/images/article-mcp/06-pipeline-ai.png)
+
+### 插件市场
+
+37+ 社区插件，持续增长 —— 一键安装：
+
+- **WebSearch** —— 让机器人搜索网页
+- **AI Image Generator** —— 文字生成图片
+- **LinkAnaly** —— 自动预览聊天中的链接
+- **ScheNotify** —— 用自然语言设置定时提醒
+- **Google Search**、**Tavily Search**、**RAGFlow Retriever** 等
+
+![LangBot Space 插件市场](/images/articles/source/images/article-mcp/14-space-market.png)
+
+## 5 分钟部署 —— 真的只要 5 分钟
+
+### 第 1 步：运行 Docker Compose
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+docker compose up -d
+```
+
+就这样。LangBot 已经运行在 `http://localhost:5300`。
+
+### 第 2 步：用 LangBot Space 初始化
+
+打开 WebUI，点击 **「Initialize with Space」**。这会将你的实例连接到 LangBot Space，获得：
+
+- 20 个开箱即用的云端模型（附赠免费额度）
+- 一键安装插件
+- 托管式 API Key 管理
+
+![用 Space 初始化](/images/articles/source/images/article-mcp/01-init-page.png)
+
+### 第 3 步：配置流水线
+
+进入 **流水线** 页面，编辑默认的 `ChatPipeline`：
+
+1. 选择模型（如 `deepseek-v3`、`gpt-5-mini`、`claude-sonnet-4-5`）
+2. 自定义系统提示词
+3. 可选：关联知识库或启用工具调用
+
+![流水线页面](/images/articles/source/images/article-mcp/05-pipelines.png)
+
+### 第 4 步：接入平台
+
+进入 **机器人** → 点击 **+** → 选择平台（Discord、Telegram 等） → 填入 Bot Token。
+
+搞定。你的机器人已经上线了。
+
+### 第 5 步：测试
+
+使用内置的 **Debug Chat** 在上线前测试流水线：
+
+![调试聊天](/images/articles/source/images/article-mcp/07-debug-chat.png)
+
+## 真实对话，真实价值
+
+下面是 LangBot 在 QQ 群中运行的实际效果 —— 用户提出技术问题，即刻获得准确回答：
+
+![群聊演示](/images/articles/source/images/article-mcp/10-group-chat.png)
+
+私聊场景：
+
+![私聊演示](/images/articles/source/images/article-mcp/11-private-chat.png)
+
+## 为生产环境打造的架构
+
+LangBot 为生产环境而生：
+
+- **流水线架构** —— 每个机器人绑定一条流水线，流水线处理 AI 逻辑、触发条件、安全控制和输出格式
+- **跨进程插件隔离** —— 一个有问题的插件不会崩溃你的机器人
+- **多运行器后端** —— 使用 LangBot 内置 Agent，或接入 Dify、n8n、Langflow、Coze 构建复杂工作流
+- **灵活的数据库** —— 开发用 SQLite，生产用 PostgreSQL
+- **多种向量数据库** —— Chroma、Qdrant、Milvus、pgvector、SeekDB
+
+## 为什么 15,000+ 开发者选择 LangBot
+
+| 功能 | LangBot | 从零开发 |
+|------|---------|---------|
+| 平台支持 | 13+ 即开即用 | 每个平台数周 |
+| 模型供应商 | 20+ 模型 | 手动对接 |
+| Agent 运行时 | 内置 | 自己搭建 |
+| RAG | 原生 + 外部集成 | 独立项目 |
+| 插件系统 | 有市场 | DIY |
+| 部署 | `docker compose up` | 数天搭建 |
+| WebUI | 自带 | 自己开发 |
+
+## 立即开始
+
+- **GitHub：** [github.com/langbot-app/LangBot](https://github.com/langbot-app/LangBot) —— 来点个 Star 吧！
+- **文档：** [langbot.app/docs](https://langbot.app/docs)
+- **插件市场：** [space.langbot.app](https://space.langbot.app)
+
+```bash
+git clone https://github.com/langbot-app/LangBot
+cd LangBot/docker
+docker compose up -d
+```
+
+一条命令，开启你的 AI 机器人帝国。

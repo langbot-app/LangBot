@@ -1,3 +1,4 @@
+import asyncio
 import base64
 
 import quart
@@ -59,7 +60,14 @@ class SurveyRouterGroup(group.RouterGroup):
                     continue
                 try:
                     payload = data_url.split(',', 1)[1]
-                    if len(base64.b64decode(payload, validate=True)) > 1024 * 1024:
+                    if len(payload) > 4 * ((1024 * 1024 + 2) // 3) + 4:
+                        return self.fail(5, 'attachment too large')
+                    decoded = await asyncio.to_thread(
+                        base64.b64decode,
+                        payload,
+                        validate=True,
+                    )
+                    if len(decoded) > 1024 * 1024:
                         return self.fail(5, 'attachment too large')
                 except Exception:
                     return self.fail(5, 'attachment too large')

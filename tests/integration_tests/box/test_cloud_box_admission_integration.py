@@ -1,0 +1,489 @@
+from __future__ import annotations
+
+import asyncio
+import datetime as dt
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+from langbot_plugin.box.backend import BaseSandboxBackend
+from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.errors import BoxAdmissionError, BoxValidationError
+from langbot_plugin.box.models import (
+    BoxExecutionResult,
+    BoxExecutionStatus,
+    BoxNetworkMode,
+    BoxSessionInfo,
+    BoxSpec,
+)
+from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.server import BoxServerHandler
+from langbot_plugin.runtime.io.handler import Handler
+
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.box.service import BoxService
+from langbot.pkg.box.runner import RunnerBoxService
+from langbot.pkg.cloud.entitlements import (
+    EntitlementResolver,
+    EntitlementSnapshot,
+    EntitlementUnavailableError,
+)
+from langbot.pkg.skill.manager import SkillManager
+from langbot.pkg.skill.repository import SkillRepository
+from langbot.pkg.provider.tools.loaders import skill as skill_loader
+
+
+pytestmark = pytest.mark.integration
+_UTC = dt.timezone.utc
+
+
+class _AdmissionBackend(BaseSandboxBackend):
+    execution_scoped_mounts = True
+    name = 'nsjail'
+
+    def __init__(self, logger):
+        super().__init__(logger)
+        self.started_specs: list[BoxSpec] = []
+        self.executed_specs: list[BoxSpec] = []
+        self.stopped_sessions: list[str] = []
+
+    async def is_available(self) -> bool:
+        return True
+
+    async def get_readiness(self, *, workspace_path=None, strict=False) -> dict:
+        return {
+            'available': True,
+            'cgroup_v2': True,
+            'namespace_isolation': True,
+            'mount_isolation': True,
+            'network_isolation': True,
+            'hard_workspace_quota': True,
+            'hard_read_only_mount_quota': True,
+            'bounded_ephemeral_storage': True,
+            'inode_quota': True,
+        }
+
+    async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
+        self.started_specs.append(spec)
+        now = dt.datetime.now(_UTC)
+        return BoxSessionInfo(
+            session_id=spec.session_id,
+            backend_name=self.name,
+            backend_session_id=f'jail-{len(self.started_specs)}',
+            image=spec.image,
+            network=spec.network,
+            host_path=spec.host_path,
+            host_path_mode=spec.host_path_mode,
+            mount_path=spec.mount_path,
+            persistent=spec.persistent,
+            cpus=spec.cpus,
+            memory_mb=spec.memory_mb,
+            pids_limit=spec.pids_limit,
+            read_only_rootfs=spec.read_only_rootfs,
+            workspace_quota_mb=spec.workspace_quota_mb,
+            created_at=now,
+            last_used_at=now,
+        )
+
+    async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
+        self.executed_specs.append(spec)
+        await asyncio.sleep(0)
+        return BoxExecutionResult(
+            session_id=session.session_id,
+            backend_name=self.name,
+            status=BoxExecutionStatus.COMPLETED,
+            exit_code=0,
+            stdout=spec.cmd,
+            stderr='',
+            duration_ms=1,
+        )
+
+    async def stop_session(self, session: BoxSessionInfo):
+        self.stopped_sessions.append(session.session_id)
+
+
+class _QueueConnection:
+    def __init__(self, rx: asyncio.Queue[str], tx: asyncio.Queue[str]):
+        self._rx = rx
+        self._tx = tx
+
+    async def send(self, message: str) -> None:
+        await self._tx.put(message)
+
+    async def receive(self) -> str:
+        return await self._rx.get()
+
+    async def close(self) -> None:
+        return None
+
+
+async def _rpc_client(runtime: BoxRuntime):
+    client_to_server: asyncio.Queue[str] = asyncio.Queue()
+    server_to_client: asyncio.Queue[str] = asyncio.Queue()
+    client_connection = _QueueConnection(server_to_client, client_to_server)
+    server_connection = _QueueConnection(client_to_server, server_to_client)
+    server_handler = BoxServerHandler(
+        server_connection,
+        runtime,
+        host_control_authenticated=True,
+        trusted_instance_uuid='instance-a',
+    )
+    server_task = asyncio.create_task(server_handler.run())
+    client_handler = Handler(client_connection)
+    client_task = asyncio.create_task(client_handler.run())
+    client = ActionRPCBoxClient(logger=Mock())
+    client.set_handler(client_handler)
+    return client, server_task, client_task
+
+
+class _Entitlements:
+    def __init__(self):
+        self.snapshots: dict[str, EntitlementSnapshot] = {}
+
+    async def get_workspace_entitlement(self, workspace_uuid: str) -> EntitlementSnapshot:
+        return self.snapshots[workspace_uuid]
+
+
+def _snapshot(workspace_uuid: str, *, revision: int = 1, managed: bool = True) -> EntitlementSnapshot:
+    return EntitlementSnapshot(
+        instance_uuid='instance-a',
+        workspace_uuid=workspace_uuid,
+        entitlement_revision=revision,
+        status='active',
+        not_before=1,
+        expires_at=4_000_000_000,
+        features={'managed_sandbox': managed},
+        limits={'managed_sandbox_sessions': 1 if managed else 0},
+    )
+
+
+def _context(workspace_uuid: str, *, revision: int = 1) -> ExecutionContext:
+    return ExecutionContext(
+        instance_uuid='instance-a',
+        workspace_uuid=workspace_uuid,
+        placement_generation=1,
+        entitlement_revision=revision,
+    )
+
+
+def _query(context: ExecutionContext, query_id: int):
+    query = pipeline_query.Query.model_construct(
+        query_id=query_id,
+        bot_uuid='bot-a',
+        pipeline_uuid='pipeline-a',
+        launcher_type='person',
+        launcher_id=f'user-{query_id}',
+        variables={},
+    )
+    object.__setattr__(query, 'instance_uuid', context.instance_uuid)
+    object.__setattr__(query, 'workspace_uuid', context.workspace_uuid)
+    object.__setattr__(query, 'placement_generation', context.placement_generation)
+    object.__setattr__(query, '_execution_context', context)
+    return query
+
+
+async def _bound_query(service, context, query_id):
+    query = _query(context, query_id)
+    runner_box = RunnerBoxService(service)
+    box = await runner_box.acquire(context, {'reuse_key': 'global'}, query)
+    await runner_box.bind(context, query, f'run-{query_id}', box['id'])
+    return query
+
+
+async def _execute(service, context, query_id, command):
+    query = await _bound_query(service, context, query_id)
+    return await service.execute_tool({'command': command}, query)
+
+
+async def _stack(tmp_path):
+    shared_root = tmp_path / 'shared-box'
+    workspace_root = shared_root / 'workspaces'
+    workspace_root.mkdir(parents=True)
+    box_config = {
+        'enabled': True,
+        'backend': 'nsjail',
+        'runtime': {'endpoint': 'ws://langbot-box:5410'},
+        'local': {
+            'profile': 'default',
+            'host_root': str(shared_root),
+            'default_workspace': str(workspace_root),
+            'allowed_mount_roots': [str(shared_root)],
+        },
+        'admission': {
+            'required': True,
+            'logical_session_id': 'global',
+            'required_backend': 'nsjail',
+            'max_sessions': 1,
+            'max_managed_processes': 0,
+            'max_grant_ttl_sec': 300,
+            'max_timeout_sec': 60,
+            'cpus': 0.5,
+            'memory_mb': 256,
+            'pids_limit': 64,
+            'read_only_rootfs': True,
+            'workspace_quota_mb': 32,
+            'readiness_cache_sec': 0,
+        },
+    }
+    logger = Mock()
+    backend = _AdmissionBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend])
+    runtime.init(box_config)
+    await runtime.initialize()
+    client, server_task, client_task = await _rpc_client(runtime)
+
+    entitlements = _Entitlements()
+    workspace_service = SimpleNamespace(
+        instance_uuid='instance-a',
+        get_execution_binding=AsyncMock(
+            side_effect=lambda workspace_uuid, expected_generation: SimpleNamespace(
+                instance_uuid='instance-a',
+                workspace_uuid=workspace_uuid,
+                placement_generation=expected_generation,
+            )
+        ),
+    )
+    app = SimpleNamespace(
+        logger=logger,
+        deployment=SimpleNamespace(multi_workspace_enabled=True),
+        entitlement_resolver=EntitlementResolver('instance-a', entitlements),
+        workspace_service=workspace_service,
+        instance_config=SimpleNamespace(
+            data={
+                'skills': {'root': str(shared_root / 'skills')},
+                'box': box_config,
+                'system': {'limitation': {}},
+            }
+        ),
+    )
+    app.skill_repository = SkillRepository(app)
+    app.skill_mgr = SkillManager(app)
+    service = BoxService(app, client=client)
+    app.box_service = service
+    await service.initialize()
+    return service, runtime, backend, entitlements, server_task, client_task
+
+
+@pytest.mark.asyncio
+async def test_concurrent_first_use_creates_one_persistent_global_session(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    context = _context('workspace-a')
+    entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
+    try:
+        first, second = await asyncio.gather(
+            _execute(service, context, 1, 'echo first'),
+            _execute(service, context, 2, 'echo second'),
+        )
+
+        assert first['session_id'] == 'global'
+        assert second['session_id'] == 'global'
+        assert len(backend.started_specs) == 1
+        spec = backend.started_specs[0]
+        assert spec.persistent is True
+        assert spec.network == BoxNetworkMode.OFF
+        assert spec.cpus == 0.5
+        assert spec.memory_mb == 256
+        assert spec.pids_limit == 64
+        assert spec.workspace_quota_mb == 32
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_entitlement_loss_revokes_and_closes_existing_global_session(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    context = _context('workspace-a')
+    entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid, revision=1)
+    try:
+        query = await _bound_query(service, context, 1)
+        await service.execute_tool({'command': 'true'}, query)
+        assert len(runtime.get_sessions()) == 1
+
+        entitlements.snapshots[context.workspace_uuid] = _snapshot(
+            context.workspace_uuid,
+            revision=2,
+            managed=False,
+        )
+        with pytest.raises(EntitlementUnavailableError):
+            await service.execute_tool({'command': 'true'}, query)
+
+        assert runtime.get_sessions() == []
+        assert len(backend.stopped_sessions) == 1
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_two_workspaces_get_isolated_physical_sessions_and_paths(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    first = _context('workspace-a')
+    second = _context('workspace-b')
+    entitlements.snapshots[first.workspace_uuid] = _snapshot(first.workspace_uuid)
+    entitlements.snapshots[second.workspace_uuid] = _snapshot(second.workspace_uuid)
+    try:
+        result_a = await _execute(service, first, 1, 'tenant-a')
+        result_b = await _execute(service, second, 2, 'tenant-b')
+
+        assert result_a['session_id'] == result_b['session_id'] == 'global'
+        assert len(backend.started_specs) == 2
+        assert backend.started_specs[0].session_id != backend.started_specs[1].session_id
+        assert backend.started_specs[0].host_path != backend.started_specs[1].host_path
+        assert len(runtime.get_sessions()) == 2
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_cloud_core_skills_mount_generically_and_do_not_require_box_entitlement(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    first = _context('workspace-a')
+    second = _context('workspace-b')
+    ineligible = _context('workspace-free')
+    entitlements.snapshots[first.workspace_uuid] = _snapshot(first.workspace_uuid)
+    entitlements.snapshots[second.workspace_uuid] = _snapshot(second.workspace_uuid)
+    entitlements.snapshots[ineligible.workspace_uuid] = _snapshot(
+        ineligible.workspace_uuid,
+        managed=False,
+    )
+    try:
+        repository = service.ap.skill_repository
+        await repository.create_skill(
+            second,
+            {
+                'name': 'private',
+                'instructions': 'workspace-b secret',
+            },
+        )
+        own_skill = await repository.create_skill(
+            first,
+            {
+                'name': 'runner',
+                'instructions': 'Run scripts/main.py',
+            },
+        )
+        script_revision = await repository.write_skill_file(
+            first,
+            'runner',
+            'scripts/main.py',
+            "print('ok')",
+            base_revision=own_skill['revision'],
+        )
+        await repository.write_skill_file(
+            first,
+            'runner',
+            'requirements.txt',
+            'requests==2.32.0\n',
+            base_revision=script_revision['revision'],
+        )
+        refreshed_skill = await repository.get_skill(first, 'runner')
+        assert refreshed_skill is not None
+        assert refreshed_skill['python_project'] is True
+        await service.ap.skill_mgr.reload_skills(first)
+        query = await _bound_query(service, first, 91)
+        skill_loader.register_activated_skill(query, refreshed_skill)
+        await service.execute_tool(
+            {
+                'command': 'python /workspace/.skills/runner/scripts/main.py',
+                'workdir': '/workspace/.skills/runner',
+            },
+            query,
+            read_only_mounts=skill_loader.build_execution_mounts(service.ap, query),
+        )
+
+        mounted_spec = backend.executed_specs[-1]
+        assert len(mounted_spec.extra_mounts) == 1
+        assert mounted_spec.extra_mounts[0].host_path == refreshed_skill['package_root']
+        assert mounted_spec.extra_mounts[0].mount_path == '/opt/langbot-artifacts/' + refreshed_skill['revision'][7:]
+        assert mounted_spec.extra_mounts[0].mode.value == 'ro'
+        assert mounted_spec.extra_mounts[0].content_digest == refreshed_skill['revision']
+
+        assert await repository.get_skill(first, 'private') is None
+        await repository.create_skill(
+            ineligible,
+            {'name': 'docs-only', 'instructions': 'Read this without Box.'},
+        )
+        assert [skill['name'] for skill in await repository.list_skills(ineligible)] == ['docs-only']
+        with pytest.raises(EntitlementUnavailableError):
+            await RunnerBoxService(service).acquire(ineligible, {'reuse_key': 'global'}, _query(ineligible, 92))
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_activated_skill_mount_changes_preserve_shared_box_session(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    context = _context('workspace-a')
+    entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
+    try:
+        first_query = await _bound_query(service, context, 101)
+        await service.execute_tool({'command': 'echo before activation'}, first_query)
+        assert len(backend.started_specs) == 1
+
+        skill = await service.ap.skill_repository.create_skill(
+            context, {'name': 'demo', 'instructions': 'Run a script'}
+        )
+        second_query = await _bound_query(service, context, 102)
+        skill_loader.register_activated_skill(second_query, skill)
+        await service.execute_tool(
+            {'command': 'echo with skill'},
+            second_query,
+            read_only_mounts=skill_loader.build_execution_mounts(service.ap, second_query),
+        )
+        assert len(backend.started_specs) == 1
+        assert backend.stopped_sessions == []
+
+        await service.execute_tool({'command': 'echo first query again'}, first_query)
+        assert len(backend.started_specs) == 1
+        assert backend.stopped_sessions == []
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_forged_plan_network_session_and_managed_process_never_reach_runtime(tmp_path):
+    service, runtime, backend, entitlements, server_task, client_task = await _stack(tmp_path)
+    context = _context('workspace-a')
+    entitlements.snapshots[context.workspace_uuid] = _snapshot(context.workspace_uuid)
+    try:
+        query = await _bound_query(service, context, 1)
+        with pytest.raises(BoxAdmissionError, match='host-controlled'):
+            await service.execute_spec_payload(
+                {'cmd': 'true', 'session_id': 'global', 'plan': 'pro'},
+                query,
+            )
+        with pytest.raises(BoxAdmissionError, match='network access is disabled'):
+            await service.execute_spec_payload(
+                {'cmd': 'true', 'session_id': 'global', 'network': 'on'},
+                query,
+            )
+        with pytest.raises(BoxValidationError, match='session_id must match the bound Box'):
+            await service.execute_spec_payload(
+                {'cmd': 'true', 'session_id': 'attacker'},
+                query,
+            )
+        with pytest.raises(BoxAdmissionError, match='Managed processes are disabled'):
+            await service.start_managed_process(
+                context,
+                'global',
+                {'command': 'sleep', 'args': ['60']},
+            )
+
+        assert len(backend.started_specs) == 1
+        assert len(runtime.get_sessions()) == 1
+        assert backend.executed_specs == []
+    finally:
+        server_task.cancel()
+        client_task.cancel()
+        await runtime.shutdown()

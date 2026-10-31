@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: manager
+  label:
+    en_US: FAQ Manager
+    zh_Hans: FAQ 管理
+    ja_JP: FAQ 管理
+    es_ES: Gestor de FAQ
+spec:
+  path: index.html
+execution:
+  python:
+    path: manager.py
+    attr: ManagerPage

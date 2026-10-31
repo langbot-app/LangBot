@@ -2,6 +2,7 @@ export interface IChooseAdapterEntity {
   label: string;
   value: string;
   categories?: string[];
+  legacy?: boolean;
 }
 
 export interface IPipelineEntity {

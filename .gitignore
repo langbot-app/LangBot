@@ -4,8 +4,7 @@ __pycache__/
 database.db
 langbot.log
 /banlist.py
-/plugins/
-!/plugins/__init__.py
+*.lbpkg
 /revcfg.py
 prompts/
 logs/
@@ -32,6 +31,7 @@ bard.json
 !.pre-commit-config.yaml
 !components.yaml
 !/docker-compose.yaml
+docker/data
 data/labels/instance_id.json
 .DS_Store
 /data
@@ -57,3 +57,20 @@ testsdk/
 
 # Next.js build cache (legacy)
 web/.next/
+web/.pnpm-home
+.tmp
+Caddyfile
+
+# fnOS packaging build artifacts (packaging/fnos/build.sh)
+packaging/fnos/app/langbot/
+packaging/fnos/app/bin/
+packaging/fnos/ICON.PNG
+packaging/fnos/ICON_256.PNG
+packaging/fnos/app/ui/images/
+packaging/fnos/app/desktop/images/
+packaging/fnos/*.fpk
+
+r.ps1
+
+*.log
+*.pid

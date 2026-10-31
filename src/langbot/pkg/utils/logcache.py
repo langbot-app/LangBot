@@ -3,6 +3,7 @@ from __future__ import annotations
 
 LOG_PAGE_SIZE = 20
 MAX_CACHED_PAGES = 10
+MAX_LOG_LINE_CHARS = 20000
 
 
 class LogPage:
@@ -40,6 +41,10 @@ class LogCache:
 
     def add_log(self, log: str):
         """添加日志"""
+        log = str(log)
+        if len(log) > MAX_LOG_LINE_CHARS:
+            marker = '\n[log truncated]'
+            log = log[: MAX_LOG_LINE_CHARS - len(marker)] + marker
         if self.log_pages[-1].add_log(log):
             self.log_pages.append(LogPage(number=self.log_pages[-1].number + 1))
 
@@ -52,12 +57,12 @@ class LogCache:
         start_offset: int,
     ) -> tuple[str, int, int]:
         """获取指定页码和偏移量的日志"""
-        final_logs_str = ''
+        final_logs: list[str] = []
 
         for page in self.log_pages:
             if page.number == start_page_number:
-                final_logs_str += '\n'.join(page.logs[start_offset:])
+                final_logs.extend(page.logs[start_offset:])
             elif page.number > start_page_number:
-                final_logs_str += '\n'.join(page.logs)
+                final_logs.extend(page.logs)
 
-        return final_logs_str, page.number, len(page.logs)
+        return '\n'.join(final_logs), page.number, len(page.logs)

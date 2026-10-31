@@ -1,0 +1,66 @@
+---
+title: "页面机器人"
+description: "在网页中嵌入 LangBot AI 聊天机器人，为任意网站添加大模型驱动的聊天组件。"
+icon: "/images/platforms/webpage.svg"
+---
+
+通过一行脚本标签将 LangBot 聊天组件嵌入到任何网站。
+
+## 创建机器人
+
+打开 LangBot WebUI，进入**机器人 > 创建机器人**，填写机器人名称，平台/适配器选择 `页面机器人`。
+
+![创建页面机器人](/images/zh/deploy/bots/web_page/webpage_01.png)
+
+## 配置项
+
+| 配置项 | 说明 |
+|--------|------|
+| 组件标题 | 显示在聊天组件顶部的标题，默认为 LangBot |
+| 气泡图标 | 浮动聊天气泡上显示的图标 |
+| 组件语言 | 聊天组件的显示语言，支持简体中文、English 等 |
+| Turnstile 站点密钥 | Cloudflare Turnstile 站点密钥，用于防止机器人滥用。留空则不启用 |
+| Turnstile 服务端密钥 | Cloudflare Turnstile 服务端密钥，与站点密钥一起在 Cloudflare 控制台中获取。设置了站点密钥时必填 |
+
+## 获取嵌入代码
+
+创建并保存后，在机器人配置页面的**嵌入代码**区域会自动生成一段 `<script>` 标签。
+
+![嵌入代码](/images/zh/deploy/bots/web_page/webpage_02.png)
+
+复制此代码并粘贴到你的网站 HTML 中（通常放在 `</body>` 前），保存后页面右下角将出现聊天气泡，访客即可与机器人对话。
+
+```html
+<script data-title="LangBot" src="http://localhost:5300/api/v1/embed/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"></script>
+```
+
+<Warning>
+嵌入代码中的 URL 默认为 `localhost`，如果你的 LangBot 部署在服务器上，请将 `localhost:5300` 替换为你的实际访问地址。
+</Warning>
+
+## 防滥用（可选）
+
+如果担心接口被滥用，可以在 Cloudflare 控制台中开启 Turnstile：
+
+1. 前往 [Cloudflare Turnstile](https://dash.cloudflare.com/) > 添加站点
+2. 获取**站点密钥**和**服务端密钥**
+3. 分别填入 LangBot 页面机器人的对应配置项
+4. 保存即可生效
+
+## 本地预览 / 演示
+
+如果你想在接入自己网站前先体验一下嵌入组件的效果，LangBot 主仓的
+[`examples/web-page-bot/`](https://github.com/langbot-app/LangBot/tree/master/examples/web-page-bot)
+提供了一个自包含的单文件演示页 `index.html`：在浏览器中打开它，填上你的 LangBot
+地址和页面机器人 UUID，它就会加载真实的嵌入组件，让你像网站访客一样和机器人对话，
+并实时生成可直接粘贴到自己网站的 `<script>` 代码片段。
+
+```bash
+# 在 LangBot 仓库根目录起一个静态服务，然后在浏览器中打开
+python3 -m http.server 8930
+# 访问 http://localhost:8930/examples/web-page-bot/
+```
+
+## 开始使用
+
+嵌入代码添加到网站后，访客点击页面右下角的聊天气泡即可与机器人进行对话。

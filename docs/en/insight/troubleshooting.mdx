@@ -1,0 +1,262 @@
+---
+title: "Troubleshooting"
+description: "Common LangBot local deployment and runtime issues, with symptoms, causes, and fixes. Currently covers Docker deployment issues."
+---
+
+This page collects practical troubleshooting paths for common issues. It currently covers Docker deployment problems. More sections for models, bot adapters, MCP, and Skills can be added later.
+
+The commands below assume you are running them from `LangBot/docker`.
+
+## Docker Deployment
+
+### Preflight Checks
+
+If you need the sandbox, stdio MCP hosting, or Skill add/edit features, start LangBot with the `all` profile:
+
+```bash
+docker compose --profile all up -d
+```
+
+Check service status:
+
+```bash
+docker compose --profile all ps
+```
+
+You should see:
+
+- `langbot`: WebUI and backend service, exposing `5300` and `2280-2285` by default.
+- `langbot_plugin_runtime`: plugin runtime, exposing `5401` by default.
+- `langbot_box`: Box Runtime control plane, used to create sandbox containers.
+
+If you only run `docker compose up`, `langbot_box` is not started. stdio MCP, Skill add/edit, and some sandbox-dependent features will be unavailable.
+
+### Port Conflicts
+
+#### Symptoms
+
+- `docker compose up` fails with a port binding error.
+- The WebUI cannot be opened at `http://127.0.0.1:5300`.
+- Logs contain `port is already allocated` or `bind: address already in use`.
+
+#### Fix
+
+Find the process using the port. Linux/macOS:
+
+```bash
+lsof -i :5300
+lsof -i :5401
+```
+
+Windows PowerShell:
+
+```powershell
+Get-NetTCPConnection -LocalPort 5300,5401 | Select-Object LocalPort,OwningProcess
+Get-Process -Id <PID>
+```
+
+If it is an old LangBot, plugin runtime, or test process, stop it and start LangBot again:
+
+```bash
+docker compose --profile all up -d
+```
+
+If the process cannot be stopped, change the matching port mapping in `docker-compose.yaml`.
+
+### Box Runtime Is Not Available
+
+#### Symptoms
+
+- The UI or logs show `No sandbox backend (Docker/nsjail/E2B) is ready`.
+- stdio MCP servers are unavailable.
+- Skills cannot be installed, activated, or edited.
+
+#### Common Causes
+
+- LangBot was not started with `--profile all` or `--profile box`.
+- `langbot_box` is not running.
+- Docker Desktop or the current user cannot access Docker.
+- On Linux, the current user does not have permission to access the Docker socket.
+
+#### Fix
+
+Make sure `langbot_box` is running:
+
+```bash
+docker compose --profile all ps
+docker logs langbot_box --tail 100
+```
+
+Make sure Docker itself works:
+
+```bash
+docker info
+```
+
+On Linux, add the current user to the `docker` group if needed, then log in again:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+docker info
+```
+
+Then recreate the containers:
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+### Box Root Mount Fails
+
+#### Symptoms
+
+- Logs contain `host_path is outside allowed_mount_roots`.
+- Logs contain `host_path must point to an existing directory on the host`.
+- On Docker Desktop, the Box root is resolved to `/run/desktop/...` and is rejected.
+- stdio MCP or Skill sandbox containers cannot be created.
+
+#### Cause
+
+`langbot_box` creates sandbox containers through the host Docker socket. Those sandbox containers see host paths, so the Box root path must be identical on the host and inside the container, and it must be under `allowed_mount_roots`.
+
+#### Fix
+
+Set an absolute path that Docker can mount and that Box security checks can accept in `LangBot/docker/.env`:
+
+```env
+LANGBOT_BOX_ROOT=/var/lib/langbot/box
+```
+
+On Windows Docker Desktop, use a path visible to the Docker VM, for example:
+
+```env
+LANGBOT_BOX_ROOT=/host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+Make sure the directory exists, then recreate the containers:
+
+```bash
+docker compose --profile all up -d --force-recreate
+```
+
+If you previously edited `docker/data/config.yaml` manually, check that it points to the same root:
+
+```yaml
+box:
+  local:
+    host_root: /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+    allowed_mount_roots:
+      - /host_mnt/c/Users/<user>/code/projects/langbot/LangBot/docker/data/box
+```
+
+### Many stdio MCP Servers Fail or Stay Connecting
+
+#### Symptoms
+
+- MCP status stays at `connecting` or becomes `error`.
+- `docker logs langbot_box` contains `Cannot fork`.
+- After installing many stdio MCP servers, previously working MCP servers also fail to start.
+
+#### Cause
+
+stdio MCP servers run inside the Box sandbox. The default Box profile has a relatively small PID limit. Starting many `npx` or `uvx` based MCP servers at the same time can hit that process limit.
+
+#### Fix
+
+Use the larger built-in Box profile in `docker/data/config.yaml`:
+
+```yaml
+box:
+  local:
+    profile: network_extended
+```
+
+Then stop LangBot and Box, remove the old shared sandbox, and recreate the containers.
+
+Linux/macOS:
+
+```bash
+docker compose --profile all stop langbot langbot_box
+docker rm -f $(docker ps -aq --filter "name=langbot-box-mcp-shared")
+docker compose --profile all up -d --force-recreate
+```
+
+Windows PowerShell:
+
+```powershell
+docker compose --profile all stop langbot langbot_box
+docker ps -a --filter "name=langbot-box-mcp-shared" --format "{{.Names}}" | ForEach-Object { docker rm -f $_ }
+docker compose --profile all up -d --force-recreate
+```
+
+After the MCP servers finish cold starting, check the MCP management page. Target servers should show `connected` and a non-zero tool count.
+
+### MCP Is Installed but Has No Tools or Cannot Connect
+
+#### Symptoms
+
+- The MCP server is listed, but its status is `error` or stays at `connecting`.
+- Tool count is `0`.
+- Remote MCP logs show `401 Unauthorized`, connection timeout, or handshake failure.
+
+#### Common Causes
+
+- The remote MCP requires an API key or OAuth authorization that is not configured.
+- The MCP package is cold starting through `npx` or `uvx`, and dependency download takes time.
+- The current Docker network cannot reach the MCP service or package registry.
+- The stdio MCP sandbox does not have enough resources.
+
+#### Fix
+
+Prefer MCP servers from LangBot Space that do not require credentials, or make sure credentials are configured correctly. For credentialed MCP servers, fill in the required environment variables, headers, or URL parameters during installation.
+
+Check runtime logs:
+
+```bash
+docker logs langbot --tail 200
+docker logs langbot_box --tail 200
+```
+
+If a server cannot connect in the current environment, disable or delete it from the MCP management page so it does not confuse later checks.
+
+### Image Tag or Registry Is Inconsistent
+
+#### Symptoms
+
+- `docker compose ps` still shows an old image.
+- Image registry or tag changes do not take effect after restart.
+- `langbot`, `langbot_plugin_runtime`, and `langbot_box` use different image tags.
+
+#### Fix
+
+Keep the three LangBot service image tags consistent, then pull and recreate:
+
+```bash
+docker pull rockchin/langbot:latest
+docker compose --profile all up -d --force-recreate
+```
+
+If you intentionally deploy a non-default tag, update all three image entries in `docker-compose.yaml`: `langbot`, `langbot_plugin_runtime`, and `langbot_box`.
+
+### Post-Fix Verification
+
+After applying a fix, run a full check:
+
+```bash
+docker compose --profile all ps
+docker inspect langbot langbot_plugin_runtime langbot_box --format '{{.Name}} {{.Config.Image}} {{.State.Status}}'
+```
+
+Check the WebUI:
+
+```bash
+curl -I http://127.0.0.1:5300/
+```
+
+Then confirm in the UI:
+
+- Login works.
+- Box / sandbox features are available.
+- Target MCP servers show `connected`.
+- stdio MCP servers show the expected tool count.

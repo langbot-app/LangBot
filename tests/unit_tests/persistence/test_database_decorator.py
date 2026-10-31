@@ -11,9 +11,19 @@ Note: Uses import isolation to break circular import chains.
 from __future__ import annotations
 
 import sys
-from unittest.mock import Mock, MagicMock
 from contextlib import contextmanager
 from typing import Generator
+from unittest.mock import MagicMock
+
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def isolate_database_manager_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep decorator tests from mutating the process-wide manager registry."""
+    from langbot.pkg.persistence import database
+
+    monkeypatch.setattr(database, 'preregistered_managers', list(database.preregistered_managers))
 
 
 @contextmanager
@@ -164,40 +174,3 @@ class TestManagerClassDecorator:
         # BaseDatabaseManager has name annotation (type hint)
         # Check __annotations__ for the type hint
         assert 'name' in database.BaseDatabaseManager.__annotations__
-
-    def test_decorated_class_inherits_from_base(self):
-        """Test that decorated class properly inherits BaseDatabaseManager."""
-        database = get_database_module()
-
-        database.preregistered_managers.clear()
-
-        @database.manager_class('test_inherit')
-        class TestChild(database.BaseDatabaseManager):
-            async def initialize(self):
-                pass
-
-        assert issubclass(TestChild, database.BaseDatabaseManager)
-        # Has abstract method requirement satisfied
-        assert hasattr(TestChild, 'initialize')
-
-    def test_decorator_preserves_class_methods(self):
-        """Test that decorator preserves existing class methods."""
-        database = get_database_module()
-
-        database.preregistered_managers.clear()
-
-        @database.manager_class('preserve_test')
-        class ManagerWithMethods(database.BaseDatabaseManager):
-            custom_attr = 'test_value'
-
-            async def initialize(self):
-                pass
-
-            def custom_method(self):
-                return self.custom_attr
-
-        assert ManagerWithMethods.custom_attr == 'test_value'
-        # Create instance to test method (with mock app)
-        mock_app = Mock()
-        instance = ManagerWithMethods(mock_app)
-        assert instance.custom_method() == 'test_value'

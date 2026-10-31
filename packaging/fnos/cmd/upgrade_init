@@ -1,0 +1,36 @@
+#!/bin/bash
+# cmd/upgrade_init - pre-upgrade hook (runs before files are replaced)
+# 1. Stop the running LangBot instance — whole process group, so stdio
+#    children (plugin runtime, Box) die with the parent.
+# 2. Sweep stray processes from a previous crash/upgrade: orphans whose
+#    parent was hard-killed keep running and hold the runtime/box ws ports,
+#    which breaks the next start.
+
+PID_FILE="${TRIM_PKGVAR}/langbot.pid"
+
+if [ -f "${PID_FILE}" ]; then
+    PID=$(cat "${PID_FILE}" | tr -d '[:space:]')
+    if [ -n "${PID}" ] && kill -0 "${PID}" 2>/dev/null; then
+        # Instances started with setsid have PID == PGID; the plain-PID kill
+        # covers instances started before that change.
+        kill -TERM -- "-${PID}" 2>/dev/null
+        kill -TERM "${PID}" 2>/dev/null
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            kill -0 "${PID}" 2>/dev/null || break
+            sleep 1
+        done
+        kill -KILL -- "-${PID}" 2>/dev/null
+        kill -KILL "${PID}" 2>/dev/null
+    fi
+    rm -f "${PID_FILE}"
+fi
+
+# Stray sweep: match only our volume paths (venv/uv under the app dir on
+# @appcenter, venv/HOME/caches under the data share on @appshare). This
+# script itself runs from /var/apps/<appname>/cmd/, so it never matches
+# itself. No match is the normal case on a clean upgrade — pkill exits 1.
+RUN_USER=$(id -un)
+pkill -KILL -u "${RUN_USER}" -f "appcenter/langbot" 2>/dev/null || true
+pkill -KILL -u "${RUN_USER}" -f "appshare/langbot" 2>/dev/null || true
+
+exit 0

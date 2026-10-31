@@ -26,7 +26,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '25'
+          node-version: '24'
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -36,6 +36,10 @@ jobs:
       - name: Install dependencies
         working-directory: web
         run: pnpm install --frozen-lockfile
+
+      - name: Run frontend unit tests
+        working-directory: web
+        run: pnpm test:unit
 
       - name: Install Playwright browsers
         working-directory: web

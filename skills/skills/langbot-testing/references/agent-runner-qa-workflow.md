@@ -1,6 +1,6 @@
-# AgentRunner QA Workflow
+# Runner QA Workflow
 
-Use this workflow when an agent finishes AgentRunner-related code and enters a
+Use this workflow when an agent finishes Runner-related code and enters a
 test phase.
 
 ## Order
@@ -25,7 +25,7 @@ test phase.
      backend is available and installing the QA fixture is acceptable.
    - `rtk bin/lbs test run agent-runner-qa-debug-chat --dry-run` when WebUI live
      execution needs deterministic coverage without a model provider. This
-     case runs its setup automation first: install the QA AgentRunner fixture,
+     case runs its setup automation first: install the QA Runner fixture,
      create/update the QA pipeline, write the case-specific pipeline env, then
      execute Debug Chat.
    - `rtk bin/lbs test run agent-runner-ledger-invariants --dry-run`
@@ -51,8 +51,8 @@ only to review or adjust the generated list.
 | --- | --- | --- |
 | `LangBot/src/langbot/pkg/agent/runner/*`, `tests/unit_tests/agent/test_result_normalizer.py`, protocol/result/context/resource builders | `rtk bin/lbs test run agent-runner-fixture-contract --dry-run`; `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted LangBot unit tests for touched files | Result shape, user-visible runner output, or Debug Chat delivery changed: add `pipeline-debug-chat` or `local-agent-basic-debug-chat`. |
 | `LangBot/src/langbot/pkg/entity/persistence/agent_run.py`, `run_journal.py`, run ledger store/API/auth tests, claim/lease/status code | `rtk bin/lbs test run agent-runner-ledger-invariants --dry-run`; `rtk bin/lbs test run agent-runner-ledger-stress --dry-run`; `rtk bin/lbs test run agent-runner-ledger-contention --dry-run`; `rtk bin/lbs test run agent-runner-async-db-readiness --dry-run` before `rtk bin/lbs test run agent-runner-ledger-concurrency --dry-run` | Debug Chat run lifecycle, resume, or visible completion changed: add `local-agent-basic-debug-chat`. |
-| `langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/agent_runner/*`, `api/proxies/agent_run_api.py`, runtime pull handlers, plugin manager/runtime IO | `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run`; `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted SDK pytest | Runtime delivery or tool-call surface changed: add `agent-runner-release-preflight`, then `local-agent-basic-debug-chat`. |
-| `langbot-agent-runner/*/components/agent_runner/*`, external runner daemon/client code, ACP/Codex/Claude runner command wrappers | Repo-local targeted tests; `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run`; `rtk bin/lbs test run agent-runner-release-preflight --dry-run` | ACP or external coding runner behavior changed: add `acp-agent-runner-debug-chat`. |
+| `langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/runner/*`, `api/proxies/agent_run_api.py`, runtime pull handlers, plugin manager/runtime IO | `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run`; `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted SDK pytest | Runtime delivery or tool-call surface changed: add `agent-runner-release-preflight`, then `local-agent-basic-debug-chat`. |
+| `langbot-agent-runner/*/components/runner/*`, external runner daemon/client code, ACP/Codex/Claude runner command wrappers | Repo-local targeted tests; `rtk bin/lbs test run agent-runner-runtime-chaos --dry-run`; `rtk bin/lbs test run agent-runner-release-preflight --dry-run` | ACP or external coding runner behavior changed: add `acp-agent-runner-debug-chat`. |
 | Prompt preprocessing, effective prompt, pipeline AI config, runner binding/default runner migration | `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted LangBot pipeline/agent tests | The runner reads host-provided prompt or saved runner config: add `local-agent-effective-prompt-debug-chat`. |
 | Context window, transcript, history/event state, compaction, checkpoint/steering | `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted LangBot agent state/context tests | Multi-turn memory, compaction, or steering behavior changed: add `local-agent-context-compaction-debug-chat` and, for steering-specific changes, `local-agent-steering-debug-chat`. |
 | Plugin tool authorization, host tool listing, MCP tool bridge, function-call conversion | `rtk bin/lbs test run agent-runner-behavior-matrix --dry-run`; targeted plugin/MCP/tool tests | Tool execution is user-visible: add `local-agent-plugin-tool-call-debug-chat`; for MCP-specific changes add `mcp-stdio-register` then `mcp-stdio-tool-call`. |

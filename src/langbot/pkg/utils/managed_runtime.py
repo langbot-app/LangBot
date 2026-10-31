@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 from typing import TYPE_CHECKING, Awaitable, Callable
@@ -27,8 +28,14 @@ class ManagedRuntimeConnector:
         self.ap = ap
         self.runtime_subprocess = None
         self.runtime_subprocess_task = None
+        self._lifecycle_lock = asyncio.Lock()
+        self._closing = False
 
-    async def _start_runtime_subprocess(self, *args: str) -> None:
+    async def _start_runtime_subprocess(
+        self,
+        *args: str,
+        env_overrides: dict[str, str] | None = None,
+    ) -> None:
         """Launch a local runtime as a subprocess of the current Python interpreter.
 
         If a subprocess is already running (no *returncode* yet), this is a no-op.
@@ -38,6 +45,8 @@ class ManagedRuntimeConnector:
 
         python_path = sys.executable
         env = os.environ.copy()
+        if env_overrides:
+            env.update(env_overrides)
         self.runtime_subprocess = await asyncio.create_subprocess_exec(
             python_path,
             *args,
@@ -86,3 +95,23 @@ class ManagedRuntimeConnector:
         if self.runtime_subprocess_task is not None:
             self.runtime_subprocess_task.cancel()
             self.runtime_subprocess_task = None
+
+    async def _close_managed_subprocess(self) -> None:
+        """Terminate, escalate, and reap the optional owned subprocess."""
+        process = self.runtime_subprocess
+        wait_task = self.runtime_subprocess_task
+        if process is not None and process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.terminate()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=3)
+            except asyncio.TimeoutError:
+                with contextlib.suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
+        if wait_task is not None and wait_task is not asyncio.current_task():
+            if not wait_task.done():
+                wait_task.cancel()
+            await asyncio.gather(wait_task, return_exceptions=True)
+        self.runtime_subprocess = None
+        self.runtime_subprocess_task = None

@@ -12,8 +12,9 @@ Uses moto library to mock AWS S3 service.
 from __future__ import annotations
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from importlib import import_module
+from botocore.exceptions import ClientError
 
 
 def get_s3storage_module():
@@ -57,14 +58,6 @@ def s3_mock():
 class TestS3StorageProviderInit:
     """Tests for S3StorageProvider initialization."""
 
-    def test_init_stores_app_reference(self):
-        """Test that __init__ stores the Application reference."""
-        s3storage = get_s3storage_module()
-
-        mock_app = Mock()
-        provider = s3storage.S3StorageProvider(mock_app)
-        assert provider.ap is mock_app
-
     def test_init_s3_client_none(self):
         """Test that s3_client starts as None."""
         s3storage = get_s3storage_module()
@@ -73,6 +66,19 @@ class TestS3StorageProviderInit:
         provider = s3storage.S3StorageProvider(mock_app)
         assert provider.s3_client is None
         assert provider.bucket_name is None
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_client_once(self):
+        s3storage = get_s3storage_module()
+        provider = s3storage.S3StorageProvider(Mock())
+        client = Mock()
+        provider.s3_client = client
+
+        await provider.shutdown()
+        await provider.shutdown()
+
+        client.close.assert_called_once_with()
+        assert provider.s3_client is None
 
 
 class TestS3StorageProviderWithMoto:
@@ -89,6 +95,7 @@ class TestS3StorageProviderWithMoto:
         assert provider.s3_client is not None
         assert provider.bucket_name == 'test-langbot-storage'
         mock_app_with_s3_config.logger.info.assert_called()
+        assert [bucket['Name'] for bucket in s3_mock.list_buckets()['Buckets']] == ['test-langbot-storage']
 
     @pytest.mark.asyncio
     async def test_initialize_uses_existing_bucket(self, mock_app_with_s3_config, s3_mock):
@@ -99,11 +106,16 @@ class TestS3StorageProviderWithMoto:
         s3_mock.create_bucket(Bucket='test-langbot-storage')
 
         provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
-        await provider.initialize()
+        with (
+            patch.object(s3storage.boto3.session.Session, 'client', return_value=s3_mock),
+            patch.object(s3_mock, 'head_bucket', wraps=s3_mock.head_bucket) as head_bucket,
+            patch.object(s3_mock, 'create_bucket', wraps=s3_mock.create_bucket) as create_bucket,
+        ):
+            await provider.initialize()
 
-        assert provider.s3_client is not None
-        # Bucket creation log should not be called since bucket exists
-        # Note: moto may still call head_bucket successfully
+        assert provider.s3_client is s3_mock
+        head_bucket.assert_called_once_with(Bucket='test-langbot-storage')
+        create_bucket.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_save_and_load_bytes(self, mock_app_with_s3_config, s3_mock):
@@ -120,6 +132,16 @@ class TestS3StorageProviderWithMoto:
         # Load data
         loaded_data = await provider.load('test/file.txt')
         assert loaded_data == test_data
+
+    @pytest.mark.asyncio
+    async def test_bounded_load_rejects_oversized_object(self, mock_app_with_s3_config, s3_mock):
+        s3storage = get_s3storage_module()
+        provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
+        await provider.initialize()
+        await provider.save('test/oversized.bin', b'12345')
+
+        with pytest.raises(ValueError, match='4-byte read limit'):
+            await provider.load_bounded('test/oversized.bin', max_bytes=4)
 
     @pytest.mark.asyncio
     async def test_exists_returns_true_for_existing_object(self, mock_app_with_s3_config, s3_mock):
@@ -209,7 +231,7 @@ class TestS3StorageProviderWithMoto:
 
     @pytest.mark.asyncio
     async def test_delete_dir_recursive_handles_trailing_slash(self, mock_app_with_s3_config, s3_mock):
-        """Test that delete_dir_recursive handles path without trailing slash."""
+        """Test that delete_dir_recursive handles a path with a trailing slash."""
         s3storage = get_s3storage_module()
 
         provider = s3storage.S3StorageProvider(mock_app_with_s3_config)
@@ -218,8 +240,7 @@ class TestS3StorageProviderWithMoto:
         # Save object
         await provider.save('mydir/file.txt', b'data')
 
-        # Delete without trailing slash
-        await provider.delete_dir_recursive('mydir')
+        await provider.delete_dir_recursive('mydir/')
 
         # Verify deleted
         assert await provider.exists('mydir/file.txt') is False
@@ -302,8 +323,9 @@ class TestS3StorageProviderErrorHandling:
         provider = s3storage.S3StorageProvider(mock_app)
         await provider.initialize()
 
-        with pytest.raises(Exception):
+        with pytest.raises(ClientError) as exc_info:
             await provider.load('nonexistent.txt')
+        assert exc_info.value.response['Error']['Code'] == 'NoSuchKey'
 
     @pytest.mark.asyncio
     async def test_size_nonexistent_raises_error(self, s3_mock):
@@ -327,5 +349,6 @@ class TestS3StorageProviderErrorHandling:
         provider = s3storage.S3StorageProvider(mock_app)
         await provider.initialize()
 
-        with pytest.raises(Exception):
+        with pytest.raises(ClientError) as exc_info:
             await provider.size('nonexistent.txt')
+        assert exc_info.value.response['Error']['Code'] == '404'

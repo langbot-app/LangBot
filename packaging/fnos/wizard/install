@@ -1,0 +1,47 @@
+[
+    {
+        "stepTitle": "运行环境",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "LangBot 依赖 Node.js v22 运行 Box 沙箱和 npx MCP。请先在应用中心安装 Node.js v22。"
+            },
+            {
+                "type": "select",
+                "field": "wizard_node_version",
+                "label": "Node.js 版本",
+                "initValue": "22",
+                "options": [
+                    { "label": "Node.js v22 (推荐, LTS)", "value": "22" },
+                    { "label": "Node.js v24", "value": "24" },
+                    { "label": "Node.js v20", "value": "20" }
+                ]
+            }
+        ]
+    },
+    {
+        "stepTitle": "访问配置",
+        "items": [
+            {
+                "type": "text",
+                "field": "wizard_port",
+                "label": "Web 访问端口",
+                "initValue": "5300",
+                "rules": [
+                    { "required": true, "message": "请输入访问端口" },
+                    { "pattern": "^[0-9]+$", "message": "端口只能是数字" },
+                    { "min": 1, "max": 5, "message": "端口号长度不正确" }
+                ]
+            }
+        ]
+    },
+    {
+        "stepTitle": "安装说明",
+        "items": [
+            {
+                "type": "tips",
+                "helpText": "安装完成后，LangBot 首次启动约需 5-10 分钟完成依赖部署与初始化，部署完成后即可打开网页端使用。"
+            }
+        ]
+    }
+]

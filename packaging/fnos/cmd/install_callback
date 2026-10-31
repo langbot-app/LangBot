@@ -1,0 +1,169 @@
+#!/bin/bash
+# cmd/install_callback - post-install hook
+# Prefers bundled uv binary, creates Python venv, syncs deps, verifies dist.
+# Also validates the user-selected Node.js version is actually installed.
+
+APP_DIR="${TRIM_APPDEST}/langbot"
+
+# --- Resolve data directory ---
+# LangBot loads config CWD-relative (data/config.yaml); cmd/main replaces
+# APP_DIR/data with a symlink to this persistent dir on every start.
+DATA_DIR="${TRIM_DATA_SHARE_PATHS%%:*}"
+if [ -z "${DATA_DIR}" ]; then
+    DATA_DIR="${TRIM_PKGVAR}/data"
+fi
+
+cd "${APP_DIR}" || {
+    echo "App directory missing after install" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# --- Ensure data directory exists ---
+mkdir -p "${DATA_DIR}/plugins" "${DATA_DIR}/box" "${DATA_DIR}/logs" || {
+    echo "Data share not writable: ${DATA_DIR}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# --- Writable HOME and tool caches ---
+# Under run-as: package the generated user's system HOME and the app install
+# dir (TRIM_APPDEST) can be read-only; uv aborts if it cannot initialise its
+# cache. Point HOME / UV_CACHE_DIR at the persistent data share and keep the
+# venv there too (UV_PROJECT_ENVIRONMENT), instead of inside APP_DIR.
+VENV_DIR="${DATA_DIR}/.venv"
+export HOME="${DATA_DIR}/.home"
+export UV_CACHE_DIR="${DATA_DIR}/.cache/uv"
+# Never download a managed CPython (the download host is unreachable on many
+# NAS networks); use the distro Python only — fail loudly if it is missing.
+export UV_PYTHON_DOWNLOADS=never
+mkdir -p "${HOME}" "${UV_CACHE_DIR}" || {
+    echo "Data share not writable: ${DATA_DIR}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# Real uv/pip errors are captured here for diagnosis (the installer popup
+# only shows the short message we write to TRIM_TEMP_LOGFILE).
+DEBUG_LOG="${DATA_DIR}/logs/install-debug.log"
+
+# --- Pre-seed config.yaml with the user-selected web port ---
+# Data root points at the persistent share (LANGBOT_DATA_ROOT is exported by
+# cmd/main at start), so this config survives app upgrades.
+# LangBot copies templates/config.yaml there on first boot only if missing,
+# so we seed it ourselves with the chosen port.
+PORT="${wizard_port:-5300}"
+case "${PORT}" in
+    ''|*[!0-9]*) PORT="5300" ;;
+esac
+TEMPLATE_FILE="${APP_DIR}/src/langbot/templates/config.yaml"
+
+_patch_config() {
+    local cfg_dir="$1"
+    local cfg_file="${cfg_dir}/config.yaml"
+    mkdir -p "${cfg_dir}" || {
+        echo "Cannot create config directory: ${cfg_dir}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+    if [ ! -f "${cfg_file}" ] && [ -f "${TEMPLATE_FILE}" ]; then
+        cp "${TEMPLATE_FILE}" "${cfg_file}"
+    fi
+    if [ -f "${cfg_file}" ]; then
+        sed -i -E "/^api:/,/^[a-z_]+:/ s/^([[:space:]]*port:).*/\1 ${PORT}/" "${cfg_file}"
+        sed -i "s#webhook_prefix: 'http://127\.0\.0\.1:[0-9]*'#webhook_prefix: 'http://127.0.0.1:${PORT}'#" "${cfg_file}"
+    fi
+}
+
+# Seed the persistent dir AND the CWD-relative APP_DIR/data (cmd/main merges
+# the latter into the persistent dir via symlink on first start, so the port
+# survives regardless of which path ends up being read).
+_patch_config "${DATA_DIR}"
+if [ "${APP_DIR}/data" != "${DATA_DIR}" ]; then
+    _patch_config "${APP_DIR}/data"
+fi
+
+# --- Fallback patch for desktop entry port ---
+# fnOS natively substitutes ${wizard_port} in ui/config at install time.
+# This only kicks in if the placeholder somehow survived (e.g. CLI install).
+UI_CONFIG="${TRIM_APPDEST}/ui/config"
+if [ -f "${UI_CONFIG}" ] && grep -q 'wizard_port\|{port}' "${UI_CONFIG}"; then
+    sed -i "s/\${wizard_port}/${PORT}/g; s/{port}/${PORT}/g" "${UI_CONFIG}"
+fi
+
+# --- Validate user-selected Node.js version is installed ---
+NODE_VERSION="${wizard_node_version:-22}"
+if [ ! -d "/var/apps/nodejs_v${NODE_VERSION}" ]; then
+    echo "Node.js v${NODE_VERSION} 未安装：请先在应用中心安装 nodejs_v${NODE_VERSION}，再重新安装本应用。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- CPU architecture (must be resolved before locating bundled binaries) ---
+ARCH=$(uname -m)
+case "${ARCH}" in
+    x86_64|aarch64) ;;
+    *)
+        echo "Unsupported CPU architecture: ${ARCH}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+        ;;
+esac
+
+# --- Python: official python312 App Store app (same borrow pattern as Node.js) ---
+PYTHON_APP="python312"
+PYTHON_BIN="/var/apps/${PYTHON_APP}/target/bin/python3"
+if [ ! -d "/var/apps/${PYTHON_APP}" ]; then
+    echo "未找到官方 Python 环境：请先在应用中心安装 ${PYTHON_APP}，再重新安装本应用。" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+[ -x "${PYTHON_BIN}" ] || {
+    echo "Python 解释器缺失或不可执行：${PYTHON_BIN}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+PY_VER=$("${PYTHON_BIN}" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+if [ -z "${PY_VER}" ]; then
+    echo "Python 3.11+ required but not found on this system" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+PY_MAJOR=$(echo "${PY_VER}" | cut -d. -f1)
+PY_MINOR=$(echo "${PY_VER}" | cut -d. -f2)
+if [ "${PY_MAJOR}" -lt 3 ] || { [ "${PY_MAJOR}" -eq 3 ] && [ "${PY_MINOR}" -lt 11 ]; }; then
+    echo "Python 3.11+ required, found ${PY_VER}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Resolve uv: run the bundled binary in place (single canonical path) ---
+UV_BIN="${TRIM_APPDEST}/bin/uv-${ARCH}"
+[ -x "${UV_BIN}" ] || {
+    echo "Bundled uv binary missing or not executable: ${UV_BIN}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+}
+
+# --- Create venv via uv (on the writable data share, not APP_DIR) ---
+if [ ! -d "${VENV_DIR}" ]; then
+    {
+        echo "== whoami: $(id 2>&1)"
+        echo "== APP_DIR perms: $(ls -ld "${APP_DIR}" 2>&1)"
+        echo "== DATA_DIR perms: $(ls -ld "${DATA_DIR}" 2>&1)"
+        echo "== HOME=${HOME} UV_CACHE_DIR=${UV_CACHE_DIR}"
+        "${UV_BIN}" venv "${VENV_DIR}" --python "${PYTHON_BIN}"
+    } >> "${DEBUG_LOG}" 2>&1 || {
+        echo "Failed to create Python virtual environment via uv. See ${DEBUG_LOG}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    }
+fi
+
+# --- Sync dependencies (install into the relocated venv) ---
+if ! UV_PROJECT_ENVIRONMENT="${VENV_DIR}" "${UV_BIN}" sync --extra seekdb >> "${DEBUG_LOG}" 2>&1; then
+    echo "Dependency sync failed. Check network connectivity. See ${DEBUG_LOG}" > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Verify frontend dist ---
+if [ ! -d "web/dist" ] || [ -z "$(ls -A web/dist 2>/dev/null)" ]; then
+    echo "Frontend dist missing! Web UI will not be available." > "${TRIM_TEMP_LOGFILE}"
+    exit 1
+fi
+
+# --- Prepare a writable HOME inside the data dir for tool caches (uv,
+# npm/npx MCP). Everything already runs as the package user (run-as:
+# package), so no chown is needed — files created here belong to it.
+mkdir -p "${DATA_DIR}/.home" 2>/dev/null || true
+
+exit 0

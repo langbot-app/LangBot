@@ -4,8 +4,7 @@ These tests verify the end-to-end behavior of the Box sandbox execution
 system.  Tests decorated with ``requires_container`` need a real container
 runtime (Podman or Docker) and are skipped otherwise.
 
-CI only runs ``tests/unit_tests/``, so these tests never execute in the
-CI pipeline.  Run them locally with::
+CI runs these tests in the Box Integration Tests job. Run them locally with::
 
     pytest tests/integration_tests/ -v
 """
@@ -18,16 +17,20 @@ import shutil
 import socket
 import subprocess
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
 from langbot.pkg.box.service import BoxService
+from langbot.pkg.box.runner import RunnerBoxService
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxBackendUnavailableError
 from langbot_plugin.box.models import BoxExecutionStatus, BoxNetworkMode, BoxSpec
 from langbot_plugin.box.runtime import BoxRuntime
-from langbot_plugin.box.server import BoxServerHandler
+from langbot_plugin.box.server import BoxGenerationFence, BoxServerHandler
+from langbot_plugin.entities.io.context import ActionContext
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
@@ -35,6 +38,11 @@ _logger = logging.getLogger('test.box.integration')
 
 # Default image for integration tests — small and fast to pull.
 _TEST_IMAGE = 'alpine:latest'
+_ACTION_CONTEXT = ActionContext(
+    instance_uuid='box-integration-instance',
+    workspace_uuid='box-integration-workspace',
+    placement_generation=1,
+)
 
 
 # ── Skip helpers ──────────────────────────────────────────────────────
@@ -97,6 +105,22 @@ class _QueueConnection:
         pass
 
 
+class _TenantBoxClient(ActionRPCBoxClient):
+    async def _call(
+        self,
+        action,
+        data,
+        timeout=15.0,
+        action_context=None,
+    ):
+        return await super()._call(
+            action,
+            data,
+            timeout=timeout,
+            action_context=action_context or _ACTION_CONTEXT,
+        )
+
+
 async def _make_rpc_pair(runtime: BoxRuntime):
     """Create an in-process (ActionRPCBoxClient, server_task, client_task) connected via queues."""
     from langbot_plugin.runtime.io.handler import Handler
@@ -106,14 +130,20 @@ async def _make_rpc_pair(runtime: BoxRuntime):
     client_conn = _QueueConnection(rx=s2c, tx=c2s)
     server_conn = _QueueConnection(rx=c2s, tx=s2c)
 
-    server_handler = BoxServerHandler(server_conn, runtime)
+    server_handler = BoxServerHandler(
+        server_conn,
+        runtime,
+        host_control_authenticated=True,
+        trusted_instance_uuid=_ACTION_CONTEXT.instance_uuid,
+        generation_fence=BoxGenerationFence(),
+    )
     server_task = asyncio.create_task(server_handler.run())
 
     client_handler = Handler.__new__(Handler)
     Handler.__init__(client_handler, client_conn)
     client_task = asyncio.create_task(client_handler.run())
 
-    client = ActionRPCBoxClient(logger=_logger)
+    client = _TenantBoxClient(logger=_logger)
     client.set_handler(client_handler)
 
     return client, server_task, client_task
@@ -219,17 +249,68 @@ async def test_timeout_kills_command(box_client: ActionRPCBoxClient):
 @requires_socket
 @pytest.mark.asyncio
 async def test_offline_cannot_reach_network(box_client: ActionRPCBoxClient):
-    """With network=OFF the sandbox cannot reach the internet."""
-    spec = BoxSpec(
-        cmd='wget -q -O /dev/null --timeout=3 http://1.1.1.1 2>&1; exit $?',
-        session_id='int-offline',
-        workdir='/tmp',
-        network=BoxNetworkMode.OFF,
-        image=_TEST_IMAGE,
+    """Only OFF blocks the same reachable private peer and installed HTTP client."""
+    server = await box_client.execute(
+        BoxSpec(
+            cmd=r"""cat > /tmp/response.sh <<'HTTP'
+#!/bin/sh
+while IFS= read -r line; do
+    [ -z "$(printf '%s' "$line" | busybox tr -d '\r')" ] && break
+done
+printf 'HTTP/1.0 200 OK\r\nContent-Length: 19\r\n\r\nbox-network-control'
+HTTP
+chmod +x /tmp/response.sh
+(while true; do busybox nc -l -p 8080 -e /bin/sh /tmp/response.sh; done >/tmp/http.log 2>&1 < /dev/null &)
+sleep 1 && hostname -i""",
+            session_id='int-network-peer',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
     )
-    result = await box_client.execute(spec)
+    assert server.status == BoxExecutionStatus.COMPLETED
+    assert server.exit_code == 0, server.stderr
+    import ipaddress
 
-    assert result.exit_code != 0
+    peer = str(ipaddress.IPv4Address(server.stdout.strip().split()[0]))
+    assert not ipaddress.ip_address(peer).is_loopback
+    command = f'wget -q -O - --timeout=3 http://{peer}:8080/'
+    online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert online.status == BoxExecutionStatus.COMPLETED
+    assert online.exit_code == 0, online.stderr
+    assert online.stdout == 'box-network-control'
+
+    offline = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-offline',
+            workdir='/tmp',
+            network=BoxNetworkMode.OFF,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert offline.status == BoxExecutionStatus.COMPLETED
+    assert offline.exit_code != 0
+    assert offline.stdout == ''
+    still_online = await box_client.execute(
+        BoxSpec(
+            cmd=command,
+            session_id='int-online',
+            workdir='/tmp',
+            network=BoxNetworkMode.ON,
+            image=_TEST_IMAGE,
+        )
+    )
+    assert still_online.exit_code == 0
+    assert still_online.stdout == 'box-network-control'
 
 
 # ── 5. Backend unavailable ───────────────────────────────────────────
@@ -294,6 +375,16 @@ async def test_full_service_to_remote_runtime(tmp_path):
 
         mock_ap = SimpleNamespace(
             logger=_logger,
+            workspace_service=SimpleNamespace(
+                instance_uuid=_ACTION_CONTEXT.instance_uuid,
+                get_execution_binding=AsyncMock(
+                    return_value=SimpleNamespace(
+                        instance_uuid=_ACTION_CONTEXT.instance_uuid,
+                        workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+                        placement_generation=_ACTION_CONTEXT.placement_generation,
+                    )
+                ),
+            ),
             instance_config=SimpleNamespace(
                 data={
                     'box': {
@@ -313,7 +404,20 @@ async def test_full_service_to_remote_runtime(tmp_path):
         service = BoxService(mock_ap, client=client)
         await service.initialize()
 
-        query = pipeline_query.Query.model_construct(query_id=42)
+        query = pipeline_query.Query.model_construct(
+            query_id=42,
+            instance_uuid=_ACTION_CONTEXT.instance_uuid,
+            workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+            placement_generation=_ACTION_CONTEXT.placement_generation,
+        )
+        context = ExecutionContext(
+            instance_uuid=_ACTION_CONTEXT.instance_uuid,
+            workspace_uuid=_ACTION_CONTEXT.workspace_uuid,
+            placement_generation=_ACTION_CONTEXT.placement_generation,
+        )
+        runner_box = RunnerBoxService(service)
+        box = await runner_box.acquire(context, {'reuse_key': 'integration-test'}, query)
+        await runner_box.bind(context, query, 'run-42', box['id'])
         result = await service.execute_tool(
             {'command': 'echo service-path'},
             query,
@@ -322,7 +426,7 @@ async def test_full_service_to_remote_runtime(tmp_path):
         assert result['ok'] is True
         assert result['status'] == 'completed'
         assert 'service-path' in result['stdout']
-        assert result['session_id'] == 'query_42'
+        assert result['session_id'] == box['id']
     finally:
         server_task.cancel()
         client_task.cancel()

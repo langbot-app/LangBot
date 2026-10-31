@@ -7,12 +7,26 @@ Tests cover:
 
 from __future__ import annotations
 
-import pytest
-from unittest.mock import Mock, AsyncMock
+import asyncio
+import contextvars
 from importlib import import_module
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
+import pytest
+
+from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
+
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+_CONTEXT = ExecutionContext(
+    instance_uuid='instance-a',
+    workspace_uuid='workspace-a',
+    placement_generation=1,
+)
 
 
 def get_toolmgr_module():
@@ -188,6 +202,10 @@ class TestToolManagerExecuteFuncCall:
     def sample_query(self):
         """Create sample query for testing."""
         query = Mock(spec=pipeline_query.Query)
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
+        query._execution_context = _CONTEXT
         return query
 
     @pytest.mark.asyncio
@@ -258,6 +276,252 @@ class TestToolManagerExecuteFuncCall:
         # Plugin loader should be invoked, MCP should not
         mock_plugin_loader.invoke_tool.assert_called_once()
         mock_mcp_loader.invoke_tool.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_bound_mcp_source_wins_over_unbound_plugin_name_collision(self, mock_app_with_loaders):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_plugin_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+        query = Mock(variables={})
+        query._execution_context = _CONTEXT
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
+
+        result = await manager.execute_func_call(
+            'shared_tool',
+            {'value': 1},
+            query,
+            source_ref={'source': 'mcp', 'source_id': 'bound-mcp'},
+        )
+
+        assert result == 'mcp_result'
+        mock_plugin_loader.has_tool.assert_not_awaited()
+        mock_plugin_loader.invoke_tool.assert_not_awaited()
+        mock_mcp_loader.has_tool.assert_awaited_once_with(
+            _CONTEXT,
+            'shared_tool',
+            source_id='bound-mcp',
+        )
+        mock_mcp_loader.invoke_tool.assert_awaited_once_with(
+            'shared_tool',
+            {'value': 1},
+            query,
+            source_id='bound-mcp',
+        )
+
+    @pytest.mark.asyncio
+    async def test_bound_plugin_source_selects_one_of_two_same_name_plugins(self, mock_app_with_loaders):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_plugin_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+        query = Mock(variables={})
+        query._execution_context = _CONTEXT
+        query.bot_uuid = None
+        query.pipeline_uuid = None
+        query.query_uuid = None
+
+        result = await manager.execute_func_call(
+            'shared_tool',
+            {},
+            query,
+            source_ref={'source': 'plugin', 'source_id': 'authorized/plugin'},
+        )
+
+        assert result == 'plugin_result'
+        mock_plugin_loader.has_tool.assert_awaited_once_with('shared_tool', source_id='authorized/plugin')
+        mock_plugin_loader.invoke_tool.assert_awaited_once_with(
+            'shared_tool',
+            {},
+            query,
+            source_id='authorized/plugin',
+        )
+        mock_mcp_loader.has_tool.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_disabled_synthetic_mcp_tool_is_monitored_as_error(
+        self,
+        mock_app_with_loaders,
+        sample_query,
+    ):
+        toolmgr = get_toolmgr_module()
+        mock_app, mock_plugin_loader, mock_mcp_loader = mock_app_with_loaders
+        mock_app.monitoring_service = SimpleNamespace(record_tool_call=AsyncMock())
+        sample_query.variables = {}
+        sample_query.launcher_type = None
+        sample_query.launcher_id = None
+        sample_query.bot_uuid = 'bot-1'
+        mock_mcp_loader.has_tool = AsyncMock(return_value=True)
+        mock_mcp_loader.invoke_tool = AsyncMock(
+            side_effect=ToolExecutionDeniedError(
+                'langbot_mcp_read_resource',
+                'MCP resource agent reads are disabled',
+            )
+        )
+        manager = toolmgr.ToolManager(mock_app)
+        self._wire_loaders(manager, mock_app, mock_plugin_loader, mock_mcp_loader)
+
+        with pytest.raises(ToolExecutionDeniedError):
+            await manager.execute_func_call(
+                'langbot_mcp_read_resource',
+                {'server_name': 'docs', 'uri': 'file:///README.md'},
+                sample_query,
+                source_ref={'source': 'mcp', 'source_id': None},
+            )
+
+        record = mock_app.monitoring_service.record_tool_call
+        record.assert_awaited_once()
+        assert record.await_args.kwargs['status'] == 'error'
+        assert record.await_args.kwargs['tool_source'] == 'mcp'
+        assert 'MCP resource agent reads are disabled' in record.await_args.kwargs['error_message']
+
+
+class _RecordingTelemetrySender:
+    """Telemetry sender stand-in that keeps every payload it was handed."""
+
+    def __init__(self):
+        self.telemetry_config = {'url': 'https://space.example.test', 'execution_trace': 'all'}
+        self.sent: list[dict] = []
+
+    async def send(self, payload: dict) -> bool:
+        self.sent.append(payload)
+        return True
+
+
+class TestToolCallTracing:
+    """Every tool call a Run makes is its own step of the execution chain."""
+
+    @pytest.fixture
+    def traced_app(self):
+        execution = import_module('langbot.pkg.telemetry.execution')
+        counters = execution.ExecutionCounters(_RecordingTelemetrySender())
+        app = Mock()
+        app.logger = Mock()
+        app.telemetry = SimpleNamespace(execution=counters)
+        # Tool-call monitoring is asserted by the tests above; this path only
+        # needs the execution chain.
+        app.monitoring_service = None
+
+        def _inert_loader():
+            loader = Mock()
+            loader.has_tool = AsyncMock(return_value=False)
+            loader.invoke_tool = AsyncMock(return_value=None)
+            return loader
+
+        app._native_loader = _inert_loader()
+        app._plugin_loader = _inert_loader()
+        app._mcp_loader = _inert_loader()
+        app._skill_loader = _inert_loader()
+        return app, counters
+
+    @pytest.fixture
+    def sample_query(self):
+        query = Mock(spec=pipeline_query.Query)
+        query._execution_context = _CONTEXT
+        return query
+
+    @staticmethod
+    def _manager(app):
+        """ToolManager wired to app-local inert loaders."""
+        manager = get_toolmgr_module().ToolManager(app)
+        manager.native_tool_loader = app._native_loader
+        manager.plugin_tool_loader = app._plugin_loader
+        manager.mcp_tool_loader = app._mcp_loader
+        manager.skill_tool_loader = app._skill_loader
+        return manager
+
+    @staticmethod
+    def _tool_nodes(counters):
+        return [record for record in counters.records if record['event_type'] == 'execution_node']
+
+    @pytest.mark.asyncio
+    async def test_a_tool_call_becomes_a_node_under_the_step_that_issued_it(self, traced_app, sample_query):
+        trace = import_module('langbot.pkg.telemetry.trace')
+        execution = import_module('langbot.pkg.telemetry.execution')
+        app, counters = traced_app
+        manager = self._manager(app)
+
+        binding = execution.bind_trace(app, 'exec-tool')
+        # The Runtime's RPC task executes the call with no inherited trace
+        # context; the Run id on the query is what resolves the owning chain.
+        sample_query._agent_run_session = {'run_id': 'exec-tool'}
+        try:
+            with trace.stage_scope() as lane:
+                foreign = contextvars.Context()
+                task = asyncio.get_running_loop().create_task(
+                    manager._invoke_tool_with_monitoring(
+                        source='native',
+                        name='exec',
+                        parameters={'command': 'ls'},
+                        query=sample_query,
+                        invoke=AsyncMock(return_value='sandbox output'),
+                    ),
+                    context=foreign,
+                )
+                assert await task == 'sandbox output'
+        finally:
+            trace.unbind_root(binding)
+
+        rows = self._tool_nodes(counters)
+        assert len(rows) == 1
+        assert rows[0]['family'] == 'tool'
+        assert rows[0]['operation'] == 'exec'
+        assert rows[0]['adapter'] == 'native'
+        assert rows[0]['outcome'] == 'success'
+        assert rows[0]['parent_node_id'] == lane
+
+    @pytest.mark.asyncio
+    async def test_a_failed_tool_call_carries_its_reason(self, traced_app, sample_query):
+        execution = import_module('langbot.pkg.telemetry.execution')
+        trace = import_module('langbot.pkg.telemetry.trace')
+        app, counters = traced_app
+        manager = self._manager(app)
+
+        binding = execution.bind_trace(app, 'exec-tool-failed')
+        try:
+            with pytest.raises(RuntimeError):
+                await manager._invoke_tool_with_monitoring(
+                    source='mcp',
+                    name='read_resource',
+                    parameters={},
+                    query=sample_query,
+                    invoke=AsyncMock(side_effect=RuntimeError('server unreachable')),
+                )
+        finally:
+            trace.unbind_root(binding)
+
+        rows = self._tool_nodes(counters)
+        assert len(rows) == 1
+        assert rows[0]['family'] == 'tool'
+        assert rows[0]['outcome'] == 'failed'
+        assert rows[0]['error'] == 'server unreachable'
+
+
+class TestToolManagerSourceResolution:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('source', ['mcp', 'plugin'])
+    async def test_same_name_implementations_in_one_scope_are_hidden(self, source):
+        toolmgr = get_toolmgr_module()
+        app = Mock(logger=Mock())
+        manager = toolmgr.ToolManager(app)
+        manager.get_tool_catalog = AsyncMock(
+            return_value=[
+                {'name': 'shared_tool', 'source': source, 'source_id': 'source-a'},
+                {'name': 'shared_tool', 'source': source, 'source_id': 'source-b'},
+                {'name': 'unique_tool', 'source': 'builtin'},
+            ]
+        )
+
+        catalog = await manager.get_resolved_tool_catalog(_CONTEXT)
+
+        assert [item['name'] for item in catalog] == ['unique_tool']
+        app.logger.warning.assert_called_once()
 
 
 class TestToolManagerShutdown:

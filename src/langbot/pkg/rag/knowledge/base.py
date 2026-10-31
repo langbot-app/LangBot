@@ -5,6 +5,7 @@ from __future__ import annotations
 import abc
 
 from langbot.pkg.core import app
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.api.entities.builtin.rag import context as rag_context
 
 
@@ -22,10 +23,16 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def retrieve(self, query: str, settings: dict | None = None) -> list[rag_context.RetrievalResultEntry]:
+    async def retrieve(
+        self,
+        execution_context: ExecutionContext,
+        query: str,
+        settings: dict | None = None,
+    ) -> list[rag_context.RetrievalResultEntry]:
         """Retrieve relevant documents from the knowledge base
 
         Args:
+            execution_context: Trusted active Workspace placement.
             query: The query string
             settings: Optional per-request retrieval settings overrides
 
@@ -50,6 +57,6 @@ class KnowledgeBaseInterface(metaclass=abc.ABCMeta):
         pass
 
     @abc.abstractmethod
-    async def dispose(self):
+    async def dispose(self, execution_context: ExecutionContext):
         """Clean up resources"""
         pass

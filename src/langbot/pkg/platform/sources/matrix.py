@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+from langbot.pkg.i18n import t
+from langbot.pkg.i18n.adapters import localized_adapter
+
 import typing
 import asyncio
 import traceback
 import base64
 import json
+import os
+from urllib.parse import urlparse
 
 import nio
 
@@ -14,6 +19,58 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+_MAX_MATRIX_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _decode_matrix_base64_limited(value: str) -> bytes:
+    if ';base64,' in value:
+        value = value.split(';base64,', 1)[1]
+    max_encoded_bytes = 4 * ((_MAX_MATRIX_MEDIA_BYTES + 2) // 3)
+    if len(value) > max_encoded_bytes:
+        raise ValueError('Matrix media exceeds the size limit')
+    decoded = base64.b64decode(value)
+    if len(decoded) > _MAX_MATRIX_MEDIA_BYTES:
+        raise ValueError('Matrix media exceeds the size limit')
+    return decoded
+
+
+def _read_matrix_file_limited(path: str) -> bytes:
+    if os.path.getsize(path) > _MAX_MATRIX_MEDIA_BYTES:
+        raise ValueError('Matrix media exceeds the size limit')
+    with open(path, 'rb') as file:
+        body = file.read(_MAX_MATRIX_MEDIA_BYTES + 1)
+    if len(body) > _MAX_MATRIX_MEDIA_BYTES:
+        raise ValueError('Matrix media exceeds the size limit')
+    return body
+
+
+async def _download_matrix_media_limited(
+    client: nio.AsyncClient,
+    mxc_url: str,
+) -> tuple[bytes, str]:
+    parsed = urlparse(mxc_url)
+    if parsed.scheme != 'mxc' or not parsed.netloc or not parsed.path.strip('/'):
+        raise ValueError('Invalid Matrix media URL')
+    method, path = nio.Api.download(
+        parsed.netloc,
+        parsed.path.replace('/', ''),
+        access_token=None,
+    )
+    headers = {}
+    if client.access_token:
+        headers['Authorization'] = f'Bearer {client.access_token}'
+    response = await client.send(method, path, headers=headers, timeout=30)
+    try:
+        response.raise_for_status()
+        body = await httpclient.read_limited(
+            response,
+            max_bytes=_MAX_MATRIX_MEDIA_BYTES,
+        )
+        return body, response.headers.get('Content-Type', 'application/octet-stream')
+    finally:
+        response.release()
 
 
 class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -26,17 +83,22 @@ class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
             elif isinstance(component, platform_message.Image):
                 image_bytes = None
                 if component.base64:
-                    b64_data = component.base64
-                    if ';base64,' in b64_data:
-                        b64_data = b64_data.split(';base64,', 1)[1]
-                    image_bytes = base64.b64decode(b64_data)
+                    image_bytes = await asyncio.to_thread(
+                        _decode_matrix_base64_limited,
+                        component.base64,
+                    )
                 elif component.url:
                     session = httpclient.get_session()
                     async with session.get(component.url) as response:
-                        image_bytes = await response.read()
+                        image_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_MATRIX_MEDIA_BYTES,
+                        )
                 elif component.path:
-                    with open(component.path, 'rb') as f:
-                        image_bytes = f.read()
+                    image_bytes = await asyncio.to_thread(
+                        _read_matrix_file_limited,
+                        str(component.path),
+                    )
                 if image_bytes:
                     resp = await client.upload(image_bytes, content_type='image/png')
                     if isinstance(resp, nio.UploadResponse):
@@ -44,17 +106,22 @@ class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
             elif isinstance(component, platform_message.File):
                 file_bytes = None
                 if component.base64:
-                    b64_data = component.base64
-                    if ';base64,' in b64_data:
-                        b64_data = b64_data.split(';base64,', 1)[1]
-                    file_bytes = base64.b64decode(b64_data)
+                    file_bytes = await asyncio.to_thread(
+                        _decode_matrix_base64_limited,
+                        component.base64,
+                    )
                 elif component.url:
                     session = httpclient.get_session()
                     async with session.get(component.url) as response:
-                        file_bytes = await response.read()
+                        file_bytes = await httpclient.read_limited(
+                            response,
+                            max_bytes=_MAX_MATRIX_MEDIA_BYTES,
+                        )
                 elif component.path:
-                    with open(component.path, 'rb') as f:
-                        file_bytes = f.read()
+                    file_bytes = await asyncio.to_thread(
+                        _read_matrix_file_limited,
+                        str(component.path),
+                    )
                 if file_bytes:
                     file_name = getattr(component, 'name', None) or 'file'
                     resp = await client.upload(file_bytes, content_type='application/octet-stream', filename=file_name)
@@ -86,11 +153,12 @@ class MatrixMessageConverter(abstract_platform_adapter.AbstractMessageConverter)
         elif isinstance(event, nio.RoomMessageImage):
             mxc_url = event.url
             if mxc_url:
-                resp = await client.download(mxc_url)
-                if isinstance(resp, nio.DownloadResponse):
-                    b64 = base64.b64encode(resp.body).decode('utf-8')
-                    content_type = resp.content_type or 'image/png'
-                    message_components.append(platform_message.Image(base64=f'data:{content_type};base64,{b64}'))
+                body, content_type = await _download_matrix_media_limited(
+                    client,
+                    mxc_url,
+                )
+                b64 = (await asyncio.to_thread(base64.b64encode, body)).decode('utf-8')
+                message_components.append(platform_message.Image(base64=f'data:{content_type};base64,{b64}'))
             if event.body:
                 message_components.append(platform_message.Plain(text=event.body))
 
@@ -431,14 +499,15 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 if not mxc_url:
                     return
                 try:
-                    resp = await self.client.download(mxc_url)
-                    if isinstance(resp, nio.DownloadResponse):
-                        b64 = base64.b64encode(resp.body).decode('utf-8')
-                        content_type = resp.content_type or 'image/png'
-                        await self.logger.info(
-                            f'[{_b.user_id}] Bridge 发送了二维码，请扫码登录:',
-                            images=[platform_message.Image(base64=f'data:{content_type};base64,{b64}')],
-                        )
+                    body, content_type = await _download_matrix_media_limited(
+                        self.client,
+                        mxc_url,
+                    )
+                    b64 = (await asyncio.to_thread(base64.b64encode, body)).decode('utf-8')
+                    await self.logger.info(
+                        f'[{_b.user_id}] Bridge 发送了二维码，请扫码登录:',
+                        images=[platform_message.Image(base64=f'data:{content_type};base64,{b64}')],
+                    )
                 except Exception:
                     await self.logger.error(
                         f'[{_b.user_id}] Failed to download bridge QR image: {traceback.format_exc()}'
@@ -600,25 +669,26 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         except Exception:
             await self.logger.error(f'[{bridge.user_id}] Bridge status check fatal error: {traceback.format_exc()}')
 
+    @localized_adapter
     async def _handle_relogin_command(self, room_id: str):
         """Handle !relogin command: logout then re-login all bridges."""
         if not self._bridges:
             await self.client.room_send(
                 room_id=room_id,
                 message_type='m.room.message',
-                content={'msgtype': 'm.text', 'body': '没有配置任何桥。'},
+                content={'msgtype': 'm.text', 'body': t('No bridges configured.')},
             )
             return
 
-        lines = ['开始重新登录所有桥...']
+        lines = [t('Signing in to all bridges again...')]
         for bridge in self._bridges:
             if not bridge.login_command or not bridge.dm_room_id:
-                lines.append(f'[{bridge.user_id}] 跳过（未配置登录命令或无DM房间）')
+                lines.append(t('Bridge {bridge}: skipped (login command or DM room missing).', bridge=bridge.user_id))
                 continue
 
-                # Use configured logout command, fallback to deriving from login command
-                logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
-            lines.append(f'[{bridge.user_id}] 发送 "{logout_cmd}"...')
+            # Use configured logout command, fallback to deriving from login command
+            logout_cmd = bridge.logout_command or bridge.login_command.replace('login', 'logout')
+            lines.append(t('Bridge {bridge}: sending {command}...', bridge=bridge.user_id, command=logout_cmd))
 
             # Cancel existing tasks
             if bridge.login_task and not bridge.login_task.done():
@@ -634,14 +704,14 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     content={'msgtype': 'm.text', 'body': logout_cmd},
                 )
             except Exception as e:
-                lines.append(f'[{bridge.user_id}] logout 发送失败: {e}')
+                lines.append(t('Bridge {bridge}: sign-out failed.', bridge=bridge.user_id) + f' {e}')
 
             await asyncio.sleep(2)
 
             # Reset state and restart login
             bridge.logged_in = False
             self._restart_bridge_login(bridge)
-            lines.append(f'[{bridge.user_id}] 已触发重新登录')
+            lines.append(t('Bridge {bridge}: sign-in started.', bridge=bridge.user_id))
 
         await self.client.room_send(
             room_id=room_id,
@@ -649,20 +719,21 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             content={'msgtype': 'm.text', 'body': '\n'.join(lines)},
         )
 
+    @localized_adapter
     async def _handle_status_command(self, room_id: str):
         """Handle !status command: show bridge states."""
         if not self._bridges:
             await self.client.room_send(
                 room_id=room_id,
                 message_type='m.room.message',
-                content={'msgtype': 'm.text', 'body': '没有配置任何桥。'},
+                content={'msgtype': 'm.text', 'body': t('No bridges configured.')},
             )
             return
 
-        lines = ['桥状态:']
+        lines = [t('Bridge status:')]
         for bridge in self._bridges:
-            status = '已登录 ✓' if bridge.logged_in else '未登录 ✗'
-            dm = bridge.dm_room_id or '无'
+            status = t('Signed in ✓') if bridge.logged_in else t('Not signed in ✗')
+            dm = bridge.dm_room_id or t('None')
             lines.append(f'• {bridge.user_id}: {status} (DM: {dm})')
         await self.client.room_send(
             room_id=room_id,
@@ -672,11 +743,16 @@ class MatrixAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     async def kill(self) -> bool:
         self._running = False
+        bridge_tasks = []
         for bridge in self._bridges:
             if bridge.login_task and not bridge.login_task.done():
                 bridge.login_task.cancel()
+                bridge_tasks.append(bridge.login_task)
             if bridge.check_task and not bridge.check_task.done():
                 bridge.check_task.cancel()
+                bridge_tasks.append(bridge.check_task)
+        if bridge_tasks:
+            await asyncio.gather(*bridge_tasks, return_exceptions=True)
         if self.client:
             await self.client.close()
         await self.logger.debug('Matrix adapter stopped')

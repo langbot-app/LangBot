@@ -6,7 +6,6 @@ import json
 import base64
 import zlib
 import traceback
-import time
 
 import aiohttp
 
@@ -19,6 +18,39 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+
+
+_KOOK_MAX_GATEWAY_MESSAGE_BYTES = 10 * 1024 * 1024
+
+
+def _bounded_zlib_decompress(payload: bytes) -> bytes:
+    decompressor = zlib.decompressobj()
+    decoded = decompressor.decompress(
+        payload,
+        _KOOK_MAX_GATEWAY_MESSAGE_BYTES + 1,
+    )
+    if len(decoded) > _KOOK_MAX_GATEWAY_MESSAGE_BYTES or decompressor.unconsumed_tail:
+        raise ValueError('KOOK gateway message exceeds the decompressed size limit')
+    decoded += decompressor.flush(_KOOK_MAX_GATEWAY_MESSAGE_BYTES + 1 - len(decoded))
+    if len(decoded) > _KOOK_MAX_GATEWAY_MESSAGE_BYTES or not decompressor.eof:
+        raise ValueError('KOOK gateway message exceeds the decompressed size limit')
+    return decoded
+
+
+def _decode_gateway_message(message: str | bytes) -> dict:
+    if isinstance(message, bytes):
+        try:
+            message_bytes = _bounded_zlib_decompress(message)
+        except zlib.error:
+            message_bytes = message
+    else:
+        message_bytes = message.encode('utf-8')
+    if len(message_bytes) > _KOOK_MAX_GATEWAY_MESSAGE_BYTES:
+        raise ValueError('KOOK gateway message exceeds the size limit')
+    decoded = json.loads(message_bytes)
+    if not isinstance(decoded, dict):
+        raise ValueError('KOOK gateway message must be a JSON object')
+    return decoded
 
 
 class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -125,8 +157,8 @@ class KookMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     session = httpclient.get_session()
                     async with session.get(content) as response:
                         if response.status == 200:
-                            image_bytes = await response.read()
-                            image_base64 = base64.b64encode(image_bytes).decode('utf-8')
+                            image_bytes = await httpclient.read_limited(response)
+                            image_base64 = (await asyncio.to_thread(base64.b64encode, image_bytes)).decode('utf-8')
                             # Detect image format
                             content_type = response.headers.get('Content-Type', 'image/png')
                             components.append(
@@ -270,10 +302,6 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     http_session: typing.Optional[aiohttp.ClientSession] = pydantic.Field(exclude=True, default=None)
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
-        # Debug: Track init
-        with open('/tmp/kook_adapter_init.txt', 'w') as f:
-            f.write(f'KOOK adapter __init__ called at {time.time()}\n')
-
         # Validate required config
         if 'token' not in config:
             raise Exception('KOOK adapter requires "token" in config')
@@ -300,7 +328,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         session = httpclient.get_session()
         async with session.get(base_url, params=params, headers=headers) as response:
             if response.status == 200:
-                data = await response.json()
+                data = await httpclient.read_json_limited(response)
                 if data.get('code') == 0:
                     gateway_url = data['data']['url']
                     return gateway_url
@@ -320,7 +348,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         session = httpclient.get_session()
         async with session.get(base_url, headers=headers) as response:
             if response.status == 200:
-                data = await response.json()
+                data = await httpclient.read_json_limited(response)
                 if data.get('code') == 0:
                     user_info = data['data']
                     return user_info
@@ -409,17 +437,10 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     # Wait for HELLO within 6 seconds
                     try:
                         hello_msg = await asyncio.wait_for(ws.recv(), timeout=6.0)
-
-                        # Handle compressed messages (same as main message loop)
-                        if isinstance(hello_msg, bytes):
-                            # Decompress if compressed
-                            try:
-                                hello_msg = zlib.decompress(hello_msg).decode('utf-8')
-                            except Exception:
-                                # Not compressed or decompression failed
-                                hello_msg = hello_msg.decode('utf-8')
-
-                        hello_data = json.loads(hello_msg)
+                        hello_data = await asyncio.to_thread(
+                            _decode_gateway_message,
+                            hello_msg,
+                        )
 
                         if hello_data.get('s') == 1:  # HELLO signal
                             await self._handle_hello(hello_data['d'])
@@ -433,16 +454,11 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
                     # Main message loop
                     async for message in ws:
-                        if isinstance(message, bytes):
-                            # Decompress if compressed
-                            try:
-                                message = zlib.decompress(message).decode('utf-8')
-                            except Exception:
-                                # Not compressed or decompression failed
-                                message = message.decode('utf-8')
-
                         try:
-                            msg_data = json.loads(message)
+                            msg_data = await asyncio.to_thread(
+                                _decode_gateway_message,
+                                message,
+                            )
                             signal = msg_data.get('s')
 
                             if signal == 0:  # EVENT
@@ -516,7 +532,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             async with self.http_session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
-                    result = await response.json()
+                    result = await httpclient.read_json_limited(response)
                     if result.get('code') == 0:
                         await self.logger.debug(f'Message sent successfully to {target_id}')
                     else:
@@ -582,7 +598,7 @@ class KookAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
             async with self.http_session.post(url, json=payload, headers=headers) as response:
                 if response.status == 200:
-                    result = await response.json()
+                    result = await httpclient.read_json_limited(response)
                     if result.get('code') == 0:
                         await self.logger.debug('Reply sent successfully')
                     else:

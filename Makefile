@@ -19,10 +19,9 @@ test-integration-fast:
 test-coverage:
 	bash scripts/test-coverage.sh
 
-# Full local quality gate (quick + integration + coverage)
+# Full local quality gate (lint + unit/smoke/fast integration coverage)
 test-all-local:
-	bash scripts/test-quick.sh
-	bash scripts/test-integration-fast.sh
+	uv run ruff check src/langbot/ tests/ --output-format=concise
 	bash scripts/test-coverage.sh
 
 # Run linting only

@@ -1,0 +1,215 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Dify
+    zh_Hans: Dify
+  description:
+    en_US: Run a Dify application as a LangBot Runner.
+    zh_Hans: 将 Dify 应用作为 LangBot 运行器运行。
+spec:
+  usages: [agent]
+  config:
+    - name: user-id-source
+      label:
+        en_US: Provider User Identity
+        zh_Hans: 供应商用户身份
+      description:
+        en_US: Sender is the default. Legacy mode requires trusted Host identity; missing identity fails closed. Does not import old sessions.
+        zh_Hans: 默认使用发送者身份。兼容模式需要可信 Host 身份，缺失时拒绝请求；不会导入旧会话。
+      type: select
+      required: false
+      default: sender
+      options:
+        - name: sender
+          label: {en_US: Sender, zh_Hans: 发送者}
+        - name: legacy-session
+          label: {en_US: Native identity compatibility, zh_Hans: 原生身份兼容}
+    - name: base-url
+      label:
+        en_US: Base URL
+        zh_Hans: 基础 URL
+      type: string
+      description:
+        en_US: Dify Service API base URL. Keep the /v1 suffix for Dify Cloud and standard self-hosted deployments.
+        zh_Hans: Dify Service API 基础地址。Dify Cloud 和标准自托管部署请保留 /v1 后缀。
+      required: true
+      default: 'https://api.dify.ai/v1'
+    - name: advanced-settings
+      label:
+        en_US: Advanced Settings
+        zh_Hans: 高级设置
+      description:
+        en_US: Show prompt and timeout tuning controls.
+        zh_Hans: 显示提示词和超时调优选项。
+      type: boolean
+      required: false
+      default: false
+    - name: base-prompt
+      label:
+        en_US: Base PROMPT
+        zh_Hans: 基础提示词
+      type: text
+      description:
+        en_US: Fallback instruction when LangBot input is empty, for example when only a file is sent.
+        zh_Hans: LangBot 文本输入为空时使用的回退指令，例如仅发送文件时。
+      required: true
+      default: "When the file content is readable, please read the content of this file. When the file is an image, describe the content of this image."
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: app-type
+      label:
+        en_US: App Type
+        zh_Hans: 应用类型
+      type: select
+      description:
+        en_US: Must match the Dify application type that issued the Service API key.
+        zh_Hans: 必须与生成 Service API 密钥的 Dify 应用类型一致。
+      required: true
+      default: chat
+      options:
+        - name: chat
+          label:
+            en_US: Chat
+            zh_Hans: 聊天（包括Chatflow）
+        - name: chatflow
+          label:
+            en_US: Chatflow
+            zh_Hans: 对话流
+        - name: agent
+          label:
+            en_US: Agent
+            zh_Hans: Agent
+        - name: workflow
+          label:
+            en_US: Workflow
+            zh_Hans: 工作流
+    - name: api-key
+      label:
+        en_US: API Key
+        zh_Hans: API 密钥
+      type: secret
+      description:
+        en_US: Service API key from the selected Dify application, not a console login token.
+        zh_Hans: 所选 Dify 应用的 Service API 密钥，不是控制台登录令牌。
+      required: true
+      default: ''
+    - name: timeout
+      label:
+        en_US: Timeout
+        zh_Hans: 超时时间
+      type: integer
+      description:
+        en_US: Maximum time in seconds for a Dify request. Use at least 60 seconds when a proxy or long workflow is involved.
+        zh_Hans: Dify 请求的最长等待秒数。使用代理或长工作流时建议至少设置为 60 秒。
+      required: false
+      default: 30
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: remove-think
+      label:
+        en_US: Hide Thinking Content
+        zh_Hans: 隐藏思考内容
+      description:
+        en_US: Remove think-tagged reasoning from responses, including unfinished streamed reasoning.
+        zh_Hans: 从回复中移除 think 标签内的推理内容，包括尚未结束的流式思考。
+      type: boolean
+      required: false
+      default: false
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
+    - name: langbot-assets-enabled
+      label:
+        en_US: Enable LangBot Assets
+        zh_Hans: 启用 LangBot 资产
+      type: boolean
+      description:
+        en_US: Advanced. Expose run-scoped LangBot assets to Dify through a temporary token gateway.
+        zh_Hans: 高级选项。通过临时令牌网关向 Dify 暴露本次运行范围内的 LangBot 资产。
+      required: false
+      default: false
+    - name: langbot-assets-gateway-host
+      label:
+        en_US: LangBot Asset Gateway Host
+        zh_Hans: LangBot 资产网关监听地址
+      type: string
+      required: false
+      default: '0.0.0.0'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-port
+      label:
+        en_US: LangBot Asset Gateway Port
+        zh_Hans: LangBot 资产网关端口
+      type: integer
+      required: false
+      default: 8765
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-gateway-request-timeout
+      label:
+        en_US: LangBot Asset Gateway Request Timeout
+        zh_Hans: LangBot 资产网关请求超时
+      type: integer
+      required: false
+      default: 60
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-token-ttl
+      label:
+        en_US: LangBot Asset Token TTL
+        zh_Hans: LangBot 资产令牌有效期
+      type: integer
+      required: false
+      default: 3600
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+    - name: langbot-assets-input-name
+      label:
+        en_US: LangBot Asset Token Input Name
+        zh_Hans: LangBot 资产令牌输入变量名
+      type: string
+      required: false
+      default: 'langbot_asset_run_token'
+      show_if:
+        field: langbot-assets-enabled
+        operator: eq
+        value: true
+  capabilities:
+    streaming: true
+    tool_calling: true
+    knowledge_retrieval: true
+    multimodal_input: true
+    interrupt: false
+    interactions: true
+  permissions:
+    tools:
+      - detail
+      - call
+    knowledge_bases:
+      - retrieve
+    history:
+      - page
+    storage:
+      - plugin
+    interactions:
+      - request
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

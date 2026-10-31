@@ -1,5 +1,5 @@
 id: dify-agent-debug-chat
-title: "Dify AgentRunner returns a response through Pipeline Debug Chat"
+title: "Dify Runner returns a response through Pipeline Debug Chat"
 mode: agent-browser
 area: pipeline
 type: provider

@@ -1,0 +1,54 @@
+---
+title: "LangBotでのn8nの使用"
+description: "n8n を LangBot と統合し、メッセージングプラットフォーム横断の AI ボットワークフローと自動化を実現。"
+---
+
+[n8n](https://n8n.io/)は、さまざまな自動化タスクを作成、スケジュール、実行できるオープンソースのワークフロー自動化プラットフォームです。
+
+LangBotは現在、n8nワークフローの`Webhook`ノードを通じてワークフローをトリガーし、レスポンスを受信することをサポートしています。
+
+## ランナーとしてのn8nの使用
+
+既存のパイプラインの設定ページを開くか、新しいパイプライン(推奨)を作成して設定ページを開いてください。`AI`で`n8n Workflow API`をランナーとして選択します。
+
+![ランナーとしてのn8n](/images/zh/deploy/pipelines/n8n/config_runner.png)
+
+次に、以下の内容に従って他の設定を構成して入力します。
+
+## n8nワークフロー接続の設定
+
+![n8nワークフロー](/images/zh/deploy/pipelines/n8n/create_wf.png)
+または
+![n8nワークフロー](/images/zh/deploy/pipelines/n8n/create_wf01.png)
+
+トリガーとして`Webhook`または`On chat message`を選択し、以下のように設定します:
+- Webhook:
+    ![n8n webhook設定](/images/zh/deploy/pipelines/n8n/config_webhook.png)
+- On chat message:
+    ![n8n on chat message設定](/images/zh/deploy/pipelines/n8n/config_n8n_onchatmessage.png)
+
+<Info title="">
+ストリーミングレスポンスが必要な場合は、`Response Mode`を`Streaming`に設定します。
+
+![n8nストリーミング設定](/images/zh/deploy/pipelines/n8n/config_response_model.png)
+</Info>
+
+<Info title="">
+
+認証は、LangBotのパイプライン設定の認証方法に対応しており、必要に応じて変更できます。
+
+![n8nワークフロー設定](/images/zh/deploy/pipelines/n8n/config_auth.png)
+</Info>
+
+AIモデルを呼び出すノードを`AI Agent`として設定し、以下のセットアップに従います:
+> ストリーミングレスポンスの場合、赤い枠で強調表示されている項目を追加します。ストリーミングが不要な場合は、このステップをスキップできます。
+
+![n8n AIモデル呼び出し設定](/images/zh/deploy/pipelines/n8n/config_call_ai.png)
+
+n8nのワークフローレスポンスコンテンツについては、`Respond to Webhook`ノードを使用し、以下の画像に従って設定してください(`AI Agent`ノードでストリーミングレスポンスを選択した場合、このステップは不要です):
+
+![n8nワークフローレスポンス設定](/images/zh/deploy/pipelines/n8n/config_respond.png)
+
+`Response Body`のレスポンスコンテンツキー名は、LangBotのパイプライン設定の`出力キー名`と一致する必要があります。
+
+n8nワークフロー設定の完了後、上部の`Active`をクリックしてワークフローを有効にしてください。

@@ -1,0 +1,78 @@
+---
+title: "プラットフォーム API"
+---
+
+ボット UUID を指定してプラットフォームアダプターの API を呼び出します。メッセージチェーンの送信は `self.plugin.send_message()`、グループやユーザーの取得などは以下を使用します。
+
+## プラットフォーム API の呼び出し
+
+```python
+async def call_platform_api(
+    self,
+    bot_uuid: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+) -> Any:
+    ...
+```
+
+Command、EventListener、Tool などのコンポーネントでは `self.plugin` から呼び出します。戻り値は操作に応じた辞書、リスト、スカラー、`None` で、プラットフォーム SDK のオブジェクトではありません。
+
+```python
+group = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="get_group_info",
+    params={"group_id": "123456"},
+)
+```
+
+`bot_uuid` は `await self.plugin.get_bots()`、またはパイプラインイベントの `await event_context.get_bot_uuid()` で取得できます。プラットフォーム ID には実際のイベントや設定の値を使用します。
+
+### 主な操作
+
+| `action` | `params` |
+| --- | --- |
+| `get_user_info` | `user_id` |
+| `get_friend_list` | `{}` |
+| `get_group_info` | `group_id` |
+| `get_group_list` | `{}` |
+| `get_group_member_list` | `group_id` |
+| `get_group_member_info` | `group_id`, `user_id` |
+| `get_message` / `delete_message` | `chat_type`, `chat_id`, `message_id` |
+| `set_group_name` | `group_id`, `name` |
+| `mute_member` | `group_id`, `user_id`, `duration` |
+| `unmute_member` / `kick_member` | `group_id`, `user_id` |
+| `leave_group` | `group_id` |
+| `approve_friend_request` | `request_id`, `approve`, `remark` |
+| `approve_group_invite` | `request_id`, `approve` |
+| `get_file_url` | `file_id` |
+
+
+対応する操作はプラットフォームごとに異なり、ボットの管理者権限が必要な場合があります。`duration` は秒数で、`0` の意味はプラットフォームに依存します。共通の永久ミュート値ではありません。取得結果がキャッシュに依存することもあります。ボットが未起動、未対応の操作、引数不正の場合は例外になります。
+
+## プラットフォーム固有の API
+
+外側の `action` を `call_platform_api` にし、`params` にプラットフォームの操作と引数を指定します。OneBot Omni でボットのアカウント情報を取得する例です：
+
+```python
+account = await self.plugin.call_platform_api(
+    bot_uuid=bot_uuid,
+    action="call_platform_api",
+    params={"action": "get_login_info", "params": {}},
+)
+```
+
+アダプターが宣言した操作のみ呼び出せます。すべてのプラットフォーム API を任意に転送できるわけではありません。プラグインはランタイム経由でホストを呼び出し、`ctx.query.adapter` や `adapter.bot` には直接アクセスしません。
+
+## Runner
+
+Runner の実行中、`self.plugin` によるモデル、ツール、ナレッジベース、ストレージ、プラットフォーム呼び出しは現在の実行と権限に自動的に関連付けられます。`run_id` の指定は不要です。同時実行は互いに分離されます。ハンドラー終了後に実行に紐づく API を呼び続けないでください。
+
+現在のボットは `await ctx.get_bot_uuid()` で取得します。プラットフォーム呼び出しは今回のツール権限に従い、イベント対象だけが許可されている場合は別の対象を指定できません。プラットフォーム固有の操作を含む未許可の操作は拒否されます。デバッグではこれらの呼び出しも Mock を使用します。
+
+```python
+tools = await ctx.get_available_tools()
+if any(tool["name"] == "event_get_actor" for tool in tools):
+    actor = await ctx.call_tool("event_get_actor")
+    await ctx.log(str(actor))
+```

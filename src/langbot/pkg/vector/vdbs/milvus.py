@@ -3,9 +3,10 @@ import asyncio
 from typing import Any, Dict
 from pymilvus import MilvusClient, DataType, CollectionSchema, FieldSchema
 from pymilvus.milvus_client.index import IndexParams
-from langbot.pkg.vector.vdb import VectorDatabase
+from langbot.pkg.vector.vdb import VectorDatabase, remember_bounded_set, runtime_cache_limit
 from langbot.pkg.vector.filter_utils import normalize_filter, strip_unsupported_fields
 from langbot.pkg.core import app
+from langbot.pkg.utils import bounded_executor
 
 # Milvus schema only stores these metadata fields; filter on other fields is
 # silently dropped with a warning.
@@ -71,7 +72,14 @@ class MilvusVectorDatabase(VectorDatabase):
         self.db_name = db_name
         self.client = None
         self._collections: set[str] = set()
+        self._runtime_cache_limit = runtime_cache_limit(ap)
         self._initialize_client()
+
+    async def close(self) -> None:
+        self._collections.clear()
+        if self.client is not None:
+            await bounded_executor.run_blocking_cleanup(self.client.close)
+            self.client = None
 
     def _initialize_client(self):
         """Initialize Milvus client connection"""
@@ -169,7 +177,7 @@ class MilvusVectorDatabase(VectorDatabase):
             await self._ensure_index_if_missing(collection)
             self.ap.logger.info(f"Milvus collection '{collection}' already exists")
 
-        self._collections.add(collection)
+        remember_bounded_set(self._collections, collection, self._runtime_cache_limit)
         return collection
 
     async def _ensure_index_if_missing(self, collection: str) -> None:

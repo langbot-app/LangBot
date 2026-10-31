@@ -1,0 +1,190 @@
+---
+title: "Plugin Directory Structure"
+---
+
+This document introduces the standard directory structure and file organization specifications for LangBot plugins, helping developers create compliant plugins.
+
+## Basic Directory Structure
+
+A standard LangBot plugin should follow this directory structure:
+
+```
+MyPlugin/
+├── manifest.yaml          # Plugin manifest file (required)
+├── main.py               # Plugin main entry file (required)
+├── README.md             # English plugin documentation (required)
+├── readme/               # Multilingual README directory (optional)
+│   ├── README_zh_Hans.md # Simplified Chinese documentation
+│   ├── README_ja_JP.md   # Japanese documentation
+│   └── README_zh_Hant.md # Traditional Chinese documentation (optional)
+├── assets/               # Resource files directory
+│   ├── icon.svg         # Plugin icon (recommended)
+│   └── ...              # Other resource files
+├── components/           # Components directory
+│   ├── event_listener/  # Event listener components
+│   ├── commands/        # Command components
+│   └── tools/           # Tool components
+├── requirements.txt      # Python dependencies (optional)
+└── config/              # Configuration directory (optional)
+```
+
+## Multilingual README Specification
+
+### File Location Specification
+
+LangBot plugins support multilingual README documentation to provide localized plugin descriptions for users in different languages.
+
+**Important Specifications:**
+
+1. **`Root README.md (Required)`**
+   - Must be written in **English**
+   - Serves as the plugin's default documentation
+   - Used as fallback when requested language version doesn't exist
+2. **`readme/ Directory (Optional)`**
+   - Used to store **non-English** README documents
+   - File naming format: `README_{language_code}.md`
+
+### Supported Language Codes
+
+According to [RFC 4646](https://datatracker.ietf.org/doc/html/rfc4646) standard, LangBot currently supports the following language codes:
+
+| Language            | Language Code   | Filename            | Location                  |
+| ------------------- | --------------- | ------------------- | ------------------------- |
+| English             | `en` or `en_US` | `README.md`         | **Plugin root directory** |
+| Simplified Chinese  | `zh_Hans`       | `README_zh_Hans.md` | `readme/` directory       |
+| Traditional Chinese | `zh_Hant`       | `README_zh_Hant.md` | `readme/` directory       |
+| Japanese            | `ja_JP`         | `README_ja_JP.md`   | `readme/` directory       |
+| Vietnamese          | `vi_VN`         | `README_vi_VN.md`   | `readme/` directory       |
+| Thai                | `th_TH`         | `README_th_TH.md`   | `readme/` directory       |
+| Spanish             | `es_ES`         | `README_es_ES.md`   | `readme/` directory       |
+
+### Example Directory Structure
+
+```
+MyPlugin/
+├── README.md                    # ✅ English version (required, in root)
+└── readme/                      # ✅ Multilingual directory
+    ├── README_zh_Hans.md       # ✅ Simplified Chinese
+    ├── README_ja_JP.md         # ✅ Japanese
+    └── README_zh_Hant.md       # ✅ Traditional Chinese
+```
+
+### Incorrect Examples
+
+❌ **Wrong: Placing English README in readme/ directory**
+
+```
+MyPlugin/
+├── readme/
+│   ├── README_en.md        # ❌ Wrong: English should not be in readme/
+│   └── README_zh_Hans.md
+```
+
+❌ **Wrong: Root README.md contains non-English content**
+
+```markdown
+# MyPlugin
+
+This is a plugin...
+
+这是一个插件...    # ❌ Wrong: Root README.md should only contain English
+```
+
+### README Language Fallback Logic
+
+When a user requests a README in a specific language, LangBot will search in the following order:
+
+1. Try to read `readme/README_{language_code}.md`
+2. If not found, fall back to root `README.md` (English version)
+
+**Examples:**
+
+- User requests Simplified Chinese (`zh_Hans`)
+  - → Look for `readme/README_zh_Hans.md`
+  - → If not found, return `README.md` (English version)
+- User requests Japanese (`ja_JP`)
+  - → Look for `readme/README_ja_JP.md`
+  - → If not found, return `README.md` (English version)
+
+## Resource Files Directory
+
+### assets/ Directory
+
+The `assets/` directory is used to store plugin static resource files.
+
+**Recommended Structure:**
+
+```
+assets/
+├── icon.svg              # Plugin icon (SVG format recommended)
+├── example.png           # Example image
+├── screenshot1.png       # Screenshot
+└── logo.png             # Logo image
+```
+
+**Icon Specifications:**
+
+- Recommended to use `icon.svg` as plugin icon
+- Supported formats: `.svg`, `.png`, `.jpg`, `.jpeg`, `.gif`
+- Recommended size: At least 256x256 pixels
+- Reference in `manifest.yaml`: `icon: assets/icon.svg`
+
+### Referencing Resources in README
+
+In README documentation, you can use relative paths to reference images in the assets/ directory:
+
+```markdown
+# MyPlugin
+
+![Example](./assets/example.png)
+
+![Screenshot](./assets/screenshot1.png)
+```
+
+**Note:** After uploading plugins to LangBot Space, resource files will be automatically processed and hosted, and images will display correctly when users view the README.
+
+## Components Directory
+
+Plugin functionality is implemented through components, which should be organized by type in the `components/` directory:
+
+```
+components/
+├── event_listener/       # Event listeners
+│   ├── on_message.py
+│   └── on_message.yaml
+├── commands/            # Commands
+│   ├── hello.py
+│   └── hello.yaml
+└── tools/               # Tools
+    ├── search.py
+    └── search.yaml
+```
+
+For detailed component development specifications, please refer to: [Adding Components](/en/plugin/dev/components/add)
+
+## Configuration Files
+
+### manifest.yaml
+
+The plugin manifest file `manifest.yaml` is the core configuration file, containing plugin metadata, configuration items, component lists, and other information.
+
+For detailed instructions, please refer to: [Complete Plugin Configuration Information](/en/plugin/dev/basic-info)
+
+### requirements.txt
+
+If the plugin requires additional Python dependencies, create a `requirements.txt` file in the root directory:
+
+```
+requests>=2.28.0
+beautifulsoup4>=4.11.0
+pillow>=9.0.0
+```
+
+**Note:** LangBot will automatically install dependencies listed in `requirements.txt` when installing the plugin.
+
+## Related Documentation
+
+- [Basic Tutorial](/en/plugin/dev/tutor) - Learn how to create your first plugin
+- [Complete Plugin Configuration Information](/en/plugin/dev/basic-info) - Configure manifest.yaml
+- [Adding Components](/en/plugin/dev/components/add) - Develop plugin components
+- [Publish to Marketplace](/en/plugin/dev/publish/market) - Distribute your plugin

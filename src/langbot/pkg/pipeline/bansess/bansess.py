@@ -31,7 +31,7 @@ class BanSessionCheckStage(stage.PipelineStage):
                     found = True
                     break
                 # 使用 *_id 来表示加白/拉黑某用户的私聊和群聊场景
-                if sess.startswith('*_') and (sess[2:] == query.launcher_id or sess[2:] == query.sender_id):
+                if sess.startswith('*_') and (sess[2:] == str(query.launcher_id) or sess[2:] == str(query.sender_id)):
                     found = True
                     break
 

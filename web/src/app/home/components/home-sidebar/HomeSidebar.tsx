@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { SidebarChildVO } from '@/app/home/components/home-sidebar/HomeSidebarChild';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import { sidebarConfigList } from '@/app/home/components/home-sidebar/sidbarConfigList';
 import langbotIcon from '@/app/assets/langbot-logo.webp';
 import { systemInfo, httpClient } from '@/app/infra/http/HttpClient';
-import { getCloudServiceClientSync } from '@/app/infra/http';
+import {
+  clearUserInfo,
+  getCloudServiceClientSync,
+  useCurrentWorkspace,
+  useWorkspaceBootstrap,
+} from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
 import {
   Moon,
@@ -27,11 +32,16 @@ import {
   Github,
   Zap,
   FilePlus2,
+  History,
   Sparkles,
-  HardDrive,
   Server,
   Puzzle,
   RefreshCcw,
+  Bot,
+  Workflow,
+  ListTree,
+  UsersRound,
+  HardDrive,
 } from 'lucide-react';
 import { useTheme } from '@/components/providers/theme-provider';
 
@@ -57,6 +67,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { LanguageSelector } from '@/components/ui/language-selector';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import WorkspaceSwitcher, {
+  OPEN_WORKSPACE_SETTINGS_EVENT,
+} from '@/app/home/components/workspace-settings/WorkspaceSwitcher';
+const CloudPlansDialog = lazy(
+  () => import('@/app/home/components/workspace-settings/CloudPlansDialog'),
+);
 import NewVersionDialog from '@/app/home/components/new-version-dialog/NewVersionDialog';
 import SettingsDialog, {
   SettingsSection,
@@ -80,6 +96,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  SidebarRail,
   useSidebar,
 } from '@/components/ui/sidebar';
 import {
@@ -100,7 +117,17 @@ import {
 } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { useSidebarData, SidebarEntityItem } from './SidebarDataContext';
+import {
+  pluginTaskKey,
+  usePluginInstallTasks,
+} from '@/app/home/plugins/components/plugin-install-task';
 import { FeedbackPopoverContent } from './FeedbackPopover';
+import {
+  type WorkspaceQuotaItem,
+  useWorkspaceQuotaStatus,
+} from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
+import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
+import { SidebarGuide } from './SidebarGuide';
 
 // Compare two version strings, returns true if v1 > v2
 function compareVersions(v1: string, v2: string): boolean {
@@ -207,8 +234,7 @@ const ENTITY_KEY_MAP: Record<
 // Route prefix map for entity detail pages
 const ENTITY_ROUTE_MAP: Record<EntityCategoryId, string> = {
   bots: '/home/bots',
-  pipelines: '/home/pipelines',
-  workflows: '/home/workflows',
+  pipelines: '/home/agents',
   knowledge: '/home/knowledge',
   plugins: '/home/extensions',
   mcp: '/home/mcp',
@@ -276,6 +302,56 @@ function saveListExpansionState(state: SidebarListExpansionState) {
 
 // Maximum number of entity sub-items visible before "More" toggle
 const MAX_VISIBLE_ITEMS = 5;
+const MCP_REFRESH_POLL_INTERVAL_MS = 1000;
+const MCP_REFRESH_TIMEOUT_MS = 60000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const UNLIMITED_QUOTA: WorkspaceQuotaItem = {
+  count: 0,
+  max: -1,
+  reached: false,
+  loading: false,
+  disabled: false,
+};
+
+async function waitForMCPRefreshTask(taskId: number) {
+  const deadline = Date.now() + MCP_REFRESH_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    const task = await httpClient.getAsyncTask(taskId);
+    if (task.runtime.done) return task;
+    await sleep(MCP_REFRESH_POLL_INTERVAL_MS);
+  }
+
+  throw new Error(`Timed out waiting for MCP refresh task ${taskId}`);
+}
+
+async function refreshEnabledMCPConnections() {
+  const resp = await httpClient.getMCPServers();
+  const enabledServers = resp.servers.filter((server) => server.enable);
+  if (enabledServers.length === 0) return;
+
+  const taskResults = await Promise.allSettled(
+    enabledServers.map((server) => httpClient.testMCPServer(server.name, {})),
+  );
+  const taskIds: number[] = [];
+
+  for (const result of taskResults) {
+    if (
+      result.status === 'fulfilled' &&
+      typeof result.value.task_id === 'number'
+    ) {
+      taskIds.push(result.value.task_id);
+    } else if (result.status === 'rejected') {
+      console.error('Failed to start MCP refresh task:', result.reason);
+    }
+  }
+
+  await Promise.allSettled(taskIds.map(waitForMCPRefreshTask));
+}
 
 // Sort entity items by updatedAt descending (most recent first), items without updatedAt go last
 function sortByRecent(items: SidebarEntityItem[]): SidebarEntityItem[] {
@@ -348,8 +424,15 @@ function NavItems({
   const pathname = location.pathname;
   const [searchParams] = useSearchParams();
   const sidebarData = useSidebarData();
+  const refreshSidebarPlugins = sidebarData.refreshPlugins;
+  const quotaStatus = useWorkspaceQuotaStatus();
   const { state: sidebarState, isMobile } = useSidebar();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManageResources =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
+  const canOperateRuntime =
+    currentWorkspace?.permissions.includes('runtime.operate') ?? false;
   // Track which entity categories have their full list expanded
   const [expandedLists, setExpandedLists] = useState<SidebarListExpansionState>(
     loadListExpansionState,
@@ -364,11 +447,19 @@ function NavItems({
     if (extRefreshing) return;
     setExtRefreshing(true);
     try {
-      await Promise.all([
+      const results = await Promise.allSettled([
         sidebarData.refreshPlugins(),
-        sidebarData.refreshMCPServers(),
         sidebarData.refreshSkills(),
+        refreshEnabledMCPConnections(),
       ]);
+      const mcpRefreshResult = results[2];
+      if (mcpRefreshResult.status === 'rejected') {
+        console.error(
+          'Failed to refresh MCP connections:',
+          mcpRefreshResult.reason,
+        );
+      }
+      await sidebarData.refreshMCPServers();
     } finally {
       setExtRefreshing(false);
     }
@@ -382,18 +473,35 @@ function NavItems({
   const [targetPluginItem, setTargetPluginItem] =
     useState<SidebarEntityItem | null>(null);
   const [deleteData, setDeleteData] = useState(false);
+  const {
+    addTask: addPluginTask,
+    setSelectedTaskId: setSelectedPluginTaskId,
+    registerOnTaskComplete,
+    unregisterOnTaskComplete,
+  } = usePluginInstallTasks();
 
   const asyncTask = useAsyncTask({
     onSuccess: () => {
-      const msg =
-        pluginOpType === PluginOperationType.DELETE
-          ? t('plugins.deleteSuccess')
-          : t('plugins.updateSuccess');
-      toast.success(msg);
+      toast.success(t('plugins.deleteSuccess'));
       setShowPluginOpModal(false);
       sidebarData.refreshPlugins();
     },
   });
+
+  useEffect(() => {
+    const onPluginTaskComplete = (
+      _taskId: number,
+      success: boolean,
+      _error?: string,
+      operation?: 'install' | 'upgrade',
+    ) => {
+      if (success && operation === 'upgrade') {
+        refreshSidebarPlugins();
+      }
+    };
+    registerOnTaskComplete(onPluginTaskComplete);
+    return () => unregisterOnTaskComplete(onPluginTaskComplete);
+  }, [refreshSidebarPlugins, registerOnTaskComplete, unregisterOnTaskComplete]);
 
   function handlePluginDelete(item: SidebarEntityItem) {
     setTargetPluginItem(item);
@@ -420,21 +528,37 @@ function NavItems({
         ? targetPluginItem.id.substring(slashIdx + 1)
         : targetPluginItem.id;
 
-    const apiCall =
-      pluginOpType === PluginOperationType.DELETE
-        ? httpClient.removePlugin(author, name, deleteData)
-        : httpClient.upgradePlugin(author, name);
+    if (pluginOpType === PluginOperationType.UPDATE) {
+      httpClient
+        .upgradePlugin(author, name)
+        .then((res) => {
+          addPluginTask({
+            taskId: res.task_id,
+            pluginName: `${author}/${name}`,
+            source: 'marketplace',
+            extensionType: 'plugin',
+            operation: 'upgrade',
+          });
+          setSelectedPluginTaskId(
+            pluginTaskKey(res.task_id, 'marketplace', 'upgrade'),
+          );
+          setShowPluginOpModal(false);
+          setTargetPluginItem(null);
+          asyncTask.reset();
+        })
+        .catch((error) => {
+          toast.error(t('plugins.updateError') + error.message);
+        });
+      return;
+    }
 
-    apiCall
+    httpClient
+      .removePlugin(author, name, deleteData)
       .then((res) => {
         asyncTask.startTask(res.task_id);
       })
       .catch((error) => {
-        const errorMessage =
-          pluginOpType === PluginOperationType.DELETE
-            ? t('plugins.deleteError') + error.message
-            : t('plugins.updateError') + error.message;
-        toast.error(errorMessage);
+        toast.error(t('plugins.deleteError') + error.message);
       });
   }
 
@@ -475,9 +599,12 @@ function NavItems({
     <>
       {sectionItems.map((config) => {
         if (!isEntityCategory(config.id)) {
-          // Non-entity entries (e.g. monitoring, market, mcp) render as plain links
+          if (config.id === 'add-extension' && !canManageResources) {
+            return null;
+          }
+          // Non-entity entries (e.g. monitoring and the extension market) render as plain links.
           return (
-            <SidebarMenuItem key={config.id}>
+            <SidebarMenuItem key={config.id} data-sidebar-guide={config.id}>
               <SidebarMenuButton
                 isActive={selectedChild?.id === config.id}
                 onClick={() => onChildClick(config)}
@@ -514,12 +641,26 @@ function NavItems({
           : sidebarData[entityKey];
         const routePrefix = ENTITY_ROUTE_MAP[categoryId];
         const hasDetailPages = DETAIL_PAGE_CATEGORIES.includes(categoryId);
-        const canCreate = CREATABLE_CATEGORIES.includes(categoryId);
+        const canCreate =
+          canManageResources && CREATABLE_CATEGORIES.includes(categoryId);
         const isCollapseOnly = COLLAPSIBLE_ONLY_CATEGORIES.includes(categoryId);
         const isPlugin = categoryId === 'plugins';
         const isSkill = categoryId === 'skills';
         const isBot = categoryId === 'bots';
         const isMCP = categoryId === 'mcp';
+        const isAgents = categoryId === 'pipelines';
+        const quota =
+          categoryId === 'bots'
+            ? quotaStatus.bots
+            : categoryId === 'pipelines'
+              ? quotaStatus.pipelines
+              : categoryId === 'knowledge'
+                ? quotaStatus.knowledgeBases
+                : categoryId === 'plugins' ||
+                    categoryId === 'mcp' ||
+                    categoryId === 'skills'
+                  ? quotaStatus.extensions
+                  : UNLIMITED_QUOTA;
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.extensionType === 'mcp') {
@@ -527,6 +668,16 @@ function NavItems({
           }
           if (item.extensionType === 'skill') {
             return `/home/skills?id=${encodeURIComponent(item.id)}`;
+          }
+          const processorTab = searchParams.get('tab');
+          if (
+            hasDetailPages &&
+            (routePrefix === '/home/agents' ||
+              routePrefix === '/home/pipelines') &&
+            (pathname === '/home/agents' || pathname === '/home/pipelines') &&
+            (processorTab === 'logs' || processorTab === 'config')
+          ) {
+            return `${routePrefix}?id=${encodeURIComponent(item.id)}&tab=${processorTab}`;
           }
           return hasDetailPages
             ? `${routePrefix}?id=${encodeURIComponent(item.id)}`
@@ -548,11 +699,14 @@ function NavItems({
         // Shared entity list renderer used by both popover and collapsible
         const renderEntityList = (inPopover: boolean) => {
           const sortedItems = isExtensionsCategory
-            ? [...items].sort((a, b) =>
-                a.name.localeCompare(b.name, undefined, {
+            ? [...items].sort((a, b) => {
+                const aDebug = Boolean(a.debug);
+                const bDebug = Boolean(b.debug);
+                if (aDebug !== bDebug) return aDebug ? -1 : 1;
+                return a.name.localeCompare(b.name, undefined, {
                   sensitivity: 'base',
-                }),
-              )
+                });
+              })
             : sortByRecent(items);
           const isExpanded = expandedLists[section]?.[categoryId] ?? false;
           const maxItems = inPopover ? 10 : MAX_VISIBLE_ITEMS;
@@ -601,6 +755,21 @@ function NavItems({
             isExtensionsCategory &&
             !inPopover &&
             sidebarData.extensionsGroupByType;
+
+          const showAgentGroupHeaders =
+            isAgents && !inPopover && sidebarData.agentsGroupByKind;
+
+          const agentGroupOrder: Array<
+            'agent' | 'pipeline' | 'event_processor'
+          > = ['agent', 'pipeline', 'event_processor'];
+          const agentGroupLabelKey: Record<
+            'agent' | 'pipeline' | 'event_processor',
+            string
+          > = {
+            agent: 'agents.kindBadgeAgent',
+            pipeline: 'agents.kindBadgePipeline',
+            event_processor: 'agents.eventProcessor.configurations',
+          };
 
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
             'plugin',
@@ -652,7 +821,7 @@ function NavItems({
                       {(isBot || isMCP) && (
                         <span
                           className={cn(
-                            'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-popover',
+                            'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-popover',
                             isMCP
                               ? mcpStatusColor(item)
                               : item.enabled === false
@@ -672,7 +841,15 @@ function NavItems({
                       )}
                     />
                   ) : null}
-                  <span className="truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {isBot && item.legacyAdapter && (
+                    <span className="ml-auto shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                      {t('bots.legacyAdapterBadge')}
+                    </span>
+                  )}
+                  {item.debug && (
+                    <Bug className="size-3.5 shrink-0 !text-orange-500 dark:!text-orange-400 ml-auto" />
+                  )}
                 </button>
               );
             }
@@ -715,7 +892,7 @@ function NavItems({
                             {(isBot || isMCP) && (
                               <span
                                 className={cn(
-                                  'absolute -bottom-0.5 -right-0.5 size-2 rounded-full border-2 border-sidebar',
+                                  'absolute -bottom-1 -right-1 size-3 rounded-full border-2 border-sidebar',
                                   isMCP
                                     ? mcpStatusColor(item)
                                     : item.enabled === false
@@ -735,9 +912,36 @@ function NavItems({
                             )}
                           />
                         ) : null}
-                        <span className="truncate">{item.name}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {item.name}
+                        </span>
+                        {isBot && item.legacyAdapter && (
+                          <span className="shrink-0 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                            {t('bots.legacyAdapterBadge')}
+                          </span>
+                        )}
+                        {item.kind && (
+                          <span
+                            className="ml-auto flex shrink-0 items-center text-muted-foreground"
+                            title={
+                              item.kind === 'event_processor'
+                                ? t('agents.eventProcessor.configurations')
+                                : item.kind === 'pipeline'
+                                  ? t('agents.kindBadgePipeline')
+                                  : t('agents.kindBadgeAgent')
+                            }
+                          >
+                            {item.kind === 'event_processor' ? (
+                              <Puzzle className="size-3.5" />
+                            ) : item.kind === 'pipeline' ? (
+                              <Workflow className="size-3.5" />
+                            ) : (
+                              <Bot className="size-3.5" />
+                            )}
+                          </span>
+                        )}
                         {item.debug && (
-                          <Bug className="size-3.5 shrink-0 text-orange-400" />
+                          <Bug className="size-3.5 shrink-0 !text-orange-500 dark:!text-orange-400" />
                         )}
                       </a>
                     </SidebarMenuSubButton>
@@ -762,6 +966,7 @@ function NavItems({
                 {itemIsPluginType && !item.debug && (
                   <PluginItemMenu
                     item={item}
+                    canManage={canManageResources}
                     onUpdate={() => handlePluginUpdate(item)}
                     onDelete={() => handlePluginDelete(item)}
                   />
@@ -787,7 +992,25 @@ function NavItems({
                       </div>
                     );
                   })
-                : visibleItems.map((item) => renderItem(item))}
+                : showAgentGroupHeaders
+                  ? agentGroupOrder.map((kind) => {
+                      const groupItems = visibleItems.filter(
+                        (it) => (it.kind ?? 'agent') === kind,
+                      );
+                      if (groupItems.length === 0) return null;
+                      return (
+                        <div
+                          key={kind}
+                          className="flex flex-col gap-0.5 mt-0.5"
+                        >
+                          <div className="px-2 pt-1 pb-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-muted-foreground">
+                            {t(agentGroupLabelKey[kind])}
+                          </div>
+                          {groupItems.map((item) => renderItem(item))}
+                        </div>
+                      );
+                    })
+                  : visibleItems.map((item) => renderItem(item))}
               {/* Show more / less toggle when items exceed limit */}
               {sortedItems.length > maxItems && !inPopover && (
                 <SidebarMenuSubItem>
@@ -826,7 +1049,7 @@ function NavItems({
         // Popover flyout for collapsed sidebar
         if (showPopover) {
           return (
-            <SidebarMenuItem key={config.id}>
+            <SidebarMenuItem key={config.id} data-sidebar-guide={config.id}>
               <Popover
                 open={popoverOpen[config.id] ?? false}
                 onOpenChange={(open) =>
@@ -851,128 +1074,144 @@ function NavItems({
                 >
                   <div className="flex items-center justify-between mb-1 px-2">
                     <span className="text-sm font-medium">{config.name}</span>
-                    {canCreate &&
-                      (isPlugin ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {systemInfo.enable_marketplace && (
+                    {canCreate && (
+                      <WorkspaceQuotaTooltip
+                        quota={quota}
+                        resource={config.name}
+                        side="right"
+                      >
+                        {isPlugin ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {systemInfo.enable_marketplace && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/home/add-extension');
+                                    setPopoverOpen((prev) => ({
+                                      ...prev,
+                                      [config.id]: false,
+                                    }));
+                                  }}
+                                >
+                                  <Store className="size-4" />
+                                  {t('plugins.goToMarketplace')}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/add-extension');
+                                  navigate('/home/add-extension?manual=1');
                                   setPopoverOpen((prev) => ({
                                     ...prev,
                                     [config.id]: false,
                                   }));
                                 }}
                               >
-                                <Store className="size-4" />
-                                {t('plugins.goToMarketplace')}
+                                <Upload className="size-4" />
+                                {t('plugins.uploadLocal')}
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('plugins.uploadLocal')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('plugins.installFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : isSkill ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/skills?action=create');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <FilePlus2 className="size-4" />
-                              {t('skills.createManually')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('skills.uploadZip')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                                setPopoverOpen((prev) => ({
-                                  ...prev,
-                                  [config.id]: false,
-                                }));
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('skills.importFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <button
-                          type="button"
-                          className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                          onClick={() => {
-                            navigate(`${routePrefix}?id=new`);
-                            setPopoverOpen((prev) => ({
-                              ...prev,
-                              [config.id]: false,
-                            }));
-                          }}
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      ))}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('plugins.installFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : isSkill ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/skills?action=create');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <FilePlus2 className="size-4" />
+                                {t('skills.createManually')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Upload className="size-4" />
+                                {t('skills.uploadZip')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                  setPopoverOpen((prev) => ({
+                                    ...prev,
+                                    [config.id]: false,
+                                  }));
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('skills.importFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={quota.disabled}
+                            aria-disabled={quota.disabled}
+                            aria-label={`${t('common.create')} ${config.name}`}
+                            className="p-1 rounded-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors disabled:pointer-events-none disabled:opacity-40"
+                            onClick={() => {
+                              navigate(`${routePrefix}?id=new`);
+                              setPopoverOpen((prev) => ({
+                                ...prev,
+                                [config.id]: false,
+                              }));
+                            }}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        )}
+                      </WorkspaceQuotaTooltip>
+                    )}
                   </div>
                   <div className="flex flex-col gap-0.5 max-h-80 overflow-y-auto">
                     {renderEntityList(true)}
@@ -992,7 +1231,7 @@ function NavItems({
             onOpenChange={(open) => onSectionToggle(config.id, open)}
             className="group/collapsible"
           >
-            <SidebarMenuItem>
+            <SidebarMenuItem data-sidebar-guide={config.id}>
               <SidebarMenuButton
                 asChild
                 isActive={false}
@@ -1024,119 +1263,182 @@ function NavItems({
                   <span className="cursor-pointer select-none">
                     {config.name}
                   </span>
-                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
-                    {isExtensionsCategory && (
-                      <button
-                        type="button"
-                        title={t('common.refresh', '刷新')}
-                        className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                        onClick={handleRefreshExtensions}
-                      >
-                        <RefreshCcw
+                  {/* Group/refresh controls — left-aligned, hugging the title */}
+                  {(isAgents || isExtensionsCategory) && (
+                    <div className="flex items-center gap-0.5">
+                      {isAgents && (
+                        <button
+                          type="button"
+                          title={t('agents.groupByKind')}
                           className={cn(
-                            'size-3.5',
-                            extRefreshing && 'animate-spin',
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.agentsGroupByKind
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
                           )}
-                        />
-                      </button>
-                    )}
-                    {canCreate &&
-                      (isPlugin ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            {systemInfo.enable_marketplace && (
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setAgentsGroupByKind(
+                              !sidebarData.agentsGroupByKind,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('agents.groupByKindShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && canOperateRuntime && (
+                        <button
+                          type="button"
+                          title={t('plugins.groupByType')}
+                          className={cn(
+                            'flex items-center gap-1 px-1.5 py-1 rounded-sm text-[10px] transition-all',
+                            sidebarData.extensionsGroupByType
+                              ? 'text-sidebar-accent-foreground bg-sidebar-accent'
+                              : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                          )}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            sidebarData.setExtensionsGroupByType(
+                              !sidebarData.extensionsGroupByType,
+                            );
+                          }}
+                        >
+                          <ListTree className="size-3.5" />
+                          <span>{t('plugins.groupByTypeShort')}</span>
+                        </button>
+                      )}
+                      {isExtensionsCategory && (
+                        <button
+                          type="button"
+                          title={t('common.refresh', '刷新')}
+                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
+                          onClick={handleRefreshExtensions}
+                        >
+                          <RefreshCcw
+                            className={cn(
+                              'size-3.5',
+                              extRefreshing && 'animate-spin',
+                            )}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div className="ml-auto flex items-center gap-0.5 -mr-1">
+                    {canCreate && (
+                      <WorkspaceQuotaTooltip
+                        quota={quota}
+                        resource={config.name}
+                        side="right"
+                      >
+                        {isPlugin ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all disabled:pointer-events-none disabled:opacity-40"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {systemInfo.enable_marketplace && (
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate('/home/add-extension');
+                                  }}
+                                >
+                                  <Store className="size-4" />
+                                  {t('plugins.goToMarketplace')}
+                                </DropdownMenuItem>
+                              )}
                               <DropdownMenuItem
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  navigate('/home/add-extension');
+                                  navigate('/home/add-extension?manual=1');
                                 }}
                               >
-                                <Store className="size-4" />
-                                {t('plugins.goToMarketplace')}
+                                <Upload className="size-4" />
+                                {t('plugins.uploadLocal')}
                               </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('plugins.uploadLocal')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('plugins.installFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : isSkill ? (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <button
-                              type="button"
-                              className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Plus className="size-3.5" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/skills?action=create');
-                              }}
-                            >
-                              <FilePlus2 className="size-4" />
-                              {t('skills.createManually')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Upload className="size-4" />
-                              {t('skills.uploadZip')}
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate('/home/add-extension?manual=1');
-                              }}
-                            >
-                              <Github className="size-4" />
-                              {t('skills.importFromGithub')}
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      ) : (
-                        <button
-                          type="button"
-                          className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground [@media(hover:hover)]:opacity-0 group-hover/category-header:opacity-100 transition-all"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`${routePrefix}?id=new`);
-                          }}
-                        >
-                          <Plus className="size-3.5" />
-                        </button>
-                      ))}
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('plugins.installFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : isSkill ? (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <button
+                                type="button"
+                                disabled={quota.disabled}
+                                aria-disabled={quota.disabled}
+                                aria-label={`${t('common.create')} ${config.name}`}
+                                className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all disabled:pointer-events-none disabled:opacity-40"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Plus className="size-3.5" />
+                              </button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/skills?action=create');
+                                }}
+                              >
+                                <FilePlus2 className="size-4" />
+                                {t('skills.createManually')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Upload className="size-4" />
+                                {t('skills.uploadZip')}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate('/home/add-extension?manual=1');
+                                }}
+                              >
+                                <Github className="size-4" />
+                                {t('skills.importFromGithub')}
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={quota.disabled}
+                            aria-disabled={quota.disabled}
+                            aria-label={`${t('common.create')} ${config.name}`}
+                            className="p-1 rounded-sm text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all disabled:pointer-events-none disabled:opacity-40"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`${routePrefix}?id=new`);
+                            }}
+                          >
+                            <Plus className="size-3.5" />
+                          </button>
+                        )}
+                      </WorkspaceQuotaTooltip>
+                    )}
                     <CollapsibleTrigger asChild>
                       <button
                         type="button"
@@ -1292,10 +1594,12 @@ function NavItems({
 // Dropdown menu for plugin sidebar sub-items (shown on hover)
 function PluginItemMenu({
   item,
+  canManage,
   onUpdate,
   onDelete,
 }: {
   item: SidebarEntityItem;
+  canManage: boolean;
   onUpdate: () => void;
   onDelete: () => void;
 }) {
@@ -1305,6 +1609,8 @@ function PluginItemMenu({
   const isMarketplace = item.installSource === 'marketplace';
   const isGithub = item.installSource === 'github';
   const hasSourceLink = isMarketplace || isGithub;
+
+  if (!canManage && !hasSourceLink) return null;
 
   function handleViewSource() {
     const slashIdx = item.id.indexOf('/');
@@ -1346,7 +1652,7 @@ function PluginItemMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent side="right" align="start">
-        {isMarketplace && (
+        {canManage && isMarketplace && (
           <DropdownMenuItem
             className="cursor-pointer"
             onClick={() => {
@@ -1375,16 +1681,18 @@ function PluginItemMenu({
             <span>{t('plugins.viewSource')}</span>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem
-          className="cursor-pointer text-red-600 focus:text-red-600"
-          onClick={() => {
-            onDelete();
-            setOpen(false);
-          }}
-        >
-          <Trash className="size-4" />
-          <span>{t('plugins.delete')}</span>
-        </DropdownMenuItem>
+        {canManage && (
+          <DropdownMenuItem
+            className="cursor-pointer text-red-600 focus:text-red-600"
+            onClick={() => {
+              onDelete();
+              setOpen(false);
+            }}
+          >
+            <Trash className="size-4" />
+            <span>{t('plugins.delete')}</span>
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -1521,6 +1829,17 @@ function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
     );
   if (matchedChild) return matchedChild;
 
+  // Keep the legacy Pipeline URL usable after Pipelines and Agents were
+  // unified under the Processors section.
+  if (
+    pathname === '/home/pipelines' ||
+    pathname.startsWith('/home/pipelines/')
+  ) {
+    return sidebarConfigList.find(
+      (childConfig) => childConfig.id === 'pipelines',
+    );
+  }
+
   if (
     pathname === '/home/mcp' ||
     pathname === '/home/skills' ||
@@ -1574,6 +1893,17 @@ export default function HomeSidebar({
     useState<Record<string, boolean>>(loadSectionState);
   const { theme, setTheme } = useTheme();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const workspaces = useWorkspaceBootstrap();
+  const showWorkspaceSwitcher =
+    workspaces.length > 1 ||
+    currentWorkspace?.workspace.source === 'cloud_projection';
+  const canViewStorageAnalysis =
+    currentWorkspace?.workspace.source !== 'cloud_projection' &&
+    currentWorkspace?.permissions.includes('audit.view');
+  // The operation log is an audit surface: owner / admin only.
+  const canViewOperationTrace =
+    currentWorkspace?.permissions.includes('audit.view') ?? false;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('models');
@@ -1583,6 +1913,7 @@ export default function HomeSidebar({
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [cloudPlansOpen, setCloudPlansOpen] = useState(false);
   const [userEmail, setUserEmail] = useState<string>('');
   const [starCount, setStarCount] = useState<number | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -1617,6 +1948,19 @@ export default function HomeSidebar({
     });
   }
 
+  useEffect(() => {
+    const openWorkspaceSettings = () => openSettings('workspace');
+    window.addEventListener(
+      OPEN_WORKSPACE_SETTINGS_EVENT,
+      openWorkspaceSettings,
+    );
+    return () =>
+      window.removeEventListener(
+        OPEN_WORKSPACE_SETTINGS_EVENT,
+        openWorkspaceSettings,
+      );
+  });
+
   function handleSettingsSectionChange(section: SettingsSection) {
     setSettingsSection(section);
     const params = new URLSearchParams(searchParams.toString());
@@ -1640,10 +1984,6 @@ export default function HomeSidebar({
 
   useEffect(() => {
     initSelect();
-    if (!localStorage.getItem('token')) {
-      localStorage.setItem('token', 'test-token');
-      localStorage.setItem('userEmail', 'test@example.com');
-    }
 
     const storedEmail = localStorage.getItem('userEmail');
     if (storedEmail) {
@@ -1782,6 +2122,7 @@ export default function HomeSidebar({
   }
 
   function handleLogout() {
+    clearUserInfo();
     localStorage.removeItem('token');
     localStorage.removeItem('userEmail');
     window.location.href = '/login';
@@ -1842,6 +2183,30 @@ export default function HomeSidebar({
           </SidebarMenu>
         </SidebarHeader>
 
+        {showWorkspaceSwitcher && (
+          <div className="flex items-center gap-1 px-2 group-data-[collapsible=icon]:px-0">
+            <WorkspaceSwitcher className="min-w-0 flex-1 group-data-[collapsible=icon]:min-w-0 group-data-[collapsible=icon]:px-2" />
+            {currentWorkspace?.workspace.source === 'cloud_projection' && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-9 shrink-0 group-data-[collapsible=icon]:hidden"
+                    aria-label={t('workspace.upgradePlan')}
+                    onClick={() => setCloudPlansOpen(true)}
+                  >
+                    <ArrowUp className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="right">
+                  {t('workspace.upgradePlan')}
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
+        )}
+
         {/* Navigation items grouped by section */}
         <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <SidebarContent ref={navigationContentRef} className="min-h-0 pb-8">
@@ -1899,7 +2264,7 @@ export default function HomeSidebar({
         <SidebarFooter>
           {/* Models entry */}
           <SidebarMenu>
-            <SidebarMenuItem>
+            <SidebarMenuItem data-sidebar-guide="models">
               <SidebarMenuButton
                 onClick={() => openSettings('models')}
                 tooltip={t('models.title')}
@@ -1908,20 +2273,24 @@ export default function HomeSidebar({
                 <span>{t('models.title')}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            {/* Operation log entry moved to the account menu: it is an audit
+                surface, not a primary navigation target. */}
           </SidebarMenu>
 
-          {/* API Integration entry */}
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                onClick={() => openSettings('apiIntegration')}
-                tooltip={t('common.apiIntegration')}
-              >
-                <KeyRound className="size-4 text-blue-500" />
-                <span>{t('common.apiIntegration')}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          {/* API-key management is available only to authorized Workspace roles. */}
+          {currentWorkspace?.permissions.includes('api_key.manage') && (
+            <SidebarMenu>
+              <SidebarMenuItem data-sidebar-guide="api-integration">
+                <SidebarMenuButton
+                  onClick={() => openSettings('apiIntegration')}
+                  tooltip={t('common.apiIntegration')}
+                >
+                  <KeyRound className="size-4 text-blue-500" />
+                  <span>{t('common.apiIntegration')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          )}
 
           {/* User menu using sidebar-07 nav-user DropdownMenu pattern */}
           <SidebarMenu>
@@ -2013,12 +2382,34 @@ export default function HomeSidebar({
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
-                        openSettings('storageAnalysis');
+                        openSettings('workspace');
                       }}
                     >
-                      <HardDrive />
-                      {t('storageAnalysis.title')}
+                      <UsersRound />
+                      {t('workspace.settings')}
                     </DropdownMenuItem>
+                    {canViewStorageAnalysis && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          openSettings('storageAnalysis');
+                        }}
+                      >
+                        <HardDrive />
+                        {t('storageAnalysis.title')}
+                      </DropdownMenuItem>
+                    )}
+                    {canViewOperationTrace && (
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          openSettings('operationTrace');
+                        }}
+                      >
+                        <History />
+                        {t('operationTrace.title')}
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem
                       onClick={() => {
                         setUserMenuOpen(false);
@@ -2039,12 +2430,12 @@ export default function HomeSidebar({
                           localStorage.getItem('langbot_language');
                         if (language === 'zh-Hans' || language === 'zh-Hant') {
                           window.open(
-                            'https://link.langbot.app/zh/docs/guide',
+                            'https://langbot.app/docs/zh/insight/guide',
                             '_blank',
                           );
                         } else {
                           window.open(
-                            'https://link.langbot.app/en/docs/guide',
+                            'https://langbot.app/docs/en/insight/guide',
                             '_blank',
                           );
                         }
@@ -2106,6 +2497,7 @@ export default function HomeSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
+        <SidebarRail />
       </Sidebar>
 
       <Dialog open={feedbackOpen} onOpenChange={setFeedbackOpen}>
@@ -2120,6 +2512,16 @@ export default function HomeSidebar({
         </DialogContent>
       </Dialog>
 
+      {currentWorkspace && (
+        <Suspense fallback={null}>
+          <CloudPlansDialog
+            open={cloudPlansOpen}
+            onOpenChange={setCloudPlansOpen}
+            workspace={currentWorkspace}
+            spaceURL={systemInfo.cloud_service_url}
+          />
+        </Suspense>
+      )}
       <SettingsDialog
         open={settingsOpen}
         onOpenChange={handleSettingsOpenChange}
@@ -2131,6 +2533,7 @@ export default function HomeSidebar({
         onOpenChange={setVersionDialogOpen}
         release={latestRelease}
       />
+      <SidebarGuide />
     </>
   );
 }

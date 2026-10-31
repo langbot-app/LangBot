@@ -1,4 +1,10 @@
 .github
+.git
+**/.git
+__pycache__
+**/__pycache__
+*.pyc
+**/*.pyc
 .venv
 .vscode
 .data
@@ -6,3 +12,15 @@
 web/.next
 web/node_modules
 web/.env
+
+# Documentation site dependencies and generated output
+docs/node_modules/
+docs/.next/
+docs/dist/
+docs/.fumapress/
+docs/.waku/
+docs/content/
+docs/public/
+
+plugins/
+**/*.lbpkg

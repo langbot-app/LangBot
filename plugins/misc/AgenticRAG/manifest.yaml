@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: AgenticRAG
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/AgenticRAG
+  version: 0.1.6
+  description:
+    en_US: Agentic RAG plugin that exposes knowledge base retrieval as a Tool, allowing
+      the Agent to autonomously decide when and what to search.
+    zh_Hans: Agentic RAG 插件，将知识库检索以 Tool 形式暴露给 Agent，让 Agent 自主决定检索时机和策略。
+    zh_Hant: Agentic RAG 插件，將知識庫檢索以 Tool 形式暴露給 Agent，讓 Agent 自主決定檢索時機和策略。
+    ja_JP: Agentic RAG プラグイン。ナレッジベース検索をToolとしてAgentに公開し、検索タイミングと戦略をAgentが自律的に判断します。
+    vi_VN: Plugin Agentic RAG, cung cấp khả năng truy xuất cơ sở tri thức dưới dạng
+      Tool cho Agent, để Agent tự quyết định thời điểm và chiến lược tìm kiếm.
+    th_TH: ปลั๊กอิน Agentic RAG เปิดการค้นหาฐานความรู้เป็น Tool ให้ Agent ตัดสินใจเองว่าจะค้นหาเมื่อใดและอย่างไร
+    es_ES: Plugin Agentic RAG que expone la búsqueda en la base de conocimientos como
+      una herramienta (Tool), permitiendo al Agente decidir autónomamente cuándo y
+      qué buscar.
+  label:
+    en_US: AgenticRAG
+    zh_Hans: AgenticRAG
+    zh_Hant: AgenticRAG
+    ja_JP: AgenticRAG
+    vi_VN: AgenticRAG
+    th_TH: AgenticRAG
+    es_ES: AgenticRAG
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Tool:
+      fromDirs:
+      - path: components/tools/
+    EventListener:
+      fromDirs:
+      - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: AgenticRAG
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

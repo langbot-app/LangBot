@@ -1,0 +1,11 @@
+{
+  "event_type": "friend.request_received",
+  "data": {
+    "user": {
+      "id": "demo-alice",
+      "nickname": "Alice"
+    },
+    "request_id": "request-demo-1",
+    "message": "想了解 Runner"
+  }
+}

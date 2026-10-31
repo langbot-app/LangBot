@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: sysstat
+  label:
+    en_US: SysStat
+    zh_Hans: 系统状态
+  description:
+    en_US: 'View system status including CPU, memory, and disk usage'
+    zh_Hans: '查看系统状态,包括 CPU、内存和磁盘使用情况'
+spec:
+execution:
+  python:
+    path: sysstat.py
+    attr: SysStat

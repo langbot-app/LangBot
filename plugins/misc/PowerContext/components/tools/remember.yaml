@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: powercontext_remember
+  label:
+    en_US: Remember with PowerContext
+    zh_Hans: 用 PowerContext 记忆
+  description:
+    en_US: Save one explicit, curated memory in the current PowerContext Scope.
+    zh_Hans: 在当前 PowerContext Scope 中保存一条明确、经过筛选的记忆。
+spec:
+  parameters:
+    type: object
+    properties:
+      text:
+        type: string
+        description: Concise factual content to remember. Attribute people explicitly.
+      kind:
+        type: string
+        description: Memory category, for example preference, decision, fact, plan, or correction.
+      reason:
+        type: string
+        description: Optional reason why this information should remain available later.
+    required:
+      - text
+  llm_prompt: |
+    Save an explicit durable memory only when the user asks to remember something or the
+    information is clearly stable and useful across future conversations. Use kind values
+    such as preference, decision, fact, plan, or correction. Attribute the speaker in text.
+    Never store credentials, API keys, one-time codes, secrets, speculative sensitive claims,
+    private third-party gossip, or ordinary small talk. Do not write merely because a recall
+    returned no result.
+execution:
+  python:
+    path: remember.py
+    attr: Remember

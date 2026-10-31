@@ -159,6 +159,16 @@ def _discard_query_state(query_key: int) -> None:
     _QUERY_STATES.pop(query_key, None)
 
 
+def discard_query_state(query: pipeline_query.Query) -> None:
+    """Release all diagnostics retained for a query leaving the runtime pool."""
+
+    query_key = id(query)
+    state = _QUERY_STATES.get(query_key)
+    if state is not None and state.finalizer is not None:
+        state.finalizer.detach()
+    _discard_query_state(query_key)
+
+
 def _discard_query_state_if_empty(query: pipeline_query.Query) -> None:
     query_key = id(query)
     state = _QUERY_STATES.get(query_key)
@@ -166,9 +176,7 @@ def _discard_query_state_if_empty(query: pipeline_query.Query) -> None:
         return
     if state.pending_by_chain_id or state.by_response_index:
         return
-    if state.finalizer is not None:
-        state.finalizer.detach()
-    _discard_query_state(query_key)
+    discard_query_state(query)
 
 
 def _get_response_sources(

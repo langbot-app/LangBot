@@ -24,7 +24,10 @@ class SeekDBEmbedding(requester.ProviderAPIRequester):
         try:
             import pyseekdb
         except ImportError:
-            raise ImportError('pyseekdb is not installed. Install it with: pip install pyseekdb')
+            raise ImportError(
+                "SeekDB support is not installed. Install LangBot with the 'seekdb' extra: "
+                "uv sync --extra seekdb (source) or uvx --from 'langbot[seekdb]@latest' langbot (PyPI)."
+            )
 
         self._embedding_function = pyseekdb.get_default_embedding_function()
 

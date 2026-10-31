@@ -1,0 +1,113 @@
+---
+title: "LangBot v4.10.0：Agent 沙箱与技能——让 Agent 真正像开发者一样工作"
+description: "LangBot v4.10.0 为内置 Agent 引入真正的沙箱（Box Runtime）和按需加载的技能（Skills）系统。Agent 现在能在隔离环境中执行命令、读写文件，并在任务需要时即时调用专业知识。本文深度解读这次更新的设计与用法。"
+---
+
+本文同步自 LangBot Blog。 [阅读 Blog 原文](https://langbot.app/zh/blog/langbot-v4100-sandbox-skills).
+
+发布于 2026-06-04 · 作者：LangBot Team
+
+![LangBot v4.10.0 Agentic Sandbox & Skills](/images/articles/source/images/covers/sandbox-skills.png)
+
+LangBot v4.10.0 是迄今为止幅度最大的一次 Agent 更新。它做了两件事，都指向同一个方向——**让内置 Agent 真正像一个开发者那样工作**：
+
+1. **沙箱（Sandbox）**：Agent 现在运行在真正隔离的环境里，能执行命令、读写文件。
+2. **技能（Skills）**：Agent 可以在任务需要时按需加载专业知识，而不必把所有东西都塞进上下文。
+
+这两项能力均由社区贡献者 [@huanghuoguoguo](https://github.com/huanghuoguoguo) 主导开发。下面分别展开。
+
+> **第一次了解 LangBot？** [LangBot](https://github.com/langbot-app/LangBot) 是一个开源的大模型机器人平台（GitHub 15k+ stars），让你用一个实例就能把 AI 聊天机器人部署到 **QQ、微信（个人微信 / 企业微信）、飞书、钉钉、Discord、Telegram、Slack** 等十几个平台。它把 20+ 大语言模型（OpenAI GPT、Anthropic Claude、Google Gemini、DeepSeek 等）接入 13+ 即时通讯平台，内置 Agent、RAG 知识库、MCP 支持和插件生态。你可以用一条 Docker 命令自部署，也可以在 [LangBot 云](https://space.langbot.app/cloud)上使用托管版本。
+
+## 📦 沙箱：给 Agent 一个真正的工作空间
+
+在此之前，LangBot 的内置 Agent 只能调用预先定义好的工具。它无法"打开终端跑一条命令"，也无法"把中间结果写到文件里再读回来"——而这恰恰是人类开发者每天都在做的事。
+
+v4.10.0 引入了全新的 **Box Runtime**。它给 Agent 提供一个隔离的沙箱环境，内置六件套原生工具：
+
+| 工具 | 作用 |
+|------|------|
+| `exec` | 执行 shell 命令 |
+| `read` | 读取文件内容 |
+| `write` | 写入文件 |
+| `edit` | 对文件做局部修改 |
+| `glob` | 按通配符查找文件 |
+| `grep` | 在文件内容中检索 |
+
+有了这套工具，Agent 就能像开发者一样：跑一段脚本、把输出存到文件、再读回来分析、对结果做二次处理。整个过程都发生在隔离环境内，不会污染宿主。
+
+![LangBot 沙箱运行界面](/images/articles/source/images/sandbox-skills/sandbox.png)
+
+### 可插拔的后端
+
+沙箱的执行后端是**可插拔**的，LangBot 会根据部署环境自动选择：
+
+- **Docker**：启动一个独立的 `langbot_box` 容器，通过 WebSocket 与主进程通信。适合容器化部署。
+- **nsjail**：基于 Linux namespace 的轻量级隔离，无需额外容器。适合裸机或单容器部署。
+- **E2B**：云端沙箱，把执行放到远端隔离环境。
+
+你不需要手动指定——`box.enabled` 是总开关，开启后 LangBot 会自动探测并选用最合适的后端，探测失败时优雅降级。
+
+![沙箱原生工具](/images/articles/source/images/sandbox-skills/sandbox-tools.png)
+
+### 它还托管 MCP Server
+
+除了原生工具，Box Runtime 还承担一个重要职责：**托管 stdio 模式的 MCP Server**。
+
+过去 stdio 模式的 MCP Server 需要在主进程里直接拉起子进程，既不安全也不好管理。现在它们统一跑在沙箱内，与 Agent 的执行环境共享同一套隔离边界。`http` / `sse` 模式的 MCP 不受影响，照常工作。
+
+## 🎯 技能：按需加载的专业能力
+
+第二个大更新是**技能（Skills）**。
+
+随着 Agent 能做的事越来越多，一个老问题浮现出来：**上下文窗口是有限的**。如果把所有可能用到的指令、流程、参考资料都塞进系统提示词，上下文很快就会被撑爆，而且大部分内容在当前任务里根本用不上。
+
+技能的设计思路很直接——**平时只看目录，用时才翻书**。
+
+一个技能（Skill）是一个**按需激活的指令包**，包含：
+
+- **提示词**：告诉 Agent 这个技能是做什么的、什么时候用
+- **流程**：完成某类任务的步骤
+- **脚本**：可直接执行的辅助脚本
+- **参考文件**：API 文档、模板、示例等
+
+Agent 平时只能看到**可用技能的列表**（名称 + 简介），这只占用极少的上下文。当它判断某个任务需要某个技能时，再通过 `activate` 动作即时拉取该技能的完整内容。
+
+![LangBot 技能系统](/images/articles/source/images/sandbox-skills/skills.png)
+
+这样做的好处显而易见：
+
+1. **上下文精简**：不相关的技能内容不会占用窗口。
+2. **能力可扩展**：想给 Agent 加一项新本领？写一个技能包即可，不用改核心代码。
+3. **即时生效**：技能在任务执行中动态加载，无需重启。
+
+如果你用过 Claude 的 Skills 或类似机制，会对这个模式很熟悉——它把"Agent 知道什么"和"Agent 此刻需要什么"解耦开来。
+
+## 🧩 4.9.x 期间已提前到位的能力
+
+以下几项原计划随 v4.10.0 发布，但已在 4.9.x 系列中提前上线：
+
+- **插件扩展页面**：插件可以通过 iframe + Page SDK 渲染自定义 UI（[@TyperBody](https://github.com/TyperBody)，#2107）
+- **监控**：反馈与消息 ID 关联，并支持反馈数据导出（[@6mvp6](https://github.com/6mvp6)，#2120）
+- **安全加固**：修复路径穿越问题，移除了一个需要鉴权的 RCE 端点（[@sebastiondev](https://github.com/sebastiondev)，#2087 / #2178）
+
+## 🚀 如何启用
+
+沙箱需要一个执行后端，按部署方式不同：
+
+- **Docker**：运行 `docker compose --profile all up`，会一并启动 `langbot_box` 容器。
+- **手动 / `uvx`**：自动以 stdio 子进程方式运行，无需额外操作。
+- **LangBot 云**：开箱即用，沙箱已经为你配置好，无需安装。
+
+如果你想关闭沙箱，设置 `box.enabled: false` 即可——此时内置工具、技能的创建/编辑，以及 stdio 模式的 MCP 都会停用；`http` / `sse` 模式的 MCP 不受影响。详见[沙箱文档](https://langbot.app/docs/zh/usage/sandbox/readme)。
+
+此外，本次更新将插件 SDK 升级至 **`langbot-plugin 0.4.1`**。
+
+## 写在最后
+
+沙箱和技能这两项能力，本质上是在回答同一个问题：**怎样让 Agent 处理真正复杂、开放的任务？**
+
+沙箱解决的是"**手**"——让 Agent 有能力执行、有空间试错；技能解决的是"**脑**"——让 Agent 在合适的时机调用合适的知识，而不被无关信息淹没。
+
+最快的体验方式是在 [LangBot 云](https://space.langbot.app/cloud)上一键部署一个托管实例，沙箱已经就绪。也可以查看[完整发布说明](https://github.com/langbot-app/LangBot/releases/tag/v4.10.0)了解全部变更。
+
+感谢每一位与 LangBot 一起构建的开发者。我们会继续把云端 Agent 的体验做得更稳、更强。

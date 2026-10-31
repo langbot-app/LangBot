@@ -1,0 +1,17 @@
+[
+    {
+        "stepTitle": "数据保留",
+        "items": [
+            {
+                "type": "radio",
+                "field": "wizard_keep_data",
+                "label": "是否保留 LangBot 数据（插件、配置、日志）",
+                "initValue": "yes",
+                "options": [
+                    { "label": "保留数据（重新安装后可继续使用）", "value": "yes" },
+                    { "label": "彻底删除全部数据", "value": "no" }
+                ]
+            }
+        ]
+    }
+]

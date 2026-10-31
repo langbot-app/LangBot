@@ -28,7 +28,7 @@ class TestCheckDeps:
 
                 import asyncio
 
-                result = asyncio.get_event_loop().run_until_complete(check_deps())
+                result = asyncio.run(check_deps())
 
                 assert result == []
 
@@ -48,10 +48,9 @@ class TestCheckDeps:
 
                 import asyncio
 
-                result = asyncio.get_event_loop().run_until_complete(check_deps())
+                result = asyncio.run(check_deps())
 
-                assert 'requests' in result
-                assert 'openai' in result
+                assert result == ['requests', 'openai']
 
     def test_check_deps_all_missing(self):
         """check_deps returns all deps when none present."""
@@ -64,10 +63,9 @@ class TestCheckDeps:
 
                 import asyncio
 
-                result = asyncio.get_event_loop().run_until_complete(check_deps())
+                result = asyncio.run(check_deps())
 
-                # Should include all required_deps keys
-                assert len(result) == len(required_deps)
+                assert result == list(required_deps)
 
     def test_required_deps_dict_exists(self):
         """required_deps dictionary is defined."""
@@ -111,7 +109,7 @@ class TestPrecheckPluginDeps:
             with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
                 import asyncio
 
-                asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
+                asyncio.run(precheck_plugin_deps())
 
                 mock_install.assert_not_called()
 
@@ -134,6 +132,6 @@ class TestPrecheckPluginDeps:
                     with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
                         import asyncio
 
-                        asyncio.get_event_loop().run_until_complete(precheck_plugin_deps())
+                        asyncio.run(precheck_plugin_deps())
 
         mock_install.assert_called_once_with('plugins/plugin1/requirements.txt', extra_params=[])

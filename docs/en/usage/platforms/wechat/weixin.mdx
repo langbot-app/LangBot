@@ -1,0 +1,51 @@
+---
+title: "Personal WeChat (OpenClaw)"
+description: "Build a personal WeChat AI bot with LangBot. Connect large language models to your WeChat account."
+---
+
+## Introduction
+
+[OpenClaw](https://github.com/dingxiang-me/OpenClaw-Wechat) is an open-source AI Agent framework. Through the OpenClaw WeChat adapter, you can connect LangBot to your personal WeChat account, supporting single chat, streaming output, whitelist control, and more.
+
+## Quick Scan Login (Recommended)
+
+LangBot supports one-click scan login for WeChat, automatically filling in credentials — no manual token entry needed.
+
+<Warning>
+Please make sure your mobile WeChat version is **8.0.69** or above, otherwise it may not work properly.
+</Warning>
+
+1. Open LangBot WebUI, go to **Bots > Create Bot**
+2. Enter a bot name, select `Personal WeChat Bot` as the platform/adapter
+3. In the **Scan Login** section that appears, click the **Start** button
+
+![Select Scan Login](/images/zh/deploy/bots/wexin/wexin_scan_login.png)
+
+4. Scan the QR code with WeChat. On your phone, you'll see "Connect new OpenClaw to WeChat", tap **Continue**
+
+![Scan and Connect](/images/zh/deploy/bots/wexin/wexin_scan_connect.png)
+
+5. After authorization, the token and account ID will be **auto-filled** in the form
+
+![Config Auto Fill](/images/zh/deploy/bots/wexin/wexin_config_auto_fill.png)
+
+6. Click **Submit** to complete
+
+<Warning>
+If connection fails, please confirm your WeChat version is 8.0.69 or above.
+</Warning>
+
+### Confirm Successful Login
+
+After scanning successfully, your phone will enter the ClawBot chat page on WeChat.
+
+![WeChat ClawBot Chat Page](/images/zh/deploy/bots/wexin/wexin_05.jpg)
+
+At the same time, the LangBot logs will show a successful connection message, and the token and account fields on the configuration page will be automatically updated, indicating a successful login.
+
+![Log Information](/images/zh/deploy/bots/wexin/wexin_06.png)
+![Configuration Page](/images/zh/deploy/bots/wexin/wexin_07.png)
+
+## Start Using
+
+Once logged in, send messages to the ClawBot chat page you just entered using the scanned account, and LangBot will automatically reply.

@@ -1,0 +1,62 @@
+name: Sync LangBot Blog articles
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-langbot-blog-articles
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'langbot-app/LangBot' && github.ref == 'refs/heads/master' && vars.DOCS_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: docs
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          ref: master
+          fetch-depth: 0
+          # A PAT push triggers the landing and Wiki workflows; GITHUB_TOKEN does not.
+          token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: npm ci
+      - name: Check out LangBot landing page
+        uses: actions/checkout@v7
+        with:
+          repository: langbot-app/langbot-landing-page
+          token: ${{ secrets.LANGBOT_WIKI_PUSH_TOKEN || secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
+          path: .article-source
+          persist-credentials: false
+      - name: Synchronize articles and images
+        run: node scripts/sync-blog-articles.mjs --source ../.article-source
+      - name: Validate generated articles
+        run: |
+          node scripts/sync-blog-articles.mjs --check --source ../.article-source
+          node scripts/sync-blog-articles.mjs --check
+          npm test
+          npm run build
+      - name: Commit synchronized content
+        run: |
+          git add docs.json en/articles zh/articles ja/articles images/articles scripts/blog-articles-manifest.json
+          if git diff --cached --quiet; then
+            echo 'LangBot Blog articles are already synchronized.'
+            exit 0
+          fi
+          git config user.name 'langbot-docs-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git commit -m 'docs(articles): sync LangBot Blog'
+          git push origin HEAD:master

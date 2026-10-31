@@ -1,0 +1,134 @@
+---
+title: "LLM 请求配置"
+description: "插件与 Runner 的重试、超时、思考预算、缓存和流式取消"
+---
+
+本页对应 [Core #2661](https://github.com/langbot-app/LangBot/pull/2661) 的请求层能力。部署的 Core 必须包含该改动；合并不代表已发布。新配置通过已有的 `extra_args` 传入，不改变插件或 Runner 的方法签名、消息返回类型和权限检查。方法列表见 [LangBot API](/zh/plugin/dev/apis/common)，运行上下文见[上下文 API](/zh/plugin/dev/apis/agent-run)。
+
+## 重试与超时
+
+以下示例在一次非流式调用中设置请求策略，并读取完整用量：
+
+```python
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+result = await self.plugin.invoke_llm_with_usage(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    timeout=110,
+    extra_args={
+        "request_policy": {
+            "retries": 1,
+            "total_timeout": 90,
+            "first_event_timeout": 30,
+            "stream_idle_timeout": 30,
+            "connect_timeout": 10,
+            "read_timeout": 60,
+        },
+    },
+)
+print(result.message.content)
+if result.usage is not None:
+    print(result.usage.model_dump())
+```
+
+Runner 的 `ctx.api.invoke_llm*` 同样接受 `extra_args`，并受当前运行的授权与剩余时间限制。`self.plugin` 在运行上下文内调用也会绑定这些限制。
+
+`timeout=` 是 SDK/RPC 的等待期限，非流式默认 120 秒；`request_policy` 控制 Core 内部请求。总预算应小于外层 RPC 和 Runner 的剩余期限，增加 Core 预算不会延长外层期限。流式方法没有 `timeout=` 参数，仍受 SDK/Runner 的等待期限约束。
+
+| `request_policy` 字段 | 默认值 | 含义 |
+| --- | --- | --- |
+| `retries` | `0` | 首次尝试之外的重试次数，整数 0–5 |
+| `total_timeout` | `300` | 整次调用预算，包含重试等待 |
+| `first_event_timeout` | `120` | 等待首个上游事件，而非首个可见文字 |
+| `stream_idle_timeout` | `120` | 流式事件之间允许的空闲时间 |
+| `connect_timeout` | `10` | 建立连接的超时 |
+| `read_timeout` | `120` | 传输层读取超时 |
+| `write_timeout` | `30` | 传输层写入超时 |
+| `pool_timeout` | `10` | 等待连接池的超时 |
+| `backoff_base` / `backoff_max` | `0.5` / `8` | 指数退避基数与上限，使用 full jitter |
+| `attribution` | `True` | 自动添加应用身份头 |
+| `conversation_header` | `None` | 指定生成的会话头名称，见下文 |
+
+时间单位为秒，超时必须是有限正数，未知策略字段会被拒绝。优先级为实例 `llm_request_policy`、模型 `extra_args`、调用 `extra_args`。同层 `request_policy.retries` 优先于旧的 `num_retries` / `max_retries`；调用层旧参数仍可覆盖模型层策略，`0` 禁用重试。旧的数值 `extra_args["timeout"]` 同时设置读取、首事件和流式空闲超时，不延长总预算。
+
+鉴权、非法请求和额度耗尽不重试；收到任何上游事件后（包括思考或 usage）不再重试。`Retry-After` 受剩余总预算约束。Core 关闭托管调用的 LiteLLM 和供应商 SDK 内置重试，中转站仍可能自行重试。这里不增加工具重放、模型回退或 embedding/rerank 重试。旧第三方 requester 仍负责自己的传输配置。
+
+## 思考预算
+
+已有的 `reasoning_level` 保持不变。需要数字预算时，通过 `extra_args.reasoning_config` 设置，省略 `level` 表示 `enabled`：
+
+```json
+{
+  "reasoning_config": {"budget_tokens": 2048},
+  "max_tokens": 4096
+}
+```
+
+将此对象作为调用的 `extra_args`，或保存到模型高级参数。数字预算不能与 effort 等级（如 `medium`）、`disabled` 或供应商原生思考参数混用。直接调用 Anthropic 时必须显式设置大于预算的 `max_tokens`，Core 不会自动提高输出上限。
+
+配置依次来自模型 `reasoning_config`、模型 `extra_args.reasoning_config`、调用 `extra_args.reasoning_config`、显式 Runner 等级覆盖。每个对象整体替换前一个，后设置的 effort 等级会清除低优先级的预算。
+
+数字预算适用于原生 Anthropic、Gemini 2.5、支持该能力的 Qwen 和 OpenRouter 路由；直接 OpenAI/Codex 及仅支持 adaptive 的 Claude 仍使用 effort。根据模型的 `reasoning_capabilities.budget_tokens` 判断支持情况与上下限，不支持时在发请求前报错。供应商或中转站可能有更严格的限制，OpenRouter 也可能将预算转换为 effort。
+
+## Prompt caching
+
+`extra_args.prompt_caching` 是 Core 配置，不会原样发给供应商。调用配置整体替换模型配置，默认 `{"mode": "provider_default"}` 不添加字段。这不是本地回答缓存。
+
+| 配置 | 行为 |
+| --- | --- |
+| `{"mode": "openai", "retention": "in_memory"}` | 有会话上下文时生成按模型和会话隔离的 `prompt_cache_key`；`retention` 可省略，也可为 `24h`，需要目标模型支持 |
+| `{"mode": "anthropic", "ttl": "5m"}` | 在开头 system/developer 前缀最后一个文本块添加临时缓存标记；`ttl` 可为 `5m` 或 `1h` |
+
+OpenAI 模式用于支持相关参数的 OpenAI 兼容路由和 OpenRouter OpenAI 模型。显式原生 `prompt_cache_key`、`prompt_cache_retention`、`prompt_cache_options` 优先。Anthropic 模式支持原生 Claude 和 OpenRouter Claude；已有原生缓存标记时不重复添加，不重排工具/历史、不标记用户消息，没有合适的前缀则不添加。
+
+缓存提示不保证命中。使用 `usage.model_dump()` 检查供应商返回的 `prompt_tokens_details.cached_tokens`、`cache_read_input_tokens` 等字段；缺失不等于零。前缀最小长度、保留时间支持与计费由供应商决定。Codex 的受限 Responses 请求不接受此配置对象，保留现有服务端缓存。此改动不包含通用 Responses 迁移或 Gemini 显式缓存资源管理。
+
+## 应用与会话请求头
+
+直连 OpenRouter 时自动添加 `HTTP-Referer: https://langbot.app`、`X-OpenRouter-Title: LangBot`，有会话上下文时还会添加 `x-session-id: lb-<opaque scoped hash>`。自定义中转地址不会自动继承 OpenRouter 身份头。`request_policy.attribution=False` 仅关闭自动应用身份头；显式 `extra_headers` 仍保留，并以不区分大小写的方式优先。
+
+中转站可按其配置显式选择会话头：
+
+```json
+{
+  "request_policy": {"conversation_header": "x-litellm-session-id"},
+  "extra_headers": {
+    "HTTP-Referer": "https://langbot.app",
+    "X-OpenRouter-Title": "LangBot"
+  }
+}
+```
+
+支持 `x-session-id`、`x-litellm-session-id`、`x-langbot-conversation-id`。最后一个是自定义约定，不是通用供应商标准，不会自动带来路由或缓存收益。生成的值按 workspace/bot/pipeline/session 隔离，不发送原始会话标识或提示词；它是化名标识，不是强匿名保证。没有上下文时不生成。New API 等中转站可能过滤或改写头，需核对其转发配置与实际出站请求。
+
+## 流式取消与兼容性
+
+提前退出异步流时，使用 `aclosing` 确定性关闭生成器，任务取消时也应让取消异常继续传播：
+
+```python
+from contextlib import aclosing
+from langbot_plugin.api.entities.builtin.provider.message import Message
+
+async with aclosing(self.plugin.invoke_llm_stream_events(
+    llm_model_uuid=model_uuid,
+    messages=[Message(role="user", content="Hello!")],
+    extra_args={"request_policy": {"retries": 0, "total_timeout": 90}},
+)) as events:
+    async for event in events:
+        if event.usage is not None:
+            print(event.usage.model_dump())
+        if event.chunk is not None and event.chunk.content:
+            print(event.chunk.content)
+            break
+```
+
+此例刻意只消费第一个非空内容块，提前结束可能收不到最终 usage。完整读取时不要 `break`，末尾可能只有 usage 而没有 chunk。`invoke_llm` 仍返回 `Message`，`invoke_llm_stream` 仍返回 `MessageChunk`；需要用量时选择 `invoke_llm_with_usage` 或 `invoke_llm_stream_events`，`usage` 可为 `None`，嵌套缓存、思考和供应商附加字段会保留。
+
+SDK ≤0.7.11 存在代理层提前关闭不及时向上游传播的问题。确定性取消需要实际运行环境使用 **langbot-plugin ≥0.7.12**，该版本已发布 [SDK #177](https://github.com/langbot-app/langbot-plugin-sdk/pull/177) 的修复。Core 固定 SDK 依赖不会自动升级独立部署的 Runtime 或插件自己的开发环境；这些环境也需升级到包含修复的版本。普通调用的签名、参数载荷和返回结构保持兼容。总超时包含消费时间，但生成器停在 `yield` 时不会主动中断消费者，下一次拉取时才检查过期。
+
+## 诊断
+
+Core 监控记录的 `details` 提供 `timing`、完整 `usage` 与结构化 `error`，旧 SDK 的异常传输格式保持不变。结构化错误包含 `code`、`status_code`、`retryable`、`retry_after`、`request_id`、`phase`，不要假定插件收到的旧异常对象具有这些字段。
+
+计时单位为毫秒，包括 `preparation_ms`、`transport_setup_ms`、`first_event_ms`、`first_reasoning_ms`、`first_content_ms`、`first_visible_chunk_ms`、`total_ms`、`attempts` 和 `retry_wait_ms`。首事件可能是思考或控制事件，首个可见块也可能包含思考；`request_started_ms` 是 SDK 调用时间，不是发出网络包的时间。缺失字段代表未观测到，不是零。取消前已收到的部分用量会留在监控中，但无法补出供应商未返回的用量。

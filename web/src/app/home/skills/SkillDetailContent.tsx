@@ -21,23 +21,19 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
-import { BoxUnavailableNotice } from '@/app/home/components/BoxUnavailableNotice';
-import { useBoxStatus } from '@/app/infra/hooks/useBoxStatus';
 import { Sparkles, Trash2 } from 'lucide-react';
+import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function SkillDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const currentWorkspace = useCurrentWorkspace();
+  const canManage =
+    currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const skill = skills.find((item) => item.id === id);
-  const {
-    available: boxAvailable,
-    hint: boxHint,
-    reason: boxReason,
-  } = useBoxStatus();
-
   useEffect(() => {
     if (isCreateMode) {
       setDetailEntityName(t('skills.createSkill'));
@@ -88,30 +84,25 @@ export default function SkillDetailContent({ id }: { id: string }) {
               </Badge>
             </div>
           </div>
-          <Button
-            type="submit"
-            form="skill-form"
-            className="shrink-0"
-            disabled={!boxAvailable}
-          >
-            {t('common.save')}
-          </Button>
+          {canManage && (
+            <Button type="submit" form="skill-form" className="shrink-0">
+              {t('common.save')}
+            </Button>
+          )}
         </div>
 
-        {!boxAvailable && (
-          <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-          </div>
-        )}
-
         <div className="min-h-0 flex-1">
-          <SkillForm
-            key="new-skill"
-            initSkillName={undefined}
-            layout="split"
-            onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
-            onSkillUpdated={() => {}}
-          />
+          <fieldset className="contents" disabled={!canManage}>
+            <SkillForm
+              key="new-skill"
+              initSkillName={undefined}
+              layout="split"
+              onNewSkillCreated={(skillName) =>
+                handleImportedSkills([skillName])
+              }
+              onSkillUpdated={() => {}}
+            />
+          </fieldset>
         </div>
       </div>
     );
@@ -133,16 +124,18 @@ export default function SkillDetailContent({ id }: { id: string }) {
               {t('skills.deleteConfirmation')}
             </p>
           </div>
-          <Button
-            variant="destructive"
-            type="button"
-            size="sm"
-            onClick={() => setShowDeleteConfirm(true)}
-            className="shrink-0"
-          >
-            <Trash2 className="mr-1.5 size-4" />
-            {t('common.delete')}
-          </Button>
+          {canManage && (
+            <Button
+              variant="destructive"
+              type="button"
+              size="sm"
+              onClick={() => setShowDeleteConfirm(true)}
+              className="shrink-0"
+            >
+              <Trash2 className="mr-1.5 size-4" />
+              {t('common.delete')}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
@@ -172,27 +165,25 @@ export default function SkillDetailContent({ id }: { id: string }) {
             type="submit"
             form="skill-form"
             className="shrink-0"
-            disabled={!boxAvailable}
+            disabled={!canManage}
           >
             {t('common.save')}
           </Button>
         </div>
 
-        {!boxAvailable && (
-          <div className="pb-4 shrink-0">
-            <BoxUnavailableNotice hint={boxHint} reason={boxReason} />
-          </div>
-        )}
-
         <div className="min-h-0 flex-1">
-          <SkillForm
-            key={id}
-            initSkillName={id}
-            layout="split"
-            sideFooter={editActions}
-            onNewSkillCreated={(skillName) => handleImportedSkills([skillName])}
-            onSkillUpdated={handleSkillUpdated}
-          />
+          <fieldset className="contents" disabled={!canManage}>
+            <SkillForm
+              key={id}
+              initSkillName={id}
+              layout="split"
+              sideFooter={canManage ? editActions : undefined}
+              onNewSkillCreated={(skillName) =>
+                handleImportedSkills([skillName])
+              }
+              onSkillUpdated={handleSkillUpdated}
+            />
+          </fieldset>
         </div>
       </div>
 

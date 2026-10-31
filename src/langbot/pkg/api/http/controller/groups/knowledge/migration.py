@@ -6,8 +6,12 @@ import quart
 import sqlalchemy
 
 from ... import group
+from ....authz import Permission
+from ....context import ExecutionContext, RequestContext
 from ......core import taskmgr
 from ......entity.persistence import metadata as persistence_metadata
+from ......workspace.errors import WorkspaceError, WorkspaceNotFoundError
+from ......utils import httpclient
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 LANGRAG_PLUGIN_AUTHOR = 'langbot-team'
@@ -31,24 +35,100 @@ EXTERNAL_PLUGIN_CREATION_FIELDS: dict[str, set[str] | None] = {
     'langbot-team/FastGPTConnector': None,  # all fields -> creation_settings
 }
 
+_INFORMATION_SCHEMA_TABLES = sqlalchemy.table(
+    'tables',
+    sqlalchemy.column('table_schema'),
+    sqlalchemy.column('table_name'),
+    schema='information_schema',
+)
+_SQLITE_MASTER = sqlalchemy.table(
+    'sqlite_master',
+    sqlalchemy.column('type'),
+    sqlalchemy.column('name'),
+)
+_LEGACY_KNOWLEDGE_BASE_BACKUP = sqlalchemy.table(
+    'knowledge_bases_backup',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('embedding_model_uuid'),
+    sqlalchemy.column('top_k'),
+    sqlalchemy.column('created_at'),
+    sqlalchemy.column('updated_at'),
+)
+_LEGACY_EXTERNAL_KNOWLEDGE_BASE = sqlalchemy.table(
+    'external_knowledge_bases',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('plugin_author'),
+    sqlalchemy.column('plugin_name'),
+    sqlalchemy.column('retriever_config'),
+    sqlalchemy.column('created_at'),
+)
+_CURRENT_KNOWLEDGE_BASE = sqlalchemy.table(
+    'knowledge_bases',
+    sqlalchemy.column('uuid'),
+    sqlalchemy.column('workspace_uuid'),
+    sqlalchemy.column('name'),
+    sqlalchemy.column('description'),
+    sqlalchemy.column('emoji'),
+    sqlalchemy.column('created_at'),
+    sqlalchemy.column('updated_at'),
+    sqlalchemy.column('knowledge_engine_plugin_id'),
+    sqlalchemy.column('collection_id'),
+    sqlalchemy.column('creation_settings'),
+    sqlalchemy.column('retrieval_settings'),
+)
+
 
 @group.group_class('knowledge/migration', '/api/v1/knowledge/migration')
 class KnowledgeMigrationRouterGroup(group.RouterGroup):
-    async def _get_migration_flag(self) -> bool:
+    async def _require_local_migration_context(
+        self,
+        execution_context: ExecutionContext,
+    ) -> ExecutionContext:
+        """Fence legacy-table migration to the OSS singleton Workspace.
+
+        The backup tables predate Workspace scoping and are deliberately
+        instance-global.  A cloud projection must therefore never be allowed
+        to inspect or restore them, even when it has a valid execution lease.
+        """
+        try:
+            binding = await self.ap.workspace_service.get_local_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+        except WorkspaceNotFoundError:
+            raise
+        except WorkspaceError as exc:
+            raise WorkspaceNotFoundError('RAG migration is unavailable') from exc
+
+        if binding.instance_uuid != execution_context.instance_uuid:
+            raise WorkspaceNotFoundError('RAG migration is unavailable')
+        return ExecutionContext(
+            instance_uuid=binding.instance_uuid,
+            workspace_uuid=binding.workspace_uuid,
+            placement_generation=binding.placement_generation,
+        )
+
+    async def _get_migration_flag(self, execution_context: ExecutionContext) -> bool:
         """Check if rag_plugin_migration_needed flag is set."""
         result = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_metadata.Metadata).where(
-                persistence_metadata.Metadata.key == 'rag_plugin_migration_needed'
-            )
+            sqlalchemy.select(persistence_metadata.WorkspaceMetadata.value)
+            .where(persistence_metadata.WorkspaceMetadata.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_metadata.WorkspaceMetadata.key == 'rag_plugin_migration_needed')
         )
-        row = result.first()
-        return row is not None and row.value == 'true'
+        return result.scalar_one_or_none() == 'true'
 
-    async def _set_migration_flag(self, value: str):
+    async def _set_migration_flag(self, execution_context: ExecutionContext, value: str):
         """Set rag_plugin_migration_needed flag."""
         await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.update(persistence_metadata.Metadata)
-            .where(persistence_metadata.Metadata.key == 'rag_plugin_migration_needed')
+            sqlalchemy.update(persistence_metadata.WorkspaceMetadata)
+            .where(persistence_metadata.WorkspaceMetadata.workspace_uuid == execution_context.workspace_uuid)
+            .where(persistence_metadata.WorkspaceMetadata.key == 'rag_plugin_migration_needed')
             .values(value=value)
         )
 
@@ -56,35 +136,47 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         """Check if a table exists."""
         if self.ap.persistence_mgr.db.name == 'postgresql':
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text(
-                    'SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = :table_name);'
-                ).bindparams(table_name=table_name)
+                sqlalchemy.select(_INFORMATION_SCHEMA_TABLES.c.table_name)
+                .where(_INFORMATION_SCHEMA_TABLES.c.table_schema == 'public')
+                .where(_INFORMATION_SCHEMA_TABLES.c.table_name == table_name)
+                .limit(1)
             )
-            return result.scalar()
+            return result.first() is not None
         else:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:table_name;").bindparams(
-                    table_name=table_name
-                )
+                sqlalchemy.select(_SQLITE_MASTER.c.name)
+                .where(_SQLITE_MASTER.c.type == 'table')
+                .where(_SQLITE_MASTER.c.name == table_name)
+                .limit(1)
             )
             return result.first() is not None
 
     async def _install_plugin_from_marketplace(
-        self, plugin_id: str, task_context: taskmgr.TaskContext, space_url: str
+        self,
+        execution_context: ExecutionContext,
+        plugin_id: str,
+        task_context: taskmgr.TaskContext,
+        space_url: str,
     ) -> None:
         """Install a single plugin from the marketplace."""
         p_author, p_name = plugin_id.split('/', 1)
         self.ap.logger.info(f'RAG migration: installing plugin {plugin_id} from marketplace...')
         task_context.trace(f'Installing plugin {plugin_id} from marketplace...')
 
-        async with httpx.AsyncClient(trust_env=True, timeout=15) as client:
+        async with httpx.AsyncClient(
+            trust_env=True,
+            timeout=15,
+            event_hooks=httpclient.httpx_response_limit_hooks(),
+        ) as client:
             resp = await client.get(f'{space_url}/api/v1/marketplace/plugins/{p_author}/{p_name}')
             resp.raise_for_status()
-            p_data = resp.json().get('data', {}).get('plugin', {})
+            response_data = await httpclient.parse_json_response(resp)
+            p_data = response_data.get('data', {}).get('plugin', {})
             p_version = p_data.get('latest_version')
             if not p_version:
                 raise Exception(f'Could not determine latest version for {plugin_id}')
 
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
         await self.ap.plugin_connector.install_plugin(
             PluginInstallSource.MARKETPLACE,
             {
@@ -96,8 +188,15 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         )
         self.ap.logger.info(f'RAG migration: plugin {plugin_id} install request sent.')
 
-    async def _execute_rag_migration(self, task_context: taskmgr.TaskContext, install_plugin: bool = True):
+    async def _execute_rag_migration(
+        self,
+        execution_context: ExecutionContext,
+        task_context: taskmgr.TaskContext,
+        install_plugin: bool = True,
+    ):
         """Execute RAG migration: install required plugins and restore backup data."""
+        execution_context = await self._require_local_migration_context(execution_context)
+        execution_context = await self.ap.plugin_connector.require_workspace_context(execution_context)
         warnings = []
 
         # Collect all plugins we need: LangRAG (always) + connector plugins (from external KBs)
@@ -108,7 +207,10 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         has_external = await self._table_exists('external_knowledge_bases')
         if has_external:
             result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT DISTINCT plugin_author, plugin_name FROM external_knowledge_bases;')
+                sqlalchemy.select(
+                    _LEGACY_EXTERNAL_KNOWLEDGE_BASE.c.plugin_author,
+                    _LEGACY_EXTERNAL_KNOWLEDGE_BASE.c.plugin_name,
+                ).distinct()
             )
             for row in result.fetchall():
                 plugin_author = row[0] or ''
@@ -127,7 +229,14 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
 
             for plugin_id in needed_plugins:
                 try:
-                    await self._install_plugin_from_marketplace(plugin_id, task_context, space_url)
+                    await self._install_plugin_from_marketplace(
+                        execution_context,
+                        plugin_id,
+                        task_context,
+                        space_url,
+                    )
+                except WorkspaceNotFoundError:
+                    raise
                 except Exception as e:
                     self.ap.logger.warning(f'RAG migration: plugin {plugin_id} install returned: {e}')
                     task_context.trace(f'Plugin install note ({plugin_id}): {e}')
@@ -141,8 +250,11 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             engine_id_set: set[str] = set()
             for i in range(max_retries):
                 try:
+                    await self.ap.plugin_connector.require_workspace_context(execution_context)
                     engines = await self.ap.plugin_connector.list_knowledge_engines()
                     engine_id_set = {e.get('plugin_id') for e in engines}
+                except WorkspaceNotFoundError:
+                    raise
                 except Exception:
                     pass
                 if all(pid in engine_id_set for pid in needed_plugins):
@@ -158,17 +270,18 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 await asyncio.sleep(2)
         else:
             try:
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
                 engines = await self.ap.plugin_connector.list_knowledge_engines()
                 engine_id_set = {e.get('plugin_id') for e in engines}
+            except WorkspaceNotFoundError:
+                raise
             except Exception:
                 engine_id_set = set()
 
         # Step 3: Restore internal knowledge bases from backup
         task_context.trace('Restoring internal knowledge bases...', action='restore-internal')
         if await self._table_exists('knowledge_bases_backup'):
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT * FROM knowledge_bases_backup;')
-            )
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(_LEGACY_KNOWLEDGE_BASE_BACKUP))
             rows = result.fetchall()
             columns = result.keys()
 
@@ -183,30 +296,30 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 created_at = row_dict.get('created_at')
                 updated_at = row_dict.get('updated_at')
 
+                # DB migration 20 created these columns as TEXT, while a fresh
+                # schema uses SQLAlchemy JSON.  Keep the statement structured,
+                # but retain untyped bound values so both physical schemas and
+                # SQLite's string-valued legacy DATETIME rows remain valid.
                 creation_settings = json.dumps({'embedding_model_uuid': embedding_model_uuid})
                 retrieval_settings = json.dumps({'top_k': top_k})
 
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(
-                        'INSERT INTO knowledge_bases '
-                        '(uuid, name, description, emoji, created_at, updated_at, '
-                        'knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings) '
-                        'VALUES (:uuid, :name, :description, :emoji, :created_at, :updated_at, '
-                        ':plugin_id, :collection_id, :creation_settings, :retrieval_settings);'
-                    ).bindparams(
+                    sqlalchemy.insert(_CURRENT_KNOWLEDGE_BASE).values(
                         uuid=kb_uuid,
+                        workspace_uuid=execution_context.workspace_uuid,
                         name=name,
                         description=description,
                         emoji=emoji,
                         created_at=created_at,
                         updated_at=updated_at,
-                        plugin_id=LANGRAG_PLUGIN_ID,
+                        knowledge_engine_plugin_id=LANGRAG_PLUGIN_ID,
                         collection_id=kb_uuid,
                         creation_settings=creation_settings,
                         retrieval_settings=retrieval_settings,
                     )
                 )
 
+                await self.ap.plugin_connector.require_workspace_context(execution_context)
                 try:
                     config = {'embedding_model_uuid': embedding_model_uuid}
                     await self.ap.plugin_connector.rag_on_kb_create(LANGRAG_PLUGIN_ID, kb_uuid, config)
@@ -221,9 +334,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
         # Step 4: Restore external knowledge bases
         task_context.trace('Restoring external knowledge bases...', action='restore-external')
         if has_external:
-            result = await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.text('SELECT * FROM external_knowledge_bases;')
-            )
+            result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(_LEGACY_EXTERNAL_KNOWLEDGE_BASE))
             rows = result.fetchall()
             columns = result.keys()
 
@@ -266,20 +377,15 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     retrieval_settings_dict = {k: v for k, v in retriever_config.items() if k not in creation_fields}
 
                 await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.text(
-                        'INSERT INTO knowledge_bases '
-                        '(uuid, name, description, emoji, created_at, updated_at, '
-                        'knowledge_engine_plugin_id, collection_id, creation_settings, retrieval_settings) '
-                        'VALUES (:uuid, :name, :description, :emoji, :created_at, :updated_at, '
-                        ':plugin_id, :collection_id, :creation_settings, :retrieval_settings);'
-                    ).bindparams(
+                    sqlalchemy.insert(_CURRENT_KNOWLEDGE_BASE).values(
                         uuid=kb_uuid,
+                        workspace_uuid=execution_context.workspace_uuid,
                         name=name,
                         description=description,
                         emoji=emoji,
                         created_at=created_at,
                         updated_at=created_at,
-                        plugin_id=external_plugin_id,
+                        knowledge_engine_plugin_id=external_plugin_id,
                         collection_id=kb_uuid,
                         creation_settings=json.dumps(creation_settings_dict),
                         retrieval_settings=json.dumps(retrieval_settings_dict),
@@ -294,6 +400,7 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                     warnings.append(warning)
                     task_context.trace(warning)
                 else:
+                    await self.ap.plugin_connector.require_workspace_context(execution_context)
                     try:
                         await self.ap.plugin_connector.rag_on_kb_create(
                             external_plugin_id, kb_uuid, creation_settings_dict
@@ -307,16 +414,23 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             await self.ap.rag_mgr.load_knowledge_bases_from_db()
 
         # Step 5: Clear migration flag
-        await self._set_migration_flag('false')
+        await self._set_migration_flag(execution_context, 'false')
         task_context.trace('RAG migration completed.', action='done')
 
         if warnings:
             task_context.trace(f'Completed with {len(warnings)} warning(s).')
 
     async def initialize(self) -> None:
-        @self.route('/status', methods=['GET'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            needed = await self._get_migration_flag()
+        @self.route(
+            '/status',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            execution_context = ExecutionContext.from_request(request_context)
+            execution_context = await self._require_local_migration_context(execution_context)
+            needed = await self._get_migration_flag(execution_context)
 
             internal_kb_count = 0
             external_kb_count = 0
@@ -324,13 +438,13 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
             if needed:
                 if await self._table_exists('knowledge_bases_backup'):
                     result = await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text('SELECT COUNT(*) FROM knowledge_bases_backup;')
+                        sqlalchemy.select(sqlalchemy.func.count()).select_from(_LEGACY_KNOWLEDGE_BASE_BACKUP)
                     )
                     internal_kb_count = result.scalar() or 0
 
                 if await self._table_exists('external_knowledge_bases'):
                     result = await self.ap.persistence_mgr.execute_async(
-                        sqlalchemy.text('SELECT COUNT(*) FROM external_knowledge_bases;')
+                        sqlalchemy.select(sqlalchemy.func.count()).select_from(_LEGACY_EXTERNAL_KNOWLEDGE_BASE)
                     )
                     external_kb_count = result.scalar() or 0
 
@@ -342,9 +456,16 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
                 }
             )
 
-        @self.route('/execute', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            needed = await self._get_migration_flag()
+        @self.route(
+            '/execute',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            execution_context = ExecutionContext.from_request(request_context)
+            execution_context = await self._require_local_migration_context(execution_context)
+            needed = await self._get_migration_flag(execution_context)
             if not needed:
                 return self.http_status(400, -1, 'RAG migration is not needed')
 
@@ -353,20 +474,34 @@ class KnowledgeMigrationRouterGroup(group.RouterGroup):
 
             ctx = taskmgr.TaskContext.new()
             wrapper = self.ap.task_mgr.create_user_task(
-                self._execute_rag_migration(task_context=ctx, install_plugin=install_plugin),
+                self._execute_rag_migration(
+                    execution_context,
+                    task_context=ctx,
+                    install_plugin=install_plugin,
+                ),
                 kind='rag-migration',
                 name='rag-migration-execute',
                 label='Migrating knowledge bases to plugin architecture',
                 context=ctx,
+                instance_uuid=execution_context.instance_uuid,
+                workspace_uuid=execution_context.workspace_uuid,
+                placement_generation=execution_context.placement_generation,
             )
 
             return self.success(data={'task_id': wrapper.id})
 
-        @self.route('/dismiss', methods=['POST'], auth_type=group.AuthType.USER_TOKEN)
-        async def _() -> str:
-            needed = await self._get_migration_flag()
+        @self.route(
+            '/dismiss',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            execution_context = ExecutionContext.from_request(request_context)
+            execution_context = await self._require_local_migration_context(execution_context)
+            needed = await self._get_migration_flag(execution_context)
             if not needed:
                 return self.http_status(400, -1, 'RAG migration is not needed')
 
-            await self._set_migration_flag('false')
+            await self._set_migration_flag(execution_context, 'false')
             return self.success()

@@ -1,0 +1,13 @@
+{
+  "event_type": "feedback.received",
+  "data": {
+    "feedback_id": "feedback-demo-1",
+    "feedback_type": 2,
+    "feedback_content": "希望增加一步一步的说明",
+    "inaccurate_reasons": [
+      "not_helpful"
+    ],
+    "user_id": "demo-alice",
+    "message_id": "message-01"
+  }
+}

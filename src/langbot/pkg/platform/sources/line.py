@@ -13,22 +13,40 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 from ..logger import EventLogger
+from ...utils import bounded_executor
 
 
 from linebot.v3 import WebhookHandler
 from linebot.v3.exceptions import InvalidSignatureError
-from linebot.v3.messaging import Configuration, ApiClient, MessagingApi, ReplyMessageRequest, TextMessage, ImageMessage
+from linebot.v3.messaging import (
+    Configuration,
+    ApiClient,
+    MessagingApi,
+    PushMessageRequest,
+    ReplyMessageRequest,
+    TextMessage,
+    ImageMessage,
+)
 from linebot.v3.webhooks import (
     MessageEvent,
     TextMessageContent,
     ImageMessageContent,
     VideoMessageContent,
     AudioMessageContent,
+    UserMentionee,
 )
 
 # from linebot import WebhookParser
 from linebot.v3.webhook import WebhookParser
 from linebot.v3.messaging import MessagingApiBlob
+
+MAX_LINE_MEDIA_BYTES = 10 * 1024 * 1024
+
+
+def _validate_line_media_content(content: bytes) -> bytes:
+    if len(content) > MAX_LINE_MEDIA_BYTES:
+        raise ValueError(f'LINE media exceeds the {MAX_LINE_MEDIA_BYTES}-byte limit')
+    return content
 
 
 class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -49,23 +67,31 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         return content_list
 
-    @staticmethod
-    async def target2yiri(message, bot_client) -> platform_message.MessageChain:
+    def __init__(self, bot_account_id: str = ''):
+        self.bot_account_id = bot_account_id
+
+    async def target2yiri(self, message, bot_client) -> platform_message.MessageChain:
         lb_msg_list = []
         msg_create_time = datetime.datetime.fromtimestamp(int(message.timestamp) / 1000)
 
         lb_msg_list.append(platform_message.Source(id=message.webhook_event_id, time=msg_create_time))
 
         if isinstance(message.message, TextMessageContent):
-            lb_msg_list.append(platform_message.Plain(text=message.message.text))
+            lb_msg_list.extend(
+                self._build_text_components(message.message.text, getattr(message.message, 'mention', None))
+            )
         elif isinstance(message.message, AudioMessageContent):
             pass
         elif isinstance(message.message, VideoMessageContent):
             pass
         elif isinstance(message.message, ImageMessageContent):
-            message_content = MessagingApiBlob(bot_client).get_message_content(message.message.id)
+            message_content = await asyncio.to_thread(
+                MessagingApiBlob(bot_client).get_message_content,
+                message.message.id,
+            )
+            _validate_line_media_content(message_content)
 
-            base64_string = base64.b64encode(message_content).decode('utf-8')
+            base64_string = await asyncio.to_thread(lambda: base64.b64encode(message_content).decode('utf-8'))
 
             # 如果需要Data URI格式（用于直接嵌入HTML等）
             # 首先需要知道图片类型，LINE图片通常是JPEG
@@ -73,22 +99,60 @@ class LINEMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             lb_msg_list.append(platform_message.Image(base64=data_uri))
         return platform_message.MessageChain(lb_msg_list)
 
+    def _build_text_components(self, text: str, mention) -> list:
+        """Build message components from text, inserting At components for mentions.
+
+        LINE provides mention positions (index/length) and is_self per mentionee in the
+        webhook payload. Mapping the bot mention to At(target=bot_account_id) makes the
+        'at-bot' group respond rule work for LINE, consistent with other adapters.
+        """
+        components: list = []
+        if not mention or not mention.mentionees:
+            if text:
+                components.append(platform_message.Plain(text=text))
+            return components
+        segments: list[tuple[int, int, object]] = sorted((m.index, m.index + m.length, m) for m in mention.mentionees)
+        cursor = 0
+        for start, end, mentionee in segments:
+            if start < cursor:
+                start, end = cursor, min(end, len(text))
+            if start < cursor or end <= start or end > len(text):
+                continue
+            if start > cursor:
+                components.append(platform_message.Plain(text=text[cursor:start]))
+            if isinstance(mentionee, UserMentionee):
+                target = self.bot_account_id if mentionee.is_self else mentionee.user_id
+                if not target:
+                    target = text[start:end]
+            else:
+                target = text[start:end]
+            # At.__str__ already prepends '@', so strip one from the LINE text token.
+            display = text[start:end].lstrip('@')
+            components.append(platform_message.At(target=str(target), display=display))
+            cursor = end
+        if cursor < len(text):
+            components.append(platform_message.Plain(text=text[cursor:]))
+        return components
+
 
 class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
+    def __init__(self, bot_account_id: str = ''):
+        self.bot_account_id = bot_account_id
+        self.message_converter = LINEMessageConverter(bot_account_id)
+
     @staticmethod
     async def yiri2target(
         event: platform_events.MessageEvent,
     ) -> MessageEvent:
         pass
 
-    @staticmethod
-    async def target2yiri(event, bot_client) -> platform_events.Event:
-        message_chain = await LINEMessageConverter.target2yiri(event, bot_client)
+    async def target2yiri(self, event, bot_client) -> platform_events.Event:
+        message_chain = await self.message_converter.target2yiri(event, bot_client)
 
         if event.source.type == 'user':
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
-                    id=event.message.id,
+                    id=event.source.user_id,
                     nickname=event.source.user_id,
                     remark='',
                 ),
@@ -97,13 +161,19 @@ class LINEEventConverter(abstract_platform_adapter.AbstractEventConverter):
                 source_platform_object=event,
             )
         else:
+            # 'group' and 'room' sources carry the stable chat id under different
+            # field names; user_id may be absent for some members, so fall back
+            # to the group/room id rather than the per-message id.
+            group_id = event.source.group_id if event.source.type == 'group' else event.source.room_id
+            member_id = event.source.user_id or group_id
+
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
-                    id=event.event.sender.sender_id.open_id,
-                    member_name=event.event.sender.sender_id.union_id,
+                    id=member_id,
+                    member_name=member_id,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
-                        id=event.message.id,
+                        id=group_id,
                         name='',
                         permission=platform_entities.Permission.Member,
                     ),
@@ -150,8 +220,8 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             listeners={},
             card_id_dict={},
             seq=1,
-            event_converter=LINEEventConverter(),
-            message_converter=LINEMessageConverter(),
+            event_converter=LINEEventConverter(bot_account_id),
+            message_converter=LINEMessageConverter(bot_account_id),
             line_webhook=line_webhook,
             parser=parser,
             configuration=configuration,
@@ -161,7 +231,27 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         )
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
-        pass
+        content_list = await self.message_converter.yiri2target(message, self.api_client)
+
+        for content in content_list:
+            if content['type'] == 'text':
+                await asyncio.to_thread(
+                    self.bot.push_message_with_http_info,
+                    PushMessageRequest(
+                        to=target_id,
+                        messages=[TextMessage(text=content['content'])],
+                    ),
+                )
+            elif content['type'] == 'image':
+                # LINE ImageMessage requires original_content_url and preview_image_url
+                image_url = content['image']
+                await asyncio.to_thread(
+                    self.bot.push_message_with_http_info,
+                    PushMessageRequest(
+                        to=target_id,
+                        messages=[ImageMessage(original_content_url=image_url, preview_image_url=image_url)],
+                    ),
+                )
 
     async def reply_message(
         self,
@@ -173,20 +263,22 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         for content in content_list:
             if content['type'] == 'text':
-                self.bot.reply_message_with_http_info(
+                await asyncio.to_thread(
+                    self.bot.reply_message_with_http_info,
                     ReplyMessageRequest(
                         reply_token=message_source.source_platform_object.reply_token,
                         messages=[TextMessage(text=content['content'])],
-                    )
+                    ),
                 )
             elif content['type'] == 'image':
                 # LINE ImageMessage requires original_content_url and preview_image_url
                 image_url = content['image']
-                self.bot.reply_message_with_http_info(
+                await asyncio.to_thread(
+                    self.bot.reply_message_with_http_info,
                     ReplyMessageRequest(
                         reply_token=message_source.source_platform_object.reply_token,
                         messages=[ImageMessage(original_content_url=image_url, preview_image_url=image_url)],
-                    )
+                    ),
                 )
 
     async def is_muted(self, group_id: int) -> bool:
@@ -242,11 +334,23 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 )
                 return quart.Response('Invalid signature', status=400)
 
-            # 处理事件
+            # 处理事件（P1 熱修復：背景任務脫鉤，webhook 立即 ACK，agent run 不受請求生命週期取消）
             if events and len(events) > 0:
                 lb_event = await self.event_converter.target2yiri(events[0], self.api_client)
                 if lb_event.__class__ in self.listeners:
-                    await self.listeners[lb_event.__class__](lb_event, self)
+                    listener = self.listeners[lb_event.__class__]
+
+                    async def _run_background_event():
+                        try:
+                            await listener(lb_event, self)
+                        except Exception:
+                            await self.logger.error(f'Error in LINE background event task: {traceback.format_exc()}')
+
+                    task = asyncio.create_task(_run_background_event())
+                    if not hasattr(self, '_background_tasks'):
+                        self._background_tasks = set()
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
 
             return {'code': 200, 'message': 'ok'}
         except Exception:
@@ -266,4 +370,5 @@ class LINEAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         await keep_alive()
 
     async def kill(self) -> bool:
-        pass
+        await bounded_executor.run_blocking_cleanup(self.api_client.close)
+        return True

@@ -19,7 +19,7 @@ export interface Plain extends MessageComponent {
 // Quote component
 export interface Quote extends MessageComponent {
   type: 'Quote';
-  id?: number;
+  id?: number | string;
   group_id?: number | string;
   sender_id?: number | string;
   target_id?: number | string;

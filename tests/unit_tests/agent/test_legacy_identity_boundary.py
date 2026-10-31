@@ -1,0 +1,290 @@
+"""Native identity provenance across the Host/SDK and persisted resume boundary."""
+
+import hashlib
+import json
+from contextlib import nullcontext
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+import pytest
+from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+from langbot_plugin.api.proxies.invocation import bind_invocation
+from langbot_plugin.entities.io.context import InstallationBinding
+from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+from langbot.pkg.agent.runner.context_builder import RunnerContextBuilder
+from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+from langbot.pkg.agent.runner.interaction_manager import InteractionManager
+from langbot.pkg.agent.runner.interaction_store import InteractionStore
+from langbot.pkg.entity.persistence.base import Base
+from sqlalchemy.ext.asyncio import create_async_engine
+from tests.unit_tests.agent import test_event_first_protocol as event_fixtures
+from tests.unit_tests.agent.test_context_validation import TestContextValidation as Helpers
+from tests.utils.legacy_plugin_contract import load_identity_helper, verified_plugin_root
+
+
+@pytest.fixture
+def mock_query():
+    return event_fixtures.mock_query.__wrapped__()
+
+
+async def build(event, runner, source='legacy-session'):
+    helper = Helpers()
+    binding = helper._make_binding()
+    binding.runner_id = f'plugin:langbot-team/{runner}/default'
+    binding.processor_type = 'pipeline'
+    binding.processor_id = 'pipeline-uuid-456'
+    binding.runner_config = {'user-id-source': source}
+    builder = RunnerContextBuilder(helper._make_mock_app())
+    builder._build_context_access = AsyncMock(return_value={})
+    with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as store:
+        store.return_value.build_snapshot_from_event = AsyncMock(return_value={})
+        context = await builder.build_context_from_event(
+            event, binding, helper._make_descriptor(), helper._make_resources()
+        )
+    return context, binding
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runner', ['DifyAgent', 'N8nAgent', 'CozeAgent'])
+@pytest.mark.parametrize('kind', ['group', 'person'])
+async def test_exact_native_identity_survives_serialization(mock_query, runner, kind):
+    mock_query.launcher_type.value = kind
+    mock_query.launcher_id = ' Event_007 '
+    mock_query.session.launcher_type.value = 'person' if kind == 'group' else 'group'
+    mock_query.session.launcher_id = ' Session_008 '
+    event = AgentEventEnvelope.model_validate_json(QueryEntryAdapter.query_to_event(mock_query).model_dump_json())
+    context, _ = await build(event, runner)
+    expected = (
+        (kind, ' Event_007 ') if runner == 'CozeAgent' else (mock_query.session.launcher_type.value, ' Session_008 ')
+    )
+    assert (context['conversation']['launcher_type'], context['conversation']['launcher_id']) == expected
+    assert context['actor']['actor_id'] == 'sender-123'
+    assert context['conversation']['sender_id'] == 'sender-123'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runner', ['DifyAgent', 'N8nAgent', 'CozeAgent'])
+async def test_missing_authoritative_fields_never_fall_back_to_raw_data(mock_query, runner):
+    mock_query.session.launcher_id = None
+    mock_query.launcher_id = None
+    mock_query.variables.update({'launcher_id': 'spoof', 'session_id': 'group_spoof'})
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    event.data.update({'launcher_type': 'group', 'launcher_id': 'spoof'})
+    context, _ = await build(event, runner)
+    assert context['conversation']['launcher_id'] is None
+
+
+@pytest.mark.asyncio
+async def test_tbox_and_sender_defaults_unchanged(mock_query):
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    context, _ = await build(event, 'TboxAgent', 'legacy-bot')
+    assert context['conversation']['bot_id'] == mock_query.bot_uuid
+    context, _ = await build(event, 'DifyAgent', 'sender')
+    assert context['actor']['actor_id'] == 'sender-123'
+    assert context['conversation']['launcher_id'] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('field', ['workspace_id', 'bot_id'])
+async def test_provenance_cannot_cross_scope(mock_query, field):
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    setattr(event, field, 'different')
+    context, _ = await build(event, 'DifyAgent')
+    assert context['conversation']['launcher_id'] is None
+
+
+@pytest.mark.asyncio
+async def test_provenance_cannot_cross_pipeline(mock_query):
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    event.legacy_identity.pipeline_id = 'other-pipeline'
+    context, _ = await build(event, 'DifyAgent')
+    assert context['conversation']['launcher_id'] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('changed', [None, 'workspace_id', 'bot_id', 'processor_id', 'actor_id'])
+async def test_resume_uses_persisted_identity_not_new_session(tmp_path, mock_query, changed):
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    try:
+        store = InteractionStore(engine)
+        event = QueryEntryAdapter.query_to_event(mock_query)
+        context, binding = await build(event, 'DifyAgent')
+        manager = InteractionManager(SimpleNamespace(), store)
+        descriptor = Helpers()._make_descriptor()
+        descriptor.id = binding.runner_id
+        descriptor.capabilities.interactions = True
+        descriptor.permissions.interactions = ['request']
+        binding.delivery_policy.enable_interactions = True
+        import sqlalchemy as sa
+        from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
+
+        config = {
+            'ai': {'runner': {'id': binding.runner_id}, 'runner_config': {binding.runner_id: binding.runner_config}}
+        }
+        mock_query.pipeline_config = config
+        conversation = mock_query.session.using_conversation
+        async with engine.begin() as conn:
+            await conn.execute(
+                sa.insert(LegacyPipeline).values(
+                    uuid=binding.processor_id,
+                    workspace_uuid=event.workspace_id,
+                    name='test',
+                    description='',
+                    for_version='4.11',
+                    stages=[],
+                    config=config,
+                    extensions_preferences={},
+                )
+            )
+        adapter = SimpleNamespace(
+            get_supported_apis=lambda: ['interaction.request'], call_platform_api=AsyncMock(return_value={})
+        )
+        mock_query.adapter = adapter
+        await manager.handle_result(
+            result_dict={
+                'data': {
+                    'action': 'interaction.requested',
+                    'payload': {'interaction_id': 'form', 'title': 'Approve', 'fallback_text': 'Approve'},
+                }
+            },
+            event=event,
+            binding=binding,
+            descriptor=descriptor,
+            run_id='original',
+            adapter_context={
+                '_delivery_adapter': adapter,
+                '_query': mock_query,
+                '_pipeline_expected_config': config,
+                '_pipeline_conversation': conversation,
+            },
+        )
+        token = adapter.call_platform_api.call_args.args[1]['callback_token']
+        record = await manager.consume_callback(
+            callback_token=token,
+            submission={'interaction_id': 'form', 'values': {}},
+            bot_id=event.bot_id,
+            conversation_id='person_launcher-123',
+            actor_id='sender-123',
+        )
+        mock_query.variables['_interaction_submission'] = record['submission']
+        mock_query.session.launcher_id = 'wrong-new-session'
+        resumed = QueryEntryAdapter.query_to_event(mock_query)
+        if changed in ('workspace_id', 'bot_id'):
+            setattr(resumed, changed, 'other')
+        elif changed == 'processor_id':
+            binding.processor_id = 'other'
+        elif changed == 'actor_id':
+            resumed.actor.actor_id = 'other'
+        # A fresh manager/store represents a process restart, not an in-memory cache.
+        manager = InteractionManager(SimpleNamespace(), InteractionStore(engine))
+        await manager.restore_legacy_identity(resumed, binding)
+        result, _ = await build(resumed, 'DifyAgent')
+        assert result['conversation']['launcher_id'] == (None if changed else 'launcher-123')
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_tbox_resume_without_persisted_identity_fails_closed(mock_query):
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    event.event_type = 'interaction.submitted'
+    event.legacy_identity = None
+    context, _ = await build(event, 'TboxAgent', 'legacy-bot')
+    assert context['conversation']['bot_id'] is None
+    assert context['runtime']['metadata']['bot_id'] is None
+
+
+@pytest.fixture(scope='session')
+def official_plugin_root():
+    return verified_plugin_root()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'runner,folder,method,error_name,local_identity',
+    [
+        pytest.param(
+            'DifyAgent',
+            'dify-agent',
+            '_get_user_tag',
+            'DifyConfigError',
+            'person_Session_007',
+            marks=pytest.mark.contract('dify_identity'),
+        ),
+        pytest.param(
+            'N8nAgent',
+            'n8n-agent',
+            '_get_user_tag',
+            'N8nConfigError',
+            'person_Session_007',
+            marks=pytest.mark.contract('n8n_identity'),
+        ),
+        pytest.param(
+            'CozeAgent',
+            'coze-agent',
+            '_get_user_id',
+            'CozeConfigError',
+            'person_launcher-123',
+            marks=pytest.mark.contract('coze_identity'),
+        ),
+        pytest.param(
+            'TboxAgent',
+            'tbox-agent',
+            '_get_user_id',
+            'TboxConfigError',
+            'bot-uuid-123',
+            marks=pytest.mark.contract('tbox_identity'),
+        ),
+    ],
+)
+@pytest.mark.parametrize('missing', [False, True], ids=['trusted-identity', 'missing-identity'])
+@pytest.mark.parametrize('profile', ['dedicated', 'shared'])
+@pytest.mark.plugin_identity
+async def test_real_plugin_identity_helper_with_host_payload(
+    mock_query, monkeypatch, official_plugin_root, runner, folder, method, error_name, local_identity, missing, profile
+):
+    # Keep exact Host identity selection above; current supported plugins namespace
+    # that identity to prevent collisions across Workspaces and installations.
+    helper, config_error = load_identity_helper(official_plugin_root, folder, method, error_name)
+    monkeypatch.setenv('LANGBOT_PLUGIN_RUNTIME_PROFILE', profile)
+    mock_query.session.launcher_id = 'Session_007'
+    event = QueryEntryAdapter.query_to_event(mock_query)
+    if missing:
+        event.legacy_identity = None
+        event.bot_id = None
+    source = 'legacy-bot' if runner == 'TboxAgent' else 'legacy-session'
+    context, _ = await build(event, runner, source)
+    sdk = RunnerContext.model_validate(context)
+    handler = SimpleNamespace()
+    consumer = SimpleNamespace(_plugin_runtime_handler=handler)
+    binding = InstallationBinding(
+        instance_uuid='identity-instance',
+        workspace_uuid=event.workspace_id,
+        installation_uuid='00000000-0000-4000-8000-000000000007',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
+    )
+    if profile == 'shared':
+        # A stale connection binding must never win over the active invocation.
+        handler.bound_action_context = binding.model_copy(
+            update={'workspace_uuid': 'foreign-workspace', 'installation_uuid': 'foreign-installation'}
+        )
+    authority = bind_invocation(handler, binding=binding) if profile == 'shared' else nullcontext()
+    with authority:
+        if missing:
+            with pytest.raises(config_error, match='trusted Host identity') as caught:
+                helper(consumer, sdk)
+            assert caught.value.code == f'{folder.removesuffix("-agent")}.identity_unavailable'
+        else:
+            # The expected local IDs above are independent of the actual Host
+            # payload and plugin output, preserving session-vs-event provenance.
+            scope = (
+                ['identity-instance', event.workspace_id, '00000000-0000-4000-8000-000000000007']
+                if profile == 'shared'
+                else [event.workspace_id]
+            )
+            encoded = json.dumps([scope, local_identity], ensure_ascii=False, separators=(',', ':')).encode()
+            expected = 'lb_' + hashlib.sha256(encoded).hexdigest()
+            assert helper(consumer, sdk) == expected

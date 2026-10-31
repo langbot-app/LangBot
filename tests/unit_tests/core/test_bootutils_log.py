@@ -10,13 +10,9 @@ from __future__ import annotations
 
 import logging
 import os
-import re
 
 import langbot.pkg.core.bootutils.log as logmod
 from langbot.pkg.core.bootutils.log import DailyGroupedRotatingFileHandler
-
-# Mirror of the cleanup pattern in api/http/service/maintenance.py.
-MAINTENANCE_LOG_FILE_PATTERN = re.compile(r'^langbot-(\d{4}-\d{2}-\d{2})\.log(?:\.\d+)?$')
 
 
 def _listing(directory):
@@ -105,6 +101,8 @@ class TestDailyGroupedRotatingFileHandler:
             assert f'langbot-{day}.log' in files
 
     def test_all_filenames_match_maintenance_cleanup_pattern(self, tmp_path, monkeypatch):
+        from langbot.pkg.api.http.service.maintenance import LOG_FILE_PATTERN
+
         box = {'date': '2026-06-08'}
         self._patch_date(monkeypatch, box)
 
@@ -117,4 +115,4 @@ class TestDailyGroupedRotatingFileHandler:
         handler.close()
 
         for name in _listing(tmp_path):
-            assert MAINTENANCE_LOG_FILE_PATTERN.match(name), name
+            assert LOG_FILE_PATTERN.match(name), name

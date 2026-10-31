@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: EventListener
+metadata:
+  name: collector
+  label:
+    en_US: MessageCollector
+    zh_Hans: 消息收集器
+spec:
+execution:
+  python:
+    path: collector.py
+    attr: MessageCollector

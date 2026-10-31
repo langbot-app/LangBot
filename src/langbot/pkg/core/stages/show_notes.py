@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import asyncio
-
 from .. import stage, app, note
+from .. import entities as core_entities
 from ...utils import importutil
 
 from .. import notes
@@ -31,6 +30,12 @@ class ShowNotesStage(stage.BootingStage):
                             if msg:
                                 ap.logger.log(level, msg)
 
-                    asyncio.create_task(ayield_note(note_inst))
+                    ap.task_mgr.create_task(
+                        ayield_note(note_inst),
+                        kind='launch-note',
+                        name=f'launch-note-{note_cls.__name__}',
+                        scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                        instance_uuid=ap.workspace_service.instance_uuid,
+                    )
             except Exception:
                 continue

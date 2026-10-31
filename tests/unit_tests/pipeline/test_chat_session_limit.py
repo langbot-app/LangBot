@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import yaml
+from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
 
 def _preproc_module():
@@ -43,15 +44,25 @@ def _prompt_preprocessing_context(default_prompt=None, prompt=None):
 
 
 async def _run_preprocessor(mock_app, sample_query, conversation):
-    session = SimpleNamespace(launcher_type=sample_query.launcher_type, launcher_id=sample_query.launcher_id)
+    session = provider_session.Session(
+        launcher_type=sample_query.launcher_type,
+        launcher_id=sample_query.launcher_id,
+        sender_id=sample_query.sender_id,
+        bot_uuid=sample_query.bot_uuid,
+    )
     mock_app.sess_mgr.get_session = AsyncMock(return_value=session)
     mock_app.sess_mgr.get_conversation = AsyncMock(return_value=conversation)
     mock_app.plugin_connector.emit_event = AsyncMock(return_value=_prompt_preprocessing_context())
 
     sample_query.pipeline_config = {
         'ai': {
-            'runner': {'runner': 'local-agent', 'expire-time': 60},
-            'local-agent': {'model': {'primary': '', 'fallbacks': []}, 'prompt': []},
+            'runner': {'id': 'plugin:langbot-team/LocalAgent/default', 'expire-time': 60},
+            'runner_config': {
+                'plugin:langbot-team/LocalAgent/default': {
+                    'model': {'primary': '', 'fallbacks': []},
+                    'prompt': [],
+                },
+            },
         },
         'trigger': {'misc': {'combine-quote-message': False}},
         'output': {'misc': {'exception-handling': 'show-hint'}},

@@ -12,8 +12,10 @@ from __future__ import annotations
 
 import pytest
 import asyncio
+import contextvars
+import inspect
 import sys
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock, MagicMock, patch
 from contextlib import contextmanager
 from typing import Generator
 
@@ -179,12 +181,14 @@ class TestTaskContext:
         ctx.set_current_action('test_action')
         ctx.trace('Test message')
         ctx.metadata['key'] = 'value'
+        ctx.metadata['count'] = 5
+        ctx.metadata['items'] = ['a', 'b', 'c']
 
         result = ctx.to_dict()
 
         assert result['current_action'] == 'test_action'
         assert 'Test message' in result['log']
-        assert result['metadata'] == {'key': 'value'}
+        assert result['metadata'] == {'key': 'value', 'count': 5, 'items': ['a', 'b', 'c']}
 
     def test_static_new_factory(self):
         """Test TaskContext.new() factory method."""
@@ -207,18 +211,8 @@ class TestTaskContext:
             ctx1 = TaskContext.placeholder()
             ctx2 = TaskContext.placeholder()
 
+            assert isinstance(ctx1, TaskContext)
             assert ctx1 is ctx2
-
-    def test_metadata_is_mutable_dict(self):
-        """Test that metadata is a mutable dict."""
-        TaskContext, _, _ = get_taskmgr_classes()
-        ctx = TaskContext()
-
-        ctx.metadata['count'] = 5
-        ctx.metadata['items'] = ['a', 'b', 'c']
-
-        assert ctx.metadata['count'] == 5
-        assert len(ctx.metadata['items']) == 3
 
 
 class TestTaskWrapper:
@@ -263,6 +257,28 @@ class TestTaskWrapper:
         assert wrapper.kind == 'system_task'
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_workspace_task_sets_blocking_work_scope(self):
+        """Detached tasks recover tenant fairness from durable ownership."""
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        from langbot.pkg.utils.bounded_executor import (
+            current_blocking_work_scope,
+        )
+
+        mock_app = create_mock_app()
+
+        async def read_scope():
+            return current_blocking_work_scope()
+
+        wrapper = TaskWrapper(
+            mock_app,
+            read_scope(),
+            workspace_uuid='workspace-a',
+        )
+
+        assert await wrapper.task == 'workspace-a'
+        assert current_blocking_work_scope() is None
 
     @pytest.mark.asyncio
     async def test_to_dict_serialization(self):
@@ -315,6 +331,71 @@ class TestTaskWrapper:
         assert 'exception_traceback' in result['runtime']
 
     @pytest.mark.asyncio
+    async def test_public_dict_has_stable_success_projection(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def successful_coro():
+            return {'file_id': 'file-a'}
+
+        with patch('time.time', return_value=1720000000.25):
+            wrapper = TaskWrapper(mock_app, successful_coro(), kind='knowledge_base.store')
+        await wrapper.task
+
+        result = wrapper.to_public_dict()
+
+        assert result == {
+            'id': wrapper.id,
+            'task_type': 'system',
+            'kind': 'knowledge_base.store',
+            'status': 'succeeded',
+            'error': None,
+            'result': {'file_id': 'file-a'},
+            'created_at': 1720000000.25,
+        }
+        assert 'runtime' not in result
+        assert 'traceback' not in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_public_dict_hides_exception_traceback(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def failing_coro():
+            raise ValueError('private failure')
+
+        wrapper = TaskWrapper(mock_app, failing_coro())
+        try:
+            await wrapper.task
+        except ValueError:
+            # Expected failure: task must complete in failed state for public serialization checks.
+            pass
+
+        result = wrapper.to_public_dict()
+
+        assert result['status'] == 'failed'
+        assert result['error'] == {'type': 'task_failed', 'message': 'Task execution failed'}
+        assert 'runtime' not in result
+        assert 'traceback' not in str(result).lower()
+
+    @pytest.mark.asyncio
+    async def test_public_dict_does_not_change_success_when_result_is_not_json_serializable(self):
+        _, TaskWrapper, _ = get_taskmgr_classes()
+        mock_app = create_mock_app()
+
+        async def successful_coro():
+            return object()
+
+        wrapper = TaskWrapper(mock_app, successful_coro())
+        await wrapper.task
+
+        result = wrapper.to_public_dict()
+
+        assert result['status'] == 'succeeded'
+        assert result['error'] is None
+        assert result['result'] is None
+
+    @pytest.mark.asyncio
     async def test_cancel_task(self):
         """Test cancel method cancels the asyncio task."""
         _, TaskWrapper, _ = get_taskmgr_classes()
@@ -342,6 +423,29 @@ class TestAsyncTaskManager:
     """Tests for AsyncTaskManager class."""
 
     @pytest.mark.asyncio
+    async def test_completed_retention_keeps_newest_tasks_and_running_task(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention']['completed_limit'] = 2
+        manager = AsyncTaskManager(mock_app)
+        running = manager.create_task(asyncio.Event().wait())
+
+        async def immediate_coro():
+            return 'done'
+
+        try:
+            completed = [manager.create_task(immediate_coro()) for _ in range(2)]
+            await asyncio.gather(*(wrapper.task for wrapper in completed))
+            assert manager.tasks == [running, *completed]
+
+            newest = manager.create_task(immediate_coro())
+            await newest.task
+            assert manager.tasks == [running, completed[1], newest]
+        finally:
+            running.cancel()
+            await asyncio.gather(running.task, return_exceptions=True)
+
+    @pytest.mark.asyncio
     async def test_create_task_adds_to_list(self):
         """Test that create_task adds task to tasks list."""
         _, _, AsyncTaskManager = get_taskmgr_classes()
@@ -359,6 +463,53 @@ class TestAsyncTaskManager:
         assert len(manager.tasks) == 1
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_task_does_not_inherit_request_context(self):
+        """Long-lived tasks must receive identity through explicit arguments."""
+
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        manager = AsyncTaskManager(mock_app)
+        request_value = contextvars.ContextVar('request_value', default=None)
+        token = request_value.set('request-scoped-transaction')
+        observed = []
+
+        async def detached_task(captured_workspace: str) -> None:
+            observed.append((request_value.get(), captured_workspace))
+
+        try:
+            wrapper = manager.create_task(detached_task('workspace-a'))
+            await wrapper.task
+        finally:
+            request_value.reset(token)
+
+        assert observed == [(None, 'workspace-a')]
+
+    @pytest.mark.asyncio
+    async def test_create_task_waits_for_registered_transaction_commit(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        gate = asyncio.get_running_loop().create_future()
+
+        class PersistenceManagerStub:
+            def create_after_commit_gate(self):
+                return gate
+
+        mock_app.persistence_mgr = PersistenceManagerStub()
+        manager = AsyncTaskManager(mock_app)
+        observed = []
+
+        async def background_work() -> None:
+            observed.append('started')
+
+        wrapper = manager.create_task(background_work())
+        await asyncio.sleep(0)
+        assert observed == []
+
+        gate.set_result(None)
+        await wrapper.task
+        assert observed == ['started']
 
     @pytest.mark.asyncio
     async def test_get_stats_counts_correctly(self):
@@ -415,6 +566,66 @@ class TestAsyncTaskManager:
         w1.cancel()
         w2.cancel()
         w3.cancel()
+
+    @pytest.mark.asyncio
+    async def test_public_task_queries_keep_workspace_and_generation_isolation(self):
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        manager = AsyncTaskManager(mock_app)
+
+        async def dummy_coro():
+            await asyncio.sleep(10)
+
+        current = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=2,
+        )
+        other_workspace = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-b',
+            placement_generation=2,
+        )
+        stale_generation = manager.create_user_task(
+            dummy_coro(),
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=1,
+        )
+
+        result = manager.get_tasks_dict(
+            instance_uuid='instance-a',
+            workspace_uuid='workspace-a',
+            placement_generation=2,
+            public=True,
+        )
+
+        assert [task['id'] for task in result['tasks']] == [current.id]
+        assert 'id_index' not in result
+        assert (
+            manager.get_task_by_id(
+                other_workspace.id,
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=2,
+            )
+            is None
+        )
+        assert (
+            manager.get_task_by_id(
+                stale_generation.id,
+                instance_uuid='instance-a',
+                workspace_uuid='workspace-a',
+                placement_generation=2,
+            )
+            is None
+        )
+
+        current.cancel()
+        other_workspace.cancel()
+        stale_generation.cancel()
 
     @pytest.mark.asyncio
     async def test_cancel_by_scope(self):
@@ -481,6 +692,56 @@ class TestAsyncTaskManager:
         assert wrapper.task_type == 'user'
 
         wrapper.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_user_task_enforces_workspace_active_limit_and_closes_rejected_coroutine(self):
+        """A noisy Workspace cannot accumulate unbounded background work."""
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention'].update(
+            {
+                'max_active_user_tasks': 10,
+                'max_active_user_tasks_per_workspace': 1,
+            }
+        )
+        manager = AsyncTaskManager(mock_app)
+
+        async def long_coro():
+            await asyncio.sleep(10)
+
+        first = manager.create_user_task(long_coro(), workspace_uuid='workspace-a')
+        rejected = long_coro()
+        with pytest.raises(RuntimeError, match='Workspace has too many active user operations'):
+            manager.create_user_task(rejected, workspace_uuid='workspace-a')
+
+        assert inspect.getcoroutinestate(rejected) == inspect.CORO_CLOSED
+        other_workspace = manager.create_user_task(long_coro(), workspace_uuid='workspace-b')
+        first.cancel()
+        other_workspace.cancel()
+
+    @pytest.mark.asyncio
+    async def test_create_user_task_enforces_instance_active_limit(self):
+        """The shared process retains a hard cap even across Workspaces."""
+        _, _, AsyncTaskManager = get_taskmgr_classes()
+        mock_app = create_mock_app()
+        mock_app.instance_config.data['system']['task_retention'].update(
+            {
+                'max_active_user_tasks': 1,
+                'max_active_user_tasks_per_workspace': 10,
+            }
+        )
+        manager = AsyncTaskManager(mock_app)
+
+        async def long_coro():
+            await asyncio.sleep(10)
+
+        first = manager.create_user_task(long_coro(), workspace_uuid='workspace-a')
+        rejected = long_coro()
+        with pytest.raises(RuntimeError, match='instance has too many active user operations'):
+            manager.create_user_task(rejected, workspace_uuid='workspace-b')
+
+        assert inspect.getcoroutinestate(rejected) == inspect.CORO_CLOSED
+        first.cancel()
 
     @pytest.mark.asyncio
     async def test_get_task_by_id(self):

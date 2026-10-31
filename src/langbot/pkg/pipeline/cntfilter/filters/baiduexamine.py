@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from ....i18n import pipeline_notice
+
 from .. import entities
 from .. import filter as filter_model
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -23,7 +25,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
                 'client_secret': self.ap.pipeline_cfg.data['baidu-cloud-examine']['api-secret'],
             },
         ) as resp:
-            return (await resp.json())['access_token']
+            return (await httpclient.read_json_limited(resp))['access_token']
 
     async def process(self, query: pipeline_query.Query, message: str) -> entities.FilterResult:
         session = httpclient.get_session()
@@ -35,7 +37,7 @@ class BaiduCloudExamine(filter_model.ContentFilter):
             },
             data=f'text={message}'.encode('utf-8'),
         ) as resp:
-            result = await resp.json()
+            result = await httpclient.read_json_limited(resp)
 
             if 'error_code' in result:
                 return entities.FilterResult(
@@ -58,6 +60,10 @@ class BaiduCloudExamine(filter_model.ContentFilter):
                     return entities.FilterResult(
                         level=entities.ResultLevel.BLOCK,
                         replacement=message,
-                        user_notice='消息中存在不合适的内容, 请修改',
+                        user_notice=pipeline_notice(
+                            query,
+                            'content-filter-hint',
+                            'Your message contains inappropriate content. Please revise it.',
+                        ),
                         console_notice=f'百度云判定结果：{conclusion}',
                     )
