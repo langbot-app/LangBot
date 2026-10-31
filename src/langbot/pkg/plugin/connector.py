@@ -937,6 +937,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if not self.is_enable_plugin or not hasattr(self, 'handler'):
             return None
         runtime_handler = self._runtime_handler()
+        changed = False
         async with self._state_lock:
             # Read the durable desired state while holding the same gate used by
             # install/remove bookkeeping. Otherwise a request can load a stale
@@ -947,6 +948,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             desired_by_uuid = {state.binding.installation_uuid: state for state in desired_states}
             previous_ids = set(self._workspace_installations.get(execution_context.workspace_uuid, set()))
             for installation_uuid in previous_ids - set(desired_by_uuid):
+                changed = True
                 previous = self._known_desired_states.get(installation_uuid)
                 if previous is not None:
                     await runtime_handler.remove_plugin_installation(previous.binding)
@@ -957,6 +959,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             for installation_uuid, desired in desired_by_uuid.items():
                 if self._known_desired_states.get(installation_uuid) == desired:
                     continue
+                changed = True
                 try:
                     await self._apply_desired_state(desired)
                 except PluginInstallationFailedError:
@@ -971,7 +974,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     execution_context.workspace_uuid,
                     None,
                 )
-            return settings
+        if changed:
+            await self._refresh_platform_commands(execution_context)
+        return settings
 
     async def _current_execution_context(self) -> ExecutionContext:
         current = self._execution_context.get()
@@ -1290,6 +1295,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         pass
 
     async def _refresh_runner_registry(self) -> None:
+        await self._refresh_platform_commands(await self._current_execution_context())
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return
@@ -1297,6 +1303,12 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             await registry.refresh(await self._current_execution_context())
         except Exception as e:
             self.ap.logger.warning(f'Failed to refresh agent runner registry: {e}')
+
+    async def _refresh_platform_commands(self, context):
+        manager = getattr(self.ap, 'platform_mgr', None)
+        sync = getattr(manager, 'sync_workspace_commands', None)
+        if callable(sync):
+            await sync(context)
 
     async def ping_plugin_runtime(self):
         return await self._runtime_handler().ping()

@@ -217,6 +217,18 @@ Legacy EventListener plugins remain in the Pipeline lifecycle.
 
 ## Command processors
 
+Telegram and Discord expose `spec.command_registration` in adapter metadata.
+Set `command_settings.platform_commands` to `{"enabled": true, "selected": ["draw"]}`
+alongside the bot prefixes and processor bindings. This replaces all platform commands,
+including manually configured commands; disabling registration clears previously managed lists.
+Save first, then call `sync_bot_platform_commands(bot_uuid)` (HTTP:
+`POST /api/v1/bots/{uuid}/platform-commands/sync`, `resource.manage`). The bot must be running.
+Read `platform_command_sync` and `platform_command_registration` from `get_bot` for
+sync time, errors and per-command filtering reasons. Unchanged command lists skip
+platform writes. Synchronization also runs on startup and plugin installation changes.
+Telegram menu commands need `/` among the bot prefixes; Discord interactions bypass
+prefix matching and reply through interaction followups. Only `message.received` is handled.
+
 A command processor (`kind: "command_processor"`) is one configuration instance of a
 plugin's Command components. Create it with `component_ref: "plugin:<author>/<name>"`
 from `command_processors` in `get_processor_metadata`, plus optional `parameters`

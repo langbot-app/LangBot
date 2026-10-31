@@ -849,6 +849,26 @@ const zhHant = {
     },
   },
   bots: {
+    platformCommands: {
+      title: '註冊到平台',
+      overwrite:
+        '將覆蓋平台後台的全部命令，包括手動設定的命令。關閉後會清空已註冊清單。',
+      limits: '最多 {{count}} 條命令，描述最多 {{length}} 字元。名稱規則：',
+      prefixWarning:
+        '未設定 / 前綴：Telegram 選單命令無法匹配，Discord 互動仍可執行。',
+      failed: '同步失敗',
+      synced: '上次同步：{{time}}',
+      notSynced: '尚未同步',
+      sync: '立即同步',
+      saveFirst: '請先儲存機器人設定再同步。',
+      reasons: {
+        invalid_name: '命令名稱不符合規則',
+        invalid_description: '描述為空或過長',
+        invalid_localized_description: '多語言描述過長',
+        command_limit: '超出平台命令數量限制',
+        unavailable: '命令無法使用',
+      },
+    },
     pluginCommands: {
       missingProcessor: '處理器不存在',
       instanceHint: '綁定已設定的命令處理器。',

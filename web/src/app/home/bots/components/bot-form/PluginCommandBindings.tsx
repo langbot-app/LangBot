@@ -36,7 +36,9 @@ import type {
   BotCommandSettings,
   BotCommandProcessorBinding,
   CommandProcessorDescriptor,
+  PlatformCommandCapability,
 } from '@/app/infra/entities/api';
+import PlatformCommandRegistration from './PlatformCommandRegistration';
 import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -65,6 +67,9 @@ interface PluginCommandBindingsProps {
   onChange: (value: BotCommandSettings) => void;
   agents: Agent[];
   onCreated: (agent: Agent) => void;
+  registrationCapability?: PlatformCommandCapability;
+  botId?: string;
+  dirty?: boolean;
 }
 
 const PLUGIN_REF_PREFIX = 'plugin:';
@@ -287,6 +292,9 @@ export default function PluginCommandBindings({
   onChange,
   agents,
   onCreated,
+  registrationCapability,
+  botId,
+  dirty,
 }: PluginCommandBindingsProps) {
   const { t } = useTranslation();
   const [components, setComponents] = useState<CommandProcessorDescriptor[]>(
@@ -510,6 +518,31 @@ export default function PluginCommandBindings({
           onCheckedChange={(enabled) => update({ enabled })}
         />
       </CardHeader>
+      {registrationCapability && (
+        <PlatformCommandRegistration
+          value={value}
+          onChange={onChange}
+          capability={registrationCapability}
+          botId={botId}
+          dirty={dirty}
+          names={[
+            ...new Set(
+              bindings
+                .filter((binding) => binding.enabled)
+                .flatMap(
+                  (binding) =>
+                    componentMap
+                      .get(
+                        commandProcessorPluginId(
+                          agentMap.get(binding.processor_uuid),
+                        ),
+                      )
+                      ?.commands.map((command) => command.name) ?? [],
+                ),
+            ),
+          ]}
+        />
+      )}
 
       {value.enabled && (
         <CardContent className="space-y-5">

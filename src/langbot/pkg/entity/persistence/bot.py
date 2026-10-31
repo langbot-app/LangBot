@@ -54,6 +54,7 @@ class Bot(Base):
     enable = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
     event_bindings = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='[]')
     plugin_processors = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='[]')
+    platform_command_sync = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='{}', default=dict)
     command_settings = sqlalchemy.Column(
         sqlalchemy.JSON,
         nullable=False,

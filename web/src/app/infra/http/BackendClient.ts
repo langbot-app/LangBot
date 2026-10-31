@@ -734,6 +734,12 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public syncBotPlatformCommands(
+    uuid: string,
+  ): Promise<import('../entities/api').PlatformCommandSync> {
+    return this.post(`/api/v1/bots/${uuid}/platform-commands/sync`, {});
+  }
+
   public createBot(bot: Bot): Promise<{ uuid: string }> {
     return this.post('/api/v1/platform/bots', bot);
   }

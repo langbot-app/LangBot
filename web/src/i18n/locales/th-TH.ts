@@ -882,6 +882,27 @@ const thTH = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'ลงทะเบียนบนแพลตฟอร์ม',
+      overwrite:
+        'แทนที่คำสั่งทั้งหมดรวมถึงคำสั่งที่ตั้งค่าด้วยตนเอง การปิดจะล้างรายการคำสั่งที่ลงทะเบียน',
+      limits:
+        'สูงสุด {{count}} คำสั่ง คำอธิบายยาวได้ {{length}} อักขระ รูปแบบชื่อ:',
+      prefixWarning:
+        'ไม่มีคำนำหน้า /: คำสั่งเมนู Telegram จะไม่ตรงกัน แต่การโต้ตอบ Discord ยังทำงานได้',
+      failed: 'ซิงค์ไม่สำเร็จ',
+      synced: 'ซิงค์ล่าสุด: {{time}}',
+      notSynced: 'ยังไม่ซิงค์',
+      sync: 'ซิงค์ตอนนี้',
+      saveFirst: 'บันทึกการตั้งค่าบอทก่อนซิงค์',
+      reasons: {
+        invalid_name: 'ชื่อคำสั่งไม่ถูกต้อง',
+        invalid_description: 'คำอธิบายว่างหรือยาวเกินไป',
+        invalid_localized_description: 'คำอธิบายที่แปลยาวเกินไป',
+        command_limit: 'เกินจำนวนคำสั่งที่แพลตฟอร์มรองรับ',
+        unavailable: 'คำสั่งไม่พร้อมใช้งาน',
+      },
+    },
     pluginCommands: {
       missingProcessor: 'ไม่พบตัวประมวลผล',
       instanceHint: 'ผูกตัวประมวลผลที่ตั้งค่าแล้ว',

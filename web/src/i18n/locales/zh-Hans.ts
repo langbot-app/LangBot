@@ -853,6 +853,26 @@ const zhHans = {
     },
   },
   bots: {
+    platformCommands: {
+      title: '注册到平台',
+      overwrite:
+        '将覆盖平台后台的全部命令，包括手动配置的命令。关闭后会清空已注册列表。',
+      limits: '最多 {{count}} 条命令，描述最多 {{length}} 字符。名称规则：',
+      prefixWarning:
+        '未配置 / 前缀：Telegram 菜单命令无法匹配，Discord 交互仍可执行。',
+      failed: '同步失败',
+      synced: '上次同步：{{time}}',
+      notSynced: '尚未同步',
+      sync: '立即同步',
+      saveFirst: '请先保存机器人设置再同步。',
+      reasons: {
+        invalid_name: '命令名不符合规则',
+        invalid_description: '描述为空或过长',
+        invalid_localized_description: '多语言描述过长',
+        command_limit: '超出平台命令数量限制',
+        unavailable: '命令不可用',
+      },
+    },
     pluginCommands: {
       missingProcessor: '处理器不存在',
       instanceHint: '绑定已配置的命令处理器。',

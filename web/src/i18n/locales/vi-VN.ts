@@ -897,6 +897,26 @@ const viVN = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'Đăng ký trên nền tảng',
+      overwrite:
+        'Thay thế tất cả lệnh, bao gồm lệnh cấu hình thủ công. Tắt tính năng sẽ xóa danh sách đã đăng ký.',
+      limits: 'Tối đa {{count}} lệnh; mô tả tối đa {{length}} ký tự. Tên:',
+      prefixWarning:
+        'Không có tiền tố /: lệnh menu Telegram sẽ không khớp. Tương tác Discord vẫn hoạt động.',
+      failed: 'Đồng bộ thất bại',
+      synced: 'Đồng bộ lần cuối: {{time}}',
+      notSynced: 'Chưa đồng bộ',
+      sync: 'Đồng bộ ngay',
+      saveFirst: 'Lưu cài đặt bot trước khi đồng bộ.',
+      reasons: {
+        invalid_name: 'Tên lệnh không hợp lệ',
+        invalid_description: 'Mô tả trống hoặc quá dài',
+        invalid_localized_description: 'Mô tả bản dịch quá dài',
+        command_limit: 'Vượt giới hạn số lệnh',
+        unavailable: 'Lệnh không khả dụng',
+      },
+    },
     pluginCommands: {
       missingProcessor: 'Không tìm thấy bộ xử lý',
       instanceHint: 'Liên kết bộ xử lý đã cấu hình.',

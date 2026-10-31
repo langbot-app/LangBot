@@ -1,4 +1,8 @@
 {
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled debe ser booleano",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected debe ser una lista de nombres de comandos",
+  "Platform command registration requires a running supported bot": "El registro requiere un bot compatible en ejecución",
+  "Command arguments": "Argumentos del comando",
   "Request failed.": "La solicitud ha fallado.",
   "Too many requests. Please try again later.": "Demasiadas solicitudes. Inténtalo más tarde.",
   "Your message contains inappropriate content. Please revise it.": "Tu mensaje contiene contenido inapropiado. Modifícalo.",

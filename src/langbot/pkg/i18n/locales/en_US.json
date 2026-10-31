@@ -1,4 +1,8 @@
 {
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled must be a boolean",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected must be a list of command names",
+  "Platform command registration requires a running supported bot": "Platform command registration requires a running supported bot",
+  "Command arguments": "Command arguments",
   "Request failed.": "Request failed.",
   "Too many requests. Please try again later.": "Too many requests. Please try again later.",
   "Your message contains inappropriate content. Please revise it.": "Your message contains inappropriate content. Please revise it.",

@@ -898,6 +898,27 @@ const enUS = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'Register on platform',
+      overwrite:
+        'Replaces all commands managed in the platform console, including manually configured commands. Turning this off clears the registered list.',
+      limits:
+        'Up to {{count}} commands; descriptions up to {{length}} characters. Names:',
+      prefixWarning:
+        'No / prefix: Telegram menu commands will not match. Discord interactions still work.',
+      failed: 'Synchronization failed',
+      synced: 'Last synchronized: {{time}}',
+      notSynced: 'Not synchronized',
+      sync: 'Sync now',
+      saveFirst: 'Save bot settings before synchronizing.',
+      reasons: {
+        invalid_name: 'Invalid command name',
+        invalid_description: 'Description is empty or too long',
+        invalid_localized_description: 'Localized description is too long',
+        command_limit: 'Platform command limit exceeded',
+        unavailable: 'Command is unavailable',
+      },
+    },
     pluginCommands: {
       missingProcessor: 'Processor unavailable',
       instanceHint: 'Bind a configured command processor.',
