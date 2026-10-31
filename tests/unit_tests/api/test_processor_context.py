@@ -11,7 +11,13 @@ from langbot.pkg.api.application import ApplicationAPI, ApplicationAPIException,
 from langbot.pkg.api.application.processor_context import build_processor_request_context
 from langbot.pkg.api.authz import Permission
 from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
-from langbot.pkg.operation_trace.service import OPERATION_LEVEL_MUTATION, OPERATION_LEVEL_READ
+from langbot.pkg.operation_trace.service import (
+    OPERATION_LEVEL_MUTATION,
+    OPERATION_LEVEL_READ,
+    compute_dedupe_key,
+    dedupe_material,
+    hash_dedupe_material,
+)
 from langbot.pkg.workspace.errors import WorkspaceExecutionUnavailableError
 
 
@@ -208,6 +214,7 @@ async def test_processor_write_operation_emits_audit_with_processor_and_run_id(h
     assert kwargs['actor_name'] == 'agent:agent-uuid-777'
     assert kwargs['actor_account_uuid'] is None
     assert kwargs['actor_role'] is None
+    assert kwargs['dedupe_actor'] == 'processor:agent-uuid-777:run-uuid-888'
     assert kwargs['detail']['processor_kind'] == 'agent'
     assert kwargs['detail']['processor_uuid'] == 'agent-uuid-777'
     assert kwargs['detail']['run_id'] == 'run-uuid-888'
@@ -245,3 +252,158 @@ async def test_existing_principal_behavior_is_preserved_with_allowed_operation_i
     with pytest.raises(ApplicationAPIException) as exc_info:
         await api.execute('bot.create', restricted_account_ctx, {'item_id': 'b'})
     assert exc_info.value.error.code == 'permission_denied'
+
+
+@pytest.mark.asyncio
+async def test_processor_context_builder_validates_inputs(host):
+    # Invalid processor_kind
+    with pytest.raises(ValueError, match='Invalid processor_kind'):
+        await build_processor_request_context(
+            host,
+            workspace_uuid='workspace-a',
+            processor_kind='unknown_kind',
+            processor_uuid='uuid-1',
+            run_id='run-1',
+            operation_ids=['bot.list'],
+        )
+
+    # Empty processor_uuid
+    with pytest.raises(ValueError, match='processor_uuid is required'):
+        await build_processor_request_context(
+            host,
+            workspace_uuid='workspace-a',
+            processor_kind='agent',
+            processor_uuid='   ',
+            run_id='run-1',
+            operation_ids=['bot.list'],
+        )
+
+    # Empty run_id
+    with pytest.raises(ValueError, match='run_id is required'):
+        await build_processor_request_context(
+            host,
+            workspace_uuid='workspace-a',
+            processor_kind='agent',
+            processor_uuid='uuid-1',
+            run_id='',
+            operation_ids=['bot.list'],
+        )
+
+    # Empty workspace_uuid
+    with pytest.raises(ValueError, match='workspace_uuid is required'):
+        await build_processor_request_context(
+            host,
+            workspace_uuid='  ',
+            processor_kind='agent',
+            processor_uuid='uuid-1',
+            run_id='run-1',
+            operation_ids=['bot.list'],
+        )
+
+
+def test_dedupe_material_isolates_processors_and_runs_while_preserving_accounts():
+    # 1. Two different processors on same resource and action produce different materials and keys
+    mat_proc_a = dedupe_material(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-A:run-1',
+    )
+    mat_proc_b = dedupe_material(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-B:run-1',
+    )
+    assert mat_proc_a == 'processor:agent-A:run-1|update|bot.update|bot-1'
+    assert mat_proc_b == 'processor:agent-B:run-1|update|bot.update|bot-1'
+    assert mat_proc_a != mat_proc_b
+    assert hash_dedupe_material(mat_proc_a) != hash_dedupe_material(mat_proc_b)
+
+    # 2. Same processor across two different runs produces different materials and keys
+    mat_run_1 = dedupe_material(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-A:run-1',
+    )
+    mat_run_2 = dedupe_material(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-A:run-2',
+    )
+    assert mat_run_1 != mat_run_2
+    assert compute_dedupe_key(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-A:run-1',
+    ) != compute_dedupe_key(
+        actor_account_uuid=None,
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+        dedupe_actor='processor:agent-A:run-2',
+    )
+
+    # 3. Account identity behavior is strictly preserved
+    mat_acc = dedupe_material(
+        actor_account_uuid='acc-123',
+        action='update',
+        route='bot.update',
+        resource_id='bot-1',
+    )
+    assert mat_acc == 'acc-123|update|bot.update|bot-1'
+
+
+@pytest.mark.asyncio
+async def test_distinct_processors_and_runs_pass_unique_dedupe_actors_to_service_record(host):
+    api = build_test_api(host)
+    host.workspace_settings_service.effective_level.return_value = OPERATION_LEVEL_MUTATION
+
+    ctx_run1 = await build_processor_request_context(
+        host,
+        workspace_uuid='workspace-a',
+        processor_kind='agent',
+        processor_uuid='agent-1',
+        run_id='run-1',
+        operation_ids=['bot.create'],
+    )
+    ctx_run2 = await build_processor_request_context(
+        host,
+        workspace_uuid='workspace-a',
+        processor_kind='agent',
+        processor_uuid='agent-1',
+        run_id='run-2',
+        operation_ids=['bot.create'],
+    )
+    ctx_proc2 = await build_processor_request_context(
+        host,
+        workspace_uuid='workspace-a',
+        processor_kind='pipeline',
+        processor_uuid='pipeline-2',
+        run_id='run-1',
+        operation_ids=['bot.create'],
+    )
+
+    await api.execute('bot.create', ctx_run1, {'item_id': 'bot-item-1'})
+    dedupe_actor_1 = host.workspace_settings_service.record.await_args.kwargs['dedupe_actor']
+
+    host.workspace_settings_service.record.reset_mock()
+    await api.execute('bot.create', ctx_run2, {'item_id': 'bot-item-1'})
+    dedupe_actor_2 = host.workspace_settings_service.record.await_args.kwargs['dedupe_actor']
+
+    host.workspace_settings_service.record.reset_mock()
+    await api.execute('bot.create', ctx_proc2, {'item_id': 'bot-item-1'})
+    dedupe_actor_3 = host.workspace_settings_service.record.await_args.kwargs['dedupe_actor']
+
+    assert dedupe_actor_1 == 'processor:agent-1:run-1'
+    assert dedupe_actor_2 == 'processor:agent-1:run-2'
+    assert dedupe_actor_3 == 'processor:pipeline-2:run-1'
+    assert len({dedupe_actor_1, dedupe_actor_2, dedupe_actor_3}) == 3
