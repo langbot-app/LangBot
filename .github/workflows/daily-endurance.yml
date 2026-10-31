@@ -342,7 +342,7 @@ jobs:
               {
                 "parameters": {
                   "respondWith": "json",
-                  "responseBody": "={{ { response: 'LANGBOT_N8N_DAILY_OK' } }}",
+                  "responseBody": "={{ { response: 'LANGBOT_N8N_DAILY_OK|' + $json.body.chatInput + '|' + $json.body.message + '|' + $json.body.user_id + '|' + $json.body.conversation_id + '|' + $json.body.session_id } }}",
                   "options": {}
                 },
                 "id": "langbot-n8n-response",
