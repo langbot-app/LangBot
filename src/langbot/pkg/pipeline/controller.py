@@ -24,6 +24,49 @@ class Controller:
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
+    def _command_name(self, query: pipeline_query.Query) -> str | None:
+        """Return a command name while ignoring non-text platform components."""
+
+        command_config = self.ap.instance_config.data.get('command', {})
+        if not command_config.get('enable', True):
+            return None
+        message_chain = getattr(query, 'message_chain', None)
+        try:
+            components = list(message_chain or [])
+        except TypeError:
+            components = []
+        text_parts = [str(getattr(component, 'text', '')) for component in components]
+        message_text = ''.join(text_parts).strip() or str(message_chain or '').strip()
+        for prefix in command_config.get('prefix', []):
+            if message_text.startswith(prefix):
+                command_text = message_text[len(prefix) :].strip()
+                return command_text.split(maxsplit=1)[0].lower() if command_text else None
+        return None
+
+    async def _handle_stop_command(
+        self,
+        query: pipeline_query.Query,
+        original_query: pipeline_query.Query,
+    ) -> None:
+        """Cancel an authorized active run and retain the result for CommandHandler."""
+
+        if original_query.variables.get('_stop_command_attempted'):
+            return
+        query.variables['_stop_command_attempted'] = True
+        original_query.variables['_stop_command_attempted'] = True
+        allow_other_actors = False
+        if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
+            allow_other_actors = await self.ap.cmd_mgr.resolve_privilege(original_query) >= 2
+        run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(
+            query,
+            allow_other_actors=allow_other_actors,
+        )
+        if query.variables.get('_stop_command_denied'):
+            original_query.variables['_stop_command_denied'] = True
+        if run_id:
+            query.variables['_stop_command_run_id'] = run_id
+            original_query.variables['_stop_command_run_id'] = run_id
+
     async def _assert_query_execution_active(
         self,
         query: pipeline_query.Query,
@@ -46,6 +89,7 @@ class Controller:
         """Offer follow-up input to an active Runner before it queues."""
 
         try:
+            original_query = query
             pipeline_uuid = query.pipeline_uuid
             if not pipeline_uuid:
                 return False
@@ -60,6 +104,12 @@ class Controller:
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            command = self._command_name(query)
+            if command == 'stop':
+                await self._handle_stop_command(query, original_query)
+                # Control commands bypass ordinary group response rules while a
+                # run owns the session slot, then reach CommandHandler normally.
+                return False
             if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
                 from .resprule.resprule import GroupRespondRuleCheckStage
                 from .entities import ResultType
@@ -76,6 +126,14 @@ class Controller:
                 if result.result_type == ResultType.INTERRUPT:
                     return False
                 query = candidate
+                command = self._command_name(query)
+                if command == 'stop':
+                    await self._handle_stop_command(query, original_query)
+                    return False
+            if command:
+                # Commands must reach CommandHandler after the active run releases
+                # the session slot. They must never become Runner steering input.
+                return False
             return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
         except Exception as exc:
             self.ap.logger.warning(
@@ -174,6 +232,13 @@ class Controller:
                                 claimed_steering_query = query
                                 break
                             continue
+
+                        # A stop command must cancel an active run even when the
+                        # session has spare capacity (for example, concurrency=2).
+                        # Otherwise it would occupy the second slot as a normal
+                        # Pipeline query and never reach the cancellation branch.
+                        if self._command_name(query) == 'stop' and not query.variables.get('_stop_command_attempted'):
+                            await self._try_claim_steering_before_session_slot(query)
 
                         if not session._semaphore.locked():
                             selected_query = query

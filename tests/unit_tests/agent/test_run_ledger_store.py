@@ -128,6 +128,23 @@ async def test_finalize_without_metadata_preserves_legacy_snapshot(store, legacy
 
 
 @pytest.mark.asyncio
+async def test_request_cancel_does_not_mutate_terminal_run(store):
+    await store.create_run(
+        run_id='already-completed',
+        event_id='event',
+        binding_id='binding',
+        runner_id='runner',
+    )
+    completed = await store.finalize_run(run_id='already-completed', status='completed')
+
+    assert await store.request_cancel(run_id='already-completed', status_reason='late stop') is None
+    current = await store.get_run('already-completed')
+    assert current['status'] == 'completed'
+    assert current['cancel_requested_at'] is None
+    assert current['status_reason'] == completed['status_reason']
+
+
+@pytest.mark.asyncio
 async def test_metadata_update_still_rejects_new_inline_images(store, legacy_run):
     with pytest.raises(sqlalchemy.exc.StatementError, match='Inline images cannot be persisted'):
         await store.finalize_run(

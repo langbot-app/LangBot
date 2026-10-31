@@ -64,7 +64,7 @@ jobs:
           read -r -a extras <<< "$EXTRA_PLUGINS"
           args=()
           if [[ "$RESTART_SERVICES" == true ]]; then args+=(--restart-services); fi
-          uv run --no-sync python tools/regression_ci.py \
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite daily --scenario-groups "${groups[@]}" "${args[@]}" \
             --lbctl .endurance-bin/lbctl_linux_amd64 --plugins plugins --extra-plugins "${extras[@]}" --output .qa/daily
       - name: Publish observations
@@ -188,7 +188,7 @@ jobs:
           docker pull python:3.12-alpine
       - name: Run API contracts
         run: |
-          uv run --no-sync python tools/regression_ci.py \
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
             --suite api --api-seed "$GITHUB_RUN_ID" \
             --lbctl .api-bin/lbctl_linux_amd64 --plugins plugins --output .qa/api
       - name: Publish API result
@@ -247,5 +247,146 @@ jobs:
             .qa/api/plugins/manifest.json
             .qa/api/plugins/*-build.log
             .qa/api/*.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  dify-cloud:
+    name: Daily Dify Cloud Agent regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install locked Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Run live Dify Agent regression
+        env:
+          DIFY_AGENT_API_KEY: ${{ secrets.DIFY_AGENT_API_KEY }}
+          DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
+        run: |
+          if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
+            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+              echo "DIFY_AGENT_API_KEY is required for the scheduled live Dify regression." >&2
+              exit 1
+            fi
+            echo "DIFY_AGENT_API_KEY is not configured; skipping manual live Dify regression."
+            exit 0
+          fi
+          uv run --no-sync python http-certification-tests/live_dify_agent.py
+      - name: Publish Dify regression summary
+        if: always()
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" ]]; then
+            cat "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve Dify regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-dify-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/dify-live/summary.json
+          if-no-files-found: warn
+          retention-days: 30
+  n8n-latest:
+    name: Daily latest n8n Agent Runner regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: plugins/Runner
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Start latest n8n container
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.qa/n8n-live"
+          docker pull docker.n8n.io/n8nio/n8n:latest
+          docker image inspect docker.n8n.io/n8nio/n8n:latest --format '{{json .RepoDigests}}' > "$GITHUB_WORKSPACE/.qa/n8n-live/image-digests.json"
+          docker run -d --user node --name langbot-n8n-latest -p 5678:5678 \
+            -e N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false \
+            -e N8N_SECURE_COOKIE=false \
+            -e N8N_DIAGNOSTICS_ENABLED=false \
+            -e N8N_PERSONALIZATION_ENABLED=false \
+            -e N8N_VERSION_NOTIFICATIONS_ENABLED=false \
+            --entrypoint /bin/sh \
+            docker.n8n.io/n8nio/n8n:latest -c 'tail -f /dev/null'
+      - name: Import and publish smoke workflow
+        run: |
+          docker cp http-certification-tests/fixtures/n8n_latest_runner_smoke.json langbot-n8n-latest:/tmp/n8n_latest_runner_smoke.json
+          docker exec -u node langbot-n8n-latest n8n import:workflow --input=/tmp/n8n_latest_runner_smoke.json
+          docker exec -u node langbot-n8n-latest n8n export:workflow --all --output=/tmp/n8n_export.json
+          docker exec -u node langbot-n8n-latest sh -c 'cat /tmp/n8n_export.json' > /tmp/n8n_export.json
+          workflow_id=$(python3 -c 'import json; print(json.load(open("/tmp/n8n_export.json"))[0]["id"])')
+          echo "Imported workflow id: $workflow_id"
+          docker exec -u node langbot-n8n-latest n8n publish:workflow --id="$workflow_id"
+          docker exec -d -u node langbot-n8n-latest n8n start
+          for attempt in {1..60}; do
+            if curl -fsS http://127.0.0.1:5678/healthz >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 60 ]]; then
+              echo 'latest n8n did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          docker exec -u node langbot-n8n-latest n8n --version > "$GITHUB_WORKSPACE/.qa/n8n-live/version.txt"
+      - name: Verify production Webhook
+        run: |
+          for attempt in {1..30}; do
+            if curl -fsS -X POST http://127.0.0.1:5678/webhook/langbot-n8n-smoke \
+              -H 'Content-Type: application/json' \
+              -d '{"chatInput":"direct-smoke","message":"direct-smoke","user_id":"direct-user","conversation_id":"direct-conversation","session_id":"direct-session"}' \
+              | tee "$GITHUB_WORKSPACE/.qa/n8n-live/direct-response.json" \
+              | grep -F 'LANGBOT_N8N_DAILY_OK'; then
+              break
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              echo 'latest n8n production Webhook did not become ready' >&2
+              exit 1
+            fi
+            sleep 2
+          done
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+      - name: Install Runner dependencies
+        run: uv sync --dev --frozen
+      - name: Run LangBot n8n DefaultRunner regression
+        env:
+          N8N_LIVE_OUTPUT: ${{ github.workspace }}/.qa/n8n-live/summary.json
+        run: uv run --no-sync python http-certification-tests/live_n8n_agent.py
+      - name: Collect latest n8n evidence
+        if: always()
+        run: docker logs langbot-n8n-latest > "$GITHUB_WORKSPACE/.qa/n8n-live/container.log" 2>&1 || true
+      - name: Remove latest n8n container
+        if: always()
+        run: docker rm -f langbot-n8n-latest >/dev/null 2>&1 || true
+      - name: Publish latest n8n summary
+        if: always()
+        run: |
+          if [[ -f "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" ]]; then
+            cat "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Preserve latest n8n evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-n8n-latest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .qa/n8n-live
           if-no-files-found: warn
           retention-days: 30

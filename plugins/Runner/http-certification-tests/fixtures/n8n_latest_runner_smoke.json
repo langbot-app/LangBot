@@ -1,0 +1,41 @@
+{
+  "name": "LangBot n8n latest Runner smoke",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "langbot-n8n-smoke",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "langbot-n8n-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "langbot-n8n-smoke"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { response: 'LANGBOT_N8N_DAILY_OK|' + $json.body.chatInput + '|' + $json.body.message + '|' + $json.body.user_id + '|' + $json.body.conversation_id + '|' + $json.body.session_id } }}",
+        "options": {}
+      },
+      "id": "langbot-n8n-response",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [300, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "langbot-n8n-latest-runner-smoke-v1",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}

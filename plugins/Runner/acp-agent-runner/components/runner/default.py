@@ -29,6 +29,7 @@ from pkg.daemon_relay import (
 from pkg.prompt import acp_prompt_blocks, has_acp_prompt_input, prompt_capabilities
 from pkg.runtime_support import local_workspace
 from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params
+from pkg.session_management import read_json, runner_session_identity, storage_key, write_json
 from pkg.steering import run_with_steering
 
 logger = logging.getLogger(__name__)
@@ -506,6 +507,75 @@ class DefaultRunner(Runner):
     def _stored_session_id(self, ctx: RunnerContext) -> str:
         return str(ctx.state.conversation.get(ACP_SESSION_STATE_KEY) or "").strip()
 
+    def _conversation_id(self, ctx: RunnerContext) -> str:
+        return runner_session_identity(ctx)
+
+    async def _managed_session_id(self, ctx: RunnerContext, config: dict[str, typing.Any]) -> str:
+        """Persist command control data and return the command-selected session."""
+
+        conversation_id = self._conversation_id(ctx)
+        if not conversation_id:
+            return ""
+        try:
+            previous_control = await read_json(self.plugin, storage_key("control", conversation_id), {})
+            control = {
+                "provider": config["provider"],
+                "location": config["location"],
+                "acp_command": config["acp_command"],
+                "workspace": config["workspace"],
+                "session_cwd": config["session_cwd"],
+                "daemon_id": config["daemon_id"],
+                "timeout": min(float(config["timeout"]), 120.0),
+                "startup_timeout": config["startup_timeout"],
+                "initialize_timeout": config["initialize_timeout"],
+                "permission_decision": config["permission_decision"],
+                "requires_env_json": bool(config["env"]),
+            }
+            if isinstance(previous_control, dict) and isinstance(previous_control.get("session_capabilities"), dict):
+                control["session_capabilities"] = previous_control["session_capabilities"]
+            await write_json(self.plugin, storage_key("control", conversation_id), control)
+            selected = await read_json(self.plugin, storage_key("selected", conversation_id), {})
+        except Exception as exc:
+            logger.warning("Failed to load ACP managed-session state: %s", exc)
+            return ""
+        if not isinstance(selected, dict):
+            return ""
+        return str(selected.get("session_id") or "").strip()
+
+    async def _record_managed_session(self, ctx: RunnerContext, session_id: str) -> None:
+        conversation_id = self._conversation_id(ctx)
+        if not conversation_id or not session_id:
+            return
+        try:
+            await write_json(
+                self.plugin,
+                storage_key("last", conversation_id),
+                {"session_id": session_id},
+            )
+        except Exception as exc:
+            logger.warning("Failed to persist ACP managed-session state: %s", exc)
+
+    async def _record_session_capabilities(
+        self,
+        ctx: RunnerContext,
+        capabilities: dict[str, typing.Any],
+    ) -> None:
+        conversation_id = self._conversation_id(ctx)
+        if not conversation_id:
+            return
+        try:
+            key = storage_key("control", conversation_id)
+            control = await read_json(self.plugin, key, {})
+            if not isinstance(control, dict):
+                return
+            control["session_capabilities"] = {
+                method: _runtime_has_method(capabilities, method)
+                for method in ("session/list", "session/delete", "session/load", "session/resume")
+            }
+            await write_json(self.plugin, key, control)
+        except Exception as exc:
+            logger.warning("Failed to persist ACP session capabilities: %s", exc)
+
     def _mcp_server_to_acp(self, server: AgentMCPServerConfig) -> dict[str, typing.Any]:
         if server.transport == "http":
             return {
@@ -812,6 +882,16 @@ class DefaultRunner(Runner):
             )
         ) as event_stream:
             async for event in event_stream:
+                if event.get("type") == "control.capabilities":
+                    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                    capabilities = data.get("agent_capabilities")
+                    if isinstance(capabilities, dict):
+                        await self._record_session_capabilities(ctx, capabilities)
+                    continue
+                if event.get("type") == "state.updated":
+                    data = event.get("data") if isinstance(event.get("data"), dict) else {}
+                    if data.get("key") == ACP_SESSION_STATE_KEY:
+                        await self._record_managed_session(ctx, str(data.get("value") or ""))
                 event.setdefault("run_id", ctx.run_id)
                 yield RunnerResult.model_validate(event)
 
@@ -840,7 +920,8 @@ class DefaultRunner(Runner):
                 return self._run_acp_turn(ctx, config, turn_prompt, resume_session_id, ctx.input)
             return self._run_acp_turn(ctx, config, turn_prompt, resume_session_id, AgentInput(text=turn_prompt))
 
-        initial_resume = self._stored_session_id(ctx) if config["reuse_session"] else ""
+        managed_session_id = await self._managed_session_id(ctx, config)
+        initial_resume = managed_session_id or (self._stored_session_id(ctx) if config["reuse_session"] else "")
         async for result in run_with_steering(
             ctx,
             lambda: self.get_run_api(ctx),
@@ -889,7 +970,7 @@ class DefaultRunner(Runner):
             )
             async with client:
                 initialize_result = await client.initialize(timeout=config["initialize_timeout"])
-                session_id, created = await self._create_or_resume_session(
+                session_id, _created = await self._create_or_resume_session(
                     client,
                     initialize_result,
                     ctx,
@@ -898,13 +979,13 @@ class DefaultRunner(Runner):
                     stored_session_id,
                 )
 
-                if created or stored_session_id != session_id:
-                    yield RunnerResult.state_updated(
-                        ctx.run_id,
-                        ACP_SESSION_STATE_KEY,
-                        session_id,
-                        scope="conversation",
-                    )
+                yield RunnerResult.state_updated(
+                    ctx.run_id,
+                    ACP_SESSION_STATE_KEY,
+                    session_id,
+                    scope="conversation",
+                )
+                await self._record_managed_session(ctx, session_id)
 
                 prompt_blocks = acp_prompt_blocks(prompt_text, agent_input, prompt_capabilities(initialize_result))
                 async for result in self._stream_prompt_results(
