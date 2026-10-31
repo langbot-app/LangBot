@@ -1193,26 +1193,28 @@ class _CodexAppServerClient:
 
     async def _wait_for_user(self, request: InteractionRequest) -> InteractionSubmission:
         if self.ctx is None:
-            raise NativeCliError('No active run for interaction', code='codex.interaction_invalid')
+            raise NativeCliError("No active run for interaction", code="codex.interaction_invalid")
         loop = asyncio.get_running_loop()
         if self.timeout_scope is not None:
             self.timeout_scope.reschedule(loop.time() + 3600 + self.operation_timeout)
         try:
             if request.actions and not request.fields:
-                result = await self.ctx.request_interaction(request, timeout=3600, on_unsupported='degrade')
-                if result.status != 'submitted' or result.submission is None:
-                    raise NativeCliError(f'User interaction {result.status}', code='codex.interaction_expired')
+                result = await self.ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
+                if result.status != "submitted" or result.submission is None:
+                    raise NativeCliError(f"User interaction {result.status}", code="codex.interaction_expired")
                 return result.submission
             values: dict[str, typing.Any] = {}
             for field in request.fields:
-                step = request.model_copy(update={
-                    'interaction_id': f'{request.interaction_id}-{field.id}'[:255],
-                    'fields': [field],
-                    'actions': [],
-                })
-                result = await self.ctx.request_interaction(step, timeout=3600, on_unsupported='degrade')
-                if result.status != 'submitted' or result.submission is None:
-                    raise NativeCliError(f'User interaction {result.status}', code='codex.interaction_expired')
+                step = request.model_copy(
+                    update={
+                        "interaction_id": f"{request.interaction_id}-{field.id}"[:255],
+                        "fields": [field],
+                        "actions": [],
+                    }
+                )
+                result = await self.ctx.request_interaction(step, timeout=3600, on_unsupported="degrade")
+                if result.status != "submitted" or result.submission is None:
+                    raise NativeCliError(f"User interaction {result.status}", code="codex.interaction_expired")
                 values[field.id] = result.submission.values.get(field.id)
             return InteractionSubmission(interaction_id=request.interaction_id, values=values)
         finally:
@@ -1400,9 +1402,9 @@ class _CodexAppServerClient:
             request, continuation = _interaction_from_codex_approval(method, params, item)
             if self.ctx is not None:
                 submission = await self._wait_for_user(request)
-                await self.respond(request_id, {
-                    'decision': 'accept' if submission.action_id == APPROVE_ONCE_ACTION else 'cancel'
-                })
+                await self.respond(
+                    request_id, {"decision": "accept" if submission.action_id == APPROVE_ONCE_ACTION else "cancel"}
+                )
                 return
             self.interaction_request = request
             self.interaction_continuation = continuation
@@ -1423,18 +1425,26 @@ class _CodexAppServerClient:
                 return
             if self.ctx is not None:
                 submission = await self._wait_for_user(request)
-                if method == 'item/tool/call':
-                    await self.respond(request_id, {
-                        'success': True,
-                        'contentItems': [{'type': 'inputText', 'text': json.dumps(submission.values, ensure_ascii=False)}],
-                    })
+                if method == "item/tool/call":
+                    await self.respond(
+                        request_id,
+                        {
+                            "success": True,
+                            "contentItems": [
+                                {"type": "inputText", "text": json.dumps(submission.values, ensure_ascii=False)}
+                            ],
+                        },
+                    )
                 else:
-                    await self.respond(request_id, {
-                        'answers': {
-                            field_id: {'answers': value if isinstance(value, list) else [str(value)]}
-                            for field_id, value in submission.values.items()
-                        }
-                    })
+                    await self.respond(
+                        request_id,
+                        {
+                            "answers": {
+                                field_id: {"answers": value if isinstance(value, list) else [str(value)]}
+                                for field_id, value in submission.values.items()
+                            }
+                        },
+                    )
                 return
             self.interaction_request = request
             self.interaction_continuation = continuation

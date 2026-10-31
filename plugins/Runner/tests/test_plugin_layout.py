@@ -17,8 +17,8 @@ from langbot_plugin.api.entities.builtin.runner import (
     AgentRuntimeContext,
     AgentTrigger,
     DeliveryContext,
-    InteractionSubmission,
     InteractionResult,
+    InteractionSubmission,
     RunnerContext,
 )
 
@@ -1252,7 +1252,7 @@ def _interaction_context(config, text, *, action_id=None, values=None):
 
     async def request_interaction(request, **kwargs):
         return InteractionResult(
-            status='submitted',
+            status="submitted",
             submission=InteractionSubmission(
                 interaction_id=request.interaction_id,
                 action_id=action_id,
@@ -1280,12 +1280,20 @@ def test_codex_runner_answers_dynamic_question_in_live_turn(tmp_path: Path) -> N
         "sandbox-mode": "read-only",
     }
 
-    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
-        config, 'ASK_INTERACTION', values={'environment': 'production'},
-    ))))
+    resumed = asyncio.run(
+        _collect_async(
+            runner.run(
+                _interaction_context(
+                    config,
+                    "ASK_INTERACTION",
+                    values={"environment": "production"},
+                )
+            )
+        )
+    )
 
     assert resumed[-1].type == "run.completed"
-    assert not any(item.type == 'action.requested' for item in resumed)
+    assert not any(item.type == "action.requested" for item in resumed)
     assert any(
         "production" in str(item.data.get("chunk", {}).get("content") or "")
         for item in resumed
@@ -1309,12 +1317,20 @@ def test_codex_runner_approves_native_request_in_live_turn(tmp_path: Path) -> No
         "sandbox-mode": "read-only",
     }
 
-    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
-        config, 'TRIGGER_COMMAND_APPROVAL', action_id='approve_once',
-    ))))
+    resumed = asyncio.run(
+        _collect_async(
+            runner.run(
+                _interaction_context(
+                    config,
+                    "TRIGGER_COMMAND_APPROVAL",
+                    action_id="approve_once",
+                )
+            )
+        )
+    )
 
     assert resumed[-1].type == "run.completed"
-    assert not any(item.type == 'action.requested' for item in resumed)
+    assert not any(item.type == "action.requested" for item in resumed)
     assert any(
         "APPROVAL_EXECUTED" in str(item.data.get("chunk", {}).get("content") or "")
         for item in resumed
@@ -1337,9 +1353,17 @@ def test_codex_runner_rejects_native_request_in_live_turn(tmp_path: Path) -> Non
         "approval-policy": "on-request",
         "sandbox-mode": "read-only",
     }
-    resumed = asyncio.run(_collect_async(runner.run(_interaction_context(
-        config, 'TRIGGER_COMMAND_APPROVAL', action_id='reject',
-    ))))
+    resumed = asyncio.run(
+        _collect_async(
+            runner.run(
+                _interaction_context(
+                    config,
+                    "TRIGGER_COMMAND_APPROVAL",
+                    action_id="reject",
+                )
+            )
+        )
+    )
 
     assert resumed[-1].type == "run.completed"
     assert any(

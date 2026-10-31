@@ -21,8 +21,8 @@ from langbot_plugin.api.entities.builtin.runner import (
     AgentTrigger,
     ConversationContext,
     DeliveryContext,
-    InteractionSubmission,
     InteractionResult,
+    InteractionSubmission,
     RunnerContext,
 )
 
@@ -100,11 +100,11 @@ def _dify_interaction_ctx():
     async def request_interaction(request, **kwargs):
         requests.append(request)
         return InteractionResult(
-            status='submitted',
+            status="submitted",
             submission=InteractionSubmission(
                 interaction_id=request.interaction_id,
                 action_id=request.actions[0].id if request.actions else None,
-                values={request.fields[0].id: 'high'} if request.fields else {},
+                values={request.fields[0].id: "high"} if request.fields else {},
             ),
         )
 
@@ -252,24 +252,24 @@ def test_dify_workflow_pause_requests_host_interaction_and_hides_provider_tokens
             }
 
         async def workflow_submit(self, **kwargs):
-            assert kwargs['form_token'] == 'form-private'
-            assert kwargs['workflow_run_id'] == 'workflow-private'
-            assert kwargs['inputs']['priority'] == 'high'
-            assert kwargs['action'] == 'approve-private'
-            yield {'event': 'node_finished', 'data': {'node_type': 'answer', 'outputs': {'answer': 'Approved'}}}
-            yield {'event': 'workflow_finished', 'data': {'outputs': {}}}
+            assert kwargs["form_token"] == "form-private"
+            assert kwargs["workflow_run_id"] == "workflow-private"
+            assert kwargs["inputs"]["priority"] == "high"
+            assert kwargs["action"] == "approve-private"
+            yield {"event": "node_finished", "data": {"node_type": "answer", "outputs": {"answer": "Approved"}}}
+            yield {"event": "workflow_finished", "data": {"outputs": {}}}
 
     ctx, requests = _dify_interaction_ctx()
     results = asyncio.run(_collect_async(runner._run_workflow(ctx, FakeClient(), {}, "hello", "user_1", [], False)))
 
     assert _type(results[0]) == "tool.call.started"
     assert results[0].data["tool_name"] == "Manual review"
-    assert requests[0].fields[0].options[0].value == 'high'
-    assert requests[1].actions[0].label == 'Approve'
-    assert 'form-private' not in str(requests)
-    assert 'workflow-private' not in str(requests)
+    assert requests[0].fields[0].options[0].value == "high"
+    assert requests[1].actions[0].label == "Approve"
+    assert "form-private" not in str(requests)
+    assert "workflow-private" not in str(requests)
     assert storage.values == {}
-    assert _type(results[-1]) == 'run.completed'
+    assert _type(results[-1]) == "run.completed"
 
 
 def test_dify_current_human_input_event_requests_host_interaction() -> None:
@@ -299,18 +299,18 @@ def test_dify_current_human_input_event_requests_host_interaction() -> None:
             }
 
         async def workflow_submit(self, **kwargs):
-            assert kwargs['inputs']['priority'] == 'high'
-            yield {'event': 'node_finished', 'data': {'node_type': 'answer', 'outputs': {'answer': 'Approved'}}}
-            yield {'event': 'workflow_finished', 'data': {'outputs': {}}}
+            assert kwargs["inputs"]["priority"] == "high"
+            yield {"event": "node_finished", "data": {"node_type": "answer", "outputs": {"answer": "Approved"}}}
+            yield {"event": "workflow_finished", "data": {"outputs": {}}}
 
     ctx, requests = _dify_interaction_ctx()
     results = asyncio.run(_collect_async(runner._run_workflow(ctx, FakeClient(), {}, "hello", "user_1", [], False)))
 
-    assert _type(results[-1]) == 'run.completed'
-    assert requests[0].title == 'Manual review'
-    assert requests[0].fields[0].options[0].value == 'high'
-    assert 'form-private' not in str(requests)
-    assert 'workflow-private' not in str(requests)
+    assert _type(results[-1]) == "run.completed"
+    assert requests[0].title == "Manual review"
+    assert requests[0].fields[0].options[0].value == "high"
+    assert "form-private" not in str(requests)
+    assert "workflow-private" not in str(requests)
     assert storage.values == {}
 
 
