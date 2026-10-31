@@ -1,10 +1,29 @@
 # LangBot regression tools
 
+## Layout and entrypoints
+
+Run module entrypoints from the repository root:
+
+```sh
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite smoke --lbctl /path/to/lbctl --plugins plugins --output .qa/smoke
+uv run --no-sync python -m tools.entrypoints.regression_job validate --profile tools/profiles/job.json
+uv run --no-sync python -m tools.entrypoints.regression_suite validate --profile tools/profiles/groups.json
+```
+
+The directory boundaries are intentional:
+
+- `entrypoints/` contains executable orchestration and reporting commands.
+- `regression/` contains shared harness code and scenario-domain modules.
+- `profiles/` contains suite inputs; `fixtures/` contains mock and plugin data; `contracts/` contains the behavior catalog.
+- `tests/` contains the tool and harness tests. Run them with `python -m unittest discover -s tools/tests -p 'test_*.py' -v`.
+
+Imports use the `tools.entrypoints` and `tools.regression` package paths. Keep commands rooted at the repository so profile and fixture paths resolve consistently.
+
 Run the deterministic OpenAI Chat Completions endpoint with Python 3.11+, without
 API credentials or third-party dependencies:
 
 ```sh
-python3 tools/mock_llm.py --port 18080 --record /tmp/langbot-mock-requests.jsonl
+python3 -m tools.entrypoints.mock_llm --port 18080 --record /tmp/langbot-mock-requests.jsonl
 ```
 
 In LangBot, create an `openai-chat-completions` Provider whose base URL is
@@ -37,7 +56,7 @@ acknowledgement in the model input, and rejects another group's history. Final
 responses carry a per-turn acknowledgement checked by the traffic driver.
 
 Add fixed response/tool sequences with `--scenarios path/to/scenarios.json`, using
-`mock_llm_scenarios.json` as the example. `expect_tool_output` checks a substring
+`fixtures/mock_llm_scenarios.json` as the example. `expect_tool_output` checks a substring
 in the previous tool results; `expect_prompt` checks the submitted messages.
 The server returns tool calls; it never executes
 their commands. Request recordings contain prompts, tool results, responses,
@@ -46,7 +65,7 @@ status, and disconnects, but no HTTP headers. Use test data only.
 Run the focused HTTP checks on the Linux test host:
 
 ```sh
-python3 -m unittest discover -s tools -p test_mock_llm.py -v
+python3 -m unittest discover -s tools/tests -p test_mock_llm.py -v
 ```
 
 These checks validate the mock server. A LangBot regression must additionally
@@ -59,7 +78,7 @@ token hashes do not establish semantic retrieval quality.
 
 ## Normal traffic and resource collection
 
-`regression_traffic.py` executes a JSON list of normal `lbctl` cases at a selected
+`entrypoints/regression_traffic.py` executes a JSON list of normal `lbctl` cases at a selected
 rate. Each case has a name, CLI arguments, and an expected response substring:
 
 ```json
@@ -70,7 +89,7 @@ Prepare a Workspace-bound CLI context and its API key environment variable, then
 run on the Linux test host:
 
 ```sh
-python3 tools/regression_traffic.py \
+python3 -m tools.entrypoints.regression_traffic \
   --lbctl /path/to/lbctl --config /path/to/lbctl.yaml \
   --cases /path/to/cases.json --output /path/to/new-results-directory \
   --duration 600 --rps 2 --workers 4 --cooldown 30 \
@@ -98,11 +117,11 @@ any failed health probe or process/container resource read.
 
 ## Configured regression suites
 
-[`regression_suite.py`](regression_suite.py) turns a JSON profile into a repeatable
+[`entrypoints/regression_suite.py`](entrypoints/regression_suite.py) turns a JSON profile into a repeatable
 resource preparation, traffic, observation, verdict, and cleanup sequence. Start
-with [`regression_profiles/groups.json`](regression_profiles/groups.json) for
+with [`profiles/groups.json`](profiles/groups.json) for
 continuous group conversations. The earlier
-[`normal.json`](regression_profiles/normal.json) profile retains independent CLI
+[`normal.json`](profiles/normal.json) profile retains independent CLI
 requests; parallel CLI workers alone do not simulate persistent groups.
 
 Use a dedicated QA Workspace. First provision the instance with `lbctl install`
@@ -115,9 +134,9 @@ paths resolve against the profile directory, so adjust them if you move it.
 Run on the Linux test host:
 
 ```sh
-python3 tools/regression_suite.py validate --profile tools/regression_profiles/groups.json
-python3 tools/regression_suite.py run \
-  --profile tools/regression_profiles/groups.json --output .qa/regression/run-001
+python3 -m tools.entrypoints.regression_suite validate --profile tools/profiles/groups.json
+python3 -m tools.entrypoints.regression_suite run \
+  --profile tools/profiles/groups.json --output .qa/regression/run-001
 ```
 
 `validate` checks profile syntax and references without contacting the instance.
@@ -159,8 +178,8 @@ Failed runs retain resources by default. After inspection, clean them with the
 same profile and credentials:
 
 ```sh
-python3 tools/regression_suite.py cleanup \
-  --profile tools/regression_profiles/groups.json --output .qa/regression/run-001
+python3 -m tools.entrypoints.regression_suite cleanup \
+  --profile tools/profiles/groups.json --output .qa/regression/run-001
 ```
 
 Cleanup checks the Workspace against `owned.json` and records remaining items
@@ -169,7 +188,7 @@ contains `profile.json`, resolved `resources.json`, and one directory per phase
 with the original request/resource records. The root `summary.json` includes
 target/achieved RPS, phase results, threshold failures, and the final verdict.
 
-The `regression_suite.py` entry reuses an existing instance and backend processes.
+The `entrypoints/regression_suite.py` entry reuses an existing instance and backend processes.
 Use the complete lifecycle Job below to own deployment, credentials and backends.
 The independent `normal.json` cases use a new-session CLI entry. Group traffic
 uses the signed HTTP Bot adapter instead, as described below. Real IM adapter
@@ -177,7 +196,7 @@ acceptance and resource-leak verdicts need separate scenarios. Test the suite
 plumbing on Linux with:
 
 ```sh
-python3 -m unittest discover -s tools -p test_regression_suite.py -v
+python3 -m unittest discover -s tools/tests -p test_regression_suite.py -v
 ```
 
 ### Persistent group traffic
@@ -229,8 +248,8 @@ before load. The creation is not retried.
 
 ## Complete lifecycle Job
 
-[`regression_job.py`](regression_job.py) owns the deployment as well as the suite.
-Use [`regression_profiles/job.json`](regression_profiles/job.json) to pin the Core
+[`entrypoints/regression_job.py`](entrypoints/regression_job.py) owns the deployment as well as the suite.
+Use [`profiles/job.json`](profiles/job.json) to pin the Core
 Release and select the suite and plugin input directory. The job runs this chain:
 
 1. `lbctl install --profile all` creates a fresh deployment inside the run directory.
@@ -258,9 +277,9 @@ also reserves host port 5401 and 2280–2285, independently of its HTTP port.
 Set the plugin directory and the `lbctl` executable in `job.json`, then run:
 
 ```sh
-uv run --no-sync python tools/regression_job.py validate --profile tools/regression_profiles/job.json
-uv run --no-sync python tools/regression_job.py run \
-  --profile tools/regression_profiles/job.json --output .qa/regression/job-001
+uv run --no-sync python -m tools.entrypoints.regression_job validate --profile tools/profiles/job.json
+uv run --no-sync python -m tools.entrypoints.regression_job run \
+  --profile tools/profiles/job.json --output .qa/regression/job-001
 ```
 
 `--duration`, `--rps` and `--workers` override every load phase. Each output
@@ -271,7 +290,7 @@ deployment data after removing containers. Failed Jobs retain their environment
 by default; after inspection use:
 
 ```sh
-uv run --no-sync python tools/regression_job.py cleanup \
+uv run --no-sync python -m tools.entrypoints.regression_job cleanup \
   --output .qa/regression/job-001
 ```
 
@@ -288,7 +307,7 @@ LangBot/plugin/Box/RAG overhead, not real-model inference cost or retrieval
 quality. Run the Job plumbing checks on Linux with:
 
 ```sh
-uv run --no-sync python -m unittest discover -s tools -p 'test_*.py' -v
+uv run --no-sync python -m unittest discover -s tools/tests -p 'test_*.py' -v
 ```
 
 ## Local plugin lifecycle
@@ -296,7 +315,7 @@ uv run --no-sync python -m unittest discover -s tools -p 'test_*.py' -v
 Run the separate plugin lifecycle Job on a disposable Linux stack:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite plugin-lifecycle \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite plugin-lifecycle \
   --lbctl /path/to/lbctl --output .qa/plugin-lifecycle-001
 ```
 
@@ -322,7 +341,7 @@ under `gate/suite/`.
 
 ## Finite core smoke
 
-Use [`regression_profiles/smoke.json`](regression_profiles/smoke.json) for a finite
+Use [`profiles/smoke.json`](profiles/smoke.json) for a finite
 functional check on an existing Core. It prepares 35 resources through `lbctl`,
 ingests HTML and plain-text fixtures through GeneralParsers, then executes 28
 cases / 43 requests. Reports group the verdicts by stage:
@@ -341,7 +360,7 @@ Cleanup is checked separately: delete journaled API resources and confirm their
 UUIDs are absent from CLI list readback. Evidence goes to `cleanup-checks.json`;
 cleanup failures affect the overall verdict.
 
-Start a dedicated `mock_llm.py` with the bundled scenarios and `--record` as
+Start a dedicated `entrypoints/mock_llm.py` with the bundled scenarios and `--record` as
 shown above. Copy the smoke profile and configure the CLI executable/config,
 service URLs, plugin archives, `vars.mock_records` to that mock recording file,
 and `vars.core_db` to the target Core's existing SQLite `langbot.db`. The suite
@@ -356,8 +375,8 @@ deterministic mock traffic; Core, plugins, Box, document parsing and retrieval
 execute normally.
 
 ```sh
-uv run --no-sync python tools/regression_suite.py validate --profile /path/to/smoke.json
-uv run --no-sync python tools/regression_suite.py run \
+uv run --no-sync python -m tools.entrypoints.regression_suite validate --profile /path/to/smoke.json
+uv run --no-sync python -m tools.entrypoints.regression_suite run \
   --profile /path/to/smoke.json --output .qa/smoke-001
 ```
 
@@ -377,7 +396,7 @@ created resources. Successful runs delete those API resources. Failures retain
 them by default; after inspection use:
 
 ```sh
-uv run --no-sync python tools/regression_suite.py cleanup \
+uv run --no-sync python -m tools.entrypoints.regression_suite cleanup \
   --profile /path/to/smoke.json --output .qa/smoke-001
 ```
 
@@ -415,7 +434,7 @@ workflow takes longer than a minute; it has a separate 15-minute timeout.
 On an existing prepared stack, use:
 
 ```sh
-uv run --no-sync python tools/regression_gate.py \
+uv run --no-sync python -m tools.entrypoints.regression_gate \
   --profile /path/to/smoke.json --output .qa/gate-001
 ```
 
@@ -507,7 +526,7 @@ performance baseline. No automatic comparison between runs is enabled.
 To run the same entrypoint on a disposable Linux host with an idle Docker daemon:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite daily --restart-services \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite daily --restart-services \
   --lbctl /path/to/lbctl --plugins plugins \
   --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/daily-001
 ```
@@ -532,7 +551,7 @@ its Box containers; a process guard timeout can interrupt API cleanup.
 Run the finite state job on the same disposable Linux stack:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite state \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite state \
   --lbctl /path/to/lbctl --plugins plugins --output .qa/state-001
 ```
 
@@ -563,7 +582,7 @@ evidence for 30 days.
 To replay locally on a disposable Linux/Docker host, pass the recorded seed:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite api --api-seed 20261028 \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite api --api-seed 20261028 \
   --lbctl /path/to/lbctl --plugins plugins --output .qa/api-001
 ```
 
@@ -595,7 +614,7 @@ configuration unchanged. Any failed contract or cleanup makes the job fail.
 Run this finite job on a disposable Linux/Docker host:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite isolation \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite isolation \
   --lbctl /path/to/lbctl --plugins plugins --output .qa/isolation-001
 ```
 
@@ -623,7 +642,7 @@ high concurrency.
 Run on the same disposable Linux host:
 
 ```sh
-uv run --no-sync python tools/regression_ci.py --suite cli \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite cli \
   --lbctl /path/to/lbctl --plugins plugins --output .qa/cli-001
 ```
 
@@ -640,7 +659,7 @@ The suite is opt-in and adds no daily schedule or PR gate.
 
 ## Sustained regression and baseline comparison
 
-[`regression_profiles/endurance.json`](regression_profiles/endurance.json) runs
+[`profiles/endurance.json`](profiles/endurance.json) runs
 nine minutes of mixed chat/Box/RAG traffic at 1 request/second across four stable
 groups, followed by one minute without traffic to check recovery. Configure its
 CLI context, plugin inputs, model endpoints, Core SQLite path and Core/Runtime/Box
@@ -649,9 +668,9 @@ PID files as for smoke. Set `plugins: []` to reuse initialized plugins. Configur
 have Docker inspection access. Do not start another Box runtime on a shared daemon.
 
 ```sh
-uv run --no-sync python tools/regression_suite.py validate \
+uv run --no-sync python -m tools.entrypoints.regression_suite validate \
   --profile /path/to/endurance.json
-uv run --no-sync python tools/regression_suite.py run \
+uv run --no-sync python -m tools.entrypoints.regression_suite run \
   --profile /path/to/endurance.json --output .qa/endurance-baseline
 # For an hour including the one-minute cooldown, use --duration 3540.
 ```
@@ -689,7 +708,7 @@ resources after inspection.
 To compare two successful runs from the same reserved test host:
 
 ```sh
-uv run --no-sync python tools/regression_analysis.py \
+uv run --no-sync python -m tools.entrypoints.regression_analysis \
   --baseline .qa/endurance-baseline --candidate .qa/endurance-candidate \
   --output .qa/comparison.json
 ```
@@ -713,7 +732,7 @@ fresh-deployment path still needs separate end-to-end validation.
 
 ## Business behavior coverage
 
-`regression_contracts.json` declares behavior obligations independently of how
+`contracts/regression_contracts.json` declares behavior obligations independently of how
 many requests a workload repeats. It includes explicit unimplemented risks
 (cancellation, restart recovery, credential revocation, Workspace isolation,
 PostgreSQL parity, real adapters and embeddings). This is coverage of the
@@ -741,7 +760,7 @@ inventory. Full source locations and any unresolved declarations are retained
 in `coverage.json`; new declarations appear without editing the case list.
 
 ```sh
-python tools/regression_coverage.py --run .qa/smoke/suite \
+python -m tools.entrypoints.regression_coverage --run .qa/smoke/suite \
   --run .qa/endurance/suite --output .qa/behavior-coverage
 ```
 
@@ -761,7 +780,7 @@ fixtures (86 requests with two groups and three turns). It adds signed ingress
 rejection, API authentication, group reset/history isolation, tool recovery and
 empty retrieval cases. Save its returned profile alongside the existing fixture
 paths, bind `cli.config` to the target Workspace, and run it through
-`regression_suite.py`. Its three `mock-daily-*` models require the matching
+`entrypoints/regression_suite.py`. Its three `mock-daily-*` models require the matching
 expanded mock scenario fixtures. The profile exercises one authenticated
 Workspace; OSS does not support creating a second Workspace. Multiple resources
 or group IDs do not establish cross-Workspace isolation.
@@ -778,7 +797,7 @@ Add this to a finite smoke/scenario profile to run its ordered cases repeatedly:
 }
 ```
 
-Run it with the existing `regression_suite.py run --profile ... --output ...`
+Run it with `python -m tools.entrypoints.regression_suite run --profile ... --output ...`
 entry point. Installation and plugin readiness precede the shared clock; the clock
 starts immediately before creating scenario resources. It covers preparation,
 case execution, owned-resource cleanup and final quiet sampling. The existing
