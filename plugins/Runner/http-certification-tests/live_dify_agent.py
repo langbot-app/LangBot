@@ -120,7 +120,8 @@ async def _run() -> None:
             if _kind(result) == "message.delta" and result.data.get("chunk", {}).get("is_final")
         ]
         final_text = "".join(str(chunk.get("content") or "") for chunk in final_chunks)
-        required_events = {"agent_message", "message", "message_end"}
+        # Agent apps may emit agent_message directly without a separate message event.
+        required_events = {"agent_message", "message_end"}
         missing_events = sorted(required_events.difference(event_types))
         if missing_events:
             raise AssertionError(f"Dify Agent stream did not include required events: {missing_events}")
