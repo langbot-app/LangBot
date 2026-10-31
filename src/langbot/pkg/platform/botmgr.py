@@ -2803,7 +2803,13 @@ class PlatformManager:
         name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
-                return component.to_plain_dict()
+                item = component.to_plain_dict()
+                adapter_class = self.adapter_dict.get(name)
+                if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                    item['spec']['command_registration'] = dataclasses.asdict(
+                        adapter_class.command_registration_capability()
+                    )
+                return item
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:

@@ -96,9 +96,9 @@ def build_command_plan(
         elif name in selected and len(commands) >= capability.max_commands:
             reason = 'command_limit'
         available.append({'name': name, 'description': description, 'reason': reason})
-        if reason:
+        if reason and name in selected:
             rejected.append({'name': name, 'reason': reason})
-        elif name in selected:
+        elif name in selected and not reason:
             commands.append({'name': name, 'description': description, 'descriptions': localized})
     rejected.extend({'name': name, 'reason': 'unavailable'} for name in sorted(selected - effective.keys()))
     if not settings.get('enabled', True) or not settings.get('platform_commands', {}).get('enabled', False):

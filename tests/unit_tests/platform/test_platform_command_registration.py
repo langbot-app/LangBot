@@ -96,11 +96,32 @@ def test_disabled_registration_or_command_processing_produces_empty_sets():
         assert command_sets(plan, 'telegram', 'en-US') == {'': []}
 
 
+def test_unselected_invalid_commands_are_not_reported_as_rejected():
+    plan = build_command_plan(
+        settings(['draw']), [command('Bad'), command('draw')], ['author/first'], TELEGRAM_COMMANDS, 'en-US'
+    )
+    assert plan['rejected'] == []
+    assert plan['available'][0]['reason'] == 'invalid_name'
+
+
 def test_hash_is_stable_and_tracks_description_changes():
     assert command_set_hash({'en': [], '': []}) == command_set_hash({'': [], 'en': []})
     assert command_set_hash({'': [{'name': 'draw', 'description': 'a'}]}) != command_set_hash(
         {'': [{'name': 'draw', 'description': 'b'}]}
     )
+
+
+def test_adapter_list_and_detail_expose_the_same_registration_capability():
+    from langbot.pkg.platform.botmgr import PlatformManager
+
+    component = SimpleNamespace(
+        metadata=SimpleNamespace(name='telegram'), to_plain_dict=lambda: {'name': 'telegram', 'spec': {}}
+    )
+    manager = SimpleNamespace(adapter_components=[component], adapter_dict={'telegram': TelegramAdapter})
+    listing = PlatformManager.get_available_adapters_info(manager)
+    detail = PlatformManager.get_available_adapter_info_by_name(manager, 'telegram')
+    assert listing == [detail]
+    assert detail['spec']['command_registration']['max_commands'] == 100
 
 
 @pytest.mark.asyncio
@@ -302,3 +323,60 @@ async def test_platform_errors_redact_adapter_credentials_before_persistence():
     state = await service.sync_platform_commands(context, 'bot')
     assert state['error'] == 'Rejected token ***'
     assert 'test-only-secret' not in str(service.ap.persistence_mgr.execute_async.await_args)
+
+
+@pytest.mark.asyncio
+async def test_telegram_sync_starts_after_application_is_ready():
+    order = []
+
+    async def started():
+        order.append('started')
+
+    async def synced():
+        order.append('synced')
+
+    adapter = SimpleNamespace(
+        application=SimpleNamespace(
+            initialize=AsyncMock(),
+            updater=SimpleNamespace(start_polling=AsyncMock()),
+            start=AsyncMock(side_effect=started),
+        ),
+        bot=SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(username='test_bot'))),
+        _command_sync=AsyncMock(side_effect=synced),
+        logger=SimpleNamespace(info=AsyncMock()),
+    )
+    await TelegramAdapter.run_async(adapter)
+    assert order == ['started', 'synced']
+
+
+@pytest.mark.asyncio
+async def test_plugin_install_enable_change_and_removal_refresh_command_menus():
+    from langbot.pkg.plugin.connector import PluginRuntimeConnector
+
+    context = ExecutionContext(instance_uuid='instance', workspace_uuid='workspace', placement_generation=1)
+    desired = SimpleNamespace(binding=SimpleNamespace(installation_uuid='one'), enabled=True)
+    handler = SimpleNamespace(remove_plugin_installation=AsyncMock(), unregister_installation_binding=Mock())
+    connector = SimpleNamespace(
+        is_enable_plugin=True,
+        handler=handler,
+        _runtime_handler=lambda: handler,
+        _state_lock=asyncio.Lock(),
+        _load_workspace_settings=AsyncMock(return_value=[]),
+        _load_workspace_desired_states=AsyncMock(return_value=[desired]),
+        _workspace_installations={},
+        _known_desired_states={},
+        _installation_failures={},
+        _apply_desired_state=AsyncMock(),
+        _refresh_platform_commands=AsyncMock(),
+    )
+    await PluginRuntimeConnector._synchronize_workspace(connector, context)
+    connector._refresh_platform_commands.assert_awaited_once_with(context)
+    await PluginRuntimeConnector._synchronize_workspace(connector, context)
+    assert connector._refresh_platform_commands.await_count == 1
+    connector._load_workspace_desired_states.return_value = [SimpleNamespace(binding=desired.binding, enabled=False)]
+    await PluginRuntimeConnector._synchronize_workspace(connector, context)
+    assert connector._refresh_platform_commands.await_count == 2
+    connector._load_workspace_desired_states.return_value = []
+    await PluginRuntimeConnector._synchronize_workspace(connector, context)
+    assert connector._refresh_platform_commands.await_count == 3
+    handler.remove_plugin_installation.assert_awaited_once_with(desired.binding)
