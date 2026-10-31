@@ -181,6 +181,18 @@ class SwitchSession(Command):
                     text=_text(self, "请先发送一条普通消息初始化会话。", "Send one normal message first.")
                 )
                 return
+            capabilities = control.get("session_capabilities")
+            if not isinstance(capabilities, dict) or not any(
+                capabilities.get(method) is True for method in ("session/load", "session/resume")
+            ):
+                yield CommandReturn(
+                    text=_text(
+                        self,
+                        "当前 ACP 客户端不支持跨进程恢复 session，无法切换会话。",
+                        "The ACP client does not support cross-process session recovery; switching is unavailable.",
+                    )
+                )
+                return
             try:
                 result = await run_daemon_control(
                     self.plugin,

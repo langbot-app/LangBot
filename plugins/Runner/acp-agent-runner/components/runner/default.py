@@ -516,20 +516,23 @@ class DefaultRunner(Runner):
         conversation_id = self._conversation_id(ctx)
         if not conversation_id:
             return ""
-        control = {
-            "provider": config["provider"],
-            "location": config["location"],
-            "acp_command": config["acp_command"],
-            "workspace": config["workspace"],
-            "session_cwd": config["session_cwd"],
-            "daemon_id": config["daemon_id"],
-            "timeout": min(float(config["timeout"]), 120.0),
-            "startup_timeout": config["startup_timeout"],
-            "initialize_timeout": config["initialize_timeout"],
-            "permission_decision": config["permission_decision"],
-            "requires_env_json": bool(config["env"]),
-        }
         try:
+            previous_control = await read_json(self.plugin, storage_key("control", conversation_id), {})
+            control = {
+                "provider": config["provider"],
+                "location": config["location"],
+                "acp_command": config["acp_command"],
+                "workspace": config["workspace"],
+                "session_cwd": config["session_cwd"],
+                "daemon_id": config["daemon_id"],
+                "timeout": min(float(config["timeout"]), 120.0),
+                "startup_timeout": config["startup_timeout"],
+                "initialize_timeout": config["initialize_timeout"],
+                "permission_decision": config["permission_decision"],
+                "requires_env_json": bool(config["env"]),
+            }
+            if isinstance(previous_control, dict) and isinstance(previous_control.get("session_capabilities"), dict):
+                control["session_capabilities"] = previous_control["session_capabilities"]
             await write_json(self.plugin, storage_key("control", conversation_id), control)
             selected = await read_json(self.plugin, storage_key("selected", conversation_id), {})
         except Exception as exc:
@@ -566,7 +569,8 @@ class DefaultRunner(Runner):
             if not isinstance(control, dict):
                 return
             control["session_capabilities"] = {
-                method: _runtime_has_method(capabilities, method) for method in ("session/list", "session/delete")
+                method: _runtime_has_method(capabilities, method)
+                for method in ("session/list", "session/delete", "session/load", "session/resume")
             }
             await write_json(self.plugin, key, control)
         except Exception as exc:

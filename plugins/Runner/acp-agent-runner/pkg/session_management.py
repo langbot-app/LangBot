@@ -53,6 +53,10 @@ def runner_session_identity(context: typing.Any) -> str:
     session_id = str(getattr(conversation, "session_id", "") or "").strip()
     if session_id:
         return session_id
+    launcher_type = getattr(conversation, "launcher_type", None)
+    launcher_id = getattr(conversation, "launcher_id", None)
+    if launcher_type in {"group", "person"} and launcher_id not in (None, ""):
+        return f"{launcher_type}_{launcher_id}"
     return str(getattr(conversation, "conversation_id", "") or "").strip()
 
 

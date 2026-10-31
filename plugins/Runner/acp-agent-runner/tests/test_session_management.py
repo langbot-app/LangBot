@@ -7,6 +7,7 @@ import pytest
 from components.commands.session_commands import NewSession, StopRun, SwitchSession
 from components.runner.default import DefaultRunner
 from daemon import RunnerDaemon
+from langbot_plugin.api.entities.builtin.runner.event import ConversationContext
 from pkg.session_management import (
     conversation_id_from_command,
     delete_value,
@@ -70,13 +71,28 @@ def test_runner_and_command_share_reset_stable_session_identity():
     runner_context = types.SimpleNamespace(
         conversation=types.SimpleNamespace(
             conversation_id="conversation-uuid-123",
-            session_id="person_user-1",
+            session_id=None,
+            launcher_type="person",
+            launcher_id="user-1",
         )
     )
 
     assert conversation_id_from_command(command_context) == "person_user-1"
     assert runner_session_identity(runner_context) == "person_user-1"
     assert DefaultRunner()._conversation_id(runner_context) == "person_user-1"
+
+
+def test_event_first_context_preserves_reset_stable_session_identity():
+    context = types.SimpleNamespace(
+        conversation=ConversationContext(
+            conversation_id="conversation-uuid-123",
+            session_id=None,
+            launcher_type="person",
+            launcher_id="user-1",
+        )
+    )
+
+    assert DefaultRunner()._conversation_id(context) == "person_user-1"
 
 
 @pytest.mark.asyncio
@@ -196,7 +212,9 @@ async def test_switch_reset_failure_restores_previous_selection(monkeypatch):
     selected_key = storage_key("selected", conversation_id)
     plugin.values[selected_key] = b'{"session_id":"ses_previous"}'
     control_key = storage_key("control", conversation_id)
-    plugin.values[control_key] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    plugin.values[control_key] = (
+        b'{"location":"daemon","daemon_id":"daemon-1","session_capabilities":{"session/list":true,"session/load":true}}'
+    )
     monkeypatch.setattr(
         "components.commands.session_commands.run_daemon_control",
         AsyncMock(
@@ -218,6 +236,37 @@ async def test_switch_reset_failure_restores_previous_selection(monkeypatch):
 
     assert "reset failed" in results[0].text
     assert plugin.values[selected_key] == b'{"session_id":"ses_previous"}'
+
+
+@pytest.mark.asyncio
+async def test_switch_rejects_session_list_without_cross_process_recovery(monkeypatch):
+    plugin = FakeCommandPlugin()
+    conversation_id = "person_user-1"
+    plugin.values[storage_key("control", conversation_id)] = (
+        b'{"location":"daemon","daemon_id":"daemon-1",'
+        b'"session_capabilities":{"session/list":true,"session/delete":true}}'
+    )
+    monkeypatch.setattr(
+        "components.commands.session_commands.run_daemon_control",
+        AsyncMock(
+            return_value={"sessions": [{"sessionId": "ses_next", "title": "Next", "updatedAt": "2026-01-02T00:00:00Z"}]}
+        ),
+    )
+    command = SwitchSession()
+    command.plugin = plugin
+    await command.initialize()
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type=types.SimpleNamespace(value="person"), launcher_id="user-1"),
+        privilege=1,
+        crt_params=["1"],
+        create_new_conversation=AsyncMock(),
+    )
+    subcommand = command.registered_subcommands["*"].subcommand
+
+    results = [item async for item in subcommand(command, context)]
+
+    assert "cross-process session recovery" in results[0].text
+    context.create_new_conversation.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -243,8 +292,12 @@ async def test_switch_survives_host_conversation_reset(monkeypatch):
         "initialize_timeout": 30,
         "permission_decision": "allow_once",
         "env": {},
+        "session_capabilities": {"session/load": True},
     }
     assert await runner._managed_session_id(first_runner_context, config) == ""
+    plugin.values[storage_key("control", "person_user-1")] = (
+        b'{"location":"daemon","daemon_id":"daemon-1","session_capabilities":{"session/list":true,"session/load":true}}'
+    )
 
     monkeypatch.setattr(
         "components.commands.session_commands.run_daemon_control",
@@ -277,7 +330,9 @@ async def test_switch_survives_host_conversation_reset(monkeypatch):
     next_runner_context = types.SimpleNamespace(
         conversation=types.SimpleNamespace(
             conversation_id="conversation-after-reset",
-            session_id="person_user-1",
+            session_id=None,
+            launcher_type="person",
+            launcher_id="user-1",
         )
     )
     assert await runner._managed_session_id(next_runner_context, config) == "ses_selected"
