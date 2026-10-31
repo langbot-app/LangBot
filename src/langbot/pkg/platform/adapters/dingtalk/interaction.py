@@ -248,7 +248,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
     target_type = str(reply_target.get('target_type') or '')
     target_id = str(reply_target.get('target_id') or '')
     fields = request.get('fields') if isinstance(request.get('fields'), list) else []
@@ -266,7 +266,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
         result = await adapter.send_message(target_type, target_id, adapter._plain_message(fallback))
         return {'ok': True, 'message_id': result.message_id, 'rich': False}
     if target_type not in {'group', 'person'} or not target_id:
-        raise ValueError('interaction.request has an invalid DingTalk target')
+        raise ValueError('send_interaction has an invalid DingTalk target')
     update_target = params.get('update_target')
     submitted_values = _stored_submitted_values(
         update_target.get('submitted_values') if isinstance(update_target, dict) else None
@@ -321,15 +321,18 @@ async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.
     submission = params.get('submission')
     target = params.get('update_target')
     if not all(isinstance(value, dict) for value in (request, submission, target)):
-        raise ValueError('interaction.acknowledge requires request, submission, and update_target')
+        raise ValueError('update_interaction requires request, submission, and update_target')
     if target.get('rich') is not True or not target.get('message_id'):
         raise ValueError('DingTalk interaction acknowledgement requires an A2UI card')
 
     out_track_id = str(target['message_id'])
-    submitted_values = [
-        *_stored_submitted_values(target.get('submitted_values')),
-        *_submission_display_values(request, submission),
-    ][-50:]
+    state = params.get('state', 'submitted')
+    submitted_values = _stored_submitted_values(target.get('submitted_values'))
+    if state == 'submitted':
+        submitted_values.extend(_submission_display_values(request, submission))
+    else:
+        submitted_values.append({'label': '', 'value': 'Expired' if state == 'expired' else 'Cancelled'})
+    submitted_values = submitted_values[-50:]
     components, children = _submitted_components(submitted_values)
     title = str(request.get('title') or '').strip()
     if title:
@@ -510,17 +513,15 @@ def interaction_event_from_native(
         target_id = space_id[normalized_space_id.index('im_robot.') + len('im_robot.') :]
     else:
         raise ValueError('DingTalk interaction callback has no delivery space')
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    return platform_events.InteractionCallbackEvent(
         adapter_name='dingtalk-omni',
-        action='interaction.submitted',
-        data={
-            **parsed,
-            'actor_id': str(callback.get('user_id') or ''),
-            'target_type': target_type,
-            'target_id': target_id,
-            'display_text': 'submitted',
-        },
+        callback_token=str(parsed.get('callback_token') or ''),
+        values=parsed.get('values') if isinstance(parsed.get('values'), dict) else {},
+        actor_id=str(callback.get('user_id') or ''),
+        target_type=target_type,
+        target_id=target_id,
+        callback_context={'outTrackId': _callback_track_id(callback)},
+        raw_submission=parsed,
         timestamp=time.time(),
         source_platform_object=event,
     )

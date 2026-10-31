@@ -258,12 +258,12 @@ class TestQueryPoolAddQuery:
                 message_chain=Mock(),
                 adapter=Mock(),
                 routed_by_rule=True,
-                variables={'_interaction_submission': {'interaction_id': 'form-1'}},
+                variables={'test_marker': {'interaction_id': 'form-1'}},
             )
 
         variables = MockQuery.call_args.kwargs['variables']
         assert variables['_routed_by_rule'] is True
-        assert variables['_interaction_submission'] == {'interaction_id': 'form-1'}
+        assert variables['test_marker'] == {'interaction_id': 'form-1'}
 
     async def test_add_query_notifier_condition(self):
         """add_query notifies waiting consumers."""

@@ -1113,11 +1113,10 @@ def test_claude_code_runner_non_streaming_emits_one_message(tmp_path: Path) -> N
     assert "message" not in results[2].data
 
 
-def test_claude_code_runner_pauses_for_question_and_resumes_with_tool_result(tmp_path: Path) -> None:
+def test_claude_code_runner_rejects_builtin_question_tool(tmp_path: Path) -> None:
     fake_cli = tmp_path / "fake_native_cli.py"
     _write_fake_native_cli(fake_cli)
     module = _load_runner_module("claude-code-agent")
-    native = sys.modules["pkg.native_cli"]
     runner = object.__new__(module.DefaultRunner)
     runner.get_plugin_config = lambda: {}
     runner.get_run_api = lambda ctx: None
@@ -1129,45 +1128,9 @@ def test_claude_code_runner_pauses_for_question_and_resumes_with_tool_result(tmp
         "langbot-assets-enabled": False,
     }
 
-    paused = asyncio.run(_collect_async(runner.run(_native_ctx(config, text="ASK_INTERACTION"))))
-
-    assert [item.type for item in paused] == ["state.updated", "state.updated", "action.requested"]
-    pending = paused[1].data["value"]
-    request = paused[2].data["payload"]
-    assert paused[2].data["action"] == "interaction.requested"
-    assert request["fields"][0]["type"] == "select"
-    assert request["fields"][0]["label"] == "Choose an environment"
-
-    resumed = asyncio.run(
-        _collect_async(
-            runner.run(
-                _native_ctx(
-                    config,
-                    conversation_state={
-                        native.SESSION_STATE_KEY: "fake-session",
-                        native.PENDING_INTERACTION_STATE_KEY: pending,
-                    },
-                    interaction=InteractionSubmission(
-                        interaction_id=request["interaction_id"],
-                        action_id="submit",
-                        values={"environment": "staging"},
-                    ),
-                )
-            )
-        )
-    )
-
-    assert resumed[0].data == {
-        "key": native.PENDING_INTERACTION_STATE_KEY,
-        "value": None,
-        "scope": "conversation",
-    }
-    assert resumed[-1].type == "run.completed"
-    message_text = "".join(
-        str(item.data.get("chunk", {}).get("content") or "") for item in resumed if item.type == "message.delta"
-    )
-    assert "authoritative response" in message_text
-    assert '"answer": "staging"' in message_text
+    results = asyncio.run(_collect_async(runner.run(_native_ctx(config, text="ASK_INTERACTION"))))
+    assert [item.type for item in results] == ["state.updated", "run.failed"]
+    assert results[-1].data["code"] == "claude_code.interaction_invalid"
 
 
 def test_codex_runner_executes_fake_native_cli(tmp_path: Path) -> None:
@@ -1558,12 +1521,11 @@ def test_codex_app_server_auto_approves_legacy_request_when_policy_is_never() ->
                 "params": {"command": "touch probe.txt", "cwd": "/workspace"},
             }
         )
-        return json.loads(stdin.data.decode("utf-8")), client.interaction_request
+        return json.loads(stdin.data.decode("utf-8"))
 
-    response, interaction_request = asyncio.run(approve())
+    response = asyncio.run(approve())
 
     assert response == {"jsonrpc": "2.0", "id": 42, "result": {"decision": "accept"}}
-    assert interaction_request is None
 
 
 def test_codex_local_home_is_unique_per_resumed_run(tmp_path: Path) -> None:

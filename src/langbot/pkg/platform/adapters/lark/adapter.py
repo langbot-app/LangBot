@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
-from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 
 from langbot.pkg.platform.sources.lark import (
     LarkAdapter as LegacyLarkAdapter,
@@ -81,6 +80,11 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class AESCipher:
@@ -114,7 +118,7 @@ async def _cancel_ws_cache_task(client: typing.Any) -> None:
         await asyncio.gather(cache_task, return_exceptions=True)
 
 
-class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: lark_oapi.ws.Client = pydantic.Field(exclude=True)
     api_client: lark_oapi.Client = pydantic.Field(exclude=True)
     quart_app: quart.Quart = pydantic.Field(exclude=True)
@@ -232,6 +236,7 @@ class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapt
             'message.deleted',
             'message.reaction',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -244,8 +249,6 @@ class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapt
             'get_user_info',
             'get_file_url',
             'call_platform_api',
-            'interaction.request',
-            'interaction.acknowledge',
             'send_interaction',
             'update_interaction',
             'get_interaction_capabilities',
@@ -253,6 +256,45 @@ class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapt
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        result = await acknowledge_interaction(
+            self,
+            {
+                'update_target': handle.model_dump(mode='json'),
+                'request': handle.context['request'],
+                'submission': submission.model_dump(mode='json') if submission else {},
+                'state': state,
+            },
+        )
+        updated = InteractionHandle.model_validate(result)
+        updated.context.update(handle.context)
+        return updated
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -649,10 +691,6 @@ class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapt
 
     @localized_adapter
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request':
-            return await send_interaction(self, params)
-        if action == 'interaction.acknowledge':
-            return await acknowledge_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')
@@ -1000,11 +1038,11 @@ class LarkAdapter(LarkAPIMixin, InteractionAdapterMixin, abstract_platform_adapt
             {'toast': {'type': 'success', 'content': adapter_t(self, 'Thank you for your feedback')}}
         )
 
-    def _interaction_action_response(self, event: platform_events.PlatformSpecificEvent) -> dict[str, typing.Any]:
+    def _interaction_action_response(self, event: platform_events.InteractionCallbackEvent) -> dict[str, typing.Any]:
         response: dict[str, typing.Any] = {
             'toast': {'type': 'success', 'content': adapter_t(self, 'Submitted')},
         }
-        if not event.data.get('cardkit'):
+        if not event.raw_submission.get('cardkit'):
             response['card'] = {
                 'type': 'raw',
                 'data': {

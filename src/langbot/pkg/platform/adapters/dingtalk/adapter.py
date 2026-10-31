@@ -15,7 +15,6 @@ from langbot.libs.dingtalk_api.dingtalkevent import DingTalkEvent
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot.pkg.platform.adapters.dingtalk.api_impl import DingTalkAPIMixin
-from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.dingtalk.event_converter import DingTalkEventConverter
 from langbot.pkg.platform.adapters.dingtalk.message_converter import DingTalkMessageConverter
 from langbot.pkg.platform.adapters.dingtalk.platform_api import PLATFORM_API_MAP
@@ -29,6 +28,11 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
 class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
@@ -93,7 +97,7 @@ class DingTalkCardCallbackHandler(dingtalk_stream.CallbackHandler):
         return dingtalk_stream.AckMessage.STATUS_OK, 'OK'
 
 
-class DingTalkAdapter(DingTalkAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: DingTalkClient = pydantic.Field(exclude=True)
 
     message_converter: DingTalkMessageConverter = DingTalkMessageConverter()
@@ -150,6 +154,7 @@ class DingTalkAdapter(DingTalkAPIMixin, InteractionAdapterMixin, abstract_platfo
             'group.info_updated',
             'dingtalk.card_action',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -166,13 +171,52 @@ class DingTalkAdapter(DingTalkAPIMixin, InteractionAdapterMixin, abstract_platfo
             'call_platform_api',
         ]
         if hasattr(self.bot, 'create_and_deliver_ai_card'):
-            apis.extend(['interaction.request', 'send_interaction', 'get_interaction_capabilities'])
+            apis.extend(['send_interaction', 'get_interaction_capabilities'])
             if hasattr(self.bot, 'update_ai_card'):
-                apis.extend(['interaction.acknowledge', 'update_interaction'])
+                apis.append('update_interaction')
         return apis
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        result = await acknowledge_interaction(
+            self,
+            {
+                'update_target': handle.model_dump(mode='json'),
+                'request': handle.context['request'],
+                'submission': submission.model_dump(mode='json') if submission else {},
+                'state': state,
+            },
+        )
+        updated = InteractionHandle.model_validate(result)
+        updated.context.update(handle.context)
+        return updated
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -290,10 +334,6 @@ class DingTalkAdapter(DingTalkAPIMixin, InteractionAdapterMixin, abstract_platfo
         return is_stream_card_configured(self.config)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request' and action in self.get_supported_apis():
-            return await send_interaction(self, params)
-        if action == 'interaction.acknowledge' and action in self.get_supported_apis():
-            return await acknowledge_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

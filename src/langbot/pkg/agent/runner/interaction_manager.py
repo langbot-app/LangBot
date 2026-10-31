@@ -18,15 +18,10 @@ from langbot_plugin.api.entities.builtin.runner.interaction import (
     InteractionSubmission,
 )
 
-from .descriptor import RunnerDescriptor
 from .errors import RunnerProtocolError
-from .host_models import AgentBinding, AgentEventEnvelope, LegacyRunnerIdentity
 from .interaction_store import InteractionStore
 
 
-INTERACTION_REQUESTED_ACTION = 'interaction.requested'
-INTERACTION_DELIVERY_API = 'interaction.request'
-INTERACTION_ACKNOWLEDGE_API = 'interaction.acknowledge'
 INTERACTION_PAYLOAD_MAX_BYTES = 256 * 1024
 DEFAULT_INTERACTION_TTL_SECONDS = 30 * 60
 MAX_INTERACTION_TTL_SECONDS = 24 * 60 * 60
@@ -188,7 +183,7 @@ class InteractionManager:
         supported_apis = adapter.get_supported_apis() if callable(getattr(adapter, 'get_supported_apis', None)) else []
         if supported_apis and 'send_interaction' not in supported_apis:
             capabilities = InteractionDeliveryCapabilities(text_fallback=capabilities.text_fallback)
-        if supported_apis and 'interaction.acknowledge' not in supported_apis:
+        if supported_apis and 'update_interaction' not in supported_apis:
             capabilities.supports_updates = False
         normalized, degraded, use_text, issues = self._normalize_request(request, capabilities, on_unsupported)
         if issues:
@@ -381,6 +376,9 @@ class InteractionManager:
         future.set_result(record['submission'])
         return True
 
+    def waiting_run_ids(self) -> set[str]:
+        return {run_id for (run_id, _), future in self._waiters.items() if not future.done()}
+
     async def consume_text_message(
         self,
         *,
@@ -438,269 +436,6 @@ class InteractionManager:
             return self.wake_waiter(record, actor_id)
         return False
 
-    async def handle_result(
-        self,
-        *,
-        result_dict: dict[str, typing.Any],
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: RunnerDescriptor,
-        run_id: str,
-        adapter_context: dict[str, typing.Any] | None,
-    ) -> bool:
-        """Execute an authorized interaction request; return whether it was consumed."""
-        data = result_dict.get('data')
-        if not isinstance(data, dict) or data.get('action') != INTERACTION_REQUESTED_ACTION:
-            return False
-
-        self._authorize(descriptor, binding)
-        payload = data.get('payload')
-        try:
-            request = HostInteractionRequest.model_validate(payload)
-        except pydantic.ValidationError as exc:
-            raise RunnerProtocolError(descriptor.id, f'invalid interaction request: {exc}') from exc
-
-        processor_id = binding.processor_id or binding.agent_id
-        if not processor_id:
-            raise RunnerProtocolError(descriptor.id, 'interaction request has no stable processor identity')
-        adapter = self._resolve_adapter(adapter_context)
-        if adapter is None:
-            raise RunnerProtocolError(descriptor.id, 'interaction request has no delivery adapter')
-
-        request_data = request.model_dump(mode='json')
-        now = int(time.time())
-        expires_at = now + DEFAULT_INTERACTION_TTL_SECONDS if request.expires_at is None else request.expires_at
-        if expires_at <= now:
-            raise RunnerProtocolError(descriptor.id, 'interaction request is already expired')
-        if expires_at > now + MAX_INTERACTION_TTL_SECONDS:
-            raise RunnerProtocolError(descriptor.id, 'interaction request expiry exceeds 24 hours')
-        request_data['expires_at'] = expires_at
-        if len(json.dumps(request_data, ensure_ascii=False).encode('utf-8')) > INTERACTION_PAYLOAD_MAX_BYTES:
-            raise RunnerProtocolError(descriptor.id, 'interaction request exceeds 256 KiB')
-        self._validate_request_identity(request, descriptor.id)
-        reply_target = event.delivery.reply_target or {}
-        target_type = reply_target.get('target_type')
-        target_id = reply_target.get('target_id')
-        callback_conversation_id = f'{target_type}_{target_id}' if target_type and target_id else event.conversation_id
-        update_target = await self._find_update_target(
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            processor_id=processor_id,
-            conversation_id=callback_conversation_id,
-        )
-        _, callback_token = await self.store.create_request(
-            interaction_id=request.interaction_id,
-            run_id=run_id,
-            binding_id=binding.binding_id,
-            runner_id=descriptor.id,
-            processor_type=binding.processor_type,
-            processor_id=processor_id,
-            request={
-                **request_data,
-                '_host_legacy_identity': event.legacy_identity.model_dump(mode='json')
-                if event.legacy_identity is not None
-                else None,
-            },
-            delivery_target=reply_target,
-            replaces_interaction_id=(update_target or {}).get('interaction_id'),
-            bot_id=event.bot_id,
-            workspace_id=event.workspace_id,
-            conversation_id=callback_conversation_id,
-            thread_id=event.thread_id,
-            actor_id=event.actor.actor_id if event.actor else None,
-            expires_at=expires_at,
-            **self._pipeline_admission(binding, descriptor, adapter_context),
-        )
-
-        try:
-            if self._supports_interaction_delivery(adapter):
-                delivery_params = {
-                    'request': request_data,
-                    'callback_token': callback_token,
-                    'reply_target': event.delivery.reply_target,
-                }
-                if update_target is not None:
-                    delivery_params['update_target'] = update_target.get('delivery_result')
-                try:
-                    delivery_result = await adapter.call_platform_api(
-                        INTERACTION_DELIVERY_API,
-                        delivery_params,
-                    )
-                except Exception as exc:
-                    if update_target is None:
-                        raise
-                    self._warning(f'Interaction update failed; sending a new presentation: {exc}')
-                    fallback_params = dict(delivery_params)
-                    fallback_params.pop('update_target', None)
-                    delivery_result = await adapter.call_platform_api(
-                        INTERACTION_DELIVERY_API,
-                        fallback_params,
-                    )
-                if isinstance(delivery_result, dict):
-                    try:
-                        await self.store.record_delivery_success(
-                            run_id,
-                            request.interaction_id,
-                            delivery_result,
-                        )
-                    except Exception as exc:
-                        self._warning(f'Failed to persist interaction delivery result: {exc}')
-            else:
-                await self._deliver_fallback(adapter, event, request.fallback_text)
-        except Exception as exc:
-            await self.store.mark_delivery_failed(run_id, request.interaction_id, str(exc))
-            raise
-        return True
-
-    async def present_tool_request(
-        self,
-        *,
-        request_payload: dict[str, typing.Any],
-        session: typing.Mapping[str, typing.Any],
-        adapter: typing.Any,
-    ) -> dict[str, typing.Any]:
-        """Persist and deliver an Agent-authored semantic card using Host-owned authority."""
-        authorization = session.get('authorization') if isinstance(session, typing.Mapping) else None
-        if not isinstance(authorization, dict):
-            raise ValueError('Interactive card run authorization is unavailable')
-        processor_type = authorization.get('processor_type')
-        if processor_type not in {'agent', 'pipeline'}:
-            raise ValueError('Interactive card tools are unavailable for this processor type')
-        if authorization.get('interactions_enabled') is not True:
-            raise ValueError('Interactive cards are disabled for this processor binding')
-
-        run_id = str(session.get('run_id') or '').strip()
-        runner_id = str(session.get('runner_id') or '').strip()
-        binding_id = str(authorization.get('binding_id') or '').strip()
-        processor_id = str(authorization.get('processor_id') or '').strip()
-        if not all((run_id, runner_id, binding_id, processor_id)):
-            raise ValueError('Interactive card run identity is incomplete')
-        try:
-            request = HostInteractionRequest.model_validate(request_payload)
-        except pydantic.ValidationError as exc:
-            raise ValueError(f'Invalid interactive card: {exc}') from exc
-        self._validate_request_identity(request, runner_id)
-
-        request_data = request.model_dump(mode='json')
-        now = int(time.time())
-        expires_at = request.expires_at or now + DEFAULT_INTERACTION_TTL_SECONDS
-        if expires_at <= now or expires_at > now + MAX_INTERACTION_TTL_SECONDS:
-            raise ValueError('Interactive card expiry must be in the future and within 24 hours')
-        request_data['expires_at'] = expires_at
-        if len(json.dumps(request_data, ensure_ascii=False).encode('utf-8')) > INTERACTION_PAYLOAD_MAX_BYTES:
-            raise ValueError('Interactive card exceeds 256 KiB')
-
-        platform_context = authorization.get('platform_context')
-        if not isinstance(platform_context, dict):
-            raise ValueError('Interactive card platform context is unavailable')
-        delivery = platform_context.get('delivery') if isinstance(platform_context.get('delivery'), dict) else {}
-        self._validate_tool_delivery_capabilities(request, delivery)
-        reply_target = delivery.get('reply_target') if isinstance(delivery.get('reply_target'), dict) else {}
-        target_type = reply_target.get('target_type')
-        target_id = reply_target.get('target_id')
-        if not target_type or not target_id:
-            raise ValueError('Interactive card has no authorized reply target')
-        callback_conversation_id = f'{target_type}_{target_id}'
-        actor = platform_context.get('actor') if isinstance(platform_context.get('actor'), dict) else {}
-        pipeline_admission = self._pipeline_tool_admission(
-            session=session,
-            authorization=authorization,
-            runner_id=runner_id,
-        )
-
-        _, callback_token = await self.store.create_request(
-            interaction_id=request.interaction_id,
-            run_id=run_id,
-            binding_id=binding_id,
-            runner_id=runner_id,
-            processor_type=processor_type,
-            processor_id=processor_id,
-            request=request_data,
-            delivery_target=reply_target,
-            bot_id=authorization.get('bot_id'),
-            workspace_id=authorization.get('workspace_id'),
-            conversation_id=callback_conversation_id,
-            thread_id=authorization.get('thread_id'),
-            actor_id=actor.get('actor_id'),
-            expires_at=expires_at,
-            **pipeline_admission,
-        )
-        try:
-            if not self._supports_interaction_delivery(adapter):
-                raise ValueError('The current platform does not support interactive cards')
-            delivery_result = await adapter.call_platform_api(
-                INTERACTION_DELIVERY_API,
-                {
-                    'request': request_data,
-                    'callback_token': callback_token,
-                    'reply_target': reply_target,
-                },
-            )
-            if isinstance(delivery_result, dict):
-                await self.store.record_delivery_success(run_id, request.interaction_id, delivery_result)
-        except Exception as exc:
-            await self.store.mark_delivery_failed(run_id, request.interaction_id, str(exc))
-            raise
-        return {
-            'ok': True,
-            'status': 'pending',
-            'interaction_id': request.interaction_id,
-            'expires_at': expires_at,
-        }
-
-    @staticmethod
-    def _validate_tool_delivery_capabilities(
-        request: HostInteractionRequest,
-        delivery: dict[str, typing.Any],
-    ) -> None:
-        capabilities = delivery.get('interactions')
-        if not isinstance(capabilities, dict):
-            raise ValueError('The current platform did not declare interactive card capabilities')
-        if request.fields and request.actions:
-            raise ValueError('An interactive card step cannot combine fields and actions')
-        field_types = set(capabilities.get('field_types') or [])
-        unsupported_types = {field.type for field in request.fields} - field_types
-        if unsupported_types:
-            raise ValueError(
-                'The current platform does not support interaction fields: ' + ', '.join(sorted(unsupported_types))
-            )
-        max_fields = capabilities.get('max_fields')
-        if isinstance(max_fields, int) and len(request.fields) > max_fields:
-            raise ValueError(f'The current platform supports at most {max_fields} interaction fields')
-        action_styles = set(capabilities.get('action_styles') or [])
-        unsupported_styles = {action.style for action in request.actions} - action_styles
-        if unsupported_styles:
-            raise ValueError(
-                'The current platform does not support interaction action styles: '
-                + ', '.join(sorted(unsupported_styles))
-            )
-
-    @staticmethod
-    def _pipeline_admission(binding, descriptor, adapter_context):
-        if binding.processor_type != 'pipeline':
-            return {}
-        query = (adapter_context or {}).get('_query')
-        expected = copy.deepcopy((adapter_context or {}).get('_pipeline_expected_config'))
-        session = getattr(query, 'session', None)
-        conversation = (adapter_context or {}).get('_pipeline_conversation')
-
-        def authority():
-            from .config_resolver import RunnerConfigResolver
-
-            return (
-                query is not None
-                and session is not None
-                and conversation is not None
-                and isinstance(expected, dict)
-                and session.using_conversation is conversation
-                and getattr(query, 'pipeline_uuid', None) == binding.processor_id
-                and RunnerConfigResolver.resolve_runner_id(expected) == descriptor.id == binding.runner_id
-                and RunnerConfigResolver.resolve_runner_config(expected, descriptor.id) == binding.runner_config
-            )
-
-        return {'expected_config': expected, 'authority_check': authority}
-
     @staticmethod
     def _pipeline_tool_admission(session, authorization, runner_id):
         if authorization.get('processor_type') != 'pipeline':
@@ -728,83 +463,6 @@ class InteractionManager:
             )
 
         return {'expected_config': expected, 'authority_check': authority}
-
-    async def restore_legacy_identity(self, event: AgentEventEnvelope, binding: AgentBinding) -> None:
-        """Resume only from the scoped, consumed Host record, never callback fields."""
-        event.legacy_identity = None
-        submission = getattr(event.input, 'interaction', None)
-        if submission is None:
-            return
-        if hasattr(submission, 'model_dump'):
-            submission = submission.model_dump(mode='json')
-        record = await self.store.find_resume_request(event=event, binding=binding, submission=submission)
-        if record is None:
-            return
-        identity = record['request'].get('_host_legacy_identity')
-        if not isinstance(identity, dict):
-            return
-        try:
-            event.legacy_identity = LegacyRunnerIdentity.model_validate(identity)
-        except pydantic.ValidationError:
-            return
-
-    async def acknowledge_submission(
-        self,
-        record: dict[str, typing.Any],
-        adapter: typing.Any,
-        callback_context: dict[str, typing.Any] | None = None,
-    ) -> None:
-        """Best-effort transition of submitted controls into a read-only state."""
-        delivery_result = record.get('delivery_result')
-        if not isinstance(delivery_result, dict) or not self._supports_platform_api(
-            adapter, INTERACTION_ACKNOWLEDGE_API
-        ):
-            return
-        try:
-            delivery_result = await adapter.call_platform_api(
-                INTERACTION_ACKNOWLEDGE_API,
-                {
-                    'request': record.get('request') or {},
-                    'submission': record.get('submission') or {},
-                    'update_target': delivery_result,
-                    **({'callback_context': callback_context} if callback_context else {}),
-                },
-            )
-            if isinstance(delivery_result, dict):
-                await self.store.record_delivery_success(
-                    record['run_id'],
-                    record['interaction_id'],
-                    delivery_result,
-                )
-        except Exception as exc:
-            self._warning(f'Failed to acknowledge interaction submission: {exc}')
-
-    async def _find_update_target(
-        self,
-        *,
-        event: AgentEventEnvelope,
-        binding: AgentBinding,
-        descriptor: RunnerDescriptor,
-        processor_id: str,
-        conversation_id: str | None,
-    ) -> dict[str, typing.Any] | None:
-        capabilities = getattr(event.delivery, 'interactions', None)
-        if not capabilities or not getattr(capabilities, 'supports_updates', False):
-            return None
-        prior = getattr(event.input, 'interaction', None)
-        prior_interaction_id = getattr(prior, 'interaction_id', None)
-        if not prior_interaction_id:
-            return None
-        return await self.store.find_update_target(
-            interaction_id=str(prior_interaction_id),
-            binding_id=binding.binding_id,
-            runner_id=descriptor.id,
-            processor_type=binding.processor_type,
-            processor_id=processor_id,
-            bot_id=event.bot_id,
-            conversation_id=conversation_id,
-            actor_id=event.actor.actor_id if event.actor else None,
-        )
 
     @staticmethod
     def _validate_request_identity(request: HostInteractionRequest, runner_id: str) -> None:
@@ -946,53 +604,8 @@ class InteractionManager:
             if any(selected not in allowed_values for selected in selected_values):
                 raise ValueError(f'interaction submission option is not present in the request: {field_id}')
 
-    @staticmethod
-    def _authorize(descriptor: RunnerDescriptor, binding: AgentBinding) -> None:
-        supports_interactions = bool(getattr(descriptor.capabilities, 'interactions', False))
-        permissions = set(getattr(descriptor.permissions, 'interactions', []) or [])
-        if not supports_interactions or 'request' not in permissions:
-            raise RunnerProtocolError(descriptor.id, 'runner did not declare interaction capability and permission')
-        if not binding.delivery_policy.enable_interactions:
-            raise RunnerProtocolError(descriptor.id, 'binding delivery policy does not allow interactions')
-
-    @staticmethod
-    def _resolve_adapter(adapter_context: dict[str, typing.Any] | None) -> typing.Any | None:
-        if not adapter_context:
-            return None
-        query = adapter_context.get('_query')
-        if query is not None and getattr(query, 'adapter', None) is not None:
-            return query.adapter
-        return adapter_context.get('_delivery_adapter')
-
-    @staticmethod
-    def _supports_interaction_delivery(adapter: typing.Any) -> bool:
-        return InteractionManager._supports_platform_api(adapter, INTERACTION_DELIVERY_API)
-
-    @staticmethod
-    def _supports_platform_api(adapter: typing.Any, api_name: str) -> bool:
-        get_supported_apis = getattr(adapter, 'get_supported_apis', None)
-        if not callable(get_supported_apis):
-            return False
-        try:
-            return api_name in (get_supported_apis() or [])
-        except Exception:
-            return False
-
     def _warning(self, message: str) -> None:
         logger = getattr(self.ap, 'logger', None)
         warning = getattr(logger, 'warning', None)
         if callable(warning):
             warning(message)
-
-    @staticmethod
-    async def _deliver_fallback(adapter: typing.Any, event: AgentEventEnvelope, text: str) -> None:
-        target = event.delivery.reply_target or {}
-        target_type = target.get('target_type')
-        target_id = target.get('target_id')
-        if not target_type or not target_id:
-            raise ValueError('interaction fallback has no reply target')
-        await adapter.send_message(
-            str(target_type),
-            str(target_id),
-            platform_message.MessageChain([platform_message.Plain(text=text)]),
-        )

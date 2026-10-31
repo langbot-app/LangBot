@@ -132,14 +132,10 @@ class QueryEntryAdapter:
         pipeline_config = query.pipeline_config or {}
         runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
-        variables = getattr(query, 'variables', None) or {}
-        event_type = (
-            runner_events.INTERACTION_SUBMITTED
-            if isinstance(variables.get('_interaction_submission'), dict)
-            else runner_events.MESSAGE_RECEIVED
-        )
         platform_tool_names = [
-            name for name in resolve_agent_platform_tool_names({}, event_type) if name == PRESENT_INTERACTIVE_CARD_TOOL
+            name
+            for name in resolve_agent_platform_tool_names({}, runner_events.MESSAGE_RECEIVED)
+            if name == PRESENT_INTERACTIVE_CARD_TOOL
         ]
 
         resource_policy = ResourcePolicyProjector.from_runner_config(
@@ -173,7 +169,7 @@ class QueryEntryAdapter:
             resource_policy=resource_policy,
             state_policy=state_policy,
             delivery_policy=delivery_policy,
-            event_types=[event_type],
+            event_types=[runner_events.MESSAGE_RECEIVED],
             metadata={'source': 'pipeline_adapter'},
         )
 
@@ -253,17 +249,10 @@ class QueryEntryAdapter:
 
         event_time = cls._normalize_event_time(getattr(message_event, 'time', None) if message_event else None)
 
-        variables = getattr(query, 'variables', None) or {}
-        interaction = variables.get('_interaction_submission')
-        event_type = runner_events.MESSAGE_RECEIVED
-        if isinstance(interaction, dict):
-            event_type = runner_events.INTERACTION_SUBMITTED
-            event_data['interaction'] = interaction
-
         source_event_id = str(message_id or query.query_id)
         return AgentEventContext(
             event_id=cls._build_scoped_event_id(query, source_event_id, event_time),
-            event_type=event_type,
+            event_type=runner_events.MESSAGE_RECEIVED,
             event_time=event_time,
             source='host_adapter',
             source_event_type=source_event_type,
@@ -421,15 +410,6 @@ class QueryEntryAdapter:
         if launcher_type is not None:
             launcher_type_value = getattr(launcher_type, 'value', launcher_type)
 
-        variables = getattr(query, 'variables', None) or {}
-        interaction = variables.get('_interaction_submission')
-        if isinstance(interaction, dict):
-            return SubjectContext(
-                subject_type='interaction',
-                subject_id=str(interaction.get('interaction_id') or ''),
-                data={'action_id': interaction.get('action_id')},
-            )
-
         return SubjectContext(
             subject_type='message',
             subject_id=str(message_id or query_id or ''),
@@ -500,10 +480,6 @@ class QueryEntryAdapter:
             'contents': contents,
             'attachments': attachments,
         }
-        variables = getattr(query, 'variables', None) or {}
-        interaction = variables.get('_interaction_submission')
-        if isinstance(interaction, dict) and 'interaction' in AgentInput.model_fields:
-            input_data['interaction'] = interaction
         return AgentInput.model_validate(input_data)
 
     @classmethod
@@ -664,7 +640,7 @@ class QueryEntryAdapter:
                 'supported_apis': supported_apis,
             },
         }
-        if 'interactions' in DeliveryContext.model_fields and 'interaction.request' in supported_apis:
+        if 'interactions' in DeliveryContext.model_fields and 'send_interaction' in supported_apis:
             get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
             if callable(get_capabilities):
                 capabilities = get_capabilities()

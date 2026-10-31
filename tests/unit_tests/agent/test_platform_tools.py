@@ -209,8 +209,8 @@ def test_platform_resources_require_runner_call_permission() -> None:
     assert capabilities['unavailable_tools'] == [{'name': 'event_reply', 'reason': 'runner_call_permission_missing'}]
 
 
-def test_interaction_resume_can_reply_only_to_a_frozen_delivery_target() -> None:
-    event = _event().model_copy(update={'event_type': 'interaction.submitted'})
+def test_message_can_reply_only_to_a_frozen_delivery_target() -> None:
+    event = _event()
     names = resolve_agent_platform_tool_names({}, event.event_type)
     assert 'event_reply' in names
     resources, _ = build_platform_tool_resources(event, names, ['detail', 'call'])
@@ -396,7 +396,7 @@ async def test_event_reply_uses_run_reply_stream_when_available() -> None:
 
 @pytest.mark.asyncio
 async def test_request_interaction_uses_host_interaction_manager() -> None:
-    adapter = SimpleNamespace(get_supported_apis=lambda: ['interaction.request'])
+    adapter = SimpleNamespace(get_supported_apis=lambda: ['send_interaction'])
     manager = SimpleNamespace(
         request_interaction=AsyncMock(
             return_value={'status': 'submitted', 'submission': {'interaction_id': 'card-host-generated'}}
@@ -407,7 +407,7 @@ async def test_request_interaction_uses_host_interaction_manager() -> None:
         platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter))),
     )
     event = _event('message.received')
-    event.delivery.platform_capabilities['supported_apis'].append('interaction.request')
+    event.delivery.platform_capabilities['supported_apis'].append('send_interaction')
     session = {
         'run_id': 'run-1',
         'runner_id': 'plugin:test/Agent/default',
@@ -477,7 +477,7 @@ def test_interactive_card_tool_is_automatic_only_for_interactive_message_surface
 
 def test_interactive_card_tool_schema_is_narrowed_to_adapter_capabilities() -> None:
     event = _event('message.received')
-    event.delivery.platform_capabilities['supported_apis'].append('interaction.request')
+    event.delivery.platform_capabilities['supported_apis'].append('send_interaction')
     event.delivery.interactions = InteractionDeliveryCapabilities(
         field_types=['select'],
         action_styles=['default', 'primary'],

@@ -13,10 +13,6 @@ from langbot_plugin.entities.io.context import InstallationBinding
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.context_builder import RunnerContextBuilder
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
-from langbot.pkg.agent.runner.interaction_manager import InteractionManager
-from langbot.pkg.agent.runner.interaction_store import InteractionStore
-from langbot.pkg.entity.persistence.base import Base
-from sqlalchemy.ext.asyncio import create_async_engine
 from tests.unit_tests.agent import test_event_first_protocol as event_fixtures
 from tests.unit_tests.agent.test_context_validation import TestContextValidation as Helpers
 from tests.utils.legacy_plugin_contract import load_identity_helper, verified_plugin_root
@@ -102,100 +98,6 @@ async def test_provenance_cannot_cross_pipeline(mock_query):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('changed', [None, 'workspace_id', 'bot_id', 'processor_id', 'actor_id'])
-async def test_resume_uses_persisted_identity_not_new_session(tmp_path, mock_query, changed):
-    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    try:
-        store = InteractionStore(engine)
-        event = QueryEntryAdapter.query_to_event(mock_query)
-        context, binding = await build(event, 'DifyAgent')
-        manager = InteractionManager(SimpleNamespace(), store)
-        descriptor = Helpers()._make_descriptor()
-        descriptor.id = binding.runner_id
-        descriptor.capabilities.interactions = True
-        descriptor.permissions.interactions = ['request']
-        binding.delivery_policy.enable_interactions = True
-        import sqlalchemy as sa
-        from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
-
-        config = {
-            'ai': {'runner': {'id': binding.runner_id}, 'runner_config': {binding.runner_id: binding.runner_config}}
-        }
-        mock_query.pipeline_config = config
-        conversation = mock_query.session.using_conversation
-        async with engine.begin() as conn:
-            await conn.execute(
-                sa.insert(LegacyPipeline).values(
-                    uuid=binding.processor_id,
-                    workspace_uuid=event.workspace_id,
-                    name='test',
-                    description='',
-                    for_version='4.11',
-                    stages=[],
-                    config=config,
-                    extensions_preferences={},
-                )
-            )
-        adapter = SimpleNamespace(
-            get_supported_apis=lambda: ['interaction.request'], call_platform_api=AsyncMock(return_value={})
-        )
-        mock_query.adapter = adapter
-        await manager.handle_result(
-            result_dict={
-                'data': {
-                    'action': 'interaction.requested',
-                    'payload': {'interaction_id': 'form', 'title': 'Approve', 'fallback_text': 'Approve'},
-                }
-            },
-            event=event,
-            binding=binding,
-            descriptor=descriptor,
-            run_id='original',
-            adapter_context={
-                '_delivery_adapter': adapter,
-                '_query': mock_query,
-                '_pipeline_expected_config': config,
-                '_pipeline_conversation': conversation,
-            },
-        )
-        token = adapter.call_platform_api.call_args.args[1]['callback_token']
-        record = await manager.consume_callback(
-            callback_token=token,
-            submission={'interaction_id': 'form', 'values': {}},
-            bot_id=event.bot_id,
-            conversation_id='person_launcher-123',
-            actor_id='sender-123',
-        )
-        mock_query.variables['_interaction_submission'] = record['submission']
-        mock_query.session.launcher_id = 'wrong-new-session'
-        resumed = QueryEntryAdapter.query_to_event(mock_query)
-        if changed in ('workspace_id', 'bot_id'):
-            setattr(resumed, changed, 'other')
-        elif changed == 'processor_id':
-            binding.processor_id = 'other'
-        elif changed == 'actor_id':
-            resumed.actor.actor_id = 'other'
-        # A fresh manager/store represents a process restart, not an in-memory cache.
-        manager = InteractionManager(SimpleNamespace(), InteractionStore(engine))
-        await manager.restore_legacy_identity(resumed, binding)
-        result, _ = await build(resumed, 'DifyAgent')
-        assert result['conversation']['launcher_id'] == (None if changed else 'launcher-123')
-    finally:
-        await engine.dispose()
-
-
-@pytest.mark.asyncio
-async def test_tbox_resume_without_persisted_identity_fails_closed(mock_query):
-    event = QueryEntryAdapter.query_to_event(mock_query)
-    event.event_type = 'interaction.submitted'
-    event.legacy_identity = None
-    context, _ = await build(event, 'TboxAgent', 'legacy-bot')
-    assert context['conversation']['bot_id'] is None
-    assert context['runtime']['metadata']['bot_id'] is None
-
-
 @pytest.fixture(scope='session')
 def official_plugin_root():
     return verified_plugin_root()

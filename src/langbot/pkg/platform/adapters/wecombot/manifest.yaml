@@ -177,6 +177,7 @@ spec:
     - wecombot.enter_chat
     - wecombot.template_card_event
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -190,8 +191,6 @@ spec:
       - get_group_member_info
       - get_group_member_list
       - call_platform_api
-      - interaction.request
-      - interaction.acknowledge
       - send_interaction
       - update_interaction
       - get_interaction_capabilities

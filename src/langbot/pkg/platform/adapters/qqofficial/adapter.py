@@ -10,7 +10,6 @@ import pydantic
 from langbot.libs.qq_official_api.api import QQOfficialClient
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from langbot.pkg.platform.adapters.qqofficial.api_impl import QQOfficialAPIMixin
-from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.qqofficial.errors import NotSupportedError
 from langbot.pkg.platform.adapters.qqofficial.event_converter import (
     BOT_INVITED_EVENT_TYPES,
@@ -34,9 +33,14 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
-class QQOfficialAdapter(QQOfficialAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: typing.Any = pydantic.Field(exclude=True)
 
     message_converter: QQOfficialMessageConverter = QQOfficialMessageConverter()
@@ -113,6 +117,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, InteractionAdapterMixin, abstract_pl
             'bot.invited_to_group',
             'bot.removed_from_group',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -126,13 +131,50 @@ class QQOfficialAdapter(QQOfficialAPIMixin, InteractionAdapterMixin, abstract_pl
             'get_group_member_list',
             'get_group_member_info',
             'call_platform_api',
-            'interaction.request',
             'send_interaction',
+            'update_interaction',
             'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_type'] = target_type
+        handle.context['target_id'] = target_id
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await self.send_message(
+            str(handle.context['target_type']),
+            str(handle.context['target_id']),
+            self._plain_message(f'{handle.context["request"]["title"]}: {label}'),
+        )
+        return handle
 
     def next_interaction_msg_seq(self, anchor: str) -> int | None:
         """Allocate QQ's per-anchor passive reply sequence for interaction cards."""
@@ -190,8 +232,6 @@ class QQOfficialAdapter(QQOfficialAPIMixin, InteractionAdapterMixin, abstract_pl
         return platform_events.MessageResult(message_id=source.d_id or source.id, raw={'results': raw})
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request':
-            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

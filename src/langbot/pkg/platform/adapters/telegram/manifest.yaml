@@ -57,6 +57,7 @@ spec:
     - bot.muted
     - bot.unmuted
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -76,8 +77,8 @@ spec:
       - kick_member
       - leave_group
       - call_platform_api
-      - interaction.request
       - send_interaction
+      - update_interaction
       - get_interaction_capabilities
 
   platform_specific_apis:

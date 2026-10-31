@@ -252,6 +252,7 @@ spec:
     - message.deleted
     - message.reaction
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -264,8 +265,6 @@ spec:
       - get_user_info
       - get_file_url
       - call_platform_api
-      - interaction.request
-      - interaction.acknowledge
       - send_interaction
       - update_interaction
       - get_interaction_capabilities

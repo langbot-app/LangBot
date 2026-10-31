@@ -132,6 +132,7 @@ spec:
     - bot.invited_to_group
     - bot.removed_from_group
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -145,8 +146,8 @@ spec:
       - get_group_member_list
       - get_group_member_info
       - call_platform_api
-      - interaction.request
       - send_interaction
+      - update_interaction
       - get_interaction_capabilities
 
   platform_specific_apis:

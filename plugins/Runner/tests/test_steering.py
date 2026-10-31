@@ -218,7 +218,7 @@ def test_steering_loop_stops_on_action_request_without_completing() -> None:
         )
         yield RunnerResult.action_requested(
             "run_steering",
-            "interaction.requested",
+            "test.action",
             {"interaction_id": "question-1"},
         )
 

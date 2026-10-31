@@ -90,7 +90,7 @@ _INTERACTION_ACTION_SCHEMA = {
 PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
     PlatformToolDefinition(
         PRESENT_INTERACTIVE_CARD_TOOL,
-        'interaction.request',
+        'send_interaction',
         'event',
         'interaction',
         'write',
@@ -115,7 +115,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             },
             ['title'],
         ),
-        ('message.*', 'interaction.submitted'),
+        ('message.*',),
         'reply_target',
     ),
     PlatformToolDefinition(
@@ -132,7 +132,7 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
             'Call this tool to send an explicit message. Direct Agent text output may also be delivered automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
-        ('message.*', 'friend.*', 'group.*', 'feedback.*', 'interaction.submitted'),
+        ('message.*', 'friend.*', 'group.*', 'feedback.*'),
         'reply_target',
     ),
     PlatformToolDefinition(
@@ -872,7 +872,11 @@ async def execute_platform_tool(
             and {'reply_message', 'get_message'} <= supported_apis
             and (delivery.get('reply_target') or {}).get('message_id')
         )
-        if definition.api not in supported_apis and not reply_via_source:
+        if (
+            definition.api not in supported_apis
+            and not reply_via_source
+            and not (definition.name == PRESENT_INTERACTIVE_CARD_TOOL and 'send_message' in supported_apis)
+        ):
             raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
         if definition.name == PRESENT_INTERACTIVE_CARD_TOOL:
             manager = getattr(getattr(ap, 'agent_run_orchestrator', None), 'interaction_manager', None)

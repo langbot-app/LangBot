@@ -71,6 +71,7 @@ spec:
     - group.info_updated
     - dingtalk.card_action
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -85,10 +86,8 @@ spec:
       - get_friend_list
       - get_file_url
       - call_platform_api
-      - interaction.request
       - send_interaction
       - get_interaction_capabilities
-      - interaction.acknowledge
       - update_interaction
 
   platform_specific_apis:

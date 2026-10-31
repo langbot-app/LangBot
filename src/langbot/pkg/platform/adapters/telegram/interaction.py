@@ -110,11 +110,11 @@ async def send_interaction(bot: telegram.Bot, params: dict[str, typing.Any]) -> 
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
 
     target_id = str(reply_target.get('target_id') or '')
     if not target_id:
-        raise ValueError('interaction.request has no target_id')
+        raise ValueError('send_interaction has no target_id')
     chat_id_text, _, thread_id_text = target_id.partition('#')
     chat_id: int | str = int(chat_id_text) if chat_id_text.lstrip('-').isdigit() else chat_id_text
     message_thread_id = int(thread_id_text) if thread_id_text.isdigit() else None
@@ -135,7 +135,7 @@ async def send_interaction(bot: telegram.Bot, params: dict[str, typing.Any]) -> 
 def interaction_event_from_update(
     update: telegram.Update,
     parsed: dict[str, typing.Any],
-) -> platform_events.PlatformSpecificEvent:
+) -> platform_events.InteractionCallbackEvent:
     """Convert a trusted callback shape into the Host interaction event."""
     query = update.callback_query
     if query is None or query.message is None or query.from_user is None:
@@ -153,11 +153,13 @@ def interaction_event_from_update(
         'target_id': target_id,
         'display_text': 'submitted',
     }
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    return platform_events.InteractionCallbackEvent(
         timestamp=time.time(),
         adapter_name='telegram-omni',
-        action='interaction.submitted',
-        data=data,
+        callback_token=str(parsed.get('callback_token') or ''),
+        actor_id=data['actor_id'],
+        target_type=target_type,
+        target_id=target_id,
+        raw_submission=parsed,
         source_platform_object=update,
     )

@@ -21,6 +21,46 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
+
+
+async def _send_interaction(adapter, params):
+    target = params['reply_target']
+    request = InteractionRequest.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            'title': 'Interaction',
+            **params['request'],
+        }
+    )
+    handle = await adapter.send_interaction(
+        target['target_type'],
+        target['target_id'],
+        request,
+        params['callback_token'],
+        reply_to=target.get('message_id'),
+    )
+    return handle.model_dump()
+
+
+async def _update_interaction(adapter, params):
+    handle = InteractionHandle.model_validate(
+        {
+            **params['update_target'],
+            'context': {'request': params['request'], 'callback_context': params.get('callback_context') or {}},
+        }
+    )
+    submission = InteractionSubmission.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            **params['submission'],
+        }
+    )
+    return (await adapter.update_interaction(handle, params.get('state', 'submitted'), submission)).model_dump()
 
 
 class DummyLogger(AbstractEventLogger):
@@ -116,8 +156,8 @@ def make_adapter(enable_webhook: bool = False) -> WecomBotAdapter:
 @pytest.mark.asyncio
 async def test_interaction_card_finishes_original_loading_stream():
     adapter = make_adapter()
-    await adapter.call_platform_api(
-        'interaction.request',
+    await _send_interaction(
+        adapter,
         {
             'request': {'title': 'Continue', 'actions': [{'id': 'ok', 'label': 'OK'}]},
             'reply_target': {'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
@@ -214,8 +254,8 @@ async def test_wecombot_select_card_submits_native_dropdown_value():
         ],
         'fallback_text': 'Choose priority.',
     }
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -254,19 +294,19 @@ async def test_wecombot_select_card_submits_native_dropdown_value():
         },
     }
     event = interaction_event_from_native(native)
-    assert event.data['callback_token'] == 'callback-token'
-    assert event.data['callback_req_id'] == 'req-1'
-    assert event.data['callback_task_id'] == result['task_id']
+    assert event.callback_token == 'callback-token'
+    assert event.callback_context['req_id'] == 'req-1'
+    assert event.callback_context['task_id'] == result['task_id']
     resolved = InteractionManager._resolve_submission_refs(
-        {'interaction_id': request['interaction_id'], 'request': request}, event.data
+        {'interaction_id': request['interaction_id'], 'request': request}, event.raw_submission
     )
     assert resolved['values'] == {'priority': 'urgent'}
 
     listener = AsyncMock()
-    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
+    adapter.register_listener(platform_events.InteractionCallbackEvent, listener)
     await adapter._handle_interaction_event(native)
     listener.assert_awaited_once()
-    assert listener.await_args.args[0].data['option_ref'] == 1
+    assert listener.await_args.args[0].raw_submission['option_ref'] == 1
 
 
 @pytest.mark.asyncio
@@ -289,8 +329,8 @@ async def test_wecombot_acknowledges_submitted_card(kind):
             ],
         }
         submission = {'action_id': None, 'values': {'choice': 'b'}}
-    delivered = await adapter.call_platform_api(
-        'interaction.request',
+    delivered = await _send_interaction(
+        adapter,
         {
             'callback_token': 'token-1',
             'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
@@ -298,8 +338,8 @@ async def test_wecombot_acknowledges_submitted_card(kind):
         },
     )
 
-    result = await adapter.call_platform_api(
-        'interaction.acknowledge',
+    result = await _update_interaction(
+        adapter,
         {
             'request': request,
             'submission': submission,
@@ -321,8 +361,8 @@ async def test_wecombot_acknowledges_submitted_card(kind):
         assert all(button['key'] == 'submitted' for button in card['button_list'])
 
     with pytest.raises(ValueError, match='does not match'):
-        await adapter.call_platform_api(
-            'interaction.acknowledge',
+        await _update_interaction(
+            adapter,
             {
                 'request': request,
                 'submission': submission,
@@ -380,7 +420,7 @@ def test_wecombot_select_accepts_legacy_response_data():
             'ResponseData': '{"select_list":[{"question_key":"f0","option_id":"opt_2"}]}',
         },
     }
-    assert interaction_event_from_native(native).data['option_ref'] == 1
+    assert interaction_event_from_native(native).raw_submission['option_ref'] == 1
 
 
 @pytest.mark.asyncio
@@ -389,8 +429,8 @@ async def test_wecombot_interaction_delivery_rejects_failed_ack():
     adapter.bot.send_template_card.return_value = {'errcode': 40001, 'errmsg': 'invalid card'}
 
     with pytest.raises(RuntimeError, match='invalid card'):
-        await adapter.call_platform_api(
-            'interaction.request',
+        await _send_interaction(
+            adapter,
             {
                 'callback_token': 'callback-token',
                 'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
@@ -414,8 +454,8 @@ async def test_wecombot_interaction_delivery_rejects_failed_ack():
 @pytest.mark.asyncio
 async def test_wecombot_interaction_delivery_and_callback_event():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -437,14 +477,14 @@ async def test_wecombot_interaction_delivery_and_callback_event():
         'template_card_event': {'EventKey': 'lbi:callback-token:a:0'},
     }
     event = interaction_event_from_native(native)
-    assert event.action == 'interaction.submitted'
-    assert event.data['action_ref'] == 0
-    assert event.data['target_id'] == 'group-1'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.raw_submission['action_ref'] == 0
+    assert event.target_id == 'group-1'
 
     native['event']['template_card_event'] = {'button': {'key': 'lbi:callback-token:f:0:2'}}
     nested_event = interaction_event_from_native(native)
-    assert nested_event.data['field_ref'] == 0
-    assert nested_event.data['option_ref'] == 2
+    assert nested_event.raw_submission['field_ref'] == 0
+    assert nested_event.raw_submission['option_ref'] == 2
 
 
 @pytest.mark.asyncio
@@ -669,8 +709,7 @@ async def test_managed_card_callback_does_not_start_business_event():
     )
     listener.assert_awaited_once()
     event = listener.await_args.args[0]
-    assert event.type == 'platform.specific'
-    assert event.action == 'interaction.submitted'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
 
 
 @pytest.mark.asyncio

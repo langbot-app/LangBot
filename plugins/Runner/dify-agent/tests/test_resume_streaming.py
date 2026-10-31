@@ -1,7 +1,6 @@
-"""Streaming and deduplication for resumed Dify workflows."""
+"""Streaming and deduplication after a blocking Dify form submission."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
 
 import pytest
 from components.runner.default import DefaultRunner
@@ -17,11 +16,7 @@ async def _resume(events):
         "workflow_run_id": "workflow",
         "user": "user",
     }
-    runner = SimpleNamespace(
-        _load_interaction_continuation=AsyncMock(return_value=continuation),
-        _store_interaction_continuation=AsyncMock(),
-        _delete_interaction_continuation=AsyncMock(),
-    )
+    runner = SimpleNamespace()
 
     class Client:
         async def workflow_submit(self, **kwargs):
@@ -32,7 +27,7 @@ async def _resume(events):
     result = [
         item
         async for item in DefaultRunner._resume_workflow_once(
-            runner, SimpleNamespace(run_id="run"), Client(), submission, False
+            runner, SimpleNamespace(run_id="run"), Client(), submission, False, continuation
         )
     ]
     return [item.data["chunk"] for item in result if item.type == "message.delta"], result

@@ -22,6 +22,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
 
 
 class DummyLogger(AbstractEventLogger):
@@ -100,16 +101,12 @@ async def test_discord_interaction_view_and_delivery():
     view = build_interaction_view(request, 'callback-token')
     assert view.children[0].custom_id == 'lbi:callback-token:a:0'
 
-    result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'request': request,
-            'callback_token': 'callback-token',
-            'reply_target': {'target_type': 'group', 'target_id': '789'},
-        },
+    result = await adapter.send_interaction(
+        'group', '789', InteractionRequest.model_validate(request), 'callback-token'
     )
 
-    assert result == {'ok': True, 'message_id': 321, 'rich': True}
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 321 and result.rich is True
     assert channel.send.await_args.kwargs['view'].children[0].label == 'Approve'
 
 
@@ -125,10 +122,31 @@ def test_discord_interaction_component_builds_scoped_host_event():
         {'callback_token': 'callback-token', 'action_ref': 0},
     )
 
-    assert event.action == 'interaction.submitted'
-    assert event.data['actor_id'] == '123'
-    assert event.data['target_type'] == 'group'
-    assert event.data['target_id'] == '789'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.actor_id == '123'
+    assert event.target_type == 'group'
+    assert event.target_id == '789'
+
+
+@pytest.mark.asyncio
+async def test_discord_update_interaction_removes_components():
+    adapter = make_adapter()
+    message = SimpleNamespace(edit=AsyncMock())
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    handle = InteractionHandle(
+        message_id=321,
+        context={
+            'target_id': '789',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'cancelled')
+
+    channel.fetch_message.assert_awaited_once_with(321)
+    message.edit.assert_awaited_once_with(content='Approve?\n\nCancelled', view=None)
 
 
 @pytest.mark.asyncio

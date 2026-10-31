@@ -139,12 +139,6 @@ class AgentRunOrchestrator:
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
 
-        if event.event_type == 'interaction.submitted' and binding.runner_config.get('user-id-source') in (
-            'legacy-session',
-            'legacy-bot',
-        ):
-            await self.interaction_manager.restore_legacy_identity(event, binding)
-
         from ...box.runner import prepare_input_files
 
         event = event.model_copy(deep=True)
@@ -266,7 +260,7 @@ class AgentRunOrchestrator:
         auto_reply_enabled = (
             binding.processor_type == 'agent'
             and binding.delivery_policy.enable_reply
-            and event.event_type in {'message.received', 'interaction.submitted'}
+            and event.event_type == 'message.received'
             and reply_streams.adapter is not None
         )
         auto_reply_stream_id = uuid4()
@@ -456,17 +450,6 @@ class AgentRunOrchestrator:
                             )
                             await self.result_normalizer.normalize(result_dict, descriptor)
                             continue
-
-                        if result_type == 'action.requested':
-                            if await self.interaction_manager.handle_result(
-                                result_dict=result_dict,
-                                event=event,
-                                binding=binding,
-                                descriptor=descriptor,
-                                run_id=run_id,
-                                adapter_context=adapter_context,
-                            ):
-                                continue
 
                         if result_type == 'run.completed':
                             terminal_status = 'completed'
@@ -772,6 +755,59 @@ class AgentRunOrchestrator:
             )
 
         self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
+        return True
+
+    async def try_claim_steering_from_event(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        execution_context: ExecutionContext,
+    ) -> bool:
+        """Route a new platform message to an Agent waiting for interaction."""
+        if event.event_type != 'message.received' or not event.conversation_id:
+            return False
+        waiting_run_ids = self.interaction_manager.waiting_run_ids()
+        if not waiting_run_ids:
+            return False
+        descriptor = await self.registry.get(execution_context, binding.runner_id)
+        if not descriptor.supports_steering():
+            return False
+        target_run_id = await self._session_registry.find_steering_target(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+            binding_id=binding.binding_id,
+            eligible_run_ids=waiting_run_ids,
+        )
+        if target_run_id is None:
+            return False
+        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
+            return False
+        try:
+            event_log_id = await self.journal.write_event_log(
+                event=event,
+                binding=binding,
+                run_id=target_run_id,
+                runner_id=descriptor.id,
+                metadata={
+                    'steering': {
+                        'status': 'queued',
+                        'trigger_behavior': 'absorbed_into_active_run',
+                        'claimed_by_run_id': target_run_id,
+                        'claimed_runner_id': descriptor.id,
+                        'claimed_at': steering_item.get('claimed_at'),
+                    }
+                },
+            )
+            await self.journal.write_user_transcript(event, event_log_id)
+        except Exception as exc:
+            self.ap.logger.warning(
+                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
+                exc_info=True,
+            )
         return True
 
     def _build_steering_item(

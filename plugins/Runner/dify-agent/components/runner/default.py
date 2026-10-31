@@ -6,14 +6,11 @@ Real Dify Service API integration supporting chat, agent, and workflow app types
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
 import logging
 import re
-import time
 import typing
 import uuid
-from contextlib import aclosing
 
 from langbot_plugin.api.definition.components.runner.runner import Runner
 from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
@@ -25,7 +22,6 @@ from langbot_plugin.api.entities.builtin.runner import (
     RunnerContext,
     RunnerResult,
 )
-from langbot_plugin.entities.io.errors import ActionCallError
 from pkg.asset_gateway import register_assets
 from pkg.dify_client import (
     AsyncDifyClient,
@@ -39,7 +35,6 @@ from pkg.scoped_identity import scoped_identity
 logger = logging.getLogger(__name__)
 
 DEFAULT_LANGBOT_ASSET_TOKEN_INPUT = "langbot_asset_run_token"
-INTERACTION_STORAGE_PREFIX = "dify.interactions."
 
 
 def _to_bool(value: typing.Any, default: bool = False) -> bool:
@@ -364,10 +359,6 @@ def _form_step_descriptions(
     return descriptions, action_description
 
 
-def _interaction_storage_key(interaction_id: str) -> str:
-    return f"{INTERACTION_STORAGE_PREFIX}{interaction_id}.json"
-
-
 class DefaultRunner(Runner):
     """Real Runner for Dify Service API.
 
@@ -597,129 +588,17 @@ class DefaultRunner(Runner):
             return base_prompt
         return text
 
-    async def _store_interaction_continuation(
-        self,
-        ctx: RunnerContext,
-        continuation: dict[str, typing.Any],
-    ) -> None:
-        interaction_id = str(continuation["interaction_id"])
-        continuation = dict(continuation, owner=self._continuation_owner(ctx))
-        continuation.setdefault("expires_at", time.time() + 3600)
-        payload = json.dumps(continuation, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-        await self.get_run_api(ctx).set_plugin_storage(_interaction_storage_key(interaction_id), payload)
-
-    async def _load_interaction_continuation(
-        self,
-        ctx: RunnerContext,
-        interaction_id: str,
-    ) -> dict[str, typing.Any]:
-        key = _interaction_storage_key(interaction_id)
-        try:
-            payload = await self.get_run_api(ctx).get_plugin_storage(key)
-        except (KeyError, ActionCallError) as exc:
-            if isinstance(exc, ActionCallError):
-                message = str(exc)
-                while message.startswith("ActionCallError: "):
-                    message = message.removeprefix("ActionCallError: ")
-                if message != f"Storage with key {key} not found":
-                    raise
-            raise DifyAPIError(
-                "The Dify human-input request is no longer pending",
-                code="dify.interaction_not_found",
-            ) from exc
-        continuation = json.loads(payload.decode("utf-8"))
-        if not isinstance(continuation, dict) or continuation.get("interaction_id") != interaction_id:
-            raise DifyAPIError(
-                "The Dify human-input continuation is invalid",
-                code="dify.interaction_invalid",
-            )
-        if continuation.get("version") != 1:
-            raise DifyAPIError(
-                "The Dify human-input continuation version is unsupported",
-                code="dify.interaction_invalid",
-            )
-        if continuation.get("consumed") or continuation.get("expires_at", 0) < time.time():
-            raise DifyAPIError("Dify continuation expired or already consumed", code="dify.interaction_not_found")
-        owner = self._continuation_owner(ctx)
-        stored_owner = continuation.get("owner")
-        if stored_owner != owner:
-            if stored_owner != self._legacy_continuation_owner(ctx):
-                raise DifyAPIError("Dify continuation belongs to another context", code="dify.interaction_invalid")
-            # One-time migration: a continuation stored before identity resolution moved
-            # to task-local bindings is accepted and re-written with the current owner.
-            # No long-term dual-rule compatibility branch beyond this upgrade path.
-            continuation = dict(continuation, owner=owner)
-        return continuation
-
-    def _continuation_subject(self, ctx):
-        conversation = ctx.conversation
-        return json.dumps(
-            [
-                getattr(conversation, "conversation_id", None),
-                getattr(conversation, "launcher_type", None),
-                getattr(conversation, "launcher_id", None),
-                getattr(ctx.actor, "actor_id", None),
-                (ctx.config or {}).get("base-url"),
-            ],
-            separators=(",", ":"),
-        )
-
-    def _continuation_owner(self, ctx):
-        return scoped_identity(self, ctx, self._continuation_subject(ctx))
-
-    def _legacy_continuation_owner(self, ctx):
-        """Owner computed before identity resolution moved to task-local bindings.
-
-        Used only to accept continuations persisted by the previous release so an
-        in-flight human-input request survives the upgrade; the record is re-written
-        with the current owner on the next store.
-        """
-        binding = getattr(getattr(self, "_plugin_runtime_handler", None), "bound_action_context", None)
-        subject = self._continuation_subject(ctx)
-        if binding is not None:
-            scope = [binding.instance_uuid, binding.workspace_uuid, binding.installation_uuid]
-        else:
-            workspace = getattr(ctx.conversation, "workspace_id", None)
-            if not workspace:
-                return subject
-            scope = [workspace]
-        encoded = json.dumps([scope, subject], ensure_ascii=False, separators=(",", ":")).encode()
-        return "lb_" + hashlib.sha256(encoded).hexdigest()
-
-    async def _delete_interaction_continuation(self, ctx: RunnerContext, interaction_id: str) -> None:
-        await self.get_run_api(ctx).delete_plugin_storage(_interaction_storage_key(interaction_id))
-
     @staticmethod
     def _request_from_continuation(continuation: dict[str, typing.Any]) -> InteractionRequest:
         fields = [InteractionField.model_validate(item) for item in continuation.get("current_fields") or []]
         actions = [InteractionAction.model_validate(item) for item in continuation.get("interaction_actions") or []]
-        if continuation.get("phase") == "field":
+        if fields:
             actions = []
         kind = (
             "confirmation" if actions and not fields else "choice" if fields and fields[0].type == "select" else "form"
         )
-        if "field_descriptions" in continuation:
-            field_descriptions = (
-                continuation.get("field_descriptions")
-                if isinstance(continuation.get("field_descriptions"), dict)
-                else {}
-            )
-            description = (
-                field_descriptions.get(fields[0].id)
-                if continuation.get("phase") == "field" and fields
-                else continuation.get("action_description")
-            )
-        else:
-            description = continuation.get("description")
+        description = continuation.get("description")
         fallback_text = str(continuation.get("fallback_text") or "Human input is required.")
-        if fields:
-            field = fields[0]
-            field_lines = [str(continuation.get("title") or "Human input required"), field.label]
-            if description:
-                field_lines.insert(1, str(description))
-            if field.options:
-                field_lines.append("Options: " + ", ".join(option.label for option in field.options))
-            fallback_text = "\n".join(field_lines)
         return InteractionRequest(
             interaction_id=str(continuation["interaction_id"]),
             kind=kind,
@@ -729,46 +608,6 @@ class DefaultRunner(Runner):
             actions=actions,
             fallback_text=fallback_text,
         )
-
-    async def _advance_field_interaction(
-        self,
-        ctx: RunnerContext,
-        continuation: dict[str, typing.Any],
-        submission: typing.Any,
-    ) -> RunnerResult:
-        field_map = continuation.get("field_map") if isinstance(continuation.get("field_map"), dict) else {}
-        inputs = dict(continuation.get("default_inputs") or {})
-        current_fields = [InteractionField.model_validate(item) for item in continuation.get("current_fields") or []]
-        for field_id, value in submission.values.items():
-            provider_name = field_map.get(field_id)
-            if provider_name:
-                inputs[str(provider_name)] = value
-        for field in current_fields:
-            provider_name = field_map.get(field.id)
-            if field.required and provider_name and inputs.get(str(provider_name)) in (None, "", []):
-                raise DifyAPIError(
-                    f"Dify human-input field is required: {field.label}",
-                    code="dify.interaction_invalid",
-                )
-
-        old_interaction_id = str(continuation["interaction_id"])
-        remaining_fields = list(continuation.get("remaining_fields") or [])
-        continuation = dict(continuation)
-        continuation["interaction_id"] = f"dify-{uuid.uuid4().hex}"
-        continuation["default_inputs"] = inputs
-        if remaining_fields:
-            continuation["phase"] = "field"
-            continuation["current_fields"] = [remaining_fields.pop(0)]
-            continuation["remaining_fields"] = remaining_fields
-        else:
-            continuation["phase"] = "action"
-            continuation["current_fields"] = []
-            continuation["remaining_fields"] = []
-
-        request = self._request_from_continuation(continuation)
-        await self._store_interaction_continuation(ctx, continuation)
-        await self._delete_interaction_continuation(ctx, old_interaction_id)
-        return RunnerResult.interaction_requested(ctx.run_id, request)
 
     def _build_interaction_request(
         self,
@@ -885,27 +724,23 @@ class DefaultRunner(Runner):
             "field_descriptions": field_descriptions,
             "action_description": action_description,
             "fallback_text": "\n".join(fallback_lines),
-            "phase": "field" if fields else "action",
-            "current_fields": [fields[0].model_dump(mode="json")] if fields else [],
-            "remaining_fields": [field.model_dump(mode="json") for field in fields[1:]],
+            "phase": "action",
+            "current_fields": [field.model_dump(mode="json") for field in fields],
+            "remaining_fields": [],
             "interaction_actions": [action.model_dump(mode="json") for action in actions],
         }
+        if fields and len(actions) > 1:
+            continuation["current_fields"].append(
+                InteractionField(
+                    id="_dify_action",
+                    label="Action",
+                    type="select",
+                    required=True,
+                    options=[InteractionOption(value=action.id, label=action.label) for action in actions],
+                ).model_dump(mode="json")
+            )
         request = self._request_from_continuation(continuation)
         return request, continuation
-
-    async def _interaction_result_for_pause(
-        self,
-        ctx: RunnerContext,
-        event: dict[str, typing.Any],
-        user: str,
-    ) -> RunnerResult | None:
-        workflow_run_id = _workflow_run_id(event)
-        reason = _human_input_reason(event)
-        if reason is None:
-            return None
-        request, continuation = self._build_interaction_request(reason, workflow_run_id, user)
-        await self._store_interaction_continuation(ctx, continuation)
-        return RunnerResult.interaction_requested(ctx.run_id, request)
 
     async def _wait_and_resume_workflow(
         self,
@@ -918,31 +753,7 @@ class DefaultRunner(Runner):
         reason = _human_input_reason(event)
         if reason is None:
             raise DifyAPIError("Dify paused without a supported human-input reason", code="dify.response_invalid")
-        _, continuation = self._build_interaction_request(reason, _workflow_run_id(event), user)
-        while continuation["phase"] == "field":
-            request = self._request_from_continuation(continuation)
-            result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
-            if result.status != "submitted" or result.submission is None:
-                raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
-            field_map = continuation["field_map"]
-            inputs = continuation["default_inputs"]
-            for field_id, value in result.submission.values.items():
-                if field_id in field_map:
-                    inputs[field_map[field_id]] = value
-            current_field = InteractionField.model_validate(continuation["current_fields"][0])
-            provider_name = field_map.get(current_field.id)
-            if current_field.required and provider_name and inputs.get(provider_name) in (None, "", []):
-                raise DifyAPIError(
-                    f"Dify human-input field is required: {current_field.label}", code="dify.interaction_invalid"
-                )
-            remaining = continuation["remaining_fields"]
-            continuation["interaction_id"] = f"dify-{uuid.uuid4().hex}"
-            if remaining:
-                continuation["current_fields"] = [remaining.pop(0)]
-            else:
-                continuation["phase"] = "action"
-                continuation["current_fields"] = []
-        request = self._request_from_continuation(continuation)
+        request, continuation = self._build_interaction_request(reason, _workflow_run_id(event), user)
         result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
         if result.status != "submitted" or result.submission is None:
             raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
@@ -952,7 +763,6 @@ class DefaultRunner(Runner):
             result.submission,
             remove_think,
             continuation=continuation,
-            blocking=True,
         ):
             yield item
 
@@ -983,21 +793,6 @@ class DefaultRunner(Runner):
 
         asset_registration = None
         try:
-            if ctx.event.event_type == "interaction.submitted":
-                if ctx.input.interaction is None:
-                    raise DifyAPIError(
-                        "interaction.submitted event is missing its validated submission",
-                        code="dify.interaction_invalid",
-                    )
-                async for result in self._resume_workflow(ctx, client, ctx.input.interaction, remove_think):
-                    yield result
-                return
-            if ctx.input.interaction is not None:
-                raise DifyAPIError(
-                    "Interaction submission is only valid for interaction.submitted events",
-                    code="dify.interaction_invalid",
-                )
-
             # Upload files if present. Multimodal inputs must not silently
             # degrade to text-only when the provider upload path fails.
             files = await self._upload_input_files(ctx, client, user)
@@ -1436,45 +1231,14 @@ class DefaultRunner(Runner):
 
         yield RunnerResult.run_completed(ctx.run_id, usage=usage)
 
-    async def _resume_workflow(self, ctx, client, submission, remove_think):
-        active = getattr(self, "_active_resumes", None)
-        if active is None:
-            active = self._active_resumes = set()
-        from langbot_plugin.api.proxies.invocation import current_binding
-
-        handler = getattr(self, "_plugin_runtime_handler", None)
-        # Same binding chain as scoped_identity, so the owner and the concurrency
-        # key can never disagree within one invocation.
-        binding = current_binding(handler) if handler is not None else None
-        if binding is None:
-            binding = getattr(handler, "bound_action_context", None)
-        key = (binding, self._continuation_owner(ctx), str(submission.interaction_id))
-        if key in active:
-            raise DifyAPIError("Dify continuation is already being resumed", code="dify.interaction_invalid")
-        active.add(key)
-        try:
-            async with aclosing(self._resume_workflow_once(ctx, client, submission, remove_think)) as stream:
-                async for result in stream:
-                    yield result
-        finally:
-            active.remove(key)
-
     async def _resume_workflow_once(
         self,
         ctx: RunnerContext,
         client: AsyncDifyClient,
         submission: typing.Any,
         remove_think: bool,
-        continuation: dict[str, typing.Any] | None = None,
-        blocking: bool = False,
+        continuation: dict[str, typing.Any],
     ) -> typing.AsyncGenerator[RunnerResult, None]:
-        interaction_id = str(submission.interaction_id)
-        continuation = (
-            continuation if continuation is not None else await self._load_interaction_continuation(ctx, interaction_id)
-        )
-        if continuation.get("phase") == "field":
-            yield await self._advance_field_interaction(ctx, continuation, submission)
-            return
         field_map = continuation.get("field_map") if isinstance(continuation.get("field_map"), dict) else {}
         action_map = continuation.get("action_map") if isinstance(continuation.get("action_map"), dict) else {}
         inputs = dict(continuation.get("default_inputs") or {})
@@ -1482,19 +1246,15 @@ class DefaultRunner(Runner):
             provider_name = field_map.get(field_id)
             if provider_name:
                 inputs[str(provider_name)] = value
-        action_id = submission.action_id or ""
+        action_id = submission.action_id or submission.values.get("_dify_action") or ""
+        if not action_id and len(action_map) == 1:
+            action_id = next(iter(action_map))
         if action_id not in action_map:
             raise DifyAPIError(
                 "Dify human-input action is missing or invalid",
                 code="dify.interaction_invalid",
             )
         action = action_map[action_id]
-        # Persist consumption BEFORE the external effect. An ambiguous failure
-        # remains consumed, never silently retries an approval at the vendor.
-        continuation["consumed"] = True
-        if not blocking:
-            await self._store_interaction_continuation(ctx, continuation)
-
         pending_content = ""
         streamed_content = ""
         text_event_count = 0
@@ -1570,28 +1330,14 @@ class DefaultRunner(Runner):
                         **data,
                         "workflow_run_id": str(continuation["workflow_run_id"]),
                     }
-                if blocking:
-                    async for result in self._wait_and_resume_workflow(
-                        ctx,
-                        client,
-                        event,
-                        str(continuation["user"]),
-                        remove_think,
-                    ):
-                        yield result
-                else:
-                    interaction_result = await self._interaction_result_for_pause(
-                        ctx,
-                        event,
-                        str(continuation["user"]),
-                    )
-                    if interaction_result is None:
-                        raise DifyAPIError(
-                            "Dify paused the workflow without a supported reason",
-                            code="dify.response_invalid",
-                        )
-                    await self._delete_interaction_continuation(ctx, interaction_id)
-                    yield interaction_result
+                async for result in self._wait_and_resume_workflow(
+                    ctx,
+                    client,
+                    event,
+                    str(continuation["user"]),
+                    remove_think,
+                ):
+                    yield result
                 return
             elif event_type == "workflow_finished":
                 data = event.get("data", {})
@@ -1628,6 +1374,4 @@ class DefaultRunner(Runner):
                 "Dify workflow returned no response after human input",
                 code="dify.api_error",
             )
-        if not blocking:
-            await self._delete_interaction_continuation(ctx, interaction_id)
         yield RunnerResult.run_completed(ctx.run_id, usage=usage)

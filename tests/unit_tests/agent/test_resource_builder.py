@@ -250,7 +250,7 @@ async def test_platform_tools_are_not_claimed_when_runner_disables_tool_calling(
 async def test_pipeline_receives_interactive_card_tool_for_supported_adapter(app):
     query = make_query({})
     query.adapter = SimpleNamespace(
-        get_supported_apis=lambda: ['interaction.request'],
+        get_supported_apis=lambda: ['send_interaction'],
         get_interaction_capabilities=lambda: {
             'field_types': ['select'],
             'action_styles': ['default', 'primary', 'danger'],
@@ -283,7 +283,7 @@ async def test_event_processor_cannot_receive_interactive_card_tool(app):
         delivery=DeliveryContext(
             surface='platform',
             reply_target={'target_type': 'person', 'target_id': 'user-1'},
-            platform_capabilities={'supported_apis': ['interaction.request']},
+            platform_capabilities={'supported_apis': ['send_interaction']},
         ),
     )
     binding = AgentBinding(

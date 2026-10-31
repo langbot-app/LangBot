@@ -171,16 +171,3 @@ def test_gateway_overlap_has_independent_timeout_and_tokens(name):
     with load(name) as (_, runner):
         with gateway_invocation(runner):
             asyncio.run(run(runner))
-
-
-def test_dify_storage_transport_failure_not_misreported_absent():
-    async def run(module, runner):
-        async def broken(key):
-            raise PermissionError("fixture denial")
-
-        runner.get_run_api = lambda ctx: SimpleNamespace(get_plugin_storage=broken)
-        with pytest.raises(PermissionError):
-            await runner._load_interaction_continuation(context(), "id")
-
-    with load("dify") as (m, runner):
-        asyncio.run(run(m, runner))

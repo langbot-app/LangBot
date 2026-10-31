@@ -21,6 +21,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
 
 
 class DummyLogger(AbstractEventLogger):
@@ -205,10 +206,12 @@ async def test_qqofficial_interaction_delivery_and_callback_event():
             'fallback_text': 'Reply approve.',
         },
     }
-    result = await adapter.call_platform_api('interaction.request', params)
-    await adapter.call_platform_api('interaction.request', params)
+    request = InteractionRequest.model_validate(params['request'])
+    result = await adapter.send_interaction('group', 'group-openid', request, 'callback-token', reply_to='msg-1')
+    await adapter.send_interaction('group', 'group-openid', request, 'callback-token', reply_to='msg-1')
 
-    assert result == {'ok': True, 'message_id': 'keyboard-message', 'rich': True}
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 'keyboard-message' and result.rich is True
     calls = adapter.bot.send_markdown_keyboard.await_args_list
     assert [call.kwargs['msg_id'] for call in calls] == ['msg-1', 'msg-1']
     assert [call.kwargs['msg_seq'] for call in calls] == [1, 2]
@@ -222,37 +225,56 @@ async def test_qqofficial_interaction_delivery_and_callback_event():
             'data': {'resolved': {'button_data': 'lbi:callback-token:a:0'}},
         }
     )
-    assert event.action == 'interaction.submitted'
-    assert event.data['action_ref'] == 0
-    assert event.data['actor_id'] == 'user-openid'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.raw_submission['action_ref'] == 0
+    assert event.actor_id == 'user-openid'
 
 
 @pytest.mark.asyncio
 async def test_qqofficial_interaction_omits_synthetic_negative_message_id():
     adapter = make_adapter()
 
-    await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'callback_token': 'callback-token',
-            'reply_target': {
-                'target_type': 'person',
-                'target_id': 'user-openid',
-                'message_id': -1,
-            },
-            'request': {
+    await adapter.send_interaction(
+        'person',
+        'user-openid',
+        InteractionRequest.model_validate(
+            {
                 'interaction_id': 'form-1',
                 'title': 'Approve?',
                 'actions': [{'id': 'approve', 'label': 'Approve'}],
                 'fallback_text': 'Reply approve.',
-            },
-        },
+            }
+        ),
+        'callback-token',
+        reply_to=-1,
     )
 
     call = adapter.bot.send_markdown_keyboard.await_args
     assert call.kwargs['msg_id'] is None
     assert call.kwargs['event_id'] is None
     assert call.kwargs['msg_seq'] == 1
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_update_interaction_reports_expiry_without_edit_api():
+    adapter = make_adapter()
+    send = AsyncMock()
+    object.__setattr__(adapter, 'send_message', send)
+    handle = InteractionHandle(
+        message_id='card-1',
+        context={
+            'target_type': 'group',
+            'target_id': 'group-openid',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert adapter.get_interaction_capabilities()['supports_updates'] is False
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'expired')
+
+    assert send.await_args.args[:2] == ('group', 'group-openid')
+    assert send.await_args.args[2].root[0].text == 'Approve?: Expired'
 
 
 @pytest.mark.asyncio

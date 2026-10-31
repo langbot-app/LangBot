@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import types
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncEngine
@@ -17,7 +17,6 @@ from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
 from langbot.pkg.agent.runner.session_registry import get_session_registry
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
-from langbot.pkg.agent.runner.interaction_store import InteractionStore
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -430,84 +429,6 @@ async def test_orchestrator_runs_fake_plugin_with_authorized_context(clean_agent
     assert session_during_run['authorization']['authorized_ids']['tool'] == {'langbot/test-tool/search'}
     assert session_during_run['authorization']['authorized_ids']['skill'] == {'demo'}
     assert await get_session_registry().get(context['run_id']) is None
-
-
-@pytest.mark.asyncio
-async def test_orchestrator_consumes_interaction_request_before_message_output(clean_agent_state):
-    """Whitelisted interaction actions are delivered and never emitted as messages."""
-    db_engine = clean_agent_state
-    descriptor = make_descriptor()
-    # The local SDK pin predates this contract; these become typed fields with SDK 0.5.0a3.
-    descriptor.capabilities.__dict__['interactions'] = True
-    descriptor.permissions.__dict__['interactions'] = ['request']
-    plugin_connector = FakePluginConnector(
-        results=[
-            {
-                'type': 'action.requested',
-                'data': {
-                    'action': 'interaction.requested',
-                    'payload': {
-                        'interaction_id': 'approval-1',
-                        'kind': 'choice',
-                        'title': 'Approve request?',
-                        'actions': [
-                            {'id': 'approve', 'label': 'Approve', 'style': 'primary'},
-                            {'id': 'reject', 'label': 'Reject', 'style': 'danger'},
-                        ],
-                        'fallback_text': 'Reply approve or reject.',
-                    },
-                },
-            },
-            {
-                'type': 'message.completed',
-                'data': {'message': {'role': 'assistant', 'content': 'Waiting for approval'}},
-            },
-        ]
-    )
-    ap = FakeApplication(plugin_connector, db_engine)
-    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
-    query = make_query()
-    query.adapter = types.SimpleNamespace(
-        get_supported_apis=lambda: ['interaction.request'],
-        call_platform_api=AsyncMock(return_value={'ok': True}),
-    )
-
-    import sqlalchemy as sa
-    from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
-
-    async with db_engine.begin() as conn:
-        await conn.execute(
-            sa.insert(LegacyPipeline).values(
-                uuid=query.pipeline_uuid,
-                workspace_uuid=TEST_CONTEXT.workspace_uuid,
-                name='test',
-                description='',
-                for_version='4.11',
-                stages=[],
-                config=query.pipeline_config,
-                extensions_preferences={},
-            )
-        )
-
-    messages = [message async for message in orchestrator.run_from_query(query)]
-
-    assert [message.content for message in messages] == ['Waiting for approval']
-    query.adapter.call_platform_api.assert_awaited_once()
-    action, params = query.adapter.call_platform_api.await_args.args
-    assert action == 'interaction.request'
-    assert params['reply_target'] == {
-        'target_type': 'person',
-        'target_id': 'user_001',
-        'message_id': 'msg_001',
-    }
-    assert params['callback_token']
-
-    run_id = plugin_connector.contexts[0]['run_id']
-    request = await InteractionStore(db_engine).get_request(run_id, 'approval-1')
-    assert request is not None
-    assert request['status'] == 'pending'
-    assert request['processor_type'] == 'pipeline'
-    assert request['processor_id'] == 'pipeline_001'
 
 
 @pytest.mark.asyncio
@@ -1021,6 +942,70 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('waiting', 'supports_steering', 'target_run_id', 'expected'),
+    [
+        ({'run-1'}, True, 'run-1', True),
+        (set(), True, 'run-1', False),
+        ({'run-1'}, False, 'run-1', False),
+        ({'run-1'}, True, None, False),
+    ],
+)
+async def test_platform_event_steering_requires_waiting_run_and_matching_binding(
+    waiting,
+    supports_steering,
+    target_run_id,
+    expected,
+):
+    event = types.SimpleNamespace(
+        event_type='message.received',
+        event_id='event-1',
+        conversation_id='person-user-1',
+        bot_id='bot-1',
+        workspace_id='workspace-test',
+        thread_id=None,
+    )
+    binding = types.SimpleNamespace(runner_id=RUNNER_ID, binding_id='binding-1')
+    descriptor = types.SimpleNamespace(id=RUNNER_ID, supports_steering=lambda: supports_steering)
+    sessions = types.SimpleNamespace(
+        find_steering_target=AsyncMock(return_value=target_run_id),
+        enqueue_steering=AsyncMock(return_value=True),
+    )
+    journal = types.SimpleNamespace(write_event_log=AsyncMock(return_value='log-1'), write_user_transcript=AsyncMock())
+    orchestrator = types.SimpleNamespace(
+        interaction_manager=types.SimpleNamespace(waiting_run_ids=lambda: waiting),
+        registry=types.SimpleNamespace(get=AsyncMock(return_value=descriptor)),
+        _session_registry=sessions,
+        _build_steering_item=Mock(return_value={'claimed_at': 1}),
+        journal=journal,
+        ap=types.SimpleNamespace(logger=FakeLogger()),
+    )
+
+    claimed = await AgentRunOrchestrator.try_claim_steering_from_event(
+        orchestrator,
+        event,
+        binding,
+        TEST_CONTEXT,
+    )
+
+    assert claimed is expected
+    if waiting and supports_steering:
+        sessions.find_steering_target.assert_awaited_once_with(
+            conversation_id='person-user-1',
+            runner_id=RUNNER_ID,
+            bot_id='bot-1',
+            workspace_id='workspace-test',
+            thread_id=None,
+            binding_id='binding-1',
+            eligible_run_ids=waiting,
+        )
+    else:
+        sessions.find_steering_target.assert_not_awaited()
+    assert sessions.enqueue_steering.await_count == int(expected)
+    assert journal.write_event_log.await_count == int(expected)
+
+
+@pytest.mark.asyncio
 async def test_orchestrator_enforces_total_runner_deadline(clean_agent_state):
     """Test that orchestrator enforces total runner timeout."""
     db_engine = clean_agent_state
@@ -1270,7 +1255,7 @@ class TestQueryEntrySessionQueryId:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('event_type', ['message.received', 'interaction.submitted'])
+@pytest.mark.parametrize('event_type', ['message.received'])
 @pytest.mark.parametrize('completed_message', [False, True])
 @pytest.mark.parametrize('reasoning', [False, True])
 async def test_direct_agent_streams_output_to_the_originating_platform(

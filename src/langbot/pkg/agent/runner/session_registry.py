@@ -288,12 +288,18 @@ class AgentRunSessionRegistry:
         bot_id: str | None = None,
         workspace_id: str | None = None,
         thread_id: str | None = None,
+        binding_id: str | None = None,
+        eligible_run_ids: set[str] | None = None,
     ) -> str | None:
         """Find the oldest active run that can accept steering for a conversation."""
         async with self._lock:
             candidates: list[tuple[int, str]] = []
             for run_id, session in self._sessions.items():
                 authorization = session['authorization']
+                if eligible_run_ids is not None and run_id not in eligible_run_ids:
+                    continue
+                if binding_id is not None and authorization.get('binding_id') != binding_id:
+                    continue
                 if session.get('runner_id') != runner_id:
                     continue
                 if authorization.get('conversation_id') != conversation_id:

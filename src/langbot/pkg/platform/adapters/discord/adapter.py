@@ -11,7 +11,6 @@ import pydantic
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from langbot.pkg.platform.adapters.discord.api_impl import DiscordAPIMixin
-from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.discord.event_converter import DiscordEventConverter
 from langbot.pkg.platform.adapters.discord.message_converter import DiscordMessageConverter
 from langbot.pkg.platform.adapters.discord.platform_api import PLATFORM_API_MAP
@@ -23,9 +22,14 @@ from langbot.pkg.platform.adapters.discord.interaction import (
 )
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
-class DiscordAdapter(DiscordAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: discord.Client = pydantic.Field(exclude=True)
 
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
@@ -186,6 +190,7 @@ class DiscordAdapter(DiscordAPIMixin, InteractionAdapterMixin, abstract_platform
             'bot.invited_to_group',
             'bot.removed_from_group',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -205,13 +210,47 @@ class DiscordAdapter(DiscordAPIMixin, InteractionAdapterMixin, abstract_platform
             'kick_member',
             'leave_group',
             'call_platform_api',
-            'interaction.request',
             'send_interaction',
+            'update_interaction',
             'get_interaction_capabilities',
         ]
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        handle.context['target_id'] = target_id
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        del submission
+        channel = await self._get_channel(str(handle.context['target_id']))
+        message = await channel.fetch_message(int(handle.message_id))
+        label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
+        await message.edit(content=f'{handle.context["request"]["title"]}\n\n{label}', view=None)
+        return handle
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
         content, files = await self.message_converter.yiri2target(message)
@@ -281,8 +320,6 @@ class DiscordAdapter(DiscordAPIMixin, InteractionAdapterMixin, abstract_platform
         self.listeners.pop(event_type, None)
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request':
-            return await send_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError

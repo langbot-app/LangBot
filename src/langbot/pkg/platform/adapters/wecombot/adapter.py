@@ -14,7 +14,6 @@ from langbot.libs.wecom_ai_bot_api.api import WecomBotClient
 from langbot.libs.wecom_ai_bot_api.wecombotevent import WecomBotEvent
 from langbot.libs.wecom_ai_bot_api.ws_client import WecomBotWsClient
 from langbot.pkg.platform.adapters.wecombot.api_impl import WecomBotAPIMixin
-from langbot.pkg.platform.adapters.interaction_api import InteractionAdapterMixin
 from langbot.pkg.platform.adapters.wecombot.event_converter import WecomBotEventConverter
 from langbot.pkg.platform.adapters.wecombot.message_converter import WecomBotMessageConverter
 from langbot.pkg.platform.adapters.wecombot.platform_api import PLATFORM_API_MAP
@@ -30,9 +29,14 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
 
 
-class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     bot: typing.Any = pydantic.Field(exclude=True)
 
     message_converter: WecomBotMessageConverter = WecomBotMessageConverter()
@@ -110,6 +114,7 @@ class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platfo
             'wecombot.enter_chat',
             'wecombot.template_card_event',
             'platform.specific',
+            'interaction.callback',
         ]
 
     def get_supported_apis(self) -> list[str]:
@@ -127,8 +132,6 @@ class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platfo
         if not self.config.get('enable-webhook', False) and hasattr(self.bot, 'send_template_card'):
             apis.extend(
                 [
-                    'interaction.request',
-                    'interaction.acknowledge',
                     'send_interaction',
                     'update_interaction',
                     'get_interaction_capabilities',
@@ -138,6 +141,46 @@ class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platfo
 
     def get_interaction_capabilities(self) -> dict[str, typing.Any]:
         return interaction_delivery_capabilities()
+
+    async def send_interaction(
+        self,
+        target_type: str,
+        target_id: str,
+        request: InteractionRequest,
+        callback_token: str,
+        reply_to: str | None = None,
+    ) -> InteractionHandle:
+        result = await send_interaction(
+            self,
+            {
+                'request': request.model_dump(mode='json'),
+                'callback_token': callback_token,
+                'reply_target': {'target_type': target_type, 'target_id': target_id, 'message_id': reply_to},
+            },
+        )
+        handle = InteractionHandle.model_validate(result)
+        handle.context['request'] = request.model_dump(mode='json')
+        return handle
+
+    async def update_interaction(
+        self,
+        handle: InteractionHandle,
+        state: str,
+        submission: InteractionSubmission | None = None,
+    ) -> InteractionHandle:
+        result = await acknowledge_interaction(
+            self,
+            {
+                'update_target': handle.model_dump(mode='json'),
+                'request': handle.context['request'],
+                'submission': submission.model_dump(mode='json') if submission else {},
+                'callback_context': handle.context.get('callback_context') or {},
+                'state': state,
+            },
+        )
+        updated = InteractionHandle.model_validate(result)
+        updated.context.update(handle.context)
+        return updated
 
     @staticmethod
     def _plain_message(text: str) -> platform_message.MessageChain:
@@ -299,10 +342,6 @@ class WecomBotAdapter(WecomBotAPIMixin, InteractionAdapterMixin, abstract_platfo
             raise RuntimeError('WeCom rejected the new interaction reply stream')
 
     async def call_platform_api(self, action: str, params: dict = {}) -> dict:
-        if action == 'interaction.request' and 'interaction.request' in self.get_supported_apis():
-            return await send_interaction(self, params)
-        if action == 'interaction.acknowledge' and 'interaction.acknowledge' in self.get_supported_apis():
-            return await acknowledge_interaction(self, params)
         handler = PLATFORM_API_MAP.get(action)
         if handler is None:
             raise NotSupportedError(f'call_platform_api:{action}')

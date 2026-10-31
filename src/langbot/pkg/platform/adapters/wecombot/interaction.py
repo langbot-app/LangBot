@@ -106,7 +106,7 @@ async def send_interaction(adapter: typing.Any, params: dict[str, typing.Any]) -
     reply_target = params.get('reply_target')
     callback_token = str(params.get('callback_token') or '')
     if not isinstance(request, dict) or not isinstance(reply_target, dict) or not callback_token:
-        raise ValueError('interaction.request requires request, reply_target, and callback_token')
+        raise ValueError('send_interaction requires request, reply_target, and callback_token')
     target_type = str(reply_target.get('target_type') or '')
     target_id = str(reply_target.get('target_id') or '')
     card = build_interaction_card(request, callback_token)
@@ -144,21 +144,22 @@ async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.
     target = params.get('update_target')
     callback = params.get('callback_context')
     if not all(isinstance(value, dict) for value in (request, submission, target, callback)):
-        raise ValueError('interaction.acknowledge requires request, submission, update_target, and callback_context')
-    task_id = str(callback.get('task_id') or '')
+        raise ValueError('update_interaction requires request, submission, update_target, and callback_context')
+    state = params.get('state', 'submitted')
+    task_id = str(callback.get('task_id') or target.get('task_id') or '')
     req_id = str(callback.get('req_id') or '')
     if not req_id or not task_id or task_id != target.get('task_id') or target.get('rich') is not True:
         raise ValueError('WeCom interaction callback does not match the delivered card')
 
-    card = build_interaction_card(request, 'submitted')
+    card = build_interaction_card(request, state)
     if card is None:
         raise ValueError('WeCom interaction has no card to update')
     updated = card['template_card']
     updated['task_id'] = task_id
-    action_id = submission.get('action_id')
+    action_id = submission.get('action_id') if state == 'submitted' else None
     if updated['card_type'] == 'button_interaction':
         for index, action in enumerate((request.get('actions') or [])[:6]):
-            updated['button_list'][index]['key'] = 'submitted'
+            updated['button_list'][index]['key'] = state
             if isinstance(action, dict) and action.get('id') == action_id:
                 button = updated['button_list'][index]
                 button['text'] = f'✓ {button["text"]}'
@@ -172,8 +173,10 @@ async def acknowledge_interaction(adapter: typing.Any, params: dict[str, typing.
                 updated['select_list'][0]['selected_id'] = f'opt_{index + 1}'
                 break
         updated['select_list'][0]['disable'] = True
-        updated['submit_button']['text'] = '✓ Submitted'
-        updated['submit_button']['key'] = 'submitted'
+        updated['submit_button']['text'] = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[
+            state
+        ]
+        updated['submit_button']['key'] = state
     raw = await adapter.bot.update_template_card(req_id, updated)
     if not isinstance(raw, dict) or raw.get('errcode', 0) != 0:
         detail = raw.get('errmsg', raw.get('errcode')) if isinstance(raw, dict) else 'no acknowledgement'
@@ -274,7 +277,7 @@ def _selected_option_ref(payload: dict[str, typing.Any]) -> int:
 
 def interaction_event_from_native(
     event: WecomBotEvent,
-) -> platform_events.PlatformSpecificEvent | None:
+) -> platform_events.InteractionCallbackEvent | None:
     callback_key = _callback_key(_template_card_event(event))
     if not callback_key.startswith('lbi:'):
         return None
@@ -285,19 +288,14 @@ def interaction_event_from_native(
         parsed['option_ref'] = _selected_option_ref(_template_card_event(event))
     target_type = 'group' if event.type == 'group' or event.chatid else 'person'
     target_id = str(event.chatid or event.userid or '')
-    return platform_events.PlatformSpecificEvent(
-        type='platform.specific',
+    return platform_events.InteractionCallbackEvent(
         adapter_name='wecombot-omni',
-        action='interaction.submitted',
-        data={
-            **parsed,
-            'actor_id': str(event.userid or ''),
-            'target_type': target_type,
-            'target_id': target_id,
-            'display_text': 'submitted',
-            'callback_req_id': str(event.get('req_id') or ''),
-            'callback_task_id': task_id,
-        },
+        callback_token=str(parsed.get('callback_token') or ''),
+        actor_id=str(event.userid or ''),
+        target_type=target_type,
+        target_id=target_id,
+        callback_context={'req_id': str(event.get('req_id') or ''), 'task_id': task_id},
+        raw_submission=parsed,
         timestamp=time.time(),
         source_platform_object=event,
     )

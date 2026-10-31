@@ -20,6 +20,48 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import (
+    InteractionHandle,
+    InteractionRequest,
+    InteractionSubmission,
+)
+
+
+async def _send_interaction(adapter, params):
+    target = params['reply_target']
+    request = InteractionRequest.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            'title': 'Interaction',
+            **params['request'],
+        }
+    )
+    handle = await adapter.send_interaction(
+        target['target_type'],
+        target['target_id'],
+        request,
+        params['callback_token'],
+        reply_to=target.get('message_id'),
+    )
+    return handle.model_dump()
+
+
+async def _update_interaction(adapter, params):
+    target = params['update_target']
+    handle = InteractionHandle.model_validate(
+        {
+            **target,
+            'context': {'request': params['request'], 'callback_context': params.get('callback_context') or {}},
+        }
+    )
+    submission = InteractionSubmission.model_validate(
+        {
+            'interaction_id': 'test-interaction',
+            **params['submission'],
+        }
+    )
+    updated = await adapter.update_interaction(handle, params.get('state', 'submitted'), submission)
+    return updated.model_dump()
 
 
 class DummyLogger(AbstractEventLogger):
@@ -336,8 +378,8 @@ async def test_dingtalk_target_reply_stream_updates_one_card():
 @pytest.mark.asyncio
 async def test_dingtalk_interaction_delivery_and_callback_event():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -365,17 +407,17 @@ async def test_dingtalk_interaction_delivery_and_callback_event():
         space_id='dtv1.card//IM_GROUP.group-1',
     )
     event = interaction_event_from_native(native)
-    assert event.action == 'interaction.submitted'
-    assert event.data['action_ref'] == 0
-    assert event.data['actor_id'] == 'user-1'
-    assert event.data['target_id'] == 'group-1'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.raw_submission['action_ref'] == 0
+    assert event.actor_id == 'user-1'
+    assert event.target_id == 'group-1'
 
 
 @pytest.mark.asyncio
 async def test_dingtalk_native_input_uses_template_variables_and_submits_value():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -428,16 +470,16 @@ async def test_dingtalk_native_input_uses_template_variables_and_submits_value()
     )
     event = interaction_event_from_native(native, adapter.interaction_callback_contexts)
 
-    assert event.data['callback_token'] == 'callback-token'
-    assert event.data['values'] == {'comment': 'Looks good'}
+    assert event.callback_token == 'callback-token'
+    assert event.values == {'comment': 'Looks good'}
     assert result['message_id'] in adapter.interaction_callback_contexts
 
 
 @pytest.mark.asyncio
 async def test_dingtalk_native_select_uses_select_block_and_normalizes_callback():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
@@ -483,10 +525,10 @@ async def test_dingtalk_native_select_uses_select_block_and_normalizes_callback(
     )
     event = interaction_event_from_native(native, adapter.interaction_callback_contexts)
 
-    assert event.data['target_type'] == 'person'
-    assert event.data['target_id'] == 'user-1'
-    assert event.data['values'] == {'priority': 'urgent'}
-    assert 'field_ref' not in event.data
+    assert event.target_type == 'person'
+    assert event.target_id == 'user-1'
+    assert event.values == {'priority': 'urgent'}
+    assert 'field_ref' not in event.raw_submission
     resolved = InteractionManager._resolve_submission_refs(
         {
             'interaction_id': 'form-1',
@@ -496,7 +538,7 @@ async def test_dingtalk_native_select_uses_select_block_and_normalizes_callback(
                 ]
             },
         },
-        {'values': event.data['values']},
+        {'values': event.values},
     )
     assert resolved['values'] == {'priority': 'urgent'}
 
@@ -509,9 +551,9 @@ async def test_dingtalk_stream_callback_submits_dropdown_without_space_id():
     async def listener(event, _adapter):
         received.append(event)
 
-    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    adapter.register_listener(platform_events.InteractionCallbackEvent, listener)
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
@@ -520,6 +562,7 @@ async def test_dingtalk_stream_callback_submits_dropdown_without_space_id():
                 'fields': [
                     {
                         'id': 'priority',
+                        'label': 'Priority',
                         'type': 'select',
                         'options': [{'value': 'urgent', 'label': 'Urgent'}],
                     }
@@ -551,10 +594,10 @@ async def test_dingtalk_stream_callback_submits_dropdown_without_space_id():
     )
 
     assert len(received) == 1
-    assert received[0].action == 'interaction.submitted'
-    assert received[0].data['target_type'] == 'person'
-    assert received[0].data['target_id'] == 'user-1'
-    assert received[0].data['values'] == {'priority': 'urgent'}
+    assert isinstance(received[0], platform_events.InteractionCallbackEvent)
+    assert received[0].target_type == 'person'
+    assert received[0].target_id == 'user-1'
+    assert received[0].values == {'priority': 'urgent'}
     assert result['message_id'] in adapter.interaction_callback_contexts
 
 
@@ -566,13 +609,22 @@ async def test_dingtalk_stream_callback_accepts_object_content_and_retries_unpar
     async def listener(event, _adapter):
         received.append(event)
 
-    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    adapter.register_listener(platform_events.InteractionCallbackEvent, listener)
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
-            'request': {'fields': [{'id': 'priority', 'type': 'select', 'options': [{'value': 'urgent'}]}]},
+            'request': {
+                'fields': [
+                    {
+                        'id': 'priority',
+                        'label': 'Priority',
+                        'type': 'select',
+                        'options': [{'value': 'urgent', 'label': 'Urgent'}],
+                    }
+                ]
+            },
         },
     )
     raw = {
@@ -593,51 +645,35 @@ async def test_dingtalk_stream_callback_accepts_object_content_and_retries_unpar
     message = SimpleNamespace(data=raw, headers=SimpleNamespace(time=1_714_000_000_000))
 
     assert (await handler.process(message))[0] == 200
-    assert received[0].data['values'] == {'priority': 'urgent'}
+    assert received[0].values == {'priority': 'urgent'}
     raw['content'] = {'actionData': {'unexpected': True}}
     assert (await handler.process(message))[0] == 500
 
 
 @pytest.mark.asyncio
-async def test_dingtalk_interaction_update_reuses_existing_a2ui_card():
+async def test_dingtalk_expired_interaction_updates_read_only_card():
     adapter = make_adapter()
-
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    result = await _update_interaction(
+        adapter,
         {
-            'callback_token': 'new-token',
-            'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
+            'state': 'expired',
+            'request': {'title': 'Approve?', 'actions': [{'id': 'approve', 'label': 'Approve'}]},
+            'submission': {},
             'update_target': {'message_id': 'existing-track-id', 'rich': True},
-            'request': {
-                'interaction_id': 'form-2',
-                'title': 'Updated approval',
-                'actions': [{'id': 'approve', 'label': 'Approve', 'style': 'primary'}],
-                'fallback_text': 'Reply approve.',
-            },
         },
     )
-
-    adapter.bot.create_and_deliver_ai_card.assert_not_awaited()
-    kwargs = adapter.bot.update_ai_card.await_args.kwargs
-    assert kwargs['out_track_id'] == 'existing-track-id'
-    assert kwargs['flow_status'] == 'CONFIRMING'
-    assert 'updateDataModel' in kwargs['a2ui_messages'][0]
-    assert 'updateComponents' in kwargs['a2ui_messages'][1]
-    assert result == {
-        'ok': True,
-        'message_id': 'existing-track-id',
-        'rich': True,
-        'updated': True,
-    }
-    assert adapter.interaction_callback_contexts['existing-track-id']['callback_token'] == 'new-token'
+    components = adapter.bot.update_ai_card.await_args.kwargs['a2ui_messages'][1]['updateComponents']['components']
+    assert result['message_id'] == 'existing-track-id'
+    assert any(component.get('text') == '\u2705 Expired' for component in components)
+    assert not any(component['component'] == 'Button' for component in components)
 
 
 @pytest.mark.asyncio
 async def test_dingtalk_acknowledgement_shows_text_selection_and_clicked_button():
     adapter = make_adapter()
-    assert 'interaction.acknowledge' in adapter.get_supported_apis()
-    result = await adapter.call_platform_api(
-        'interaction.acknowledge',
+    assert 'update_interaction' in adapter.get_supported_apis()
+    result = await _update_interaction(
+        adapter,
         {
             'request': {
                 'title': 'Review',
@@ -677,26 +713,12 @@ async def test_dingtalk_acknowledgement_shows_text_selection_and_clicked_button(
         {'label': '', 'value': 'Approve'},
     ]
 
-    next_result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'callback_token': 'next-token',
-            'reply_target': {'target_type': 'person', 'target_id': 'user-1'},
-            'update_target': result,
-            'request': {'title': 'Next step', 'actions': [{'id': 'finish', 'label': 'Finish'}]},
-        },
-    )
-    components = adapter.bot.update_ai_card.await_args.kwargs['a2ui_messages'][1]['updateComponents']['components']
-    assert next_result['submitted_values'] == result['submitted_values']
-    assert components[0]['children'][:4] == ['title', 'submitted-0', 'submitted-1', 'submitted-2']
-    assert any(component['component'] == 'Button' for component in components)
-
 
 @pytest.mark.asyncio
 async def test_dingtalk_field_submit_shows_entered_value_without_submit_action():
     adapter = make_adapter()
-    await adapter.call_platform_api(
-        'interaction.acknowledge',
+    await _update_interaction(
+        adapter,
         {
             'request': {
                 'description': 'Please enter your question',
@@ -716,8 +738,8 @@ async def test_dingtalk_field_submit_shows_entered_value_without_submit_action()
 @pytest.mark.asyncio
 async def test_dingtalk_button_submit_preserves_its_prompt():
     adapter = make_adapter()
-    result = await adapter.call_platform_api(
-        'interaction.acknowledge',
+    result = await _update_interaction(
+        adapter,
         {
             'request': {
                 'title': 'Human input',
@@ -764,9 +786,9 @@ async def test_dingtalk_adapter_dispatches_native_input_submission():
     async def listener(event, adapter):
         calls.append(event)
 
-    adapter.register_listener(platform_events.PlatformSpecificEvent, listener)
-    result = await adapter.call_platform_api(
-        'interaction.request',
+    adapter.register_listener(platform_events.InteractionCallbackEvent, listener)
+    result = await _send_interaction(
+        adapter,
         {
             'callback_token': 'callback-token',
             'reply_target': {'target_type': 'group', 'target_id': 'group-1'},
@@ -803,9 +825,9 @@ async def test_dingtalk_adapter_dispatches_native_input_submission():
     await adapter._handle_native_event(native)
 
     assert len(calls) == 1
-    assert calls[0].action == 'interaction.submitted'
-    assert calls[0].data['callback_token'] == 'callback-token'
-    assert calls[0].data['values'] == {'score': 42.5}
+    assert isinstance(calls[0], platform_events.InteractionCallbackEvent)
+    assert calls[0].callback_token == 'callback-token'
+    assert calls[0].values == {'score': 42.5}
     assert result['message_id'] in adapter.interaction_callback_contexts
 
 
