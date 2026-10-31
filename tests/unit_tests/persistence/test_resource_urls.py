@@ -20,6 +20,7 @@ from langbot.pkg.entity.persistence.event_log import EventLog
 from langbot.pkg.entity.persistence.monitoring import MonitoringLLMCall
 from langbot.pkg.persistence.media import MediaReferenceText, MediaReferenceJSON
 from langbot.pkg.persistence.resource_urls import digest, refresh_images
+from langbot.pkg.persistence.sqlite_write_gate import install as install_write_gate
 from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
 
 
@@ -46,6 +47,7 @@ async def database(tmp_path, request):
         engine = create_async_engine(url, connect_args={'server_settings': {'search_path': schema}})
     else:
         engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "catalog.db"}')
+    install_write_gate(engine)
     try:
         async with engine.begin() as db:
             await db.run_sync(ResourceURL.__table__.create)
@@ -398,3 +400,74 @@ async def test_migration_preserves_source_creation_and_downgrade(database):
         # The same engine can write and read literal payloads after downgrade.
         await append(db, 'after', NEW)
         assert NEW in await db.scalar(sa.select(EventLog.input_json).where(EventLog.event_id == 'after'))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('napcat', [False, True])
+@pytest.mark.parametrize('blocked_action', ['get_version_info', 'get_msg'])
+@pytest.mark.parametrize('converge', [False, True])
+async def test_sqlite_refresh_releases_writer_and_rejects_stale_result(database, blocked_action, converge, napcat):
+    if database.dialect.name != 'sqlite':
+        pytest.skip('SQLite transaction boundary')
+    async with database.begin() as db:
+        await append(db, 'a')
+        if converge:
+            await append(db, 'b', NEW)
+        await db.execute(sa.update(ResourceURL).values(created_at=dt.datetime(2000, 1, 1)))
+        source_id = await db.scalar(sa.select(ResourceURL.id).where(ResourceURL.url == OLD))
+        destination_id = await db.scalar(sa.select(ResourceURL.id).where(ResourceURL.url == NEW))
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    upstream_url = OLD.replace('rkey=old', 'rkey=stale')
+    renewal_action = 'nc_get_rkey' if napcat else 'get_msg'
+    if blocked_action == 'get_msg':
+        blocked_action = renewal_action
+
+    async def action(name, **params):
+        if name == blocked_action:
+            entered.set()
+            await release.wait()
+        if name == 'get_version_info':
+            return {'app_name': 'NapCat.Onebot' if napcat else 'standard'}
+        if napcat:
+            return [{'type': 20, 'time': 1, 'ttl': 10**12, 'rkey': upstream_url.split('rkey=')[1]}]
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': upstream_url}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    payload = chain()
+    task = asyncio.create_task(refresh_images(database, peer, payload))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        # Plain text must retain its fast path while an image renewal waits.
+        await asyncio.wait_for(refresh_images(database, peer, [{'type': 'Plain', 'text': 'hello'}]), 1)
+
+        async def concurrent_writer():
+            async with database.begin() as db:
+                await append(db, 'unrelated', 'https://example.com/unrelated.png')
+                values = dict(url=NEW, url_hash=digest(NEW))
+                if converge:
+                    values = dict(url=None, url_hash=None, canonical_id=destination_id)
+                await db.execute(sa.update(ResourceURL).where(ResourceURL.id == source_id).values(**values))
+
+        # It must commit while the external call is still blocked.
+        await asyncio.wait_for(concurrent_writer(), 2)
+    finally:
+        release.set()
+        await asyncio.wait_for(task, 5)
+    assert payload[1]['url'] == NEW
+    async with database.connect() as db:
+        assert NEW in await db.scalar(sa.select(EventLog.input_json).where(EventLog.event_id == 'a'))
+        assert await db.scalar(sa.select(EventLog.event_id).where(EventLog.event_id == 'unrelated')) == 'unrelated'
+        assert await db.scalar(sa.select(ResourceURL.last_checked_at).where(ResourceURL.id == source_id)) is None
+
+    # The rejected response also populated OneBot's connection-local caches.
+    # A later due refresh must ask upstream again instead of restoring that stale URL.
+    upstream_url = NEW
+    second_payload = chain(NEW)
+    await refresh_images(database, peer, second_payload)
+    assert second_payload[1]['url'] == NEW
+    assert sum(call.args[0] == renewal_action for call in peer.call_action.call_args_list) == 2
+    async with database.connect() as db:
+        assert NEW in await db.scalar(sa.select(EventLog.input_json).where(EventLog.event_id == 'a'))
+        assert not any('rkey=stale' in (url or '') for url in (await db.execute(sa.select(ResourceURL.url))).scalars())
