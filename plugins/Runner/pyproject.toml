@@ -26,7 +26,7 @@ dev = [
 
 # Replace this source with the released SDK version before merging #2787.
 [tool.uv.sources]
-langbot-plugin = { git = "https://github.com/fdc310/langbot-plugin-sdk.git", rev = "42ef9c72a212d4398b3153a08550d22e4b7476cb" }
+langbot-plugin = { git = "https://github.com/fdc310/langbot-plugin-sdk.git", rev = "33dfff35859c30c63acc54deacaaf5b71cf6ef5c" }
 
 [tool.pytest.ini_options]
 # LocalAgent and RunnerDemo run in fresh interpreters via tests/test_migrated_runners.py.

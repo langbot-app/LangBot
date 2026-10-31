@@ -830,7 +830,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langbot-plugin", git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=42ef9c72a212d4398b3153a08550d22e4b7476cb" },
+    { name = "langbot-plugin", git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=33dfff35859c30c63acc54deacaaf5b71cf6ef5c" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -848,7 +848,7 @@ dev = [
 [[package]]
 name = "langbot-plugin"
 version = "0.7.19"
-source = { git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=42ef9c72a212d4398b3153a08550d22e4b7476cb#42ef9c72a212d4398b3153a08550d22e4b7476cb" }
+source = { git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=33dfff35859c30c63acc54deacaaf5b71cf6ef5c#33dfff35859c30c63acc54deacaaf5b71cf6ef5c" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
