@@ -70,30 +70,3 @@ config:
     description:
       en_US: Memory key
       zh_Hans: 记忆键
-
-  - name: scope
-    type: select
-    required: true
-    default: execution
-    options:
-      - execution
-      - workflow
-      - session
-      - user
-      - global
-    label:
-      en_US: Scope
-      zh_Hans: 作用域
-    description:
-      en_US: Scope of the memory storage
-      zh_Hans: 记忆存储的作用域
-
-  - name: ttl
-    type: integer
-    default: 0
-    label:
-      en_US: TTL (seconds)
-      zh_Hans: TTL（秒）
-    description:
-      en_US: Time to live (0 = no expiry)
-      zh_Hans: 过期时间（0 = 不过期）

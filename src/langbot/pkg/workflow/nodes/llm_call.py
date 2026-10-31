@@ -20,7 +20,7 @@ import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
-from .. import monitoring_helper
+from ..runtime import current_runtime
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,11 @@ class LLMCallNode(WorkflowNode):
                 return str(inputs[expr])
             # Try context variables
             if expr.startswith('variables.'):
-                var_name = expr[len('variables.'):]
+                var_name = expr[len('variables.') :]
                 return str(context.variables.get(var_name, ''))
             # Try message context
             if expr.startswith('message.') and context.message_context:
-                attr = expr[len('message.'):]
+                attr = expr[len('message.') :]
                 return str(getattr(context.message_context, attr, ''))
             unresolved_vars.append(expr)
             return match.group(0)  # leave unresolved
@@ -70,9 +70,7 @@ class LLMCallNode(WorkflowNode):
 
         # Log warning for unresolved variables
         if unresolved_vars:
-            logger.warning(
-                f'LLM call node {self.node_id}: unresolved template variables: {unresolved_vars}'
-            )
+            logger.warning(f'LLM call node {self.node_id}: unresolved template variables: {unresolved_vars}')
 
         return result
 
@@ -86,65 +84,6 @@ class LLMCallNode(WorkflowNode):
             result = pattern.sub('', result)
 
         return result.strip()
-
-    def _apply_content_filter(self, text: str) -> tuple[str, bool, str]:
-        """Apply content safety filter to text.
-
-        Returns:
-            (filtered_text, is_blocked, user_notice)
-        """
-        if not text or not self.ap:
-            return text, False, ''
-
-        # Check if content filter is enabled
-        safety_config = getattr(self.ap, 'pipeline_cfg', None)
-        if not safety_config:
-            return text, False, ''
-
-        # Check sensitive words
-        sensitive_words = []
-        try:
-            if hasattr(self.ap, 'sensitive_meta') and hasattr(self.ap.sensitive_meta, 'data'):
-                sensitive_words = self.ap.sensitive_meta.data.get('words', [])
-        except Exception as e:
-            logger.warning("Failed to load sensitive words from sensitive_meta: %s", e)
-            sensitive_words = []
-
-        if not sensitive_words:
-            return text, False, ''
-
-        found = False
-        filtered_text = text
-        for word in sensitive_words:
-            try:
-                matches = re.findall(word, filtered_text, re.IGNORECASE)
-                if matches:
-                    found = True
-                    mask_word = ''
-                    mask = '*'
-                    try:
-                        if hasattr(self.ap, 'sensitive_meta') and hasattr(self.ap.sensitive_meta, 'data'):
-                            mask_word = self.ap.sensitive_meta.data.get('mask_word', '')
-                            mask = self.ap.sensitive_meta.data.get('mask', '*')
-                    except Exception as e:
-                        # Keep default mask settings when sensitive metadata is unavailable or malformed.
-                        logger.debug(
-                            f'LLM call node {self.node_id}: failed to read sensitive mask config, using defaults: {e}'
-                        )
-
-                    for m in matches:
-                        if mask_word:
-                            filtered_text = filtered_text.replace(m, mask_word)
-                        else:
-                            filtered_text = filtered_text.replace(m, mask * len(m))
-            except re.error:
-                # Invalid regex pattern, skip
-                continue
-
-        if found:
-            return filtered_text, False, '消息中存在不合适的内容, 请修改'
-
-        return text, False, ''
 
     # RAG combined prompt template (same as localagent.py)
     RAG_COMBINED_PROMPT_TEMPLATE = """
@@ -183,27 +122,25 @@ Respond in the same language as the user's input.
         json_schema: str,
     ) -> list[provider_message.Message]:
         """Build messages list from prompt array (same format as pipeline).
-        
+
         Each item in prompt_array is {role: str, content: str}.
         Resolves template variables in content.
         """
         messages: list[provider_message.Message] = []
-        
+
         for item in prompt_array:
             role = item.get('role', 'user')
             content = item.get('content', '')
-            
+
             # Resolve template variables in content
             resolved_content = self._resolve_template(content, inputs, context)
-            
+
             # Apply format instructions to system prompt
             if role == 'system':
-                resolved_content = self._build_system_prompt_with_format(
-                    resolved_content, output_format, json_schema
-                )
-            
+                resolved_content = self._build_system_prompt_with_format(resolved_content, output_format, json_schema)
+
             messages.append(provider_message.Message(role=role, content=resolved_content))
-        
+
         return messages
 
     async def _get_model_candidates(self, model_uuid: str, fallback_models: list) -> list:
@@ -213,7 +150,7 @@ Respond in the same language as the user's input.
         # Primary model
         if model_uuid:
             try:
-                primary = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
+                primary = await self.ap.model_mgr.get_model_by_uuid(current_runtime().execution_context, model_uuid)
                 candidates.append(primary)
             except ValueError:
                 logger.warning(f'[LLM:{self.node_id}] Primary model {model_uuid} not found')
@@ -221,7 +158,7 @@ Respond in the same language as the user's input.
         # Fallback models
         for fb_uuid in fallback_models:
             try:
-                fb_model = await self.ap.model_mgr.get_model_by_uuid(fb_uuid)
+                fb_model = await self.ap.model_mgr.get_model_by_uuid(current_runtime().execution_context, fb_uuid)
                 candidates.append(fb_model)
             except ValueError:
                 logger.warning(f'[LLM:{self.node_id}] Fallback model {fb_uuid} not found, skipping')
@@ -241,6 +178,7 @@ Respond in the same language as the user's input.
             try:
                 result = await model.provider.invoke_llm(
                     query=None,
+                    execution_context=current_runtime().execution_context,
                     model=model,
                     messages=messages,
                     funcs=funcs if model.model_entity.abilities.__contains__('func_call') else [],
@@ -266,7 +204,7 @@ Respond in the same language as the user's input.
         rerank_top_k: int,
     ) -> str:
         """Retrieve from knowledge bases and optionally rerank results.
-        
+
         Returns the enhanced user message text with RAG context, or original text if no results.
         """
         if not knowledge_bases or not user_message_text:
@@ -277,12 +215,12 @@ Respond in the same language as the user's input.
         # Retrieve from each knowledge base
         for kb_uuid in knowledge_bases:
             try:
-                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(kb_uuid)
+                kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(current_runtime().execution_context, kb_uuid)
                 if not kb:
                     logger.warning(f'[LLM:{self.node_id}] Knowledge base {kb_uuid} not found, skipping')
                     continue
 
-                result = await kb.retrieve(user_message_text, settings={})
+                result = await kb.retrieve(current_runtime().execution_context, user_message_text, settings={})
                 if result:
                     all_results.extend(result)
             except Exception as e:
@@ -291,8 +229,10 @@ Respond in the same language as the user's input.
         # Rerank step: re-score results using a rerank model if configured
         if all_results and rerank_model_uuid:
             try:
-                rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(rerank_model_uuid)
-                
+                rerank_model = await self.ap.model_mgr.get_rerank_model_by_uuid(
+                    current_runtime().execution_context, rerank_model_uuid
+                )
+
                 doc_texts = []
                 for entry in all_results:
                     text = ' '.join(c.text for c in entry.content if c.type == 'text' and c.text)
@@ -303,6 +243,7 @@ Respond in the same language as the user's input.
                     model=rerank_model,
                     query=user_message_text,
                     documents=doc_texts_capped,
+                    execution_context=current_runtime().execution_context,
                 )
 
                 scored = sorted(scores, key=lambda x: x.get('relevance_score', 0), reverse=True)
@@ -343,14 +284,14 @@ Respond in the same language as the user's input.
     ) -> list[provider_message.Message]:
         """Build messages list with conversation history up to max_round."""
         messages: list[provider_message.Message] = []
-        
+
         # Add system prompt
         if system_prompt:
             messages.append(provider_message.Message(role='system', content=system_prompt))
 
         # Get conversation history from context
         conversation_history = context.variables.get('_conversation_history', [])
-        
+
         # Apply max_round limit (each round = 1 user + 1 assistant message)
         if max_round > 0 and conversation_history:
             # Keep only the last max_round * 2 messages (user + assistant pairs)
@@ -405,7 +346,7 @@ Respond in the same language as the user's input.
             # Legacy format: separate model and fallback_models
             model_uuid = self.get_config('model', '')
             fallback_models = self.get_config('fallback_models', [])
-        
+
         if not model_uuid:
             raise ValueError('No model configured for LLM call node')
 
@@ -415,7 +356,6 @@ Respond in the same language as the user's input.
         # Get error handling config
         exception_handling = self.get_config('exception_handling', 'show-error')
         failure_hint = self.get_config('failure_hint', 'Request failed.')
-        track_function_calls = self.get_config('track_function_calls', False)
 
         # Get output format and json_schema config
         output_format = self.get_config('output_format', 'text')
@@ -431,16 +371,14 @@ Respond in the same language as the user's input.
         # Resolve prompts - support both new prompt array format and legacy format
         prompt_array = self.get_config('prompt')
         user_prompt = ''  # Initialize for later use in _save_to_conversation_history
-        
+
         if prompt_array and isinstance(prompt_array, list):
             # New format: prompt array like pipeline
-            messages = self._build_messages_from_prompt_array(
-                prompt_array, inputs, context, output_format, json_schema
-            )
-            
+            messages = self._build_messages_from_prompt_array(prompt_array, inputs, context, output_format, json_schema)
+
             # Get user input text for knowledge retrieval
             user_input = inputs.get('input', '')
-            
+
             # Knowledge retrieval: enhance user input with RAG context
             user_input = await self._retrieve_knowledge(
                 user_message_text=user_input,
@@ -448,14 +386,14 @@ Respond in the same language as the user's input.
                 rerank_model_uuid=rerank_model,
                 rerank_top_k=rerank_top_k,
             )
-            
+
             # Track user_prompt for conversation history
             user_prompt = user_input
-            
+
             # Add user input as last message
             if user_input:
                 messages.append(provider_message.Message(role='user', content=user_input))
-            
+
             # Apply max_round to conversation history
             conversation_history = context.variables.get('_conversation_history', [])
             if max_round > 0 and conversation_history:
@@ -566,7 +504,8 @@ Respond in the same language as the user's input.
                     response_text += elem
 
         # Remove CoT content (always remove to avoid leaking internal reasoning)
-        response_text = self._remove_think_content(response_text)
+        if self.get_config('remove_think', False):
+            response_text = self._remove_think_content(response_text)
 
         # Initialize usage default
         usage = {
@@ -576,14 +515,6 @@ Respond in the same language as the user's input.
         }
 
         # Apply content safety filter
-        response_text, is_blocked, filter_notice = self._apply_content_filter(response_text)
-        if is_blocked:
-            logger.warning(f'[LLM:{self.node_id}] Response blocked by content filter: {filter_notice}')
-            return {
-                'response': filter_notice,
-                'usage': usage,
-                'blocked_by_filter': True,
-            }
 
         # Extract usage info from LLM call result
         # Priority: llm_usage (from _invoke_with_fallback) > result_message.usage > result_message.token_usage
@@ -629,43 +560,8 @@ Respond in the same language as the user's input.
             if len(s0) > 20 or '\n' in s:
                 s0 = s0[:20] + '...'
             return s0
-        logger.info(f'[LLM:{self.node_id}] Response: {_cut_str(response_text)}')
 
-        # Record LLM call log only (response log is redundant)
-        try:
-            if self.ap and context.query:
-                workflow_id = context.workflow_id or ''
-                workflow_name = context.variables.get('_workflow_name', 'Workflow')
-                bot_name = context.variables.get('_bot_name', 'Workflow')
-                node_name = self.get_config('name', self.node_id)
-                model_name = used_model.model_entity.name if used_model else 'unknown'
-                
-                # Calculate duration
-                duration_ms = 0
-                if hasattr(self, '_llm_start_time'):
-                    duration_ms = int((time.time() - self._llm_start_time) * 1000)
-                
-                # Get message_id for LLM call association
-                message_id = context.variables.get('_monitoring_message_id')
-                
-                # Record LLM call log with message_id association
-                await monitoring_helper.WorkflowMonitoringHelper.record_llm_call_log(
-                    ap=self.ap,
-                    query=context.query,
-                    workflow_id=workflow_id,
-                    workflow_name=workflow_name,
-                    node_name=node_name,
-                    model_name=model_name,
-                    input_tokens=usage.get('prompt_tokens', 0),
-                    output_tokens=usage.get('completion_tokens', 0),
-                    duration_ms=duration_ms,
-                    status='success',
-                    bot_name=bot_name,
-                    context_vars=context.variables,
-                    message_id=message_id,
-                )
-        except Exception as e:
-            logger.warning(f'[LLM:{self.node_id}] Failed to record LLM logs: {e}')
+        logger.info(f'[LLM:{self.node_id}] Response: {_cut_str(response_text)}')
 
         # Save to conversation history
         self._save_to_conversation_history(
@@ -692,15 +588,9 @@ Respond in the same language as the user's input.
                 result['parsed'] = None
                 result['parse_error'] = str(e)
 
-        # Add function call tracking info if configured
-        if track_function_calls:
-            result['function_calls'] = []
-
         return result
 
-    async def execute_stream(
-        self, inputs: dict[str, Any], context: ExecutionContext
-    ) -> AsyncGenerator[str, None]:
+    async def execute_stream(self, inputs: dict[str, Any], context: ExecutionContext) -> AsyncGenerator[str, None]:
         """Execute the LLM call with streaming output.
 
         Yields chunks of response text as they arrive.
@@ -712,7 +602,7 @@ Respond in the same language as the user's input.
             model_uuid = model_config.get('primary', '')
         else:
             model_uuid = self.get_config('model', '')
-        
+
         if not model_uuid:
             raise ValueError('No model configured for LLM call node')
 
@@ -727,9 +617,13 @@ Respond in the same language as the user's input.
         if prompt_array and isinstance(prompt_array, list):
             # New format: prompt array like pipeline
             messages = self._build_messages_from_prompt_array(
-                prompt_array, inputs, context, 'text', ''  # No format instructions for streaming
+                prompt_array,
+                inputs,
+                context,
+                'text',
+                '',  # No format instructions for streaming
             )
-            
+
             # Add user input
             user_input = inputs.get('input', '')
             if user_input:
@@ -749,7 +643,7 @@ Respond in the same language as the user's input.
             messages.append(provider_message.Message(role='user', content=user_prompt))
 
         # Get model
-        runtime_model = await self.ap.model_mgr.get_model_by_uuid(model_uuid)
+        runtime_model = await self.ap.model_mgr.get_model_by_uuid(current_runtime().execution_context, model_uuid)
 
         # Build extra args
         extra_args: dict[str, Any] = {}
@@ -766,6 +660,7 @@ Respond in the same language as the user's input.
             # Try streaming first
             stream = runtime_model.provider.invoke_llm_stream(
                 query=None,
+                execution_context=current_runtime().execution_context,
                 model=runtime_model,
                 messages=messages,
                 funcs=None,
@@ -796,7 +691,7 @@ Respond in the same language as the user's input.
                             chunk_text = chunk_text.split('</think>')[-1].split('</thought>')[-1]
                         else:
                             chunk_text = ''
-                    
+
                     if chunk_text:
                         full_response += chunk_text
                         yield chunk_text
@@ -810,6 +705,7 @@ Respond in the same language as the user's input.
             try:
                 result_message = await runtime_model.provider.invoke_llm(
                     query=None,
+                    execution_context=current_runtime().execution_context,
                     model=runtime_model,
                     messages=messages,
                     funcs=None,

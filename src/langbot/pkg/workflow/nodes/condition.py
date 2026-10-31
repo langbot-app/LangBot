@@ -22,6 +22,7 @@ _REGEX_TIMEOUT = 2
 
 class _RegexTimeoutError(Exception):
     """正则表达式超时错误"""
+
     pass
 
 
@@ -97,6 +98,8 @@ class ConditionNode(WorkflowNode):
         left = self.get_config('left_value', '')
         right = self.get_config('right_value', '')
         operator = self.get_config('operator', '==')
+        if left == '{{input}}':
+            left = data
 
         try:
             left_num = float(left)
@@ -114,7 +117,7 @@ class ConditionNode(WorkflowNode):
                 return left_num >= right_num
             elif operator == '<=':
                 return left_num <= right_num
-        except ValueError:
+        except (TypeError, ValueError):
             if operator == '==':
                 return left == right
             elif operator == '!=':

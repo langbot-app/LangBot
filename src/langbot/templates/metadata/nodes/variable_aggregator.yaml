@@ -31,16 +31,6 @@ outputs:
       zh_Hans: 聚合后的变量
 
 config:
-  - name: variable_mappings
-    type: json
-    default: []
-    label:
-      en_US: Variable Mappings
-      zh_Hans: 变量映射
-    description:
-      en_US: Variable mapping configurations
-      zh_Hans: 变量映射配置
-
   - name: aggregation_mode
     type: select
     options: ["merge", "override", "append"]

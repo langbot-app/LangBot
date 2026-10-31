@@ -54,27 +54,4 @@ outputs:
       en_US: Whether this is the last item
       zh_Hans: 是否是最后一个项目
 
-config:
-  - name: parallel
-    type: boolean
-    default: false
-    label:
-      en_US: Parallel
-      zh_Hans: 并行
-    description:
-      en_US: Whether to process in parallel
-      zh_Hans: 是否并行处理
-
-  - name: max_concurrency
-    type: integer
-    default: 5
-    min_value: 1
-    max_value: 100
-    label:
-      en_US: Max Concurrency
-      zh_Hans: 最大并发数
-    description:
-      en_US: Maximum concurrent tasks
-      zh_Hans: 最大并发任务数
-    show_if:
-      parallel: true
+config: []

@@ -60,6 +60,14 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 
 ## Tool surface
 
+Workflows are message-event processors alongside Agents, Pipelines and plugin
+processors. Use `list_workflows` and `get_workflow` to inspect the current
+Workspace. `run_workflow(workflow_uuid, message, session_type)` requires runtime
+permission and returns `execution_uuid`, `status`, and collected text `replies`.
+Manual runs do not send messages to a bot; nodes requiring an explicit bot fail.
+`session_type` is `person` or `group`. Execution details are available through
+`GET /api/v1/workflows/<uuid>/executions/<execution_uuid>`.
+
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
 `start_slack_setup` with the user's App Configuration access/refresh tokens.
 Choose `socket_mode=true` with a browser-reachable OAuth `redirect_url`, or

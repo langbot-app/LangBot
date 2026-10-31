@@ -11,8 +11,10 @@ from typing import Any
 
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from ..runtime import current_runtime
 
 logger = logging.getLogger(__name__)
+
 
 @workflow_node('parameter_extractor')
 class ParameterExtractorNode(WorkflowNode):
@@ -59,7 +61,7 @@ class ParameterExtractorNode(WorkflowNode):
         # Build extraction prompt
         if not system_prompt:
             system_prompt = (
-                f'Extract the following parameters from the user\'s text as JSON. '
+                f"Extract the following parameters from the user's text as JSON. "
                 f'Respond with ONLY a valid JSON object containing the extracted parameters.\n\n'
                 f'Parameters to extract:\n'
                 f'{json.dumps(param_schema, indent=2, ensure_ascii=False)}\n\n'
@@ -70,10 +72,11 @@ class ParameterExtractorNode(WorkflowNode):
         if self.ap and model_id:
             try:
                 # Get model (same as llm_call.py)
-                runtime_model = await self.ap.model_mgr.get_model_by_uuid(model_id)
+                runtime_model = await self.ap.model_mgr.get_model_by_uuid(current_runtime().execution_context, model_id)
 
                 # Build messages
                 from langbot_plugin.api.entities.builtin.provider.message import Message
+
                 messages = []
                 if system_prompt:
                     messages.append(Message(role='system', content=system_prompt))
@@ -82,6 +85,7 @@ class ParameterExtractorNode(WorkflowNode):
                 # Invoke LLM (same as llm_call.py)
                 result_message = await runtime_model.provider.invoke_llm(
                     query=None,
+                    execution_context=current_runtime().execution_context,
                     model=runtime_model,
                     messages=messages,
                     funcs=None,
@@ -97,11 +101,13 @@ class ParameterExtractorNode(WorkflowNode):
                         if hasattr(elem, 'text') and elem.text:
                             response_preview += elem.text
                 response_preview = response_preview.strip()
+
                 def _cut_str(s: str) -> str:
                     s0 = s.split('\n')[0]
                     if len(s0) > 20 or '\n' in s:
                         s0 = s0[:20] + '...'
                     return s0
+
                 logger.info(f'[ParameterExtractor:{self.node_id}] Response: {_cut_str(response_preview)}')
 
                 # Extract response text

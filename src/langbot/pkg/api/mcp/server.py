@@ -422,6 +422,32 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.pipeline_service.get_pipelines(context))
 
+        @mcp.tool(description='List workflows in the current Workspace.')
+        async def list_workflows() -> str:
+            from ..http.service.secrets import redact_secrets
+
+            return _dump(redact_secrets(await ap.workflow_service.get_workflows(_authorized(Permission.RESOURCE_VIEW))))
+
+        @mcp.tool(description='Get a workflow definition by UUID in the current Workspace.')
+        async def get_workflow(workflow_uuid: str) -> str:
+            from ..http.service.secrets import redact_secrets
+
+            return _dump(
+                redact_secrets(
+                    await ap.workflow_service.get_workflow(_authorized(Permission.RESOURCE_VIEW), workflow_uuid)
+                )
+            )
+
+        @mcp.tool(description='Test a workflow synchronously; returns execution UUID, status and collected replies.')
+        async def run_workflow(workflow_uuid: str, message: str, session_type: str = 'person') -> str:
+            from ..http.service.workflow_run import run_workflow as run
+
+            return _dump(
+                await run(
+                    ap, _authorized(Permission.RUNTIME_OPERATE), workflow_uuid, message, session_type=session_type
+                )
+            )
+
         @mcp.tool(description='Get a single pipeline by UUID.')
         async def get_pipeline(pipeline_uuid: str) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)

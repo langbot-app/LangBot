@@ -35,20 +35,6 @@ outputs:
       zh_Hans: 传递的输入
 
 config:
-  - name: wait_type
-    type: select
-    required: true
-    default: duration
-    options:
-      - duration
-      - until
-    label:
-      en_US: Wait Type
-      zh_Hans: 等待类型
-    description:
-      en_US: Type of wait operation
-      zh_Hans: 等待操作的类型
-
   - name: duration
     type: integer
     default: 5
@@ -58,13 +44,3 @@ config:
     description:
       en_US: Number of seconds to wait
       zh_Hans: 等待的秒数
-
-  - name: until_time
-    type: string
-    default: ""
-    label:
-      en_US: Until Time
-      zh_Hans: 直到时间
-    description:
-      en_US: Wait until this time
-      zh_Hans: 等待直到此时间

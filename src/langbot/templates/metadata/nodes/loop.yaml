@@ -51,21 +51,6 @@ outputs:
       zh_Hans: 循环完成后的输出
 
 config:
-  - name: loop_type
-    type: select
-    required: true
-    default: foreach
-    options:
-      - foreach
-      - while
-      - count
-    label:
-      en_US: Loop Type
-      zh_Hans: 循环类型
-    description:
-      en_US: Type of loop to execute
-      zh_Hans: 要执行的循环类型
-
   - name: max_iterations
     type: integer
     default: 100
@@ -75,43 +60,3 @@ config:
     description:
       en_US: Maximum number of iterations
       zh_Hans: 最大迭代次数
-
-  - name: count
-    type: integer
-    default: 10
-    label:
-      en_US: Count
-      zh_Hans: 计数
-    description:
-      en_US: Number of times to iterate
-      zh_Hans: 迭代次数
-
-  - name: while_condition
-    type: string
-    default: ""
-    label:
-      en_US: While Condition
-      zh_Hans: While 条件
-    description:
-      en_US: Condition expression to continue looping
-      zh_Hans: 继续循环的条件表达式
-
-  - name: parallel
-    type: boolean
-    default: false
-    label:
-      en_US: Parallel Execution
-      zh_Hans: 并行执行
-    description:
-      en_US: Execute iterations in parallel
-      zh_Hans: 并行执行迭代
-
-  - name: parallel_limit
-    type: integer
-    default: 5
-    label:
-      en_US: Parallel Limit
-      zh_Hans: 并行限制
-    description:
-      en_US: Maximum number of parallel executions
-      zh_Hans: 最大并行执行数

@@ -218,13 +218,3 @@ config:
     description:
       en_US: 'If enabled, the model thinking content in the response will be automatically removed. Note: When using streaming response, removing CoT may cause the first token to wait for a long time.'
       zh_Hans: '如果启用，将自动删除大模型回复中的模型思考内容。注意：当您使用流式响应时，删除思维链可能会导致首个 Token 的等待时间过长'
-
-  - name: track_function_calls
-    type: boolean
-    default: false
-    label:
-      en_US: Track Function Calls
-      zh_Hans: 跟踪函数调用
-    description:
-      en_US: If enabled, the Agent will output a hint to the user each time a tool is called
-      zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户

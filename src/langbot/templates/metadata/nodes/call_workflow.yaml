@@ -67,13 +67,3 @@ config:
     description:
       en_US: Whether to inherit current workflow variables
       zh_Hans: 是否继承当前工作流的变量
-
-  - name: timeout
-    type: integer
-    default: 300
-    label:
-      en_US: Timeout (seconds)
-      zh_Hans: 超时时间（秒）
-    description:
-      en_US: Timeout in seconds
-      zh_Hans: 超时时间（秒）

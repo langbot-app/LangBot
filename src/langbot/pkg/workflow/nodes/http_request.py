@@ -5,69 +5,22 @@ Node metadata is loaded from: ../../templates/metadata/nodes/http_request.yaml
 
 from __future__ import annotations
 
-import ipaddress
+import asyncio
 import logging
 from typing import Any
-from urllib.parse import urlparse
+from ...utils.outbound_url import assert_safe_outbound_url
 
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 logger = logging.getLogger(__name__)
 
-# 内网地址黑名单
-_PRIVATE_NETWORKS = [
-    ipaddress.ip_network('10.0.0.0/8'),
-    ipaddress.ip_network('172.16.0.0/12'),
-    ipaddress.ip_network('192.168.0.0/16'),
-    ipaddress.ip_network('127.0.0.0/8'),
-    ipaddress.ip_network('169.254.0.0/16'),
-    ipaddress.ip_network('0.0.0.0/8'),
-    ipaddress.ip_network('::1/128'),
-    ipaddress.ip_network('fc00::/7'),
-    ipaddress.ip_network('fe80::/10'),
-]
-
-# 危险协议
-_DANGEROUS_SCHEMES = {'file', 'gopher', 'dict', 'ftp', 'telnet'}
-
 
 def _is_safe_url(url: str) -> tuple[bool, str]:
-    """检查 URL 是否安全（非内网地址）"""
     try:
-        parsed = urlparse(url)
-    except Exception as e:
-        return False, f'Invalid URL: {e}'
-
-    # 检查协议
-    scheme = parsed.scheme.lower()
-    if scheme in _DANGEROUS_SCHEMES:
-        return False, f'Dangerous scheme: {scheme}'
-
-    if scheme not in ('http', 'https'):
-        return False, f'Unsupported scheme: {scheme}'
-
-    # 检查主机名
-    hostname = parsed.hostname
-    if not hostname:
-        return False, 'Missing hostname'
-
-    # 检查是否是危险主机名
-    dangerous_hosts = {'localhost', '0.0.0.0', '127.0.0.1', '::1'}
-    if hostname.lower() in dangerous_hosts:
-        return False, f'Dangerous hostname: {hostname}'
-
-    # 解析 IP 地址并检查是否在私有网络
-    try:
-        ip = ipaddress.ip_address(hostname)
-        for network in _PRIVATE_NETWORKS:
-            if ip in network:
-                return False, f'Private network address: {ip}'
-    except ValueError:
-        # 不是 IP 地址，尝试 DNS 解析检查
-        # 这里可以添加 DNS 解析检查，但为了避免复杂性，暂时跳过
-        pass
-
+        assert_safe_outbound_url(url)
+    except ValueError as exc:
+        return False, str(exc)
     return True, ''
 
 
@@ -84,7 +37,6 @@ class HTTPRequestNode(WorkflowNode):
         method = self.get_config('method', 'GET').upper()
         timeout = self.get_config('timeout', 30)
         content_type = self.get_config('content_type', 'application/json')
-        allow_redirects = self.get_config('allow_redirects', False)  # 默认禁用重定向
 
         # 限制超时时间
         timeout = min(max(timeout, 1), 120)
@@ -93,7 +45,7 @@ class HTTPRequestNode(WorkflowNode):
             return {'response': None, 'status_code': 0, 'headers': {}, 'error': 'No URL provided'}
 
         # 安全检查 URL
-        is_safe, error_msg = _is_safe_url(url)
+        is_safe, error_msg = await asyncio.to_thread(_is_safe_url, url)
         if not is_safe:
             logger.warning('Unsafe URL blocked: %s - %s', url, error_msg)
             return {'response': None, 'status_code': 0, 'headers': {}, 'error': f'Unsafe URL: {error_msg}'}
@@ -129,7 +81,7 @@ class HTTPRequestNode(WorkflowNode):
                     data=body if content_type != 'application/json' else None,
                     headers=headers,
                     timeout=aiohttp.ClientTimeout(total=timeout),
-                    allow_redirects=allow_redirects,
+                    allow_redirects=False,
                 ) as response:
                     try:
                         response_data = await response.json()

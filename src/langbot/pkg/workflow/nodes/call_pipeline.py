@@ -7,11 +7,12 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import asyncio
+
 import pydantic
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_event_logger
-import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -19,6 +20,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from ..runtime import current_runtime
 
 
 class _NoOpEventLogger(abstract_event_logger.AbstractEventLogger):
@@ -60,6 +62,7 @@ class _NoOpEventLogger(abstract_event_logger.AbstractEventLogger):
     ):
         pass
 
+
 @workflow_node('call_pipeline')
 class CallPipelineNode(WorkflowNode):
     """Call pipeline node - invoke an existing pipeline"""
@@ -77,19 +80,13 @@ class CallPipelineNode(WorkflowNode):
         if not pipeline_ref:
             raise ValueError('No pipeline configured for call pipeline node')
 
-        pipeline_data = await self.ap.pipeline_service.get_pipeline(pipeline_ref)
-        if pipeline_data is None:
-            pipeline_data = await self.ap.pipeline_service.get_pipeline_by_name(pipeline_ref)
+        pipeline_data = await self.ap.pipeline_service.get_pipeline(current_runtime().execution_context, pipeline_ref)
         if pipeline_data is None:
             raise ValueError(f'Pipeline not found: {pipeline_ref}')
 
         pipeline_uuid = str(pipeline_data.get('uuid', '') or '')
         if not pipeline_uuid:
             raise ValueError(f'Pipeline UUID missing for: {pipeline_ref}')
-
-        runtime_pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(pipeline_uuid)
-        if runtime_pipeline is None:
-            raise ValueError(f'Runtime pipeline not loaded: {pipeline_uuid}')
 
         adapter = _WorkflowPipelineCaptureAdapter(context=context)
         adapter.bot_account_id = 'workflow-call-pipeline'
@@ -108,9 +105,9 @@ class CallPipelineNode(WorkflowNode):
             else context.user_id or f'workflow_{context.execution_id}'
         )
 
-        query = pipeline_query.Query(
-            bot_uuid=context.bot_id,
-            query_id=-1,
+        query = await self.ap.query_pool.add_query(
+            execution_context=current_runtime().execution_context,
+            bot_uuid=current_runtime().execution_context.bot_uuid or 'workflow',
             launcher_type=launcher_type,
             launcher_id=launcher_id,
             sender_id=sender_id,
@@ -121,14 +118,17 @@ class CallPipelineNode(WorkflowNode):
                 '_workflow_execution_id': context.execution_id,
                 '_workflow_id': context.workflow_id,
                 **dict(context.variables or {}),
+                '_cli_run_status': 'failed',
             },
-            resp_messages=[],
-            resp_message_chain=[],
             adapter=adapter,
             pipeline_uuid=pipeline_uuid,
         )
 
-        await runtime_pipeline.run(query)
+        completed = asyncio.Event()
+        object.__setattr__(query, '_completion_event', completed)
+        await asyncio.wait_for(completed.wait(), timeout=60)
+        if query.variables.get('_cli_run_status') != 'completed':
+            raise RuntimeError('Pipeline failed or was dropped')
 
         response_text = adapter.get_last_text_response()
         result = {
@@ -154,7 +154,9 @@ class CallPipelineNode(WorkflowNode):
         if context.message_context and context.message_context.is_group:
             group = platform_entities.Group(
                 id=context.message_context.group_id or context.session_id or 'workflow_group',
-                name=context.message_context.raw_message.get('group_name', 'Workflow Group') if context.message_context.raw_message else 'Workflow Group',
+                name=context.message_context.raw_message.get('group_name', 'Workflow Group')
+                if context.message_context.raw_message
+                else 'Workflow Group',
                 permission=platform_entities.Permission.Member,
             )
             sender = platform_entities.GroupMember(
@@ -181,6 +183,7 @@ class CallPipelineNode(WorkflowNode):
             if context.message_context and context.message_context.raw_message
             else None,
         )
+
 
 class _WorkflowPipelineCaptureAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
     """Adapter to capture pipeline responses for workflow execution."""

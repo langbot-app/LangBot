@@ -10,8 +10,8 @@ from datetime import datetime
 
 import sqlalchemy
 
-from ....core import app
 from ....entity.persistence import workflow as persistence_workflow
+from ....entity.persistence.bot import Bot
 from ....workflow.entities import (
     EdgeDefinition,
     ExecutionContext,
@@ -29,6 +29,9 @@ from ..context import ExecutionContext as WorkspaceExecutionContext
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
 logger = logging.getLogger(__name__)
+
+if typing.TYPE_CHECKING:
+    from ....core import app
 
 MAX_WORKFLOW_CALL_DEPTH = 8
 
@@ -137,6 +140,26 @@ class WorkflowService:
         )
 
     async def delete_workflow(self, context: TenantContext, workflow_uuid: str) -> None:
+        result = await self.ap.persistence_mgr.execute_async(scope_statement(sqlalchemy.select(Bot), Bot, context))
+        for bot in result.all():
+            if any(
+                binding.get('target_type') == 'workflow' and binding.get('target_uuid') == workflow_uuid
+                for binding in (bot.event_bindings or [])
+            ):
+                raise ValueError(f'Workflow is referenced by bot {bot.name}')
+        executions = scope_statement(
+            sqlalchemy.select(persistence_workflow.WorkflowExecution.uuid).where(
+                persistence_workflow.WorkflowExecution.workflow_uuid == workflow_uuid
+            ),
+            persistence_workflow.WorkflowExecution,
+            context,
+        )
+        node_model = persistence_workflow.WorkflowNodeExecution
+        await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(node_model).where(node_model.execution_uuid.in_(executions)), node_model, context
+            )
+        )
         for model in (persistence_workflow.WorkflowVersion, persistence_workflow.WorkflowExecution):
             await self.ap.persistence_mgr.execute_async(
                 scope_statement(sqlalchemy.delete(model).where(model.workflow_uuid == workflow_uuid), model, context)
@@ -266,6 +289,7 @@ class WorkflowService:
             message_context=message_context,
         )
         context.variables.update(workflow.variables)
+        context.variables.update((trigger_data or {}).get('variables') or {})
         context.variables['_workflow_name'] = workflow.name
 
         status = ExecutionStatus.FAILED
@@ -471,9 +495,7 @@ class WorkflowService:
         result['variables'] = definition.get('variables', {})
         return result
 
-    def _serialize_execution(
-        self, row: typing.Any, model: typing.Any = persistence_workflow.WorkflowExecution
-    ) -> dict:
+    def _serialize_execution(self, row: typing.Any, model: typing.Any = persistence_workflow.WorkflowExecution) -> dict:
         data = self.ap.persistence_mgr.serialize_model(model, row)
         data['started_at'] = data.get('start_time')
         data['completed_at'] = data.get('end_time')

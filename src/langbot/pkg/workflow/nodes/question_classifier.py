@@ -10,8 +10,10 @@ from typing import Any
 
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
+from ..runtime import current_runtime
 
 logger = logging.getLogger(__name__)
+
 
 @workflow_node('question_classifier')
 class QuestionClassifierNode(WorkflowNode):
@@ -51,7 +53,7 @@ class QuestionClassifierNode(WorkflowNode):
         # Build classification prompt
         if not system_prompt:
             system_prompt = (
-                f'You are a question classifier. Classify the user\'s question into one of these categories: '
+                f"You are a question classifier. Classify the user's question into one of these categories: "
                 f'{", ".join(category_names)}. '
                 f'Respond with ONLY the category name, nothing else.'
             )
@@ -60,10 +62,11 @@ class QuestionClassifierNode(WorkflowNode):
         if self.ap and model_id:
             try:
                 # Get model (same as llm_call.py)
-                runtime_model = await self.ap.model_mgr.get_model_by_uuid(model_id)
+                runtime_model = await self.ap.model_mgr.get_model_by_uuid(current_runtime().execution_context, model_id)
 
                 # Build messages
                 from langbot_plugin.api.entities.builtin.provider.message import Message
+
                 messages = []
                 if system_prompt:
                     messages.append(Message(role='system', content=system_prompt))
@@ -72,6 +75,7 @@ class QuestionClassifierNode(WorkflowNode):
                 # Invoke LLM (same as llm_call.py)
                 result_message = await runtime_model.provider.invoke_llm(
                     query=None,
+                    execution_context=current_runtime().execution_context,
                     model=runtime_model,
                     messages=messages,
                     funcs=None,
@@ -87,11 +91,13 @@ class QuestionClassifierNode(WorkflowNode):
                         if hasattr(elem, 'text') and elem.text:
                             response_preview += elem.text
                 response_preview = response_preview.strip()
+
                 def _cut_str(s: str) -> str:
                     s0 = s.split('\n')[0]
                     if len(s0) > 20 or '\n' in s:
                         s0 = s0[:20] + '...'
                     return s0
+
                 logger.info(f'[QuestionClassifier:{self.node_id}] Response: {_cut_str(response_preview)}')
 
                 # Extract response text

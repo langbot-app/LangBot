@@ -26,28 +26,4 @@ inputs:
 
 outputs: []
 
-config:
-  - name: status
-    type: select
-    required: true
-    default: success
-    options:
-      - success
-      - failed
-      - cancelled
-    label:
-      en_US: End Status
-      zh_Hans: 结束状态
-    description:
-      en_US: Status to report when workflow ends
-      zh_Hans: 工作流结束时报告的状态
-
-  - name: message
-    type: string
-    default: ""
-    label:
-      en_US: Message
-      zh_Hans: 消息
-    description:
-      en_US: Optional message to include with the end status
-      zh_Hans: 与结束状态一起包含的可选消息
+config: []

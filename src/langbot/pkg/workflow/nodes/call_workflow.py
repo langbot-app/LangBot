@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 
 from ..node import WorkflowNode, workflow_node
+from ..runtime import WorkflowRuntime, current_runtime
 
 
 @workflow_node('call_workflow')
@@ -27,8 +28,10 @@ class CallWorkflowNode(WorkflowNode):
         if not workflow_ref:
             raise ValueError('No workflow configured for call workflow node')
 
+        runtime = current_runtime()
+
         # Get workflow definition from service
-        workflow_data = await self.ap.workflow_service.get_workflow(workflow_ref)
+        workflow_data = await self.ap.workflow_service.get_workflow(runtime.execution_context, workflow_ref)
         if workflow_data is None:
             raise ValueError(f'Workflow not found: {workflow_ref}')
 
@@ -51,7 +54,15 @@ class CallWorkflowNode(WorkflowNode):
         variables['_parent_execution_id'] = context.execution_id
 
         # Execute the workflow
-        execution_id = await self.ap.workflow_service.execute_workflow(
+        child_runtime = WorkflowRuntime(
+            runtime.execution_context,
+            runtime.reply_sender,
+            runtime.target_sender,
+            replies=runtime.replies,
+            depth=runtime.depth + 1,
+        )
+        execution_id, _ = await self.ap.workflow_service.execute_workflow(
+            runtime.execution_context,
             workflow_uuid=workflow_uuid,
             trigger_type='workflow_call',
             trigger_data={
@@ -60,11 +71,12 @@ class CallWorkflowNode(WorkflowNode):
             },
             session_id=context.session_id,
             user_id=context.user_id,
-            bot_id=context.bot_id,
+            message_context=context.message_context,
+            runtime=child_runtime,
         )
 
         # Get execution result
-        execution = await self.ap.workflow_service.get_execution(execution_id)
+        execution = await self.ap.workflow_service.get_execution(runtime.execution_context, workflow_uuid, execution_id)
         if execution is None:
             raise ValueError(f'Execution result not found: {execution_id}')
 

@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 class MemoryHelper:
     """Helper class wrapping context.memory dict with get/set/delete/list_all/append operations"""
 
@@ -46,6 +47,7 @@ class MemoryHelper:
         self.set(key, current, scope=scope, ttl=ttl)
         return current
 
+
 @workflow_node('memory_store')
 class MemoryStoreNode(WorkflowNode):
     """Memory store node - store and retrieve from workflow memory"""
@@ -55,8 +57,8 @@ class MemoryStoreNode(WorkflowNode):
     async def execute(self, inputs: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
         operation = self.get_config('operation', 'get')
         key = self.get_config('key', '')
-        scope = self.get_config('scope', 'execution')
-        ttl = self.get_config('ttl', 0)
+        scope = 'execution'
+        ttl = 0
 
         value = inputs.get('value')
 
