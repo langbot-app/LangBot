@@ -211,6 +211,42 @@ class TestCommandHandlerReal:
         assert executed[0] == 'run action'
 
     @pytest.mark.asyncio
+    async def test_command_reads_from_platform_mgr_without_db(self, fake_app):
+        """CommandHandler reads prefixes from in-memory RuntimeBot in platform_mgr without hitting bot_service."""
+        command = get_command_handler()
+        executed = []
+
+        async def track_execute(*args, **kwargs):
+            executed.append(kwargs.get('command_text'))
+            ret = Mock()
+            ret.error = None
+            ret.text = 'ok'
+            ret.image_url = None
+            ret.image_base64 = None
+            ret.file_url = None
+            yield ret
+
+        fake_app.cmd_mgr.execute = track_execute
+        mock_runtime_bot = Mock()
+        mock_runtime_bot.bot_entity = Mock(command_settings={'enabled': True, 'prefixes': ['#']})
+        fake_app.platform_mgr = Mock(get_bot_by_uuid=AsyncMock(return_value=mock_runtime_bot))
+        fake_app.bot_service = Mock(get_bot=AsyncMock())
+
+        handler = command.CommandHandler(fake_app)
+        query = command_query('test')
+        query.bot_uuid = 'bot-runtime'
+        from tests.factories.message import text_chain
+
+        query.message_chain = text_chain('#run task')
+
+        async for _ in handler.handle(query):
+            pass
+
+        assert executed[0] == 'run task'
+        fake_app.platform_mgr.get_bot_by_uuid.assert_awaited_once()
+        fake_app.bot_service.get_bot.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_command_result_text(self, fake_app, mock_event_ctx, mock_execute_factory):
         """Text result is added to resp_messages."""
         command = get_command_handler()

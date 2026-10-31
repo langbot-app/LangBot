@@ -8,14 +8,16 @@ import pytest
 from langbot.pkg.api.http.service.bot import BotService
 
 
-def make_service():
-    service = BotService(
-        SimpleNamespace(
-            persistence_mgr=SimpleNamespace(),
-            platform_mgr=SimpleNamespace(),
-        )
+def make_service(installed_plugins=None):
+    ap = SimpleNamespace(
+        persistence_mgr=SimpleNamespace(),
+        platform_mgr=SimpleNamespace(),
     )
-    return service
+    if installed_plugins is not None:
+        ap.plugin_connector = SimpleNamespace(
+            list_plugins=AsyncMock(return_value=installed_plugins)
+        )
+    return BotService(ap)
 
 
 @pytest.mark.parametrize(
@@ -49,6 +51,51 @@ async def test_invalid_command_settings_are_rejected(settings, reason):
     service = make_service()
     with pytest.raises(ValueError, match=reason):
         await service._normalize_command_settings('ws-1', settings)
+
+
+@pytest.mark.asyncio
+async def test_uninstalled_plugin_is_rejected():
+    """Plugin not installed in workspace must be rejected with ValueError."""
+    service = make_service(
+        installed_plugins=[
+            {'plugin_id': 'author/installed_plugin'},
+        ]
+    )
+    settings = {
+        'enabled': True,
+        'prefixes': ['/'],
+        'plugins': [
+            {'plugin_id': 'author/installed_plugin', 'enabled': True},
+            {'plugin_id': 'other/not_installed', 'enabled': True},
+        ],
+    }
+    with pytest.raises(ValueError, match="Plugin 'other/not_installed' is not installed in this workspace"):
+        await service._normalize_command_settings('ws-1', settings)
+
+
+@pytest.mark.asyncio
+async def test_installed_plugin_validation_passes():
+    """Installed plugin in workspace passes validation."""
+    service = make_service(
+        installed_plugins=[
+            {
+                'manifest': {
+                    'manifest': {
+                        'metadata': {'author': 'author', 'name': 'plugin1'},
+                    }
+                }
+            },
+        ]
+    )
+    settings = {
+        'enabled': True,
+        'prefixes': ['/'],
+        'plugins': [
+            {'plugin_id': 'author/plugin1', 'enabled': True},
+        ],
+    }
+    normalized = await service._normalize_command_settings('ws-1', settings)
+    assert normalized['plugins'] == [{'plugin_id': 'author/plugin1', 'enabled': True}]
 
 
 @pytest.mark.asyncio

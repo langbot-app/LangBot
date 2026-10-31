@@ -1108,6 +1108,30 @@ class RuntimeBot:
 
         return None
 
+    async def _try_handle_plugin_command(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
+        node: str = '',
+    ) -> bool:
+        """Attempt to match and execute a plugin command within event delivery scope."""
+        matched = await self._match_plugin_command(event)
+        if matched is None:
+            return False
+        plugin_id, cmd_name, cmd_text, full_cmd_text = matched
+        await self._execute_matched_plugin_command(
+            event=event,
+            adapter=adapter,
+            plugin_id=plugin_id,
+            command_name=cmd_name,
+            command_text=cmd_text,
+            full_command_text=full_cmd_text,
+            execution_id=execution_id,
+            node=node,
+        )
+        return True
+
     async def _execute_matched_plugin_command(
         self,
         event: platform_events.MessageReceivedEvent,
@@ -1130,23 +1154,16 @@ class RuntimeBot:
             provider_session.LauncherTypes.GROUP if is_group_message else provider_session.LauncherTypes.PERSON
         )
         launcher_id = (
-            str(getattr(legacy_event.group, 'id', None) or getattr(event, 'chat_id', ''))
+            legacy_event.group.id
             if is_group_message
-            else str(getattr(legacy_event.sender, 'id', None) or getattr(event, 'chat_id', ''))
+            else (getattr(legacy_event, 'sender', None) and legacy_event.sender.id) or getattr(event, 'chat_id', '')
         )
-        sender_id = str(getattr(legacy_event.sender, 'id', None) or launcher_id)
+        sender_id = getattr(legacy_event, 'sender', None) and legacy_event.sender.id or launcher_id
 
         if hasattr(adapter, 'get_launcher_id'):
             custom_launcher_id = adapter.get_launcher_id(legacy_event)
             if custom_launcher_id:
-                launcher_id = str(custom_launcher_id)
-
-        is_admin = False
-        cmd_mgr = getattr(self.ap, 'cmd_mgr', None)
-        if cmd_mgr and hasattr(cmd_mgr, 'is_admin'):
-            is_admin = await cmd_mgr.is_admin(self.bot_entity.uuid, launcher_type.value, launcher_id)
-
-        privilege = 2 if is_admin else 1
+                launcher_id = custom_launcher_id
 
         sess_mgr = getattr(self.ap, 'sess_mgr', None)
         if sess_mgr and hasattr(sess_mgr, 'get_session_by_launcher'):
@@ -1169,12 +1186,11 @@ class RuntimeBot:
             instance_uuid=self.execution_context.instance_uuid,
             workspace_uuid=self.execution_context.workspace_uuid,
             placement_generation=self.execution_context.placement_generation,
-            query_id=query_id,
+            query_id=str(query_id),
             query_uuid=query_uuid,
             bot_uuid=self.bot_entity.uuid,
             launcher_type=launcher_type.value,
             launcher_id=launcher_id,
-            privilege=privilege,
         )
 
         event_type = getattr(event, 'type', None) or 'message.received'
@@ -1258,24 +1274,32 @@ class RuntimeBot:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
-            matched = await self._match_plugin_command(event)
-            if matched is not None:
-                plugin_id, cmd_name, cmd_text, full_cmd_text = matched
-                results = await asyncio.gather(
+            command_handled = False
+            command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
+            plugins = command_settings.get('plugins', []) if isinstance(command_settings, dict) else []
+            if (
+                isinstance(event, platform_events.MessageReceivedEvent)
+                and command_settings.get('enabled', True)
+                and plugins
+            ):
+                cmd_tasks = [
                     self._run_event_delivery(
-                        self._execute_matched_plugin_command,
+                        self._try_handle_plugin_command,
                         event=event,
                         adapter=adapter,
-                        plugin_id=plugin_id,
-                        command_name=cmd_name,
-                        command_text=cmd_text,
-                        full_command_text=full_cmd_text,
                         execution_id=execution_id,
                         node=node,
-                    ),
-                    return_exceptions=True,
-                )
-            else:
+                    )
+                ]
+                cmd_results = await asyncio.gather(*cmd_tasks, return_exceptions=True)
+                if cmd_results and cmd_results[0] is True:
+                    command_handled = True
+                    results = [None]
+                elif cmd_results and isinstance(cmd_results[0], BaseException):
+                    results = cmd_results
+                    command_handled = True
+
+            if not command_handled:
                 primary_handler = (
                     self._handle_interaction_submission
                     if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'

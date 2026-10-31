@@ -164,6 +164,9 @@ class BuildAppStage(stage.BootingStage):
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
+        from ...persistence import bot_command_migration
+        await bot_command_migration.migrate_global_command_config(ap)
+
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(
                 ap,

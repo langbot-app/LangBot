@@ -684,6 +684,24 @@ class BotService:
 
         normalized_plugins = []
         seen_plugins = set()
+
+        installed_plugin_ids: set[str] | None = None
+        plugin_connector = getattr(self.ap, 'plugin_connector', None)
+        if plugin_connector and hasattr(plugin_connector, 'list_plugins'):
+            try:
+                installed_list = await plugin_connector.list_plugins()
+                installed_plugin_ids = set()
+                for p in installed_list:
+                    meta = p.get('manifest', {}).get('manifest', {}).get('metadata', {})
+                    author = meta.get('author') or p.get('author', '')
+                    name = meta.get('name') or p.get('name', '')
+                    if author and name:
+                        installed_plugin_ids.add(f'{author}/{name}')
+                    if 'plugin_id' in p:
+                        installed_plugin_ids.add(p['plugin_id'])
+            except Exception:
+                installed_plugin_ids = None
+
         for item in plugins:
             if not isinstance(item, dict):
                 raise ValueError('Each plugin binding must be an object')
@@ -696,6 +714,8 @@ class BotService:
             plugin_enabled = item.get('enabled', True)
             if not isinstance(plugin_enabled, bool):
                 raise ValueError('Plugin enabled must be a boolean')
+            if installed_plugin_ids is not None and plugin_id not in installed_plugin_ids:
+                raise ValueError(f"Plugin '{plugin_id}' is not installed in this workspace")
             seen_plugins.add(plugin_id)
             normalized_plugins.append({'plugin_id': plugin_id, 'enabled': plugin_enabled})
 

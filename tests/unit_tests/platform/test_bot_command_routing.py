@@ -2,7 +2,7 @@
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch, create_autospec
 
 import pytest
 from langbot_plugin.api.entities.builtin.platform.events import (
@@ -12,6 +12,7 @@ from langbot_plugin.api.entities.builtin.platform.events import (
 import langbot_plugin.api.entities.builtin.platform.message as pm
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
+from langbot.pkg.command.cmdmgr import CommandManager
 from langbot.pkg.platform.botmgr import RuntimeBot
 
 
@@ -46,18 +47,21 @@ def make_bot(command_settings=None, plugin_processors=None):
     bot._run_event_delivery = RuntimeBot._run_event_delivery.__get__(bot, RuntimeBot)
     bot._get_event_bindings_from_value = RuntimeBot._get_event_bindings_from_value
     bot._match_plugin_command = RuntimeBot._match_plugin_command.__get__(bot, RuntimeBot)
+    bot._try_handle_plugin_command = RuntimeBot._try_handle_plugin_command.__get__(bot, RuntimeBot)
     bot._execute_matched_plugin_command = RuntimeBot._execute_matched_plugin_command.__get__(
+        bot, RuntimeBot
+    )
+    bot._handle_platform_event_body = RuntimeBot._handle_platform_event_body.__get__(
         bot, RuntimeBot
     )
 
     plugin_connector = SimpleNamespace(
         list_commands=AsyncMock(return_value=[]),
     )
-    cmd_mgr = SimpleNamespace(
-        is_admin=AsyncMock(return_value=False),
-        build_context=AsyncMock(return_value=Mock()),
-        execute_command=Mock(),
-    )
+    cmd_mgr = create_autospec(CommandManager, instance=True)
+    cmd_mgr.is_admin = AsyncMock(return_value=False)
+    cmd_mgr.build_context = AsyncMock(return_value=Mock(privilege=1))
+    cmd_mgr.execute_command = Mock()
     sess_mgr = SimpleNamespace(
         get_session_by_launcher=AsyncMock(return_value=Mock()),
     )
@@ -275,7 +279,7 @@ async def test_custom_and_longest_prefix_matching():
 
 @pytest.mark.asyncio
 async def test_admin_privilege_passed_to_cmd_context():
-    """BotAdmin check properly sets privilege level to 2 for bot admin."""
+    """BotAdmin check properly sets privilege level to 2 for bot admin using real CommandManager."""
     bot = make_bot(
         command_settings={
             'enabled': True,
@@ -286,7 +290,16 @@ async def test_admin_privilege_passed_to_cmd_context():
     bot.ap.plugin_connector.list_commands.return_value = [
         FakeCommandManifest('plugin_a', 'admin_cmd')
     ]
-    bot.ap.cmd_mgr.is_admin.return_value = True
+
+    # Use real CommandManager to ensure is_admin and build_context signatures are strictly exercised
+    real_cmd_mgr = CommandManager(bot.ap)
+    real_cmd_mgr.is_admin = AsyncMock(return_value=True)
+    bot.ap.cmd_mgr = real_cmd_mgr
+    dummy_session = provider_session.Session(
+        launcher_type=provider_session.LauncherTypes.PERSON,
+        launcher_id='1001',
+    )
+    bot.ap.sess_mgr.get_session_by_launcher = AsyncMock(return_value=dummy_session)
 
     async def mock_execute_gen(*args, **kwargs):
         ret = Mock()
@@ -297,7 +310,7 @@ async def test_admin_privilege_passed_to_cmd_context():
         ret.file_url = None
         yield ret
 
-    bot.ap.cmd_mgr.execute_command.side_effect = mock_execute_gen
+    bot.ap.cmd_mgr.execute_command = Mock(side_effect=mock_execute_gen)
 
     adapter = SimpleNamespace(
         reply_message=AsyncMock(),
@@ -314,9 +327,55 @@ async def test_admin_privilege_passed_to_cmd_context():
         full_command_text='/admin_cmd',
     )
 
-    bot.ap.cmd_mgr.build_context.assert_awaited_once()
-    call_kwargs = bot.ap.cmd_mgr.build_context.call_args[1]
-    assert call_kwargs['privilege'] == 2
+    real_cmd_mgr.is_admin.assert_awaited_once_with('ws-1', 'bot-123', 'person', '1001')
+
+
+@pytest.mark.asyncio
+async def test_launcher_id_preserves_original_type():
+    """Route-level command execution does not force launcher_id to str, preserving original int type."""
+    bot = make_bot(
+        command_settings={
+            'enabled': True,
+            'prefixes': ['/'],
+            'plugins': [{'plugin_id': 'plugin_a', 'enabled': True}],
+        }
+    )
+    bot.ap.plugin_connector.list_commands.return_value = [
+        FakeCommandManifest('plugin_a', 'ping')
+    ]
+
+    async def mock_execute_gen(*args, **kwargs):
+        ret = Mock()
+        ret.error = None
+        ret.text = 'pong'
+        ret.image_url = None
+        ret.image_base64 = None
+        ret.file_url = None
+        yield ret
+
+    bot.ap.cmd_mgr.execute_command = Mock(side_effect=mock_execute_gen)
+
+    adapter = SimpleNamespace(
+        reply_message=AsyncMock(),
+        get_launcher_id=Mock(return_value=None),
+    )
+    # Event sender with integer ID 123456
+    ev = make_message_event('/ping', chat_id=123456)
+
+    await bot._execute_matched_plugin_command(
+        event=ev,
+        adapter=adapter,
+        plugin_id='plugin_a',
+        command_name='ping',
+        command_text='ping',
+        full_command_text='/ping',
+    )
+
+    bot.ap.sess_mgr.get_session_by_launcher.assert_awaited_once()
+    call_args = bot.ap.sess_mgr.get_session_by_launcher.call_args[0]
+    # launcher_id is at index 3
+    assert call_args[3] == 123456
+    assert type(call_args[3]) is int
 
 
 @pytest.mark.asyncio
