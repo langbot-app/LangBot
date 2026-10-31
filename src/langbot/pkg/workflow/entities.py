@@ -12,7 +12,7 @@ import pydantic
 
 # Import SDK entities for standard workflow protocol types
 # These are re-exported for use by other modules in the workflow package.
-from langbot_plugin.api.entities.builtin.workflow.entities import (
+from langbot.pkg.workflow.protocol.entities import (
     ExecutionContext as ExecutionContext,
     ExecutionStep as ExecutionStep,
     MessageContext as MessageContext,
@@ -20,7 +20,7 @@ from langbot_plugin.api.entities.builtin.workflow.entities import (
     NodeState as NodeState,
     PortDefinition as PortDefinition,
 )
-from langbot_plugin.api.entities.builtin.workflow.enums import (
+from langbot.pkg.workflow.protocol.enums import (
     ExecutionStatus as ExecutionStatus,
     NodeStatus as NodeStatus,
 )

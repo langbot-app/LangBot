@@ -590,9 +590,9 @@ class RuntimePipeline:
         # Record query start and store message_id
         message_id = ''
         try:
-            from . import monitor
+            from . import monitoring_helper
 
-            message_id = await monitor.MonitoringHelper.record_query_start(
+            message_id = await monitoring_helper.MonitoringHelper.record_query_start(
                 ap=self.ap,
                 query=query,
                 bot_id=query.bot_uuid or 'unknown',
@@ -694,7 +694,7 @@ class RuntimePipeline:
 
             # Record query error
             try:
-                from . import monitor
+                from . import monitoring_helper
 
                 await self._assert_execution_active(query)
                 await monitoring_helper.MonitoringHelper.record_query_error(

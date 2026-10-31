@@ -18,7 +18,7 @@ from typing import Any, AsyncGenerator
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.builtin.rag.context as rag_context
 
-from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
+from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 from .. import monitoring_helper
 

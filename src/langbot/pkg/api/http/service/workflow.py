@@ -20,8 +20,8 @@ from ....workflow.entities import (
     Position,
     MessageContext,
 )
-from langbot_plugin.api.entities.builtin.workflow.enums import ExecutionStatus, NodeStatus, TriggerType
-from langbot_plugin.api.entities.builtin.workflow.query import WorkflowQuery
+from langbot.pkg.workflow.protocol.enums import ExecutionStatus, NodeStatus, TriggerType
+from langbot.pkg.workflow.protocol.query import WorkflowQuery
 from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 from ....workflow.executor import WorkflowExecutor
 from ....workflow.registry import NodeTypeRegistry

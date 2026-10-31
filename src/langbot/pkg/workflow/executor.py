@@ -538,7 +538,7 @@ class WorkflowExecutor:
         start_nodes = [node for node in nodes if node.id not in target_nodes]
 
         # Also check for trigger nodes
-        trigger_types = {'message_trigger', 'cron_trigger', 'webhook_trigger', 'event_trigger'}
+        trigger_types = {'message_trigger'}
         for node in nodes:
             if node.type in trigger_types and node not in start_nodes:
                 start_nodes.insert(0, node)

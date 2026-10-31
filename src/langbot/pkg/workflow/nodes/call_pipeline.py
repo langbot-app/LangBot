@@ -17,7 +17,7 @@ import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
-from langbot_plugin.api.entities.builtin.workflow.entities import ExecutionContext
+from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
 

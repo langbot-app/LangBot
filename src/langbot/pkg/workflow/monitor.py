@@ -14,7 +14,7 @@ import time
 
 if typing.TYPE_CHECKING:
     from ..core import app
-    from langbot_plugin.api.entities.builtin.workflow.query import WorkflowQuery
+    from langbot.pkg.workflow.protocol.query import WorkflowQuery
 
 
 class WorkflowMonitoringHelper:

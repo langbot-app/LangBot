@@ -20,8 +20,6 @@ import sqlalchemy
 
 from ..core import app, entities as core_entities, taskmgr
 
-logger = logging.getLogger(__name__)
-
 from ..discover import engine
 
 from ..entity.persistence import bot as persistence_bot
