@@ -8,6 +8,8 @@ from collections.abc import Iterable
 
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 
+_VALID_PROCESSOR_KINDS: typing.Final = frozenset({'agent', 'pipeline', 'event_processor'})
+
 
 async def build_processor_request_context(
     ap: typing.Any,
@@ -20,22 +22,20 @@ async def build_processor_request_context(
     trigger_actor: str | None = None,
 ) -> RequestContext:
     """Build a trusted RequestContext for internal processor invocations."""
-    workspace_service = getattr(ap, 'workspace_service', None)
-    if workspace_service is None and hasattr(ap, 'ap'):
-        workspace_service = getattr(ap.ap, 'workspace_service', None)
-    if workspace_service is None:
-        raise RuntimeError('Workspace service is required to resolve execution binding')
+    if not isinstance(workspace_uuid, str) or not workspace_uuid.strip():
+        raise ValueError('workspace_uuid is required')
+    if processor_kind not in _VALID_PROCESSOR_KINDS:
+        raise ValueError(f'Invalid processor_kind {processor_kind!r}; must be one of {sorted(_VALID_PROCESSOR_KINDS)}')
+    if not isinstance(processor_uuid, str) or not processor_uuid.strip():
+        raise ValueError('processor_uuid is required')
+    if not isinstance(run_id, str) or not run_id.strip():
+        raise ValueError('run_id is required')
 
-    binding = await workspace_service.get_execution_binding(workspace_uuid)
-
-    app_api = getattr(ap, 'application_api', None)
-    if app_api is None and hasattr(ap, '_operations'):
-        app_api = ap
-    if app_api is None and hasattr(ap, 'ap'):
-        app_api = getattr(ap.ap, 'application_api', None)
+    binding = await ap.workspace_service.get_execution_binding(workspace_uuid)
 
     allowed_ids = frozenset(operation_ids)
     permissions: set[str] = set()
+    app_api = getattr(ap, 'application_api', None)
     if app_api is not None:
         operations = getattr(app_api, '_operations', {})
         for op_id in allowed_ids:

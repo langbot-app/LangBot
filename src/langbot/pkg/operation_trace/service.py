@@ -1127,6 +1127,7 @@ def dedupe_material(
     action: str,
     route: str | None,
     resource_id: str | None,
+    dedupe_actor: str | None = None,
 ) -> str:
     """Return the raw material the dedupe key hashes.
 
@@ -1134,9 +1135,10 @@ def dedupe_material(
     so enabling tracing never runs a hash on the request path.
     """
 
+    actor_key = dedupe_actor if dedupe_actor is not None else str(actor_account_uuid or '')
     return '|'.join(
         [
-            str(actor_account_uuid or ''),
+            actor_key,
             str(action or ''),
             str(route or ''),
             str(resource_id or ''),
@@ -1156,6 +1158,7 @@ def compute_dedupe_key(
     action: str,
     route: str | None,
     resource_id: str | None,
+    dedupe_actor: str | None = None,
 ) -> str:
     """Build the key that collapses repeated identical observations."""
 
@@ -1165,6 +1168,7 @@ def compute_dedupe_key(
             action=action,
             route=route,
             resource_id=resource_id,
+            dedupe_actor=dedupe_actor,
         )
     )
 
@@ -1578,6 +1582,7 @@ class WorkspaceSettingsService:
         client_ip: str | None = None,
         user_agent: str | None = None,
         duration_ms: int = 0,
+        dedupe_actor: str | None = None,
     ) -> bool:
         """Queue one operation for traceability. Returns whether it was queued.
 
@@ -1630,6 +1635,7 @@ class WorkspaceSettingsService:
             action=rule.action,
             route=record_fields['route'],
             resource_id=record_fields['resource_id'],
+            dedupe_actor=dedupe_actor,
         )
 
         return self._enqueue(record_fields)

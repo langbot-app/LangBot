@@ -265,12 +265,14 @@ class ApplicationAPI:
                 resource_id = next(iter(identity.values()))
             detail = {'operation': spec.operation_id, 'version': spec.version}
             actor_name = None
+            dedupe_actor = None
             if context.principal.principal_type == PrincipalType.PROCESSOR:
                 actor_name = (
                     f'{context.principal.processor_kind}:{context.principal.processor_uuid}'
                     if context.principal.processor_kind
                     else context.principal.processor_uuid
                 )
+                dedupe_actor = f'processor:{context.principal.processor_uuid}:{context.principal.run_id}'
                 detail.update(
                     {
                         'processor_kind': context.principal.processor_kind,
@@ -297,6 +299,7 @@ class ApplicationAPI:
                 status_code=status,
                 detail=detail,
                 duration_ms=int((time.monotonic() - observed_at) * 1000),
+                dedupe_actor=dedupe_actor,
             )
         except Exception:
             # Audit failures must preserve the original operation result or error.
