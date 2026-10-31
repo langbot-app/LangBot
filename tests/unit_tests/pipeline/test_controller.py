@@ -25,6 +25,7 @@ def make_app():
     app.agent_run_orchestrator = SimpleNamespace()
     app.agent_run_orchestrator.try_claim_steering_from_query = AsyncMock()
     app.agent_run_orchestrator.cancel_active_from_query = AsyncMock()
+    app.cmd_mgr = SimpleNamespace(resolve_privilege=AsyncMock(return_value=1))
     return app
 
 
@@ -112,8 +113,11 @@ async def test_busy_stop_requests_active_run_cancellation():
     claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
 
     assert claimed is False
-    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(query)
-    assert query.variables['_acp_stop_run_id'] == 'run-stop'
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        query,
+        allow_other_actors=False,
+    )
+    assert query.variables['_stop_command_run_id'] == 'run-stop'
     app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
 
 
@@ -148,6 +152,96 @@ async def test_busy_group_steering_obeys_response_rules(sample_query, text, expe
         assert str(forwarded.message_chain) == ' hello'
     else:
         app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_group_stop_bypasses_response_rule_gate(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    pipeline = make_pipeline()
+    pipeline.pipeline_entity.config['trigger'] = {
+        'group-respond-rules': {'at': True, 'prefix': [], 'regexp': [], 'random': 0}
+    }
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-group-stop'
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.cmd_mgr.resolve_privilege.assert_awaited_once_with(sample_query)
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        sample_query,
+        allow_other_actors=False,
+    )
+    assert sample_query.variables['_stop_command_run_id'] == 'run-group-stop'
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_group_admin_can_stop_another_members_run(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.cmd_mgr.resolve_privilege.return_value = 2
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-admin-stop'
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        sample_query,
+        allow_other_actors=True,
+    )
+    assert sample_query.variables['_stop_command_run_id'] == 'run-admin-stop'
+
+
+@pytest.mark.asyncio
+async def test_busy_group_command_is_recognized_after_trigger_prefix_is_removed(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    pipeline = make_pipeline()
+    pipeline.pipeline_entity.config['trigger'] = {
+        'group-respond-rules': {'at': False, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
+    }
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='qa: !list')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
 
 
 @pytest.mark.asyncio

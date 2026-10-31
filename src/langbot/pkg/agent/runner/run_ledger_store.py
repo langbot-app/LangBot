@@ -475,7 +475,7 @@ class RunLedgerStore:
         now = _utc_now()
         async with self._session_factory() as session:
             run = await self._get_run_row(session, run_id)
-            if run is None:
+            if run is None or run.status in TERMINAL_STATUSES:
                 return None
             run.cancel_requested_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)

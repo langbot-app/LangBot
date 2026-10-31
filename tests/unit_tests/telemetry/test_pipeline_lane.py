@@ -119,6 +119,7 @@ def build_query(**overrides):
         query_id=1,
         pipeline_config={},
         variables={},
+        resp_messages=[],
         adapter=None,
         launcher_type=types.SimpleNamespace(value='private'),
         launcher_id='user',
@@ -214,6 +215,8 @@ async def test_lane_step_owns_the_apis_and_runner_it_calls():
 
 async def test_cancelled_lane_finalizes_the_originating_stream():
     pipelinemgr, _execution = get_modules()
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
     counters, ap = build_counters()
     adapter = types.SimpleNamespace(
         is_stream_output_supported=AsyncMock(return_value=True),
@@ -223,6 +226,17 @@ async def test_cancelled_lane_finalizes_the_originating_stream():
         adapter=adapter,
         message_event=object(),
         pipeline_config={'output': {'misc': {'quote-origin': True}}},
+        variables={'_runner_cancel_reason': 'stop_command'},
+        resp_messages=[
+            MessageChunk(
+                role='assistant',
+                content='partial',
+                all_content='partial',
+                resp_message_id='stream-1',
+                msg_sequence=3,
+                is_final=False,
+            )
+        ],
     )
     lane = build_lane(pipelinemgr, ap)
 
@@ -239,6 +253,8 @@ async def test_cancelled_lane_finalizes_the_originating_stream():
     assert call['is_final'] is True
     assert call['bot_message'].is_final is True
     assert call['bot_message'].content == 'Task was cancelled'
+    assert call['bot_message'].resp_message_id == 'stream-1'
+    assert call['bot_message'].msg_sequence == 4
 
 
 async def test_cancelled_lane_finalizes_non_streaming_response():
@@ -252,6 +268,7 @@ async def test_cancelled_lane_finalizes_non_streaming_response():
         adapter=adapter,
         message_event=object(),
         pipeline_config={'output': {'misc': {'quote-origin': False}}},
+        variables={'_runner_cancel_reason': 'stop_command'},
     )
     lane = build_lane(pipelinemgr, ap)
 
@@ -269,6 +286,8 @@ async def test_cancelled_lane_finalizes_non_streaming_response():
 
 async def test_cancelled_lane_logs_finalization_failure():
     pipelinemgr, _execution = get_modules()
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
     counters, ap = build_counters()
     ap.logger = types.SimpleNamespace(warning=Mock())
     adapter = types.SimpleNamespace(
@@ -278,6 +297,8 @@ async def test_cancelled_lane_logs_finalization_failure():
         adapter=adapter,
         message_event=object(),
         pipeline_config={'output': {'misc': {'quote-origin': False}}},
+        variables={'_runner_cancel_reason': 'stop_command'},
+        resp_messages=[MessageChunk(role='assistant', content='partial', resp_message_id='stream-1')],
     )
     lane = build_lane(pipelinemgr, ap)
 
@@ -292,6 +313,50 @@ async def test_cancelled_lane_logs_finalization_failure():
     ap.logger.warning.assert_called_once()
     assert ap.logger.warning.call_args.args[0] == 'Failed to finalize cancelled platform response: %s'
     assert isinstance(ap.logger.warning.call_args.args[1], RuntimeError)
+
+
+async def test_lifecycle_cancel_closes_existing_stream_without_user_notice():
+    pipelinemgr, _execution = get_modules()
+    from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
+
+    counters, ap = build_counters()
+    adapter = types.SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        reply_message_chunk=AsyncMock(),
+        reply_message=AsyncMock(),
+    )
+    query = build_query(
+        adapter=adapter,
+        message_event=object(),
+        pipeline_config={'output': {'misc': {'quote-origin': False}}},
+        resp_messages=[
+            MessageChunk(
+                role='assistant',
+                content='partial',
+                all_content='partial response',
+                resp_message_id='stream-life',
+                msg_sequence=2,
+                is_final=False,
+            )
+        ],
+    )
+    lane = build_lane(pipelinemgr, ap)
+
+    async def cancelled(_query):
+        raise asyncio.CancelledError
+
+    lane._process_query = cancelled
+
+    with pytest.raises(asyncio.CancelledError):
+        await lane.process_query(query)
+    await stop_counters(counters)
+
+    adapter.reply_message_chunk.assert_awaited_once()
+    call = adapter.reply_message_chunk.await_args.kwargs
+    assert call['bot_message'].content == 'partial response'
+    assert call['bot_message'].resp_message_id == 'stream-life'
+    assert call['is_final'] is True
+    adapter.reply_message.assert_not_awaited()
 
 
 async def test_lane_node_nests_under_the_platform_route_that_called_it():

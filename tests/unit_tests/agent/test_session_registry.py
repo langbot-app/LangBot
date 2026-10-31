@@ -75,7 +75,11 @@ class TestSessionRegistryBasic:
         task = asyncio.create_task(run_owner())
         await registered.wait()
 
-        assert await registry.cancel_task('run_cancel') is True
+        execution_query = type('Query', (), {'variables': {}})()
+        (await registry.get('run_cancel'))['execution_query'] = execution_query
+
+        assert await registry.cancel_task('run_cancel', reason='stop_command') is True
+        assert execution_query.variables['_runner_cancel_reason'] == 'stop_command'
         with pytest.raises(asyncio.CancelledError):
             await task
         assert await registry.cancel_task('run_cancel') is False
@@ -104,6 +108,7 @@ class TestSessionRegistryBasic:
                 bot_id=bot_id,
                 workspace_id=workspace_id,
                 thread_id=thread_id,
+                actor_id='actor' if run_id != 'oldest' else 'owner',
             )
         (await registry.get('newer'))['status']['started_at'] = 20
         (await registry.get('oldest'))['status']['started_at'] = 10
@@ -117,6 +122,17 @@ class TestSessionRegistryBasic:
                 thread_id='thread',
             )
             == 'oldest'
+        )
+        assert (
+            await registry.find_active_target(
+                conversation_id='conv',
+                runner_id='plugin:test/runner/default',
+                bot_id='bot',
+                workspace_id='workspace',
+                thread_id='thread',
+                actor_id='actor',
+            )
+            == 'newer'
         )
         assert (
             await registry.find_active_target(
