@@ -22,6 +22,7 @@ async def get_bot_command_settings(ap: typing.Any, query: pipeline_query.Query) 
                 ctx = get_query_execution_context(query)
             except Exception:
                 from ...api.http.context import ExecutionContext
+
                 ctx = ExecutionContext(
                     instance_uuid=getattr(query, 'instance_uuid', 'default') or 'default',
                     workspace_uuid=getattr(query, 'workspace_uuid', 'default') or 'default',

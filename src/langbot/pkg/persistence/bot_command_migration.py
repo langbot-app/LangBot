@@ -22,6 +22,7 @@ async def migrate_global_command_config(ap: app.Application) -> None:
         return
 
     from .mgr import PersistenceMode
+
     if getattr(persistence, 'mode', None) in {PersistenceMode.CLOUD_RUNTIME, PersistenceMode.RELEASE_MIGRATION}:
         return
 
@@ -29,9 +30,7 @@ async def migrate_global_command_config(ap: app.Application) -> None:
     from ..entity.persistence.bot import Bot
 
     # Check if migration has already been executed
-    result = await persistence.execute_async(
-        sa.select(Metadata.value).where(Metadata.key == MIGRATION_FLAG_KEY)
-    )
+    result = await persistence.execute_async(sa.select(Metadata.value).where(Metadata.key == MIGRATION_FLAG_KEY))
     if result.scalar_one_or_none() is not None:
         return
 
@@ -67,9 +66,7 @@ async def migrate_global_command_config(ap: app.Application) -> None:
     }
 
     if has_legacy_config:
-        await persistence.execute_async(
-            Bot.__table__.update().values(command_settings=target_settings)
-        )
+        await persistence.execute_async(Bot.__table__.update().values(command_settings=target_settings))
 
     # Mark migration complete in database metadata so it runs only once
     await persistence.execute_async(

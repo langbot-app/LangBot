@@ -1,8 +1,7 @@
 """Unit tests for bot-level plugin command routing at the platform layer."""
 
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch, create_autospec
+from unittest.mock import AsyncMock, Mock, create_autospec
 
 import pytest
 from langbot_plugin.api.entities.builtin.platform.events import (

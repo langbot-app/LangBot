@@ -42,6 +42,7 @@ class Processor(stage.PipelineStage):
 
         async def generator():
             from .command_settings import get_bot_command_settings
+
             cmd_enable, cmd_prefix = await get_bot_command_settings(self.ap, query)
 
             if cmd_enable and any(message_text.startswith(prefix) for prefix in cmd_prefix):

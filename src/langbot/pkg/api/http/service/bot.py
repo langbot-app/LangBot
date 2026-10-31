@@ -885,7 +885,14 @@ class BotService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
 
-        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors', 'command_settings'}
+        runtime_fields = {
+            'adapter',
+            'adapter_config',
+            'enable',
+            'event_bindings',
+            'plugin_processors',
+            'command_settings',
+        }
         if not runtime_fields.intersection(update_data):
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
             if runtime_bot is not None:

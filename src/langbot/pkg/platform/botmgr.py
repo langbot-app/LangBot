@@ -1069,7 +1069,7 @@ class RuntimeBot:
         if matched_prefix is None:
             return None
 
-        command_text = full_command_text[len(matched_prefix):].strip()
+        command_text = full_command_text[len(matched_prefix) :].strip()
         if not command_text:
             return None
 
@@ -1302,7 +1302,8 @@ class RuntimeBot:
             if not command_handled:
                 primary_handler = (
                     self._handle_interaction_submission
-                    if isinstance(event, platform_events.PlatformSpecificEvent) and event.action == 'interaction.submitted'
+                    if isinstance(event, platform_events.PlatformSpecificEvent)
+                    and event.action == 'interaction.submitted'
                     else self._dispatch_eba_event_to_processor
                 )
                 subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))

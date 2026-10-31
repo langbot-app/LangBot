@@ -17,6 +17,7 @@ class CommandHandler(handler.MessageHandler):
         full_command_text = str(query.message_chain).strip()
 
         from ..command_settings import get_bot_command_settings
+
         _, cmd_prefix = await get_bot_command_settings(self.ap, query)
 
         matched_prefix = '/'
@@ -26,7 +27,7 @@ class CommandHandler(handler.MessageHandler):
                 matched_prefix = p
                 break
 
-        command_text = full_command_text[len(matched_prefix):].strip()
+        command_text = full_command_text[len(matched_prefix) :].strip()
 
         session = await self.ap.sess_mgr.get_session(query)
 
