@@ -98,7 +98,7 @@ def _assert_run(results, *, expect_state_updates: bool) -> str:
     if len(final_chunks) != 1:
         raise AssertionError(f"expected one final chunk, got {len(final_chunks)}: {types}")
     content = str(final_chunks[0].get("content") or "")
-    if not content.startswith(f"{SENTINEL}|{SENTINEL}."):
+    if not content.startswith(f"{SENTINEL}|Reply with exactly {SENTINEL}."):
         raise AssertionError(f"unexpected n8n response: {content}")
     if "|user_daily-regression|n8n_conversation_" not in content or "|n8n_session_" not in content:
         raise AssertionError(f"Runner payload/state fields missing: {content}")
