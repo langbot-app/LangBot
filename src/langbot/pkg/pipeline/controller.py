@@ -31,7 +31,11 @@ class Controller:
         if not command_config.get('enable', True):
             return None
         message_chain = getattr(query, 'message_chain', None)
-        text_parts = [str(getattr(component, 'text', '')) for component in message_chain or []]
+        try:
+            components = list(message_chain or [])
+        except TypeError:
+            components = []
+        text_parts = [str(getattr(component, 'text', '')) for component in components]
         message_text = ''.join(text_parts).strip() or str(message_chain or '').strip()
         for prefix in command_config.get('prefix', []):
             if message_text.startswith(prefix):
@@ -228,6 +232,13 @@ class Controller:
                                 claimed_steering_query = query
                                 break
                             continue
+
+                        # A stop command must cancel an active run even when the
+                        # session has spare capacity (for example, concurrency=2).
+                        # Otherwise it would occupy the second slot as a normal
+                        # Pipeline query and never reach the cancellation branch.
+                        if self._command_name(query) == 'stop' and not query.variables.get('_stop_command_attempted'):
+                            await self._try_claim_steering_before_session_slot(query)
 
                         if not session._semaphore.locked():
                             selected_query = query
