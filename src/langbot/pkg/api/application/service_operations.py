@@ -765,6 +765,7 @@ _LIST_OPS_BY_ENTITY = {
     'agent': 'agent.list',
     'model': 'model.llm.list',
     'provider': 'provider.list',
+    'server': 'mcp.server.list',
     'kb': 'knowledge.base.list',
     'knowledge_base': 'knowledge.base.list',
     'adapter': 'adapter.list',
@@ -791,6 +792,16 @@ def _field_description(name: str, operation_id: str) -> str | None:
         return 'ISO 8601 timestamp or Unix epoch representing the time boundary'
     if name in {'query', 'keyword', 'user_query'}:
         return 'Search query string used to filter results'
+    if name == 'model_uuid':
+        if operation_id.startswith('model.embedding.'):
+            list_op = 'model.embedding.list'
+        elif operation_id.startswith('model.rerank.'):
+            list_op = 'model.rerank.list'
+        else:
+            list_op = 'model.llm.list'
+        return f'UUID of the model; get it from {list_op}'
+    if name == 'server_uuid':
+        return 'UUID of the MCP server; get it from mcp.server.list'
     if name.endswith('_uuid'):
         entity = name[:-5]
         list_op = _LIST_OPS_BY_ENTITY.get(entity, f'{entity}.list')
@@ -876,9 +887,11 @@ def operations() -> tuple[Operation, ...]:
 
 
 class PipelineRunInput(Input):
-    pipeline_uuid: str = Field(min_length=1)
-    text: str = Field(min_length=1, max_length=100_000)
-    timeout: float = Field(default=60.0, gt=0, le=300)
+    pipeline_uuid: str = Field(min_length=1, description='UUID of the pipeline; get it from pipeline.list')
+    text: str = Field(
+        min_length=1, max_length=100_000, description='Input message or query text to trigger the pipeline execution'
+    )
+    timeout: float = Field(default=60.0, gt=0, le=300, description='Maximum execution time in seconds')
 
 
 async def _pipeline_run(ap, context, payload):
@@ -933,11 +946,11 @@ async def _assistant(ap, context, payload, method):
 
 
 class RoutePreviewInput(Input):
-    bot_uuid: str = Field(min_length=1)
-    event_type: str = Field(min_length=1)
-    event_data: dict | None = None
-    event_context: dict | None = None
-    event_bindings: list[dict] | None = None
+    bot_uuid: str = Field(min_length=1, description='UUID of the bot; get it from bot.list')
+    event_type: str = Field(min_length=1, description='Event type name to simulate routing for')
+    event_data: dict | None = Field(default=None, description='Event payload data to simulate')
+    event_context: dict | None = Field(default=None, description='Event context metadata')
+    event_bindings: list[dict] | None = Field(default=None, description='Optional custom route bindings')
 
 
 async def _route_preview(ap, context, payload):
