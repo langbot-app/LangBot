@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from langbot.pkg.api.application.contracts import Operation
@@ -133,6 +135,10 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if op_id.startswith('pipeline.migration.'):
             assert doc.exposure == 'assistant', f"Operation {op_id} must have exposure='assistant'"
 
+        if op_id in {'mcp.server.create', 'mcp.server.update'}:
+            assert doc.exposure == 'assistant', f"Operation {op_id} must have exposure='assistant'"
+            assert doc.risk == 'dangerous', f"Operation {op_id} must have risk='dangerous'"
+
 
 def test_principals_exposure_consistency(all_application_operations: list[Operation]):
     for op in all_application_operations:
@@ -187,3 +193,69 @@ def test_parameter_descriptions_in_service_contracts(operations_by_id: dict[str,
     mon_schema = monitoring_errors.input_type.model_json_schema()
     assert 'Maximum number of items' in mon_schema['properties']['limit']['description']
     assert 'Number of items to skip' in mon_schema['properties']['offset']['description']
+
+    # Verify model_uuid maps to the corresponding list operation
+    llm_get = operations_by_id['model.llm.get']
+    assert 'model.llm.list' in llm_get.input_type.model_json_schema()['properties']['model_uuid']['description']
+
+    emb_get = operations_by_id['model.embedding.get']
+    assert 'model.embedding.list' in emb_get.input_type.model_json_schema()['properties']['model_uuid']['description']
+
+    rerank_get = operations_by_id['model.rerank.get']
+    assert 'model.rerank.list' in rerank_get.input_type.model_json_schema()['properties']['model_uuid']['description']
+
+    # Verify server_uuid maps to mcp.server.list
+    mcp_update = operations_by_id['mcp.server.update']
+    assert 'mcp.server.list' in mcp_update.input_type.model_json_schema()['properties']['server_uuid']['description']
+
+    mcp_delete = operations_by_id['mcp.server.delete']
+    assert 'mcp.server.list' in mcp_delete.input_type.model_json_schema()['properties']['server_uuid']['description']
+
+    # Verify pipeline.run and bot.routes.preview have parameter descriptions
+    pipeline_run = operations_by_id['pipeline.run']
+    run_schema = pipeline_run.input_type.model_json_schema()
+    assert 'pipeline.list' in run_schema['properties']['pipeline_uuid']['description']
+
+    route_preview = operations_by_id['bot.routes.preview']
+    preview_schema = route_preview.input_type.model_json_schema()
+    assert 'bot.list' in preview_schema['properties']['bot_uuid']['description']
+
+
+def test_referenced_operation_ids_exist(
+    all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
+):
+    catalog_op_ids = set(operations_by_id.keys())
+    assert len(catalog_op_ids) == 234
+
+    # 1. Parameter descriptions in input schema
+    param_references: list[tuple[str, str]] = []
+    for op in all_application_operations:
+        schema = op.as_dict().get('input_schema', {})
+        props = schema.get('properties', {})
+        for prop_name, prop_def in props.items():
+            desc = prop_def.get('description', '')
+            if not desc:
+                continue
+            for match in re.findall(r'get it from\s+([a-zA-Z0-9_.]+)', desc, re.IGNORECASE):
+                op_ref = match.rstrip('.,;: )')
+                param_references.append((f'{op.operation_id}.{prop_name}', op_ref))
+
+    assert param_references, 'Expected parameter descriptions to contain operation references'
+    for source, op_ref in param_references:
+        assert op_ref in catalog_op_ids, f'Parameter {source} references non-existent operation {op_ref}'
+
+    # 2. OperationDoc descriptions (Call <op_id> or get it from <op_id>)
+    doc_references: list[tuple[str, str]] = []
+    for op_id, doc in OPERATION_DOCS.items():
+        desc = doc.description
+        for match in re.findall(r'(?:Call|get it from)\s+([a-zA-Z0-9_.]+)', desc):
+            op_ref = match.rstrip('.,;: )')
+            if op_ref in {'statistics', 'events'}:
+                continue
+            doc_references.append((op_id, op_ref))
+
+    assert doc_references, 'Expected OperationDoc descriptions to contain operation references'
+    for source_op_id, op_ref in doc_references:
+        assert op_ref in catalog_op_ids, (
+            f'Operation {source_op_id} description references non-existent operation {op_ref}'
+        )
