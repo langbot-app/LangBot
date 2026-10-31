@@ -6,6 +6,7 @@ Real n8n webhook integration supporting streaming and non-streaming responses.
 from __future__ import annotations
 
 import logging
+import math
 import typing
 import uuid
 
@@ -129,6 +130,16 @@ class DefaultRunner(Runner):
         if auth_type == "basic" and basic_encoding not in ("utf-8", "latin1"):
             raise N8nConfigError("basic-encoding must be utf-8 or latin1")
 
+        timeout_value = config.get("timeout", 120)
+        if timeout_value is None or isinstance(timeout_value, bool):
+            raise N8nConfigError("timeout must be a positive finite number")
+        try:
+            timeout = float(timeout_value)
+        except (TypeError, ValueError):
+            raise N8nConfigError("timeout must be a positive finite number") from None
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise N8nConfigError("timeout must be a positive finite number")
+
         return {
             "webhook_url": webhook_url,
             "auth_type": auth_type,
@@ -141,7 +152,7 @@ class DefaultRunner(Runner):
                 "header_name": config.get("header-name", ""),
                 "header_value": config.get("header-value", ""),
             },
-            "timeout": float(config.get("timeout", 120)),
+            "timeout": timeout,
             "output_key": config.get("output-key", "response"),
             "response_handling": response_handling,
             "langbot_assets_enabled": _to_bool(config.get("langbot-assets-enabled"), False),
