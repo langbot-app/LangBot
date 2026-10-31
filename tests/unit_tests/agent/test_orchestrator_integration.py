@@ -1272,8 +1272,9 @@ class TestQueryEntrySessionQueryId:
 @pytest.mark.asyncio
 @pytest.mark.parametrize('event_type', ['message.received', 'interaction.submitted'])
 @pytest.mark.parametrize('completed_message', [False, True])
+@pytest.mark.parametrize('reasoning', [False, True])
 async def test_direct_agent_streams_output_to_the_originating_platform(
-    clean_agent_state, event_type, completed_message
+    clean_agent_state, event_type, completed_message, reasoning
 ):
     from langbot.pkg.agent.runner.host_models import (
         AgentBinding,
@@ -1286,14 +1287,16 @@ async def test_direct_agent_streams_output_to_the_originating_platform(
     from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
     from langbot_plugin.api.entities.builtin.runner.input import AgentInput
 
+    first_content = '<think>Checking the request</think>hello' if reasoning else 'hello'
+    final_content = '<think>Checking the request</think>hello world' if reasoning else 'hello world'
     runner_results = [
         {
             'type': 'message.delta',
             'data': {
                 'chunk': {
                     'role': 'assistant',
-                    'content': 'hello',
-                    'all_content': 'hello',
+                    'content': first_content,
+                    'all_content': first_content,
                 }
             },
         },
@@ -1302,7 +1305,7 @@ async def test_direct_agent_streams_output_to_the_originating_platform(
         runner_results.append(
             {
                 'type': 'message.completed',
-                'data': {'message': {'role': 'assistant', 'content': 'hello world'}},
+                'data': {'message': {'role': 'assistant', 'content': final_content}},
             }
         )
     runner_results.append({'type': 'run.completed', 'data': {'finish_reason': 'stop'}})
@@ -1363,7 +1366,9 @@ async def test_direct_agent_streams_output_to_the_originating_platform(
         )
     ]
 
-    assert [item.content for item in results] == (['hello', 'hello world'] if completed_message else ['hello'])
+    assert [item.content for item in results] == (
+        [first_content, final_content] if completed_message else [first_content]
+    )
     if event_type == 'message.received':
         adapter.create_message_card.assert_awaited_once()
         chunks = adapter.reply_message_chunk.await_args_list
@@ -1398,6 +1403,27 @@ async def test_direct_agent_delivers_text_after_card_without_repeating_explicit_
     results = []
     if tool_name == 'present_interactive_card':
         results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'Before'}}})
+    else:
+        results.extend(
+            [
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<thi'}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools'}},
+                },
+                {
+                    'type': 'tool.call.completed',
+                    'data': {'tool_call_id': 'skill-1', 'tool_name': 'list_skills', 'result': {'skills': []}},
+                },
+                {
+                    'type': 'message.delta',
+                    'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>'}},
+                },
+            ]
+        )
     results.extend(
         [
             {
@@ -1412,6 +1438,13 @@ async def test_direct_agent_delivers_text_after_card_without_repeating_explicit_
     )
     if tool_name == 'present_interactive_card':
         results.append({'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'BeforeAfter'}}})
+    else:
+        results.append(
+            {
+                'type': 'message.delta',
+                'data': {'chunk': {'role': 'assistant', 'content': '<think>Checking available tools</think>After'}},
+            }
+        )
     results.extend(
         [
             {'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'After'}}},

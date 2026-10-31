@@ -1,6 +1,6 @@
 [project]
 name = "langbot-local-agent"
-version = "0.2.4"
+version = "0.2.5"
 description = "Built-in agent with model fallback, tools, and knowledge retrieval"
 requires-python = ">=3.11,<4.0"
 dependencies = [

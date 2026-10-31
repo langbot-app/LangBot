@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import asyncio
 import contextlib
+import re
 import copy
 import typing
 from uuid import uuid4
@@ -48,6 +49,14 @@ from ...telemetry import trace as trace_mod
 from ...telemetry.execution import bind_trace as bind_execution_trace
 from ...telemetry.execution import close_trace as close_execution_trace
 from ...telemetry.execution import record as record_execution
+
+
+def _visible_auto_reply_text(content: str) -> str:
+    visible = re.sub(r'<think>.*?(?:</think>|$)', '', content, flags=re.IGNORECASE | re.DOTALL)
+    for size in range(min(7, len(visible)), 0, -1):
+        if any(tag.startswith(visible[-size:].lower()) for tag in ('<think>', '</think>')):
+            return visible[:-size]
+    return visible
 
 
 class AgentRunOrchestrator:
@@ -266,6 +275,7 @@ class AgentRunOrchestrator:
         auto_reply_cumulative_text = ''
         auto_reply_prefix = ''
         auto_reply_deferred = False
+        explicit_event_reply_sent = False
         explicit_reply_text: str | None = None
         pending_explicit_replies: dict[str, str] = {}
         # A run reached without a platform ingress (WebUI debug, service API)
@@ -410,6 +420,8 @@ class AgentRunOrchestrator:
                                 and tool_definition.api == 'send_message'
                                 and not result_data.get('error')
                             )
+                            if auto_reply_deferred and result_data.get('tool_name') == 'event_reply':
+                                explicit_event_reply_sent = True
                             explicit_reply_text = pending_explicit_replies.pop(
                                 str(result_data.get('tool_call_id') or ''), None
                             )
@@ -500,15 +512,17 @@ class AgentRunOrchestrator:
                             async with binding_for(execution_query).lock:
                                 result.attachments = exported_message(execution_query, file_ids, consume=True)
 
-                        if auto_reply_enabled and result is not None:
+                        if auto_reply_enabled and not explicit_event_reply_sent and result is not None:
                             if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
                                 cumulative_text = result.all_content or result.content
                                 if isinstance(cumulative_text, str):
+                                    reply_text = _visible_auto_reply_text(cumulative_text)
                                     if auto_reply_prefix and cumulative_text.startswith(auto_reply_prefix):
-                                        reply_text = cumulative_text[len(auto_reply_prefix) :]
+                                        visible_prefix = _visible_auto_reply_text(auto_reply_prefix)
+                                        if reply_text.startswith(visible_prefix):
+                                            reply_text = reply_text[len(visible_prefix) :]
                                     else:
                                         auto_reply_prefix = ''
-                                        reply_text = cumulative_text
                                     auto_reply_cumulative_text = cumulative_text
                                     auto_reply_stream_text = reply_text
                                     if reply_text.strip() and not auto_reply_deferred:
@@ -523,8 +537,11 @@ class AgentRunOrchestrator:
                             elif has_completed_message:
                                 reply_text = result.content
                                 if isinstance(reply_text, str):
-                                    if auto_reply_prefix and reply_text.startswith(auto_reply_prefix):
-                                        reply_text = reply_text[len(auto_reply_prefix) :]
+                                    reply_text = _visible_auto_reply_text(reply_text)
+                                    if auto_reply_prefix and result.content.startswith(auto_reply_prefix):
+                                        visible_prefix = _visible_auto_reply_text(auto_reply_prefix)
+                                        if reply_text.startswith(visible_prefix):
+                                            reply_text = reply_text[len(visible_prefix) :]
                                     if reply_text.strip() and (
                                         not auto_reply_deferred
                                         or explicit_reply_text is None
