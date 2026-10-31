@@ -489,8 +489,6 @@ async def parse_wecom_bot_message(
     elif msg_json.get('chattype', '') == 'group':
         message_data['type'] = 'group'
 
-    max_inline_file_size = 5 * 1024 * 1024
-
     async def _safe_download(url: str, per_msg_aeskey: str = '') -> Tuple[Optional[bytes], Optional[str]]:
         """Download and decrypt a file, preferring per-message aeskey over platform key."""
         if not url:
@@ -508,6 +506,187 @@ async def parse_wecom_bot_message(
             return await asyncio.to_thread(_bytes_to_data_uri, data)
         return None
 
+    message_data.update(await _parse_wecom_content(msg_json, _safe_download, _safe_download_as_data_uri))
+
+    from_info = msg_json.get('from', {})
+    message_data['userid'] = from_info.get('userid', '')
+    message_data['username'] = from_info.get('alias', '') or from_info.get('name', '') or from_info.get('userid', '')
+
+    if msg_json.get('chattype', '') == 'group':
+        message_data['chatid'] = msg_json.get('chatid', '')
+        message_data['chatname'] = msg_json.get('chatname', '') or msg_json.get('chatid', '')
+
+    message_data['msgid'] = msg_json.get('msgid', '')
+
+    if msg_json.get('aibotid'):
+        message_data['aibotid'] = msg_json.get('aibotid', '')
+
+    # Handle quote (referenced message) - important for group chat file references
+    quote_info = msg_json.get('quote')
+    if quote_info:
+        message_data['quote'] = await _parse_wecom_quote(quote_info, _safe_download_as_data_uri)
+
+    return message_data
+
+
+def _wecom_file_metadata(info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'filename': info.get('filename') or info.get('name'),
+        'filesize': info.get('filesize') or info.get('size'),
+        'md5sum': info.get('md5sum') or info.get('md5'),
+        'sdkfileid': info.get('sdkfileid') or info.get('fileid'),
+        'download_url': info.get('url') or info.get('fileurl'),
+        'extra': info,
+    }
+
+
+def _wecom_voice_metadata(info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'url': info.get('url'),
+        'md5sum': info.get('md5sum') or info.get('md5'),
+        'filesize': info.get('filesize') or info.get('size'),
+        'sdkfileid': info.get('sdkfileid') or info.get('fileid'),
+    }
+
+
+def _wecom_video_metadata(info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        'url': info.get('url'),
+        'filesize': info.get('filesize') or info.get('size'),
+        'sdkfileid': info.get('sdkfileid') or info.get('fileid'),
+        'md5sum': info.get('md5sum') or info.get('md5'),
+        'filename': info.get('filename') or info.get('name'),
+    }
+
+
+async def _parse_wecom_mixed(
+    items: list[dict[str, Any]], _safe_download: Callable, _safe_download_as_data_uri: Callable
+) -> dict[str, Any]:
+    message_data = {}
+    max_inline_file_size = 5 * 1024 * 1024
+    texts = []
+    images = []
+    files = []
+    voices = []
+    videos = []
+    links = []
+    for item in items:
+        item_type = item.get('msgtype')
+        if item_type == 'text':
+            texts.append(item.get('text', {}).get('content', ''))
+        elif item_type == 'image':
+            img_info = item.get('image', {})
+            img_url = img_info.get('url')
+            img_aeskey = img_info.get('aeskey', '')
+            base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+            if base64_data:
+                images.append(base64_data)
+        elif item_type == 'file':
+            file_info = item.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            item_aeskey = file_info.get('aeskey', '')
+            file_data = _wecom_file_metadata(file_info)
+            if (file_data.get('filesize') or 0) <= max_inline_file_size:
+                file_bytes, dl_filename = await _safe_download(download_url, item_aeskey)
+                if file_bytes:
+                    file_data['base64'] = await asyncio.to_thread(
+                        _bytes_to_data_uri,
+                        file_bytes,
+                    )
+                    if dl_filename and not file_data.get('filename'):
+                        file_data['filename'] = dl_filename
+            files.append(file_data)
+        elif item_type == 'voice':
+            voice_info = item.get('voice', {}) or {}
+            download_url = voice_info.get('url')
+            item_aeskey = voice_info.get('aeskey', '')
+            voice_data = _wecom_voice_metadata(voice_info)
+            if voice_info.get('content'):
+                texts.append(voice_info.get('content'))
+            if (voice_data.get('filesize') or 0) <= max_inline_file_size:
+                voice_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
+                if voice_base64:
+                    voice_data['base64'] = voice_base64
+            voices.append(voice_data)
+        elif item_type == 'video':
+            video_info = item.get('video', {}) or {}
+            download_url = video_info.get('url')
+            item_aeskey = video_info.get('aeskey', '')
+            video_data = _wecom_video_metadata(video_info)
+            if (video_data.get('filesize') or 0) <= max_inline_file_size:
+                video_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
+                if video_base64:
+                    video_data['base64'] = video_base64
+            videos.append(video_data)
+        elif item_type == 'link':
+            links.append(item.get('link', {}))
+
+    if texts:
+        message_data['content'] = ' '.join(texts)
+    if images:
+        message_data['images'] = images
+        message_data['picurl'] = images[0]
+    if files:
+        message_data['files'] = files
+        message_data['file'] = files[0]
+    if voices:
+        message_data['voices'] = voices
+        message_data['voice'] = voices[0]
+    if videos:
+        message_data['videos'] = videos
+        message_data['video'] = videos[0]
+    if links:
+        message_data['link'] = links[0]
+    if items:
+        message_data['attachments'] = items
+
+    return message_data
+
+
+async def _parse_wecom_quoted_mixed(
+    items: list[dict[str, Any]], _safe_download_as_data_uri: Callable
+) -> dict[str, Any]:
+    quote_data = {}
+    texts = []
+    images = []
+    files = []
+    for item in items:
+        item_type = item.get('msgtype')
+        if item_type == 'text':
+            texts.append(item.get('text', {}).get('content', ''))
+        elif item_type == 'image':
+            img_info = item.get('image', {})
+            img_url = img_info.get('url')
+            img_aeskey = img_info.get('aeskey', '')
+            base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+            if base64_data:
+                images.append(base64_data)
+        elif item_type == 'file':
+            file_info = item.get('file', {}) or {}
+            download_url = file_info.get('url') or file_info.get('fileurl')
+            item_aeskey = file_info.get('aeskey', '')
+            file_data = _wecom_file_metadata(file_info)
+            # Same as private chat: append aeskey to download_url for plugin processing
+            if download_url and item_aeskey:
+                file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+            files.append(file_data)
+    if texts:
+        quote_data['content'] = ' '.join(texts)
+    if images:
+        quote_data['images'] = images
+        quote_data['picurl'] = images[0]
+    if files:
+        quote_data['files'] = files
+        quote_data['file'] = files[0]
+
+    return quote_data
+
+
+async def _parse_wecom_content(
+    msg_json: dict[str, Any], _safe_download: Callable, _safe_download_as_data_uri: Callable
+) -> dict[str, Any]:
+    message_data = {}
+    msg_type = msg_json.get('msgtype', '')
     if msg_type == 'text':
         message_data['content'] = msg_json.get('text', {}).get('content')
     elif msg_type == 'markdown':
@@ -526,12 +705,7 @@ async def parse_wecom_bot_message(
         voice_info = msg_json.get('voice', {}) or {}
         download_url = voice_info.get('url')
         per_msg_aeskey = voice_info.get('aeskey', '')
-        message_data['voice'] = {
-            'url': download_url,
-            'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
-            'filesize': voice_info.get('filesize') or voice_info.get('size'),
-            'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
-        }
+        message_data['voice'] = _wecom_voice_metadata(voice_info)
         if voice_info.get('content'):
             message_data['content'] = voice_info.get('content')
         # if (message_data['voice'].get('filesize') or 0) <= max_inline_file_size:
@@ -542,13 +716,7 @@ async def parse_wecom_bot_message(
         video_info = msg_json.get('video', {}) or {}
         download_url = video_info.get('url')
         per_msg_aeskey = video_info.get('aeskey', '')
-        video_data = {
-            'url': download_url,
-            'filesize': video_info.get('filesize') or video_info.get('size'),
-            'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
-            'md5sum': video_info.get('md5sum') or video_info.get('md5'),
-            'filename': video_info.get('filename') or video_info.get('name'),
-        }
+        video_data = _wecom_video_metadata(video_info)
         # if (video_data.get('filesize') or 0) <= max_inline_file_size:
         #     video_base64 = await _safe_download_as_data_uri(download_url, per_msg_aeskey)
         #     if video_base64:
@@ -560,14 +728,7 @@ async def parse_wecom_bot_message(
         file_info = msg_json.get('file', {}) or {}
         download_url = file_info.get('url') or file_info.get('fileurl')
         per_msg_aeskey = file_info.get('aeskey', '')
-        file_data = {
-            'filename': file_info.get('filename') or file_info.get('name'),
-            'filesize': file_info.get('filesize') or file_info.get('size'),
-            'md5sum': file_info.get('md5sum') or file_info.get('md5'),
-            'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
-            'download_url': download_url,
-            'extra': file_info,
-        }
+        file_data = _wecom_file_metadata(file_info)
         # if (file_data.get('filesize') or 0) <= max_inline_file_size:
         #     file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
         #     if file_bytes:
@@ -585,231 +746,74 @@ async def parse_wecom_bot_message(
             desc = message_data['link'].get('description') or message_data['link'].get('digest', '')
             message_data['content'] = '\n'.join(filter(None, [title, desc]))
     elif msg_type == 'mixed':
-        items = msg_json.get('mixed', {}).get('msg_item', [])
-        texts = []
-        images = []
-        files = []
-        voices = []
-        videos = []
-        links = []
-        for item in items:
-            item_type = item.get('msgtype')
-            if item_type == 'text':
-                texts.append(item.get('text', {}).get('content', ''))
-            elif item_type == 'image':
-                img_info = item.get('image', {})
-                img_url = img_info.get('url')
-                img_aeskey = img_info.get('aeskey', '')
-                base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
-                if base64_data:
-                    images.append(base64_data)
-            elif item_type == 'file':
-                file_info = item.get('file', {}) or {}
-                download_url = file_info.get('url') or file_info.get('fileurl')
-                item_aeskey = file_info.get('aeskey', '')
-                file_data = {
-                    'filename': file_info.get('filename') or file_info.get('name'),
-                    'filesize': file_info.get('filesize') or file_info.get('size'),
-                    'md5sum': file_info.get('md5sum') or file_info.get('md5'),
-                    'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
-                    'download_url': download_url,
-                    'extra': file_info,
-                }
-                if (file_data.get('filesize') or 0) <= max_inline_file_size:
-                    file_bytes, dl_filename = await _safe_download(download_url, item_aeskey)
-                    if file_bytes:
-                        file_data['base64'] = await asyncio.to_thread(
-                            _bytes_to_data_uri,
-                            file_bytes,
-                        )
-                        if dl_filename and not file_data.get('filename'):
-                            file_data['filename'] = dl_filename
-                files.append(file_data)
-            elif item_type == 'voice':
-                voice_info = item.get('voice', {}) or {}
-                download_url = voice_info.get('url')
-                item_aeskey = voice_info.get('aeskey', '')
-                voice_data = {
-                    'url': download_url,
-                    'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
-                    'filesize': voice_info.get('filesize') or voice_info.get('size'),
-                    'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
-                }
-                if voice_info.get('content'):
-                    texts.append(voice_info.get('content'))
-                if (voice_data.get('filesize') or 0) <= max_inline_file_size:
-                    voice_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
-                    if voice_base64:
-                        voice_data['base64'] = voice_base64
-                voices.append(voice_data)
-            elif item_type == 'video':
-                video_info = item.get('video', {}) or {}
-                download_url = video_info.get('url')
-                item_aeskey = video_info.get('aeskey', '')
-                video_data = {
-                    'url': download_url,
-                    'filesize': video_info.get('filesize') or video_info.get('size'),
-                    'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
-                    'md5sum': video_info.get('md5sum') or video_info.get('md5'),
-                    'filename': video_info.get('filename') or video_info.get('name'),
-                }
-                if (video_data.get('filesize') or 0) <= max_inline_file_size:
-                    video_base64 = await _safe_download_as_data_uri(download_url, item_aeskey)
-                    if video_base64:
-                        video_data['base64'] = video_base64
-                videos.append(video_data)
-            elif item_type == 'link':
-                links.append(item.get('link', {}))
-
-        if texts:
-            message_data['content'] = ' '.join(texts)
-        if images:
-            message_data['images'] = images
-            message_data['picurl'] = images[0]
-        if files:
-            message_data['files'] = files
-            message_data['file'] = files[0]
-        if voices:
-            message_data['voices'] = voices
-            message_data['voice'] = voices[0]
-        if videos:
-            message_data['videos'] = videos
-            message_data['video'] = videos[0]
-        if links:
-            message_data['link'] = links[0]
-        if items:
-            message_data['attachments'] = items
+        message_data.update(
+            await _parse_wecom_mixed(
+                msg_json.get('mixed', {}).get('msg_item', []), _safe_download, _safe_download_as_data_uri
+            )
+        )
     else:
         message_data['raw_msg'] = msg_json
 
-    from_info = msg_json.get('from', {})
-    message_data['userid'] = from_info.get('userid', '')
-    message_data['username'] = from_info.get('alias', '') or from_info.get('name', '') or from_info.get('userid', '')
-
-    if msg_json.get('chattype', '') == 'group':
-        message_data['chatid'] = msg_json.get('chatid', '')
-        message_data['chatname'] = msg_json.get('chatname', '') or msg_json.get('chatid', '')
-
-    message_data['msgid'] = msg_json.get('msgid', '')
-
-    if msg_json.get('aibotid'):
-        message_data['aibotid'] = msg_json.get('aibotid', '')
-
-    # Handle quote (referenced message) - important for group chat file references
-    quote_info = msg_json.get('quote')
-    if quote_info:
-        quote_data: dict[str, Any] = {}
-        quote_type = quote_info.get('msgtype', '')
-        quote_data['msgtype'] = quote_type
-
-        if quote_type == 'text':
-            quote_data['content'] = quote_info.get('text', {}).get('content', '')
-        elif quote_type == 'image':
-            img_info = quote_info.get('image', {})
-            img_url = img_info.get('url', '')
-            img_aeskey = img_info.get('aeskey', '')
-            base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
-            if base64_data:
-                quote_data['picurl'] = base64_data
-                quote_data['images'] = [base64_data]
-        elif quote_type == 'file':
-            file_info = quote_info.get('file', {}) or {}
-            download_url = file_info.get('url') or file_info.get('fileurl')
-            item_aeskey = file_info.get('aeskey', '')
-            file_data = {
-                'filename': file_info.get('filename') or file_info.get('name'),
-                'filesize': file_info.get('filesize') or file_info.get('size'),
-                'md5sum': file_info.get('md5sum') or file_info.get('md5'),
-                'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
-                'download_url': download_url,
-                'extra': file_info,
-            }
-            # Same as private chat: append aeskey to download_url for plugin processing
-            if download_url and item_aeskey:
-                file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
-            quote_data['file'] = file_data
-        elif quote_type == 'voice':
-            voice_info = quote_info.get('voice', {}) or {}
-            download_url = voice_info.get('url')
-            item_aeskey = voice_info.get('aeskey', '')
-            voice_data = {
-                'url': download_url,
-                'md5sum': voice_info.get('md5sum') or voice_info.get('md5'),
-                'filesize': voice_info.get('filesize') or voice_info.get('size'),
-                'sdkfileid': voice_info.get('sdkfileid') or voice_info.get('fileid'),
-            }
-            if voice_info.get('content'):
-                quote_data['content'] = voice_info.get('content')
-            # Same as private chat: append aeskey to url for plugin processing
-            if download_url and item_aeskey:
-                voice_data['url'] = download_url + f'?aeskey={item_aeskey}'
-            quote_data['voice'] = voice_data
-        elif quote_type == 'video':
-            video_info = quote_info.get('video', {}) or {}
-            download_url = video_info.get('url')
-            item_aeskey = video_info.get('aeskey', '')
-            video_data = {
-                'url': download_url,
-                'filesize': video_info.get('filesize') or video_info.get('size'),
-                'sdkfileid': video_info.get('sdkfileid') or video_info.get('fileid'),
-                'md5sum': video_info.get('md5sum') or video_info.get('md5'),
-                'filename': video_info.get('filename') or video_info.get('name'),
-            }
-            # Same as private chat: append aeskey to download_url for plugin processing
-            if download_url and item_aeskey:
-                video_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
-            quote_data['video'] = video_data
-        elif quote_type == 'link':
-            quote_data['link'] = quote_info.get('link', {})
-            link = quote_data['link']
-            title = link.get('title', '')
-            desc = link.get('description') or link.get('digest', '')
-            quote_data['content'] = '\n'.join(filter(None, [title, desc]))
-        elif quote_type == 'mixed':
-            # Handle mixed type in quote (text + images + files etc.)
-            items = quote_info.get('mixed', {}).get('msg_item', [])
-            texts = []
-            images = []
-            files = []
-            for item in items:
-                item_type = item.get('msgtype')
-                if item_type == 'text':
-                    texts.append(item.get('text', {}).get('content', ''))
-                elif item_type == 'image':
-                    img_info = item.get('image', {})
-                    img_url = img_info.get('url')
-                    img_aeskey = img_info.get('aeskey', '')
-                    base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
-                    if base64_data:
-                        images.append(base64_data)
-                elif item_type == 'file':
-                    file_info = item.get('file', {}) or {}
-                    download_url = file_info.get('url') or file_info.get('fileurl')
-                    item_aeskey = file_info.get('aeskey', '')
-                    file_data = {
-                        'filename': file_info.get('filename') or file_info.get('name'),
-                        'filesize': file_info.get('filesize') or file_info.get('size'),
-                        'md5sum': file_info.get('md5sum') or file_info.get('md5'),
-                        'sdkfileid': file_info.get('sdkfileid') or file_info.get('fileid'),
-                        'download_url': download_url,
-                        'extra': file_info,
-                    }
-                    # Same as private chat: append aeskey to download_url for plugin processing
-                    if download_url and item_aeskey:
-                        file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
-                    files.append(file_data)
-            if texts:
-                quote_data['content'] = ' '.join(texts)
-            if images:
-                quote_data['images'] = images
-                quote_data['picurl'] = images[0]
-            if files:
-                quote_data['files'] = files
-                quote_data['file'] = files[0]
-
-        message_data['quote'] = quote_data
-
     return message_data
+
+
+async def _parse_wecom_quote(quote_info: dict[str, Any], _safe_download_as_data_uri: Callable) -> dict[str, Any]:
+    quote_data: dict[str, Any] = {}
+    quote_type = quote_info.get('msgtype', '')
+    quote_data['msgtype'] = quote_type
+
+    if quote_type == 'text':
+        quote_data['content'] = quote_info.get('text', {}).get('content', '')
+    elif quote_type == 'image':
+        img_info = quote_info.get('image', {})
+        img_url = img_info.get('url', '')
+        img_aeskey = img_info.get('aeskey', '')
+        base64_data = await _safe_download_as_data_uri(img_url, img_aeskey)
+        if base64_data:
+            quote_data['picurl'] = base64_data
+            quote_data['images'] = [base64_data]
+    elif quote_type == 'file':
+        file_info = quote_info.get('file', {}) or {}
+        download_url = file_info.get('url') or file_info.get('fileurl')
+        item_aeskey = file_info.get('aeskey', '')
+        file_data = _wecom_file_metadata(file_info)
+        # Same as private chat: append aeskey to download_url for plugin processing
+        if download_url and item_aeskey:
+            file_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+        quote_data['file'] = file_data
+    elif quote_type == 'voice':
+        voice_info = quote_info.get('voice', {}) or {}
+        download_url = voice_info.get('url')
+        item_aeskey = voice_info.get('aeskey', '')
+        voice_data = _wecom_voice_metadata(voice_info)
+        if voice_info.get('content'):
+            quote_data['content'] = voice_info.get('content')
+        # Same as private chat: append aeskey to url for plugin processing
+        if download_url and item_aeskey:
+            voice_data['url'] = download_url + f'?aeskey={item_aeskey}'
+        quote_data['voice'] = voice_data
+    elif quote_type == 'video':
+        video_info = quote_info.get('video', {}) or {}
+        download_url = video_info.get('url')
+        item_aeskey = video_info.get('aeskey', '')
+        video_data = _wecom_video_metadata(video_info)
+        # Same as private chat: append aeskey to download_url for plugin processing
+        if download_url and item_aeskey:
+            video_data['download_url'] = download_url + f'?aeskey={item_aeskey}'
+        quote_data['video'] = video_data
+    elif quote_type == 'link':
+        quote_data['link'] = quote_info.get('link', {})
+        link = quote_data['link']
+        title = link.get('title', '')
+        desc = link.get('description') or link.get('digest', '')
+        quote_data['content'] = '\n'.join(filter(None, [title, desc]))
+    elif quote_type == 'mixed':
+        # Handle mixed type in quote (text + images + files etc.)
+        quote_data.update(
+            await _parse_wecom_quoted_mixed(quote_info.get('mixed', {}).get('msg_item', []), _safe_download_as_data_uri)
+        )
+
+    return quote_data
 
 
 def _wecom_button_style(action: dict, *, selected: bool = False) -> int:
