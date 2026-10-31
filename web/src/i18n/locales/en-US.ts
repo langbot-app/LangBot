@@ -899,6 +899,10 @@ const enUS = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: 'Processor unavailable',
+      instanceHint: 'Bind a configured command processor.',
+      createDefault: 'Create default instance',
+      createDefaultHint: 'Use command defaults.',
       title: 'Plugin Command Bindings',
       description:
         'Only applies to message.received events; when a plugin command matches, execution happens directly at the routing layer and bypasses plugin processors, routing rules, and pipelines.',
@@ -1426,6 +1430,15 @@ const enUS = {
       execution: 'Execution steps',
       rawEvents: 'Raw run events',
       inputUnavailable: 'Input was not recorded for this run.',
+    },
+    commandProcessor: {
+      type: 'Command processor',
+      plugin: 'Plugin',
+      selectPlugin: 'Select plugin',
+      unavailable: 'Plugin unavailable',
+      noSettings: 'No command settings',
+      notice: 'Handle plugin commands before event routing.',
+      bindBot: 'Bind to bot',
     },
     eventProcessor: {
       configurations: 'Plugin processor configurations',

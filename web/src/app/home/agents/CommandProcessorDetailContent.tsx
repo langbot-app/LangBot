@@ -233,12 +233,20 @@ export default function CommandProcessorDetailContent({
                         {command.name}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        {extractI18nObject(command.label)}
+                        {extractI18nObject({
+                          en_US: command.name,
+                          zh_Hans: command.name,
+                          ...command.label,
+                        })}
                       </span>
                     </div>
                     {command.description && (
                       <p className="text-xs text-muted-foreground">
-                        {extractI18nObject(command.description)}
+                        {extractI18nObject({
+                          en_US: '',
+                          zh_Hans: '',
+                          ...command.description,
+                        })}
                       </p>
                     )}
                     {command.config_schema.length === 0 ? (

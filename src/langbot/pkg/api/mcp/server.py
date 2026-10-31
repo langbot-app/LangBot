@@ -472,7 +472,9 @@ class LangBotMCPServer:
             return _dump({'ok': True})
 
         # ----- Processors ---------------------------------------------- #
-        @mcp.tool(description='List product-level processors: Agents, Pipelines, Event processors and Command processors.')
+        @mcp.tool(
+            description='List product-level processors: Agents, Pipelines, Event processors and Command processors.'
+        )
         async def list_processors() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.agent_service.get_agents(context))

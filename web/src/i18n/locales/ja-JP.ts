@@ -903,6 +903,10 @@ const jaJP = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: 'プロセッサーが見つかりません',
+      instanceHint: '設定済みプロセッサーを紐付けます。',
+      createDefault: '既定のインスタンスを作成',
+      createDefaultHint: 'コマンドの既定設定を使用します。',
       title: 'プラグインコマンドバインド',
       description:
         'message.received イベントにのみ適用されます。プラグインコマンドに一致した場合、プラグインプロセッサ、ルーティングルール、パイプラインをスキップして直接実行されます。',
@@ -1434,6 +1438,15 @@ const jaJP = {
       execution: '実行過程',
       rawEvents: '生の実行イベント',
       inputUnavailable: 'この実行の入力は記録されていません。',
+    },
+    commandProcessor: {
+      type: 'コマンドプロセッサー',
+      plugin: 'プラグイン',
+      selectPlugin: 'プラグインを選択',
+      unavailable: 'プラグインは利用できません',
+      noSettings: '設定項目はありません',
+      notice: 'イベントルーティングの前にコマンドを処理します。',
+      bindBot: 'ボットに紐付け',
     },
     eventProcessor: {
       configurations: 'プラグインプロセッサー設定',

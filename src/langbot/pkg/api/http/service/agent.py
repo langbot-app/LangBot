@@ -687,8 +687,10 @@ class AgentService:
             command_config[name] = values
 
         config = {'plugin': {'id': plugin_id}, 'command_config': command_config}
-        return config, command_processor.component_ref_for_plugin(plugin_id), list(
-            command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS
+        return (
+            config,
+            command_processor.component_ref_for_plugin(plugin_id),
+            list(command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS),
         )
 
     async def get_processor_runs(self, context, processor_id, *, before_id=None):

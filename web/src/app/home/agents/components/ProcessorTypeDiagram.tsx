@@ -459,6 +459,13 @@ function RunnerDiagram() {
 }
 
 export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  const { t } = useTranslation();
+  if (kind === 'command_processor')
+    return (
+      <div className="p-8 text-sm text-muted-foreground">
+        {t('agents.commandProcessor.notice')}
+      </div>
+    );
   if (kind === 'event_processor') return <RunnerDiagram />;
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

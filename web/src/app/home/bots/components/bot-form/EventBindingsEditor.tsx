@@ -669,7 +669,7 @@ function TargetCombobox({
                   agent.kind === 'pipeline'
                     ? pipelineAllowed
                     : agentSupportsEventPattern(agent, binding.event_pattern);
-                if (compatible) {
+                if (compatible && agent.kind !== 'command_processor') {
                   onUpdate({ target_type: agent.kind, target_uuid: id });
                 } else {
                   toast.warning(t('botSetup.incompatible'));

@@ -220,9 +220,18 @@ function SortableProcessorItem({
           ) : (
             <div className="flex flex-col gap-2">
               {commands.map((cmd) => {
-                const cmdLabel = extractI18nObject(cmd.label) || cmd.name;
+                const cmdLabel =
+                  extractI18nObject({
+                    en_US: cmd.name,
+                    zh_Hans: cmd.name,
+                    ...cmd.label,
+                  }) || cmd.name;
                 const cmdDesc = cmd.description
-                  ? extractI18nObject(cmd.description)
+                  ? extractI18nObject({
+                      en_US: '',
+                      zh_Hans: '',
+                      ...cmd.description,
+                    })
                   : '';
                 const conflictWith = overriddenCommands.get(
                   `${binding.processor_uuid}:${cmd.name}`,
@@ -443,7 +452,10 @@ export default function PluginCommandBindings({
     update({
       processors: [
         ...bindings,
-        ...selected.map((processor_uuid) => ({ processor_uuid, enabled: true })),
+        ...selected.map((processor_uuid) => ({
+          processor_uuid,
+          enabled: true,
+        })),
       ],
     });
     setDialogOpen(false);

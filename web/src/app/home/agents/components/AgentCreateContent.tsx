@@ -4,7 +4,14 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow, Puzzle } from 'lucide-react';
+import { Bot, Workflow, Puzzle, SquareTerminal } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
@@ -61,18 +68,28 @@ export default function AgentCreateContent({
     void loadMetadata();
   }, [loadMetadata]);
   const runnerOptions =
-    kind === 'event_processor'
-      ? (metadata?.event_processors ?? []).map((item) => ({
+    kind === 'command_processor'
+      ? (metadata?.command_processors ?? []).map((item) => ({
           name: item.id,
-          label: { en_US: item.id, zh_Hans: item.id, ...item.label },
+          label: {
+            en_US: item.plugin_id,
+            zh_Hans: item.plugin_id,
+          },
         }))
-      : (metadata?.runner_config?.stages
-          .find((stage) => stage.name === 'runner')
-          ?.config.find((item) => item.name === 'id')?.options ?? []);
+      : kind === 'event_processor'
+        ? (metadata?.event_processors ?? []).map((item) => ({
+            name: item.id,
+            label: { en_US: item.id, zh_Hans: item.id, ...item.label },
+          }))
+        : (metadata?.runner_config?.stages
+            .find((stage) => stage.name === 'runner')
+            ?.config.find((item) => item.name === 'id')?.options ?? []);
   const selectorLabel = t(
-    kind === 'event_processor'
-      ? 'agents.selectProcessorPlugin'
-      : 'agents.selectAgentRunner',
+    kind === 'command_processor'
+      ? 'agents.commandProcessor.selectPlugin'
+      : kind === 'event_processor'
+        ? 'agents.selectProcessorPlugin'
+        : 'agents.selectAgentRunner',
   );
   const formSchema = z.object({
     name: z.string().min(1, { message: t('agents.nameRequired') }),
@@ -104,14 +121,22 @@ export default function AgentCreateContent({
 
   function handleKindChange(nextKind: AgentKind) {
     const previousDefaultEmoji =
-      kind === 'pipeline' ? '⚙️' : kind === 'event_processor' ? '🧩' : '🤖';
+      kind === 'pipeline'
+        ? '⚙️'
+        : kind === 'command_processor'
+          ? '⌨️'
+          : kind === 'event_processor'
+            ? '🧩'
+            : '🤖';
     const nextDefaultEmoji =
       nextKind === 'pipeline'
         ? '⚙️'
-        : nextKind === 'event_processor'
-          ? '🧩'
-          : '🤖';
-    if ((kind === 'event_processor') !== (nextKind === 'event_processor')) {
+        : nextKind === 'command_processor'
+          ? '⌨️'
+          : nextKind === 'event_processor'
+            ? '🧩'
+            : '🤖';
+    if (kind !== nextKind) {
       setRunner('');
     }
     setKind(nextKind);
@@ -197,7 +222,9 @@ export default function AgentCreateContent({
           description: '',
           emoji: values.emoji,
           component_ref: runner,
-          ...(kind === 'event_processor' ? {} : { config }),
+          ...(kind === 'event_processor' || kind === 'command_processor'
+            ? {}
+            : { config }),
         });
         toast.success(t('agents.createSuccess'));
         onCreated(response.uuid);
@@ -210,6 +237,12 @@ export default function AgentCreateContent({
     }
   }
   const typeOptions = [
+    {
+      kind: 'command_processor' as const,
+      icon: SquareTerminal,
+      title: t('agents.commandProcessor.type'),
+      description: t('agents.commandProcessor.notice'),
+    },
     {
       kind: 'pipeline' as const,
       icon: Workflow,
@@ -333,55 +366,79 @@ export default function AgentCreateContent({
                     >
                       <div className="space-y-2">
                         <p className="text-sm font-medium">{selectorLabel}</p>
-                        <RunnerSelect
-                          key={kind === 'event_processor' ? 'event' : 'agent'}
-                          usage={kind === 'event_processor' ? 'event' : 'agent'}
-                          options={runnerOptions}
-                          label={selectorLabel}
-                          value={runner}
-                          onValueChange={selectRunner}
-                          disabled={loading || form.formState.isSubmitting}
-                          installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
-                          onInstalled={(installed) => {
-                            setMetadata((previous) =>
-                              previous
-                                ? {
-                                    ...previous,
-                                    runner_config: installed.configTab,
-                                  }
-                                : previous,
-                            );
-                            selectRunner(
-                              installed.runner.name,
-                              extractI18nObject(installed.runner.label),
-                            );
-                          }}
-                          onEventProcessorInstalled={(component) => {
-                            setMetadata((previous) =>
-                              previous
-                                ? {
-                                    ...previous,
-                                    event_processors: [
-                                      ...(
-                                        previous.event_processors ?? []
-                                      ).filter(
-                                        (item) => item.id !== component.id,
-                                      ),
-                                      component,
-                                    ],
-                                  }
-                                : previous,
-                            );
-                            selectRunner(
-                              component.id,
-                              extractI18nObject({
-                                en_US: component.id,
-                                zh_Hans: component.id,
-                                ...component.label,
-                              }),
-                            );
-                          }}
-                        />
+                        {kind === 'command_processor' ? (
+                          <Select
+                            value={runner}
+                            onValueChange={selectRunner}
+                            disabled={loading || form.formState.isSubmitting}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={selectorLabel} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {runnerOptions.map((option) => (
+                                <SelectItem
+                                  key={option.name}
+                                  value={option.name}
+                                >
+                                  {extractI18nObject(option.label)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <RunnerSelect
+                            key={kind === 'event_processor' ? 'event' : 'agent'}
+                            usage={
+                              kind === 'event_processor' ? 'event' : 'agent'
+                            }
+                            options={runnerOptions}
+                            label={selectorLabel}
+                            value={runner}
+                            onValueChange={selectRunner}
+                            disabled={loading || form.formState.isSubmitting}
+                            installScope={`processor-create-${kind === 'event_processor' ? 'event' : 'agent'}`}
+                            onInstalled={(installed) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      runner_config: installed.configTab,
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(
+                                installed.runner.name,
+                                extractI18nObject(installed.runner.label),
+                              );
+                            }}
+                            onEventProcessorInstalled={(component) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      event_processors: [
+                                        ...(
+                                          previous.event_processors ?? []
+                                        ).filter(
+                                          (item) => item.id !== component.id,
+                                        ),
+                                        component,
+                                      ],
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(
+                                component.id,
+                                extractI18nObject({
+                                  en_US: component.id,
+                                  zh_Hans: component.id,
+                                  ...component.label,
+                                }),
+                              );
+                            }}
+                          />
+                        )}
                       </div>
                       <div className="flex gap-4 items-start">
                         <FormField

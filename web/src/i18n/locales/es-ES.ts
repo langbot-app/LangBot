@@ -914,6 +914,10 @@ const esES = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: 'Procesador no disponible',
+      instanceHint: 'Vincula un procesador configurado.',
+      createDefault: 'Crear instancia predeterminada',
+      createDefaultHint: 'Usa los valores predeterminados.',
       title: 'Vinculaciones de comandos de complementos',
       description:
         'Solo se aplica a eventos message.received; al coincidir con un comando de complemento, se ejecuta directamente en la capa de enrutamiento omitiendo procesadores de complementos, reglas de enrutamiento y pipelines.',
@@ -1447,6 +1451,15 @@ const esES = {
       execution: 'Pasos de ejecución',
       rawEvents: 'Eventos sin procesar',
       inputUnavailable: 'No se registró la entrada de esta ejecución.',
+    },
+    commandProcessor: {
+      type: 'Procesador de comandos',
+      plugin: 'Plugin',
+      selectPlugin: 'Seleccionar plugin',
+      unavailable: 'Plugin no disponible',
+      noSettings: 'Sin ajustes',
+      notice: 'Procesa comandos antes del enrutamiento.',
+      bindBot: 'Vincular a bot',
     },
     eventProcessor: {
       configurations: 'Configuraciones de procesadores de plugins',

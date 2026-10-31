@@ -850,6 +850,10 @@ const zhHant = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: '處理器不存在',
+      instanceHint: '綁定已設定的命令處理器。',
+      createDefault: '建立預設實例',
+      createDefaultHint: '使用命令預設設定。',
       title: '外掛程式命令綁定',
       description:
         '僅對 message.received 訊息事件生效；命中外掛程式命令後，不再進入外掛程式處理器、路由規則和流水線。',
@@ -1338,6 +1342,15 @@ const zhHant = {
       execution: '執行過程',
       rawEvents: '原始執行事件',
       inputUnavailable: '此次執行未記錄輸入內容。',
+    },
+    commandProcessor: {
+      type: '命令處理器',
+      plugin: '外掛',
+      selectPlugin: '選擇外掛',
+      unavailable: '外掛無法使用',
+      noSettings: '此命令沒有設定項目',
+      notice: '在事件路由前處理外掛命令。',
+      bindBot: '綁定到機器人',
     },
     eventProcessor: {
       configurations: '外掛處理器設定',

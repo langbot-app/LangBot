@@ -898,6 +898,10 @@ const viVN = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: 'Không tìm thấy bộ xử lý',
+      instanceHint: 'Liên kết bộ xử lý đã cấu hình.',
+      createDefault: 'Tạo phiên bản mặc định',
+      createDefaultHint: 'Dùng cấu hình mặc định.',
       title: 'Ràng buộc lệnh plugin',
       description:
         'Chỉ áp dụng cho các sự kiện message.received; khi khớp lệnh plugin, lệnh sẽ thực thi trực tiếp tại tầng định tuyến, bỏ qua bộ xử lý plugin, quy tắc định tuyến và pipeline.',
@@ -1418,6 +1422,15 @@ const viVN = {
       execution: 'Quá trình thực thi',
       rawEvents: 'Sự kiện gốc',
       inputUnavailable: 'Đầu vào của lượt chạy này chưa được ghi lại.',
+    },
+    commandProcessor: {
+      type: 'Bộ xử lý lệnh',
+      plugin: 'Plugin',
+      selectPlugin: 'Chọn plugin',
+      unavailable: 'Plugin không khả dụng',
+      noSettings: 'Không có cài đặt',
+      notice: 'Xử lý lệnh trước khi định tuyến sự kiện.',
+      bindBot: 'Liên kết với bot',
     },
     eventProcessor: {
       configurations: 'Cấu hình bộ xử lý plugin',

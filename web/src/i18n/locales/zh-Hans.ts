@@ -854,6 +854,10 @@ const zhHans = {
   },
   bots: {
     pluginCommands: {
+      missingProcessor: '处理器不存在',
+      instanceHint: '绑定已配置的命令处理器。',
+      createDefault: '创建默认实例',
+      createDefaultHint: '使用命令默认配置。',
       title: '插件命令绑定',
       description:
         '仅对 message.received 消息事件生效；命中插件命令后，不再进入插件处理器、路由规则和流水线。',
@@ -1340,6 +1344,15 @@ const zhHans = {
       execution: '执行过程',
       rawEvents: '原始运行事件',
       inputUnavailable: '这次运行未记录输入内容。',
+    },
+    commandProcessor: {
+      type: '命令处理器',
+      plugin: '插件',
+      selectPlugin: '选择插件',
+      unavailable: '插件不可用',
+      noSettings: '此命令没有配置项',
+      notice: '在事件路由前处理插件命令。',
+      bindBot: '绑定到机器人',
     },
     eventProcessor: {
       configurations: '插件处理器配置',

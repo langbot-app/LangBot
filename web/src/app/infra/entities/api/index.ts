@@ -184,10 +184,7 @@ export interface ApiRespPipelines {
 }
 
 export type AgentKind =
-  | 'agent'
-  | 'pipeline'
-  | 'event_processor'
-  | 'command_processor';
+  'agent' | 'pipeline' | 'event_processor' | 'command_processor';
 
 export interface RunnerDescriptor {
   id: string;
@@ -387,7 +384,7 @@ export interface PluginProcessorBinding {
 export interface EventBinding {
   id?: string;
   event_pattern: string;
-  target_type: AgentKind | 'discard';
+  target_type: Exclude<AgentKind, 'command_processor'> | 'discard';
   target_uuid: string;
   filters?: Array<Record<string, unknown>>;
   priority: number;
