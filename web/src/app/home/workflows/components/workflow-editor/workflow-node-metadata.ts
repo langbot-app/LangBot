@@ -45,9 +45,7 @@ function resolveNodeTypeCategory(type: string): string {
   return 'process';
 }
 
-function normalizePort(
-  port: WorkflowPortDefinition,
-): WorkflowPortDefinition {
+function normalizePort(port: WorkflowPortDefinition): WorkflowPortDefinition {
   return {
     ...port,
     type: port.type || 'any',

@@ -19,6 +19,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import DynamicFormComponent from '@/app/home/components/dynamic-form/DynamicFormComponent';
+import WorkflowReferenceField from './WorkflowReferenceField';
 import { IDynamicFormItemSchema } from '@/app/infra/entities/form/dynamic';
 import i18n from 'i18next';
 import { I18nObject } from '@/app/infra/entities/common';
@@ -264,7 +265,9 @@ export default function PropertyPanel({
     if (!selectedNode) return null;
 
     const nodeType = selectedNode.data.type;
-    const shortName = nodeType.includes('.') ? nodeType.split('.').pop()! : nodeType;
+    const shortName = nodeType.includes('.')
+      ? nodeType.split('.').pop()!
+      : nodeType;
     const matched = nodeTypes.find((t) => {
       if (t.type === nodeType) return true;
       const tShort = t.type.includes('.') ? t.type.split('.').pop()! : t.type;
@@ -785,12 +788,43 @@ export default function PropertyPanel({
                 >
                   <div className="space-y-2 w-full overflow-hidden box-border">
                     <DynamicFormComponent
-                      itemConfigList={configSchema}
+                      itemConfigList={configSchema.filter(
+                        (item) =>
+                          !['pipeline-selector', 'workflow-selector'].includes(
+                            item.type,
+                          ),
+                      )}
                       initialValues={
                         selectedNode.data.config as Record<string, object>
                       }
                       onSubmit={handleConfigChange}
                     />
+                    {configSchema
+                      .filter((item) =>
+                        ['pipeline-selector', 'workflow-selector'].includes(
+                          item.type,
+                        ),
+                      )
+                      .map((item) => (
+                        <WorkflowReferenceField
+                          key={item.name}
+                          kind={
+                            String(item.type) === 'workflow-selector'
+                              ? 'workflow-selector'
+                              : 'pipeline-selector'
+                          }
+                          label={extractI18nLabel(item.label) || item.name}
+                          value={String(
+                            selectedNode.data.config[item.name] || '',
+                          )}
+                          onChange={(value) => {
+                            updateNodeConfig(selectedNode.id, {
+                              ...selectedNode.data.config,
+                              [item.name]: value,
+                            });
+                          }}
+                        />
+                      ))}
                   </div>
                 </CollapsibleSection>
               )}

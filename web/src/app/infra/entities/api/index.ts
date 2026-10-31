@@ -183,7 +183,7 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+export type AgentKind = 'agent' | 'pipeline' | 'event_processor' | 'workflow';
 
 export interface RunnerDescriptor {
   id: string;
@@ -543,6 +543,7 @@ export interface PluginReorderElement {
 export interface SystemLimitation {
   max_bots: number;
   max_pipelines: number;
+  max_workflows?: number;
   max_extensions: number;
   max_knowledge_bases?: number;
   /** When non-empty, every pipeline is forced to this Box sandbox-scope
@@ -1077,12 +1078,7 @@ export interface WorkflowExecution {
   workflow_uuid: string;
   workflow_version: number;
   status:
-    | 'pending'
-    | 'waiting'
-    | 'running'
-    | 'completed'
-    | 'failed'
-    | 'cancelled';
+    'pending' | 'waiting' | 'running' | 'completed' | 'failed' | 'cancelled';
   started_at?: string;
   completed_at?: string;
   start_time?: string;

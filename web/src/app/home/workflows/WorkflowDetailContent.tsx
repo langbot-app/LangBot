@@ -18,15 +18,7 @@ import WorkflowExecutionsTab from './components/workflow-executions/WorkflowExec
 import WorkflowDebugDialog from './components/workflow-debug-dialog/WorkflowDebugDialog';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import {
-  Settings,
-  Play,
-  BarChart3,
-  GitBranch,
-  Download,
-  Upload,
-  Bug,
-} from 'lucide-react';
+import { Settings, Play, BarChart3, Download, Upload } from 'lucide-react';
 import { backendClient } from '@/app/infra/http';
 import { Workflow } from '@/app/infra/entities/api';
 import { useWorkflowStore } from './store/useWorkflowStore';
@@ -38,7 +30,11 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
   const isCreateMode = id === 'new';
   const navigate = useNavigate();
   const { t } = useTranslation();
-  const { refreshWorkflows, workflows, setDetailEntityName } = useSidebarData();
+  const {
+    refreshPipelines: refreshWorkflows,
+    pipelines: workflows,
+    setDetailEntityName,
+  } = useSidebarData();
 
   const {
     setCurrentWorkflow,
@@ -65,7 +61,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     emoji: '💼',
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isWebSocketConnected, setIsWebSocketConnected] = useState(false);
 
   // Set breadcrumb entity name
   useEffect(() => {
@@ -146,11 +141,11 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
           name: workflow?.name,
           emoji: workflow?.emoji,
           description: workflow?.description,
+          is_enabled: workflow?.is_enabled,
           nodes,
           edges,
           variables: workflow?.variables,
           settings: workflow?.settings,
-          triggers: workflow?.triggers,
         });
         setDirty(false);
         refreshWorkflows();
@@ -310,20 +305,6 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
     [handleImport],
   );
 
-  // Publish handler
-  const handlePublish = useCallback(async () => {
-    if (!workflow?.uuid) return;
-
-    try {
-      await backendClient.publishWorkflow(workflow.uuid);
-      toast.success(t('workflows.publishSuccess'));
-      refreshWorkflows();
-    } catch (err) {
-      console.error('Failed to publish workflow:', err);
-      toast.error(t('workflows.publishError'));
-    }
-  }, [workflow, refreshWorkflows, t]);
-
   // Delete handler
   const handleDelete = useCallback(async () => {
     if (!workflow?.uuid) return;
@@ -454,10 +435,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
             <Download className="size-4 mr-1" />
             {t('workflows.export')}
           </Button>
-          <Button variant="outline" onClick={handlePublish}>
-            <GitBranch className="size-4 mr-1" />
-            {t('workflows.publish')}
-          </Button>
+
           <Button onClick={handleSave} disabled={!isDirty || isSaving}>
             {isSaving ? t('common.saving') : t('common.save')}
           </Button>
@@ -477,15 +455,8 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
             {t('workflows.editor')}
           </TabsTrigger>
           <TabsTrigger value="debug" className="gap-1.5">
-            <Bug className="size-3.5" />
-            {t('workflows.debugChat')}
-            {activeTab === 'debug' && (
-              <span
-                className={`inline-block size-2 rounded-full ${
-                  isWebSocketConnected ? 'bg-green-500' : 'bg-red-500'
-                }`}
-              />
-            )}
+            <Play className="size-3.5" />
+            {t('workflows.testRun')}
           </TabsTrigger>
           <TabsTrigger value="config" className="gap-1.5">
             <Settings className="size-3.5" />
@@ -504,12 +475,7 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
 
         {/* Tab: Debug Chat */}
         <TabsContent value="debug" className="flex-1 min-h-0 mt-4">
-          <WorkflowDebugDialog
-            open={activeTab === 'debug'}
-            workflowId={id}
-            isEmbedded={true}
-            onConnectionStatusChange={setIsWebSocketConnected}
-          />
+          <WorkflowDebugDialog workflowId={id} />
         </TabsContent>
 
         {/* Tab: Configuration */}
@@ -519,7 +485,10 @@ export default function WorkflowDetailContent({ id }: { id: string }) {
         >
           <WorkflowFormComponent
             workflow={workflow}
-            onWorkflowChange={setWorkflow}
+            onWorkflowChange={(updated) => {
+              setWorkflow(updated);
+              setDirty(true);
+            }}
             onDelete={handleDelete}
           />
         </TabsContent>

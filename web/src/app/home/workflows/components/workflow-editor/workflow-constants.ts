@@ -62,18 +62,6 @@ export const NODE_TYPE_I18N_KEYS: Record<
     labelKey: 'workflows.nodes.messageTrigger',
     descriptionKey: 'workflows.nodes.messageTriggerDescription',
   },
-  'trigger.cron_trigger': {
-    labelKey: 'workflows.nodes.cronTrigger',
-    descriptionKey: 'workflows.nodes.cronTriggerDescription',
-  },
-  'trigger.webhook_trigger': {
-    labelKey: 'workflows.nodes.webhookTrigger',
-    descriptionKey: 'workflows.nodes.webhookTriggerDescription',
-  },
-  'trigger.event_trigger': {
-    labelKey: 'workflows.nodes.eventTrigger',
-    descriptionKey: 'workflows.nodes.eventTriggerDescription',
-  },
   // Process / AI
   'process.llm_call': {
     labelKey: 'workflows.nodes.llmCall',
@@ -86,14 +74,6 @@ export const NODE_TYPE_I18N_KEYS: Record<
   'process.parameter_extractor': {
     labelKey: 'workflows.nodes.parameterExtractor',
     descriptionKey: 'workflows.nodes.parameterExtractorDescription',
-  },
-  'process.knowledge_retrieval': {
-    labelKey: 'workflows.nodes.knowledgeRetrieval',
-    descriptionKey: 'workflows.nodes.knowledgeRetrievalDescription',
-  },
-  'process.code_executor': {
-    labelKey: 'workflows.nodes.codeExecutor',
-    descriptionKey: 'workflows.nodes.codeExecutorDescription',
   },
   'process.http_request': {
     labelKey: 'workflows.nodes.httpRequest',
@@ -177,48 +157,12 @@ export const NODE_TYPE_I18N_KEYS: Record<
     labelKey: 'workflows.nodes.setVariable',
     descriptionKey: 'workflows.nodes.setVariableDescription',
   },
-  'action.opening_statement': {
-    labelKey: 'workflows.nodes.openingStatement',
-    descriptionKey: 'workflows.nodes.openingStatementDescription',
-  },
   'action.end': {
     labelKey: 'workflows.nodes.end',
     descriptionKey: 'workflows.nodes.endDescription',
   },
   // Integration – external services
-  'integration.dify_workflow': {
-    labelKey: 'workflows.nodes.difyWorkflow',
-    descriptionKey: 'workflows.nodes.difyWorkflowDescription',
-  },
-  'integration.dify_knowledge_query': {
-    labelKey: 'workflows.nodes.difyKnowledgeQuery',
-    descriptionKey: 'workflows.nodes.difyKnowledgeQueryDescription',
-  },
-  'integration.n8n_workflow': {
-    labelKey: 'workflows.nodes.n8nWorkflow',
-    descriptionKey: 'workflows.nodes.n8nWorkflowDescription',
-  },
-  'integration.langflow_flow': {
-    labelKey: 'workflows.nodes.langflowFlow',
-    descriptionKey: 'workflows.nodes.langflowFlowDescription',
-  },
-  'integration.coze_bot': {
-    labelKey: 'workflows.nodes.cozeBot',
-    descriptionKey: 'workflows.nodes.cozeBotDescription',
-  },
   // Integration – data & tools
-  'integration.database_query': {
-    labelKey: 'workflows.nodes.databaseQuery',
-    descriptionKey: 'workflows.nodes.databaseQueryDescription',
-  },
-  'integration.redis_operation': {
-    labelKey: 'workflows.nodes.redisOperation',
-    descriptionKey: 'workflows.nodes.redisOperationDescription',
-  },
-  'integration.mcp_tool': {
-    labelKey: 'workflows.nodes.mcpTool',
-    descriptionKey: 'workflows.nodes.mcpToolDescription',
-  },
   'integration.memory_store': {
     labelKey: 'workflows.nodes.memoryStore',
     descriptionKey: 'workflows.nodes.memoryStoreDescription',
@@ -255,21 +199,11 @@ export const NODE_ICONS: Record<string, React.ElementType> = {
   // Trigger
   'trigger.message': MessageSquare,
   'trigger.message_trigger': MessageSquare,
-  'trigger.schedule': Timer,
-  'trigger.cron': Timer,
-  'trigger.cron_trigger': Timer,
-  'trigger.webhook': Webhook,
-  'trigger.webhook_trigger': Webhook,
-  'trigger.manual': Zap,
-  'trigger.event': Bell,
-  'trigger.event_trigger': Bell,
   // Process / AI
   'process.llm': Brain,
   'process.llm_call': Brain,
   'process.knowledge': Search,
-  'process.knowledge_retrieval': Search,
   'process.code': Code,
-  'process.code_executor': Code,
   'process.template': FileText,
   'process.text_template': FileText,
   'process.data_transform': ArrowRightLeft,
@@ -303,22 +237,9 @@ export const NODE_ICONS: Record<string, React.ElementType> = {
   'action.notify': Bell,
   'action.external': Globe,
   'action.call_pipeline': Workflow,
-  'action.opening_statement': MessageSquare,
   'action.end': PauseCircle,
   // Integration – external services
-  'integration.dify': Bot,
-  'integration.dify_workflow': Bot,
-  'integration.dify_knowledge_query': Search,
-  'integration.n8n': Settings,
-  'integration.n8n_workflow': Settings,
-  'integration.langflow': Workflow,
-  'integration.langflow_flow': Workflow,
-  'integration.coze': Bot,
-  'integration.coze_bot': Bot,
   // Integration – data & tools
-  'integration.database_query': Database,
-  'integration.redis_operation': Cpu,
-  'integration.mcp_tool': Settings,
   'integration.memory_store': Layers,
 };
 
@@ -378,7 +299,9 @@ export function normalizeWorkflowEdgeType(
 }
 
 export function isControlHandle(handleId: string | null | undefined): boolean {
-  return handleId === CONTROL_SOURCE_HANDLE || handleId === CONTROL_TARGET_HANDLE;
+  return (
+    handleId === CONTROL_SOURCE_HANDLE || handleId === CONTROL_TARGET_HANDLE
+  );
 }
 
 export function inferWorkflowEdgeType(
@@ -520,7 +443,7 @@ const LUCIDE_ICON_REGISTRY: Record<string, LucideIcon> = {
  */
 export function getIconComponent(
   iconName: string | undefined,
-  nodeType?: string
+  nodeType?: string,
 ): React.ElementType {
   // 1. Priority: Use backend-provided icon name
   if (iconName) {
@@ -532,7 +455,7 @@ export function getIconComponent(
     if (process.env.NODE_ENV === 'development') {
       console.warn(
         `[Workflow] Icon "${iconName}" not found in LUCIDE_ICON_REGISTRY. ` +
-        `Add it to workflow-constants.ts. Check: https://lucide.dev/icons/`
+          `Add it to workflow-constants.ts. Check: https://lucide.dev/icons/`,
       );
     }
   }

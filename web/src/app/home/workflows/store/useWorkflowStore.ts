@@ -26,15 +26,22 @@ import {
   normalizeWorkflowEdgeType,
 } from '../components/workflow-editor/workflow-constants';
 import { normalizeWorkflowNodeTypeMeta } from '../components/workflow-editor/workflow-node-metadata';
-import i18n from '@/i18n';
 
 export interface WorkflowNode extends Node {
   data: {
     label: string;
     type: string;
     config: Record<string, unknown>;
-    inputs?: { name: string; label?: string | Record<string, string>; type?: string }[];
-    outputs?: { name: string; label?: string | Record<string, string>; type?: string }[];
+    inputs?: {
+      name: string;
+      label?: string | Record<string, string>;
+      type?: string;
+    }[];
+    outputs?: {
+      name: string;
+      label?: string | Record<string, string>;
+      type?: string;
+    }[];
   };
 }
 
@@ -46,9 +53,6 @@ export interface WorkflowEdge extends Edge {
   };
 }
 
-// Debug related types
-export type DebugState = 'idle' | 'running' | 'paused' | 'completed' | 'error';
-
 export interface NodeExecutionResult {
   nodeId: string;
   status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
@@ -58,25 +62,6 @@ export interface NodeExecutionResult {
   startTime?: string;
   endTime?: string;
   duration?: number;
-}
-
-export interface DebugLog {
-  id: string;
-  timestamp: string;
-  level: 'info' | 'warning' | 'error' | 'debug';
-  nodeId?: string;
-  message: string;
-  data?: Record<string, unknown>;
-}
-
-export interface DebugContext {
-  messageContent: string;
-  senderId: string;
-  senderName: string;
-  platform: string;
-  conversationId: string;
-  isGroup: boolean;
-  customVariables: Record<string, unknown>;
 }
 
 interface WorkflowState {
@@ -104,16 +89,7 @@ interface WorkflowState {
   history: { nodes: WorkflowNode[]; edges: WorkflowEdge[] }[];
   historyIndex: number;
 
-  // Debug state
-  debugMode: boolean;
-  debugState: DebugState;
-  debugExecutionId: string | null;
-  currentNodeId: string | null;
   nodeExecutionResults: Record<string, NodeExecutionResult>;
-  breakpoints: Record<string, boolean>;
-  debugLogs: DebugLog[];
-  debugContext: DebugContext;
-  watchedVariables: string[];
 
   // Actions
   setCurrentWorkflow: (workflow: Workflow | null) => void;
@@ -168,26 +144,11 @@ interface WorkflowState {
   // Reset
   reset: () => void;
 
-  // Debug actions
-  setDebugMode: (enabled: boolean) => void;
-  setDebugState: (state: DebugState) => void;
-  setDebugExecutionId: (executionId: string | null) => void;
-  setCurrentNodeId: (nodeId: string | null) => void;
   updateNodeExecutionResult: (
     nodeId: string,
     result: Partial<NodeExecutionResult>,
   ) => void;
   clearNodeExecutionResults: () => void;
-  toggleBreakpoint: (nodeId: string) => void;
-  clearBreakpoints: () => void;
-  addDebugLog: (log: Omit<DebugLog, 'id' | 'timestamp'>) => void;
-  clearDebugLogs: () => void;
-  setDebugContext: (context: Partial<DebugContext>) => void;
-  resetDebugContext: () => void;
-  addWatchedVariable: (variable: string) => void;
-  removeWatchedVariable: (variable: string) => void;
-  clearWatchedVariables: () => void;
-  resetDebugState: () => void;
 }
 
 const generateUuidLikeId = () => {
@@ -352,18 +313,6 @@ const withWorkflowEdgeStyle = (edge: WorkflowEdge): WorkflowEdge => {
   };
 };
 
-const defaultDebugContext: DebugContext = {
-  messageContent: '',
-  senderId: `user_${Date.now().toString(36)}`,
-  senderName: '',
-  platform: '',
-  conversationId: `session_${Date.now().toString(36)}`,
-  isGroup: false,
-  customVariables: {},
-};
-
-const generateLogId = () => `log_${generateUuidLikeId()}`;
-
 export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   // Initial state
   currentWorkflow: null,
@@ -379,16 +328,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   history: [],
   historyIndex: -1,
 
-  // Debug initial state
-  debugMode: false,
-  debugState: 'idle',
-  debugExecutionId: null,
-  currentNodeId: null,
   nodeExecutionResults: {},
-  breakpoints: {} as Record<string, boolean>,
-  debugLogs: [],
-  debugContext: { ...defaultDebugContext },
-  watchedVariables: [],
 
   // Setters
   setCurrentWorkflow: (workflow) => set({ currentWorkflow: workflow }),
@@ -677,23 +617,25 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       },
     }));
 
-    const edges: WorkflowEdge[] = apiEdges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      sourceHandle:
-        edge.source_port ||
-        (edge.edge_type === 'control' ? CONTROL_SOURCE_HANDLE : undefined),
-      targetHandle:
-        edge.target_port ||
-        (edge.edge_type === 'control' ? CONTROL_TARGET_HANDLE : undefined),
-      type: 'default',
-      data: {
-        label: edge.label,
-        condition: edge.condition,
-        edgeType: normalizeWorkflowEdgeType(edge.edge_type),
-      },
-    })).map(withWorkflowEdgeStyle);
+    const edges: WorkflowEdge[] = apiEdges
+      .map((edge) => ({
+        id: edge.id,
+        source: edge.source,
+        target: edge.target,
+        sourceHandle:
+          edge.source_port ||
+          (edge.edge_type === 'control' ? CONTROL_SOURCE_HANDLE : undefined),
+        targetHandle:
+          edge.target_port ||
+          (edge.edge_type === 'control' ? CONTROL_TARGET_HANDLE : undefined),
+        type: 'default',
+        data: {
+          label: edge.label,
+          condition: edge.condition,
+          edgeType: normalizeWorkflowEdgeType(edge.edge_type),
+        },
+      }))
+      .map(withWorkflowEdgeStyle);
 
     set({ nodes, edges, isDirty: false });
     get().pushHistory();
@@ -712,26 +654,8 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       isLoading: false,
       history: [],
       historyIndex: -1,
-      // Reset debug state
-      debugMode: false,
-      debugState: 'idle',
-      debugExecutionId: null,
-      currentNodeId: null,
       nodeExecutionResults: {},
-      breakpoints: {} as Record<string, boolean>,
-      debugLogs: [],
-      debugContext: { ...defaultDebugContext },
-      watchedVariables: [],
     }),
-
-  // Debug actions
-  setDebugMode: (enabled) => set({ debugMode: enabled }),
-
-  setDebugState: (state) => set({ debugState: state }),
-
-  setDebugExecutionId: (executionId) => set({ debugExecutionId: executionId }),
-
-  setCurrentNodeId: (nodeId) => set({ currentNodeId: nodeId }),
 
   updateNodeExecutionResult: (nodeId, result) => {
     set((state) => ({
@@ -749,77 +673,4 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 
   clearNodeExecutionResults: () => set({ nodeExecutionResults: {} }),
-
-  toggleBreakpoint: (nodeId) => {
-    set((state) => {
-      const newBreakpoints = { ...state.breakpoints };
-      if (newBreakpoints[nodeId]) {
-        delete newBreakpoints[nodeId];
-      } else {
-        newBreakpoints[nodeId] = true;
-      }
-      return { breakpoints: newBreakpoints };
-    });
-  },
-
-  clearBreakpoints: () => set({ breakpoints: {} as Record<string, boolean> }),
-
-  addDebugLog: (log) => {
-    set((state) => ({
-      debugLogs: [
-        ...state.debugLogs,
-        {
-          ...log,
-          id: generateLogId(),
-          timestamp: new Date().toISOString(),
-        },
-      ].slice(-500), // Keep only last 500 logs
-    }));
-  },
-
-  clearDebugLogs: () => set({ debugLogs: [] }),
-
-  setDebugContext: (context) => {
-    set((state) => ({
-      debugContext: { ...state.debugContext, ...context },
-    }));
-  },
-
-  resetDebugContext: () =>
-    set({
-      debugContext: {
-        messageContent: '',
-        senderId: `user_${Date.now().toString(36)}`,
-        senderName: '',
-        platform: '',
-        conversationId: `session_${Date.now().toString(36)}`,
-        isGroup: false,
-        customVariables: {},
-      },
-    }),
-
-  addWatchedVariable: (variable) => {
-    set((state) => ({
-      watchedVariables: state.watchedVariables.includes(variable)
-        ? state.watchedVariables
-        : [...state.watchedVariables, variable],
-    }));
-  },
-
-  removeWatchedVariable: (variable) => {
-    set((state) => ({
-      watchedVariables: state.watchedVariables.filter((v) => v !== variable),
-    }));
-  },
-
-  clearWatchedVariables: () => set({ watchedVariables: [] }),
-
-  resetDebugState: () =>
-    set({
-      debugState: 'idle',
-      debugExecutionId: null,
-      currentNodeId: null,
-      nodeExecutionResults: {},
-      debugLogs: [],
-    }),
 }));

@@ -29,27 +29,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useTranslation } from 'react-i18next';
-import {
-  resolveI18nLabel,
-  maybeTranslateKey,
-} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
-import { extractI18nObject } from '@/i18n/I18nProvider';
-
-// Helper function to translate i18n key if the value is an i18n key string
-const translateIfKey = (value: string | undefined): string | undefined => {
-  if (!value) return value;
-  const translated = maybeTranslateKey(value);
-  return translated || value;
-};
-
-// Helper to extract i18n label and translate if it's an i18n key
-const extractAndTranslateI18n = (label: any): string => {
-  if (!label) return '';
-  if (typeof label === 'string') {
-    return translateIfKey(label) || label;
-  }
-  return resolveI18nLabel(label) || '';
-};
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -517,7 +496,8 @@ export default function DynamicFormComponent({
   /** Extra variables accessible via the `__system.*` namespace in show_if conditions.
    *  e.g. `{ is_wizard: true }` makes `show_if: { field: "__system.is_wizard", ... }` work. */
   systemContext?: Record<string, unknown>;
-  /** Exposes the form validation trigger to parent components. */
+  /** Callback to expose validation function to parent component.
+   *  Parent can call this function to trigger validation and get validity state. */
   onValidate?: (validateFn: () => Promise<boolean>) => void;
   /** Override a field control while retaining the DynamicForm label,
    *  description, validation, and value emission behavior. Return undefined
@@ -1045,7 +1025,7 @@ function DynamicFormFieldList({
         ) {
           return (
             <FormField
-              key={`${config.id}-${config.name}`}
+              key={config.id}
               control={form.control}
               name={config.name as keyof FormValues}
               render={({ field }) => (
@@ -1167,10 +1147,7 @@ function DynamicFormFieldList({
                   </FormControl>
                   {config.description && (
                     <p className="text-sm break-words text-muted-foreground">
-                      {typeof config.description === 'string'
-                        ? translateIfKey(config.description) ||
-                          config.description
-                        : extractAndTranslateI18n(config.description)}
+                      {extractI18nObject(config.description)}
                     </p>
                   )}
                   <FormMessage />

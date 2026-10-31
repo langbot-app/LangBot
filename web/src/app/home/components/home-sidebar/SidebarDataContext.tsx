@@ -23,7 +23,6 @@ export function SidebarDataProvider({
 }) {
   const [bots, setBots] = useState<SidebarEntityItem[]>([]);
   const [pipelines, setPipelines] = useState<SidebarEntityItem[]>([]);
-  const [workflows, setWorkflows] = useState<SidebarEntityItem[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<SidebarEntityItem[]>([]);
   const [plugins, setPlugins] = useState<SidebarEntityItem[]>([]);
   const [pluginCount, setPluginCount] = useState(0);
@@ -121,11 +120,20 @@ export function SidebarDataProvider({
   const refreshPipelines = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.pipelines;
     try {
-      const resp = await httpClient.getAgents();
+      const [resp, workflowResp] = await Promise.all([
+        httpClient.getAgents(),
+        httpClient.getWorkflows(),
+      ]);
       if (requestId !== refreshRequestIds.current.pipelines) return;
       setQuotaResourceLoaded('pipelines', true);
       setPipelines(
-        resp.agents.map((p) => ({
+        [
+          ...resp.agents,
+          ...workflowResp.workflows.map((workflow) => ({
+            ...workflow,
+            kind: 'workflow' as const,
+          })),
+        ].map((p) => ({
           id: p.uuid || '',
           name: p.name,
           description: p.description,
@@ -140,24 +148,6 @@ export function SidebarDataProvider({
       console.error('Failed to fetch agents for sidebar:', error);
     }
   }, [setQuotaResourceLoaded]);
-
-  const refreshWorkflows = useCallback(async () => {
-    try {
-      const resp = await httpClient.getWorkflows();
-      setWorkflows(
-        resp.workflows.map((w) => ({
-          id: w.uuid || '',
-          name: w.name,
-          description: w.description,
-          emoji: w.emoji,
-          updatedAt: w.updated_at,
-          enabled: w.is_enabled ?? true,
-        })),
-      );
-    } catch (error) {
-      console.error('Failed to fetch workflows for sidebar:', error);
-    }
-  }, []);
 
   const refreshKnowledgeBases = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.knowledgeBases;
@@ -346,7 +336,6 @@ export function SidebarDataProvider({
     await Promise.all([
       refreshBots(),
       refreshPipelines(),
-      refreshWorkflows(),
       refreshKnowledgeBases(),
       refreshPlugins(),
       refreshMCPServers(),
@@ -355,7 +344,6 @@ export function SidebarDataProvider({
   }, [
     refreshBots,
     refreshPipelines,
-    refreshWorkflows,
     refreshKnowledgeBases,
     refreshPlugins,
     refreshMCPServers,
@@ -372,7 +360,6 @@ export function SidebarDataProvider({
       value={{
         bots,
         pipelines,
-        workflows,
         knowledgeBases,
         plugins,
         pluginCount,
@@ -382,7 +369,6 @@ export function SidebarDataProvider({
         quotaDataLoaded,
         refreshBots,
         refreshPipelines,
-        refreshWorkflows,
         refreshKnowledgeBases,
         refreshPlugins,
         refreshMCPServers,

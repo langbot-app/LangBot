@@ -598,7 +598,6 @@ function WorkflowEditorInner() {
                 </TooltipContent>
               </Tooltip>
 
-
               {/* Zoom controls */}
               <Tooltip>
                 <TooltipTrigger asChild>

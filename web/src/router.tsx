@@ -157,16 +157,6 @@ export const router = createBrowserRouter([
         ),
       },
       {
-        path: '/home/plugins',
-        element: (
-          <Suspense fallback={<Loading />}>
-            <HomeLayout>
-              <PluginsPage />
-            </HomeLayout>
-          </Suspense>
-        ),
-      },
-      {
         path: '/home/add-extension',
         element: (
           <Suspense fallback={<Loading />}>

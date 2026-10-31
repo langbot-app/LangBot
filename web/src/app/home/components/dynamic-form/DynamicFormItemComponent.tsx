@@ -30,16 +30,12 @@ import {
   KnowledgeBase,
   EmbeddingModel,
   RerankModel,
-  Pipeline,
   PluginTool,
   ReasoningLevel,
 } from '@/app/infra/entities/api';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
-import {
-  resolveI18nLabel,
-  maybeTranslateKey,
-} from '@/app/home/workflows/components/workflow-editor/workflow-i18n';
+import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import {
@@ -128,34 +124,6 @@ function SelectOptionContent({
   );
 }
 
-const resolveOptionLabel = (label: unknown, fallback: string): string => {
-  if (!label || typeof label !== 'object') return fallback;
-  return (
-    resolveI18nLabel(label as Record<string, string> | I18nObject) || fallback
-  );
-};
-
-const getSelectedOptionLabel = (
-  options: IDynamicFormItemSchema['options'],
-  value: unknown,
-): string | null => {
-  if (typeof value !== 'string' || !options?.length) return null;
-  const matched = options.find((option) => option.name === value);
-  if (!matched) return null;
-  return resolveOptionLabel(matched.label, matched.name);
-};
-
-const resolveModelLabel = (model: {
-  name: string;
-  display_name?: string;
-}): string => {
-  return (
-    maybeTranslateKey(model.display_name || model.name) ||
-    model.display_name ||
-    model.name
-  );
-};
-
 export default function DynamicFormItemComponent({
   config,
   field,
@@ -182,8 +150,6 @@ export default function DynamicFormItemComponent({
   const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
   const [uploading, setUploading] = useState<boolean>(false);
   const [secretVisible, setSecretVisible] = useState(false);
@@ -195,7 +161,6 @@ export default function DynamicFormItemComponent({
   );
   const { t } = useTranslation();
   const [modelsDialogOpen, setModelsDialogOpen] = useState(false);
-  const [secretVisible, setSecretVisible] = useState(false);
   const [settingsSection, setSettingsSection] =
     useState<SettingsSection>('models');
   const isModelSelector = [
@@ -397,19 +362,6 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
-    if (config.type === DynamicFormItemType.PIPELINE_SELECTOR) {
-      httpClient
-        .getPipelines()
-        .then((resp) => {
-          setPipelines(resp.pipelines);
-        })
-        .catch((err) => {
-          toast.error(t('pipelines.loadPipelinesFailed') + err.msg);
-        });
-    }
-  }, [config.type, t]);
-
-  useEffect(() => {
     if (config.type === DynamicFormItemType.TOOLS_SELECTOR) {
       httpClient
         .getTools()
@@ -420,19 +372,6 @@ export default function DynamicFormItemComponent({
           toast.error(
             t('tools.getToolListError', 'Failed to get tools: ') + err.msg,
           );
-        });
-    }
-  }, [config.type]);
-
-  useEffect(() => {
-    if (config.type === DynamicFormItemType.WORKFLOW_SELECTOR) {
-      httpClient
-        .getWorkflows()
-        .then((resp) => {
-          setWorkflows(resp.workflows);
-        })
-        .catch((err) => {
-          toast.error(t('workflows.loadWorkflowsFailed') + err.msg);
         });
     }
   }, [config.type]);
@@ -488,9 +427,7 @@ export default function DynamicFormItemComponent({
                     onClick={() => field.onChange(option.name)}
                   >
                     <div className="flex flex-col gap-0.5">
-                      <span>
-                        {resolveOptionLabel(option.label, option.name)}
-                      </span>
+                      <span>{extractI18nObject(option.label)}</span>
                       <span className="text-xs text-muted-foreground">
                         {option.name}
                       </span>
@@ -549,13 +486,6 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.TEXT:
-      // Ensure value is always a string to avoid [object Object] display
-      const textValue =
-        typeof field.value === 'string'
-          ? field.value
-          : field.value != null
-            ? JSON.stringify(field.value, null, 2)
-            : '';
       return (
         <Textarea
           {...field}
@@ -573,18 +503,15 @@ export default function DynamicFormItemComponent({
       );
 
     case DynamicFormItemType.STRING_ARRAY:
-      const arrayValue = Array.isArray(field.value) ? field.value : [];
       return (
         <div className="w-full max-w-md min-w-0 space-y-2">
-          {arrayValue.map((item: string, index: number) => (
+          {field.value.map((item: string, index: number) => (
             <div key={index} className="flex min-w-0 items-center gap-1.5">
               <Input
                 className="min-w-0 flex-1"
-                value={item ?? ''}
+                value={item}
                 onChange={(e) => {
-                  const newValue = [
-                    ...(Array.isArray(field.value) ? field.value : []),
-                  ];
+                  const newValue = [...field.value];
                   newValue[index] = e.target.value;
                   field.onChange(newValue);
                 }}
@@ -595,9 +522,9 @@ export default function DynamicFormItemComponent({
                 size="icon"
                 className="shrink-0 text-muted-foreground hover:text-destructive"
                 onClick={() => {
-                  const newValue = (
-                    Array.isArray(field.value) ? field.value : []
-                  ).filter((_: string, i: number) => i !== index);
+                  const newValue = field.value.filter(
+                    (_: string, i: number) => i !== index,
+                  );
                   field.onChange(newValue);
                 }}
               >
@@ -610,10 +537,7 @@ export default function DynamicFormItemComponent({
             variant="outline"
             className="w-full border-dashed text-muted-foreground hover:text-foreground"
             onClick={() => {
-              field.onChange([
-                ...(Array.isArray(field.value) ? field.value : []),
-                '',
-              ]);
+              field.onChange([...field.value, '']);
             }}
           >
             <Plus className="size-4 mr-1.5" />
@@ -744,7 +668,7 @@ export default function DynamicFormItemComponent({
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(groupedModels).map(([providerName, models]) => (
-                  <SelectGroup key={`llm-regular-${providerName}`}>
+                  <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem
@@ -787,12 +711,12 @@ export default function DynamicFormItemComponent({
                         : previewModelNames
                       )
                         .slice(0, 3)
-                        .map((name, index) => (
+                        .map((name) => (
                           <div
-                            key={`llm-preview-${name}-${index}`}
+                            key={name}
                             className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
                           >
-                            {maybeTranslateKey(name) || name}
+                            {name}
                           </div>
                         ))}
                       {/* Blurred remaining models with login overlay */}
@@ -806,12 +730,12 @@ export default function DynamicFormItemComponent({
                             : previewModelNames
                           )
                             .slice(3)
-                            .map((name, index) => (
+                            .map((name) => (
                               <div
-                                key={`llm-preview-blur-${name}-${index}`}
+                                key={name}
                                 className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
                               >
-                                {maybeTranslateKey(name) || name}
+                                {name}
                               </div>
                             ))}
                         </div>
@@ -839,7 +763,7 @@ export default function DynamicFormItemComponent({
                   // User is logged into Space — show space models normally
                   Object.entries(groupedSpaceModels).map(
                     ([providerName, models]) => (
-                      <SelectGroup key={`llm-space-${providerName}`}>
+                      <SelectGroup key={providerName}>
                         <SelectLabel>
                           <span className="inline-flex items-center gap-1.5">
                             <Sparkles className="h-3.5 w-3.5 text-purple-500" />
@@ -940,7 +864,7 @@ export default function DynamicFormItemComponent({
               <SelectContent>
                 {Object.entries(groupedEmbeddingModels).map(
                   ([providerName, models]) => (
-                    <SelectGroup key={`embedding-${providerName}`}>
+                    <SelectGroup key={providerName}>
                       <SelectLabel>{providerName}</SelectLabel>
                       {models.map((model) => (
                         <SelectItem
@@ -982,12 +906,12 @@ export default function DynamicFormItemComponent({
                         : previewEmbeddingModelNames
                       )
                         .slice(0, 3)
-                        .map((name, index) => (
+                        .map((name) => (
                           <div
-                            key={`embedding-preview-${name}-${index}`}
+                            key={name}
                             className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
                           >
-                            {maybeTranslateKey(name) || name}
+                            {name}
                           </div>
                         ))}
                       <div className="relative min-h-10">
@@ -1000,12 +924,12 @@ export default function DynamicFormItemComponent({
                             : previewEmbeddingModelNames
                           )
                             .slice(3)
-                            .map((name, index) => (
+                            .map((name) => (
                               <div
-                                key={`embedding-preview-blur-${name}-${index}`}
+                                key={name}
                                 className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
                               >
-                                {maybeTranslateKey(name) || name}
+                                {name}
                               </div>
                             ))}
                         </div>
@@ -1031,7 +955,7 @@ export default function DynamicFormItemComponent({
                 ) : !systemInfo.disable_models_service ? (
                   Object.entries(groupedSpaceEmbeddingModels).map(
                     ([providerName, models]) => (
-                      <SelectGroup key={`embedding-space-${providerName}`}>
+                      <SelectGroup key={providerName}>
                         <SelectLabel>
                           <span className="inline-flex items-center gap-1.5">
                             <Sparkles className="h-3.5 w-3.5 text-purple-500" />
@@ -1117,7 +1041,7 @@ export default function DynamicFormItemComponent({
               <SelectItem value="__none__">{t('common.none')}</SelectItem>
               {Object.entries(groupedRerankModels).map(
                 ([providerName, models]) => (
-                  <SelectGroup key={`rerank-${providerName}`}>
+                  <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>
                     {models.map((model) => (
                       <SelectItem
@@ -1242,7 +1166,7 @@ export default function DynamicFormItemComponent({
           <SelectContent>
             {Object.entries(groupedModelsForFallback).map(
               ([providerName, models]) => (
-                <SelectGroup key={`fallback-regular-${providerName}`}>
+                <SelectGroup key={providerName}>
                   <SelectLabel>{providerName}</SelectLabel>
                   {models.map((model) => (
                     <SelectItem
@@ -1286,12 +1210,12 @@ export default function DynamicFormItemComponent({
                     : fbPreviewModelNames
                   )
                     .slice(0, 3)
-                    .map((name, index) => (
+                    .map((name) => (
                       <div
-                        key={`fallback-preview-${name}-${index}`}
+                        key={name}
                         className="relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground/60"
                       >
-                        {maybeTranslateKey(name) || name}
+                        {name}
                       </div>
                     ))}
                   {/* Blurred remaining models with login overlay */}
@@ -1305,12 +1229,12 @@ export default function DynamicFormItemComponent({
                         : fbPreviewModelNames
                       )
                         .slice(3)
-                        .map((name, index) => (
+                        .map((name) => (
                           <div
-                            key={`fallback-preview-blur-${name}-${index}`}
+                            key={name}
                             className="flex w-full items-center py-1.5 pl-8 pr-2 text-sm text-muted-foreground/40 blur-[2px]"
                           >
-                            {maybeTranslateKey(name) || name}
+                            {name}
                           </div>
                         ))}
                     </div>
@@ -1338,7 +1262,7 @@ export default function DynamicFormItemComponent({
               // User is logged into Space — show space models normally
               Object.entries(fbGroupedSpaceModels).map(
                 ([providerName, models]) => (
-                  <SelectGroup key={`fallback-space-${providerName}`}>
+                  <SelectGroup key={providerName}>
                     <SelectLabel>
                       <span className="inline-flex items-center gap-1.5">
                         <Sparkles className="h-3.5 w-3.5 text-purple-500" />
@@ -1569,8 +1493,7 @@ export default function DynamicFormItemComponent({
       const kbsByEngine = validKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? resolveI18nLabel(kb.knowledge_engine.name) ||
-              t('knowledge.unknownEngine')
+            ? extractI18nObject(kb.knowledge_engine.name)
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1582,10 +1505,7 @@ export default function DynamicFormItemComponent({
       );
 
       return (
-        <Select
-          value={field.value ?? '__none__'}
-          onValueChange={field.onChange}
-        >
+        <Select value={field.value} onValueChange={field.onChange}>
           <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             {field.value && field.value !== '__none__' ? (
               (() => {
@@ -1639,8 +1559,7 @@ export default function DynamicFormItemComponent({
       const multiKbsByEngine = validMultiKnowledgeBases.reduce(
         (acc, kb) => {
           const engineName = kb.knowledge_engine?.name
-            ? resolveI18nLabel(kb.knowledge_engine.name) ||
-              t('knowledge.unknownEngine')
+            ? extractI18nObject(kb.knowledge_engine.name)
             : t('knowledge.unknownEngine');
           if (!acc[engineName]) {
             acc[engineName] = [];
@@ -1651,13 +1570,10 @@ export default function DynamicFormItemComponent({
         {} as Record<string, typeof validMultiKnowledgeBases>,
       );
 
-      // Ensure field.value is always an array
-      const safeValue = Array.isArray(field.value) ? field.value : [];
-
       return (
         <>
           <div className="min-w-0 space-y-2">
-            {safeValue.length > 0 ? (
+            {field.value && field.value.length > 0 ? (
               <div className="min-w-0 space-y-2">
                 {field.value.map((kbId: string) => {
                   const currentKb = validMultiKnowledgeBases.find(
@@ -1681,9 +1597,9 @@ export default function DynamicFormItemComponent({
                             <span className="truncate">{currentKb.name}</span>
                             {currentKb.knowledge_engine?.name && (
                               <span className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                                {resolveI18nLabel(
+                                {extractI18nObject(
                                   currentKb.knowledge_engine.name,
-                                ) || t('knowledge.unknownEngine')}
+                                )}
                               </span>
                             )}
                           </div>
@@ -1699,7 +1615,7 @@ export default function DynamicFormItemComponent({
                         variant="ghost"
                         size="icon"
                         onClick={() => {
-                          const newValue = safeValue.filter(
+                          const newValue = field.value.filter(
                             (id: string) => id !== kbId,
                           );
                           field.onChange(newValue);
@@ -1723,7 +1639,7 @@ export default function DynamicFormItemComponent({
           <Button
             type="button"
             onClick={() => {
-              setTempSelectedKBIds(safeValue);
+              setTempSelectedKBIds(field.value || []);
               setKbDialogOpen(true);
             }}
             variant="outline"
@@ -1808,7 +1724,7 @@ export default function DynamicFormItemComponent({
 
     case DynamicFormItemType.BOT_SELECTOR:
       return (
-        <Select value={field.value ?? ''} onValueChange={field.onChange}>
+        <Select value={field.value} onValueChange={field.onChange}>
           <SelectTrigger className="min-w-0 bg-[#ffffff] dark:bg-[#2a2a2e]">
             <SelectValue placeholder={t('bots.selectBot')} />
           </SelectTrigger>
@@ -1819,80 +1735,6 @@ export default function DynamicFormItemComponent({
                   {bot.name}
                 </SelectItem>
               ))}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      );
-
-    case DynamicFormItemType.PIPELINE_SELECTOR:
-      return (
-        <Select value={field.value ?? ''} onValueChange={field.onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
-            {field.value ? (
-              (() => {
-                const selectedPipeline = pipelines.find(
-                  (pipeline) => pipeline.uuid === field.value,
-                );
-                return (
-                  <span className="truncate">
-                    {selectedPipeline?.name ?? field.value}
-                  </span>
-                );
-              })()
-            ) : (
-              <SelectValue placeholder={t('bots.selectPipeline')} />
-            )}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {pipelines.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  {t('bots.noPipelinesFound')}
-                </div>
-              ) : (
-                pipelines.map((pipeline) => (
-                  <SelectItem key={pipeline.uuid} value={pipeline.uuid ?? ''}>
-                    {pipeline.name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectGroup>
-          </SelectContent>
-        </Select>
-      );
-
-    case DynamicFormItemType.WORKFLOW_SELECTOR:
-      return (
-        <Select value={field.value ?? ''} onValueChange={field.onChange}>
-          <SelectTrigger className="bg-[#ffffff] dark:bg-[#2a2a2e]">
-            {field.value ? (
-              (() => {
-                const selectedWorkflow = workflows.find(
-                  (workflow) => workflow.uuid === field.value,
-                );
-                return (
-                  <span className="truncate">
-                    {selectedWorkflow?.name ?? field.value}
-                  </span>
-                );
-              })()
-            ) : (
-              <SelectValue placeholder={t('workflows.selectWorkflow')} />
-            )}
-          </SelectTrigger>
-          <SelectContent>
-            <SelectGroup>
-              {workflows.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  {t('workflows.noWorkflowsFound')}
-                </div>
-              ) : (
-                workflows.map((workflow) => (
-                  <SelectItem key={workflow.uuid} value={workflow.uuid ?? ''}>
-                    {workflow.name}
-                  </SelectItem>
-                ))
-              )}
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -2301,6 +2143,6 @@ export default function DynamicFormItemComponent({
       );
 
     default:
-      return <Input {...field} value={field.value ?? ''} />;
+      return <Input {...field} />;
   }
 }

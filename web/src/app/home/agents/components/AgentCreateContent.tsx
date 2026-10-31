@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -31,6 +32,7 @@ import RunnerSelect from './RunnerSelect';
 import type { GetAgentMetadataResponseData } from '@/app/infra/entities/api';
 import { getDefaultValues } from '@/app/home/components/dynamic-form/DynamicFormItemConfig';
 import { extractI18nObject } from '@/i18n/I18nProvider';
+import { useWorkspaceQuotaStatus } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 
 export default function AgentCreateContent({
   onCreated,
@@ -42,6 +44,8 @@ export default function AgentCreateContent({
   embedded?: boolean;
 }) {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const quotas = useWorkspaceQuotaStatus();
   const [kind, setKind] = useState<AgentKind>(allowedKinds?.[0] ?? 'pipeline');
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
   const [runner, setRunner] = useState('');
@@ -122,6 +126,19 @@ export default function AgentCreateContent({
   }
 
   async function handleSubmit(values: FormValues) {
+    if (kind === 'workflow') {
+      try {
+        const result = await httpClient.createWorkflow({
+          name: values.name,
+          emoji: values.emoji,
+        });
+        onCreated(result.uuid);
+        navigate(`/home/workflows?id=${result.uuid}`);
+      } catch (error) {
+        toast.error(String(error));
+      }
+      return;
+    }
     if (!runner) {
       toast.error(selectorLabel);
       return;
@@ -211,6 +228,12 @@ export default function AgentCreateContent({
   }
   const typeOptions = [
     {
+      kind: 'workflow' as const,
+      icon: Workflow,
+      title: t('workflows.title'),
+      description: t('workflows.description'),
+    },
+    {
       kind: 'pipeline' as const,
       icon: Workflow,
       title: t('agents.pipelineType'),
@@ -246,7 +269,13 @@ export default function AgentCreateContent({
         <Button
           type="submit"
           form="agent-create-form"
-          disabled={form.formState.isSubmitting || loading || !runner}
+          disabled={
+            form.formState.isSubmitting ||
+            loading ||
+            (kind === 'workflow' ? quotas.workflows : quotas.pipelines)
+              .disabled ||
+            (kind !== 'workflow' && !runner)
+          }
         >
           {t('common.submit')}
         </Button>
@@ -331,7 +360,9 @@ export default function AgentCreateContent({
                       onSubmit={form.handleSubmit(handleSubmit)}
                       className="space-y-4"
                     >
-                      <div className="space-y-2">
+                      <div
+                        className={kind === 'workflow' ? 'hidden' : 'space-y-2'}
+                      >
                         <p className="text-sm font-medium">{selectorLabel}</p>
                         <RunnerSelect
                           key={kind === 'event_processor' ? 'event' : 'agent'}

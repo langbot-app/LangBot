@@ -168,7 +168,6 @@ function DiscordIcon({ className }: { className?: string }) {
 const ENTITY_CATEGORY_IDS = [
   'bots',
   'pipelines',
-  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -180,7 +179,6 @@ type EntityCategoryId = (typeof ENTITY_CATEGORY_IDS)[number];
 const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
-  'workflows',
   'knowledge',
   'plugins',
   'mcp',
@@ -191,7 +189,6 @@ const DETAIL_PAGE_CATEGORIES: EntityCategoryId[] = [
 const CREATABLE_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
-  'workflows',
   'knowledge',
   'mcp',
   'skills',
@@ -201,7 +198,6 @@ const CREATABLE_CATEGORIES: EntityCategoryId[] = [
 const COLLAPSIBLE_ONLY_CATEGORIES: EntityCategoryId[] = [
   'bots',
   'pipelines',
-  'workflows',
   'knowledge',
   'mcp',
   'skills',
@@ -214,17 +210,10 @@ function isEntityCategory(id: string): id is EntityCategoryId {
 // Map sidebar config IDs to SidebarDataContext keys
 const ENTITY_KEY_MAP: Record<
   EntityCategoryId,
-  | 'bots'
-  | 'pipelines'
-  | 'workflows'
-  | 'knowledgeBases'
-  | 'plugins'
-  | 'mcpServers'
-  | 'skills'
+  'bots' | 'pipelines' | 'knowledgeBases' | 'plugins' | 'mcpServers' | 'skills'
 > = {
   bots: 'bots',
   pipelines: 'pipelines',
-  workflows: 'workflows',
   knowledge: 'knowledgeBases',
   plugins: 'plugins',
   mcp: 'mcpServers',
@@ -652,17 +641,17 @@ function NavItems({
         const quota =
           categoryId === 'bots'
             ? quotaStatus.bots
-            : categoryId === 'pipelines'
-              ? quotaStatus.pipelines
-              : categoryId === 'knowledge'
-                ? quotaStatus.knowledgeBases
-                : categoryId === 'plugins' ||
-                    categoryId === 'mcp' ||
-                    categoryId === 'skills'
-                  ? quotaStatus.extensions
-                  : UNLIMITED_QUOTA;
+            : categoryId === 'knowledge'
+              ? quotaStatus.knowledgeBases
+              : categoryId === 'plugins' ||
+                  categoryId === 'mcp' ||
+                  categoryId === 'skills'
+                ? quotaStatus.extensions
+                : UNLIMITED_QUOTA;
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
+          if (item.kind === 'workflow')
+            return `/home/workflows?id=${encodeURIComponent(item.id)}`;
           if (item.extensionType === 'mcp') {
             return `/home/mcp?id=${encodeURIComponent(item.id)}`;
           }
@@ -730,6 +719,11 @@ function NavItems({
           }
 
           const itemActiveCheck = (item: SidebarEntityItem): boolean => {
+            if (item.kind === 'workflow')
+              return (
+                pathname === '/home/workflows' &&
+                searchParams.get('id') === item.id
+              );
             if (item.extensionType === 'mcp') {
               return (
                 pathname === '/home/mcp' && searchParams.get('id') === item.id
@@ -760,15 +754,16 @@ function NavItems({
             isAgents && !inPopover && sidebarData.agentsGroupByKind;
 
           const agentGroupOrder: Array<
-            'agent' | 'pipeline' | 'event_processor'
-          > = ['agent', 'pipeline', 'event_processor'];
+            'agent' | 'pipeline' | 'event_processor' | 'workflow'
+          > = ['agent', 'pipeline', 'event_processor', 'workflow'];
           const agentGroupLabelKey: Record<
-            'agent' | 'pipeline' | 'event_processor',
+            'agent' | 'pipeline' | 'event_processor' | 'workflow',
             string
           > = {
             agent: 'agents.kindBadgeAgent',
             pipeline: 'agents.kindBadgePipeline',
             event_processor: 'agents.eventProcessor.configurations',
+            workflow: 'workflows.title',
           };
 
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
@@ -783,7 +778,10 @@ function NavItems({
           };
 
           const renderItem = (item: SidebarEntityItem) => {
-            const itemRoute = resolveItemRoute(item);
+            const itemRoute =
+              item.kind === 'workflow'
+                ? `/home/workflows?id=${encodeURIComponent(item.id)}`
+                : resolveItemRoute(item);
             const isItemActive = itemActiveCheck(item);
             const itemIsPluginType = itemIsPlugin(item);
             if (inPopover) {
@@ -1832,6 +1830,7 @@ function findSidebarChildForPath(pathname: string): SidebarChildVO | undefined {
   // Keep the legacy Pipeline URL usable after Pipelines and Agents were
   // unified under the Processors section.
   if (
+    pathname === '/home/workflows' ||
     pathname === '/home/pipelines' ||
     pathname.startsWith('/home/pipelines/')
   ) {

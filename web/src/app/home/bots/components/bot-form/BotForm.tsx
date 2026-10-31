@@ -67,7 +67,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-// SelectGroup used in adapter selector
 import {
   Card,
   CardContent,
@@ -184,6 +183,7 @@ const getFormSchema = (t: (key: string) => string) =>
             'agent',
             'pipeline',
             'event_processor',
+            'workflow',
             'discard',
           ]),
           target_uuid: z.string(),

@@ -112,12 +112,12 @@ dependencies:
   '@tanstack/react-table':
     specifier: ^8.21.3
     version: 8.21.3(react-dom@19.2.1)(react@19.2.1)
-  '@types/js-yaml':
-    specifier: ^4.0.9
-    version: 4.0.9
   '@vitejs/plugin-react':
     specifier: ^6.0.1
     version: 6.1.2(vite@8.3.4)
+  '@xyflow/react':
+    specifier: ^12.12.0
+    version: 12.12.0(@types/react-dom@19.2.7)(@types/react@19.2.18)(react-dom@19.2.1)(react@19.2.1)
   axios:
     specifier: ^1.20.0
     version: 1.20.0
@@ -142,6 +142,9 @@ dependencies:
   input-otp:
     specifier: ^1.4.2
     version: 1.5.0(react-dom@19.2.1)(react@19.2.1)
+  js-yaml:
+    specifier: '>=4.3.2 <5'
+    version: 4.3.2
   lodash:
     specifier: ^4.18.0
     version: 4.18.1
@@ -221,8 +224,8 @@ dependencies:
     specifier: ^3.24.4
     version: 3.25.76
   zustand:
-    specifier: ^5.0.12
-    version: 5.0.14(@types/react@19.2.10)(react@19.2.1)
+    specifier: ^5.0.16
+    version: 5.0.16(@types/react@19.2.18)(react@19.2.1)
 
 devDependencies:
   '@playwright/test':
@@ -240,6 +243,9 @@ devDependencies:
   '@types/hast':
     specifier: ^3.0.4
     version: 3.0.5
+  '@types/js-yaml':
+    specifier: ^4.0.9
+    version: 4.0.9
   '@types/lodash':
     specifier: ^4.17.16
     version: 4.17.26
@@ -2284,7 +2290,7 @@ packages:
   /@types/d3-drag@3.0.7:
     resolution: {integrity: sha512-HE3jVKlzU9AaMazNufooRJ5ZpWmLIoc90A37WU2JMmeq28w1FQqCZswHZ3xR+SuxYftzHq6WU6KJHvqxKzTxxQ==}
     dependencies:
-      '@types/d3-selection': 3.0.11
+      '@types/d3-selection': 3.0.12
     dev: false
 
   /@types/d3-ease@3.0.2:
@@ -2307,6 +2313,10 @@ packages:
       '@types/d3-time': 3.0.4
     dev: false
 
+  /@types/d3-selection@3.0.12:
+    resolution: {integrity: sha512-Qe/KWYhEiIIxGs7HrAAjMfShxKldx19SJtr5zu53f3afPsdZNz7HHtdTLXo/kqeiWNXVycI24kSnfzBYkTzpgw==}
+    dev: false
+
   /@types/d3-shape@3.2.0:
     resolution: {integrity: sha512-kVd74ta9eof3eJOvbNd1vGKS/XERRyQbT26Og63hIsvDO84cjD5gEOhsXf26w3FSoNlPVz84DOFcKv/oou+fMw==}
     dependencies:
@@ -2319,6 +2329,19 @@ packages:
 
   /@types/d3-timer@3.0.2:
     resolution: {integrity: sha512-Ps3T8E8dZDam6fUyNiMkekK3XUsaUEik+idO9/YjPtfj2qruF8tFBXS7XhtE4iIXBLxhmLjP3SXpLhVf21I9Lw==}
+    dev: false
+
+  /@types/d3-transition@3.0.9:
+    resolution: {integrity: sha512-uZS5shfxzO3rGlu0cC3bjmMFKsXv+SmZZcgp0KD22ts4uGXp5EVYGzu/0YdwZeKmddhcAccYtREJKkPfXkZuCg==}
+    dependencies:
+      '@types/d3-selection': 3.0.12
+    dev: false
+
+  /@types/d3-zoom@3.0.9:
+    resolution: {integrity: sha512-0sE1406XBYJGiqD3AusTl9ZqC//2mIXix51tbom25gDCA8ri4xnSZg28CaSE8Srl6FClqABUKfsn0qghgdepMA==}
+    dependencies:
+      '@types/d3-interpolate': 3.0.4
+      '@types/d3-selection': 3.0.12
     dev: false
 
   /@types/debug@4.1.13:
@@ -2341,7 +2364,7 @@ packages:
 
   /@types/js-yaml@4.0.9:
     resolution: {integrity: sha512-k4MGaQl5TGo/iipqb2UDG2UwjXziSWkh0uysQelTlJpX1qGlpUZYm8PnO4DxG1qBomtJUdYJ6qR6xdIah10JLg==}
-    dev: false
+    dev: true
 
   /@types/json-schema@7.0.15:
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
@@ -2561,6 +2584,44 @@ packages:
     dependencies:
       '@rolldown/pluginutils': 1.0.1
       vite: 8.3.4(@types/node@20.19.43)
+    dev: false
+
+  /@xyflow/react@12.12.0(@types/react-dom@19.2.7)(@types/react@19.2.18)(react-dom@19.2.1)(react@19.2.1):
+    resolution: {integrity: sha512-74oXI0Rgm1Eu33cHQAd74J6oVgCH9mbFyTVQbsGgp2kmWwh0HdtBr2VP04z8mbPD+M/xO69nqG5dDEt7/EN2rQ==}
+    peerDependencies:
+      '@types/react': '>=17'
+      '@types/react-dom': '>=17'
+      react: '>=17'
+      react-dom: '>=17'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+    dependencies:
+      '@types/react': 19.2.18
+      '@types/react-dom': 19.2.7(@types/react@19.2.18)
+      '@xyflow/system': 0.0.83
+      classcat: 5.0.5
+      react: 19.2.1
+      react-dom: 19.2.1(react@19.2.1)
+      zustand: 4.5.7(@types/react@19.2.18)(react@19.2.1)
+    transitivePeerDependencies:
+      - immer
+    dev: false
+
+  /@xyflow/system@0.0.83:
+    resolution: {integrity: sha512-a//eDjez3WZF47aaPTfVUDD0OINOq+WVwBZCRTqG+m0a5euX8EwlJ4jMY1Wxz0Ocj4xOeekJ70V22Pq0ll8RJw==}
+    dependencies:
+      '@types/d3-drag': 3.0.7
+      '@types/d3-interpolate': 3.0.4
+      '@types/d3-selection': 3.0.12
+      '@types/d3-transition': 3.0.9
+      '@types/d3-zoom': 3.0.9
+      d3-drag: 3.0.0
+      d3-interpolate: 3.0.1
+      d3-selection: 3.0.0
+      d3-zoom: 3.0.0
     dev: false
 
   /acorn-jsx@5.3.2(acorn@8.19.0):
@@ -6583,6 +6644,14 @@ packages:
       tslib: 2.8.1
     dev: false
 
+  /use-sync-external-store@1.7.0(react@19.2.1):
+    resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
+    peerDependencies:
+      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+    dependencies:
+      react: 19.2.1
+    dev: false
+
   /uuidjs@5.1.0:
     resolution: {integrity: sha512-HAQPtUkr7t5Ud3uCwRcqtBRNagu/2aerrrBQE6PzgSluGijvFF75UaOq22Xw545GGviRjSLhc4c8CaSMI5h4Ng==}
     hasBin: true
@@ -6822,7 +6891,7 @@ packages:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
     dev: false
 
-  /zustand@4.5.7(@types/react@19.2.10)(react@19.2.1):
+  /zustand@4.5.7(@types/react@19.2.18)(react@19.2.1):
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
     engines: {node: '>=12.7.0'}
     peerDependencies:
@@ -6837,13 +6906,13 @@ packages:
       react:
         optional: true
     dependencies:
-      '@types/react': 19.2.10
+      '@types/react': 19.2.18
       react: 19.2.1
-      use-sync-external-store: 1.6.0(react@19.2.1)
+      use-sync-external-store: 1.7.0(react@19.2.1)
     dev: false
 
-  /zustand@5.0.14(@types/react@19.2.10)(react@19.2.1):
-    resolution: {integrity: sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g==}
+  /zustand@5.0.16(@types/react@19.2.18)(react@19.2.1):
+    resolution: {integrity: sha512-Uv7e327ihlCfayfja3hDc0M64Upev1LWBKpRobdK4NyovDDPeeX4imWXc/wzC1yc6fkYPoAY/ncKVPAs2jrtQw==}
     engines: {node: '>=12.20.0'}
     peerDependencies:
       '@types/react': '>=18.0.0'
@@ -6860,7 +6929,7 @@ packages:
       use-sync-external-store:
         optional: true
     dependencies:
-      '@types/react': 19.2.10
+      '@types/react': 19.2.18
       react: 19.2.1
     dev: false
 

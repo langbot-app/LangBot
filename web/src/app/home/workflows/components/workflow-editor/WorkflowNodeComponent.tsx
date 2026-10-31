@@ -86,12 +86,7 @@ const categoryColors: Record<
 
 // Node execution status
 export type NodeExecutionStatus =
-  | 'idle'
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'skipped';
+  'idle' | 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
 // Status colors and icons
 const statusConfig: Record<
@@ -203,7 +198,10 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
   const nodeData = data as WorkflowNodeData;
   const category = nodeData.type.split('.')[0];
   const colors = categoryColors[category] || categoryColors.process;
-  const Icon = getIconComponent(nodeData.icon as string | undefined, nodeData.type);
+  const Icon = getIconComponent(
+    nodeData.icon as string | undefined,
+    nodeData.type,
+  );
 
   // Get execution status
   const status = nodeData.executionStatus || 'idle';
@@ -237,8 +235,7 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
     outputs.length,
   );
   const naturalNodeWidth =
-    DATA_PORT_INSET * 2 +
-    Math.max(0, maxDataPortCount - 1) * DATA_PORT_GAP;
+    DATA_PORT_INSET * 2 + Math.max(0, maxDataPortCount - 1) * DATA_PORT_GAP;
   const nodeWidth = Math.min(
     MAX_NODE_WIDTH,
     Math.max(MIN_NODE_WIDTH, naturalNodeWidth),
@@ -250,7 +247,8 @@ function WorkflowNodeComponent({ data, selected }: NodeProps) {
           (nodeWidth - DATA_PORT_INSET * 2) / (maxDataPortCount - 1),
         )
       : 0;
-  const inputPortLeft = (index: number) => DATA_PORT_INSET + index * dataPortGap;
+  const inputPortLeft = (index: number) =>
+    DATA_PORT_INSET + index * dataPortGap;
   const outputPortRight = (index: number) =>
     DATA_PORT_INSET + index * dataPortGap;
 
