@@ -88,15 +88,8 @@ class CommandManager:
         else:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(context.command))
 
-    async def execute(
-        self,
-        command_text: str,
-        full_command_text: str,
-        query: pipeline_query.Query,
-        session: provider_session.Session,
-    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
-        """执行命令"""
-
+    async def resolve_privilege(self, query: pipeline_query.Query) -> int:
+        """Resolve the command privilege for one platform query."""
         privilege = 1
 
         import sqlalchemy as _sa
@@ -112,6 +105,19 @@ class CommandManager:
         )
         if _admins.first() is not None:
             privilege = 2
+
+        return privilege
+
+    async def execute(
+        self,
+        command_text: str,
+        full_command_text: str,
+        query: pipeline_query.Query,
+        session: provider_session.Session,
+    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
+        """执行命令"""
+
+        privilege = await self.resolve_privilege(query)
 
         ctx = command_context.ExecuteContext(
             instance_uuid=query.instance_uuid,

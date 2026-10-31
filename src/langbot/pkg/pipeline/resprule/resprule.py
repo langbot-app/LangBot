@@ -37,6 +37,21 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
         if query.launcher_type.value != 'group':  # 只处理群消息
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
+        text_parts = [str(getattr(component, 'text', '')) for component in query.message_chain or []]
+        message_text = ''.join(text_parts).strip() or str(query.message_chain or '').strip()
+        command_config = self.ap.instance_config.data.get('command', {})
+        is_stop_command = False
+        if command_config.get('enable', True):
+            for prefix in command_config.get('prefix', []):
+                if not message_text.startswith(prefix):
+                    continue
+                command_text = message_text[len(prefix) :].strip()
+                command_name = command_text.split(maxsplit=1)[0].lower() if command_text else None
+                is_stop_command = command_name == 'stop'
+                break
+        if is_stop_command:
+            return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+
         # Interaction submissions and routed platform form callbacks resume the
         # original run without another mention or prefix. Ordinary routing only
         # selects a pipeline and must still obey its group response rules.
