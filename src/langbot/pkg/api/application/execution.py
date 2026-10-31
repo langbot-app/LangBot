@@ -584,6 +584,7 @@ EXECUTION_OPERATIONS = (
             'ExecutionRuntimesInput',
             statuses=(list[str] | None, None),
             labels=(Object | None, None),
+            cursor=(str | None, None),
             limit=(Positive, 50),
         ),
         PageOutput,
@@ -591,7 +592,7 @@ EXECUTION_OPERATIONS = (
     ),
     ExecutionOperation(
         'runtime_reconcile',
-        _input('ExecutionRuntimeReconcileInput', stale_after_seconds=(Positive, 60)),
+        _input('ExecutionRuntimeReconcileInput', stale_after_seconds=(float | None, None)),
         JSONOutput,
         'runner_admin',
         True,
