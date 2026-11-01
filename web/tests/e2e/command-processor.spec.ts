@@ -57,6 +57,14 @@ test('loading a bot preserves saved command processor bindings and prefixes', as
   await page.getByRole('tab', { name: /^Plugin commands/ }).click();
   await expect(page.getByRole('link', { name: /Saved command/ })).toBeVisible();
   await expect(page.getByText('!draw', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Command Prefixes' }).click();
+  const prefixInput = page.getByRole('textbox', { name: 'Add Prefix' });
+  await prefixInput.fill('#');
+  await prefixInput.press('Enter');
+  await page.keyboard.press('Escape');
+  await expect(
+    page.getByRole('button', { name: 'Command Prefixes' }),
+  ).toContainText('! #');
 });
 
 test('create a command instance and edit its command configuration', async ({
