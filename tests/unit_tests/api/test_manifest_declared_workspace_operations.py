@@ -92,13 +92,14 @@ def test_resolve_authorized_workspace_operations_local_agent():
             'permissions': {},  # No manifest declarations
         }
     )
-    assert is_local_agent(desc_builtin)
+    assert is_local_agent(desc_builtin) is True
     configured = ['bot.list', 'bot.create', 'stats.basic']
     effective = resolve_authorized_workspace_operations(desc_builtin, configured)
     assert effective == configured
 
-    # None descriptor or defaultrunner
-    assert resolve_authorized_workspace_operations(None, configured) == configured
+    # None descriptor does not pass is_local_agent and returns empty
+    assert is_local_agent(None) is False
+    assert resolve_authorized_workspace_operations(None, configured) == []
 
 
 def test_resolve_authorized_workspace_operations_plugin_intersection_and_narrowing():
@@ -144,20 +145,15 @@ def test_resolve_authorized_workspace_operations_plugin_intersection_and_narrowi
     assert effective_v2 == ['bot.list']
 
 
-def test_registry_sdk_0719_manifest_loading_compat(monkeypatch):
-    """Test registry strips workspace_operations when running with SDK 0.7.19 without workspace_operations."""
-    app_mock = MagicMock()
-    registry = RunnerRegistry(app_mock)
-
-    # Simulate SDK 0.7.19 where RunnerPermissions does not have workspace_operations
+def test_registry_real_installed_sdk_0719_manifest_loading():
+    """Test registry with real installed SDK 0.7.19 without mocking: strips workspace_operations, returns empty declared."""
     import langbot.pkg.agent.runner.registry as reg_module
 
-    class MockOldRunnerPermissions(pydantic.BaseModel):
-        models: list[str] = []
-        tools: list[str] = []
-        model_config = pydantic.ConfigDict(extra='forbid')
+    # Verify if running against SDK 0.7.19
+    is_old_sdk = 'workspace_operations' not in getattr(reg_module.RunnerPermissions, 'model_fields', {})
 
-    monkeypatch.setattr(reg_module, 'RunnerPermissions', MockOldRunnerPermissions)
+    app_mock = MagicMock()
+    registry = RunnerRegistry(app_mock)
 
     raw_runner_data = {
         'plugin_author': 'test-author',
@@ -176,10 +172,75 @@ def test_registry_sdk_0719_manifest_loading_compat(monkeypatch):
         },
     }
 
-    # Should not raise pydantic.ValidationError (extra forbidden)
+    # Must validate successfully without raising extra_forbidden
     desc = registry._validate_and_build_descriptor(raw_runner_data)
     assert desc is not None
     assert desc.id == 'plugin:test-author/test-plugin/default'
+
+    if is_old_sdk:
+        # In 0.7.19, declared workspace operations must be empty (feature disabled cleanly)
+        assert desc.declared_workspace_operations() == []
+        assert resolve_authorized_workspace_operations(desc, ['bot.list', 'stats.basic']) == []
+    else:
+        # In new SDK, declared workspace operations are preserved
+        assert desc.declared_workspace_operations() == ['bot.list', 'stats.basic']
+        assert resolve_authorized_workspace_operations(desc, ['bot.list', 'stats.basic']) == ['bot.list', 'stats.basic']
+
+
+def test_registry_real_new_sdk_manifest_loading_subprocess():
+    """Test registry with real new SDK from langbot-plugin-sdk repo in a clean subprocess."""
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    sdk_path = Path(__file__).resolve().parents[4] / 'langbot-plugin-sdk' / 'src'
+    if not sdk_path.exists():
+        pytest.skip('langbot-plugin-sdk repo not found')
+
+    code = f"""
+import sys
+sys.path.insert(0, {repr(str(sdk_path))})
+
+from langbot_plugin.api.entities.builtin.runner.manifest import RunnerPermissions
+assert "workspace_operations" in RunnerPermissions.model_fields, "New SDK must have workspace_operations"
+
+from langbot.pkg.agent.runner.registry import RunnerRegistry
+from langbot.pkg.agent.runner.descriptor import resolve_authorized_workspace_operations
+from unittest.mock import Mock
+
+registry = RunnerRegistry(Mock())
+raw_runner_data = {{
+    'plugin_author': 'test-author',
+    'plugin_name': 'test-plugin',
+    'runner_name': 'default',
+    'manifest': {{
+        'id': 'default',
+        'name': 'default',
+        'component_kind': 'Runner',
+        'usages': ['agent'],
+        'label': {{'en_US': 'Test'}},
+        'permissions': {{
+            'workspace_operations': ['bot.list', 'stats.basic'],
+        }},
+        'config_schema': [],
+    }},
+}}
+desc = registry._validate_and_build_descriptor(raw_runner_data)
+assert desc is not None
+assert desc.declared_workspace_operations() == ['bot.list', 'stats.basic'], f"Got {{desc.declared_workspace_operations()}}"
+authorized = resolve_authorized_workspace_operations(desc, ['bot.list', 'stats.basic', 'other'])
+assert authorized == ['bot.list', 'stats.basic'], f"Got {{authorized}}"
+print("REAL_NEW_SDK_PASSED")
+"""
+    res = subprocess.run(
+        [sys.executable, '-c', code],
+        env={**os.environ, 'PYTHONPATH': f'{sdk_path}:{os.environ.get("PYTHONPATH", "")}'},
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0, f'STDOUT:\n{res.stdout}\nSTDERR:\n{res.stderr}'
+    assert 'REAL_NEW_SDK_PASSED' in res.stdout
 
 
 @pytest.mark.asyncio

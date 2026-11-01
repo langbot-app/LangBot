@@ -6,7 +6,7 @@ import typing
 
 from ...core import app
 from ...api.http.context import ExecutionContext
-from .descriptor import RunnerDescriptor, resolve_authorized_workspace_operations
+from .descriptor import RunnerDescriptor, is_local_agent, resolve_authorized_workspace_operations
 from .context_builder import (
     AgentResources,
     ModelResource,
@@ -150,22 +150,10 @@ class AgentResourceBuilder:
         - Runner manifest declares workspace_operations permission, OR
         - Builtin LocalAgent with user-configured operations.
         """
-        is_local_agent = (
-            getattr(descriptor, 'plugin_author', None) == 'langbot-team'
-            and getattr(descriptor, 'plugin_name', None) == 'LocalAgent'
-        ) or getattr(descriptor, 'id', '') == 'plugin:langbot-team/LocalAgent/default'
+        local_agent = is_local_agent(descriptor)
+        manifest_declares = bool(descriptor.declared_workspace_operations()) if descriptor else False
 
-        manifest_declares = False
-        perms = getattr(descriptor, 'permissions', None)
-        if perms is not None and getattr(perms, 'workspace_operations', None):
-            manifest_declares = True
-        else:
-            raw_manifest = getattr(descriptor, 'raw_manifest', None) or {}
-            manifest_perms = raw_manifest.get('permissions') or {}
-            if manifest_perms.get('workspace_operations'):
-                manifest_declares = True
-
-        if not (is_local_agent or manifest_declares):
+        if not (local_agent or manifest_declares):
             return None
 
         allowed_ops = resolve_authorized_workspace_operations(

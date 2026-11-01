@@ -118,7 +118,7 @@ class RunnerRegistry:
         )
 
         manifest_payload = manifest
-        if not hasattr(RunnerPermissions, 'workspace_operations'):
+        if 'workspace_operations' not in getattr(RunnerPermissions, 'model_fields', {}):
             if isinstance(manifest, dict) and 'permissions' in manifest and isinstance(manifest['permissions'], dict):
                 manifest_payload = dict(manifest)
                 perms = dict(manifest['permissions'])

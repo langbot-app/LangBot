@@ -86,17 +86,12 @@ class RunnerDescriptor(pydantic.BaseModel):
         """Return list of workspace operations declared in runner manifest permissions.
 
         Uses getattr for compatibility with SDK 0.7.19 where workspace_operations does not exist.
+        In SDK 0.7.19 environment, this returns empty list so the feature is disabled safely.
         """
         permissions = getattr(self, 'permissions', None)
         if isinstance(permissions, dict):
             return list(permissions.get('workspace_operations') or [])
-        ops = getattr(permissions, 'workspace_operations', None)
-        if ops is not None:
-            return list(ops)
-        raw_perms = getattr(self, 'raw_manifest', {}).get('permissions', {})
-        if isinstance(raw_perms, dict) and 'workspace_operations' in raw_perms:
-            return list(raw_perms.get('workspace_operations') or [])
-        return []
+        return list(getattr(permissions, 'workspace_operations', []) or [])
 
     @property
     def workspace_operations(self) -> list[str]:
@@ -107,13 +102,14 @@ class RunnerDescriptor(pydantic.BaseModel):
 def is_local_agent(descriptor: RunnerDescriptor | None) -> bool:
     """Check if descriptor represents LocalAgent."""
     if descriptor is None:
-        return True
-    if descriptor.id == 'defaultrunner' or not descriptor.id.startswith('plugin:'):
+        return False
+    runner_id = getattr(descriptor, 'id', '')
+    if runner_id == 'defaultrunner' or runner_id == 'plugin:langbot-team/LocalAgent/default':
         return True
     return (
         getattr(descriptor, 'plugin_author', None) == 'langbot-team'
         and getattr(descriptor, 'plugin_name', None) == 'LocalAgent'
-    ) or getattr(descriptor, 'id', '') == 'plugin:langbot-team/LocalAgent/default'
+    )
 
 
 def resolve_authorized_workspace_operations(
@@ -122,13 +118,13 @@ def resolve_authorized_workspace_operations(
 ) -> list[str]:
     """Calculate effective authorized workspace operations at runtime.
 
-    LocalAgent (defaultrunner or non-plugin runner) is not constrained by manifest;
-    it receives all operations configured by the user.
+    LocalAgent is not constrained by manifest; it receives all operations
+    configured by the user.
     Plugin runners are restricted to the intersection of configured operations and
     operations declared in the runner's manifest permissions.
     """
     configured = [str(op) for op in (configured_operations or [])]
     if is_local_agent(descriptor):
         return configured
-    declared = set(descriptor.declared_workspace_operations())
+    declared = set(descriptor.declared_workspace_operations() if descriptor is not None else [])
     return [op for op in configured if op in declared]
