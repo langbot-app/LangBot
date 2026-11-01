@@ -4014,6 +4014,8 @@ const enUS = {
     configuredCount: '{{count}} operations configured',
     expandDomain: 'Expand',
     collapseDomain: 'Collapse',
+    ungrantableRemoved:
+      'Some operations were unselected or removed due to insufficient permissions.',
   },
 };
 export default enUS;

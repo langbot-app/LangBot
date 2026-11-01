@@ -591,6 +591,16 @@ function AgentFormComponent(
     if (formName === 'runner') {
       form.setValue('runner', values, { shouldDirty: true });
       updateSnapshotIfInitial(`runner.${stageName}`, wasDirty);
+      const runnerId = (values as Record<string, unknown>)?.id;
+      if (typeof runnerId === 'string' && runnerId.startsWith('plugin:')) {
+        const option = runnerOptions.find((opt) => opt.name === runnerId);
+        if (option && Array.isArray((option as any).workspace_operations)) {
+          const declared = (option as any).workspace_operations as string[];
+          const validOpIds = new Set(workspaceOperations.map((op) => op.id));
+          const defaultOps = declared.filter((opId) => validOpIds.has(opId));
+          form.setValue('allowed_workspace_operations', defaultOps, { shouldDirty: true });
+        }
+      }
       return;
     }
 
@@ -723,20 +733,39 @@ function AgentFormComponent(
 
   const confirmAndSave = useCallback(
     (values: FormValues): Promise<boolean> => {
-      const hasDangerous = values.allowed_workspace_operations.some((opId) => {
+      const ungrantableOps = values.allowed_workspace_operations.filter((opId) => {
+        const op = workspaceOperations.find((item) => item.id === opId);
+        return op && op.grantable === false;
+      });
+
+      let effectiveValues = values;
+      if (ungrantableOps.length > 0) {
+        const filteredOps = values.allowed_workspace_operations.filter((opId) => {
+          const op = workspaceOperations.find((item) => item.id === opId);
+          return !op || op.grantable !== false;
+        });
+        toast.warning(t('workspaceOperations.ungrantableRemoved', { count: ungrantableOps.length }));
+        effectiveValues = {
+          ...values,
+          allowed_workspace_operations: filteredOps,
+        };
+        form.setValue('allowed_workspace_operations', filteredOps, { shouldDirty: true });
+      }
+
+      const hasDangerous = effectiveValues.allowed_workspace_operations.some((opId) => {
         const op = workspaceOperations.find((item) => item.id === opId);
         return op?.risk === 'dangerous';
       });
       if (hasDangerous) {
         return new Promise<boolean>((resolve) => {
-          pendingSaveValuesRef.current = values;
+          pendingSaveValuesRef.current = effectiveValues;
           pendingResolveRef.current = resolve;
           setDangerousModalOpen(true);
         });
       }
-      return saveValues(values);
+      return saveValues(effectiveValues);
     },
-    [saveValues, workspaceOperations],
+    [form, saveValues, t, workspaceOperations],
   );
 
   function handleSubmit(values: FormValues) {

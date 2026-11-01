@@ -192,6 +192,10 @@ export interface RunnerDescriptor {
   plugin_name: string;
   config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
   supported_event_patterns: string[];
+  permissions?: {
+    workspace_operations?: string[];
+    [key: string]: unknown;
+  };
 }
 
 export interface ProcessorRun {

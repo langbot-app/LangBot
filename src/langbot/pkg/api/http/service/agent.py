@@ -80,14 +80,17 @@ class AgentService:
         event_processors = []
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is not None:
-            event_processors = [
-                item.model_dump(mode='json')
-                for item in await registry.list_runners(
-                    context,
-                    usage='event',
-                    use_cache=False,
-                )
-            ]
+            for item in await registry.list_runners(
+                context,
+                usage='event',
+                use_cache=False,
+            ):
+                dumped = item.model_dump(mode='json')
+                if 'permissions' not in dumped or not isinstance(dumped['permissions'], dict):
+                    dumped['permissions'] = {}
+                if 'workspace_operations' not in dumped['permissions']:
+                    dumped['permissions']['workspace_operations'] = item.declared_workspace_operations()
+                event_processors.append(dumped)
         ws_catalog = get_workspace_operations_catalog(self.ap, context)
         return {
             'event_processors': event_processors,
@@ -598,6 +601,12 @@ class AgentService:
             if not draft and field.get('required') and parameters.get(field['name']) in (None, ''):
                 raise ValueError(f'Required processor parameter: {field["name"]}')
         config['runner_config'] = {component_ref: parameters}
+        if existing is None and 'allowed_workspace_operations' not in config:
+            from ...application.tool_grants import get_default_workspace_operations
+
+            config['allowed_workspace_operations'] = get_default_workspace_operations(
+                self.ap, descriptor.declared_workspace_operations()
+            )
         # Component-only creation keeps defaults for the detail form, but does
         # not subscribe to events until configuration is saved and validated.
         return config, component_ref, [] if draft else descriptor.supported_event_patterns

@@ -7,6 +7,7 @@ import asyncio
 
 from langbot_plugin.api.entities.builtin.runner.manifest import (
     RunnerManifest,
+    RunnerPermissions,
 )
 
 from ...core import app
@@ -116,7 +117,15 @@ class RunnerRegistry:
             runner_name=runner_name,
         )
 
-        typed_manifest = RunnerManifest.model_validate(manifest)
+        manifest_payload = manifest
+        if not hasattr(RunnerPermissions, 'workspace_operations'):
+            if isinstance(manifest, dict) and 'permissions' in manifest and isinstance(manifest['permissions'], dict):
+                manifest_payload = dict(manifest)
+                perms = dict(manifest['permissions'])
+                perms.pop('workspace_operations', None)
+                manifest_payload['permissions'] = perms
+
+        typed_manifest = RunnerManifest.model_validate(manifest_payload)
         config_schema = [item.model_dump(mode='json') for item in typed_manifest.config_schema]
 
         descriptor = RunnerDescriptor(
@@ -297,6 +306,7 @@ class RunnerRegistry:
                     'name': descriptor.id,
                     'label': descriptor.label,
                     'description': descriptor.description,
+                    'workspace_operations': descriptor.declared_workspace_operations(),
                 }
             )
 

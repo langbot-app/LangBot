@@ -197,7 +197,39 @@ def get_workspace_operations_catalog(ap: Any, context: Any) -> dict[str, Any]:
     }
 
 
+def get_default_workspace_operations(ap: Any, declared_operations: Iterable[str] | None) -> list[str]:
+    """Calculate default workspace operations from runner declared operations.
+
+    Default scope is declared_workspace_operations intersected with catalog operations
+    where exposure == 'all', non-streaming, and processor principal is allowed.
+    """
+    if not declared_operations:
+        return []
+
+    app_api = getattr(ap, 'application_api', None)
+    if app_api is None:
+        from .api import ApplicationAPI
+
+        app_api = ApplicationAPI(ap)
+
+    operations_map: dict[str, Operation] = getattr(app_api, '_operations', {})
+    valid_defaults: list[str] = []
+
+    for op_id in declared_operations:
+        spec = operations_map.get(op_id)
+        if spec is None or spec.streaming:
+            continue
+        if spec.principals is not None and PrincipalType.PROCESSOR not in spec.principals:
+            continue
+        doc = get_operation_doc(spec.operation_id, side_effect=spec.side_effect)
+        if doc.exposure == 'all':
+            valid_defaults.append(op_id)
+
+    return sorted(set(valid_defaults))
+
+
 __all__ = [
+    'get_default_workspace_operations',
     'get_workspace_operations_catalog',
     'validate_grant_change',
 ]

@@ -105,7 +105,22 @@ class StorageResource(typing.TypedDict):
     workspace_storage: bool
 
 
-class AgentResources(typing.TypedDict):
+class WorkspaceOperationResource(typing.TypedDict, total=False):
+    """Workspace operation resource payload."""
+
+    id: str
+    domain: str | None
+    label: dict[str, str]
+    summary: str | None
+    description: str | None
+    risk: str | None
+    side_effect: bool | None
+    permission: str | None
+    input_schema: dict[str, typing.Any]
+    output_schema: dict[str, typing.Any]
+
+
+class AgentResources(typing.TypedDict, total=False):
     """Agent resources payload."""
 
     models: list[ModelResource]
@@ -114,7 +129,7 @@ class AgentResources(typing.TypedDict):
     skills: list[SkillResource]
     storage: StorageResource
     platform_capabilities: dict[str, typing.Any]
-    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
+    workspace_operations: typing.NotRequired[list[WorkspaceOperationResource | dict[str, typing.Any]]]
 
 
 class AgentRuntimeContext(typing.TypedDict):

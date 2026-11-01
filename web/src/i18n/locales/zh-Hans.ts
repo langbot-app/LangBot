@@ -3781,6 +3781,7 @@ const zhHans = {
     configuredCount: '已配置 {{count}} 个操作',
     expandDomain: '展开',
     collapseDomain: '折叠',
+    ungrantableRemoved: '部分操作因权限不足未自动勾选/已移除',
   },
 };
 export default zhHans;

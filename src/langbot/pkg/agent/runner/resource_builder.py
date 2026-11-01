@@ -6,7 +6,7 @@ import typing
 
 from ...core import app
 from ...api.http.context import ExecutionContext
-from .descriptor import RunnerDescriptor
+from .descriptor import RunnerDescriptor, resolve_authorized_workspace_operations
 from .context_builder import (
     AgentResources,
     ModelResource,
@@ -168,7 +168,10 @@ class AgentResourceBuilder:
         if not (is_local_agent or manifest_declares):
             return None
 
-        allowed_ops = binding.resource_policy.allowed_workspace_operations
+        allowed_ops = resolve_authorized_workspace_operations(
+            descriptor,
+            binding.resource_policy.allowed_workspace_operations,
+        )
         if not allowed_ops:
             return []
 

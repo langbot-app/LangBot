@@ -3776,6 +3776,7 @@ const zhHant = {
     configuredCount: '已配置 {{count}} 個操作',
     expandDomain: '展開',
     collapseDomain: '折疊',
+    ungrantableRemoved: '部分操作因權限不足未自動勾選/已移除',
   },
 };
 export default zhHant;
