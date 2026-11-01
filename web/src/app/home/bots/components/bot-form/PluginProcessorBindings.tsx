@@ -207,9 +207,6 @@ export default function PluginProcessorBindings({
       <h3 id="plugin-subscriptions-title" className="sr-only">
         {t('agents.eventProcessor.type')}
       </h3>
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        {t('bots.pluginSubscriptions.description')}
-      </p>
       {value.length === 0 && (
         <div className="rounded-lg border border-dashed p-5 text-center">
           <p className="text-xs text-muted-foreground">

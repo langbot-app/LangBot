@@ -1075,10 +1075,14 @@ const esES = {
       play: 'Reproducir',
     },
     eventRouting: 'Enrutamiento de eventos',
-    routingTabs: {
+    routingLayers: {
       rules: 'Rutas',
       commands: 'Comandos de plugin',
       processors: 'Procesadores de plugin',
+      rulesDescription:
+        'Los eventos que no coinciden con un comando de plugin se evalúan en orden; los gestiona la primera ruta que coincida.',
+      commandsDisabled:
+        'Los comandos de plugin están desactivados; los mensajes pasan directamente a las rutas.',
     },
     eventRoutingDescription:
       'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',

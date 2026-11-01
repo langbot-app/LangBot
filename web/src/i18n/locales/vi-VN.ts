@@ -1056,10 +1056,14 @@ const viVN = {
       play: 'Phát',
     },
     eventRouting: 'Định tuyến sự kiện',
-    routingTabs: {
+    routingLayers: {
       rules: 'Tuyến',
       commands: 'Lệnh plugin',
       processors: 'Bộ xử lý plugin',
+      rulesDescription:
+        'Sự kiện không khớp lệnh plugin được so khớp theo thứ tự; tuyến khớp đầu tiên sẽ xử lý.',
+      commandsDisabled:
+        'Lệnh plugin đang tắt; tin nhắn đi thẳng tới các tuyến.',
     },
     eventRoutingDescription:
       'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',

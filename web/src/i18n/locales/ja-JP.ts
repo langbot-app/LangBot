@@ -1063,10 +1063,14 @@ const jaJP = {
       play: '再生',
     },
     eventRouting: 'イベントルーティング',
-    routingTabs: {
+    routingLayers: {
       rules: 'ルート',
       commands: 'プラグインコマンド',
       processors: 'プラグインプロセッサー',
+      rulesDescription:
+        'プラグインコマンドに一致しなかったイベントを順に照合し、最初に一致したルートが処理します。',
+      commandsDisabled:
+        'プラグインコマンドはオフです。メッセージはそのままルートに進みます。',
     },
     eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',

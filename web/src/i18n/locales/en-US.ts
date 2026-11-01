@@ -1058,10 +1058,14 @@ const enUS = {
       play: 'Play',
     },
     eventRouting: 'Event Routing',
-    routingTabs: {
+    routingLayers: {
       rules: 'Routes',
       commands: 'Plugin commands',
       processors: 'Plugin processors',
+      rulesDescription:
+        'Events not handled by a plugin command are matched in order; the first matching route handles them.',
+      commandsDisabled:
+        'Plugin commands are off; messages go straight to routes.',
     },
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',

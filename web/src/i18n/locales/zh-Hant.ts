@@ -996,10 +996,13 @@ const zhHant = {
       play: '播放',
     },
     eventRouting: '事件路由',
-    routingTabs: {
+    routingLayers: {
       rules: '路由規則',
       commands: '外掛指令',
       processors: '外掛處理器',
+      rulesDescription:
+        '未命中外掛指令的事件依序比對，交給第一條命中的規則處理。',
+      commandsDisabled: '外掛指令已關閉，訊息直接進入路由規則。',
     },
     eventRoutingDescription:
       '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或 流水線 設定中編輯處理邏輯；流水線 僅支援訊息事件。',

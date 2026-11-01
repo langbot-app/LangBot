@@ -63,7 +63,6 @@ test('creates a configured processor, persists subscriptions separately and reus
   await page.locator('input[name="name"]').fill('Subscription Bot');
   await page.getByRole('button', { name: /^Submit$/ }).click();
   await expect(page).toHaveURL(/id=bot-1$/);
-  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   const section = page.getByRole('region', {
     name: 'Plugin processor',
     exact: true,
@@ -103,7 +102,6 @@ test('creates a configured processor, persists subscriptions separately and reus
   ]);
   expect(body.event_bindings).toEqual([]);
   await page.reload();
-  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   await expect(section).toContainText('Customer welcome');
   await expect(
     section.getByRole('link', { name: 'View logs' }),
@@ -131,7 +129,6 @@ test('creates a configured processor, persists subscriptions separately and reus
     name: 'Event observer',
   });
   await page.reload();
-  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   await section
     .getByRole('button', { name: 'Unbind Customer welcome' })
     .click();
