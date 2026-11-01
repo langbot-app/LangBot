@@ -26,15 +26,17 @@ test('workflow quota does not consume pipeline quota or block unrelated resource
       },
     }),
   );
-  await page.route('**/api/v1/workflows', (route) =>
-    route.fulfill({
-      json: {
-        code: 0,
-        data: {
-          workflows: [{ uuid: 'quota-workflow', name: 'Existing workflow' }],
+  await page.route(
+    (url) => url.pathname === '/api/v1/workflows',
+    (route) =>
+      route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            workflows: [{ uuid: 'quota-workflow', name: 'Existing workflow' }],
+          },
         },
-      },
-    }),
+      }),
   );
   await page.goto('/home/agents?id=new');
   for (const name of ['Create Bots', 'Create Processors', 'Create Knowledge']) {
