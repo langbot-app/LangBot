@@ -20,6 +20,8 @@ def _workspace_column() -> sa.Column:
 def upgrade() -> None:
     conn = op.get_bind()
     existing = set(sa.inspect(conn).get_table_names())
+    if 'workspaces' not in existing:
+        return
 
     if 'workflows' not in existing:
         op.create_table(
@@ -101,5 +103,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    existing = set(sa.inspect(op.get_bind()).get_table_names())
     for table in reversed(TABLES):
-        op.drop_table(table)
+        if table in existing:
+            op.drop_table(table)
