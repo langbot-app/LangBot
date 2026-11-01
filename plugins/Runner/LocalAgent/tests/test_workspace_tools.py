@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
+import types
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -12,7 +15,6 @@ from langbot_plugin.api.entities.builtin.runner.resources import (
     AgentResources,
     ModelResource,
     ToolResource,
-    WorkspaceOperationResource,
 )
 from langbot_plugin.api.entities.builtin.runner.result import (
     RunnerResultType,
@@ -37,9 +39,9 @@ def _make_op(
     description: str = "",
     risk: str = "read",
     input_schema: dict[str, Any] | None = None,
-) -> WorkspaceOperationResource:
+) -> types.SimpleNamespace:
     d = domain or op_id.split(".")[0]
-    return WorkspaceOperationResource(
+    return types.SimpleNamespace(
         id=op_id,
         domain=d,
         label={"zh_Hans": d, "en_US": d.capitalize()},
@@ -51,7 +53,7 @@ def _make_op(
 
 
 def _make_ctx(
-    workspace_ops: list[WorkspaceOperationResource] | None = None,
+    workspace_ops: list[Any] | None = None,
     tools: list[ToolResource] | None = None,
     config: dict[str, Any] | None = None,
     models: list[ModelResource] | None = None,
@@ -65,8 +67,9 @@ def _make_ctx(
     resources = AgentResources(
         models=models,
         tools=tools or [],
-        workspace_operations=workspace_ops if workspace_ops is not None else [],
     )
+    if workspace_ops is not None:
+        setattr(resources, "workspace_operations", workspace_ops)
     return make_context(
         run_id="run-test-1",
         input_text="test question",
@@ -400,16 +403,143 @@ async def test_tool_executor_handles_workspace_tools():
 
 
 # ==============================================================================
-# 11. 端到端本地运行记录：直接模式与渐进模式
+# 11. 追踪与可观测性（_TracedRunAPI 队列事件）
+# ==============================================================================
+
+
+@pytest.mark.asyncio
+async def test_tool_executor_emits_traced_run_api_events():
+    """Verify that when api is wrapped by _TracedRunAPI (having _results queue and _run_id),
+    executing a workspace tool emits tool_call_started and tool_call_completed events to the queue.
+    """
+    ops = [_make_op("bot.list", summary="List bots")]
+    ctx = _make_ctx(workspace_ops=ops)
+    api = Mock()
+    api.workspace = Mock()
+    api.workspace.call = AsyncMock(return_value={"ok": True, "result": ["bot-1"]})
+
+    # Simulate _TracedRunAPI wrapper probe
+    results_queue = asyncio.Queue()
+    api._results = results_queue
+    api._run_id = "test-run-trace-123"
+
+    mgr = await WorkspaceToolsManager.discover(api, ctx)
+    executor = LangBotToolExecutor(
+        api=api,
+        allowed_tools={"ws_bot__list"},
+        max_result_chars=20000,
+        workspace_manager=mgr,
+    )
+
+    prep = executor.prepare(
+        ToolCallRequest(
+            id="call-trace-1",
+            name="ws_bot__list",
+            arguments='{"limit": 5}',
+        )
+    )
+    outcome = await executor.execute(prep)
+    assert outcome.error is None
+
+    # Verify queue received 2 events (started and completed)
+    assert results_queue.qsize() == 2
+    started = await results_queue.get()
+    completed = await results_queue.get()
+
+    assert started.type == RunnerResultType.TOOL_CALL_STARTED
+    assert started.run_id == "test-run-trace-123"
+    assert started.data["tool_name"] == "ws_bot__list"
+    assert started.data["parameters"] == {"limit": 5}
+
+    assert completed.type == RunnerResultType.TOOL_CALL_COMPLETED
+    assert completed.run_id == "test-run-trace-123"
+    assert completed.data["tool_name"] == "ws_bot__list"
+    assert completed.data["result"] == {"ok": True, "result": ["bot-1"]}
+
+
+# ==============================================================================
+# 12. 超长操作名哈希后缀与保留参数校验
+# ==============================================================================
+
+
+def test_long_operation_id_hashing():
+    """Verify operation ID > 64 chars uses a stable 8-char SHA256 suffix bounded <= 64."""
+    very_long_op = "pipeline.very_long_domain_name.subdomain_action_that_exceeds_sixty_four_characters_easily"
+    tool_name = operation_id_to_tool_name(very_long_op)
+    assert len(tool_name) <= 64
+    assert tool_name.startswith("ws_")
+    expected_digest = hashlib.sha256(very_long_op.encode("utf-8")).hexdigest()[:8]
+    assert tool_name.endswith(expected_digest)
+
+
+@pytest.mark.asyncio
+async def test_reserved_argument_conflict_check():
+    """Verify that passing 'operation_id' or '_timeout' inside arguments returns invalid_argument error."""
+    ops = [_make_op("bot.list")]
+    ctx = _make_ctx(workspace_ops=ops)
+    api = Mock()
+    api.workspace = Mock()
+
+    mgr = await WorkspaceToolsManager.discover(api, ctx)
+    res = await mgr.execute(api, "ws_bot__list", {"operation_id": "malicious", "limit": 1})
+    assert res["ok"] is False
+    assert res["error"]["code"] == "invalid_argument"
+    assert "reserved parameter" in res["error"]["message"]
+
+
+@pytest.mark.asyncio
+async def test_sdk_0719_graceful_degradation_without_workspace_attr():
+    """Verify that when running on 0.7.19 where resources has no workspace_operations
+    and api has no workspace attribute, discovery gracefully returns mode=None and 0 tools."""
+    api_0719 = Mock(spec=["call_tool", "get_allowed_tools"])
+    ctx_0719 = make_context(
+        run_id="run-0719",
+        input_text="hello",
+        resources=AgentResources(
+            models=[ModelResource(model_id="primary", model_name="Primary")],
+            tools=[],
+        ),
+    )
+    if hasattr(ctx_0719.resources, "workspace_operations"):
+        delattr(ctx_0719.resources, "workspace_operations")
+
+    mgr = await WorkspaceToolsManager.discover(api_0719, ctx_0719)
+    assert mgr.mode is None
+    assert len(mgr.tools) == 0
+    assert mgr.build_system_message() is None
+
+
+# ==============================================================================
+# 13. 端到端本地运行记录：直接模式与渐进模式（真实 Core Catalog 元数据）
 # ==============================================================================
 
 
 @pytest.mark.asyncio
 async def test_e2e_direct_mode_agent_run():
-    """Simulated local agent run in direct mode."""
+    """Simulated local agent run in direct mode with real Core catalog metadata."""
     ops = [
-        _make_op("bot.list", summary="List bots"),
-        _make_op("stats.basic", summary="Basic usage stats"),
+        _make_op(
+            "bot.list",
+            summary="List all configured chat bots in the workspace.",
+            description=(
+                "Retrieve all configured chat bots in the workspace with basic settings, "
+                "adapter types, and pipeline bindings. Set include_secret=True to include credentials."
+            ),
+            risk="read",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer"},
+                    "include_secret": {"type": "boolean"},
+                },
+            },
+        ),
+        _make_op(
+            "stats.basic",
+            summary="Get workspace overview counters for bots, models, and pipelines.",
+            description="Retrieve aggregate workspace statistics including total bot count, active pipelines, configured models, and knowledge bases.",
+            risk="read",
+        ),
     ]
     ctx = _make_ctx(workspace_ops=ops)
 
@@ -419,9 +549,10 @@ async def test_e2e_direct_mode_agent_run():
     )
     api.get_prompt = AsyncMock(return_value=[{"role": "system", "content": "You are a test assistant."}])
     api.workspace = Mock()
-    api.workspace.call = AsyncMock(return_value={"ok": True, "result": {"bots": [{"id": "b1", "name": "HelperBot"}]}})
+    api.workspace.call = AsyncMock(
+        return_value={"ok": True, "result": [{"id": "bot-1", "name": "SupportBot"}, {"id": "bot-2", "name": "DocsBot"}]}
+    )
 
-    # Model mock: turn 1 calls ws_bot__list; turn 2 responds with text
     turn_1_msg = Message(
         role="assistant",
         content="I will check the bots.",
@@ -429,13 +560,13 @@ async def test_e2e_direct_mode_agent_run():
             {
                 "id": "call-bot-list-1",
                 "type": "function",
-                "function": {"name": "ws_bot__list", "arguments": '{"limit": 5}'},
+                "function": {"name": "ws_bot__list", "arguments": '{"limit": 10}'},
             }
         ],
     )
     turn_2_msg = Message(
         role="assistant",
-        content="There is 1 bot available: HelperBot (id: b1).",
+        content="There are 2 bots in this workspace:\n1. SupportBot (ID: bot-1)\n2. DocsBot (ID: bot-2)",
     )
 
     call_count = 0
@@ -464,20 +595,58 @@ async def test_e2e_direct_mode_agent_run():
 
     assert len(tool_started) == 1
     assert tool_started[0].data["tool_name"] == "ws_bot__list"
-    assert tool_started[0].data["parameters"] == {"limit": 5}
+    assert tool_started[0].data["parameters"] == {"limit": 10}
 
     assert len(tool_completed) == 1
     assert tool_completed[0].data["tool_name"] == "ws_bot__list"
 
     assert len(msg_completed) == 1
-    assert "HelperBot" in msg_completed[0].data["message"]["content"]
+    assert "SupportBot" in msg_completed[0].data["message"]["content"]
     assert len(run_completed) == 1
 
 
 @pytest.mark.asyncio
 async def test_e2e_progressive_mode_agent_run():
-    """Simulated local agent run in progressive mode with search -> describe -> call."""
-    ops = [_make_op(f"op_{i}.action_{i}", summary=f"Action {i} for testing") for i in range(15)]
+    """Simulated local agent run in progressive mode with real Core catalog metadata."""
+    ops = [
+        _make_op(
+            "pipeline.copy",
+            domain="pipeline",
+            summary="Duplicate an existing pipeline to create a new copy.",
+            description="Clone an existing pipeline definition under a new identifier. Prerequisites: Call pipeline.list to obtain source pipeline_uuid. Side effect: Creates duplicate pipeline.",
+            risk="write",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "pipeline_uuid": {"type": "string"},
+                    "new_name": {"type": "string"},
+                },
+                "required": ["pipeline_uuid"],
+            },
+        ),
+        _make_op(
+            "pipeline.delete",
+            domain="pipeline",
+            summary="Permanently delete a pipeline from the workspace.",
+            description="Delete a processing pipeline and disconnect it from associated bots. Prerequisites: Call pipeline.list to obtain pipeline_uuid. Side effect: Irreversible removal of pipeline.",
+            risk="dangerous",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "pipeline_uuid": {"type": "string"},
+                },
+                "required": ["pipeline_uuid"],
+            },
+        ),
+        _make_op("pipeline.list", summary="List all processing pipelines in the workspace.", risk="read"),
+        _make_op("pipeline.get", summary="Get pipeline details and flow configuration.", risk="read"),
+        _make_op("pipeline.create", summary="Create a new processing pipeline.", risk="write"),
+        _make_op("bot.list", summary="List all configured chat bots.", risk="read"),
+        _make_op("bot.create", summary="Create a new bot.", risk="write"),
+        _make_op("bot.delete", summary="Delete a bot from the workspace.", risk="dangerous"),
+        _make_op("knowledge.list", summary="List all knowledge bases.", risk="read"),
+        _make_op("model.llm.list", summary="List configured language models.", risk="read"),
+    ]
     ctx = _make_ctx(workspace_ops=ops)
 
     api = FakeRunnerAPIProxy(
@@ -486,15 +655,17 @@ async def test_e2e_progressive_mode_agent_run():
     )
     api.get_prompt = AsyncMock(return_value=[{"role": "system", "content": "You are a test assistant."}])
     api.workspace = Mock()
-    api.workspace.call = AsyncMock(
-        return_value={"ok": True, "result": {"success": True, "details": "Operation executed"}}
-    )
 
-    # 3-step progressive execution:
-    # Turn 1: workspace_search(query="action_1")
-    # Turn 2: workspace_describe(operation_id="op_1.action_1")
-    # Turn 3: workspace_call(operation_id="op_1.action_1", arguments={"param": 42})
-    # Turn 4: Final response
+    async def mock_call(operation_id, **arguments):
+        if operation_id == "pipeline.copy":
+            return {"ok": True, "result": {"pipeline_uuid": "pipe-copy-uuid", "name": "pipe-prod-copy"}}
+        elif operation_id == "pipeline.delete":
+            return {"ok": True, "result": {"deleted": True}}
+        return {"ok": True}
+
+    api.workspace.call = AsyncMock(side_effect=mock_call)
+
+    # 4-turn progressive execution:
     turn_1 = Message(
         role="assistant",
         content="Searching operations...",
@@ -502,7 +673,7 @@ async def test_e2e_progressive_mode_agent_run():
             {
                 "id": "c-1",
                 "type": "function",
-                "function": {"name": "workspace_search", "arguments": '{"query": "action_1"}'},
+                "function": {"name": "workspace_search", "arguments": '{"query": "copy", "domain": "pipeline"}'},
             }
         ],
     )
@@ -513,7 +684,7 @@ async def test_e2e_progressive_mode_agent_run():
             {
                 "id": "c-2",
                 "type": "function",
-                "function": {"name": "workspace_describe", "arguments": '{"operation_id": "op_1.action_1"}'},
+                "function": {"name": "workspace_describe", "arguments": '{"operation_id": "pipeline.copy"}'},
             }
         ],
     )
@@ -526,14 +697,14 @@ async def test_e2e_progressive_mode_agent_run():
                 "type": "function",
                 "function": {
                     "name": "workspace_call",
-                    "arguments": '{"operation_id": "op_1.action_1", "arguments": {"param": 42}}',
+                    "arguments": '{"operation_id": "pipeline.copy", "arguments": {"pipeline_uuid": "pipe-prod-uuid", "new_name": "pipe-prod-copy"}}',
                 },
             }
         ],
     )
     turn_4 = Message(
         role="assistant",
-        content="Operation op_1.action_1 successfully completed.",
+        content="Pipeline copy created successfully: pipe-prod-copy (UUID: pipe-copy-uuid).",
     )
 
     turns = [turn_1, turn_2, turn_3, turn_4]
@@ -564,5 +735,5 @@ async def test_e2e_progressive_mode_agent_run():
     assert called_tool_names == ["workspace_search", "workspace_describe", "workspace_call"]
     assert len(tool_completed) == 3
     assert len(msg_completed) == 1
-    assert "op_1.action_1 successfully completed" in msg_completed[0].data["message"]["content"]
+    assert "pipe-copy-uuid" in msg_completed[0].data["message"]["content"]
     assert len(run_completed) == 1

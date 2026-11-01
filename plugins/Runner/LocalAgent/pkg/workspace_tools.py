@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections.abc
+import hashlib
 import json
 import logging
 from dataclasses import dataclass
@@ -113,10 +114,13 @@ def operation_id_to_tool_name(operation_id: str) -> str:
     """Convert operation ID to direct tool name: 'bot.list' -> 'ws_bot__list'.
 
     Tool name starts with 'ws_', replaces '.' with '__', and length is bounded <= 64.
+    If length exceeds 64 chars, a stable 8-char SHA256 suffix is appended to prevent collision.
     """
-    tool_name = f"ws_{operation_id.replace('.', '__')}"
+    cleaned = operation_id.replace(".", "__")
+    tool_name = f"ws_{cleaned}"
     if len(tool_name) > 64:
-        return tool_name[:64]
+        digest = hashlib.sha256(operation_id.encode("utf-8")).hexdigest()[:8]
+        tool_name = f"{tool_name[:55]}_{digest}"
     return tool_name
 
 
@@ -226,6 +230,7 @@ class WorkspaceToolsManager:
         domains: list[dict[str, Any]],
         mode: str | None,  # "direct", "progressive", or None
         tools: list[LLMTool],
+        tool_name_to_op_id: dict[str, str] | None = None,
     ):
         self.operations = operations
         self.operations_by_id = {op.id: op for op in operations}
@@ -233,6 +238,7 @@ class WorkspaceToolsManager:
         self.mode = mode
         self.tools = tools
         self._tool_names = {tool.name for tool in tools}
+        self._tool_name_to_op_id = dict(tool_name_to_op_id or {})
 
     @classmethod
     async def discover(
@@ -282,9 +288,10 @@ class WorkspaceToolsManager:
         config = getattr(ctx, "config", None) if isinstance(getattr(ctx, "config", None), dict) else {}
         threshold = get_workspace_direct_threshold(config)
 
+        tool_name_map: dict[str, str] = {}
         if len(normalized_ops) <= threshold:
             mode = "direct"
-            tools = cls._build_direct_tools(normalized_ops)
+            tools, tool_name_map = cls._build_direct_tools(normalized_ops)
         else:
             mode = "progressive"
             tools = cls._build_progressive_tools()
@@ -294,18 +301,23 @@ class WorkspaceToolsManager:
             domains=domains,
             mode=mode,
             tools=tools,
+            tool_name_to_op_id=tool_name_map,
         )
 
     @staticmethod
-    def _build_direct_tools(operations: list[NormalizedOperation]) -> list[LLMTool]:
+    def _build_direct_tools(
+        operations: list[NormalizedOperation],
+    ) -> tuple[list[LLMTool], dict[str, str]]:
         """Build direct tools: ws_<op_id with . replaced by __>."""
 
         async def _placeholder(**kwargs: Any) -> Any:
             return kwargs
 
         tools: list[LLMTool] = []
+        name_map: dict[str, str] = {}
         for op in operations:
             tool_name = operation_id_to_tool_name(op.id)
+            name_map[tool_name] = op.id
             desc = op.description or op.summary or f"Workspace operation {op.id}"
             params = (
                 op.input_schema
@@ -324,7 +336,7 @@ class WorkspaceToolsManager:
                     func=_placeholder,
                 )
             )
-        return tools
+        return tools, name_map
 
     @staticmethod
     def _build_progressive_tools() -> list[LLMTool]:
@@ -540,7 +552,7 @@ class WorkspaceToolsManager:
             else:
                 return {"error": f"Unknown workspace tool '{tool_name}'"}
         elif self.mode == "direct":
-            op_id = tool_name_to_operation_id(tool_name)
+            op_id = self._tool_name_to_op_id.get(tool_name) or tool_name_to_operation_id(tool_name)
             return await self._call_operation(
                 api=api,
                 operation_id=op_id,
@@ -566,6 +578,20 @@ class WorkspaceToolsManager:
                     "message": f"Operation '{operation_id}' is not authorized",
                 },
             }
+
+        # Guard against reserved keyword collision in SDK WorkspaceOperationsProxy.call(operation_id, _timeout, **arguments)
+        for reserved_key in ("operation_id", "_timeout"):
+            if reserved_key in arguments:
+                return {
+                    "ok": False,
+                    "error": {
+                        "code": "invalid_argument",
+                        "message": (
+                            f"Argument conflict: '{reserved_key}' is a reserved parameter in workspace.call. "
+                            "Nested parameters should be used or this parameter should be renamed."
+                        ),
+                    },
+                }
 
         workspace_proxy = getattr(api, "workspace", None)
         if workspace_proxy is None or not callable(getattr(workspace_proxy, "call", None)):

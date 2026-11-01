@@ -191,12 +191,6 @@ def get_workspace_direct_threshold(config: dict[str, typing.Any] | None) -> int:
     if not isinstance(config, dict):
         return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
     val = config.get("workspace-direct-threshold")
-    if val is None:
-        val = config.get("workspace_direct_threshold")
-    if val is None:
-        val = config.get("workspace-tools-threshold")
-    if val is None:
-        val = config.get("workspace_tools_threshold")
     if isinstance(val, bool) or not isinstance(val, int) or val < 0:
         return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
     return val

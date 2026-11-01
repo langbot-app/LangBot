@@ -247,6 +247,20 @@ spec:
         field: advanced-settings
         operator: eq
         value: true
+    - name: workspace-direct-threshold
+      label:
+        en_US: Workspace Operations Direct Mode Threshold
+        zh_Hans: 工作区操作直接模式阈值
+      description:
+        en_US: Maximum number of authorized workspace operations to expose directly as individual tools before switching to progressive search/describe/call tools.
+        zh_Hans: 直接作为独立工具暴露给模型的工作区操作数量上限。超过此阈值时切换为搜索/描述/调用的渐进式披露模式。
+      type: integer
+      required: false
+      default: 8
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
     - name: context-history-fetch-limit
       label:
         en_US: History Fetch Limit
