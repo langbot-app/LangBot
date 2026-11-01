@@ -132,10 +132,12 @@ async def probe(destination):
     discovery = ComponentDiscoveryEngine()
     manifest = discovery.load_component_manifest("manifest.yaml")
     assert manifest is not None
-    assert set(manifest.spec["components"]) == {"Runner"}
+    expected_kinds = {"Runner", "Command"} if PLUGIN == "acp-agent-runner" else {"Runner"}
+    assert set(manifest.spec["components"]) == expected_kinds
     components = discover_plugin_components(manifest, discovery)
-    assert len(components) == 1
-    component = components[0]
+    runner_components = [item for item in components if item.kind == "Runner"]
+    assert len(runner_components) == 1
+    component = runner_components[0]
     assert component.kind == "Runner"
     identity = f"{manifest.metadata.author}/{manifest.metadata.name}"
     descriptor = RunnerManifest(
@@ -193,7 +195,13 @@ async def probe(destination):
                     1,
                 )
                 container = (await rpc(conn, RuntimeToPluginAction.GET_PLUGIN_CONTAINER, {}, 2))[0]
-                instance = controller.plugin_container.components[0].component_instance
+                runner_instances = [
+                    item.component_instance
+                    for item in controller.plugin_container.components
+                    if isinstance(item.component_instance, Runner)
+                ]
+                assert len(runner_instances) == 1
+                instance = runner_instances[0]
                 assert isinstance(instance, Runner)
                 assert instance.plugin_identity == identity
                 invalid_results = await rpc(

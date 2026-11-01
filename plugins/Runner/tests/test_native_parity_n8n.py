@@ -304,6 +304,16 @@ async def test_timeout_includes_waiting_for_response_headers(runner_module, monk
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("value", [None, True, 0, -1, "invalid", float("inf"), float("nan")])
+async def test_invalid_timeout_fails_before_http(runner_module, monkeypatch, value):
+    requests = wire(monkeypatch, Body([b'{"response":"ok"}']))
+    results = await collect(runner_module, context({"timeout": value}))
+    assert [result["type"] for result in results] == ["run.failed"]
+    assert results[0]["data"]["code"] == "n8n.config_invalid"
+    assert requests == []
+
+
+@pytest.mark.asyncio
 async def test_reply_timeout_is_total_not_only_per_chunk(runner_module, monkeypatch):
     class SlowBody(Body):
         async def __aiter__(self):

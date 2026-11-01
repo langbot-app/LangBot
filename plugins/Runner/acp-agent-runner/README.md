@@ -11,6 +11,7 @@ It is a thin runtime adapter:
 - ACP `session/update` text chunks are streamed back to LangBot.
 - LangBot multimodal input is mapped to ACP prompt content blocks when the selected ACP runtime advertises the matching prompt capability.
 - LangBot tools, knowledge bases, and history are exposed through the SDK-owned run-scoped MCP bridge.
+- `!new` resets the current ACP binding for any location. Daemon mode additionally provides `!list`, `!sessions`, `!switch`, and `!delete` when the ACP client advertises the required session capabilities. `!stop` uses the Host's generic Runner cancellation contract.
 
 ## Runner ID
 
@@ -128,6 +129,22 @@ Useful options:
 
 Headless ACP permission requests are answered with `allow_once` by default.
 LangBot does not yet expose an interactive approval UI for these requests.
+
+## Session management commands
+
+`!list`, `!sessions`, `!switch`, and `!delete` target `location=daemon` and require the daemon-side ACP runtime to advertise the corresponding session capability. `!new` only resets the ACPAgentRunner binding and works with every location. These are ACPAgentRunner features, not a generic Runner command contract. Command state uses the reset-stable IM session identity, so Host context resets do not lose the selected ACP session. If `env-json` is required, configure those variables in the daemon process instead; daemon session-control commands do not persist environment values in plugin storage.
+
+| Command | Behavior |
+| --- | --- |
+| `!new` | Clears the current binding; the next message creates a new ACP session while preserving the old one |
+| `!list` / `!sessions` | Lists ACP sessions in the configured daemon workspace |
+| `!switch <number or session ID>` | Selects an existing ACP session |
+| `!delete` | Deletes the current ACP session, then clears the LangBot binding and visible context |
+| `!stop` | Stops the active run without deleting the ACP session |
+
+`!delete` preserves LangBot run-audit records. Immediate `!stop` cancellation requires Host support for control-command cancellation before the per-session concurrency slot.
+
+In group chats, `!new`, `!switch`, and `!delete` require bot administrator privilege. `!stop` may stop a run started by the same member; bot administrators may stop any active run in the group.
 
 ## Steering (follow-up input)
 

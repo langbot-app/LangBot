@@ -121,6 +121,16 @@ class CommandManager:
         )
         return _admins.first() is not None
 
+    async def resolve_privilege(self, query: pipeline_query.Query) -> int:
+        """Resolve the command privilege for one platform query."""
+        is_adm = await self.is_admin(
+            query.workspace_uuid,
+            query.bot_uuid or '',
+            query.launcher_type.value,
+            str(query.launcher_id),
+        )
+        return 2 if is_adm else 1
+
     async def build_context(
         self,
         *,

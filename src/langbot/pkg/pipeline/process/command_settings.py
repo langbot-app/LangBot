@@ -7,7 +7,23 @@ if typing.TYPE_CHECKING:
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
+_CACHE_KEY = '_bot_command_settings'
+
+
 async def get_bot_command_settings(ap: typing.Any, query: pipeline_query.Query) -> tuple[bool, list[str]]:
+    """Return the bot command switch and prefixes, cached on the query for repeated scheduler checks."""
+    variables = getattr(query, 'variables', None)
+    if isinstance(variables, dict):
+        cached = variables.get(_CACHE_KEY)
+        if isinstance(cached, tuple) and len(cached) == 2:
+            return cached[0], list(cached[1])
+    result = await _resolve_bot_command_settings(ap, query)
+    if isinstance(variables, dict):
+        variables[_CACHE_KEY] = (result[0], tuple(result[1]))
+    return result
+
+
+async def _resolve_bot_command_settings(ap: typing.Any, query: pipeline_query.Query) -> tuple[bool, list[str]]:
     """Retrieve command enabled status and prefixes from in-memory RuntimeBot without querying the database."""
     default_enabled = True
     default_prefixes = ['/']
