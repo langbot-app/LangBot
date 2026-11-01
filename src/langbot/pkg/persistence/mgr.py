@@ -70,6 +70,8 @@ _ALEMBIC_TENANT_TABLES = {
     'llm_models',
     'embedding_models',
     'rerank_models',
+    'stt_models',
+    'tts_models',
     'legacy_pipelines',
     'pipeline_run_records',
     'pipeline_migration_snapshots',

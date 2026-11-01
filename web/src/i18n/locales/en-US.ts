@@ -885,6 +885,8 @@ const enUS = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Rerank',
+    stt: 'STT (Speech to Text)',
+    tts: 'TTS (Text to Speech)',
     rerankUrlTooltip:
       'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip: 'Path appended to base URL (default: rerank)',
@@ -2406,6 +2408,7 @@ const enUS = {
     triggerConditions: 'Trigger',
     safetyControls: 'Safety',
     outputProcessing: 'Output',
+    speechProcessing: 'Speech',
     nameRequired: 'Name cannot be empty',
     descriptionRequired: 'Description cannot be empty',
     createSuccess: 'Created successfully. Please edit pipeline parameters',

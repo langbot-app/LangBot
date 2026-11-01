@@ -134,19 +134,15 @@ class DiscordMessageConverter:
 
     @staticmethod
     async def _load_voice(element: platform_message.Voice) -> tuple[bytes | None, str]:
-        filename = f'{uuid.uuid4()}.mp3'
-        if element.base64:
-            header, _, payload = element.base64.partition(',')
-            data = payload or header
-            for ext in ('wav', 'mp3', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'webm'):
-                if ext in header:
-                    filename = f'{uuid.uuid4()}.{ext}'
-                    break
-            return await asyncio.to_thread(_decode_discord_base64_limited, data), filename
-        if element.url:
-            data, _ = await DiscordMessageConverter._download(element.url)
-            return data, filename
-        return None, filename
+        from ....utils import audio as audio_utils
+
+        try:
+            raw_bytes, fmt = await audio_utils.extract_voice_bytes(element)
+            ext = fmt if fmt != 'unknown' else 'mp3'
+            filename = f'{uuid.uuid4()}.{ext}'
+            return raw_bytes, filename
+        except Exception:
+            return None, f'{uuid.uuid4()}.mp3'
 
     @staticmethod
     async def _load_file(element: platform_message.File) -> bytes | None:

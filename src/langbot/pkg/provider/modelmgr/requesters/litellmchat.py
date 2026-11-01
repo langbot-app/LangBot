@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
-from litellm import acompletion, aembedding, arerank
+from litellm import acompletion, aembedding, arerank, atranscription, aspeech
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
@@ -1880,6 +1880,121 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             )
 
         return results
+
+    async def invoke_stt(
+        self,
+        model: requester.RuntimeSTTModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> str:
+        """Invoke speech-to-text (transcription) and return transcript."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        ext = 'wav'
+        if 'mp3' in mime or 'mpeg' in mime:
+            ext = 'mp3'
+        elif 'ogg' in mime:
+            ext = 'ogg'
+        elif 'flac' in mime:
+            ext = 'flac'
+        elif 'm4a' in mime or 'mp4' in mime:
+            ext = 'm4a'
+        elif 'wav' in mime:
+            ext = 'wav'
+        filename = f'audio.{ext}'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'file': (filename, audio, mime),
+            'api_key': api_key,
+        }
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
+        args.update(extra_args)
+
+        try:
+            response = await atranscription(**args)
+            if hasattr(response, 'text'):
+                return response.text or ''
+            if isinstance(response, dict):
+                return response.get('text', '')
+            return str(response)
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
+
+    async def invoke_tts(
+        self,
+        model: requester.RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> tuple[bytes, str]:
+        """Invoke text-to-speech and return (audio_bytes, mime_type)."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        combined_extra = {**(model.model_entity.extra_args or {}), **extra_args}
+        voice = combined_extra.pop('voice', None) or 'alloy'
+        response_format = combined_extra.pop('response_format', None) or combined_extra.pop('format', None) or 'mp3'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'input': text,
+            'voice': voice,
+            'response_format': response_format,
+            'api_key': api_key,
+        }
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        args.update(combined_extra)
+
+        try:
+            response = await aspeech(**args)
+            content = b''
+            if hasattr(response, 'content'):
+                content = response.content
+            elif hasattr(response, 'read'):
+                res = response.read()
+                if asyncio.iscoroutine(res):
+                    content = await res
+                else:
+                    content = res
+            elif isinstance(response, bytes):
+                content = response
+            elif hasattr(response, 'response') and hasattr(response.response, 'content'):
+                content = response.response.content
+
+            # Determine mime type
+            mime = 'audio/mpeg'
+            if response_format == 'wav':
+                mime = 'audio/wav'
+            elif response_format in ('ogg', 'opus'):
+                mime = 'audio/ogg'
+            elif response_format == 'flac':
+                mime = 'audio/flac'
+            elif response_format == 'aac':
+                mime = 'audio/aac'
+            elif hasattr(response, 'response') and hasattr(response.response, 'headers'):
+                mime = response.response.headers.get('content-type', mime)
+
+            return content, mime
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         """Scan models supported by the provider."""

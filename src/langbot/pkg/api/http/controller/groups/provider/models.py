@@ -382,3 +382,229 @@ class RerankModelsRouterGroup(group.RouterGroup):
             except provider_errors.RequesterError as exc:
                 return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
             return self.success()
+
+
+@group.group_class('models/stt', '/api/v1/provider/models/stt')
+class STTModelsRouterGroup(group.RouterGroup):
+    async def initialize(self) -> None:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            provider_uuid = quart.request.args.get('provider_uuid')
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            if provider_uuid:
+                models = await self.ap.stt_models_service.get_stt_models_by_provider(
+                    request_context,
+                    provider_uuid,
+                    include_secret=include_secret,
+                )
+            else:
+                models = await self.ap.stt_models_service.get_stt_models(
+                    request_context,
+                    include_secret=include_secret,
+                )
+            return self.success(data={'models': models})
+
+        @self.route(
+            '',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            try:
+                model_uuid = await self.ap.stt_models_service.create_stt_model(
+                    request_context,
+                    await quart.request.json,
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={'uuid': model_uuid})
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            model = await self.ap.stt_models_service.get_stt_model(
+                request_context,
+                model_uuid,
+                include_secret=include_secret,
+            )
+            if model is None:
+                return self.http_status(404, -1, 'model not found')
+            return self.success(data={'model': model})
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            try:
+                await self.ap.stt_models_service.update_stt_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success()
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            await self.ap.stt_models_service.delete_stt_model(request_context, model_uuid)
+            return self.success()
+
+        @self.route(
+            '/<model_uuid>/test',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            try:
+                await self.ap.stt_models_service.test_stt_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except provider_errors.RequesterError as exc:
+                return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
+            return self.success()
+
+
+@group.group_class('models/tts', '/api/v1/provider/models/tts')
+class TTSModelsRouterGroup(group.RouterGroup):
+    async def initialize(self) -> None:
+        @self.route(
+            '',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            provider_uuid = quart.request.args.get('provider_uuid')
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            if provider_uuid:
+                models = await self.ap.tts_models_service.get_tts_models_by_provider(
+                    request_context,
+                    provider_uuid,
+                    include_secret=include_secret,
+                )
+            else:
+                models = await self.ap.tts_models_service.get_tts_models(
+                    request_context,
+                    include_secret=include_secret,
+                )
+            return self.success(data={'models': models})
+
+        @self.route(
+            '',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(request_context: RequestContext) -> str:
+            try:
+                model_uuid = await self.ap.tts_models_service.create_tts_model(
+                    request_context,
+                    await quart.request.json,
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success(data={'uuid': model_uuid})
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            include_secret, error = resolve_include_secret(
+                quart.request.args.get('include_secret'),
+                permitted=has_permission(request_context, Permission.PROVIDER_SECRET_MANAGE),
+            )
+            if error:
+                return self.http_status(400, -1, error)
+            model = await self.ap.tts_models_service.get_tts_model(
+                request_context,
+                model_uuid,
+                include_secret=include_secret,
+            )
+            if model is None:
+                return self.http_status(404, -1, 'model not found')
+            return self.success(data={'model': model})
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            try:
+                await self.ap.tts_models_service.update_tts_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return self.success()
+
+        @self.route(
+            '/<model_uuid>',
+            methods=['DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            await self.ap.tts_models_service.delete_tts_model(request_context, model_uuid)
+            return self.success()
+
+        @self.route(
+            '/<model_uuid>/test',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.PROVIDER_SECRET_MANAGE,
+        )
+        async def _(model_uuid: str, request_context: RequestContext) -> str:
+            try:
+                await self.ap.tts_models_service.test_tts_model(
+                    request_context,
+                    model_uuid,
+                    await quart.request.json,
+                )
+            except provider_errors.RequesterError as exc:
+                return self.http_status(400, MODEL_TEST_ERROR_CODE, str(exc))
+            return self.success()

@@ -58,6 +58,8 @@ spec:
   - llm
   - text-embedding
   - rerank
+  - stt
+  - tts
   provider_category: unified
 execution:
   python:

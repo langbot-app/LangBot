@@ -26,4 +26,5 @@ spec:
   alias: "groq Groq 高速 llama mixtral 推理加速 lpu"
   support_type:
   - llm
+  - stt
   provider_category: manufacturer

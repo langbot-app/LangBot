@@ -59,6 +59,8 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'llm_models': 'workspace_uuid',
     'embedding_models': 'workspace_uuid',
     'rerank_models': 'workspace_uuid',
+    'stt_models': 'workspace_uuid',
+    'tts_models': 'workspace_uuid',
     'legacy_pipelines': 'workspace_uuid',
     'pipeline_run_records': 'workspace_uuid',
     'pipeline_migration_snapshots': 'workspace_uuid',

@@ -894,6 +894,8 @@ const ruRU = {
     chat: 'Чат',
     embedding: 'Embedding',
     rerank: 'Переранжирование',
+    stt: 'STT (Распознавание речи)',
+    tts: 'TTS (Синтез речи)',
     rerankUrlTooltip:
       'Полный URL для эндпоинта переранжирования (напр.: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2429,6 +2431,7 @@ const ruRU = {
     triggerConditions: 'Триггер',
     safetyControls: 'Безопасность',
     outputProcessing: 'Вывод',
+    speechProcessing: 'Речь',
     nameRequired: 'Название не может быть пустым',
     descriptionRequired: 'Описание не может быть пустым',
     createSuccess: 'Успешно создано. Отредактируйте параметры конвейера',

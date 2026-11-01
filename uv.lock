@@ -2199,6 +2199,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+audio = [
+    { name = "pilk" },
+]
 seekdb = [
     { name = "pylibseekdb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'" },
     { name = "pyseekdb" },
@@ -2259,6 +2262,7 @@ requires-dist = [
     { name = "openai", specifier = ">1.0.0" },
     { name = "pandas", specifier = ">=2.2.2" },
     { name = "pgvector", specifier = ">=0.4.1" },
+    { name = "pilk", marker = "extra == 'audio'", specifier = ">=0.1.0" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pip", specifier = ">=26.2.0" },
     { name = "pre-commit", specifier = ">=4.2.0" },
@@ -2297,7 +2301,7 @@ requires-dist = [
     { name = "websockets", specifier = ">=15.0.1" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
-provides-extras = ["seekdb"]
+provides-extras = ["audio", "seekdb"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3956,6 +3960,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/25/6c/6d8b4b03b958c02fa8687ec6063c49d952a189f8c91ebbe51e877dfab8f7/pgvector-0.4.2.tar.gz", hash = "sha256:322cac0c1dc5d41c9ecf782bd9991b7966685dee3a00bc873631391ed949513a", size = 31354, upload-time = "2025-12-05T01:07:17.87Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5a/26/6cee8a1ce8c43625ec561aff19df07f9776b7525d9002c86bceb3e0ac970/pgvector-0.4.2-py3-none-any.whl", hash = "sha256:549d45f7a18593783d5eec609ea1684a724ba8405c4cb182a0b2b08aeff04e08", size = 27441, upload-time = "2025-12-05T01:07:16.536Z" },
+]
+
+[[package]]
+name = "pilk"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/66/bb/938dd697b6bc2d851ffec4ffe82ed20078e58bd0ef049e84f4d038d6f991/pilk-0.2.4.tar.gz", hash = "sha256:d4a1bcf93dc6ef5e95e0cfd728ed4ef4d49f9c0476d70816fecbe456cc762e7f", size = 226451, upload-time = "2023-05-26T03:32:34.133Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ff/06/80cac61bc7f791bcaae552ba90fb868f7af7503ef1c74e423cc20fca1a53/pilk-0.2.4-cp311-cp311-win_amd64.whl", hash = "sha256:a6692096607e8d77d348aeec00df633788c85b527aa83cbd803ddf508936db7f", size = 127024, upload-time = "2023-05-26T03:32:24.524Z" },
 ]
 
 [[package]]

@@ -899,6 +899,8 @@ const esES = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Reordenar',
+    stt: 'STT (Voz a texto)',
+    tts: 'TTS (Texto a voz)',
     rerankUrlTooltip:
       'URL completa para el endpoint de reordenación (ej: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2442,6 +2444,7 @@ const esES = {
     triggerConditions: 'Disparador',
     safetyControls: 'Seguridad',
     outputProcessing: 'Salida',
+    speechProcessing: 'Voz',
     nameRequired: 'El nombre no puede estar vacío',
     descriptionRequired: 'La descripción no puede estar vacía',
     createSuccess:

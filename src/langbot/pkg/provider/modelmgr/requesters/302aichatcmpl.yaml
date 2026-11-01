@@ -28,6 +28,8 @@ spec:
   - llm
   - text-embedding
   - rerank
+  - stt
+  - tts
   provider_category: maas
 execution:
   python:

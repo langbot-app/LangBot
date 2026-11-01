@@ -111,6 +111,12 @@ class BuildAppStage(stage.BootingStage):
         rerank_models_service_inst = model_service.RerankModelsService(ap)
         ap.rerank_models_service = rerank_models_service_inst
 
+        stt_models_service_inst = model_service.STTModelsService(ap)
+        ap.stt_models_service = stt_models_service_inst
+
+        tts_models_service_inst = model_service.TTSModelsService(ap)
+        ap.tts_models_service = tts_models_service_inst
+
         provider_service_inst = provider_service.ModelProviderService(ap)
         ap.provider_service = provider_service_inst
 

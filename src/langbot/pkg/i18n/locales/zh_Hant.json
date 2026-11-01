@@ -110,5 +110,7 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "無法啟動 ChatGPT 裝置登入。請在 ChatGPT 設定中啟用裝置代碼登入。",
   "Option {number}": "選項 {number}",
   "Confirmation needed": "需要確認",
-  "Session reset successfully": "對話已重設"
+  "Session reset successfully": "對話已重設",
+  "Voice transcription failed.": "語音轉寫失敗。",
+  "Voice message exceeds maximum duration.": "語音訊息超過最大時長。"
 }

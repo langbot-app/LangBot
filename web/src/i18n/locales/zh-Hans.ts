@@ -840,6 +840,8 @@ const zhHans = {
     chat: '对话',
     embedding: '嵌入',
     rerank: '重排序',
+    stt: '语音转文本 (STT)',
+    tts: '文本转语音 (TTS)',
     rerankUrlTooltip:
       '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip: '添加到基础 URL 后的重排序路径（默认：rerank）',
@@ -2265,6 +2267,7 @@ const zhHans = {
     triggerConditions: '触发条件',
     safetyControls: '安全控制',
     outputProcessing: '输出处理',
+    speechProcessing: '语音处理',
     nameRequired: '名称不能为空',
     descriptionRequired: '描述不能为空',
     createSuccess: '创建成功 请编辑流水线详细参数',

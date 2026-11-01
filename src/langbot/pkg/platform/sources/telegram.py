@@ -116,6 +116,16 @@ class TelegramMessageConverter(abstract_platform_adapter.AbstractMessageConverte
                 photo_bytes, _mime_type = await component.get_bytes()
 
                 components.append({'type': 'photo', 'photo': photo_bytes})
+            elif isinstance(component, platform_message.Voice):
+                from ...utils import audio as audio_utils
+
+                voice_bytes, src_fmt = await audio_utils.extract_voice_bytes(component)
+                if audio_utils.is_ffmpeg_available():
+                    try:
+                        voice_bytes = await audio_utils.transcode_audio(voice_bytes, 'ogg', src_fmt)
+                    except Exception:
+                        pass
+                components.append({'type': 'voice', 'voice': voice_bytes, 'duration': component.length})
             elif isinstance(component, platform_message.File):
                 file_bytes = None
 
@@ -542,6 +552,14 @@ class TelegramAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
                 await self.bot.send_document(**args)
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                await self.bot.send_voice(**args)
 
     async def reply_message(
         self,

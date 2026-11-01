@@ -2,6 +2,8 @@ import {
   LLMModel,
   EmbeddingModel,
   RerankModel,
+  STTModel,
+  TTSModel,
   ModelProvider,
   ProviderScanDebugInfo,
   ScannedProviderModel,
@@ -15,7 +17,7 @@ export type ExtraArg = {
   value: string;
 };
 
-export type ModelType = 'llm' | 'embedding' | 'rerank';
+export type ModelType = 'llm' | 'embedding' | 'rerank' | 'stt' | 'tts';
 
 export const DEFAULT_REASONING_CONFIG: ReasoningConfig = {
   level: 'provider_default',
@@ -25,6 +27,8 @@ export interface ProviderModels {
   llm: LLMModel[];
   embedding: EmbeddingModel[];
   rerank: RerankModel[];
+  stt: STTModel[];
+  tts: TTSModel[];
 }
 
 export type TestResult =
@@ -41,7 +45,7 @@ export type ScanModelsResult = {
 };
 
 export interface ModelItemProps {
-  model: LLMModel | EmbeddingModel;
+  model: LLMModel | EmbeddingModel | RerankModel | STTModel | TTSModel;
   modelType: ModelType;
   providerUuid: string;
   isLangBotModels: boolean;

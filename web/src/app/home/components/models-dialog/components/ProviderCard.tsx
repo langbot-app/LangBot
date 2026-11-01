@@ -157,11 +157,15 @@ export default function ProviderCard({
     !isLangBotModels &&
     (provider.llm_count || 0) === 0 &&
     (provider.embedding_count || 0) === 0 &&
-    (provider.rerank_count || 0) === 0;
+    (provider.rerank_count || 0) === 0 &&
+    (provider.stt_count || 0) === 0 &&
+    (provider.tts_count || 0) === 0;
   const totalModels =
     (provider.llm_count || 0) +
     (provider.embedding_count || 0) +
-    (provider.rerank_count || 0);
+    (provider.rerank_count || 0) +
+    (provider.stt_count || 0) +
+    (provider.tts_count || 0);
 
   return (
     <Card className="mb-2">
@@ -601,9 +605,117 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
+                {(models.stt || []).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="stt"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'stt')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'stt',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'stt',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
+                {(models.tts || []).map((model) => (
+                  <ModelItem
+                    key={model.uuid}
+                    model={model}
+                    canManage={canManage}
+                    modelType="tts"
+                    isLangBotModels={isLangBotModels}
+                    metadata={
+                      modelMetadata[model.uuid] ?? modelMetadata[model.name]
+                    }
+                    availabilityLoaded={modelAvailabilityLoaded}
+                    editModelPopoverOpen={editModelPopoverOpen}
+                    deleteConfirmOpen={deleteConfirmOpen}
+                    onOpenEditModel={onOpenEditModel}
+                    onCloseEditModel={onCloseEditModel}
+                    onOpenDeleteConfirm={onOpenDeleteConfirm}
+                    onCloseDeleteConfirm={onCloseDeleteConfirm}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'tts')}
+                    onUpdateModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onUpdateModel(
+                        model.uuid,
+                        'tts',
+                        name,
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    onTestModel={(
+                      name,
+                      abilities,
+                      extraArgs,
+                      reasoningConfig,
+                    ) =>
+                      onTestModel(
+                        name,
+                        'tts',
+                        abilities,
+                        extraArgs,
+                        reasoningConfig,
+                      )
+                    }
+                    isSubmitting={isSubmitting}
+                    isTesting={isTesting}
+                    testResult={testResult}
+                    onResetTestResult={onResetTestResult}
+                  />
+                ))}
                 {models.llm.length === 0 &&
                   models.embedding.length === 0 &&
-                  models.rerank.length === 0 && (
+                  models.rerank.length === 0 &&
+                  (!models.stt || models.stt.length === 0) &&
+                  (!models.tts || models.tts.length === 0) && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       {t('models.noModels')}
                     </p>

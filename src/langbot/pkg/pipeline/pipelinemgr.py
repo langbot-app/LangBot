@@ -39,6 +39,7 @@ from . import (
     wrapper,
     preproc,
     ratelimit,
+    speech,
 )
 
 importutil.import_modules_in_pkgs(
@@ -52,6 +53,7 @@ importutil.import_modules_in_pkgs(
         wrapper,
         preproc,
         ratelimit,
+        speech,
     ]
 )
 
@@ -915,6 +917,7 @@ class PipelineManager:
             getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
+            getattr(self.ap, 'pipeline_config_meta_speech', {'name': 'speech', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),
         )
 

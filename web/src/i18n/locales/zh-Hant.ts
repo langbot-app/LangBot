@@ -835,6 +835,8 @@ const zhHant = {
     chat: '對話',
     embedding: '嵌入',
     rerank: '重排序',
+    stt: '語音轉文字 (STT)',
+    tts: '文字轉語音 (TTS)',
     rerankUrlTooltip:
       '完整 URL 覆蓋重排序端點（例如：https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:
@@ -2261,6 +2263,7 @@ const zhHant = {
     triggerConditions: '觸發條件',
     safetyControls: '安全控制',
     outputProcessing: '輸出處理',
+    speechProcessing: '語音處理',
     nameRequired: '名稱不能為空',
     descriptionRequired: '描述不能為空',
     createSuccess: '建立成功 請編輯流水線詳細參數',

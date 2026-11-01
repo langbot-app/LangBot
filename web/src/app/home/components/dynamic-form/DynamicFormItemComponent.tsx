@@ -30,6 +30,8 @@ import {
   KnowledgeBase,
   EmbeddingModel,
   RerankModel,
+  STTModel,
+  TTSModel,
   PluginTool,
   ReasoningLevel,
 } from '@/app/infra/entities/api';
@@ -148,6 +150,8 @@ export default function DynamicFormItemComponent({
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
   const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
+  const [sttModels, setSttModels] = useState<STTModel[]>([]);
+  const [ttsModels, setTtsModels] = useState<TTSModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
   const [tools, setTools] = useState<PluginTool[]>([]);
@@ -167,6 +171,8 @@ export default function DynamicFormItemComponent({
     DynamicFormItemType.LLM_MODEL_SELECTOR,
     DynamicFormItemType.EMBEDDING_MODEL_SELECTOR,
     DynamicFormItemType.RERANK_MODEL_SELECTOR,
+    DynamicFormItemType.STT_MODEL_SELECTOR,
+    DynamicFormItemType.TTS_MODEL_SELECTOR,
     DynamicFormItemType.MODEL_FALLBACK_SELECTOR,
   ].includes(config.type);
   const {
@@ -244,12 +250,36 @@ export default function DynamicFormItemComponent({
       });
   };
 
+  const fetchSttModels = () => {
+    httpClient
+      .getProviderSTTModels()
+      .then((resp) => {
+        setSttModels(resp.models.filter(hasUsableUuid));
+      })
+      .catch((err) => {
+        toast.error('Failed to load STT models: ' + err.msg);
+      });
+  };
+
+  const fetchTtsModels = () => {
+    httpClient
+      .getProviderTTSModels()
+      .then((resp) => {
+        setTtsModels(resp.models.filter(hasUsableUuid));
+      })
+      .catch((err) => {
+        toast.error('Failed to load TTS models: ' + err.msg);
+      });
+  };
+
   const handleModelsDialogChange = (open: boolean) => {
     setModelsDialogOpen(open);
     if (!open) {
       fetchLlmModels();
       fetchEmbeddingModels();
       fetchRerankModels();
+      fetchSttModels();
+      fetchTtsModels();
     }
   };
 
@@ -323,6 +353,18 @@ export default function DynamicFormItemComponent({
   useEffect(() => {
     if (config.type === DynamicFormItemType.RERANK_MODEL_SELECTOR) {
       fetchRerankModels();
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.STT_MODEL_SELECTOR) {
+      fetchSttModels();
+    }
+  }, [config.type]);
+
+  useEffect(() => {
+    if (config.type === DynamicFormItemType.TTS_MODEL_SELECTOR) {
+      fetchTtsModels();
     }
   }, [config.type]);
 
@@ -1040,6 +1082,112 @@ export default function DynamicFormItemComponent({
             <SelectContent>
               <SelectItem value="__none__">{t('common.none')}</SelectItem>
               {Object.entries(groupedRerankModels).map(
+                ([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>{providerName}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem
+                        key={model.uuid}
+                        value={model.uuid}
+                        className={MODEL_SELECT_ITEM_CLASS}
+                      >
+                        {renderModelOption(model)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+
+    case DynamicFormItemType.STT_MODEL_SELECTOR:
+      const groupedSttModels = sttModels.reduce(
+        (acc, model) => {
+          const providerName = model.provider?.name || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, STTModel[]>,
+      );
+      for (const [providerName, models] of Object.entries(groupedSttModels)) {
+        if (
+          models[0]?.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER
+        ) {
+          groupedSttModels[providerName] = sortModelsByCatalog(
+            models,
+            langbotModelMetadata,
+          );
+        }
+      }
+
+      return (
+        <div className="w-full max-w-md min-w-0">
+          <Select
+            value={field.value || '__none__'}
+            onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
+              <SelectValue placeholder={t('models.stt')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('common.none')}</SelectItem>
+              {Object.entries(groupedSttModels).map(
+                ([providerName, models]) => (
+                  <SelectGroup key={providerName}>
+                    <SelectLabel>{providerName}</SelectLabel>
+                    {models.map((model) => (
+                      <SelectItem
+                        key={model.uuid}
+                        value={model.uuid}
+                        className={MODEL_SELECT_ITEM_CLASS}
+                      >
+                        {renderModelOption(model)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                ),
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+      );
+
+    case DynamicFormItemType.TTS_MODEL_SELECTOR:
+      const groupedTtsModels = ttsModels.reduce(
+        (acc, model) => {
+          const providerName = model.provider?.name || 'Unknown';
+          if (!acc[providerName]) acc[providerName] = [];
+          acc[providerName].push(model);
+          return acc;
+        },
+        {} as Record<string, TTSModel[]>,
+      );
+      for (const [providerName, models] of Object.entries(groupedTtsModels)) {
+        if (
+          models[0]?.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER
+        ) {
+          groupedTtsModels[providerName] = sortModelsByCatalog(
+            models,
+            langbotModelMetadata,
+          );
+        }
+      }
+
+      return (
+        <div className="w-full max-w-md min-w-0">
+          <Select
+            value={field.value || '__none__'}
+            onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
+          >
+            <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
+              <SelectValue placeholder={t('models.tts')} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">{t('common.none')}</SelectItem>
+              {Object.entries(groupedTtsModels).map(
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>

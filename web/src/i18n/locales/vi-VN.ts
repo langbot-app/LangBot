@@ -883,6 +883,8 @@ const viVN = {
     chat: 'Trò chuyện',
     embedding: 'Embedding',
     rerank: 'Sắp xếp lại',
+    stt: 'STT (Giọng nói thành văn bản)',
+    tts: 'TTS (Văn bản thành giọng nói)',
     rerankUrlTooltip:
       'URL đầy đủ cho endpoint sắp xếp lại (vd: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2394,6 +2396,7 @@ const viVN = {
     triggerConditions: 'Điều kiện kích hoạt',
     safetyControls: 'An toàn',
     outputProcessing: 'Đầu ra',
+    speechProcessing: 'Giọng nói',
     nameRequired: 'Tên không được để trống',
     descriptionRequired: 'Mô tả không được để trống',
     createSuccess: 'Tạo thành công. Vui lòng chỉnh sửa tham số Pipeline',

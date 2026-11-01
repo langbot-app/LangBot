@@ -211,7 +211,11 @@ export default function ModelItem({
                 ? t('models.chat')
                 : modelType === 'embedding'
                   ? t('models.embedding')
-                  : t('models.rerank')}
+                  : modelType === 'rerank'
+                    ? t('models.rerank')
+                    : modelType === 'stt'
+                      ? t('models.stt')
+                      : t('models.tts')}
             </Badge>
             {modelType === 'llm' &&
               (model as LLMModel).abilities?.includes('vision') && (

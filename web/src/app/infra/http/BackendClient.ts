@@ -58,6 +58,12 @@ import {
   ApiRespProviderRerankModels,
   ApiRespProviderRerankModel,
   RerankModel,
+  ApiRespProviderSTTModels,
+  ApiRespProviderSTTModel,
+  STTModel,
+  ApiRespProviderTTSModels,
+  ApiRespProviderTTSModel,
+  TTSModel,
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
   BoxSessionInfo,
@@ -234,7 +240,7 @@ export class BackendClient extends BaseHttpClient {
 
   public scanProviderModels(
     uuid: string,
-    modelType?: 'llm' | 'embedding' | 'rerank',
+    modelType?: 'llm' | 'embedding' | 'rerank' | 'stt' | 'tts',
   ): Promise<ApiRespScannedProviderModels> {
     const params = modelType ? { type: modelType } : {};
     return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
@@ -346,6 +352,68 @@ export class BackendClient extends BaseHttpClient {
 
   public testRerankModel(uuid: string, model: RerankModel): Promise<object> {
     return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model STT ============
+  public getProviderSTTModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderSTTModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/stt', params);
+  }
+
+  public getProviderSTTModel(uuid: string): Promise<ApiRespProviderSTTModel> {
+    return this.get(`/api/v1/provider/models/stt/${uuid}`);
+  }
+
+  public createProviderSTTModel(model: STTModel): Promise<object> {
+    return this.post('/api/v1/provider/models/stt', model);
+  }
+
+  public deleteProviderSTTModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/stt/${uuid}`);
+  }
+
+  public updateProviderSTTModel(
+    uuid: string,
+    model: STTModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/stt/${uuid}`, model);
+  }
+
+  public testSTTModel(uuid: string, model: STTModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/stt/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model TTS ============
+  public getProviderTTSModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderTTSModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/tts', params);
+  }
+
+  public getProviderTTSModel(uuid: string): Promise<ApiRespProviderTTSModel> {
+    return this.get(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public createProviderTTSModel(model: TTSModel): Promise<object> {
+    return this.post('/api/v1/provider/models/tts', model);
+  }
+
+  public deleteProviderTTSModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public updateProviderTTSModel(
+    uuid: string,
+    model: TTSModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/tts/${uuid}`, model);
+  }
+
+  public testTTSModel(uuid: string, model: TTSModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/tts/${uuid}/test`, model);
   }
 
   // ============ Pipeline API ============

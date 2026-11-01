@@ -27,6 +27,8 @@ spec:
   support_type:
   - llm
   - text-embedding
+  - stt
+  - tts
   provider_category: manufacturer
 execution:
   python:

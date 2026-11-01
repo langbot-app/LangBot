@@ -75,7 +75,7 @@ class RuntimeProvider:
 
     def _validate_invocation(
         self,
-        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel,
+        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel | RuntimeSTTModel | RuntimeTTSModel,
         execution_context: ExecutionContext,
     ) -> None:
         _ensure_same_execution_scope(self.execution_context, execution_context, resource='Provider invocation')
@@ -380,6 +380,75 @@ class RuntimeProvider:
             except Exception as monitor_err:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record rerank call: {monitor_err}')
 
+    async def invoke_stt(
+        self,
+        model: RuntimeSTTModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
+    ) -> str:
+        """Bridge method for invoking STT with monitoring"""
+        self._validate_invocation(model, execution_context)
+        start_time = time.time()
+        status = 'success'
+
+        try:
+            result = await self.requester.invoke_stt(
+                model=model,
+                audio=audio,
+                mime=mime,
+                extra_args=extra_args,
+            )
+            return result
+        except Exception:
+            status = 'error'
+            raise
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+            try:
+                self.requester.ap.logger.debug(
+                    f'[STT] model={model.model_entity.name} bytes={len(audio)} mime={mime} '
+                    f'duration={duration_ms}ms status={status}'
+                )
+            except Exception as monitor_err:
+                self.requester.ap.logger.error(f'[Monitoring] Failed to record STT call: {monitor_err}')
+
+    async def invoke_tts(
+        self,
+        model: RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+        *,
+        execution_context: ExecutionContext,
+    ) -> tuple[bytes, str]:
+        """Bridge method for invoking TTS with monitoring"""
+        self._validate_invocation(model, execution_context)
+        start_time = time.time()
+        status = 'success'
+
+        try:
+            result = await self.requester.invoke_tts(
+                model=model,
+                text=text,
+                extra_args=extra_args,
+            )
+            return result
+        except Exception:
+            status = 'error'
+            raise
+        finally:
+            duration_ms = int((time.time() - start_time) * 1000)
+            try:
+                self.requester.ap.logger.debug(
+                    f'[TTS] model={model.model_entity.name} text_len={len(text)} '
+                    f'duration={duration_ms}ms status={status}'
+                )
+            except Exception as monitor_err:
+                self.requester.ap.logger.error(f'[Monitoring] Failed to record TTS call: {monitor_err}')
+
+
 
 class RuntimeLLMModel:
     """运行时模型"""
@@ -456,6 +525,56 @@ class RuntimeRerankModel:
             raise WorkspaceInvariantError('Rerank model belongs to another Workspace')
         if model_entity.provider_uuid != provider.provider_entity.uuid:
             raise WorkspaceInvariantError('Rerank model references another provider')
+        self.execution_context = execution_context
+        self.model_entity = model_entity
+        self.provider = provider
+
+
+class RuntimeSTTModel:
+    """运行时 STT 模型"""
+
+    model_entity: persistence_model.STTModel
+    """模型数据"""
+
+    provider: RuntimeProvider
+    """提供商实例"""
+
+    def __init__(
+        self,
+        execution_context: ExecutionContext,
+        model_entity: persistence_model.STTModel,
+        provider: RuntimeProvider,
+    ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='STT model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('STT model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('STT model references another provider')
+        self.execution_context = execution_context
+        self.model_entity = model_entity
+        self.provider = provider
+
+
+class RuntimeTTSModel:
+    """运行时 TTS 模型"""
+
+    model_entity: persistence_model.TTSModel
+    """模型数据"""
+
+    provider: RuntimeProvider
+    """提供商实例"""
+
+    def __init__(
+        self,
+        execution_context: ExecutionContext,
+        model_entity: persistence_model.TTSModel,
+        provider: RuntimeProvider,
+    ):
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='TTS model')
+        if model_entity.workspace_uuid != execution_context.workspace_uuid:
+            raise WorkspaceInvariantError('TTS model belongs to another Workspace')
+        if model_entity.provider_uuid != provider.provider_entity.uuid:
+            raise WorkspaceInvariantError('TTS model references another provider')
         self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
@@ -606,3 +725,42 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             typing.List[dict]: [{"index": int, "relevance_score": float}, ...]
         """
         raise NotImplementedError('This requester does not support rerank')
+
+    async def invoke_stt(
+        self,
+        model: RuntimeSTTModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> str:
+        """调用 STT API
+
+        Args:
+            model (RuntimeSTTModel): 使用的模型信息
+            audio (bytes): 音频字节数据
+            mime (str): 音频 mime 类型
+            extra_args (dict[str, typing.Any], optional): 额外参数. Defaults to {}.
+
+        Returns:
+            str: 转写文本
+        """
+        raise NotImplementedError('This requester does not support stt')
+
+    async def invoke_tts(
+        self,
+        model: RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> tuple[bytes, str]:
+        """调用 TTS API
+
+        Args:
+            model (RuntimeTTSModel): 使用的模型信息
+            text (str): 待合成文本
+            extra_args (dict[str, typing.Any], optional): 额外参数. Defaults to {}.
+
+        Returns:
+            tuple[bytes, str]: (音频字节数据, mime 类型)
+        """
+        raise NotImplementedError('This requester does not support tts')
+

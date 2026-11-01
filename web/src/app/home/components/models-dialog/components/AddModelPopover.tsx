@@ -4,6 +4,8 @@ import {
   MessageSquareText,
   Cpu,
   ArrowUpDown,
+  Mic,
+  Volume2,
   Eye,
   Wrench,
   BrainCircuit,
@@ -93,8 +95,10 @@ export default function AddModelPopover({
     llm: 'llm',
     embedding: 'text-embedding',
     rerank: 'rerank',
+    stt: 'stt',
+    tts: 'tts',
   };
-  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank'];
+  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank', 'stt', 'tts'];
   // When supportTypes is undefined (unknown requester), show all tabs for
   // backward compatibility. Otherwise only show supported tabs.
   const visibleTabs: ModelType[] = supportTypes
@@ -322,6 +326,18 @@ export default function AddModelPopover({
                     {t('models.rerank')}
                   </TabsTrigger>
                 )}
+                {visibleTabs.includes('stt') && (
+                  <TabsTrigger value="stt">
+                    <Mic className="h-4 w-4 mr-1" />
+                    {t('models.stt')}
+                  </TabsTrigger>
+                )}
+                {visibleTabs.includes('tts') && (
+                  <TabsTrigger value="tts">
+                    <Volume2 className="h-4 w-4 mr-1" />
+                    {t('models.tts')}
+                  </TabsTrigger>
+                )}
               </TabsList>
             )}
           </div>
@@ -531,7 +547,11 @@ export default function AddModelPopover({
                                           ? t('models.chat')
                                           : model.type === 'embedding'
                                             ? t('models.embedding')
-                                            : t('models.rerank')}
+                                            : model.type === 'rerank'
+                                              ? t('models.rerank')
+                                              : model.type === 'stt'
+                                                ? t('models.stt')
+                                                : t('models.tts')}
                                     </div>
                                   </div>
                                 </div>

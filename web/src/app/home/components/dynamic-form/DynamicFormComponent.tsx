@@ -119,6 +119,8 @@ function getValueSchema(spec: DynamicFormValueSpec) {
     case DynamicFormItemType.EMBEDDING_MODEL_SELECTOR:
       return z.string();
     case DynamicFormItemType.RERANK_MODEL_SELECTOR:
+    case DynamicFormItemType.STT_MODEL_SELECTOR:
+    case DynamicFormItemType.TTS_MODEL_SELECTOR:
       return z.string();
     case DynamicFormItemType.KNOWLEDGE_BASE_SELECTOR:
       return z.string();

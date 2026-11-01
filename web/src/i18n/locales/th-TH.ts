@@ -868,6 +868,8 @@ const thTH = {
     chat: 'แชท',
     embedding: 'Embedding',
     rerank: 'จัดลำดับใหม่',
+    stt: 'STT (แปลงเสียงเป็นข้อความ)',
+    tts: 'TTS (แปลงข้อความเป็นเสียง)',
     rerankUrlTooltip:
       'URL เต็มสำหรับ endpoint จัดลำดับใหม่ (เช่น: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2358,6 +2360,7 @@ const thTH = {
     triggerConditions: 'ทริกเกอร์',
     safetyControls: 'ความปลอดภัย',
     outputProcessing: 'เอาต์พุต',
+    speechProcessing: 'เสียง',
     nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
     descriptionRequired: 'คำอธิบายต้องไม่ว่างเปล่า',
     createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์ Pipeline',

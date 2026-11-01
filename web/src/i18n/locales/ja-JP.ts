@@ -888,6 +888,8 @@ const jaJP = {
     chat: 'チャット',
     embedding: '埋め込み',
     rerank: '再順位付け',
+    stt: '音声認識 (STT)',
+    tts: '音声合成 (TTS)',
     rerankUrlTooltip:
       '再順位付けエンドポイントの完全URL（例: https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:
@@ -2416,6 +2418,7 @@ const jaJP = {
     triggerConditions: 'トリガー条件',
     safetyControls: '安全制御',
     outputProcessing: '出力処理',
+    speechProcessing: '音声処理',
     nameRequired: '名前は必須です',
     descriptionRequired: '説明は必須です',
     createSuccess:
