@@ -112,5 +112,6 @@
   "Confirmation needed": "ต้องยืนยัน",
   "Session reset successfully": "รีเซ็ตเซสชันแล้ว",
   "Voice transcription failed.": "การแปลงเสียงเป็นข้อความล้มเหลว",
-  "Voice message exceeds maximum duration.": "ข้อความเสียงมีความยาวเกินกำหนดสูงสุด"
+  "Voice message exceeds maximum duration.": "ข้อความเสียงมีความยาวเกินกำหนดสูงสุด",
+  "Voice synthesis failed.": "การสังเคราะห์เสียงล้มเหลว"
 }

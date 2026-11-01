@@ -58,9 +58,9 @@ import {
   ApiRespProviderRerankModels,
   ApiRespProviderRerankModel,
   RerankModel,
-  ApiRespProviderSTTModels,
-  ApiRespProviderSTTModel,
-  STTModel,
+  ApiRespProviderASRModels,
+  ApiRespProviderASRModel,
+  ASRModel,
   ApiRespProviderTTSModels,
   ApiRespProviderTTSModel,
   TTSModel,
@@ -240,7 +240,7 @@ export class BackendClient extends BaseHttpClient {
 
   public scanProviderModels(
     uuid: string,
-    modelType?: 'llm' | 'embedding' | 'rerank' | 'stt' | 'tts',
+    modelType?: 'llm' | 'embedding' | 'rerank' | 'asr' | 'tts',
   ): Promise<ApiRespScannedProviderModels> {
     const params = modelType ? { type: modelType } : {};
     return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
@@ -354,35 +354,35 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
-  // ============ Provider Model STT ============
-  public getProviderSTTModels(
+  // ============ Provider Model ASR ============
+  public getProviderASRModels(
     providerUuid?: string,
-  ): Promise<ApiRespProviderSTTModels> {
+  ): Promise<ApiRespProviderASRModels> {
     const params = providerUuid ? { provider_uuid: providerUuid } : {};
-    return this.get('/api/v1/provider/models/stt', params);
+    return this.get('/api/v1/provider/models/asr', params);
   }
 
-  public getProviderSTTModel(uuid: string): Promise<ApiRespProviderSTTModel> {
-    return this.get(`/api/v1/provider/models/stt/${uuid}`);
+  public getProviderASRModel(uuid: string): Promise<ApiRespProviderASRModel> {
+    return this.get(`/api/v1/provider/models/asr/${uuid}`);
   }
 
-  public createProviderSTTModel(model: STTModel): Promise<object> {
-    return this.post('/api/v1/provider/models/stt', model);
+  public createProviderASRModel(model: ASRModel): Promise<object> {
+    return this.post('/api/v1/provider/models/asr', model);
   }
 
-  public deleteProviderSTTModel(uuid: string): Promise<object> {
-    return this.delete(`/api/v1/provider/models/stt/${uuid}`);
+  public deleteProviderASRModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/asr/${uuid}`);
   }
 
-  public updateProviderSTTModel(
+  public updateProviderASRModel(
     uuid: string,
-    model: STTModel,
+    model: ASRModel,
   ): Promise<object> {
-    return this.put(`/api/v1/provider/models/stt/${uuid}`, model);
+    return this.put(`/api/v1/provider/models/asr/${uuid}`, model);
   }
 
-  public testSTTModel(uuid: string, model: STTModel): Promise<object> {
-    return this.post(`/api/v1/provider/models/stt/${uuid}/test`, model);
+  public testASRModel(uuid: string, model: ASRModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/asr/${uuid}/test`, model);
   }
 
   // ============ Provider Model TTS ============

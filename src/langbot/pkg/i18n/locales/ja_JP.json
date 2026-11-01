@@ -112,5 +112,6 @@
   "Confirmation needed": "確認が必要です",
   "Session reset successfully": "セッションをリセットしました",
   "Voice transcription failed.": "音声の文字起こしに失敗しました。",
-  "Voice message exceeds maximum duration.": "音声メッセージが最大時間を超えています。"
+  "Voice message exceeds maximum duration.": "音声メッセージが最大時間を超えています。",
+  "Voice synthesis failed.": "音声合成に失敗しました。"
 }

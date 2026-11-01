@@ -583,10 +583,10 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.embedding_models_service.get_embedding_models(context, include_secret=False))
 
-        @mcp.tool(description='List all configured STT (speech-to-text) models.')
-        async def list_stt_models() -> str:
+        @mcp.tool(description='List all configured ASR (speech recognition) models.')
+        async def list_asr_models() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.stt_models_service.get_stt_models(context, include_secret=False))
+            return _dump(await ap.asr_models_service.get_asr_models(context, include_secret=False))
 
         @mcp.tool(description='List all configured TTS (text-to-speech) models.')
         async def list_tts_models() -> str:

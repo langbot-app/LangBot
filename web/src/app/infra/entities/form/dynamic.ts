@@ -73,7 +73,7 @@ export enum DynamicFormItemType {
   LLM_MODEL_SELECTOR = 'llm-model-selector',
   EMBEDDING_MODEL_SELECTOR = 'embedding-model-selector',
   RERANK_MODEL_SELECTOR = 'rerank-model-selector',
-  STT_MODEL_SELECTOR = 'stt-model-selector',
+  ASR_MODEL_SELECTOR = 'asr-model-selector',
   TTS_MODEL_SELECTOR = 'tts-model-selector',
   MODEL_FALLBACK_SELECTOR = 'model-fallback-selector',
   PROMPT_EDITOR = 'prompt-editor',

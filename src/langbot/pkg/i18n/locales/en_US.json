@@ -112,5 +112,6 @@
   "Confirmation needed": "Confirmation needed",
   "Session reset successfully": "Session reset successfully",
   "Voice transcription failed.": "Voice transcription failed.",
-  "Voice message exceeds maximum duration.": "Voice message exceeds maximum duration."
+  "Voice message exceeds maximum duration.": "Voice message exceeds maximum duration.",
+  "Voice synthesis failed.": "Voice synthesis failed."
 }

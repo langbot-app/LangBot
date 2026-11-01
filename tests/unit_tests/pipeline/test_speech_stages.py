@@ -23,45 +23,45 @@ def _create_wav_bytes() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_stt_disabled_continues(mock_app, sample_query):
+async def test_asr_disabled_continues(mock_app, sample_query):
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': False,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
             }
         }
     }
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
     assert result.result_type == ResultType.CONTINUE
 
 
 @pytest.mark.asyncio
-async def test_stt_no_voice_continues(mock_app, sample_query):
+async def test_asr_no_voice_continues(mock_app, sample_query):
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
             }
         }
     }
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='hello')])
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
     assert result.result_type == ResultType.CONTINUE
 
 
 @pytest.mark.asyncio
-async def test_stt_max_duration_exceeded_notify_stops(mock_app, sample_query):
+async def test_asr_max_duration_exceeded_notify_stops(mock_app, sample_query):
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
                 'max-duration': 30,
                 'on-failure': 'notify',
             }
@@ -70,20 +70,20 @@ async def test_stt_max_duration_exceeded_notify_stops(mock_app, sample_query):
     sample_query.message_chain = platform_message.MessageChain(
         [platform_message.Voice(base64='dummy', length=45)]
     )
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
     assert result.result_type == ResultType.INTERRUPT
     assert result.user_notice == 'Voice message exceeds maximum duration.'
 
 
 @pytest.mark.asyncio
-async def test_stt_max_duration_exceeded_ignore_continues(mock_app, sample_query):
+async def test_asr_max_duration_exceeded_ignore_continues(mock_app, sample_query):
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
                 'max-duration': 30,
                 'on-failure': 'ignore',
             }
@@ -92,21 +92,21 @@ async def test_stt_max_duration_exceeded_ignore_continues(mock_app, sample_query
     sample_query.message_chain = platform_message.MessageChain(
         [platform_message.Voice(base64='dummy', length=45)]
     )
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
     assert result.result_type == ResultType.CONTINUE
 
 
 @pytest.mark.asyncio
-async def test_stt_success_replaces_voice(mock_app, sample_query):
+async def test_asr_success_replaces_voice(mock_app, sample_query):
     wav_bytes = _create_wav_bytes()
     b64_str = base64.b64encode(wav_bytes).decode('ascii')
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
                 'keep-original-voice': False,
                 'max-duration': 60,
             }
@@ -114,15 +114,15 @@ async def test_stt_success_replaces_voice(mock_app, sample_query):
     }
     sample_query.message_chain = platform_message.MessageChain([platform_message.Voice(base64=b64_str)])
 
-    mock_stt_model = Mock()
-    mock_stt_model.execution_context = Mock()
-    mock_stt_model.provider = Mock()
-    mock_stt_model.provider.invoke_stt = AsyncMock(return_value='Transcribed voice message')
-    mock_app.model_mgr.get_stt_model_by_uuid = AsyncMock(return_value=mock_stt_model)
+    mock_asr_model = Mock()
+    mock_asr_model.execution_context = Mock()
+    mock_asr_model.provider = Mock()
+    mock_asr_model.provider.invoke_asr = AsyncMock(return_value='Transcribed voice message')
+    mock_app.model_mgr.get_asr_model_by_uuid = AsyncMock(return_value=mock_asr_model)
 
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
 
     assert result.result_type == ResultType.CONTINUE
     assert sample_query.variables['_input_was_voice'] is True
@@ -133,14 +133,14 @@ async def test_stt_success_replaces_voice(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
-async def test_stt_success_keep_original_voice(mock_app, sample_query):
+async def test_asr_success_keep_original_voice(mock_app, sample_query):
     wav_bytes = _create_wav_bytes()
     b64_str = base64.b64encode(wav_bytes).decode('ascii')
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
                 'keep-original-voice': True,
                 'max-duration': 60,
             }
@@ -148,15 +148,15 @@ async def test_stt_success_keep_original_voice(mock_app, sample_query):
     }
     sample_query.message_chain = platform_message.MessageChain([platform_message.Voice(base64=b64_str)])
 
-    mock_stt_model = Mock()
-    mock_stt_model.execution_context = Mock()
-    mock_stt_model.provider = Mock()
-    mock_stt_model.provider.invoke_stt = AsyncMock(return_value='Transcribed voice message')
-    mock_app.model_mgr.get_stt_model_by_uuid = AsyncMock(return_value=mock_stt_model)
+    mock_asr_model = Mock()
+    mock_asr_model.execution_context = Mock()
+    mock_asr_model.provider = Mock()
+    mock_asr_model.provider.invoke_asr = AsyncMock(return_value='Transcribed voice message')
+    mock_app.model_mgr.get_asr_model_by_uuid = AsyncMock(return_value=mock_asr_model)
 
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
 
     assert result.result_type == ResultType.CONTINUE
     assert len(sample_query.message_chain) == 2
@@ -166,29 +166,29 @@ async def test_stt_success_keep_original_voice(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
-async def test_stt_failure_notify_stops(mock_app, sample_query):
+async def test_asr_failure_notify_stops(mock_app, sample_query):
     wav_bytes = _create_wav_bytes()
     b64_str = base64.b64encode(wav_bytes).decode('ascii')
     sample_query.pipeline_config = {
         'speech': {
-            'speech-to-text': {
+            'speech-recognition': {
                 'enable': True,
-                'model': 'stt-model-uuid',
+                'model': 'asr-model-uuid',
                 'on-failure': 'notify',
             }
         }
     }
     sample_query.message_chain = platform_message.MessageChain([platform_message.Voice(base64=b64_str)])
 
-    mock_stt_model = Mock()
-    mock_stt_model.execution_context = Mock()
-    mock_stt_model.provider = Mock()
-    mock_stt_model.provider.invoke_stt = AsyncMock(side_effect=RuntimeError('Transcription API error'))
-    mock_app.model_mgr.get_stt_model_by_uuid = AsyncMock(return_value=mock_stt_model)
+    mock_asr_model = Mock()
+    mock_asr_model.execution_context = Mock()
+    mock_asr_model.provider = Mock()
+    mock_asr_model.provider.invoke_asr = AsyncMock(side_effect=RuntimeError('Transcription API error'))
+    mock_app.model_mgr.get_asr_model_by_uuid = AsyncMock(return_value=mock_asr_model)
 
-    stage = speech_module.SpeechToTextStage(mock_app)
+    stage = speech_module.SpeechRecognitionStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    result = await stage.process(sample_query, 'SpeechToTextStage')
+    result = await stage.process(sample_query, 'SpeechRecognitionStage')
 
     assert result.result_type == ResultType.INTERRUPT
     assert result.user_notice == 'Voice transcription failed.'
@@ -229,6 +229,80 @@ async def test_tts_voice_input_only_skips_when_not_voice(mock_app, sample_query)
     result = await stage.process(sample_query, 'TextToSpeechStage')
     assert result.result_type == ResultType.CONTINUE
     assert len(sample_query.resp_message_chain[-1]) == 1
+    assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)
+
+
+@pytest.mark.asyncio
+async def test_tts_voice_omitted_when_not_configured(mock_app, sample_query):
+    sample_query.pipeline_config = {
+        'speech': {
+            'text-to-speech': {
+                'enable': True,
+                'model': 'tts-model-uuid',
+                'trigger': 'always',
+                'output': 'voice-only',
+            }
+        }
+    }
+    sample_query.resp_message_chain = [
+        platform_message.MessageChain([platform_message.Plain(text='Hello without voice')])
+    ]
+
+    mock_tts_model = Mock()
+    mock_tts_model.execution_context = Mock()
+    mock_tts_model.extra_args = {}
+    mock_tts_model.model_entity = Mock(extra_args={})
+    mock_tts_model.provider = Mock()
+    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=(b'fake-mp3', 'audio/mp3'))
+    mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
+
+    stage = speech_module.TextToSpeechStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+
+    assert result.result_type == ResultType.CONTINUE
+    extra_args = mock_tts_model.provider.invoke_tts.call_args[1]['extra_args']
+    assert 'voice' not in extra_args
+
+
+@pytest.mark.asyncio
+async def test_tts_failure_on_failure_fallback_and_notify(mock_app, sample_query):
+    # Test on-failure=fallback
+    sample_query.pipeline_config = {
+        'speech': {
+            'text-to-speech': {
+                'enable': True,
+                'model': 'tts-model-uuid',
+                'trigger': 'always',
+                'on-failure': 'fallback',
+            }
+        }
+    }
+    sample_query.resp_message_chain = [
+        platform_message.MessageChain([platform_message.Plain(text='Fallback test')])
+    ]
+
+    mock_tts_model = Mock()
+    mock_tts_model.execution_context = Mock()
+    mock_tts_model.extra_args = {}
+    mock_tts_model.model_entity = Mock(extra_args={})
+    mock_tts_model.provider = Mock()
+    mock_tts_model.provider.invoke_tts = AsyncMock(side_effect=RuntimeError('TTS provider error'))
+    mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
+
+    stage = speech_module.TextToSpeechStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+
+    assert result.result_type == ResultType.CONTINUE
+    assert not result.user_notice
+    assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)
+
+    # Test on-failure=notify
+    sample_query.pipeline_config['speech']['text-to-speech']['on-failure'] = 'notify'
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+    assert result.result_type == ResultType.CONTINUE
+    assert result.user_notice == 'Voice synthesis failed.'
     assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)
 
 
@@ -327,4 +401,78 @@ async def test_tts_max_text_length_fallback(mock_app, sample_query):
 
     assert result.result_type == ResultType.CONTINUE
     assert len(sample_query.resp_message_chain[-1]) == 1
+    assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)
+
+
+@pytest.mark.asyncio
+async def test_tts_voice_omitted_when_not_configured(mock_app, sample_query):
+    sample_query.pipeline_config = {
+        'speech': {
+            'text-to-speech': {
+                'enable': True,
+                'model': 'tts-model-uuid',
+                'trigger': 'always',
+                'output': 'voice-only',
+            }
+        }
+    }
+    sample_query.resp_message_chain = [
+        platform_message.MessageChain([platform_message.Plain(text='Hello without voice')])
+    ]
+
+    mock_tts_model = Mock()
+    mock_tts_model.execution_context = Mock()
+    mock_tts_model.extra_args = {}
+    mock_tts_model.model_entity = Mock(extra_args={})
+    mock_tts_model.provider = Mock()
+    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=(b'fake-mp3', 'audio/mp3'))
+    mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
+
+    stage = speech_module.TextToSpeechStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+
+    assert result.result_type == ResultType.CONTINUE
+    extra_args = mock_tts_model.provider.invoke_tts.call_args[1]['extra_args']
+    assert 'voice' not in extra_args
+
+
+@pytest.mark.asyncio
+async def test_tts_failure_on_failure_fallback_and_notify(mock_app, sample_query):
+    # Test on-failure=fallback
+    sample_query.pipeline_config = {
+        'speech': {
+            'text-to-speech': {
+                'enable': True,
+                'model': 'tts-model-uuid',
+                'trigger': 'always',
+                'on-failure': 'fallback',
+            }
+        }
+    }
+    sample_query.resp_message_chain = [
+        platform_message.MessageChain([platform_message.Plain(text='Fallback test')])
+    ]
+
+    mock_tts_model = Mock()
+    mock_tts_model.execution_context = Mock()
+    mock_tts_model.extra_args = {}
+    mock_tts_model.model_entity = Mock(extra_args={})
+    mock_tts_model.provider = Mock()
+    mock_tts_model.provider.invoke_tts = AsyncMock(side_effect=RuntimeError('TTS provider error'))
+    mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
+
+    stage = speech_module.TextToSpeechStage(mock_app)
+    await stage.initialize(sample_query.pipeline_config)
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+
+    assert result.result_type == ResultType.CONTINUE
+    assert not result.user_notice
+    assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)
+
+    # Test on-failure=notify
+    sample_query.pipeline_config['speech']['text-to-speech']['on-failure'] = 'notify'
+    result = await stage.process(sample_query, 'TextToSpeechStage')
+    assert result.result_type == ResultType.CONTINUE
+    assert result.user_notice == 'Voice synthesis failed.'
     assert isinstance(sample_query.resp_message_chain[-1][0], platform_message.Plain)

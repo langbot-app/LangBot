@@ -52,7 +52,7 @@ export interface ModelProvider {
   llm_count?: number;
   embedding_count?: number;
   rerank_count?: number;
-  stt_count?: number;
+  asr_count?: number;
   tts_count?: number;
   created_at?: string;
   updated_at?: string;
@@ -160,15 +160,15 @@ export interface RerankModel {
   extra_args?: object;
 }
 
-export interface ApiRespProviderSTTModels {
-  models: STTModel[];
+export interface ApiRespProviderASRModels {
+  models: ASRModel[];
 }
 
-export interface ApiRespProviderSTTModel {
-  model: STTModel;
+export interface ApiRespProviderASRModel {
+  model: ASRModel;
 }
 
-export interface STTModel {
+export interface ASRModel {
   uuid: string;
   name: string;
   provider_uuid: string;

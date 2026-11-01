@@ -883,7 +883,7 @@ const viVN = {
     chat: 'Trò chuyện',
     embedding: 'Embedding',
     rerank: 'Sắp xếp lại',
-    stt: 'STT (Giọng nói thành văn bản)',
+    asr: 'ASR (Nhận dạng giọng nói)',
     tts: 'TTS (Văn bản thành giọng nói)',
     rerankUrlTooltip:
       'URL đầy đủ cho endpoint sắp xếp lại (vd: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',

@@ -40,7 +40,7 @@ class ModelManager:
     llm_model_dict: dict[_CacheKey, requester.RuntimeLLMModel]
     embedding_model_dict: dict[_CacheKey, requester.RuntimeEmbeddingModel]
     rerank_model_dict: dict[_CacheKey, requester.RuntimeRerankModel]
-    stt_model_dict: dict[_CacheKey, requester.RuntimeSTTModel]
+    asr_model_dict: dict[_CacheKey, requester.RuntimeASRModel]
     tts_model_dict: dict[_CacheKey, requester.RuntimeTTSModel]
 
     requester_components: list[engine.Component]
@@ -52,7 +52,7 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
-        self.stt_model_dict = {}
+        self.asr_model_dict = {}
         self.tts_model_dict = {}
         self.requester_components = []
         self.requester_dict = {}
@@ -61,7 +61,7 @@ class ModelManager:
         self._llm_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._embedding_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._rerank_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
-        self._stt_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._asr_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._tts_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
 
     def _cache_index(self, cache: dict) -> dict[tuple[str, str], set[_CacheKey]]:
@@ -73,8 +73,8 @@ class ModelManager:
             return self._embedding_keys_by_scope
         if cache is self.rerank_model_dict:
             return self._rerank_keys_by_scope
-        if cache is self.stt_model_dict:
-            return self._stt_keys_by_scope
+        if cache is self.asr_model_dict:
+            return self._asr_keys_by_scope
         if cache is self.tts_model_dict:
             return self._tts_keys_by_scope
         raise ValueError('Unknown model runtime cache')
@@ -99,7 +99,7 @@ class ModelManager:
                 self._llm_keys_by_scope,
                 self._embedding_keys_by_scope,
                 self._rerank_keys_by_scope,
-                self._stt_keys_by_scope,
+                self._asr_keys_by_scope,
                 self._tts_keys_by_scope,
             )
         ):
@@ -125,7 +125,7 @@ class ModelManager:
                 (self.llm_model_dict, self._llm_keys_by_scope),
                 (self.embedding_model_dict, self._embedding_keys_by_scope),
                 (self.rerank_model_dict, self._rerank_keys_by_scope),
-                (self.stt_model_dict, self._stt_keys_by_scope),
+                (self.asr_model_dict, self._asr_keys_by_scope),
                 (self.tts_model_dict, self._tts_keys_by_scope),
             ):
                 for key in index.pop(scope, ()):
@@ -170,7 +170,7 @@ class ModelManager:
                     self._llm_keys_by_scope,
                     self._embedding_keys_by_scope,
                     self._rerank_keys_by_scope,
-                    self._stt_keys_by_scope,
+                    self._asr_keys_by_scope,
                     self._tts_keys_by_scope,
                 )
             ):
@@ -184,14 +184,14 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
-        self.stt_model_dict = {}
+        self.asr_model_dict = {}
         self.tts_model_dict = {}
         self._scope_generations = {}
         self._provider_keys_by_scope = {}
         self._llm_keys_by_scope = {}
         self._embedding_keys_by_scope = {}
         self._rerank_keys_by_scope = {}
-        self._stt_keys_by_scope = {}
+        self._asr_keys_by_scope = {}
         self._tts_keys_by_scope = {}
         await self._close_runtime_providers(providers)
 
@@ -356,14 +356,14 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
-        self.stt_model_dict = {}
+        self.asr_model_dict = {}
         self.tts_model_dict = {}
         self._scope_generations = {}
         self._provider_keys_by_scope = {}
         self._llm_keys_by_scope = {}
         self._embedding_keys_by_scope = {}
         self._rerank_keys_by_scope = {}
-        self._stt_keys_by_scope = {}
+        self._asr_keys_by_scope = {}
         self._tts_keys_by_scope = {}
 
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
@@ -437,9 +437,9 @@ class ModelManager:
             context_for,
         )
         await self._load_model_kind(
-            persistence_model.STTModel,
-            self.stt_model_dict,
-            self._build_stt_model,
+            persistence_model.ASRModel,
+            self.asr_model_dict,
+            self._build_asr_model,
             context_for,
         )
         await self._load_model_kind(
@@ -518,9 +518,9 @@ class ModelManager:
         )
         await self._load_workspace_model_kind(
             context,
-            persistence_model.STTModel,
-            self.stt_model_dict,
-            self._build_stt_model,
+            persistence_model.ASRModel,
+            self.asr_model_dict,
+            self._build_asr_model,
         )
         await self._load_workspace_model_kind(
             context,
@@ -764,11 +764,11 @@ class ModelManager:
         )
         return self._build_rerank_model(execution_context, model_entity, runtime_provider)
 
-    async def init_temporary_runtime_stt_model(
+    async def init_temporary_runtime_asr_model(
         self,
         context: TenantContext,
         model_info: dict,
-    ) -> requester.RuntimeSTTModel:
+    ) -> requester.RuntimeASRModel:
         execution_context = await self.resolve_execution_context(context)
         provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
         provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
@@ -786,14 +786,14 @@ class ModelManager:
             elif model_info.get('provider_uuid'):
                 raise WorkspaceNotFoundError('Provider not found')
         runtime_provider = await self._build_provider(execution_context, provider_entity)
-        model_entity = persistence_model.STTModel(
+        model_entity = persistence_model.ASRModel(
             workspace_uuid=execution_context.workspace_uuid,
             uuid=model_info.get('uuid', ''),
             name=model_info.get('name', ''),
             provider_uuid=runtime_provider.provider_entity.uuid,
             extra_args=model_info.get('extra_args', {}),
         )
-        return self._build_stt_model(execution_context, model_entity, runtime_provider)
+        return self._build_asr_model(execution_context, model_entity, runtime_provider)
 
     async def init_temporary_runtime_tts_model(
         self,
@@ -1016,15 +1016,15 @@ class ModelManager:
             provider=provider,
         )
 
-    def _build_stt_model(
+    def _build_asr_model(
         self,
         context: ExecutionContext,
-        model_info: persistence_model.STTModel | sqlalchemy.Row,
+        model_info: persistence_model.ASRModel | sqlalchemy.Row,
         provider: requester.RuntimeProvider,
-    ) -> requester.RuntimeSTTModel:
-        model_entity = self._coerce_model(model_info, persistence_model.STTModel)
+    ) -> requester.RuntimeASRModel:
+        model_entity = self._coerce_model(model_info, persistence_model.ASRModel)
         self._validate_model_provider(context, model_entity, provider)
-        return requester.RuntimeSTTModel(
+        return requester.RuntimeASRModel(
             execution_context=context,
             model_entity=model_entity,
             provider=provider,
@@ -1071,14 +1071,14 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         return self._build_rerank_model(execution_context, model_info, provider)
 
-    async def load_stt_model_with_provider(
+    async def load_asr_model_with_provider(
         self,
         context: TenantContext,
-        model_info: persistence_model.STTModel | sqlalchemy.Row,
+        model_info: persistence_model.ASRModel | sqlalchemy.Row,
         provider: requester.RuntimeProvider,
-    ) -> requester.RuntimeSTTModel:
+    ) -> requester.RuntimeASRModel:
         execution_context = await self.resolve_execution_context(context)
-        return self._build_stt_model(execution_context, model_info, provider)
+        return self._build_asr_model(execution_context, model_info, provider)
 
     async def load_tts_model_with_provider(
         self,
@@ -1123,12 +1123,12 @@ class ModelManager:
             model,
         )
 
-    async def cache_stt_model(self, context: TenantContext, model: requester.RuntimeSTTModel) -> None:
+    async def cache_asr_model(self, context: TenantContext, model: requester.RuntimeASRModel) -> None:
         execution_context = await self.resolve_execution_context(context)
-        self._ensure_same_scope(execution_context, model.execution_context, resource='STT model')
+        self._ensure_same_scope(execution_context, model.execution_context, resource='ASR model')
         self._observe_execution_context(execution_context)
         self._cache_set(
-            self.stt_model_dict,
+            self.asr_model_dict,
             self._cache_key(execution_context, model.model_entity.uuid),
             model,
         )
@@ -1175,16 +1175,16 @@ class ModelManager:
         self._ensure_same_scope(execution_context, model.execution_context, resource='Rerank model')
         return model
 
-    async def get_stt_model_by_uuid(
+    async def get_asr_model_by_uuid(
         self,
         context: TenantContext,
         model_uuid: str,
-    ) -> requester.RuntimeSTTModel:
+    ) -> requester.RuntimeASRModel:
         execution_context = await self.resolve_execution_context(context)
-        model = self.stt_model_dict.get(self._cache_key(execution_context, model_uuid))
+        model = self.asr_model_dict.get(self._cache_key(execution_context, model_uuid))
         if model is None:
-            raise ValueError(f'STT model {model_uuid} not found')
-        self._ensure_same_scope(execution_context, model.execution_context, resource='STT model')
+            raise ValueError(f'ASR model {model_uuid} not found')
+        self._ensure_same_scope(execution_context, model.execution_context, resource='ASR model')
         return model
 
     async def get_tts_model_by_uuid(
@@ -1220,10 +1220,10 @@ class ModelManager:
             self._cache_key(execution_context, model_uuid),
         )
 
-    async def remove_stt_model(self, context: TenantContext, model_uuid: str) -> None:
+    async def remove_asr_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
         self._cache_pop(
-            self.stt_model_dict,
+            self.asr_model_dict,
             self._cache_key(execution_context, model_uuid),
         )
 

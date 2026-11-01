@@ -203,7 +203,7 @@ class ModelProviderService:
             (persistence_model.LLMModel, 'LLM', 'remove_llm_model'),
             (persistence_model.EmbeddingModel, 'Embedding', 'remove_embedding_model'),
             (persistence_model.RerankModel, 'Rerank', 'remove_rerank_model'),
-            (persistence_model.STTModel, 'STT', 'remove_stt_model'),
+            (persistence_model.ASRModel, 'ASR', 'remove_asr_model'),
             (persistence_model.TTSModel, 'TTS', 'remove_tts_model'),
         )
         deleted_models: list[tuple[str, list[str]]] = []
@@ -337,16 +337,16 @@ class ModelProviderService:
         )
         rerank_count = rerank_result.scalar() or 0
 
-        stt_result = await self.ap.persistence_mgr.execute_async(
+        asr_result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.select(sqlalchemy.func.count())
-                .select_from(persistence_model.STTModel)
-                .where(persistence_model.STTModel.provider_uuid == provider_uuid),
-                persistence_model.STTModel,
+                .select_from(persistence_model.ASRModel)
+                .where(persistence_model.ASRModel.provider_uuid == provider_uuid),
+                persistence_model.ASRModel,
                 workspace_uuid,
             )
         )
-        stt_count = stt_result.scalar() or 0
+        asr_count = asr_result.scalar() or 0
 
         tts_result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
@@ -363,7 +363,7 @@ class ModelProviderService:
             'llm_count': llm_count,
             'embedding_count': embedding_count,
             'rerank_count': rerank_count,
-            'stt_count': stt_count,
+            'asr_count': asr_count,
             'tts_count': tts_count,
         }
 

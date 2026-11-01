@@ -21,7 +21,7 @@ const STRING_FIELD_TYPES = new Set([
   'llm-model-selector',
   'embedding-model-selector',
   'rerank-model-selector',
-  'stt-model-selector',
+  'asr-model-selector',
   'tts-model-selector',
   'knowledge-base-selector',
   'bot-selector',

@@ -95,10 +95,10 @@ export default function AddModelPopover({
     llm: 'llm',
     embedding: 'text-embedding',
     rerank: 'rerank',
-    stt: 'stt',
+    asr: 'asr',
     tts: 'tts',
   };
-  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank', 'stt', 'tts'];
+  const allTabs: ModelType[] = ['llm', 'embedding', 'rerank', 'asr', 'tts'];
   // When supportTypes is undefined (unknown requester), show all tabs for
   // backward compatibility. Otherwise only show supported tabs.
   const visibleTabs: ModelType[] = supportTypes
@@ -326,10 +326,10 @@ export default function AddModelPopover({
                     {t('models.rerank')}
                   </TabsTrigger>
                 )}
-                {visibleTabs.includes('stt') && (
-                  <TabsTrigger value="stt">
+                {visibleTabs.includes('asr') && (
+                  <TabsTrigger value="asr">
                     <Mic className="h-4 w-4 mr-1" />
-                    {t('models.stt')}
+                    {t('models.asr')}
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('tts') && (
@@ -549,8 +549,8 @@ export default function AddModelPopover({
                                             ? t('models.embedding')
                                             : model.type === 'rerank'
                                               ? t('models.rerank')
-                                              : model.type === 'stt'
-                                                ? t('models.stt')
+                                              : model.type === 'asr'
+                                                ? t('models.asr')
                                                 : t('models.tts')}
                                     </div>
                                   </div>

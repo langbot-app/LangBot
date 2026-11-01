@@ -384,8 +384,8 @@ class RerankModelsRouterGroup(group.RouterGroup):
             return self.success()
 
 
-@group.group_class('models/stt', '/api/v1/provider/models/stt')
-class STTModelsRouterGroup(group.RouterGroup):
+@group.group_class('models/asr', '/api/v1/provider/models/asr')
+class ASRModelsRouterGroup(group.RouterGroup):
     async def initialize(self) -> None:
         @self.route(
             '',
@@ -402,13 +402,13 @@ class STTModelsRouterGroup(group.RouterGroup):
             if error:
                 return self.http_status(400, -1, error)
             if provider_uuid:
-                models = await self.ap.stt_models_service.get_stt_models_by_provider(
+                models = await self.ap.asr_models_service.get_asr_models_by_provider(
                     request_context,
                     provider_uuid,
                     include_secret=include_secret,
                 )
             else:
-                models = await self.ap.stt_models_service.get_stt_models(
+                models = await self.ap.asr_models_service.get_asr_models(
                     request_context,
                     include_secret=include_secret,
                 )
@@ -422,7 +422,7 @@ class STTModelsRouterGroup(group.RouterGroup):
         )
         async def _(request_context: RequestContext) -> str:
             try:
-                model_uuid = await self.ap.stt_models_service.create_stt_model(
+                model_uuid = await self.ap.asr_models_service.create_asr_model(
                     request_context,
                     await quart.request.json,
                 )
@@ -443,7 +443,7 @@ class STTModelsRouterGroup(group.RouterGroup):
             )
             if error:
                 return self.http_status(400, -1, error)
-            model = await self.ap.stt_models_service.get_stt_model(
+            model = await self.ap.asr_models_service.get_asr_model(
                 request_context,
                 model_uuid,
                 include_secret=include_secret,
@@ -460,7 +460,7 @@ class STTModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.stt_models_service.update_stt_model(
+                await self.ap.asr_models_service.update_asr_model(
                     request_context,
                     model_uuid,
                     await quart.request.json,
@@ -476,7 +476,7 @@ class STTModelsRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_MANAGE,
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
-            await self.ap.stt_models_service.delete_stt_model(request_context, model_uuid)
+            await self.ap.asr_models_service.delete_asr_model(request_context, model_uuid)
             return self.success()
 
         @self.route(
@@ -487,7 +487,7 @@ class STTModelsRouterGroup(group.RouterGroup):
         )
         async def _(model_uuid: str, request_context: RequestContext) -> str:
             try:
-                await self.ap.stt_models_service.test_stt_model(
+                await self.ap.asr_models_service.test_asr_model(
                     request_context,
                     model_uuid,
                     await quart.request.json,

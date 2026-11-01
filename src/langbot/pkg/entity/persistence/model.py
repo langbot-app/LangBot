@@ -165,10 +165,10 @@ class RerankModel(Base):
     )
 
 
-class STTModel(Base):
-    """STT model"""
+class ASRModel(Base):
+    """ASR model"""
 
-    __tablename__ = 'stt_models'
+    __tablename__ = 'asr_models'
 
     uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
     workspace_uuid = sqlalchemy.Column(
@@ -192,10 +192,10 @@ class STTModel(Base):
         sqlalchemy.ForeignKeyConstraint(
             ['workspace_uuid', 'provider_uuid'],
             ['model_providers.workspace_uuid', 'model_providers.uuid'],
-            name='fk_stt_models_workspace_provider',
+            name='fk_asr_models_workspace_provider',
         ),
-        sqlalchemy.Index('ix_stt_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
-        sqlalchemy.Index('ix_stt_models_workspace_name', 'workspace_uuid', 'name'),
+        sqlalchemy.Index('ix_asr_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
+        sqlalchemy.Index('ix_asr_models_workspace_name', 'workspace_uuid', 'name'),
     )
 
 

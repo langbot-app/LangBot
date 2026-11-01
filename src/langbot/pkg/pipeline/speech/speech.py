@@ -42,9 +42,9 @@ def strip_markdown(text: str) -> str:
     return text
 
 
-@stage.stage_class('SpeechToTextStage')
-class SpeechToTextStage(stage.PipelineStage):
-    """Speech to Text Stage
+@stage.stage_class('SpeechRecognitionStage')
+class SpeechRecognitionStage(stage.PipelineStage):
+    """Speech Recognition (ASR) Stage
 
     Transcribes incoming voice messages into plain text and updates the message chain.
     """
@@ -57,13 +57,13 @@ class SpeechToTextStage(stage.PipelineStage):
         query: pipeline_query.Query,
         stage_inst_name: str,
     ) -> entities.StageProcessResult:
-        config = query.pipeline_config.get('speech', {}).get('speech-to-text', {})
+        config = query.pipeline_config.get('speech', {}).get('speech-recognition', {})
         if not config.get('enable', False):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         model_uuid = config.get('model')
         if not model_uuid:
-            self.ap.logger.debug('SpeechToTextStage enabled but no model configured; skipping.')
+            self.ap.logger.debug('SpeechRecognitionStage enabled but no model configured; skipping.')
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         voice_components = [comp for comp in query.message_chain if isinstance(comp, platform_message.Voice)]
@@ -113,9 +113,9 @@ class SpeechToTextStage(stage.PipelineStage):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         execution_context = get_query_execution_context(query)
-        stt_model = await self.ap.model_mgr.get_stt_model_by_uuid(execution_context, model_uuid)
-        if stt_model is None:
-            self.ap.logger.error(f'STT model {model_uuid} not found.')
+        asr_model = await self.ap.model_mgr.get_asr_model_by_uuid(execution_context, model_uuid)
+        if asr_model is None:
+            self.ap.logger.error(f'ASR model {model_uuid} not found.')
             if config.get('on-failure', 'notify') == 'notify':
                 notice = pipeline_notice(
                     query,
@@ -130,15 +130,15 @@ class SpeechToTextStage(stage.PipelineStage):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         try:
-            transcript = await stt_model.provider.invoke_stt(
-                model=stt_model,
+            transcript = await asr_model.provider.invoke_asr(
+                model=asr_model,
                 audio=audio_bytes,
                 mime=f'audio/{target_format}',
-                execution_context=stt_model.execution_context,
+                execution_context=asr_model.execution_context,
             )
             transcript = (transcript or '').strip()
         except Exception as exc:
-            self.ap.logger.error(f'STT model invocation failed: {exc}')
+            self.ap.logger.error(f'ASR model invocation failed: {exc}')
             if config.get('on-failure', 'notify') == 'notify':
                 notice = pipeline_notice(
                     query,
@@ -245,20 +245,48 @@ class TextToSpeechStage(stage.PipelineStage):
         tts_model = await self.ap.model_mgr.get_tts_model_by_uuid(execution_context, model_uuid)
         if tts_model is None:
             self.ap.logger.warning(f'TTS model {model_uuid} not found; falling back to text.')
+            if config.get('on-failure', 'fallback') == 'notify':
+                notice = pipeline_notice(
+                    query,
+                    'voice-synthesis-failed-hint',
+                    'Voice synthesis failed.',
+                )
+                return entities.StageProcessResult(
+                    result_type=entities.ResultType.CONTINUE,
+                    new_query=query,
+                    user_notice=notice,
+                )
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-        model_extra = getattr(tts_model, 'extra_args', None) or getattr(tts_model.model_entity, 'extra_args', {}) or {}
-        voice_param = config.get('voice') or model_extra.get('voice', 'alloy')
+        model_extra = getattr(tts_model, 'extra_args', None)
+        if model_extra is None and hasattr(tts_model, 'model_entity') and tts_model.model_entity is not None:
+            model_extra = getattr(tts_model.model_entity, 'extra_args', {})
+        model_extra = model_extra or {}
+        voice_param = config.get('voice') or model_extra.get('voice')
+        extra_args: dict[str, typing.Any] = {'response_format': 'mp3'}
+        if voice_param:
+            extra_args['voice'] = voice_param
 
         try:
             audio_bytes, mime = await tts_model.provider.invoke_tts(
                 model=tts_model,
                 text=clean_text,
-                extra_args={'voice': voice_param, 'response_format': 'mp3'},
+                extra_args=extra_args,
                 execution_context=tts_model.execution_context,
             )
         except Exception as exc:
             self.ap.logger.error(f'TTS invocation failed: {exc}; falling back to text.')
+            if config.get('on-failure', 'fallback') == 'notify':
+                notice = pipeline_notice(
+                    query,
+                    'voice-synthesis-failed-hint',
+                    'Voice synthesis failed.',
+                )
+                return entities.StageProcessResult(
+                    result_type=entities.ResultType.CONTINUE,
+                    new_query=query,
+                    user_notice=notice,
+                )
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         b64_audio = base64.b64encode(audio_bytes).decode('ascii')

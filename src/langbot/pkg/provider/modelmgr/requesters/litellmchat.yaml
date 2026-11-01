@@ -58,7 +58,7 @@ spec:
   - llm
   - text-embedding
   - rerank
-  - stt
+  - asr
   - tts
   provider_category: unified
 execution:

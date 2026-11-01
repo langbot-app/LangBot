@@ -835,7 +835,7 @@ const zhHant = {
     chat: '對話',
     embedding: '嵌入',
     rerank: '重排序',
-    stt: '語音轉文字 (STT)',
+    asr: '語音辨識 (ASR)',
     tts: '文字轉語音 (TTS)',
     rerankUrlTooltip:
       '完整 URL 覆蓋重排序端點（例如：https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',

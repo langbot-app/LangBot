@@ -1881,14 +1881,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         return results
 
-    async def invoke_stt(
+    async def invoke_asr(
         self,
-        model: requester.RuntimeSTTModel,
+        model: requester.RuntimeASRModel,
         audio: bytes,
         mime: str,
         extra_args: dict[str, typing.Any] = {},
     ) -> str:
-        """Invoke speech-to-text (transcription) and return transcript."""
+        """Invoke speech recognition (ASR) and return transcript."""
         model_name = self._build_litellm_model_name(model.model_entity.name)
         api_key = model.provider.token_mgr.get_token()
 
@@ -1909,6 +1909,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             'model': model_name,
             'file': (filename, audio, mime),
             'api_key': api_key,
+            'response_format': 'json',
         }
         self._build_common_args(args, include_retry_params=False)
 
@@ -1943,16 +1944,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         api_key = model.provider.token_mgr.get_token()
 
         combined_extra = {**(model.model_entity.extra_args or {}), **extra_args}
-        voice = combined_extra.pop('voice', None) or 'alloy'
+        voice = combined_extra.pop('voice', None)
         response_format = combined_extra.pop('response_format', None) or combined_extra.pop('format', None) or 'mp3'
 
         args: dict[str, typing.Any] = {
             'model': model_name,
             'input': text,
-            'voice': voice,
             'response_format': response_format,
             'api_key': api_key,
         }
+        if voice:
+            args['voice'] = voice
         self._build_common_args(args, include_retry_params=False)
 
         provider = self._get_custom_llm_provider()

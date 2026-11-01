@@ -30,7 +30,7 @@ import {
   KnowledgeBase,
   EmbeddingModel,
   RerankModel,
-  STTModel,
+  ASRModel,
   TTSModel,
   PluginTool,
   ReasoningLevel,
@@ -150,7 +150,7 @@ export default function DynamicFormItemComponent({
   const [llmModels, setLlmModels] = useState<LLMModel[]>([]);
   const [embeddingModels, setEmbeddingModels] = useState<EmbeddingModel[]>([]);
   const [rerankModels, setRerankModels] = useState<RerankModel[]>([]);
-  const [sttModels, setSttModels] = useState<STTModel[]>([]);
+  const [asrModels, setAsrModels] = useState<ASRModel[]>([]);
   const [ttsModels, setTtsModels] = useState<TTSModel[]>([]);
   const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
   const [bots, setBots] = useState<Bot[]>([]);
@@ -171,7 +171,7 @@ export default function DynamicFormItemComponent({
     DynamicFormItemType.LLM_MODEL_SELECTOR,
     DynamicFormItemType.EMBEDDING_MODEL_SELECTOR,
     DynamicFormItemType.RERANK_MODEL_SELECTOR,
-    DynamicFormItemType.STT_MODEL_SELECTOR,
+    DynamicFormItemType.ASR_MODEL_SELECTOR,
     DynamicFormItemType.TTS_MODEL_SELECTOR,
     DynamicFormItemType.MODEL_FALLBACK_SELECTOR,
   ].includes(config.type);
@@ -250,14 +250,14 @@ export default function DynamicFormItemComponent({
       });
   };
 
-  const fetchSttModels = () => {
+  const fetchAsrModels = () => {
     httpClient
-      .getProviderSTTModels()
+      .getProviderASRModels()
       .then((resp) => {
-        setSttModels(resp.models.filter(hasUsableUuid));
+        setAsrModels(resp.models.filter(hasUsableUuid));
       })
       .catch((err) => {
-        toast.error('Failed to load STT models: ' + err.msg);
+        toast.error('Failed to load ASR models: ' + err.msg);
       });
   };
 
@@ -278,7 +278,7 @@ export default function DynamicFormItemComponent({
       fetchLlmModels();
       fetchEmbeddingModels();
       fetchRerankModels();
-      fetchSttModels();
+      fetchAsrModels();
       fetchTtsModels();
     }
   };
@@ -357,8 +357,8 @@ export default function DynamicFormItemComponent({
   }, [config.type]);
 
   useEffect(() => {
-    if (config.type === DynamicFormItemType.STT_MODEL_SELECTOR) {
-      fetchSttModels();
+    if (config.type === DynamicFormItemType.ASR_MODEL_SELECTOR) {
+      fetchAsrModels();
     }
   }, [config.type]);
 
@@ -1102,21 +1102,21 @@ export default function DynamicFormItemComponent({
         </div>
       );
 
-    case DynamicFormItemType.STT_MODEL_SELECTOR:
-      const groupedSttModels = sttModels.reduce(
+    case DynamicFormItemType.ASR_MODEL_SELECTOR:
+      const groupedAsrModels = asrModels.reduce(
         (acc, model) => {
           const providerName = model.provider?.name || 'Unknown';
           if (!acc[providerName]) acc[providerName] = [];
           acc[providerName].push(model);
           return acc;
         },
-        {} as Record<string, STTModel[]>,
+        {} as Record<string, ASRModel[]>,
       );
-      for (const [providerName, models] of Object.entries(groupedSttModels)) {
+      for (const [providerName, models] of Object.entries(groupedAsrModels)) {
         if (
           models[0]?.provider?.requester === LANGBOT_MODELS_PROVIDER_REQUESTER
         ) {
-          groupedSttModels[providerName] = sortModelsByCatalog(
+          groupedAsrModels[providerName] = sortModelsByCatalog(
             models,
             langbotModelMetadata,
           );
@@ -1130,11 +1130,11 @@ export default function DynamicFormItemComponent({
             onValueChange={(v) => field.onChange(v === '__none__' ? '' : v)}
           >
             <SelectTrigger className={MODEL_SELECT_TRIGGER_CLASS}>
-              <SelectValue placeholder={t('models.stt')} />
+              <SelectValue placeholder={t('models.asr')} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="__none__">{t('common.none')}</SelectItem>
-              {Object.entries(groupedSttModels).map(
+              {Object.entries(groupedAsrModels).map(
                 ([providerName, models]) => (
                   <SelectGroup key={providerName}>
                     <SelectLabel>{providerName}</SelectLabel>

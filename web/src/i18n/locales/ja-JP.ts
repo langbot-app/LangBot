@@ -888,7 +888,7 @@ const jaJP = {
     chat: 'チャット',
     embedding: '埋め込み',
     rerank: '再順位付け',
-    stt: '音声認識 (STT)',
+    asr: '音声認識 (ASR)',
     tts: '音声合成 (TTS)',
     rerankUrlTooltip:
       '再順位付けエンドポイントの完全URL（例: https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',

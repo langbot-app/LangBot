@@ -180,7 +180,7 @@ class Application:
 
     rerank_models_service: model_service.RerankModelsService = None
 
-    stt_models_service: model_service.STTModelsService = None
+    asr_models_service: model_service.ASRModelsService = None
 
     tts_models_service: model_service.TTSModelsService = None
 

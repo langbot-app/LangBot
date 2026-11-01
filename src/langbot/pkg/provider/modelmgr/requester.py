@@ -75,7 +75,7 @@ class RuntimeProvider:
 
     def _validate_invocation(
         self,
-        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel | RuntimeSTTModel | RuntimeTTSModel,
+        model: RuntimeLLMModel | RuntimeEmbeddingModel | RuntimeRerankModel | RuntimeASRModel | RuntimeTTSModel,
         execution_context: ExecutionContext,
     ) -> None:
         _ensure_same_execution_scope(self.execution_context, execution_context, resource='Provider invocation')
@@ -380,22 +380,22 @@ class RuntimeProvider:
             except Exception as monitor_err:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record rerank call: {monitor_err}')
 
-    async def invoke_stt(
+    async def invoke_asr(
         self,
-        model: RuntimeSTTModel,
+        model: RuntimeASRModel,
         audio: bytes,
         mime: str,
         extra_args: dict[str, typing.Any] = {},
         *,
         execution_context: ExecutionContext,
     ) -> str:
-        """Bridge method for invoking STT with monitoring"""
+        """Bridge method for invoking ASR with monitoring"""
         self._validate_invocation(model, execution_context)
         start_time = time.time()
         status = 'success'
 
         try:
-            result = await self.requester.invoke_stt(
+            result = await self.requester.invoke_asr(
                 model=model,
                 audio=audio,
                 mime=mime,
@@ -409,11 +409,11 @@ class RuntimeProvider:
             duration_ms = int((time.time() - start_time) * 1000)
             try:
                 self.requester.ap.logger.debug(
-                    f'[STT] model={model.model_entity.name} bytes={len(audio)} mime={mime} '
+                    f'[ASR] model={model.model_entity.name} bytes={len(audio)} mime={mime} '
                     f'duration={duration_ms}ms status={status}'
                 )
             except Exception as monitor_err:
-                self.requester.ap.logger.error(f'[Monitoring] Failed to record STT call: {monitor_err}')
+                self.requester.ap.logger.error(f'[Monitoring] Failed to record ASR call: {monitor_err}')
 
     async def invoke_tts(
         self,
@@ -530,10 +530,10 @@ class RuntimeRerankModel:
         self.provider = provider
 
 
-class RuntimeSTTModel:
-    """运行时 STT 模型"""
+class RuntimeASRModel:
+    """运行时 ASR 模型"""
 
-    model_entity: persistence_model.STTModel
+    model_entity: persistence_model.ASRModel
     """模型数据"""
 
     provider: RuntimeProvider
@@ -542,14 +542,14 @@ class RuntimeSTTModel:
     def __init__(
         self,
         execution_context: ExecutionContext,
-        model_entity: persistence_model.STTModel,
+        model_entity: persistence_model.ASRModel,
         provider: RuntimeProvider,
     ):
-        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='STT model')
+        _ensure_same_execution_scope(provider.execution_context, execution_context, resource='ASR model')
         if model_entity.workspace_uuid != execution_context.workspace_uuid:
-            raise WorkspaceInvariantError('STT model belongs to another Workspace')
+            raise WorkspaceInvariantError('ASR model belongs to another Workspace')
         if model_entity.provider_uuid != provider.provider_entity.uuid:
-            raise WorkspaceInvariantError('STT model references another provider')
+            raise WorkspaceInvariantError('ASR model references another provider')
         self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
@@ -750,17 +750,17 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         """
         raise NotImplementedError('This requester does not support rerank')
 
-    async def invoke_stt(
+    async def invoke_asr(
         self,
-        model: RuntimeSTTModel,
+        model: RuntimeASRModel,
         audio: bytes,
         mime: str,
         extra_args: dict[str, typing.Any] = {},
     ) -> str:
-        """调用 STT API
+        """调用 ASR API
 
         Args:
-            model (RuntimeSTTModel): 使用的模型信息
+            model (RuntimeASRModel): 使用的模型信息
             audio (bytes): 音频字节数据
             mime (str): 音频 mime 类型
             extra_args (dict[str, typing.Any], optional): 额外参数. Defaults to {}.
@@ -768,7 +768,7 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
         Returns:
             str: 转写文本
         """
-        raise NotImplementedError('This requester does not support stt')
+        raise NotImplementedError('This requester does not support asr')
 
     async def invoke_tts(
         self,

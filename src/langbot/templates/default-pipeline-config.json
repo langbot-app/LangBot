@@ -44,7 +44,7 @@
         "runner_config": {}
     },
     "speech": {
-        "speech-to-text": {
+        "speech-recognition": {
             "enable": false,
             "model": "",
             "max-duration": 60,
@@ -57,7 +57,8 @@
             "trigger": "voice-input-only",
             "output": "voice-only",
             "max-text-length": 500,
-            "voice": ""
+            "voice": "",
+            "on-failure": "fallback"
         }
     },
     "output": {

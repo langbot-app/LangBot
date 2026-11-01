@@ -20,7 +20,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 default_stage_order = [
     'GroupRespondRuleCheckStage',  # 群响应规则检查
     'BanSessionCheckStage',  # 封禁会话检查
-    'SpeechToTextStage',  # 语音转文本阶段
+    'SpeechRecognitionStage',  # 语音识别（ASR）阶段
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
     'RequireRateLimitOccupancy',  # 请求速率限制占用

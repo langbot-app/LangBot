@@ -6,14 +6,14 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.entity.persistence.model import ModelProvider, STTModel, TTSModel
+from langbot.pkg.entity.persistence.model import ModelProvider, ASRModel, TTSModel
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
-from langbot.pkg.provider.modelmgr.requester import RuntimeProvider, RuntimeSTTModel, RuntimeTTSModel
+from langbot.pkg.provider.modelmgr.requester import RuntimeProvider, RuntimeASRModel, RuntimeTTSModel
 from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
 
 
 class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
-    async def test_model_manager_stt_and_tts_cache_and_get(self):
+    async def test_model_manager_asr_and_tts_cache_and_get(self):
         ap = Mock()
         ap.logger = Mock()
         ap.workspace_service = Mock()
@@ -47,8 +47,8 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             requester=Mock(),
         )
 
-        stt_entity = STTModel(
-            uuid='stt-1',
+        asr_entity = ASRModel(
+            uuid='asr-1',
             name='whisper-1',
             provider_uuid='prov-1',
             workspace_uuid='ws-1',
@@ -60,31 +60,31 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             workspace_uuid='ws-1',
         )
 
-        runtime_stt = await mgr.load_stt_model_with_provider(context, stt_entity, runtime_provider)
-        await mgr.cache_stt_model(context, runtime_stt)
+        runtime_asr = await mgr.load_asr_model_with_provider(context, asr_entity, runtime_provider)
+        await mgr.cache_asr_model(context, runtime_asr)
 
         runtime_tts = await mgr.load_tts_model_with_provider(context, tts_entity, runtime_provider)
         await mgr.cache_tts_model(context, runtime_tts)
 
-        retrieved_stt = await mgr.get_stt_model_by_uuid(context, 'stt-1')
-        self.assertIsNotNone(retrieved_stt)
-        self.assertEqual(retrieved_stt.model_entity.uuid, 'stt-1')
-        self.assertEqual(retrieved_stt.model_entity.name, 'whisper-1')
+        retrieved_asr = await mgr.get_asr_model_by_uuid(context, 'asr-1')
+        self.assertIsNotNone(retrieved_asr)
+        self.assertEqual(retrieved_asr.model_entity.uuid, 'asr-1')
+        self.assertEqual(retrieved_asr.model_entity.name, 'whisper-1')
 
         retrieved_tts = await mgr.get_tts_model_by_uuid(context, 'tts-1')
         self.assertIsNotNone(retrieved_tts)
         self.assertEqual(retrieved_tts.model_entity.uuid, 'tts-1')
         self.assertEqual(retrieved_tts.model_entity.name, 'tts-1')
 
-        await mgr.remove_stt_model(context, 'stt-1')
+        await mgr.remove_asr_model(context, 'asr-1')
         with self.assertRaises(ValueError):
-            await mgr.get_stt_model_by_uuid(context, 'stt-1')
+            await mgr.get_asr_model_by_uuid(context, 'asr-1')
 
         await mgr.remove_tts_model(context, 'tts-1')
         with self.assertRaises(ValueError):
             await mgr.get_tts_model_by_uuid(context, 'tts-1')
 
-    async def test_litellm_requester_invoke_stt(self):
+    async def test_litellm_requester_invoke_asr(self):
         ap = Mock()
         requester = LiteLLMRequester(ap, {'base_url': 'https://api.openai.com/v1'})
 
@@ -108,15 +108,15 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             token_mgr=Mock(get_token=Mock(return_value='sk-test-key')),
             requester=requester,
         )
-        stt_entity = STTModel(
-            uuid='stt-1',
+        asr_entity = ASRModel(
+            uuid='asr-1',
             name='whisper-1',
             provider_uuid='prov-1',
             workspace_uuid='ws-1',
         )
-        runtime_stt = RuntimeSTTModel(
+        runtime_asr = RuntimeASRModel(
             execution_context=context,
-            model_entity=stt_entity,
+            model_entity=asr_entity,
             provider=runtime_provider,
         )
 
@@ -125,8 +125,8 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
         with patch('langbot.pkg.provider.modelmgr.requesters.litellmchat.atranscription', new_callable=AsyncMock) as mock_atranscription:
             mock_atranscription.return_value = mock_resp
 
-            result = await requester.invoke_stt(
-                model=runtime_stt,
+            result = await requester.invoke_asr(
+                model=runtime_asr,
                 audio=b'fake-wav-bytes',
                 mime='audio/wav',
             )
@@ -196,6 +196,30 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call_kwargs['voice'], 'alloy')
             self.assertEqual(call_kwargs['response_format'], 'mp3')
             self.assertEqual(call_kwargs['api_key'], 'sk-test-key')
+
+        # Test without voice configured
+        tts_entity_no_voice = TTSModel(
+            uuid='tts-2',
+            name='CosyVoice2',
+            provider_uuid='prov-1',
+            workspace_uuid='ws-1',
+            extra_args={},
+        )
+        runtime_tts_no_voice = RuntimeTTSModel(
+            execution_context=context,
+            model_entity=tts_entity_no_voice,
+            provider=runtime_provider,
+        )
+        with patch('langbot.pkg.provider.modelmgr.requesters.litellmchat.aspeech', new_callable=AsyncMock) as mock_aspeech_no_voice:
+            mock_aspeech_no_voice.return_value = mock_resp
+            await requester.invoke_tts(
+                model=runtime_tts_no_voice,
+                text='Hello without voice',
+                extra_args={},
+            )
+            mock_aspeech_no_voice.assert_called_once()
+            call_kwargs_no_voice = mock_aspeech_no_voice.call_args[1]
+            self.assertNotIn('voice', call_kwargs_no_voice)
 
     async def test_init_temporary_runtime_tts_model_by_provider_uuid(self):
         ap = Mock()

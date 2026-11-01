@@ -899,7 +899,7 @@ const esES = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Reordenar',
-    stt: 'STT (Voz a texto)',
+    asr: 'ASR (Reconocimiento de voz)',
     tts: 'TTS (Texto a voz)',
     rerankUrlTooltip:
       'URL completa para el endpoint de reordenación (ej: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',

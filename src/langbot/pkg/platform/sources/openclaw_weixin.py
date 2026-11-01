@@ -130,7 +130,7 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
                     components.append(platform_message.Unknown(text='[Image]'))
 
             elif item.type == MessageItem.VOICE and item.voice_item:
-                # Voice with speech-to-text: use the transcribed text
+                # Voice with speech recognition: use the transcribed text
                 if item.voice_item.text:
                     components.append(platform_message.Plain(text=item.voice_item.text))
                 else:

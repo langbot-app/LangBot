@@ -868,7 +868,7 @@ const thTH = {
     chat: 'แชท',
     embedding: 'Embedding',
     rerank: 'จัดลำดับใหม่',
-    stt: 'STT (แปลงเสียงเป็นข้อความ)',
+    asr: 'ASR (การรู้จำเสียงพูด)',
     tts: 'TTS (แปลงข้อความเป็นเสียง)',
     rerankUrlTooltip:
       'URL เต็มสำหรับ endpoint จัดลำดับใหม่ (เช่น: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',

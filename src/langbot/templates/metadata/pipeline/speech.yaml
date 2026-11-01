@@ -3,13 +3,13 @@ label:
   en_US: Speech
   zh_Hans: 语音
 stages:
-  - name: speech-to-text
+  - name: speech-recognition
     label:
-      en_US: Speech to Text (STT)
-      zh_Hans: 语音转文本 (STT)
+      en_US: Speech Recognition (ASR)
+      zh_Hans: 语音识别 (ASR)
     description:
       en_US: Transcribe incoming voice messages to text
-      zh_Hans: 将收到的语音消息转写为文本
+      zh_Hans: 将收到的语音消息识别为文本
     config:
       - name: enable
         label:
@@ -22,7 +22,7 @@ stages:
         label:
           en_US: Model
           zh_Hans: 模型
-        type: stt-model-selector
+        type: asr-model-selector
         required: false
         default: ""
       - name: max-duration
@@ -51,7 +51,7 @@ stages:
           zh_Hans: 失败处理
         description:
           en_US: Action to take when transcription fails
-          zh_Hans: 语音转写失败时的处理策略
+          zh_Hans: 语音识别失败时的处理策略
         type: select
         required: true
         default: notify
@@ -148,3 +148,22 @@ stages:
         type: string
         required: false
         default: ""
+      - name: on-failure
+        label:
+          en_US: On Failure
+          zh_Hans: 失败处理
+        description:
+          en_US: Action to take when synthesis fails
+          zh_Hans: 语音合成失败时的处理策略
+        type: select
+        required: true
+        default: fallback
+        options:
+          - name: fallback
+            label:
+              en_US: Fallback to Text
+              zh_Hans: 降级为纯文本
+          - name: notify
+            label:
+              en_US: Notify User and Fallback
+              zh_Hans: 提示用户并降级

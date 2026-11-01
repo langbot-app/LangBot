@@ -112,5 +112,6 @@
   "Confirmation needed": "Требуется подтверждение",
   "Session reset successfully": "Сессия сброшена",
   "Voice transcription failed.": "Не удалось распознать голосовое сообщение.",
-  "Voice message exceeds maximum duration.": "Длительность голосового сообщения превышает максимум."
+  "Voice message exceeds maximum duration.": "Длительность голосового сообщения превышает максимум.",
+  "Voice synthesis failed.": "Сбой синтеза речи."
 }

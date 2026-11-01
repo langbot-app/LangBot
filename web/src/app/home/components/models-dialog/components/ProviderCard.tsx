@@ -158,13 +158,13 @@ export default function ProviderCard({
     (provider.llm_count || 0) === 0 &&
     (provider.embedding_count || 0) === 0 &&
     (provider.rerank_count || 0) === 0 &&
-    (provider.stt_count || 0) === 0 &&
+    (provider.asr_count || 0) === 0 &&
     (provider.tts_count || 0) === 0;
   const totalModels =
     (provider.llm_count || 0) +
     (provider.embedding_count || 0) +
     (provider.rerank_count || 0) +
-    (provider.stt_count || 0) +
+    (provider.asr_count || 0) +
     (provider.tts_count || 0);
 
   return (
@@ -605,12 +605,12 @@ export default function ProviderCard({
                     onResetTestResult={onResetTestResult}
                   />
                 ))}
-                {(models.stt || []).map((model) => (
+                {(models.asr || []).map((model) => (
                   <ModelItem
                     key={model.uuid}
                     model={model}
                     canManage={canManage}
-                    modelType="stt"
+                    modelType="asr"
                     isLangBotModels={isLangBotModels}
                     metadata={
                       modelMetadata[model.uuid] ?? modelMetadata[model.name]
@@ -622,7 +622,7 @@ export default function ProviderCard({
                     onCloseEditModel={onCloseEditModel}
                     onOpenDeleteConfirm={onOpenDeleteConfirm}
                     onCloseDeleteConfirm={onCloseDeleteConfirm}
-                    onDeleteModel={() => onDeleteModel(model.uuid, 'stt')}
+                    onDeleteModel={() => onDeleteModel(model.uuid, 'asr')}
                     onUpdateModel={(
                       name,
                       abilities,
@@ -631,7 +631,7 @@ export default function ProviderCard({
                     ) =>
                       onUpdateModel(
                         model.uuid,
-                        'stt',
+                        'asr',
                         name,
                         abilities,
                         extraArgs,
@@ -646,7 +646,7 @@ export default function ProviderCard({
                     ) =>
                       onTestModel(
                         name,
-                        'stt',
+                        'asr',
                         abilities,
                         extraArgs,
                         reasoningConfig,
@@ -714,7 +714,7 @@ export default function ProviderCard({
                 {models.llm.length === 0 &&
                   models.embedding.length === 0 &&
                   models.rerank.length === 0 &&
-                  (!models.stt || models.stt.length === 0) &&
+                  (!models.asr || models.asr.length === 0) &&
                   (!models.tts || models.tts.length === 0) && (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       {t('models.noModels')}

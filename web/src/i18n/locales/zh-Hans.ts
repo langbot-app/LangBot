@@ -840,7 +840,7 @@ const zhHans = {
     chat: '对话',
     embedding: '嵌入',
     rerank: '重排序',
-    stt: '语音转文本 (STT)',
+    asr: '语音识别 (ASR)',
     tts: '文本转语音 (TTS)',
     rerankUrlTooltip:
       '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',

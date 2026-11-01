@@ -213,8 +213,8 @@ export default function ModelItem({
                   ? t('models.embedding')
                   : modelType === 'rerank'
                     ? t('models.rerank')
-                    : modelType === 'stt'
-                      ? t('models.stt')
+                    : modelType === 'asr'
+                      ? t('models.asr')
                       : t('models.tts')}
             </Badge>
             {modelType === 'llm' &&

@@ -1,4 +1,4 @@
-"""Add STT and TTS models and speech pipeline stages.
+"""Add ASR and TTS models and speech pipeline stages.
 
 Revision ID: 0043_add_speech_models_and_stages
 Revises: 0042_sqlite_incremental_vacuum
@@ -14,7 +14,7 @@ branch_labels = None
 depends_on = None
 
 DEFAULT_SPEECH_CONFIG = {
-    'speech-to-text': {
+    'speech-recognition': {
         'enabled': False,
         'model': '',
         'max-duration': 60,
@@ -38,9 +38,9 @@ def upgrade() -> None:
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
 
-    if 'stt_models' not in existing_tables:
+    if 'asr_models' not in existing_tables:
         op.create_table(
-            'stt_models',
+            'asr_models',
             sa.Column('uuid', sa.String(255), primary_key=True, unique=True),
             sa.Column(
                 'workspace_uuid',
@@ -57,17 +57,17 @@ def upgrade() -> None:
             sa.ForeignKeyConstraint(
                 ['workspace_uuid', 'provider_uuid'],
                 ['model_providers.workspace_uuid', 'model_providers.uuid'],
-                name='fk_stt_models_workspace_provider',
+                name='fk_asr_models_workspace_provider',
             ),
         )
         op.create_index(
-            'ix_stt_models_workspace_provider',
-            'stt_models',
+            'ix_asr_models_workspace_provider',
+            'asr_models',
             ['workspace_uuid', 'provider_uuid'],
         )
         op.create_index(
-            'ix_stt_models_workspace_name',
-            'stt_models',
+            'ix_asr_models_workspace_name',
+            'asr_models',
             ['workspace_uuid', 'name'],
         )
 
@@ -105,7 +105,7 @@ def upgrade() -> None:
         )
 
     if conn.dialect.name == 'postgresql':
-        for tbl in ('stt_models', 'tts_models'):
+        for tbl in ('asr_models', 'tts_models'):
             op.execute(f'ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY')
             op.execute(f'ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY')
             op.execute(f'DROP POLICY IF EXISTS langbot_workspace_isolation ON {tbl}')
@@ -127,19 +127,19 @@ def upgrade() -> None:
             stages_changed = False
             config_changed = False
 
-            if 'SpeechToTextStage' not in stages:
+            if 'SpeechRecognitionStage' not in stages:
                 # Place after BanSessionCheckStage or GroupRespondRuleCheckStage, and before PreContentFilterStage
                 if 'BanSessionCheckStage' in stages:
                     idx = stages.index('BanSessionCheckStage') + 1
-                    stages.insert(idx, 'SpeechToTextStage')
+                    stages.insert(idx, 'SpeechRecognitionStage')
                 elif 'GroupRespondRuleCheckStage' in stages:
                     idx = stages.index('GroupRespondRuleCheckStage') + 1
-                    stages.insert(idx, 'SpeechToTextStage')
+                    stages.insert(idx, 'SpeechRecognitionStage')
                 elif 'PreContentFilterStage' in stages:
                     idx = stages.index('PreContentFilterStage')
-                    stages.insert(idx, 'SpeechToTextStage')
+                    stages.insert(idx, 'SpeechRecognitionStage')
                 else:
-                    stages.append('SpeechToTextStage')
+                    stages.append('SpeechRecognitionStage')
                 stages_changed = True
 
             if 'TextToSpeechStage' not in stages:
@@ -172,5 +172,5 @@ def downgrade() -> None:
     existing_tables = set(inspector.get_table_names())
     if 'tts_models' in existing_tables:
         op.drop_table('tts_models')
-    if 'stt_models' in existing_tables:
-        op.drop_table('stt_models')
+    if 'asr_models' in existing_tables:
+        op.drop_table('asr_models')

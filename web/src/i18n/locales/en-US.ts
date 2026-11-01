@@ -885,7 +885,7 @@ const enUS = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Rerank',
-    stt: 'STT (Speech to Text)',
+    asr: 'ASR (Speech Recognition)',
     tts: 'TTS (Text to Speech)',
     rerankUrlTooltip:
       'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',

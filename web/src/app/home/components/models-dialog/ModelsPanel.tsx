@@ -213,12 +213,12 @@ export default function ModelsPanel({
       setLoadingProviders((prev) => new Set(prev).add(providerUuid));
     }
     try {
-      const [llmResp, embeddingResp, rerankResp, sttResp, ttsResp] =
+      const [llmResp, embeddingResp, rerankResp, asrResp, ttsResp] =
         await Promise.all([
           httpClient.getProviderLLMModels(providerUuid),
           httpClient.getProviderEmbeddingModels(providerUuid),
           httpClient.getProviderRerankModels(providerUuid),
-          httpClient.getProviderSTTModels(providerUuid),
+          httpClient.getProviderASRModels(providerUuid),
           httpClient.getProviderTTSModels(providerUuid),
         ]);
       setProviderModels((prev) => ({
@@ -227,7 +227,7 @@ export default function ModelsPanel({
           llm: llmResp.models,
           embedding: embeddingResp.models,
           rerank: rerankResp.models,
-          stt: sttResp.models,
+          asr: asrResp.models,
           tts: ttsResp.models,
         },
       }));
@@ -331,8 +331,8 @@ export default function ModelsPanel({
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
         } as never);
-      } else if (modelType === 'stt') {
-        await httpClient.createProviderSTTModel({
+      } else if (modelType === 'asr') {
+        await httpClient.createProviderASRModel({
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -402,8 +402,8 @@ export default function ModelsPanel({
             provider_uuid: providerUuid,
             extra_args: {},
           } as never);
-        } else if (effectiveType === 'stt') {
-          await httpClient.createProviderSTTModel({
+        } else if (effectiveType === 'asr') {
+          await httpClient.createProviderASRModel({
             name: item.model.name,
             provider_uuid: providerUuid,
             extra_args: {},
@@ -471,8 +471,8 @@ export default function ModelsPanel({
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
         } as never);
-      } else if (modelType === 'stt') {
-        await httpClient.updateProviderSTTModel(modelId, {
+      } else if (modelType === 'asr') {
+        await httpClient.updateProviderASRModel(modelId, {
           name,
           provider_uuid: providerUuid,
           extra_args: extraArgsObj,
@@ -506,8 +506,8 @@ export default function ModelsPanel({
         await httpClient.deleteProviderEmbeddingModel(modelId);
       } else if (modelType === 'rerank') {
         await httpClient.deleteProviderRerankModel(modelId);
-      } else if (modelType === 'stt') {
-        await httpClient.deleteProviderSTTModel(modelId);
+      } else if (modelType === 'asr') {
+        await httpClient.deleteProviderASRModel(modelId);
       } else {
         await httpClient.deleteProviderTTSModel(modelId);
       }
@@ -568,8 +568,8 @@ export default function ModelsPanel({
           provider: providerData,
           extra_args: extraArgsObj,
         } as never);
-      } else if (modelType === 'stt') {
-        await httpClient.testSTTModel('_', {
+      } else if (modelType === 'asr') {
+        await httpClient.testASRModel('_', {
           uuid: '',
           name,
           provider_uuid: providerUuid,
