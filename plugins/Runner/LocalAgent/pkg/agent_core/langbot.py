@@ -205,10 +205,12 @@ class LangBotToolExecutor:
         api: RunnerAPIProxy,
         allowed_tools: set[str],
         max_result_chars: int = DEFAULT_MAX_TOOL_RESULT_CHARS,
+        workspace_manager: typing.Any = None,
     ):
         self.api = api
         self.allowed_tools = allowed_tools
         self.max_result_chars = max_result_chars
+        self.workspace_manager = workspace_manager
         self.local_tools = {}
 
     def prepare(self, request: ToolCallRequest) -> PreparedToolCall:
@@ -243,6 +245,20 @@ class LangBotToolExecutor:
     async def execute(self, prepared: PreparedToolCall) -> ToolExecutionOutcome:
         if prepared.error is not None:
             return self.finalize(prepared, result=None, error=prepared.error)
+
+        if self.workspace_manager is not None and self.workspace_manager.is_workspace_tool(prepared.request.name):
+            try:
+                result = await self.workspace_manager.execute(
+                    api=self.api,
+                    tool_name=prepared.request.name,
+                    parameters=prepared.parameters,
+                    max_result_chars=self.max_result_chars,
+                )
+                return self.finalize(prepared, result=result, error=None)
+            except Exception as e:
+                if is_deadline_exceeded_error(e):
+                    raise
+                return self.finalize(prepared, result=None, error=f"Workspace tool execution failed: {e}")
 
         try:
             if prepared.request.name in self.local_tools:

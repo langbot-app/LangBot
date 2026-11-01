@@ -145,6 +145,21 @@ def build_platform_tools_system_message(ctx: typing.Any) -> Message | None:
     )
 
 
+def build_workspace_tools_system_message(
+    domains: list[dict[str, typing.Any]] | None,
+    max_chars: int = 1500,
+) -> Message | None:
+    """Build a system message with progressive disclosure instructions and domain overview."""
+    from pkg.workspace_tools import PROGRESSIVE_GUIDANCE, format_domains_overview
+
+    overview = format_domains_overview(domains or [], max_chars=max_chars)
+    if overview:
+        content = f"{PROGRESSIVE_GUIDANCE}\n\n{overview}"
+    else:
+        content = PROGRESSIVE_GUIDANCE
+    return Message(role="system", content=content)
+
+
 def build_user_message(
     user_text: str,
     input_contents: list[ContentElement] | None = None,

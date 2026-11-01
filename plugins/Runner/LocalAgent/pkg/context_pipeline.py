@@ -443,12 +443,14 @@ class ContextAssembler:
         budget: ContextBudget | None = None,
         summarizer: ContextSummarizer | None = None,
         token_counter: ContextTokenCounter | None = None,
+        workspace_manager: typing.Any = None,
     ):
         self.api = api
         self.ctx = ctx
         self.budget = budget or ContextBudget.from_context(ctx)
         self.summarizer = summarizer
         self.token_counter = token_counter
+        self.workspace_manager = workspace_manager
 
     async def assemble(self) -> ContextAssembly:
         user_text = self.ctx.input.to_text()
@@ -477,6 +479,10 @@ class ContextAssembler:
         platform_tools_message = build_platform_tools_system_message(self.ctx)
         if platform_tools_message is not None:
             system_instructions.append(platform_tools_message.content)
+        if self.workspace_manager is not None:
+            workspace_message = self.workspace_manager.build_system_message()
+            if workspace_message is not None:
+                system_instructions.append(workspace_message.content)
         if system_instructions:
             # Strict chat templates only accept a system message at position zero.
             guidance = "\n\n".join(system_instructions)
