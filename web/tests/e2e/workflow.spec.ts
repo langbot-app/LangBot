@@ -1,6 +1,57 @@
 import { expect, test } from '@playwright/test';
 import { installLangBotApiMocks } from './fixtures/langbot-api';
 
+test('workflow quota does not consume pipeline quota or block unrelated resources', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  await page.route('**/api/v1/system/info', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          debug: false,
+          version: 'workflow-quota-test',
+          edition: 'community',
+          enable_marketplace: true,
+          limitation: {
+            max_bots: 1,
+            max_pipelines: 1,
+            max_workflows: 1,
+            max_extensions: 1,
+            max_knowledge_bases: 1,
+          },
+          wizard_status: 'completed',
+        },
+      },
+    }),
+  );
+  await page.route('**/api/v1/workflows', (route) =>
+    route.fulfill({
+      json: {
+        code: 0,
+        data: {
+          workflows: [{ uuid: 'quota-workflow', name: 'Existing workflow' }],
+        },
+      },
+    }),
+  );
+  await page.goto('/home/agents?id=new');
+  for (const name of ['Create Bots', 'Create Processors', 'Create Knowledge']) {
+    await expect(page.getByRole('button', { name, exact: true })).toBeEnabled();
+  }
+  await page.locator('[data-processor-kind="workflow"]').click();
+  await expect(
+    page.getByRole('button', { name: 'Submit', exact: true }),
+  ).toBeDisabled();
+  await page.locator('[data-processor-kind="pipeline"]').click();
+  await page.locator('#agent-create-form').getByRole('combobox').click();
+  await page.getByRole('option', { name: /Local Agent/ }).click();
+  await expect(
+    page.getByRole('button', { name: 'Submit', exact: true }),
+  ).toBeEnabled();
+});
+
 test('processors offer workflow creation and open the workflow editor', async ({
   page,
 }) => {

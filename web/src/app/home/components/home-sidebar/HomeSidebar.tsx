@@ -641,13 +641,15 @@ function NavItems({
         const quota =
           categoryId === 'bots'
             ? quotaStatus.bots
-            : categoryId === 'knowledge'
-              ? quotaStatus.knowledgeBases
-              : categoryId === 'plugins' ||
-                  categoryId === 'mcp' ||
-                  categoryId === 'skills'
-                ? quotaStatus.extensions
-                : UNLIMITED_QUOTA;
+            : categoryId === 'pipelines'
+              ? quotaStatus.pipelines
+              : categoryId === 'knowledge'
+                ? quotaStatus.knowledgeBases
+                : categoryId === 'plugins' ||
+                    categoryId === 'mcp' ||
+                    categoryId === 'skills'
+                  ? quotaStatus.extensions
+                  : UNLIMITED_QUOTA;
 
         const resolveItemRoute = (item: SidebarEntityItem): string => {
           if (item.kind === 'workflow')
