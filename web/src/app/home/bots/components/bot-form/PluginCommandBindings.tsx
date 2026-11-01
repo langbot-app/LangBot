@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { GripVertical, Plus, Trash2, AlertCircle, X } from 'lucide-react';
+import {
+  GripVertical,
+  Plus,
+  Settings2,
+  Trash2,
+  AlertCircle,
+  X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -37,6 +44,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -463,50 +475,6 @@ export default function PluginCommandBindings({
 
       {value.enabled && (
         <>
-          {/* Prefix configuration */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <Label className="mr-1 text-xs font-medium">
-              {t('bots.pluginCommands.prefixes')}
-            </Label>
-            {prefixes.map((p) => (
-              <Badge
-                key={p}
-                variant="secondary"
-                className="flex h-7 items-center gap-1 px-2 font-mono text-sm"
-              >
-                {p}
-                {prefixes.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => handleRemovePrefix(p)}
-                    className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
-                    title={t('common.remove')}
-                    aria-label={`${t('common.remove')} ${p}`}
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </Badge>
-            ))}
-            <Input
-              value={newPrefix}
-              onChange={(e) => setNewPrefix(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  handleAddPrefix();
-                }
-              }}
-              onBlur={() => {
-                if (newPrefix.trim()) handleAddPrefix();
-              }}
-              placeholder={t('bots.pluginCommands.addPrefix')}
-              title={t('bots.pluginCommands.prefixPlaceholder')}
-              aria-label={t('bots.pluginCommands.addPrefix')}
-              className="h-7 w-28 font-mono text-xs"
-            />
-          </div>
-
           {/* Command processor list and drag reordering */}
           <div className="space-y-2">
             {bindings.length === 0 ? (
@@ -564,20 +532,78 @@ export default function PluginCommandBindings({
                 {t('bots.pluginCommands.dragHint')}
               </p>
             )}
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setSelected([]);
-                setDialogOpen(true);
-              }}
-              disabled={loading || nothingToAdd}
-              className="w-full"
-            >
-              <Plus className="mr-1 size-3.5" />
-              {t('bots.pluginCommands.addPlugin')}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSelected([]);
+                  setDialogOpen(true);
+                }}
+                disabled={loading || nothingToAdd}
+                className="flex-1"
+              >
+                <Plus className="mr-1 size-3.5" />
+                {t('bots.pluginCommands.addPlugin')}
+              </Button>
+              {/* Prefixes change rarely, so they live behind a small popover. */}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 shrink-0 px-2 text-xs text-muted-foreground"
+                    title={t('bots.pluginCommands.prefixes')}
+                    aria-label={t('bots.pluginCommands.prefixes')}
+                  >
+                    <Settings2 className="mr-1 size-3.5" />
+                    <span className="font-mono">{prefixes.join(' ')}</span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="end" className="w-72 space-y-2 p-3">
+                  <Label className="text-xs font-medium">
+                    {t('bots.pluginCommands.prefixes')}
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {prefixes.map((p) => (
+                      <Badge
+                        key={p}
+                        variant="secondary"
+                        className="flex h-7 items-center gap-1 px-2 font-mono text-sm"
+                      >
+                        {p}
+                        {prefixes.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePrefix(p)}
+                            className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                            title={t('common.remove')}
+                            aria-label={`${t('common.remove')} ${p}`}
+                          >
+                            <X className="size-3" />
+                          </button>
+                        )}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Input
+                    value={newPrefix}
+                    onChange={(e) => setNewPrefix(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddPrefix();
+                      }
+                    }}
+                    placeholder={t('bots.pluginCommands.prefixPlaceholder')}
+                    aria-label={t('bots.pluginCommands.addPrefix')}
+                    className="h-8 font-mono text-xs"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
           </div>
         </>
       )}
