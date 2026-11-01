@@ -15,6 +15,7 @@ if typing.TYPE_CHECKING:
 
 class AudioDependencyError(RuntimeError):
     """Raised when an audio transcoding tool or optional dependency is missing or fails."""
+
     pass
 
 
@@ -120,7 +121,7 @@ def transcode_audio_sync(
             proc = subprocess.run(cmd, capture_output=True)
             if proc.returncode != 0:
                 raise AudioDependencyError(
-                    f"ffmpeg conversion failed from silk(pcm) to {target_format}: {proc.stderr.decode('utf-8', errors='replace')}"
+                    f'ffmpeg conversion failed from silk(pcm) to {target_format}: {proc.stderr.decode("utf-8", errors="replace")}'
                 )
             return proc.stdout
 
@@ -144,7 +145,7 @@ def transcode_audio_sync(
         proc = subprocess.run(cmd, input=audio_bytes, capture_output=True)
         if proc.returncode != 0:
             raise AudioDependencyError(
-                f"ffmpeg conversion failed from {source_format} to pcm: {proc.stderr.decode('utf-8', errors='replace')}"
+                f'ffmpeg conversion failed from {source_format} to pcm: {proc.stderr.decode("utf-8", errors="replace")}'
             )
         pcm_bytes = proc.stdout
 
@@ -186,7 +187,7 @@ def transcode_audio_sync(
     proc = subprocess.run(cmd, input=audio_bytes, capture_output=True)
     if proc.returncode != 0:
         raise AudioDependencyError(
-            f"ffmpeg conversion failed from {source_format} to {target_format}: {proc.stderr.decode('utf-8', errors='replace')}"
+            f'ffmpeg conversion failed from {source_format} to {target_format}: {proc.stderr.decode("utf-8", errors="replace")}'
         )
     return proc.stdout
 

@@ -223,9 +223,7 @@ class TextToSpeechStage(stage.PipelineStage):
         if not query.resp_message_chain:
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-        plain_texts = [
-            comp.text for comp in query.resp_message_chain[-1] if isinstance(comp, platform_message.Plain)
-        ]
+        plain_texts = [comp.text for comp in query.resp_message_chain[-1] if isinstance(comp, platform_message.Plain)]
         full_text = ''.join(plain_texts).strip()
         if not full_text:
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)

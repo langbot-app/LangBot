@@ -45,7 +45,7 @@ export type ScanModelsResult = {
 };
 
 export interface ModelItemProps {
-  model: LLMModel | EmbeddingModel | RerankModel | STTModel | TTSModel;
+  model: LLMModel | EmbeddingModel | RerankModel | ASRModel | TTSModel;
   modelType: ModelType;
   providerUuid: string;
   isLangBotModels: boolean;

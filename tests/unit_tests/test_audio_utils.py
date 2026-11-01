@@ -6,7 +6,6 @@ from unittest.mock import patch
 import wave
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import pytest
 
 from langbot.pkg.utils import audio as audio_utils
 

@@ -3,8 +3,6 @@ from __future__ import annotations
 import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
-import pytest
-
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.model import ModelProvider, ASRModel, TTSModel
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager

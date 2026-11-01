@@ -1,6 +1,6 @@
 """Add ASR and TTS models and speech pipeline stages.
 
-Revision ID: 0043_add_speech_models_and_stages
+Revision ID: 0043_speech_models
 Revises: 0042_sqlite_incremental_vacuum
 """
 
@@ -8,7 +8,7 @@ import json
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0043_add_speech_models_and_stages'
+revision = '0043_speech_models'
 down_revision = '0042_sqlite_incremental_vacuum'
 branch_labels = None
 depends_on = None
@@ -115,55 +115,59 @@ def upgrade() -> None:
 
     # Migrate legacy_pipelines stages and config
     if 'legacy_pipelines' in existing_tables:
-        metadata = sa.MetaData()
-        pipelines_tbl = sa.Table('legacy_pipelines', metadata, autoload_with=conn)
-        rows = conn.execute(sa.select(pipelines_tbl.c.uuid, pipelines_tbl.c.stages, pipelines_tbl.c.config)).fetchall()
+        pipeline_columns = {col['name'] for col in inspector.get_columns('legacy_pipelines')}
+        if {'stages', 'config', 'uuid'} <= pipeline_columns:
+            metadata = sa.MetaData()
+            pipelines_tbl = sa.Table('legacy_pipelines', metadata, autoload_with=conn)
+            rows = conn.execute(
+                sa.select(pipelines_tbl.c.uuid, pipelines_tbl.c.stages, pipelines_tbl.c.config)
+            ).fetchall()
 
-        for row in rows:
-            p_uuid, stages_raw, config_raw = row[0], row[1], row[2]
-            stages = stages_raw if isinstance(stages_raw, list) else json.loads(stages_raw or '[]')
-            config = config_raw if isinstance(config_raw, dict) else json.loads(config_raw or '{}')
+            for row in rows:
+                p_uuid, stages_raw, config_raw = row[0], row[1], row[2]
+                stages = stages_raw if isinstance(stages_raw, list) else json.loads(stages_raw or '[]')
+                config = config_raw if isinstance(config_raw, dict) else json.loads(config_raw or '{}')
 
-            stages_changed = False
-            config_changed = False
+                stages_changed = False
+                config_changed = False
 
-            if 'SpeechRecognitionStage' not in stages:
-                # Place after BanSessionCheckStage or GroupRespondRuleCheckStage, and before PreContentFilterStage
-                if 'BanSessionCheckStage' in stages:
-                    idx = stages.index('BanSessionCheckStage') + 1
-                    stages.insert(idx, 'SpeechRecognitionStage')
-                elif 'GroupRespondRuleCheckStage' in stages:
-                    idx = stages.index('GroupRespondRuleCheckStage') + 1
-                    stages.insert(idx, 'SpeechRecognitionStage')
-                elif 'PreContentFilterStage' in stages:
-                    idx = stages.index('PreContentFilterStage')
-                    stages.insert(idx, 'SpeechRecognitionStage')
-                else:
-                    stages.append('SpeechRecognitionStage')
-                stages_changed = True
+                if 'SpeechRecognitionStage' not in stages:
+                    # Place after BanSessionCheckStage or GroupRespondRuleCheckStage, and before PreContentFilterStage
+                    if 'BanSessionCheckStage' in stages:
+                        idx = stages.index('BanSessionCheckStage') + 1
+                        stages.insert(idx, 'SpeechRecognitionStage')
+                    elif 'GroupRespondRuleCheckStage' in stages:
+                        idx = stages.index('GroupRespondRuleCheckStage') + 1
+                        stages.insert(idx, 'SpeechRecognitionStage')
+                    elif 'PreContentFilterStage' in stages:
+                        idx = stages.index('PreContentFilterStage')
+                        stages.insert(idx, 'SpeechRecognitionStage')
+                    else:
+                        stages.append('SpeechRecognitionStage')
+                    stages_changed = True
 
-            if 'TextToSpeechStage' not in stages:
-                # Place after ResponseWrapper, before LongTextProcessStage
-                if 'ResponseWrapper' in stages:
-                    idx = stages.index('ResponseWrapper') + 1
-                    stages.insert(idx, 'TextToSpeechStage')
-                elif 'LongTextProcessStage' in stages:
-                    idx = stages.index('LongTextProcessStage')
-                    stages.insert(idx, 'TextToSpeechStage')
-                else:
-                    stages.append('TextToSpeechStage')
-                stages_changed = True
+                if 'TextToSpeechStage' not in stages:
+                    # Place after ResponseWrapper, before LongTextProcessStage
+                    if 'ResponseWrapper' in stages:
+                        idx = stages.index('ResponseWrapper') + 1
+                        stages.insert(idx, 'TextToSpeechStage')
+                    elif 'LongTextProcessStage' in stages:
+                        idx = stages.index('LongTextProcessStage')
+                        stages.insert(idx, 'TextToSpeechStage')
+                    else:
+                        stages.append('TextToSpeechStage')
+                    stages_changed = True
 
-            if 'speech' not in config:
-                config['speech'] = DEFAULT_SPEECH_CONFIG.copy()
-                config_changed = True
+                if 'speech' not in config:
+                    config['speech'] = DEFAULT_SPEECH_CONFIG.copy()
+                    config_changed = True
 
-            if stages_changed or config_changed:
-                conn.execute(
-                    sa.update(pipelines_tbl)
-                    .where(pipelines_tbl.c.uuid == p_uuid)
-                    .values(stages=stages, config=config)
-                )
+                if stages_changed or config_changed:
+                    conn.execute(
+                        sa.update(pipelines_tbl)
+                        .where(pipelines_tbl.c.uuid == p_uuid)
+                        .values(stages=stages, config=config)
+                    )
 
 
 def downgrade() -> None:

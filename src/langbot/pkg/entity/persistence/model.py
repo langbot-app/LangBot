@@ -231,4 +231,3 @@ class TTSModel(Base):
         sqlalchemy.Index('ix_tts_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
         sqlalchemy.Index('ix_tts_models_workspace_name', 'workspace_uuid', 'name'),
     )
-

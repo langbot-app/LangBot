@@ -449,7 +449,6 @@ class RuntimeProvider:
                 self.requester.ap.logger.error(f'[Monitoring] Failed to record TTS call: {monitor_err}')
 
 
-
 class RuntimeLLMModel:
     """运行时模型"""
 
@@ -787,4 +786,3 @@ class ProviderAPIRequester(metaclass=abc.ABCMeta):
             tuple[bytes, str]: (音频字节数据, mime 类型)
         """
         raise NotImplementedError('This requester does not support tts')
-

@@ -1203,9 +1203,7 @@ class ASRModelsService:
         await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'asr')
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_model.ASRModel).values(**model_data)
-        )
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.ASRModel).values(**model_data))
 
         runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
         runtime_asr_model = await self.ap.model_mgr.load_asr_model_with_provider(
@@ -1226,9 +1224,7 @@ class ASRModelsService:
         """Get a single ASR model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.select(persistence_model.ASRModel).where(
-                    persistence_model.ASRModel.uuid == model_uuid
-                ),
+                sqlalchemy.select(persistence_model.ASRModel).where(persistence_model.ASRModel.uuid == model_uuid),
                 persistence_model.ASRModel,
                 context,
             )
@@ -1336,9 +1332,7 @@ class ASRModelsService:
             await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.delete(persistence_model.ASRModel).where(
-                    persistence_model.ASRModel.uuid == model_uuid
-                ),
+                sqlalchemy.delete(persistence_model.ASRModel).where(persistence_model.ASRModel.uuid == model_uuid),
                 persistence_model.ASRModel,
                 context,
             )
@@ -1457,9 +1451,7 @@ class TTSModelsService:
         await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
         await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'tts')
 
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.insert(persistence_model.TTSModel).values(**model_data)
-        )
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.TTSModel).values(**model_data))
 
         runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
         runtime_tts_model = await self.ap.model_mgr.load_tts_model_with_provider(
@@ -1480,9 +1472,7 @@ class TTSModelsService:
         """Get a single TTS model with provider info"""
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.select(persistence_model.TTSModel).where(
-                    persistence_model.TTSModel.uuid == model_uuid
-                ),
+                sqlalchemy.select(persistence_model.TTSModel).where(persistence_model.TTSModel.uuid == model_uuid),
                 persistence_model.TTSModel,
                 context,
             )
@@ -1590,9 +1580,7 @@ class TTSModelsService:
             await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
-                sqlalchemy.delete(persistence_model.TTSModel).where(
-                    persistence_model.TTSModel.uuid == model_uuid
-                ),
+                sqlalchemy.delete(persistence_model.TTSModel).where(persistence_model.TTSModel.uuid == model_uuid),
                 persistence_model.TTSModel,
                 context,
             )
@@ -1616,7 +1604,11 @@ class TTSModelsService:
                 model_data,
             )
 
-        model_extra = getattr(runtime_tts_model, 'extra_args', None) or getattr(runtime_tts_model.model_entity, 'extra_args', {}) or {}
+        model_extra = (
+            getattr(runtime_tts_model, 'extra_args', None)
+            or getattr(runtime_tts_model.model_entity, 'extra_args', {})
+            or {}
+        )
         voice = model_extra.get('voice')
         extra_args: dict[str, typing.Any] = {'response_format': 'mp3'}
         if voice:

@@ -728,6 +728,7 @@ interface GetPipelineConfig {
   ai: object;
   output: object;
   safety: object;
+  speech?: object;
   trigger: object;
 }
 
