@@ -1295,7 +1295,16 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         pass
 
     async def _refresh_runner_registry(self) -> None:
-        await self._refresh_platform_commands(await self._current_execution_context())
+        try:
+            await self._refresh_registered_runners()
+        finally:
+            # Platform command menus are best-effort and must not fail plugin lifecycle operations.
+            try:
+                await self._refresh_platform_commands(await self._current_execution_context())
+            except Exception as e:
+                self.ap.logger.warning(f'Failed to refresh platform commands: {e}')
+
+    async def _refresh_registered_runners(self) -> None:
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is None:
             return
