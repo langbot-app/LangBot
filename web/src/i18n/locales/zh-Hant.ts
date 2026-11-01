@@ -877,7 +877,7 @@ const zhHant = {
     pluginSubscriptions: {
       incompleteEvents:
         '目前機器人僅支援部分事件（{{events}}），處理器表現可能不完整。',
-      description: '自動接收外掛宣告的事件，與上方事件路由獨立執行。',
+      description: '自動接收外掛宣告的事件，與路由規則獨立執行。',
       empty: '尚未綁定外掛處理器。',
       add: '新增外掛處理器',
       existing: '選擇現有設定',
@@ -976,6 +976,11 @@ const zhHant = {
       play: '播放',
     },
     eventRouting: '事件路由',
+    routingTabs: {
+      rules: '路由規則',
+      commands: '外掛指令',
+      processors: '外掛處理器',
+    },
     eventRoutingDescription:
       '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或 流水線 設定中編輯處理邏輯；流水線 僅支援訊息事件。',
     eventBindings: '事件路由',

@@ -1,16 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import {
-  GripVertical,
-  Plus,
-  Trash2,
-  Terminal,
-  AlertCircle,
-  X,
-  ChevronDown,
-  ChevronRight,
-} from 'lucide-react';
+import { GripVertical, Plus, Trash2, AlertCircle, X } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -41,12 +32,10 @@ import { AuthenticatedPluginIcon } from '@/components/AuthenticatedPluginIcon';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -101,7 +90,6 @@ function SortableProcessorItem({
   onRemove,
 }: SortableProcessorItemProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
 
   const {
     attributes,
@@ -127,157 +115,123 @@ function SortableProcessorItem({
     <div
       ref={setNodeRef}
       style={style}
-      className="rounded-lg border bg-card text-card-foreground shadow-sm transition-all"
+      className={`flex items-start gap-2.5 rounded-lg border p-2.5 ${
+        binding.enabled ? 'bg-card' : 'border-dashed bg-muted/30'
+      }`}
     >
-      <div className="flex items-center justify-between p-3.5">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
-            className="cursor-grab touch-none p-1 text-muted-foreground hover:text-foreground active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
-            title={t('bots.pluginCommands.dragHint')}
-            aria-label={t('bots.pluginCommands.dragHint')}
-          >
-            <GripVertical className="size-4" />
-          </button>
+      <button
+        type="button"
+        className="mt-1.5 cursor-grab touch-none text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+        title={t('bots.pluginCommands.dragHint')}
+        aria-label={t('bots.pluginCommands.dragHint')}
+      >
+        <GripVertical className="size-4" />
+      </button>
 
-          {pluginId && (
-            <div className="size-8 shrink-0 overflow-hidden rounded">
-              <AuthenticatedPluginIcon
-                author={author}
-                name={name}
-                className="size-8"
-              />
-            </div>
-          )}
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <Link
-                to={`/home/agents?id=${encodeURIComponent(binding.processor_uuid)}`}
-                className="font-medium text-sm truncate hover:underline"
-              >
-                {agent
-                  ? `${agent.emoji || '⌨️'} ${agent.name}`
-                  : t('bots.pluginCommands.missingProcessor')}
-              </Link>
-              {pluginId && (
-                <span className="text-xs text-muted-foreground font-mono">
-                  {pluginId}
-                </span>
-              )}
-              <Badge variant="secondary" className="text-xs font-normal">
-                {t('bots.pluginCommands.commandsCount', {
-                  count: commands.length,
-                })}
-              </Badge>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded((prev) => !prev)}
-            className="h-8 px-2 text-xs text-muted-foreground"
-          >
-            {expanded ? (
-              <ChevronDown className="size-4" />
-            ) : (
-              <ChevronRight className="size-4" />
-            )}
-          </Button>
-
-          <Switch
-            checked={binding.enabled}
-            onCheckedChange={(checked) =>
-              onToggleEnabled(binding.processor_uuid, checked)
-            }
+      {pluginId && (
+        <div className="mt-0.5 size-7 shrink-0 overflow-hidden rounded">
+          <AuthenticatedPluginIcon
+            author={author}
+            name={name}
+            className="size-7"
           />
-
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            onClick={() => onRemove(binding.processor_uuid)}
-            className="size-8 text-muted-foreground hover:text-destructive"
-            title={t('bots.pluginCommands.remove')}
-          >
-            <Trash2 className="size-4" />
-          </Button>
-        </div>
-      </div>
-
-      {expanded && (
-        <div className="border-t bg-muted/30 p-3 rounded-b-lg">
-          {commands.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {t('bots.pluginCommands.noCommands')}
-            </p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {commands.map((cmd) => {
-                const cmdLabel =
-                  extractI18nObject({
-                    en_US: cmd.name,
-                    zh_Hans: cmd.name,
-                    ...cmd.label,
-                  }) || cmd.name;
-                const cmdDesc = cmd.description
-                  ? extractI18nObject({
-                      en_US: '',
-                      zh_Hans: '',
-                      ...cmd.description,
-                    })
-                  : '';
-                const conflictWith = overriddenCommands.get(
-                  `${binding.processor_uuid}:${cmd.name}`,
-                );
-
-                return (
-                  <div
-                    key={cmd.name}
-                    className="flex items-center justify-between gap-3 text-xs py-1 px-2 rounded bg-background/60"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Terminal className="size-3.5 text-muted-foreground shrink-0" />
-                      <span className="font-mono font-medium text-foreground">
-                        {primaryPrefix}
-                        {cmd.name}
-                      </span>
-                      {cmdLabel !== cmd.name && (
-                        <span className="text-muted-foreground">
-                          ({cmdLabel})
-                        </span>
-                      )}
-                      {cmdDesc && (
-                        <span className="text-muted-foreground truncate max-w-sm">
-                          - {cmdDesc}
-                        </span>
-                      )}
-                    </div>
-
-                    {conflictWith && (
-                      <Badge
-                        variant="outline"
-                        className="border-amber-400 text-amber-700 dark:text-amber-400 text-xs gap-1 shrink-0 bg-amber-50 dark:bg-amber-950/30"
-                      >
-                        <AlertCircle className="size-3" />
-                        {t('bots.pluginCommands.overriddenBy', {
-                          plugin: conflictWith,
-                        })}
-                      </Badge>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       )}
+
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <Link
+          to={`/home/agents?id=${encodeURIComponent(binding.processor_uuid)}`}
+          className="block truncate text-sm font-medium hover:underline"
+          title={pluginId || undefined}
+        >
+          {agent
+            ? `${agent.emoji || '⌨️'} ${agent.name}`
+            : t('bots.pluginCommands.missingProcessor')}
+        </Link>
+        {commands.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {t('bots.pluginCommands.noCommands')}
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1">
+            {commands.map((cmd) => {
+              const cmdLabel =
+                extractI18nObject({
+                  en_US: cmd.name,
+                  zh_Hans: cmd.name,
+                  ...cmd.label,
+                }) || cmd.name;
+              const cmdDesc = cmd.description
+                ? extractI18nObject({
+                    en_US: '',
+                    zh_Hans: '',
+                    ...cmd.description,
+                  })
+                : '';
+              const conflictWith = overriddenCommands.get(
+                `${binding.processor_uuid}:${cmd.name}`,
+              );
+              const hint = [
+                cmdLabel !== cmd.name ? cmdLabel : '',
+                cmdDesc,
+                conflictWith
+                  ? t('bots.pluginCommands.overriddenBy', {
+                      plugin: conflictWith,
+                    })
+                  : '',
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              const chip = (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs ${
+                    conflictWith
+                      ? 'bg-amber-50 text-amber-700 line-through dark:bg-amber-950/30 dark:text-amber-400'
+                      : 'bg-muted text-foreground'
+                  }`}
+                >
+                  {conflictWith && (
+                    <AlertCircle className="size-3 no-underline" />
+                  )}
+                  {primaryPrefix}
+                  {cmd.name}
+                </span>
+              );
+              return hint ? (
+                <Tooltip key={cmd.name}>
+                  <TooltipTrigger asChild>{chip}</TooltipTrigger>
+                  <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+                </Tooltip>
+              ) : (
+                <React.Fragment key={cmd.name}>{chip}</React.Fragment>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <Switch
+          checked={binding.enabled}
+          onCheckedChange={(checked) =>
+            onToggleEnabled(binding.processor_uuid, checked)
+          }
+          aria-label={agent?.name ?? binding.processor_uuid}
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onClick={() => onRemove(binding.processor_uuid)}
+          className="size-8 text-muted-foreground hover:text-destructive"
+          title={t('bots.pluginCommands.remove')}
+          aria-label={t('bots.pluginCommands.remove')}
+        >
+          <Trash2 className="size-4" />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -495,108 +449,68 @@ export default function PluginCommandBindings({
     availableProcessors.length === 0 && pluginsWithoutInstance.length === 0;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4">
-        <div className="space-y-1 pr-4">
-          <CardTitle className="text-base font-semibold">
-            {t('bots.pluginCommands.title')}
-          </CardTitle>
-          <CardDescription className="text-xs">
-            {t('bots.pluginCommands.description')}
-          </CardDescription>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t('bots.pluginCommands.description')}
+        </p>
         <Switch
           checked={value.enabled}
           onCheckedChange={(enabled) => update({ enabled })}
+          aria-label={t('bots.pluginCommands.title')}
         />
-      </CardHeader>
+      </div>
 
       {value.enabled && (
-        <CardContent className="space-y-5">
+        <>
           {/* Prefix configuration */}
-          <div className="space-y-2">
-            <Label className="text-xs font-medium">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Label className="mr-1 text-xs font-medium">
               {t('bots.pluginCommands.prefixes')}
             </Label>
-            <div className="flex flex-wrap items-center gap-2">
-              {prefixes.map((p) => (
-                <Badge
-                  key={p}
-                  variant="secondary"
-                  className="font-mono text-sm py-1 px-2.5 flex items-center gap-1.5"
-                >
-                  {p}
-                  {prefixes.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemovePrefix(p)}
-                      className="text-muted-foreground hover:text-foreground rounded-full p-0.5"
-                      title={t('common.remove')}
-                    >
-                      <X className="size-3" />
-                    </button>
-                  )}
-                </Badge>
-              ))}
-
-              <div className="flex items-center gap-1.5">
-                <Input
-                  value={newPrefix}
-                  onChange={(e) => setNewPrefix(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddPrefix();
-                    }
-                  }}
-                  placeholder={t('bots.pluginCommands.prefixPlaceholder')}
-                  className="h-8 w-60 text-xs font-mono"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleAddPrefix}
-                  className="h-8 px-2.5 text-xs"
-                >
-                  <Plus className="size-3.5 mr-1" />
-                  {t('bots.pluginCommands.addPrefix')}
-                </Button>
-              </div>
-            </div>
+            {prefixes.map((p) => (
+              <Badge
+                key={p}
+                variant="secondary"
+                className="flex h-7 items-center gap-1 px-2 font-mono text-sm"
+              >
+                {p}
+                {prefixes.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePrefix(p)}
+                    className="rounded-full p-0.5 text-muted-foreground hover:text-foreground"
+                    title={t('common.remove')}
+                    aria-label={`${t('common.remove')} ${p}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </Badge>
+            ))}
+            <Input
+              value={newPrefix}
+              onChange={(e) => setNewPrefix(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleAddPrefix();
+                }
+              }}
+              onBlur={() => {
+                if (newPrefix.trim()) handleAddPrefix();
+              }}
+              placeholder={t('bots.pluginCommands.addPrefix')}
+              title={t('bots.pluginCommands.prefixPlaceholder')}
+              aria-label={t('bots.pluginCommands.addPrefix')}
+              className="h-7 w-28 font-mono text-xs"
+            />
           </div>
 
           {/* Command processor list and drag reordering */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="text-xs font-medium">
-                  {t('bots.pluginCommands.plugins')}
-                </Label>
-                {bindings.length > 1 && (
-                  <p className="text-[11px] text-muted-foreground mt-0.5">
-                    {t('bots.pluginCommands.dragHint')}
-                  </p>
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelected([]);
-                  setDialogOpen(true);
-                }}
-                disabled={loading || nothingToAdd}
-                className="h-8 text-xs"
-              >
-                <Plus className="size-3.5 mr-1" />
-                {t('bots.pluginCommands.addPlugin')}
-              </Button>
-            </div>
-
+          <div className="space-y-2">
             {bindings.length === 0 ? (
-              <div className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
+              <div className="rounded-lg border border-dashed p-5 text-center text-xs text-muted-foreground">
                 {t('bots.pluginCommands.empty')}
               </div>
             ) : (
@@ -645,8 +559,27 @@ export default function PluginCommandBindings({
                 </SortableContext>
               </DndContext>
             )}
+            {bindings.length > 1 && (
+              <p className="text-[11px] text-muted-foreground">
+                {t('bots.pluginCommands.dragHint')}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setSelected([]);
+                setDialogOpen(true);
+              }}
+              disabled={loading || nothingToAdd}
+              className="w-full"
+            >
+              <Plus className="mr-1 size-3.5" />
+              {t('bots.pluginCommands.addPlugin')}
+            </Button>
           </div>
-        </CardContent>
+        </>
       )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -778,6 +711,6 @@ export default function PluginCommandBindings({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </Card>
+    </div>
   );
 }

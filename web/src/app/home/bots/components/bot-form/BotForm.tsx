@@ -42,6 +42,7 @@ import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
@@ -87,6 +88,15 @@ import GuidedTour, {
 } from '@/app/home/components/guided-tour/GuidedTour';
 
 type ConnectionMode = 'webhook' | 'persistent';
+
+function TabCount({ count }: { count: number }) {
+  if (count === 0) return null;
+  return (
+    <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
+      {count}
+    </span>
+  );
+}
 
 function supportsConnectionMode(
   config: IDynamicFormItemSchema[],
@@ -785,6 +795,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       (processor) => processor.enabled !== false && !!processor.processor_uuid,
     );
 
+  const routeCount = (form.watch('event_bindings') ?? []).length;
+  const commandProcessorCount = (
+    form.watch('command_settings')?.processors ?? []
+  ).length;
+  const pluginProcessorCount = (form.watch('plugin_processors') ?? []).length;
+
   if (loadFailed)
     return (
       <EntityLoadState error onRetry={() => setLoadAttempt((n) => n + 1)} />
@@ -1340,47 +1356,73 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
                 )}
               >
-                <EventBindingsEditor
-                  form={form}
-                  onAgentCreated={(agent) =>
-                    setAgentNameList((items) => [
-                      ...items.filter((item) => item.uuid !== agent.uuid),
-                      agent,
-                    ])
-                  }
-                  botId={initBotId}
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  agentOptions={agentNameList.filter(
-                    (agent) =>
-                      agent.kind !== 'event_processor' &&
-                      agent.kind !== 'command_processor',
-                  )}
-                />
-                <PluginCommandBindings
-                  value={form.watch('command_settings')}
-                  onChange={(value) =>
-                    form.setValue('command_settings', value, {
-                      shouldDirty: true,
-                    })
-                  }
-                  agents={agentNameList}
-                  onCreated={(agent) =>
-                    setAgentNameList((items) => [...items, agent])
-                  }
-                />
-                <PluginProcessorBindings
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  value={form.watch('plugin_processors') ?? []}
-                  onChange={(value) =>
-                    form.setValue('plugin_processors', value, {
-                      shouldDirty: true,
-                    })
-                  }
-                  agents={agentNameList}
-                  onCreated={(agent) =>
-                    setAgentNameList((items) => [...items, agent])
-                  }
-                />
+                <Tabs defaultValue="rules" className="gap-4">
+                  <TabsList className="w-full sm:w-fit">
+                    <TabsTrigger value="rules">
+                      {t('bots.routingTabs.rules')}
+                      <TabCount count={routeCount} />
+                    </TabsTrigger>
+                    <TabsTrigger value="commands">
+                      {t('bots.routingTabs.commands')}
+                      <TabCount count={commandProcessorCount} />
+                    </TabsTrigger>
+                    <TabsTrigger value="processors">
+                      {t('bots.routingTabs.processors')}
+                      <TabCount count={pluginProcessorCount} />
+                    </TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="rules">
+                    <EventBindingsEditor
+                      form={form}
+                      onAgentCreated={(agent) =>
+                        setAgentNameList((items) => [
+                          ...items.filter((item) => item.uuid !== agent.uuid),
+                          agent,
+                        ])
+                      }
+                      botId={initBotId}
+                      supportedEvents={
+                        adapterSupportedEvents[currentAdapter] || []
+                      }
+                      agentOptions={agentNameList.filter(
+                        (agent) =>
+                          agent.kind !== 'event_processor' &&
+                          agent.kind !== 'command_processor',
+                      )}
+                    />
+                  </TabsContent>
+                  <TabsContent value="commands">
+                    <PluginCommandBindings
+                      value={form.watch('command_settings')}
+                      onChange={(value) =>
+                        form.setValue('command_settings', value, {
+                          shouldDirty: true,
+                        })
+                      }
+                      agents={agentNameList}
+                      onCreated={(agent) =>
+                        setAgentNameList((items) => [...items, agent])
+                      }
+                    />
+                  </TabsContent>
+                  <TabsContent value="processors">
+                    <PluginProcessorBindings
+                      supportedEvents={
+                        adapterSupportedEvents[currentAdapter] || []
+                      }
+                      value={form.watch('plugin_processors') ?? []}
+                      onChange={(value) =>
+                        form.setValue('plugin_processors', value, {
+                          shouldDirty: true,
+                        })
+                      }
+                      agents={agentNameList}
+                      onCreated={(agent) =>
+                        setAgentNameList((items) => [...items, agent])
+                      }
+                    />
+                  </TabsContent>
+                </Tabs>
               </CardContent>
             </Card>
           )}

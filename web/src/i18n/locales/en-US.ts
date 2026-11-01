@@ -926,7 +926,7 @@ const enUS = {
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:
-        'Automatically receive events declared by the plugin, independently of the routes above.',
+        'Automatically receive events declared by the plugin, independently of routes.',
       empty: 'No plugin processors are bound.',
       add: 'Add plugin processor',
       existing: 'Choose configuration',
@@ -1037,6 +1037,11 @@ const enUS = {
       play: 'Play',
     },
     eventRouting: 'Event Routing',
+    routingTabs: {
+      rules: 'Routes',
+      commands: 'Plugin commands',
+      processors: 'Plugin processors',
+    },
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
