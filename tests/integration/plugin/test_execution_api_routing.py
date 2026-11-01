@@ -30,7 +30,7 @@ from langbot_plugin.entities.io.resp import ActionResponse
 from langbot_plugin.runtime.io.handler import Handler
 
 from langbot.pkg.api.application.execution import ExecutionOperation
-from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+from langbot.pkg.plugin.handler import RuntimeConnectionHandler, _plugin_runtime_action
 
 
 pytestmark = pytest.mark.integration
@@ -280,14 +280,27 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     ]:
         await interceptor.call_action(stor_act, payload)
 
+    # 2 application operations in 0.7.20 / LANG-227
+    for app_act, payload in [
+        (
+            _plugin_runtime_action('LIST_APPLICATION_OPERATIONS', 'list_application_operations'),
+            {'run_id': 'run-123'},
+        ),
+        (
+            _plugin_runtime_action('CALL_APPLICATION_OPERATION', 'call_application_operation'),
+            {'run_id': 'run-123', 'operation_id': 'bot.list', 'arguments': {}},
+        ),
+    ]:
+        await interceptor.call_action(app_act, payload)
+
     return recorded
 
 
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 69
-    assert len(test_host.api.catalog()) == 69
+    assert len(operations) == 71
+    assert len(test_host.api.catalog()) == 71
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())
@@ -315,10 +328,10 @@ def test_all_69_operations_secured_through_facade(test_host):
 
 @pytest.mark.asyncio
 async def test_all_69_operations_route_through_execution_api(test_host):
-    """Drive all 69 operations through handler with real SDK payloads and verify raw dispatch."""
+    """Drive all operations through handler with real SDK payloads and verify raw dispatch."""
     sdk_payloads = await _capture_sdk_payloads()
     operations = test_host.api.operations()
-    assert len(sdk_payloads) == 69, f'Expected 69 SDK payloads, got {len(sdk_payloads)}'
+    assert len(sdk_payloads) == 71, f'Expected 71 SDK payloads, got {len(sdk_payloads)}'
 
     for op in operations:
         raw_called = False

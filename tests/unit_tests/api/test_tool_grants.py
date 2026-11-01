@@ -252,20 +252,17 @@ def test_workspace_operations_catalog_and_grantable_flags(test_host):
 
 
 # 8. A processor must not widen grants, even within its own derived permissions
-def test_processor_principal_cannot_add_grants(test_host):
-    import asyncio
-
+@pytest.mark.asyncio
+async def test_processor_principal_cannot_add_grants(test_host):
     from langbot.pkg.api.application.processor_context import build_processor_request_context
 
-    processor_ctx = asyncio.run(
-        build_processor_request_context(
-            test_host,
-            workspace_uuid='ws-1',
-            processor_kind='pipeline',
-            processor_uuid='pipe-1',
-            run_id='run-1',
-            operation_ids=['pipeline.extensions.update'],
-        )
+    processor_ctx = await build_processor_request_context(
+        test_host,
+        workspace_uuid='ws-1',
+        processor_kind='pipeline',
+        processor_uuid='pipe-1',
+        run_id='run-1',
+        operation_ids=['pipeline.extensions.update'],
     )
     old = ['pipeline.extensions.update']
 
