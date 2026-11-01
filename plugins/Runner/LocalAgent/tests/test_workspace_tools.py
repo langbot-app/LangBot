@@ -68,15 +68,24 @@ def _make_ctx(
         models=models,
         tools=tools or [],
     )
-    if workspace_ops is not None:
-        setattr(resources, "workspace_operations", workspace_ops)
-    return make_context(
+    ctx = make_context(
         run_id="run-test-1",
         input_text="test question",
         config=cfg,
         resources=resources,
         delivery_supports_streaming=False,
     )
+    if workspace_ops is not None:
+        ctx.resources = types.SimpleNamespace(
+            models=list(resources.models),
+            tools=list(resources.tools),
+            knowledge_bases=list(getattr(resources, "knowledge_bases", [])),
+            skills=list(getattr(resources, "skills", [])),
+            storage=getattr(resources, "storage", None),
+            platform_capabilities=getattr(resources, "platform_capabilities", {}),
+            workspace_operations=workspace_ops,
+        )
+    return ctx
 
 
 # ==============================================================================
