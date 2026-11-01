@@ -10,6 +10,11 @@ from .contracts import ApplicationAPIError, ApplicationAPIException, Operation
 from .operation_docs import DOMAINS, get_operation_doc
 
 
+def _is_processor(context: Any) -> bool:
+    principal = getattr(context, 'principal', None)
+    return getattr(principal, 'principal_type', None) == PrincipalType.PROCESSOR
+
+
 def validate_grant_change(
     ap: Any,
     editor_context: RequestContext,
@@ -65,6 +70,18 @@ def validate_grant_change(
 
     if not added_ids:
         return normalized_new
+
+    # Granting is a human authorization act. A processor that can update processor
+    # configuration must not widen any processor's grants, including its own.
+    if _is_processor(editor_context):
+        raise ApplicationAPIException(
+            ApplicationAPIError(
+                code='permission_denied',
+                message=f'Processors cannot grant workspace operations: {added_ids}',
+                status_code=403,
+                details={'operations': added_ids, 'denied_operations': added_ids},
+            )
+        )
 
     app_api = getattr(ap, 'application_api', None)
     if app_api is None:
@@ -147,7 +164,7 @@ def get_workspace_operations_catalog(ap: Any, context: Any) -> dict[str, Any]:
         has_perm = (
             has_permission(context, spec.permission) if context is not None and hasattr(context, 'workspace') else False
         )
-        grantable = bool(can_run and has_perm)
+        grantable = bool(can_run and has_perm and not _is_processor(context))
 
         perm = spec.permission
         perm_str = perm.value if hasattr(perm, 'value') else str(perm)

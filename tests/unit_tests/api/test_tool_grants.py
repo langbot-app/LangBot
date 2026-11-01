@@ -249,3 +249,34 @@ def test_workspace_operations_catalog_and_grantable_flags(test_host):
     ]
     for op in viewer_view_ops:
         assert op['grantable'] is True
+
+
+# 8. A processor must not widen grants, even within its own derived permissions
+def test_processor_principal_cannot_add_grants(test_host):
+    import asyncio
+
+    from langbot.pkg.api.application.processor_context import build_processor_request_context
+
+    processor_ctx = asyncio.run(
+        build_processor_request_context(
+            test_host,
+            workspace_uuid='ws-1',
+            processor_kind='pipeline',
+            processor_uuid='pipe-1',
+            run_id='run-1',
+            operation_ids=['pipeline.extensions.update'],
+        )
+    )
+    old = ['pipeline.extensions.update']
+
+    with pytest.raises(ApplicationAPIException) as exc_info:
+        validate_grant_change(test_host, processor_ctx, old, [*old, 'bot.delete'])
+    assert exc_info.value.error.code == 'permission_denied'
+    assert exc_info.value.error.details['operations'] == ['bot.delete']
+
+    # Keeping or removing existing grants is still allowed.
+    assert validate_grant_change(test_host, processor_ctx, old, old) == old
+    assert validate_grant_change(test_host, processor_ctx, old, []) == []
+
+    catalog = get_workspace_operations_catalog(test_host, processor_ctx)
+    assert not any(op['grantable'] for op in catalog['workspace_operations'])
