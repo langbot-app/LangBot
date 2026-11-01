@@ -13,4 +13,3 @@ __all__ = [
     'get_workspace_operations_catalog',
     'validate_grant_change',
 ]
-

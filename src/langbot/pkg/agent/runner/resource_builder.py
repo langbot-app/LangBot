@@ -172,48 +172,31 @@ class AgentResourceBuilder:
         if not allowed_ops:
             return []
 
+        # Processor identity is strictly required; do not fall back to event ID
+        if not binding.processor_id:
+            return []
+
+        workspace_service = getattr(self.ap, 'workspace_service', None)
+        if workspace_service is None:
+            return []
+
         from ...api.application.processor_context import build_processor_request_context
         from ...api.application.granted_operations import list_granted
 
         workspace_uuid = execution_context.workspace_uuid or event.workspace_id or ''
         processor_kind = binding.processor_type or 'agent'
-        processor_uuid = binding.processor_id or event.event_id
         trigger_actor = event.actor.actor_id if event.actor else None
 
         try:
-            if getattr(self.ap, 'workspace_service', None) is not None:
-                processor_context = await build_processor_request_context(
-                    self.ap,
-                    workspace_uuid=workspace_uuid,
-                    processor_kind=processor_kind,
-                    processor_uuid=processor_uuid,
-                    run_id=event.event_id,
-                    operation_ids=allowed_ops,
-                    trigger_actor=trigger_actor,
-                )
-            else:
-                from ...api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
-
-                principal = PrincipalContext(
-                    principal_type=PrincipalType.PROCESSOR,
-                    processor_kind=processor_kind,
-                    processor_uuid=processor_uuid,
-                    run_id=event.event_id,
-                    trigger_actor=trigger_actor,
-                )
-                workspace = WorkspaceContext(
-                    workspace_uuid=workspace_uuid,
-                    permissions=frozenset(),
-                )
-                processor_context = RequestContext(
-                    instance_uuid='test-instance',
-                    placement_generation=1,
-                    request_id=event.event_id,
-                    auth_type='processor',
-                    principal=principal,
-                    workspace=workspace,
-                    allowed_operation_ids=frozenset(allowed_ops),
-                )
+            processor_context = await build_processor_request_context(
+                self.ap,
+                workspace_uuid=workspace_uuid,
+                processor_kind=processor_kind,
+                processor_uuid=binding.processor_id,
+                run_id=event.event_id,
+                operation_ids=allowed_ops,
+                trigger_actor=trigger_actor,
+            )
             granted_ops = list_granted(
                 self.ap,
                 processor_context,

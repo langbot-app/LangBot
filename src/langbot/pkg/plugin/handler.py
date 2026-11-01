@@ -2828,18 +2828,47 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
-        @self.action(_plugin_runtime_action('LIST_APPLICATION_OPERATIONS', 'list_application_operations'))
-        async def list_application_operations(data: dict[str, Any]) -> handler.ActionResponse:
+        async def _validate_run_workspace_operations(
+            data: dict[str, Any],
+        ) -> tuple[dict[str, Any] | None, handler.ActionResponse | None]:
             run_id = data.get('run_id')
             if not run_id:
-                return handler.ActionResponse.error(message='run_id is required')
+                return None, handler.ActionResponse.error(message='run_id is required')
+
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            if not caller_plugin_identity:
+                return None, handler.ActionResponse.error(
+                    message=f'caller_plugin_identity is required for run_id {run_id}'
+                )
+
+            action_context = self.current_action_context
+            if action_context is None or not getattr(action_context, 'workspace_uuid', None):
+                return None, handler.ActionResponse.error(
+                    message='Runtime action is missing a trusted Workspace context'
+                )
+
             session_registry = get_session_registry()
             session = await session_registry.get(run_id)
             if not session:
-                return handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
-            caller_plugin_identity = data.get('caller_plugin_identity')
-            if caller_plugin_identity and caller_plugin_identity != session.get('plugin_identity'):
-                return handler.ActionResponse.error(message=f'Plugin identity mismatch for run_id {run_id}')
+                return None, handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
+
+            session_plugin_identity = session.get('plugin_identity')
+            if caller_plugin_identity != session_plugin_identity:
+                return None, handler.ActionResponse.error(
+                    message=f'Plugin identity mismatch: caller {caller_plugin_identity} is not authorized for run_id {run_id}'
+                )
+
+            session_workspace_id = session.get('authorization', {}).get('workspace_id')
+            if not session_workspace_id or session_workspace_id != action_context.workspace_uuid:
+                return None, handler.ActionResponse.error(message='Run session belongs to another Workspace')
+
+            return session, None
+
+        @self.action(_plugin_runtime_action('LIST_APPLICATION_OPERATIONS', 'list_application_operations'))
+        async def list_application_operations(data: dict[str, Any]) -> handler.ActionResponse:
+            session, error = await _validate_run_workspace_operations(data)
+            if error:
+                return error
 
             resources = session.get('authorization', {}).get('resources', {})
             operations = resources.get('workspace_operations') or session.get('workspace_operations', [])
@@ -2856,17 +2885,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
         @self.action(_plugin_runtime_action('CALL_APPLICATION_OPERATION', 'call_application_operation'))
         async def call_application_operation(data: dict[str, Any]) -> handler.ActionResponse:
-            run_id = data.get('run_id')
-            if not run_id:
-                return handler.ActionResponse.error(message='run_id is required')
-            session_registry = get_session_registry()
-            session = await session_registry.get(run_id)
-            if not session:
-                return handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
-            caller_plugin_identity = data.get('caller_plugin_identity')
-            if caller_plugin_identity and caller_plugin_identity != session.get('plugin_identity'):
-                return handler.ActionResponse.error(message=f'Plugin identity mismatch for run_id {run_id}')
+            session, error = await _validate_run_workspace_operations(data)
+            if error:
+                return error
 
+            run_id = data.get('run_id')
             operation_id = data.get('operation_id')
             if not operation_id or not isinstance(operation_id, str):
                 return handler.ActionResponse.error(message='operation_id is required')
@@ -2877,12 +2900,15 @@ class RuntimeConnectionHandler(handler.Handler):
                 return handler.ActionResponse.error(message='arguments must be an object')
 
             authorization = session.get('authorization', {})
-            workspace_id = authorization.get('workspace_id') or session.get('workspace_id')
+            workspace_id = authorization.get('workspace_id')
             if not workspace_id:
                 return handler.ActionResponse.error(message='workspace_id not found in run session')
 
-            processor_type = authorization.get('processor_type') or session.get('processor_type', 'agent')
-            processor_id = authorization.get('processor_id') or session.get('processor_id') or run_id
+            processor_type = authorization.get('processor_type') or session.get('processor_type')
+            processor_id = authorization.get('processor_id') or session.get('processor_id')
+            if not processor_type or not processor_id:
+                return handler.ActionResponse.error(message=f'processor_id is required for run_id {run_id}')
+
             trigger_actor = authorization.get('trigger_actor') or session.get('trigger_actor')
 
             # Frozen granted operations from session
@@ -2890,44 +2916,23 @@ class RuntimeConnectionHandler(handler.Handler):
             frozen_ops = resources.get('workspace_operations') or session.get('workspace_operations', [])
             granted_ids = [op.get('id') if isinstance(op, dict) else getattr(op, 'id', str(op)) for op in frozen_ops]
 
+            workspace_service = getattr(self.ap, 'workspace_service', None)
+            if workspace_service is None:
+                return handler.ActionResponse.error(message='Workspace execution service is unavailable')
+
             from ..api.application.processor_context import build_processor_request_context
             import langbot.pkg.api.application.granted_operations as granted_operations
 
             try:
-                if getattr(self.ap, 'workspace_service', None) is not None:
-                    processor_context = await build_processor_request_context(
-                        self.ap,
-                        workspace_uuid=workspace_id,
-                        processor_kind=processor_type,
-                        processor_uuid=processor_id,
-                        run_id=run_id,
-                        operation_ids=granted_ids,
-                        trigger_actor=trigger_actor,
-                    )
-                else:
-                    from ..api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
-
-                    principal = PrincipalContext(
-                        principal_type=PrincipalType.PROCESSOR,
-                        processor_kind=processor_type,
-                        processor_uuid=processor_id,
-                        run_id=run_id,
-                        trigger_actor=trigger_actor,
-                    )
-                    workspace = WorkspaceContext(
-                        workspace_uuid=workspace_id,
-                        permissions=frozenset(),
-                    )
-                    processor_context = RequestContext(
-                        instance_uuid='test-instance',
-                        placement_generation=1,
-                        request_id=str(uuid.uuid4()),
-                        auth_type='processor',
-                        principal=principal,
-                        workspace=workspace,
-                        allowed_operation_ids=frozenset(granted_ids),
-                    )
-
+                processor_context = await build_processor_request_context(
+                    self.ap,
+                    workspace_uuid=workspace_id,
+                    processor_kind=processor_type,
+                    processor_uuid=processor_id,
+                    run_id=run_id,
+                    operation_ids=granted_ids,
+                    trigger_actor=trigger_actor,
+                )
                 result = await granted_operations.call(
                     self.ap,
                     processor_context,

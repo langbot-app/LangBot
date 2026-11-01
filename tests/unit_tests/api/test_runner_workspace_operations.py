@@ -63,6 +63,7 @@ def test_env(monkeypatch):
 
     handler = RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), host)
     handler.register_installation_binding(binding, plugin_author='langbot-team', plugin_name='LocalAgent')
+    handler._current_action_context.set(binding)
     host.plugin_connector = SimpleNamespace(handler=handler)
     exec_api = handler.execution_api
 
@@ -272,7 +273,8 @@ async def test_call_application_operation_success_and_audit(test_env):
     # 1. 资源下发 (Delivery)
     assert 'workspace_operations' in resources
     assert len(resources['workspace_operations']) == 1
-    print(f"\n[CHAIN] 1. 资源下发 -> operations: {[op['id'] for op in resources['workspace_operations']]}")
+    ops_ids = [op['id'] for op in resources['workspace_operations']]
+    print(f'\n[CHAIN] 1. 资源下发 -> operations: {ops_ids}')
 
     # 2. 列出授权操作 (List)
     list_result = await test_env.exec_api.invoke(
@@ -282,7 +284,10 @@ async def test_call_application_operation_success_and_audit(test_env):
     )
     assert len(list_result['operations']) == 1
     assert list_result['operations'][0]['id'] == 'bot.list'
-    print(f"[CHAIN] 2. list_application_operations -> operations: {[op['id'] for op in list_result['operations']]}, domains: {list_result['domains']}")
+    print(
+        f'[CHAIN] 2. list_application_operations -> '
+        f'operations: {[op["id"] for op in list_result["operations"]]}, domains: {list_result["domains"]}'
+    )
 
     # 3. 调用授权操作 (Call)
     call_result = await test_env.exec_api.invoke(
@@ -292,7 +297,7 @@ async def test_call_application_operation_success_and_audit(test_env):
     )
     assert call_result['ok'] is True
     assert isinstance(call_result['result'], list)
-    print(f"[CHAIN] 3. call_application_operation -> ok: {call_result['ok']}, result: {call_result['result']}")
+    print(f'[CHAIN] 3. call_application_operation -> ok: {call_result["ok"]}, result: {call_result["result"]}')
 
     # 4. 审计记录验证 (Audit Record)
     assert len(test_env.recorded_audits) > 0
@@ -302,7 +307,12 @@ async def test_call_application_operation_success_and_audit(test_env):
     assert audit['detail']['processor_kind'] == 'agent'
     assert audit['detail']['processor_uuid'] == 'agent-uuid-999'
     assert audit['detail']['run_id'] == run_id
-    print(f"[CHAIN] 4. 审计记录 (_record) -> route: {audit['route']}, principal_type: {audit['principal_type']}, processor_kind: {audit['detail']['processor_kind']}, processor_uuid: {audit['detail']['processor_uuid']}, run_id: {audit['detail']['run_id']}")
+    detail = audit['detail']
+    print(
+        f'[CHAIN] 4. 审计记录 (_record) -> route: {audit["route"]}, '
+        f'principal_type: {audit["principal_type"]}, processor_kind: {detail["processor_kind"]}, '
+        f'processor_uuid: {detail["processor_uuid"]}, run_id: {detail["run_id"]}'
+    )
 
 
 # 4. call 调用未授权的操作，返回 not_found
@@ -375,7 +385,7 @@ async def test_call_outside_run_is_rejected(test_env):
     assert exc_info2.value.error.code == 'permission_denied'
 
 
-# 6. 跨工作区的 run 被拒绝
+# 6. 跨工作区的 run 被拒绝（覆盖 ExecutionAPI 与 SDK handler actions 两种路径）
 @pytest.mark.asyncio
 async def test_cross_workspace_run_is_rejected(test_env):
     run_id = 'run-cross-ws'
@@ -392,21 +402,133 @@ async def test_cross_workspace_run_is_rejected(test_env):
             'skills': [],
             'storage': {},
             'platform_capabilities': {},
+            'workspace_operations': [{'id': 'bot.list'}],
         },
-        workspace_id='workspace-OTHER',  # Different workspace
+        workspace_id='workspace-OTHER',  # Different workspace from test_env.binding (workspace-a)
+        processor_type='agent',
+        processor_id='agent-cross-1',
     )
 
-    # Inbound context belongs to workspace-a
+    # 1. 经 ExecutionAPI 调用（from_handler=False 路径）
     exec_context = ExecutionAPIContext(
         binding=test_env.binding,  # workspace-a
         run_id=run_id,
         claimed_identity='langbot-team/LocalAgent',
     )
-
     with pytest.raises(ApplicationAPIException) as exc_info:
         await test_env.exec_api.invoke('execution.list_application_operations', exec_context, {})
     assert exc_info.value.error.code == 'permission_denied'
     assert 'does not belong to this installation Workspace' in exc_info.value.error.message
+
+    with pytest.raises(ApplicationAPIException) as exc_info_call:
+        await test_env.exec_api.invoke(
+            'execution.call_application_operation',
+            exec_context,
+            {'operation_id': 'bot.list', 'arguments': {}},
+        )
+    assert exc_info_call.value.error.code == 'permission_denied'
+
+    # 2. 经 SDK handler actions 调用（from_handler=True 路径）
+    handler_payload = {
+        'run_id': run_id,
+        'caller_plugin_identity': 'langbot-team/LocalAgent',
+    }
+    resp_list = await test_env.handler.actions['list_application_operations'](handler_payload)
+    assert resp_list.code != 0
+    assert 'Run session belongs to another Workspace' in resp_list.message
+
+    call_payload = {
+        'run_id': run_id,
+        'caller_plugin_identity': 'langbot-team/LocalAgent',
+        'operation_id': 'bot.list',
+        'arguments': {},
+    }
+    resp_call = await test_env.handler.actions['call_application_operation'](call_payload)
+    assert resp_call.code != 0
+    assert 'Run session belongs to another Workspace' in resp_call.message
+
+    # 3. session 缺少 workspace_id 时同样严格拒绝
+    run_id_no_ws = 'run-no-ws'
+    await registry.register(
+        run_id=run_id_no_ws,
+        runner_id='plugin:langbot-team/LocalAgent/default',
+        query_id=None,
+        plugin_identity='langbot-team/LocalAgent',
+        resources={'workspace_operations': [{'id': 'bot.list'}]},
+        workspace_id=None,
+        processor_type='agent',
+        processor_id='agent-no-ws',
+    )
+    resp_no_ws = await test_env.handler.actions['list_application_operations'](
+        {
+            'run_id': run_id_no_ws,
+            'caller_plugin_identity': 'langbot-team/LocalAgent',
+        }
+    )
+    assert resp_no_ws.code != 0
+    assert 'Run session belongs to another Workspace' in resp_no_ws.message
+
+    # 4. 缺少 caller_plugin_identity 时严格拒绝
+    resp_no_caller = await test_env.handler._raw_actions['list_application_operations'](
+        {
+            'run_id': run_id,
+        }
+    )
+    assert resp_no_caller.code != 0
+    assert 'caller_plugin_identity is required' in resp_no_caller.message
+
+    # 5. caller_plugin_identity 伪造/不匹配时被拒绝
+    resp_bad_caller = await test_env.handler.actions['list_application_operations'](
+        {
+            'run_id': run_id,
+            'caller_plugin_identity': 'evil-author/evil-plugin',
+        }
+    )
+    assert resp_bad_caller.code != 0
+    assert 'Caller plugin identity does not match the installation binding' in resp_bad_caller.message
+
+
+# 处理器身份不能伪造：缺少 processor_id 时不下发、拒绝调用，不回退到 run/event ID
+@pytest.mark.asyncio
+async def test_processor_id_required_and_cannot_be_faked(test_env):
+    run_id = 'run-no-proc-id'
+    builder = AgentResourceBuilder(test_env.host)
+    event = make_event(event_id='event-fake-id')
+    descriptor = make_local_agent_descriptor()
+    ctx = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+
+    # 缺少 processor_id 时不下发操作（返回空列表，不使用 event.event_id 回退）
+    binding_no_proc = AgentBinding(
+        binding_id='bind-no-proc',
+        runner_id=descriptor.id,
+        processor_type='agent',
+        processor_id=None,
+        resource_policy=ResourcePolicy(allowed_workspace_operations=['bot.list']),
+    )
+    resources_no_proc = await builder.build_resources_from_binding(ctx, event, binding_no_proc, descriptor)
+    assert resources_no_proc.get('workspace_operations') == []
+
+    # session 缺少 processor_id 时拒绝调用，不使用 run_id 回退
+    registry = get_session_registry()
+    await registry.register(
+        run_id=run_id,
+        runner_id=descriptor.id,
+        query_id=None,
+        plugin_identity=descriptor.get_plugin_id(),
+        resources={'workspace_operations': [{'id': 'bot.list'}]},
+        workspace_id='workspace-a',
+        processor_type='agent',
+        processor_id=None,
+    )
+    call_payload = {
+        'run_id': run_id,
+        'caller_plugin_identity': 'langbot-team/LocalAgent',
+        'operation_id': 'bot.list',
+        'arguments': {},
+    }
+    resp_call = await test_env.handler.actions['call_application_operation'](call_payload)
+    assert resp_call.code != 0
+    assert 'processor_id is required' in resp_call.message
 
 
 # 7. 运行期间修改配置，不影响本次运行
