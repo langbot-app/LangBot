@@ -203,22 +203,16 @@ export default function PluginProcessorBindings({
   }
 
   return (
-    <section
-      className="mt-6 space-y-3 border-t pt-5"
-      aria-labelledby="plugin-subscriptions-title"
-    >
-      <h3
-        id="plugin-subscriptions-title"
-        className="text-sm font-semibold text-foreground"
-      >
+    <section className="space-y-3" aria-labelledby="plugin-subscriptions-title">
+      <h3 id="plugin-subscriptions-title" className="sr-only">
         {t('agents.eventProcessor.type')}
       </h3>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-xs leading-relaxed text-muted-foreground">
         {t('bots.pluginSubscriptions.description')}
       </p>
       {value.length === 0 && (
-        <div className="flex h-32 items-center justify-center rounded-lg border-2 border-dashed border-border">
-          <p className="text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed p-5 text-center">
+          <p className="text-xs text-muted-foreground">
             {t('bots.pluginSubscriptions.empty')}
           </p>
         </div>

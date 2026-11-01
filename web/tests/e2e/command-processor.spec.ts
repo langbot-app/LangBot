@@ -54,6 +54,7 @@ test('loading a bot preserves saved command processor bindings and prefixes', as
     route.fulfill({ json: { code: 0, data: { bot } } }),
   );
   await page.goto('/home/bots?id=command-bot');
+  await page.getByRole('tab', { name: /^Plugin commands/ }).click();
   await expect(page.getByRole('link', { name: /Saved command/ })).toBeVisible();
   await expect(page.getByText('!draw', { exact: true })).toBeVisible();
 });

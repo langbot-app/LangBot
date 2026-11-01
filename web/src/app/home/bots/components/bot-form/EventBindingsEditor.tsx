@@ -566,7 +566,7 @@ function TargetCombobox({
   }
 
   return (
-    <div className="relative w-[200px] shrink-0">
+    <div className="relative min-w-0 flex-1 @2xl:w-[220px] @2xl:flex-none">
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
@@ -887,108 +887,76 @@ function AdapterCapabilitySummary({
   eventOptions: string[];
 }) {
   const { t } = useTranslation();
-  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [open, setOpen] = useState(false);
   const concreteEvents =
     supportedEvents.length > 0 ? supportedEvents : DEFAULT_EVENTS;
-  const concreteEventGroups = groupEventPatterns(concreteEvents);
   const optionGroups = groupEventPatterns(eventOptions);
 
   return (
-    <div className="rounded-lg border bg-muted/20 p-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-2">
-          <div className="flex items-center gap-2">
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-background text-primary shadow-xs">
-              <Activity className="h-4 w-4" />
-            </span>
-            <div className="min-w-0">
-              <p className="text-sm font-medium">
-                {t('bots.adapterEventsTitle')}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {t('bots.adapterEventsDescription', {
-                  count: concreteEvents.length,
-                })}
-              </p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {concreteEventGroups.slice(0, 4).map((group) => (
-              <Badge
-                key={group.namespace}
-                variant="secondary"
-                className="max-w-full rounded-md px-2 py-0.5 font-normal"
-              >
-                <span className="truncate">
-                  {eventGroupLabel(group.namespace, t)} ·{' '}
-                  {group.patterns.length}
-                </span>
-              </Badge>
-            ))}
-            {concreteEventGroups.length > 4 && (
-              <Badge variant="outline" className="rounded-md px-2 py-0.5">
-                {t('bots.adapterEventsMore', {
-                  count: concreteEventGroups.length - 4,
-                })}
-              </Badge>
-            )}
-          </div>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 shrink-0 px-2 text-xs"
-          onClick={() => setAdvancedOpen((v) => !v)}
-        >
-          {advancedOpen ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
-          )}
-          {t('bots.advancedEventValues')}
-        </Button>
-      </div>
-      {advancedOpen && (
-        <div className="mt-3 space-y-4 border-t pt-3">
-          {optionGroups.map((group) => (
-            <div key={group.namespace} className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">
-                {eventGroupLabel(group.namespace, t)}
-              </p>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {group.patterns.map((event) => (
-                  <div
-                    key={event}
-                    className="min-w-0 rounded-md bg-background p-2"
-                  >
-                    <div className="flex min-w-0 items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {eventLabel(event, t)}
-                      </span>
-                      {event.endsWith('.*') && (
-                        <Badge
-                          variant="outline"
-                          className="shrink-0 text-[10px]"
-                        >
-                          {t('bots.eventGroup')}
-                        </Badge>
-                      )}
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-8 px-2 text-xs text-muted-foreground"
+        onClick={() => setOpen(true)}
+      >
+        <Activity className="mr-1 h-3.5 w-3.5" />
+        {t('bots.adapterEventsTitle')}
+        <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
+          {concreteEvents.length}
+        </Badge>
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{t('bots.adapterEventsTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('bots.adapterEventsDescription', {
+                count: concreteEvents.length,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+            {optionGroups.map((group) => (
+              <div key={group.namespace} className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {eventGroupLabel(group.namespace, t)}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {group.patterns.map((event) => (
+                    <div
+                      key={event}
+                      className="min-w-0 rounded-md border bg-muted/20 p-2"
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium">
+                          {eventLabel(event, t)}
+                        </span>
+                        {event.endsWith('.*') && (
+                          <Badge
+                            variant="outline"
+                            className="shrink-0 text-[10px]"
+                          >
+                            {t('bots.eventGroup')}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
+                        {eventDescription(event, t)}
+                      </p>
+                      <code className="mt-1 block truncate text-[11px] text-muted-foreground">
+                        {event}
+                      </code>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-muted-foreground">
-                      {eventDescription(event, t)}
-                    </p>
-                    <code className="mt-1 block truncate text-[11px] text-muted-foreground">
-                      {event}
-                    </code>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -1098,11 +1066,12 @@ function RouteDryRunDialog({
     <>
       <Button
         type="button"
-        variant="outline"
+        variant="ghost"
         size="sm"
+        className="h-8 px-2 text-xs"
         onClick={() => setOpen(true)}
       >
-        <Play className="h-4 w-4 mr-1" />
+        <Play className="mr-1 h-3.5 w-3.5" />
         {t('bots.testRoute')}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -1335,113 +1304,126 @@ function BindingCardContent({
 
   return (
     <div
-      className={`rounded-lg border ${isEnabled ? 'bg-card' : 'bg-muted/30 border-dashed'} ${
+      className={`@container rounded-lg border ${isEnabled ? 'bg-card' : 'bg-muted/30 border-dashed'} ${
         isOverlay ? 'pointer-events-none shadow-lg ring-1 ring-primary/20' : ''
       }`}
       data-drag-overlay={isOverlay ? 'true' : undefined}
     >
-      {/* main row */}
-      <div className="flex flex-wrap items-center gap-2 p-2.5">
-        {isEnabled && (
-          <button
-            type="button"
-            className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
-            aria-label={t('bots.dragEventRoute', {
-              index: globalIndex + 1,
-            })}
-            {...dragHandleProps}
+      {/* main row: one line when wide; event + controls above route when narrow */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-2 p-2.5 [grid-template-areas:'handle_event_controls'_'._route_route'] @2xl:grid-cols-[auto_minmax(0,1fr)_auto_auto] @2xl:[grid-template-areas:'handle_event_route_controls']">
+        <div className="flex items-center gap-2 [grid-area:handle]">
+          {isEnabled && (
+            <button
+              type="button"
+              className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground hover:text-foreground touch-none"
+              aria-label={t('bots.dragEventRoute', {
+                index: globalIndex + 1,
+              })}
+              {...dragHandleProps}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          )}
+          {!isEnabled && (
+            <span className="h-4 w-4 shrink-0" aria-hidden="true" />
+          )}
+
+          <Badge
+            variant="secondary"
+            className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
+            title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
           >
-            <GripVertical className="h-4 w-4" />
-          </button>
-        )}
-        {!isEnabled && <span className="h-4 w-4 shrink-0" aria-hidden="true" />}
+            {globalIndex + 1}
+          </Badge>
+        </div>
 
-        <Badge
-          variant="secondary"
-          className="h-5 min-w-5 shrink-0 justify-center px-1 text-[10px]"
-          title={t('bots.dryRunRuleIndex', { index: globalIndex + 1 })}
-        >
-          {globalIndex + 1}
-        </Badge>
+        <div className="min-w-0 [grid-area:event]">
+          <Select
+            value={binding.event_pattern}
+            onValueChange={(eventPattern) => {
+              const patch: Partial<EventBinding> = {
+                event_pattern: eventPattern,
+              };
+              if (
+                binding.target_type === 'pipeline' &&
+                !isMessageEventPattern(eventPattern)
+              ) {
+                patch.target_type = 'agent';
+                patch.target_uuid = '';
+              }
+              onUpdate(globalIndex, patch);
+            }}
+          >
+            <SelectTrigger className="h-auto min-h-9 w-full">
+              <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
+            </SelectTrigger>
+            <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
+              {groupEventPatterns(eventOptions).map((group) => (
+                <SelectGroup key={group.namespace}>
+                  <SelectLabel>
+                    {eventGroupLabel(group.namespace, t)}
+                  </SelectLabel>
+                  {group.patterns.map((event) => (
+                    <SelectItem
+                      key={event}
+                      value={event}
+                      description={eventDescription(event, t)}
+                      className="py-2"
+                    >
+                      <EventSelectOptionContent
+                        event={event}
+                        label={eventLabel(event, t)}
+                      />
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <Select
-          value={binding.event_pattern}
-          onValueChange={(eventPattern) => {
-            const patch: Partial<EventBinding> = {
-              event_pattern: eventPattern,
-            };
-            if (
-              binding.target_type === 'pipeline' &&
-              !isMessageEventPattern(eventPattern)
-            ) {
-              patch.target_type = 'agent';
-              patch.target_uuid = '';
-            }
-            onUpdate(globalIndex, patch);
-          }}
-        >
-          <SelectTrigger className="h-auto min-h-9 min-w-[220px] flex-1">
-            <SelectValue placeholder={t('bots.eventPatternPlaceholder')} />
-          </SelectTrigger>
-          <SelectContent className="w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
-            {groupEventPatterns(eventOptions).map((group) => (
-              <SelectGroup key={group.namespace}>
-                <SelectLabel>{eventGroupLabel(group.namespace, t)}</SelectLabel>
-                {group.patterns.map((event) => (
-                  <SelectItem
-                    key={event}
-                    value={event}
-                    description={eventDescription(event, t)}
-                    className="py-2"
-                  >
-                    <EventSelectOptionContent
-                      event={event}
-                      label={eventLabel(event, t)}
-                    />
-                  </SelectItem>
-                ))}
-              </SelectGroup>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex min-w-0 items-center gap-2 [grid-area:route]">
+          {/* conditions toggle */}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs text-muted-foreground shrink-0"
+            onClick={() => onToggleExpand(id)}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+            {t('bots.conditions')}
+            {filterCount > 0 && (
+              <Badge
+                variant="secondary"
+                className="h-4 px-1 text-[10px] ml-0.5"
+              >
+                {filterCount}
+              </Badge>
+            )}
+          </Button>
 
-        {/* conditions toggle */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-8 px-2 text-xs text-muted-foreground shrink-0"
-          onClick={() => onToggleExpand(id)}
-        >
-          {isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5" />
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+
+          <TargetCombobox
+            binding={binding}
+            agentOptions={agentOptions}
+            onAgentCreated={onAgentCreated}
+            onUpdate={(patch) => onUpdate(globalIndex, patch)}
+          />
+
+          {!pipelineAllowed && binding.target_type === 'pipeline' && (
+            <span className="min-w-0 truncate text-xs text-destructive">
+              {t('bots.unsupportedPipelineEvent')}
+            </span>
           )}
-          {t('bots.conditions')}
-          {filterCount > 0 && (
-            <Badge variant="secondary" className="h-4 px-1 text-[10px] ml-0.5">
-              {filterCount}
-            </Badge>
-          )}
-        </Button>
+        </div>
 
-        <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-
-        <TargetCombobox
-          binding={binding}
-          agentOptions={agentOptions}
-          onAgentCreated={onAgentCreated}
-          onUpdate={(patch) => onUpdate(globalIndex, patch)}
-        />
-
-        {!pipelineAllowed && binding.target_type === 'pipeline' && (
-          <span className="text-xs text-destructive shrink-0">
-            {t('bots.unsupportedPipelineEvent')}
-          </span>
-        )}
-
-        <div className="ml-auto flex shrink-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1 [grid-area:controls]">
           <Switch
             checked={isEnabled}
             onCheckedChange={(enabled) => onUpdate(globalIndex, { enabled })}
@@ -1720,10 +1702,31 @@ export default function EventBindingsEditor({
 
   return (
     <div className="space-y-3">
-      <AdapterCapabilitySummary
-        supportedEvents={supportedEvents}
-        eventOptions={eventOptions}
-      />
+      <div className="flex flex-wrap items-center justify-between gap-1">
+        <AdapterCapabilitySummary
+          supportedEvents={supportedEvents}
+          eventOptions={eventOptions}
+        />
+        <div className="flex flex-wrap items-center gap-1">
+          <RouteDryRunDialog
+            botId={botId}
+            bindings={bindings}
+            eventOptions={dryRunEventOptions}
+            agentOptions={agentOptions}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 px-2 text-xs"
+            disabled={!botId}
+            onClick={() => setRecordsOpen(true)}
+          >
+            <ListChecks className="mr-1 size-3.5" />
+            {t('bots.matchRecords')}
+          </Button>
+        </div>
+      </div>
 
       {routeConflicts.length > 0 && (
         <Alert className="border-amber-200 bg-amber-50/60 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-200">
@@ -1918,22 +1921,6 @@ export default function EventBindingsEditor({
             )}
           </DropdownMenuContent>
         </DropdownMenu>
-        <RouteDryRunDialog
-          botId={botId}
-          bindings={bindings}
-          eventOptions={dryRunEventOptions}
-          agentOptions={agentOptions}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!botId}
-          onClick={() => setRecordsOpen(true)}
-        >
-          <ListChecks className="mr-1 size-4" />
-          {t('bots.matchRecords')}
-        </Button>
         <Dialog open={recordsOpen} onOpenChange={setRecordsOpen}>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>

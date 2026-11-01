@@ -86,6 +86,7 @@ async function setup(page: Page, events?: string[]) {
     }),
   );
   await page.goto('/home/bots?id=compatibility-bot');
+  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   await expect(
     page.getByRole('button', { name: 'Add plugin processor', exact: true }),
   ).toBeVisible();
@@ -139,6 +140,7 @@ test('partial support warns in existing choices and saved bindings, and changes 
   ).toHaveCount(1);
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   await expect(
     page
       .getByRole('region', { name: 'Plugin processor', exact: true })
@@ -219,6 +221,7 @@ test('new component choices warn for missing and wildcard events but allow creat
     .screenshot({ path: testInfo.outputPath('compatibility-bindings.png') });
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.reload();
+  await page.getByRole('tab', { name: /^Plugin processors/ }).click();
   await expect(
     page.getByRole('status').filter({ hasText: warning }),
   ).toHaveCount(1);
@@ -264,6 +267,7 @@ for (const events of [
     page,
   }) => {
     await setup(page, events);
+    await page.getByRole('tab', { name: /^Routes/ }).click();
     await page
       .getByRole('button', { name: 'Add behavior', exact: true })
       .click();

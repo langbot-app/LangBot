@@ -64,7 +64,7 @@ export default function PlatformCommandRegistration({
   }
   return (
     <section
-      className="space-y-3 border-t p-6"
+      className="space-y-3 rounded-lg border p-3"
       aria-label={t('bots.platformCommands.title')}
     >
       <label className="flex items-center justify-between gap-3 text-sm font-medium">
@@ -79,46 +79,56 @@ export default function PlatformCommandRegistration({
           }
         />
       </label>
-      <p className="text-xs text-amber-700 dark:text-amber-400">
-        {t('bots.platformCommands.overwrite')}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        {t('bots.platformCommands.limits', {
-          count: capability.max_commands,
-          length: capability.description_max_length,
-        })}{' '}
-        <code>{capability.name_pattern}</code>
-      </p>
-      {!value.prefixes.includes('/') && (
-        <p className="text-xs text-amber-700">
-          {t('bots.platformCommands.prefixWarning')}
-        </p>
-      )}
       {registration.enabled && (
-        <div className="flex flex-wrap gap-4">
-          {names.map((name) => (
-            <label key={name} className="flex items-center gap-2 text-sm">
-              <Checkbox
-                checked={registration.selected.includes(name)}
-                onCheckedChange={(checked) =>
-                  onChange({
-                    ...value,
-                    platform_commands: {
-                      ...registration,
-                      selected: checked
-                        ? [...registration.selected, name]
-                        : registration.selected.filter((item) => item !== name),
-                    },
-                  })
-                }
-              />
-              <code>/{name}</code>
-            </label>
-          ))}
-        </div>
+        <>
+          <div className="space-y-1 text-xs">
+            <p className="text-amber-700 dark:text-amber-400">
+              {t('bots.platformCommands.overwrite')}
+            </p>
+            {!value.prefixes.includes('/') && (
+              <p className="text-amber-700 dark:text-amber-400">
+                {t('bots.platformCommands.prefixWarning')}
+              </p>
+            )}
+            <p className="text-muted-foreground">
+              {t('bots.platformCommands.limits', {
+                count: capability.max_commands,
+                length: capability.description_max_length,
+              })}{' '}
+              <code>{capability.name_pattern}</code>
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {names.map((name) => (
+              <label
+                key={name}
+                className="flex cursor-pointer items-center gap-1.5 rounded-md border px-2 py-1 text-xs has-[[data-state=checked]]:border-primary/50 has-[[data-state=checked]]:bg-primary/5"
+              >
+                <Checkbox
+                  className="size-3.5"
+                  checked={registration.selected.includes(name)}
+                  onCheckedChange={(checked) =>
+                    onChange({
+                      ...value,
+                      platform_commands: {
+                        ...registration,
+                        selected: checked
+                          ? [...registration.selected, name]
+                          : registration.selected.filter(
+                              (item) => item !== name,
+                            ),
+                      },
+                    })
+                  }
+                />
+                <code>/{name}</code>
+              </label>
+            ))}
+          </div>
+        </>
       )}
       {!!state.rejected?.length && (
-        <ul className="text-xs text-amber-700">
+        <ul className="space-y-0.5 text-xs text-amber-700 dark:text-amber-400">
           {state.rejected.map((item) => (
             <li key={item.name}>
               {item.name}: {t(`bots.platformCommands.reasons.${item.reason}`)}
@@ -126,28 +136,30 @@ export default function PlatformCommandRegistration({
           ))}
         </ul>
       )}
-      <p className="text-xs text-muted-foreground" role="status">
-        {state.synced_at
-          ? t('bots.platformCommands.synced', { time: state.synced_at })
-          : t('bots.platformCommands.notSynced')}
-      </p>
       {state.error && (
         <p role="alert" className="text-xs text-destructive">
           {t('bots.platformCommands.failed')}: {state.error}
         </p>
       )}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={!botId || botId === 'new' || dirty || busy}
-        onClick={() => void sync()}
-      >
-        {t('bots.platformCommands.sync')}
-      </Button>
-      <p className="text-xs text-muted-foreground">
-        {t('bots.platformCommands.saveFirst')}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground" role="status">
+          {dirty
+            ? t('bots.platformCommands.saveFirst')
+            : state.synced_at
+              ? t('bots.platformCommands.synced', { time: state.synced_at })
+              : t('bots.platformCommands.notSynced')}
+        </p>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          disabled={!botId || botId === 'new' || dirty || busy}
+          onClick={() => void sync()}
+        >
+          {t('bots.platformCommands.sync')}
+        </Button>
+      </div>
     </section>
   );
 }

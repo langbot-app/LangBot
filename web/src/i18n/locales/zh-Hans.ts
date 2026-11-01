@@ -900,7 +900,7 @@ const zhHans = {
     pluginSubscriptions: {
       incompleteEvents:
         '当前机器人仅支持部分事件（{{events}}），处理器表现可能不完整。',
-      description: '自动接收插件声明的事件，与上方事件路由独立执行。',
+      description: '自动接收插件声明的事件，与路由规则独立执行。',
       empty: '尚未绑定插件处理器。',
       add: '添加插件处理器',
       existing: '选择已有配置',
@@ -999,6 +999,11 @@ const zhHans = {
       play: '播放',
     },
     eventRouting: '事件路由',
+    routingTabs: {
+      rules: '路由规则',
+      commands: '插件命令',
+      processors: '插件处理器',
+    },
     eventRoutingDescription: '设置收到事件后交给哪个处理器。',
     eventBindings: '事件路由',
     addEventBinding: '添加路由',

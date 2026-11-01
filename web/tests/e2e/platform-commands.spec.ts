@@ -104,6 +104,7 @@ test('platform menu shows constraints, rejection reasons and synchronization sta
     },
   );
   await page.goto('/home/bots?id=menu-bot');
+  await page.getByRole('tab', { name: /^Plugin commands/ }).click();
   const panel = page.getByRole('region', { name: 'Register on platform' });
   await expect(panel).toBeVisible({ timeout: 15_000 });
   await expect(panel).toContainText('manually configured');
@@ -127,6 +128,7 @@ test('unsupported adapters do not expose platform registration', async ({
 }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   await page.goto('/home/bots?id=unsupported');
+  await page.getByRole('tab', { name: /^Plugin commands/ }).click();
   await expect(
     page.getByRole('region', { name: 'Register on platform' }),
   ).toHaveCount(0);

@@ -946,7 +946,7 @@ const viVN = {
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',
       description:
-        'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến ở trên.',
+        'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến.',
       empty: 'Chưa liên kết bộ xử lý plugin.',
       add: 'Thêm bộ xử lý plugin',
       existing: 'Chọn cấu hình',
@@ -1056,6 +1056,11 @@ const viVN = {
       play: 'Phát',
     },
     eventRouting: 'Định tuyến sự kiện',
+    routingTabs: {
+      rules: 'Tuyến',
+      commands: 'Lệnh plugin',
+      processors: 'Bộ xử lý plugin',
+    },
     eventRoutingDescription:
       'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     eventBindings: 'Định tuyến sự kiện',

@@ -965,7 +965,7 @@ const esES = {
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
       description:
-        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas anteriores.',
+        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas.',
       empty: 'No hay procesadores vinculados.',
       add: 'Añadir procesador de plugin',
       existing: 'Elegir configuración',
@@ -1075,6 +1075,11 @@ const esES = {
       play: 'Reproducir',
     },
     eventRouting: 'Enrutamiento de eventos',
+    routingTabs: {
+      rules: 'Rutas',
+      commands: 'Comandos de plugin',
+      processors: 'Procesadores de plugin',
+    },
     eventRoutingDescription:
       'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',
     eventBindings: 'Rutas de eventos',

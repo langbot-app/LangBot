@@ -954,7 +954,7 @@ const jaJP = {
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
       description:
-        'プラグインが宣言したイベントを自動で受信し、上のルートとは独立して実行します。',
+        'プラグインが宣言したイベントを自動で受信し、ルートとは独立して実行します。',
       empty: 'プラグインプロセッサーは未登録です。',
       add: 'プラグインプロセッサーを追加',
       existing: '既存の設定を選択',
@@ -1063,6 +1063,11 @@ const jaJP = {
       play: '再生',
     },
     eventRouting: 'イベントルーティング',
+    routingTabs: {
+      rules: 'ルート',
+      commands: 'プラグインコマンド',
+      processors: 'プラグインプロセッサー',
+    },
     eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
