@@ -771,10 +771,21 @@ class ModelManager:
     ) -> requester.RuntimeSTTModel:
         execution_context = await self.resolve_execution_context(context)
         provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
-        runtime_provider = await self._build_provider(
-            execution_context,
-            persistence_model.ModelProvider(**provider_info),
-        )
+        provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
+        provider_entity = persistence_model.ModelProvider(**provider_info)
+        if provider_uuid and not provider_entity.requester:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_model.ModelProvider.uuid == provider_uuid,
+                )
+            )
+            saved_provider = result.first()
+            if saved_provider is not None:
+                provider_entity = self._coerce_provider(saved_provider, execution_context)
+            elif model_info.get('provider_uuid'):
+                raise WorkspaceNotFoundError('Provider not found')
+        runtime_provider = await self._build_provider(execution_context, provider_entity)
         model_entity = persistence_model.STTModel(
             workspace_uuid=execution_context.workspace_uuid,
             uuid=model_info.get('uuid', ''),
@@ -791,10 +802,21 @@ class ModelManager:
     ) -> requester.RuntimeTTSModel:
         execution_context = await self.resolve_execution_context(context)
         provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
-        runtime_provider = await self._build_provider(
-            execution_context,
-            persistence_model.ModelProvider(**provider_info),
-        )
+        provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
+        provider_entity = persistence_model.ModelProvider(**provider_info)
+        if provider_uuid and not provider_entity.requester:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_model.ModelProvider.uuid == provider_uuid,
+                )
+            )
+            saved_provider = result.first()
+            if saved_provider is not None:
+                provider_entity = self._coerce_provider(saved_provider, execution_context)
+            elif model_info.get('provider_uuid'):
+                raise WorkspaceNotFoundError('Provider not found')
+        runtime_provider = await self._build_provider(execution_context, provider_entity)
         model_entity = persistence_model.TTSModel(
             workspace_uuid=execution_context.workspace_uuid,
             uuid=model_info.get('uuid', ''),

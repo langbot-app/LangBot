@@ -130,14 +130,13 @@ class SpeechToTextStage(stage.PipelineStage):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         try:
-            response = await stt_model.provider.invoke_stt(
+            transcript = await stt_model.provider.invoke_stt(
                 model=stt_model,
-                audio_file=audio_bytes,
-                filename=f'voice.{target_format}',
-                content_type=f'audio/{target_format}',
+                audio=audio_bytes,
+                mime=f'audio/{target_format}',
                 execution_context=stt_model.execution_context,
             )
-            transcript = (response.text or '').strip()
+            transcript = (transcript or '').strip()
         except Exception as exc:
             self.ap.logger.error(f'STT model invocation failed: {exc}')
             if config.get('on-failure', 'notify') == 'notify':
@@ -248,23 +247,22 @@ class TextToSpeechStage(stage.PipelineStage):
             self.ap.logger.warning(f'TTS model {model_uuid} not found; falling back to text.')
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
-        voice_param = config.get('voice') or (tts_model.extra_args or {}).get('voice', 'alloy')
+        model_extra = getattr(tts_model, 'extra_args', None) or getattr(tts_model.model_entity, 'extra_args', {}) or {}
+        voice_param = config.get('voice') or model_extra.get('voice', 'alloy')
 
         try:
-            tts_resp = await tts_model.provider.invoke_tts(
+            audio_bytes, mime = await tts_model.provider.invoke_tts(
                 model=tts_model,
                 text=clean_text,
-                voice=voice_param,
-                response_format='mp3',
+                extra_args={'voice': voice_param, 'response_format': 'mp3'},
                 execution_context=tts_model.execution_context,
             )
-            audio_bytes = tts_resp.content
         except Exception as exc:
             self.ap.logger.error(f'TTS invocation failed: {exc}; falling back to text.')
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         b64_audio = base64.b64encode(audio_bytes).decode('ascii')
-        voice_comp = platform_message.Voice(base64=f'data:audio/mp3;base64,{b64_audio}')
+        voice_comp = platform_message.Voice(base64=f'data:{mime};base64,{b64_audio}')
 
         output_mode = config.get('output', 'voice-only')
         if output_mode == 'voice-only':

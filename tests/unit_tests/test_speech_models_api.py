@@ -196,3 +196,50 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call_kwargs['voice'], 'alloy')
             self.assertEqual(call_kwargs['response_format'], 'mp3')
             self.assertEqual(call_kwargs['api_key'], 'sk-test-key')
+
+    async def test_init_temporary_runtime_tts_model_by_provider_uuid(self):
+        ap = Mock()
+        ap.logger = Mock()
+        ap.workspace_service = Mock()
+        ap.workspace_service.get_execution_binding = AsyncMock(
+            return_value=Mock(
+                instance_uuid='inst-1',
+                workspace_uuid='ws-1',
+                placement_generation=1,
+            )
+        )
+        ap.persistence_mgr = Mock()
+        saved_prov = ModelProvider(
+            uuid='prov-1',
+            name='Test Provider',
+            requester='new-api-chat-completions',
+            base_url='https://api.openai.com/v1',
+            api_keys=['sk-test'],
+            workspace_uuid='ws-1',
+        )
+        ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=saved_prov)))
+
+        mgr = ModelManager(ap)
+        context = ExecutionContext(
+            instance_uuid='inst-1',
+            workspace_uuid='ws-1',
+            placement_generation=1,
+        )
+
+        with patch.object(mgr, '_build_provider', new_callable=AsyncMock) as mock_build_prov:
+            mock_runtime_prov = Mock(provider_entity=saved_prov, execution_context=context)
+            mock_build_prov.return_value = mock_runtime_prov
+
+            model = await mgr.init_temporary_runtime_tts_model(
+                context,
+                {
+                    'name': 'gpt-4o-mini-tts',
+                    'provider_uuid': 'prov-1',
+                    'extra_args': {'voice': 'alloy'},
+                },
+            )
+
+            self.assertEqual(model.name, 'gpt-4o-mini-tts')
+            self.assertEqual(model.uuid, '')
+            self.assertEqual(model.extra_args, {'voice': 'alloy'})
+            mock_build_prov.assert_called_once()

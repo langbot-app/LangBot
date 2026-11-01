@@ -554,6 +554,18 @@ class RuntimeSTTModel:
         self.model_entity = model_entity
         self.provider = provider
 
+    @property
+    def uuid(self) -> str:
+        return self.model_entity.uuid
+
+    @property
+    def name(self) -> str:
+        return self.model_entity.name
+
+    @property
+    def extra_args(self) -> dict[str, typing.Any]:
+        return self.model_entity.extra_args or {}
+
 
 class RuntimeTTSModel:
     """运行时 TTS 模型"""
@@ -578,6 +590,18 @@ class RuntimeTTSModel:
         self.execution_context = execution_context
         self.model_entity = model_entity
         self.provider = provider
+
+    @property
+    def uuid(self) -> str:
+        return self.model_entity.uuid
+
+    @property
+    def name(self) -> str:
+        return self.model_entity.name
+
+    @property
+    def extra_args(self) -> dict[str, typing.Any]:
+        return self.model_entity.extra_args or {}
 
 
 class ProviderAPIRequester(metaclass=abc.ABCMeta):

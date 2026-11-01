@@ -117,7 +117,7 @@ async def test_stt_success_replaces_voice(mock_app, sample_query):
     mock_stt_model = Mock()
     mock_stt_model.execution_context = Mock()
     mock_stt_model.provider = Mock()
-    mock_stt_model.provider.invoke_stt = AsyncMock(return_value=Mock(text='Transcribed voice message'))
+    mock_stt_model.provider.invoke_stt = AsyncMock(return_value='Transcribed voice message')
     mock_app.model_mgr.get_stt_model_by_uuid = AsyncMock(return_value=mock_stt_model)
 
     stage = speech_module.SpeechToTextStage(mock_app)
@@ -151,7 +151,7 @@ async def test_stt_success_keep_original_voice(mock_app, sample_query):
     mock_stt_model = Mock()
     mock_stt_model.execution_context = Mock()
     mock_stt_model.provider = Mock()
-    mock_stt_model.provider.invoke_stt = AsyncMock(return_value=Mock(text='Transcribed voice message'))
+    mock_stt_model.provider.invoke_stt = AsyncMock(return_value='Transcribed voice message')
     mock_app.model_mgr.get_stt_model_by_uuid = AsyncMock(return_value=mock_stt_model)
 
     stage = speech_module.SpeechToTextStage(mock_app)
@@ -253,7 +253,7 @@ async def test_tts_voice_only_success(mock_app, sample_query):
     mock_tts_model.execution_context = Mock()
     mock_tts_model.extra_args = {'voice': 'alloy'}
     mock_tts_model.provider = Mock()
-    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=Mock(content=b'fake-mp3-audio-content'))
+    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=(b'fake-mp3-audio-content', 'audio/mp3'))
     mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
 
     stage = speech_module.TextToSpeechStage(mock_app)
@@ -289,7 +289,7 @@ async def test_tts_voice_and_text_success(mock_app, sample_query):
     mock_tts_model.execution_context = Mock()
     mock_tts_model.extra_args = {}
     mock_tts_model.provider = Mock()
-    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=Mock(content=b'fake-audio'))
+    mock_tts_model.provider.invoke_tts = AsyncMock(return_value=(b'fake-audio', 'audio/mp3'))
     mock_app.model_mgr.get_tts_model_by_uuid = AsyncMock(return_value=mock_tts_model)
 
     stage = speech_module.TextToSpeechStage(mock_app)

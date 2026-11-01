@@ -1364,9 +1364,8 @@ class STTModelsService:
 
         await runtime_stt_model.provider.invoke_stt(
             model=runtime_stt_model,
-            audio_file=_generate_test_wav(),
-            filename='test.wav',
-            content_type='audio/wav',
+            audio=_generate_test_wav(),
+            mime='audio/wav',
             execution_context=runtime_stt_model.execution_context,
         )
 
@@ -1617,11 +1616,11 @@ class TTSModelsService:
                 model_data,
             )
 
-        voice = (runtime_tts_model.extra_args or {}).get('voice', 'alloy')
+        model_extra = getattr(runtime_tts_model, 'extra_args', None) or getattr(runtime_tts_model.model_entity, 'extra_args', {}) or {}
+        voice = model_extra.get('voice', 'alloy')
         await runtime_tts_model.provider.invoke_tts(
             model=runtime_tts_model,
             text='Hello, this is a test.',
-            voice=voice,
-            response_format='mp3',
+            extra_args={'voice': voice, 'response_format': 'mp3'},
             execution_context=runtime_tts_model.execution_context,
         )
