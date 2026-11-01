@@ -50,6 +50,10 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     platform_context: dict[str, typing.Any]
     authorized_ids: dict[str, set[str]]
     authorized_operations: dict[str, dict[str, set[str]]]
+    processor_type: typing.NotRequired[str | None]
+    processor_id: typing.NotRequired[str | None]
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -79,6 +83,11 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    processor_type: typing.NotRequired[str | None]
+    processor_id: typing.NotRequired[str | None]
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_id: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
 
 
 class AgentRunSessionRegistry:
@@ -117,6 +126,9 @@ class AgentRunSessionRegistry:
         execution_query: pipeline_query.Query | None = None,
         platform_context: dict[str, typing.Any] | None = None,
         reply_streams: typing.Any = None,
+        processor_type: str | None = None,
+        processor_id: str | None = None,
+        trigger_actor: str | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -162,6 +174,10 @@ class AgentRunSessionRegistry:
             'platform_context': copy.deepcopy(platform_context or {}),
             'authorized_ids': self._build_authorized_ids(resources_snapshot),
             'authorized_operations': self._build_authorized_operations(resources_snapshot),
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'trigger_actor': trigger_actor,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
         }
 
         session: AgentRunSession = {
@@ -177,6 +193,11 @@ class AgentRunSessionRegistry:
                 'last_activity_at': now,
             },
             'steering_queue': [],
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'trigger_actor': trigger_actor,
+            'workspace_id': workspace_id,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
         }
 
         async with self._lock:

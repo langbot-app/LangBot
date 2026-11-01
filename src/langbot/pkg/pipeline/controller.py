@@ -60,6 +60,7 @@ class Controller:
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
             if getattr(getattr(query, 'launcher_type', None), 'value', None) == 'group':
                 from .resprule.resprule import GroupRespondRuleCheckStage
                 from .entities import ResultType

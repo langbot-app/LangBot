@@ -128,6 +128,7 @@ class RuntimePipeline:
         extensions_prefs = normalize_extension_preferences(pipeline_entity.extensions_preferences)
         self.enable_all_plugins = extensions_prefs['enable_all_plugins'] is True
         self.enable_all_mcp_servers = extensions_prefs['enable_all_mcp_servers'] is True
+        self.workspace_operations = extensions_prefs.get('workspace_operations', [])
         pipeline_config = pipeline_entity.config or {}
         runner_config: dict[str, typing.Any] = {}
         runner_id = RunnerConfigResolver.resolve_runner_id(pipeline_config)
@@ -196,6 +197,7 @@ class RuntimePipeline:
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
         query.variables['_pipeline_mcp_resource_attachments'] = self.mcp_resource_attachments
         query.variables['_pipeline_mcp_resource_agent_read_enabled'] = self.mcp_resource_agent_read_enabled
+        query.variables['_pipeline_workspace_operations'] = self.workspace_operations
         # Telemetry: the bindings this lane runs with. None means "all enabled",
         # which the *_all flags make explicit in the chain record.
         try:

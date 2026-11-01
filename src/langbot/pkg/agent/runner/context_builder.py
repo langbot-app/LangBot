@@ -114,6 +114,7 @@ class AgentResources(typing.TypedDict):
     skills: list[SkillResource]
     storage: StorageResource
     platform_capabilities: dict[str, typing.Any]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
 
 
 class AgentRuntimeContext(typing.TypedDict):

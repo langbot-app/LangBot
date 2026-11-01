@@ -653,6 +653,33 @@ EXECUTION_OPERATIONS = (
         'runner_admin',
         True,
     ),
+    ExecutionOperation(
+        'list_application_operations',
+        Empty,
+        _output(
+            'ExecutionListApplicationOperationsOutput',
+            operations=(list[JsonValue], ...),
+            domains=(list[JsonValue], ...),
+        ),
+        'run',
+        False,
+    ),
+    ExecutionOperation(
+        'call_application_operation',
+        _input(
+            'ExecutionCallApplicationOperationInput',
+            operation_id=(Text, ...),
+            arguments=(Object, {}),
+        ),
+        _output(
+            'ExecutionCallApplicationOperationOutput',
+            ok=(bool, ...),
+            result=(JsonValue | None, None),
+            error=(Object | None, None),
+        ),
+        'run',
+        True,
+    ),
 )
 _BY_ID = {operation.operation_id: operation for operation in EXECUTION_OPERATIONS}
 

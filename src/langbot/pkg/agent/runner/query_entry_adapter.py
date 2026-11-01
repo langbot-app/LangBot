@@ -47,7 +47,7 @@ class QueryEntryAdapter:
 
     INTERNAL_PREFIX = '_'
     SENSITIVE_PATTERNS = ('secret', 'token', 'key', 'password', 'credential', 'api_key', 'apikey')
-    PERMISSION_VARS = ('_pipeline_bound_plugins', '_authorized', '_permission')
+    PERMISSION_VARS = ('_pipeline_bound_plugins', '_pipeline_workspace_operations', '_authorized', '_permission')
     EVENT_DATA_MAX_STRING_BYTES = 512
 
     @classmethod
@@ -139,6 +139,7 @@ class QueryEntryAdapter:
             resolved_tool_sources=cls._extract_allowed_tool_sources(query),
             resolved_kb_uuids=cls._extract_allowed_kbs(query),
             resolved_skill_names=cls._extract_allowed_skills(query),
+            allowed_workspace_operations=cls._extract_allowed_workspace_operations(query),
         )
 
         # Build state policy
@@ -749,3 +750,14 @@ class QueryEntryAdapter:
         if not isinstance(bound_skills, list):
             return []
         return [str(skill_name) for skill_name in bound_skills if skill_name]
+
+    @classmethod
+    def _extract_allowed_workspace_operations(
+        cls,
+        query: pipeline_query.Query,
+    ) -> list[str] | None:
+        """Extract pipeline-visible workspace operation IDs from query."""
+        variables = getattr(query, 'variables', None)
+        if not variables or '_pipeline_workspace_operations' not in variables:
+            return None
+        return ResourcePolicyProjector.normalize_names(variables.get('_pipeline_workspace_operations'))

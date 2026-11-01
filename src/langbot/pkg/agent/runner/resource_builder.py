@@ -116,8 +116,14 @@ class AgentResourceBuilder:
             descriptor,
         )
         storage = self._build_storage_from_binding(manifest_perms, binding)
+        workspace_operations = await self._build_workspace_operations_from_binding(
+            execution_context,
+            event,
+            binding,
+            descriptor,
+        )
 
-        return {
+        resources: AgentResources = {
             'models': models,
             'tools': tools,
             'knowledge_bases': knowledge_bases,
@@ -125,6 +131,101 @@ class AgentResourceBuilder:
             'storage': storage,
             'platform_capabilities': platform_capabilities,
         }
+        if workspace_operations is not None:
+            resources['workspace_operations'] = workspace_operations
+
+        return resources
+
+    async def _build_workspace_operations_from_binding(
+        self,
+        execution_context: ExecutionContext,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        descriptor: RunnerDescriptor,
+    ) -> list[dict[str, typing.Any]] | None:
+        """Build authorized workspace operations for this run.
+
+        Delivered as an independent 'workspace_operations' resource field (never added to tools).
+        Delivery conditions:
+        - Runner manifest declares workspace_operations permission, OR
+        - Builtin LocalAgent with user-configured operations.
+        """
+        is_local_agent = (
+            getattr(descriptor, 'plugin_author', None) == 'langbot-team'
+            and getattr(descriptor, 'plugin_name', None) == 'LocalAgent'
+        ) or getattr(descriptor, 'id', '') == 'plugin:langbot-team/LocalAgent/default'
+
+        manifest_declares = False
+        perms = getattr(descriptor, 'permissions', None)
+        if perms is not None and getattr(perms, 'workspace_operations', None):
+            manifest_declares = True
+        else:
+            raw_manifest = getattr(descriptor, 'raw_manifest', None) or {}
+            manifest_perms = raw_manifest.get('permissions') or {}
+            if manifest_perms.get('workspace_operations'):
+                manifest_declares = True
+
+        if not (is_local_agent or manifest_declares):
+            return None
+
+        allowed_ops = binding.resource_policy.allowed_workspace_operations
+        if not allowed_ops:
+            return []
+
+        from ...api.application.processor_context import build_processor_request_context
+        from ...api.application.granted_operations import list_granted
+
+        workspace_uuid = execution_context.workspace_uuid or event.workspace_id or ''
+        processor_kind = binding.processor_type or 'agent'
+        processor_uuid = binding.processor_id or event.event_id
+        trigger_actor = event.actor.actor_id if event.actor else None
+
+        try:
+            if getattr(self.ap, 'workspace_service', None) is not None:
+                processor_context = await build_processor_request_context(
+                    self.ap,
+                    workspace_uuid=workspace_uuid,
+                    processor_kind=processor_kind,
+                    processor_uuid=processor_uuid,
+                    run_id=event.event_id,
+                    operation_ids=allowed_ops,
+                    trigger_actor=trigger_actor,
+                )
+            else:
+                from ...api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+
+                principal = PrincipalContext(
+                    principal_type=PrincipalType.PROCESSOR,
+                    processor_kind=processor_kind,
+                    processor_uuid=processor_uuid,
+                    run_id=event.event_id,
+                    trigger_actor=trigger_actor,
+                )
+                workspace = WorkspaceContext(
+                    workspace_uuid=workspace_uuid,
+                    permissions=frozenset(),
+                )
+                processor_context = RequestContext(
+                    instance_uuid='test-instance',
+                    placement_generation=1,
+                    request_id=event.event_id,
+                    auth_type='processor',
+                    principal=principal,
+                    workspace=workspace,
+                    allowed_operation_ids=frozenset(allowed_ops),
+                )
+            granted_ops = list_granted(
+                self.ap,
+                processor_context,
+                consumer='processor',
+                granted=allowed_ops,
+            )
+            return [op.as_dict() for op in granted_ops]
+        except Exception as e:
+            getattr(self.ap, 'logger', None) and self.ap.logger.warning(
+                f'Failed to resolve workspace operations for run: {e}'
+            )
+            return []
 
     async def _build_models_from_binding(
         self,

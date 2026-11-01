@@ -66,6 +66,15 @@ from .agent_run_support import (
 )
 
 
+class _RuntimeActionName:
+    def __init__(self, value: str):
+        self.value = value
+
+
+def _plugin_runtime_action(name: str, value: str) -> Any:
+    return getattr(PluginToRuntimeAction, name, _RuntimeActionName(value))
+
+
 _HOST_RESERVED_QUERY_VAR_PREFIXES = (
     '_host_',
     '_pipeline_bound_',
@@ -2818,6 +2827,118 @@ class RuntimeConnectionHandler(handler.Handler):
                     'pong': 'pong',
                 },
             )
+
+        @self.action(_plugin_runtime_action('LIST_APPLICATION_OPERATIONS', 'list_application_operations'))
+        async def list_application_operations(data: dict[str, Any]) -> handler.ActionResponse:
+            run_id = data.get('run_id')
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            if caller_plugin_identity and caller_plugin_identity != session.get('plugin_identity'):
+                return handler.ActionResponse.error(message=f'Plugin identity mismatch for run_id {run_id}')
+
+            resources = session.get('authorization', {}).get('resources', {})
+            operations = resources.get('workspace_operations') or session.get('workspace_operations', [])
+            from ..api.application.granted_operations import domains
+
+            serialized_ops = [op.as_dict() if hasattr(op, 'as_dict') else op for op in operations]
+            domains_summary = domains(serialized_ops)
+            return handler.ActionResponse.success(
+                data={
+                    'operations': serialized_ops,
+                    'domains': domains_summary,
+                }
+            )
+
+        @self.action(_plugin_runtime_action('CALL_APPLICATION_OPERATION', 'call_application_operation'))
+        async def call_application_operation(data: dict[str, Any]) -> handler.ActionResponse:
+            run_id = data.get('run_id')
+            if not run_id:
+                return handler.ActionResponse.error(message='run_id is required')
+            session_registry = get_session_registry()
+            session = await session_registry.get(run_id)
+            if not session:
+                return handler.ActionResponse.error(message=f'Run session {run_id} not found or expired')
+            caller_plugin_identity = data.get('caller_plugin_identity')
+            if caller_plugin_identity and caller_plugin_identity != session.get('plugin_identity'):
+                return handler.ActionResponse.error(message=f'Plugin identity mismatch for run_id {run_id}')
+
+            operation_id = data.get('operation_id')
+            if not operation_id or not isinstance(operation_id, str):
+                return handler.ActionResponse.error(message='operation_id is required')
+            arguments = data.get('arguments', {})
+            if arguments is None:
+                arguments = {}
+            if not isinstance(arguments, dict):
+                return handler.ActionResponse.error(message='arguments must be an object')
+
+            authorization = session.get('authorization', {})
+            workspace_id = authorization.get('workspace_id') or session.get('workspace_id')
+            if not workspace_id:
+                return handler.ActionResponse.error(message='workspace_id not found in run session')
+
+            processor_type = authorization.get('processor_type') or session.get('processor_type', 'agent')
+            processor_id = authorization.get('processor_id') or session.get('processor_id') or run_id
+            trigger_actor = authorization.get('trigger_actor') or session.get('trigger_actor')
+
+            # Frozen granted operations from session
+            resources = authorization.get('resources', {})
+            frozen_ops = resources.get('workspace_operations') or session.get('workspace_operations', [])
+            granted_ids = [op.get('id') if isinstance(op, dict) else getattr(op, 'id', str(op)) for op in frozen_ops]
+
+            from ..api.application.processor_context import build_processor_request_context
+            import langbot.pkg.api.application.granted_operations as granted_operations
+
+            try:
+                if getattr(self.ap, 'workspace_service', None) is not None:
+                    processor_context = await build_processor_request_context(
+                        self.ap,
+                        workspace_uuid=workspace_id,
+                        processor_kind=processor_type,
+                        processor_uuid=processor_id,
+                        run_id=run_id,
+                        operation_ids=granted_ids,
+                        trigger_actor=trigger_actor,
+                    )
+                else:
+                    from ..api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+
+                    principal = PrincipalContext(
+                        principal_type=PrincipalType.PROCESSOR,
+                        processor_kind=processor_type,
+                        processor_uuid=processor_id,
+                        run_id=run_id,
+                        trigger_actor=trigger_actor,
+                    )
+                    workspace = WorkspaceContext(
+                        workspace_uuid=workspace_id,
+                        permissions=frozenset(),
+                    )
+                    processor_context = RequestContext(
+                        instance_uuid='test-instance',
+                        placement_generation=1,
+                        request_id=str(uuid.uuid4()),
+                        auth_type='processor',
+                        principal=principal,
+                        workspace=workspace,
+                        allowed_operation_ids=frozenset(granted_ids),
+                    )
+
+                result = await granted_operations.call(
+                    self.ap,
+                    processor_context,
+                    operation_id=operation_id,
+                    arguments=arguments,
+                    consumer='processor',
+                    granted=granted_ids,
+                )
+                return handler.ActionResponse.success(data=result)
+            except Exception as e:
+                return handler.ActionResponse.error(message=f'Application operation execution failed: {e}')
 
         self._secure_plugin_actions()
 

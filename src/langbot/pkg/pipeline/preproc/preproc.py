@@ -105,6 +105,9 @@ class PreProcessor(stage.PipelineStage):
         policy = ResourcePolicyProjector.from_runner_config(
             runner_config,
             resolved_tool_names=ResourcePolicyProjector.extract_tool_names(catalog),
+            allowed_workspace_operations=(query.variables or {}).get('_pipeline_workspace_operations')
+            if isinstance(getattr(query, 'variables', None), dict)
+            else None,
         )
         catalog = ResourcePolicyProjector.filter_tools(catalog, policy)
         ToolManager.bind_query_tool_sources(query, catalog)

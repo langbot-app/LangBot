@@ -24,6 +24,7 @@ class ResourcePolicyProjector:
         allowed_platform_tool_names: collections.abc.Iterable[typing.Any] | None = None,
         allowed_host_tool_names: collections.abc.Iterable[typing.Any] | None = None,
         override_runner_tools: bool = False,
+        allowed_workspace_operations: collections.abc.Iterable[typing.Any] | None = None,
     ) -> ResourcePolicy:
         """Project standard resource fields without depending on a runner ID.
 
@@ -74,6 +75,7 @@ class ResourcePolicyProjector:
             allow_all_tools=allow_all_tools,
             allowed_kb_uuids=allowed_kb_uuids,
             allowed_skill_names=cls.normalize_optional_names(resolved_skill_names),
+            allowed_workspace_operations=cls.normalize_names(allowed_workspace_operations),
         )
 
     @staticmethod

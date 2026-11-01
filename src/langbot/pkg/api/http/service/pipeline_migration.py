@@ -804,7 +804,10 @@ class PipelineMigrationService:
         if tool_grant:
             if not config_schema.uses_host_tools(descriptor) or 'call' not in getattr(permissions, 'tools', []):
                 raise MigrationError('runner_resource_unavailable')
-            policy = ResourcePolicyProjector.from_runner_config(runner_config)
+            policy = ResourcePolicyProjector.from_runner_config(
+                runner_config,
+                allowed_workspace_operations=[],
+            )
             tools = await AgentResourceBuilder(self.ap)._build_tools_from_binding(
                 execution,
                 permissions,
