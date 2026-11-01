@@ -37,8 +37,9 @@ class WaitNode(WorkflowNode):
 
         # 限制最大等待时间
         if duration > _MAX_WAIT_SECONDS:
-            logger.warning('Wait duration %s exceeds maximum %s, capping to %s',
-                          duration, _MAX_WAIT_SECONDS, _MAX_WAIT_SECONDS)
+            logger.warning(
+                'Wait duration %s exceeds maximum %s, capping to %s', duration, _MAX_WAIT_SECONDS, _MAX_WAIT_SECONDS
+            )
             duration = _MAX_WAIT_SECONDS
 
         # 确保 duration 为正数

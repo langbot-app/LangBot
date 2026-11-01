@@ -65,7 +65,7 @@ class WorkflowNode(abc.ABC):
         errors: list[str] = []
         for port in metadata.get('inputs', []):
             if port.get('required', True) and port.get('name') and port['name'] not in inputs:
-                errors.append(f"Missing required input: {port['name']}")
+                errors.append(f'Missing required input: {port["name"]}')
         return errors
 
     async def validate_config(self) -> list[str]:
@@ -115,6 +115,7 @@ class WorkflowNode(abc.ABC):
     def _get_metadata(self) -> Optional[dict[str, Any]]:
         """Retrieve YAML metadata for this node from the registry."""
         from .registry import NodeTypeRegistry
+
         registry = NodeTypeRegistry.instance()
         return registry.get_metadata(self.type_name)
 
@@ -125,6 +126,7 @@ class WorkflowNode(abc.ABC):
         This is used by tests and tooling to inspect node capabilities.
         """
         from .registry import NodeTypeRegistry
+
         registry = NodeTypeRegistry.instance()
         metadata = registry.get_metadata(cls.type_name)
         if metadata:

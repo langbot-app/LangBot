@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('switch')
 class SwitchNode(WorkflowNode):
     """Switch node - multi-way branch based on value"""

@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('variable_aggregator')
 class VariableAggregatorNode(WorkflowNode):
     """Variable aggregator node - aggregate variables from multiple branches"""

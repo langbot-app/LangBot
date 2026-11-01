@@ -76,7 +76,9 @@ class WorkflowExecutor:
             # Initialize node states
             for node in workflow.nodes:
                 if node.id not in context.node_states:
-                    context.node_states[node.id] = NodeState(node_id=node.id, node_type=node.type, status=NodeStatus.PENDING)
+                    context.node_states[node.id] = NodeState(
+                        node_id=node.id, node_type=node.type, status=NodeStatus.PENDING
+                    )
 
             # Find start node(s)
             if start_node_id:
@@ -305,14 +307,21 @@ class WorkflowExecutor:
                                 if chunk:
                                     aggregated_response += chunk
                     except asyncio.TimeoutError:
-                        logger.warning(f'Node {node.id} ({node.type}) streaming timed out, falling back to non-streaming')
+                        logger.warning(
+                            f'Node {node.id} ({node.type}) streaming timed out, falling back to non-streaming'
+                        )
                         use_streaming = False
                         outputs = await node_instance.execute(inputs, context)
                     else:
                         # Get response from context if set by execute_stream, otherwise use aggregated
                         final_response = context.variables.pop('_last_llm_response', aggregated_response)
-                        outputs = {'response': final_response, 'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}}
-                        logger.info(f'Node {node.id} ({node.type}) streaming completed, response length: {len(final_response)}')
+                        outputs = {
+                            'response': final_response,
+                            'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+                        }
+                        logger.info(
+                            f'Node {node.id} ({node.type}) streaming completed, response length: {len(final_response)}'
+                        )
                 else:
                     outputs = await node_instance.execute(inputs, context)
                 node_state.outputs = outputs
@@ -568,9 +577,7 @@ class WorkflowExecutor:
     def _is_data_edge(self, edge: EdgeDefinition) -> bool:
         return self._edge_type(edge) in {'data', 'legacy'}
 
-    def _incoming_dependency_nodes(
-        self, node_id: str, edge_map: dict[str, list[EdgeDefinition]]
-    ) -> set[str]:
+    def _incoming_dependency_nodes(self, node_id: str, edge_map: dict[str, list[EdgeDefinition]]) -> set[str]:
         incoming_nodes: set[str] = set()
         for source_id, edges in edge_map.items():
             for edge in edges:
@@ -590,7 +597,7 @@ class WorkflowExecutor:
             duration_ms = int((node_state.end_time - node_state.start_time).total_seconds() * 1000)
 
         step = ExecutionStep(
-            step_id=f"step_{uuid.uuid4().hex[:8]}",
+            step_id=f'step_{uuid.uuid4().hex[:8]}',
             timestamp=datetime.now(),
             node_id=node.id,
             node_type=node.type,
@@ -740,7 +747,9 @@ class LoopExecutor:
 
             for node in loop_body:
                 # Reset node state for this iteration
-                context.node_states[node.id] = NodeState(node_id=node.id, node_type=node.type, status=NodeStatus.PENDING)
+                context.node_states[node.id] = NodeState(
+                    node_id=node.id, node_type=node.type, status=NodeStatus.PENDING
+                )
 
                 await self.executor._execute_node(node, context, max_retries=3)
 

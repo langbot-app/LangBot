@@ -22,43 +22,48 @@ from langbot.pkg.workflow.registry import NodeTypeRegistry
 
 # ── Test helpers ─────────────────────────────────────────────────────
 
+
 class PassthroughNode(WorkflowNode):
     """Simple node that passes input to output."""
-    type_name = "passthrough"
-    category = "process"
+
+    type_name = 'passthrough'
+    category = 'process'
 
     async def execute(self, inputs, context):
-        return {"output": inputs.get("input", "default")}
+        return {'output': inputs.get('input', 'default')}
 
 
 class FailingNode(WorkflowNode):
     """Node that always fails."""
-    type_name = "failing"
-    category = "process"
+
+    type_name = 'failing'
+    category = 'process'
 
     async def execute(self, inputs, context):
-        raise RuntimeError("intentional failure")
+        raise RuntimeError('intentional failure')
 
 
 class AccumulatorNode(WorkflowNode):
     """Node that appends its id to a context variable for tracking execution order."""
-    type_name = "accumulator"
-    category = "process"
+
+    type_name = 'accumulator'
+    category = 'process'
 
     async def execute(self, inputs, context):
-        order = context.variables.get("_exec_order", [])
+        order = context.variables.get('_exec_order', [])
         order.append(self.node_id)
-        context.variables["_exec_order"] = order
-        return {"output": self.node_id}
+        context.variables['_exec_order'] = order
+        return {'output': self.node_id}
 
 
 class ConditionTrueNode(WorkflowNode):
     """Node that outputs a truthy value."""
-    type_name = "cond_true"
-    category = "control"
+
+    type_name = 'cond_true'
+    category = 'control'
 
     async def execute(self, inputs, context):
-        return {"result": True}
+        return {'result': True}
 
 
 def _make_registry(*node_classes) -> NodeTypeRegistry:
@@ -66,13 +71,13 @@ def _make_registry(*node_classes) -> NodeTypeRegistry:
     reg = NodeTypeRegistry()
     for cls in node_classes:
         cat = getattr(cls, 'category', 'process')
-        reg.register(f"{cat}.{cls.type_name}", cls)
+        reg.register(f'{cat}.{cls.type_name}', cls)
     return reg
 
 
-def _make_context(workflow_id="wf-test") -> ExecutionContext:
+def _make_context(workflow_id='wf-test') -> ExecutionContext:
     return ExecutionContext(
-        execution_id="exec-test",
+        execution_id='exec-test',
         workflow_id=workflow_id,
     )
 
@@ -82,12 +87,11 @@ def _node(id: str, type: str, config=None) -> NodeDefinition:
 
 
 def _edge(id: str, src: str, tgt: str, condition=None) -> EdgeDefinition:
-    return EdgeDefinition(
-        id=id, source_node=src, target_node=tgt, condition=condition
-    )
+    return EdgeDefinition(id=id, source_node=src, target_node=tgt, condition=condition)
 
 
 # ── Tests ────────────────────────────────────────────────────────────
+
 
 class TestLinearWorkflow:
     """Test simple linear A → B → C workflows."""
@@ -99,15 +103,16 @@ class TestLinearWorkflow:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-1", name="test",
-            nodes=[_node("n1", "process.passthrough")],
+            uuid='wf-1',
+            name='test',
+            nodes=[_node('n1', 'process.passthrough')],
             edges=[],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         assert result.status == ExecutionStatus.COMPLETED
-        assert result.node_states["n1"].status == NodeStatus.COMPLETED
+        assert result.node_states['n1'].status == NodeStatus.COMPLETED
 
     @pytest.mark.asyncio
     async def test_two_node_chain(self):
@@ -116,18 +121,19 @@ class TestLinearWorkflow:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-2", name="test",
+            uuid='wf-2',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
             ],
-            edges=[_edge("e1", "a", "b")],
+            edges=[_edge('e1', 'a', 'b')],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         assert result.status == ExecutionStatus.COMPLETED
-        assert result.variables["_exec_order"] == ["a", "b"]
+        assert result.variables['_exec_order'] == ['a', 'b']
 
     @pytest.mark.asyncio
     async def test_three_node_chain(self):
@@ -136,22 +142,23 @@ class TestLinearWorkflow:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-3", name="test",
+            uuid='wf-3',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
-                _node("c", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
+                _node('c', 'process.accumulator'),
             ],
             edges=[
-                _edge("e1", "a", "b"),
-                _edge("e2", "b", "c"),
+                _edge('e1', 'a', 'b'),
+                _edge('e2', 'b', 'c'),
             ],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         assert result.status == ExecutionStatus.COMPLETED
-        assert result.variables["_exec_order"] == ["a", "b", "c"]
+        assert result.variables['_exec_order'] == ['a', 'b', 'c']
 
 
 class TestFailureHandling:
@@ -164,17 +171,18 @@ class TestFailureHandling:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-fail", name="test",
-            nodes=[_node("n1", "process.failing")],
+            uuid='wf-fail',
+            name='test',
+            nodes=[_node('n1', 'process.failing')],
             edges=[],
-            settings={"max_retries": 0},
+            settings={'max_retries': 0},
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         assert result.status == ExecutionStatus.FAILED
-        assert result.node_states["n1"].status == NodeStatus.FAILED
-        assert "intentional failure" in result.node_states["n1"].error
+        assert result.node_states['n1'].status == NodeStatus.FAILED
+        assert 'intentional failure' in result.node_states['n1'].error
 
     @pytest.mark.asyncio
     async def test_failure_stops_downstream(self):
@@ -183,20 +191,21 @@ class TestFailureHandling:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-stop", name="test",
+            uuid='wf-stop',
+            name='test',
             nodes=[
-                _node("a", "process.failing"),
-                _node("b", "process.accumulator"),
+                _node('a', 'process.failing'),
+                _node('b', 'process.accumulator'),
             ],
-            edges=[_edge("e1", "a", "b")],
-            settings={"max_retries": 0},
+            edges=[_edge('e1', 'a', 'b')],
+            settings={'max_retries': 0},
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
-        assert result.node_states["a"].status == NodeStatus.FAILED
+        assert result.node_states['a'].status == NodeStatus.FAILED
         # b should not have been executed
-        assert result.node_states["b"].status == NodeStatus.PENDING
+        assert result.node_states['b'].status == NodeStatus.PENDING
 
 
 class TestConditionalEdges:
@@ -209,17 +218,18 @@ class TestConditionalEdges:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-cond", name="test",
+            uuid='wf-cond',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
             ],
-            edges=[_edge("e1", "a", "b", condition="1 == 1")],
+            edges=[_edge('e1', 'a', 'b', condition='1 == 1')],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
-        assert result.variables["_exec_order"] == ["a", "b"]
+        assert result.variables['_exec_order'] == ['a', 'b']
 
     @pytest.mark.asyncio
     async def test_false_condition_skips(self):
@@ -228,18 +238,19 @@ class TestConditionalEdges:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-cond2", name="test",
+            uuid='wf-cond2',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
             ],
-            edges=[_edge("e1", "a", "b", condition="1 == 2")],
+            edges=[_edge('e1', 'a', 'b', condition='1 == 2')],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         # Only a should execute; b is skipped because condition is false
-        assert result.variables["_exec_order"] == ["a"]
+        assert result.variables['_exec_order'] == ['a']
 
 
 class TestDiamondGraph:
@@ -253,18 +264,19 @@ class TestDiamondGraph:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-diamond", name="test",
+            uuid='wf-diamond',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
-                _node("c", "process.accumulator"),
-                _node("d", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
+                _node('c', 'process.accumulator'),
+                _node('d', 'process.accumulator'),
             ],
             edges=[
-                _edge("e1", "a", "b"),
-                _edge("e2", "a", "c"),
-                _edge("e3", "b", "d"),
-                _edge("e4", "c", "d"),
+                _edge('e1', 'a', 'b'),
+                _edge('e2', 'a', 'c'),
+                _edge('e3', 'b', 'd'),
+                _edge('e4', 'c', 'd'),
             ],
         )
         ctx = _make_context()
@@ -272,7 +284,7 @@ class TestDiamondGraph:
 
         assert result.status == ExecutionStatus.COMPLETED
         # All four nodes should complete
-        for nid in ["a", "b", "c", "d"]:
+        for nid in ['a', 'b', 'c', 'd']:
             assert result.node_states[nid].status == NodeStatus.COMPLETED
 
 
@@ -286,15 +298,16 @@ class TestUnknownNodeType:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-unk", name="test",
-            nodes=[_node("n1", "process.nonexistent")],
+            uuid='wf-unk',
+            name='test',
+            nodes=[_node('n1', 'process.nonexistent')],
             edges=[],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
-        assert result.node_states["n1"].status == NodeStatus.FAILED
-        assert "Unknown node type" in result.node_states["n1"].error
+        assert result.node_states['n1'].status == NodeStatus.FAILED
+        assert 'Unknown node type' in result.node_states['n1'].error
 
 
 class TestMessageContext:
@@ -307,22 +320,23 @@ class TestMessageContext:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-msg", name="test",
-            nodes=[_node("n1", "process.passthrough")],
+            uuid='wf-msg',
+            name='test',
+            nodes=[_node('n1', 'process.passthrough')],
             edges=[],
         )
         ctx = _make_context()
         ctx.message_context = MessageContext(
-            message_id="msg-1",
-            message_content="hello world",
-            sender_id="user-1",
+            message_id='msg-1',
+            message_content='hello world',
+            sender_id='user-1',
         )
         result = await executor.execute(wf, ctx)
 
         assert result.status == ExecutionStatus.COMPLETED
         # message_content should be in the resolved inputs
-        n1_inputs = result.node_states["n1"].inputs
-        assert n1_inputs.get("message_content") == "hello world"
+        n1_inputs = result.node_states['n1'].inputs
+        assert n1_inputs.get('message_content') == 'hello world'
 
 
 class TestExecutionHistory:
@@ -335,17 +349,18 @@ class TestExecutionHistory:
         executor.registry = reg
 
         wf = WorkflowDefinition(
-            uuid="wf-hist", name="test",
+            uuid='wf-hist',
+            name='test',
             nodes=[
-                _node("a", "process.accumulator"),
-                _node("b", "process.accumulator"),
+                _node('a', 'process.accumulator'),
+                _node('b', 'process.accumulator'),
             ],
-            edges=[_edge("e1", "a", "b")],
+            edges=[_edge('e1', 'a', 'b')],
         )
         ctx = _make_context()
         result = await executor.execute(wf, ctx)
 
         assert len(result.history) == 2
-        assert result.history[0].node_id == "a"
-        assert result.history[1].node_id == "b"
-        assert result.history[0].status == "completed"
+        assert result.history[0].node_id == 'a'
+        assert result.history[1].node_id == 'b'
+        assert result.history[0].status == 'completed'

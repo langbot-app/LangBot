@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('store_data')
 class StoreDataNode(WorkflowNode):
     """Store data node - save data to storage"""

@@ -27,13 +27,13 @@ class MessageContext(pydantic.BaseModel):
     sender_id: str
     """发送者 ID"""
 
-    sender_name: str = ""
+    sender_name: str = ''
     """发送者名称"""
 
-    platform: str = ""
+    platform: str = ''
     """平台标识（qq, wechat, telegram 等）"""
 
-    conversation_id: str = ""
+    conversation_id: str = ''
     """对话 ID"""
 
     is_group: bool = False
@@ -239,33 +239,33 @@ class MessageEnvelope(pydantic.BaseModel):
     sender_id: str
     """发送者 ID"""
 
-    sender_name: str = ""
+    sender_name: str = ''
     """发送者名称"""
 
-    platform: str = ""
+    platform: str = ''
     """平台标识（qq, wechat, telegram 等）"""
 
     # ====== 会话字段 ======
-    session_id: str = ""
+    session_id: str = ''
     """会话 ID"""
 
-    conversation_id: str = ""
+    conversation_id: str = ''
     """对话 ID"""
 
-    launcher_type: str = "person"
+    launcher_type: str = 'person'
     """会话类型：'person' | 'group'"""
 
-    launcher_id: str = ""
+    launcher_id: str = ''
     """会话 ID（群号/用户 ID）"""
 
     is_group: bool = False
     """是否群聊"""
 
     # ====== 上下文字段 ======
-    bot_id: str = ""
+    bot_id: str = ''
     """机器人 ID"""
 
-    user_id: str = ""
+    user_id: str = ''
     """用户 ID"""
 
     mentions: list[str] = pydantic.Field(default_factory=list)
@@ -294,17 +294,17 @@ class MessageEnvelope(pydantic.BaseModel):
     response_chain: list[typing.Any] = pydantic.Field(default_factory=list)
     """响应消息链"""
 
-    status: str = "pending"
+    status: str = 'pending'
     """状态：'success' | 'error' | 'cancelled'"""
 
     # ====== 内部字段 ======
-    execution_id: str = ""
+    execution_id: str = ''
     """执行 ID"""
 
-    workflow_id: str = ""
+    workflow_id: str = ''
     """工作流 ID"""
 
-    trigger_type: str = ""
+    trigger_type: str = ''
     """触发类型：'message' | 'cron' | 'webhook' | 'event'"""
 
     trigger_data: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
@@ -335,15 +335,15 @@ class MessageEnvelope(pydantic.BaseModel):
 
     def is_success(self) -> bool:
         """检查是否成功"""
-        return self.status == "success"
+        return self.status == 'success'
 
     def is_error(self) -> bool:
         """检查是否出错"""
-        return self.status == "error"
+        return self.status == 'error'
 
     def is_cancelled(self) -> bool:
         """检查是否已取消"""
-        return self.status == "cancelled"
+        return self.status == 'cancelled'
 
 
 class PortDefinition(pydantic.BaseModel):
@@ -386,7 +386,7 @@ class NodeDefinition(pydantic.BaseModel):
     type: str
     """节点类型"""
 
-    label: str = ""
+    label: str = ''
     """节点标签"""
 
     config: dict[str, typing.Any] = pydantic.Field(default_factory=dict)

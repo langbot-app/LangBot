@@ -189,7 +189,11 @@ class NodeTypeRegistry:
         """Get node type schemas by category."""
         if category not in self._categories:
             return []
-        return [schema for node_type in self._categories[category] if (schema := self.get_merged_schema(node_type)) is not None]
+        return [
+            schema
+            for node_type in self._categories[category]
+            if (schema := self.get_merged_schema(node_type)) is not None
+        ]
 
     def get_categories(self) -> dict[str, list[dict[str, Any]]]:
         """Get all nodes organized by category."""
@@ -201,11 +205,11 @@ class NodeTypeRegistry:
 
     def discover_nodes(self, discover_engine: 'ComponentDiscoveryEngine', nodes_dir: str = 'pkg/workflow/nodes/'):
         """Discover and register workflow nodes from the discovery engine.
-        
+
         This method uses the ComponentDiscoveryEngine to find all WorkflowNode
         subclasses in the specified directory and registers them automatically,
         replacing the old decorator-based registration mechanism.
-        
+
         Args:
             discover_engine: The ComponentDiscoveryEngine instance
             nodes_dir: Directory path to scan for workflow nodes
@@ -313,7 +317,9 @@ class NodeTypeRegistry:
             'source': metadata.get('_source', 'core'),
         }
 
-    def _merge_missing_schema_fields(self, yaml_schema: dict[str, Any], python_schema: dict[str, Any]) -> dict[str, Any]:
+    def _merge_missing_schema_fields(
+        self, yaml_schema: dict[str, Any], python_schema: dict[str, Any]
+    ) -> dict[str, Any]:
         result = copy.deepcopy(yaml_schema)
         for key in ('config_schema_source', 'config_stages'):
             if not result.get(key) and python_schema.get(key):

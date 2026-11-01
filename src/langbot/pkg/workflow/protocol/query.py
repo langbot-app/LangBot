@@ -64,17 +64,13 @@ class WorkflowQuery(pydantic.BaseModel):
     session: typing.Optional[provider_session.Session] = None
     """会话对象，由前置处理器阶段设置"""
 
-    messages: typing.Optional[
-        list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
-    ] = []
+    messages: typing.Optional[list[typing.Union[provider_message.Message, provider_message.MessageChunk]]] = []
     """历史消息列表，由前置处理器阶段设置"""
 
     prompt: typing.Optional[provider_prompt.Prompt] = None
     """情景预设内容，由前置处理器阶段设置"""
 
-    user_message: typing.Optional[
-        typing.Union[provider_message.Message, provider_message.MessageChunk]
-    ] = None
+    user_message: typing.Optional[typing.Union[provider_message.Message, provider_message.MessageChunk]] = None
     """此次请求的用户消息对象，由前置处理器阶段设置"""
 
     variables: typing.Optional[dict[str, typing.Any]] = None
@@ -98,9 +94,7 @@ class WorkflowQuery(pydantic.BaseModel):
     status: typing.Optional[ExecutionStatus] = None
     """执行状态，表示当前 Workflow 的执行状态（如运行中、成功、失败等）"""
 
-    resp_messages: typing.Optional[
-        list[typing.Union[provider_message.Message, provider_message.MessageChunk]]
-    ] = []
+    resp_messages: typing.Optional[list[typing.Union[provider_message.Message, provider_message.MessageChunk]]] = []
     """由节点生成的回复消息对象列表"""
 
     resp_message_chain: typing.Optional[list[platform_message.MessageChain]] = None
@@ -111,28 +105,28 @@ class WorkflowQuery(pydantic.BaseModel):
 
     def model_dump(self, **kwargs):
         return {
-            "query_id": self.query_id,
-            "workflow_uuid": self.workflow_uuid,
-            "workflow_name": self.workflow_name,
-            "execution_id": self.execution_id,
-            "launcher_type": self.launcher_type.value if self.launcher_type else None,
-            "launcher_id": self.launcher_id,
-            "sender_id": self.sender_id,
-            "sender_name": self.sender_name,
-            "message_event": self.message_event.model_dump() if self.message_event else None,
-            "message_chain": self.message_chain.model_dump() if self.message_chain else None,
-            "message_context": self.message_context.model_dump() if self.message_context else None,
-            "bot_uuid": self.bot_uuid,
-            "session": self.session.model_dump() if self.session else None,
-            "messages": [msg.model_dump() for msg in self.messages] if self.messages else [],
-            "prompt": self.prompt.model_dump() if self.prompt else None,
-            "user_message": self.user_message.model_dump() if self.user_message else None,
-            "variables": self.variables,
-            "use_llm_model_uuid": self.use_llm_model_uuid,
-            "use_funcs": [func.model_dump() for func in self.use_funcs] if self.use_funcs else [],
-            "trigger_type": self.trigger_type.value if self.trigger_type else None,
-            "trigger_data": self.trigger_data,
-            "status": self.status.value if self.status else None,
+            'query_id': self.query_id,
+            'workflow_uuid': self.workflow_uuid,
+            'workflow_name': self.workflow_name,
+            'execution_id': self.execution_id,
+            'launcher_type': self.launcher_type.value if self.launcher_type else None,
+            'launcher_id': self.launcher_id,
+            'sender_id': self.sender_id,
+            'sender_name': self.sender_name,
+            'message_event': self.message_event.model_dump() if self.message_event else None,
+            'message_chain': self.message_chain.model_dump() if self.message_chain else None,
+            'message_context': self.message_context.model_dump() if self.message_context else None,
+            'bot_uuid': self.bot_uuid,
+            'session': self.session.model_dump() if self.session else None,
+            'messages': [msg.model_dump() for msg in self.messages] if self.messages else [],
+            'prompt': self.prompt.model_dump() if self.prompt else None,
+            'user_message': self.user_message.model_dump() if self.user_message else None,
+            'variables': self.variables,
+            'use_llm_model_uuid': self.use_llm_model_uuid,
+            'use_funcs': [func.model_dump() for func in self.use_funcs] if self.use_funcs else [],
+            'trigger_type': self.trigger_type.value if self.trigger_type else None,
+            'trigger_data': self.trigger_data,
+            'status': self.status.value if self.status else None,
         }
 
     # ========== 插件可调用的 API（请求 API） ==========

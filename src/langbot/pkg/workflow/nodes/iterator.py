@@ -7,6 +7,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('iterator')
 class IteratorNode(WorkflowNode):
     """Iterator node - iterate over array items one by one"""

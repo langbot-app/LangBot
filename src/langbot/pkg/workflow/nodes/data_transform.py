@@ -11,6 +11,7 @@ from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 from ..safe_eval import safe_eval_with_vars
 
+
 @workflow_node('data_transform')
 class DataTransformNode(WorkflowNode):
     """Data transform node - transform data using templates or JSONPath"""

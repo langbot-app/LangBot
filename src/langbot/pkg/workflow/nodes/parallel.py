@@ -7,6 +7,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('parallel')
 class ParallelNode(WorkflowNode):
     """Parallel node - execute multiple branches simultaneously"""

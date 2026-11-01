@@ -10,6 +10,7 @@ from typing import Any
 from langbot.pkg.workflow.protocol.entities import ExecutionContext
 from ..node import WorkflowNode, workflow_node
 
+
 @workflow_node('merge')
 class MergeNode(WorkflowNode):
     """Merge node - combine multiple inputs"""
