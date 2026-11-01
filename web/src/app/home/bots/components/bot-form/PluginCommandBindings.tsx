@@ -462,17 +462,11 @@ export default function PluginCommandBindings({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          {t('bots.pluginCommands.description')}
+      {!value.enabled && (
+        <p className="text-center text-xs text-muted-foreground">
+          {t('bots.routingLayers.commandsDisabled')}
         </p>
-        <Switch
-          checked={value.enabled}
-          onCheckedChange={(enabled) => update({ enabled })}
-          aria-label={t('bots.pluginCommands.title')}
-        />
-      </div>
-
+      )}
       {value.enabled && (
         <>
           {/* Command processor list and drag reordering */}

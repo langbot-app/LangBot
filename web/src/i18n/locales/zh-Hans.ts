@@ -979,10 +979,13 @@ const zhHans = {
       play: '播放',
     },
     eventRouting: '事件路由',
-    routingTabs: {
+    routingLayers: {
       rules: '路由规则',
       commands: '插件命令',
       processors: '插件处理器',
+      rulesDescription:
+        '未命中插件命令的事件按顺序匹配，交给第一条命中的规则处理。',
+      commandsDisabled: '插件命令已关闭，消息直接进入路由规则。',
     },
     eventRoutingDescription: '设置收到事件后交给哪个处理器。',
     eventBindings: '事件路由',

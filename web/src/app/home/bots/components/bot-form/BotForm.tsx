@@ -35,14 +35,17 @@ import {
   ChevronRight,
   Webhook,
   Search,
+  TerminalSquare,
+  Route,
+  Puzzle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
 import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm, useWatch } from 'react-hook-form';
@@ -89,12 +92,47 @@ import GuidedTour, {
 
 type ConnectionMode = 'webhook' | 'persistent';
 
-function TabCount({ count }: { count: number }) {
-  if (count === 0) return null;
+function RoutingLayer({
+  icon: Icon,
+  title,
+  description,
+  count,
+  action,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  count: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
-    <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
-      {count}
-    </span>
+    <section
+      aria-label={title}
+      className="overflow-hidden rounded-xl border bg-card"
+    >
+      <header className="flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {count > 0 && (
+              <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
+                {count}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        {action && <div className="shrink-0 pt-0.5">{action}</div>}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
   );
 }
 
@@ -1356,22 +1394,52 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
                 )}
               >
-                <Tabs defaultValue="rules" className="gap-4">
-                  <TabsList className="w-full sm:w-fit">
-                    <TabsTrigger value="rules">
-                      {t('bots.routingTabs.rules')}
-                      <TabCount count={routeCount} />
-                    </TabsTrigger>
-                    <TabsTrigger value="commands">
-                      {t('bots.routingTabs.commands')}
-                      <TabCount count={commandProcessorCount} />
-                    </TabsTrigger>
-                    <TabsTrigger value="processors">
-                      {t('bots.routingTabs.processors')}
-                      <TabCount count={pluginProcessorCount} />
-                    </TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="rules">
+                <div className="flex flex-col gap-5">
+                  <RoutingLayer
+                    icon={TerminalSquare}
+                    title={t('bots.routingLayers.commands')}
+                    description={t('bots.pluginCommands.description')}
+                    count={commandProcessorCount}
+                    action={
+                      <Switch
+                        checked={
+                          form.watch('command_settings')?.enabled ?? true
+                        }
+                        onCheckedChange={(enabled) =>
+                          form.setValue(
+                            'command_settings',
+                            {
+                              prefixes: ['/'],
+                              processors: [],
+                              ...form.getValues('command_settings'),
+                              enabled,
+                            },
+                            { shouldDirty: true },
+                          )
+                        }
+                        aria-label={t('bots.routingLayers.commands')}
+                      />
+                    }
+                  >
+                    <PluginCommandBindings
+                      value={form.watch('command_settings')}
+                      onChange={(value) =>
+                        form.setValue('command_settings', value, {
+                          shouldDirty: true,
+                        })
+                      }
+                      agents={agentNameList}
+                      onCreated={(agent) =>
+                        setAgentNameList((items) => [...items, agent])
+                      }
+                    />
+                  </RoutingLayer>
+                  <RoutingLayer
+                    icon={Route}
+                    title={t('bots.routingLayers.rules')}
+                    description={t('bots.routingLayers.rulesDescription')}
+                    count={routeCount}
+                  >
                     <EventBindingsEditor
                       form={form}
                       onAgentCreated={(agent) =>
@@ -1390,22 +1458,13 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                           agent.kind !== 'command_processor',
                       )}
                     />
-                  </TabsContent>
-                  <TabsContent value="commands">
-                    <PluginCommandBindings
-                      value={form.watch('command_settings')}
-                      onChange={(value) =>
-                        form.setValue('command_settings', value, {
-                          shouldDirty: true,
-                        })
-                      }
-                      agents={agentNameList}
-                      onCreated={(agent) =>
-                        setAgentNameList((items) => [...items, agent])
-                      }
-                    />
-                  </TabsContent>
-                  <TabsContent value="processors">
+                  </RoutingLayer>
+                  <RoutingLayer
+                    icon={Puzzle}
+                    title={t('bots.routingLayers.processors')}
+                    description={t('bots.pluginSubscriptions.description')}
+                    count={pluginProcessorCount}
+                  >
                     <PluginProcessorBindings
                       supportedEvents={
                         adapterSupportedEvents[currentAdapter] || []
@@ -1421,8 +1480,8 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                         setAgentNameList((items) => [...items, agent])
                       }
                     />
-                  </TabsContent>
-                </Tabs>
+                  </RoutingLayer>
+                </div>
               </CardContent>
             </Card>
           )}
