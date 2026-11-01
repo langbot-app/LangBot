@@ -286,6 +286,7 @@ class AgentRunOrchestrator:
                 bot_id=event.bot_id,
                 workspace_id=event.workspace_id,
                 thread_id=event.thread_id,
+                actor_id=getattr(getattr(event, 'actor', None), 'actor_id', None),
                 state_policy={
                     'enable_state': binding.state_policy.enable_state,
                     'state_scopes': list(binding.state_policy.state_scopes),
@@ -579,6 +580,59 @@ class AgentRunOrchestrator:
     def resolve_runner_id_for_telemetry(self, query: pipeline_query.Query) -> str | None:
         """Resolve runner ID for telemetry/logging without full execution."""
         return self.query_bridge.resolve_runner_id_for_telemetry(query)
+
+    async def cancel_active_from_query(
+        self,
+        query: pipeline_query.Query,
+        *,
+        allow_other_actors: bool = False,
+    ) -> str | None:
+        """Request cancellation and stop the active Runner task for this Query conversation."""
+
+        plan = self.query_bridge.build_plan(query)
+        event = plan.event
+        binding = plan.binding
+        if event.event_type != 'message.received' or not event.conversation_id:
+            return None
+        descriptor = await self.registry.get(
+            get_query_execution_context(query),
+            binding.runner_id,
+            plan.bound_plugins,
+        )
+        actor = getattr(event, 'actor', None)
+        actor_id = getattr(actor, 'actor_id', None)
+        if not allow_other_actors and not actor_id:
+            return None
+        target_run_id = await self._session_registry.find_active_target(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+            actor_id=None if allow_other_actors else actor_id,
+        )
+        if target_run_id is None and not allow_other_actors:
+            other_actor_run_id = await self._session_registry.find_active_target(
+                conversation_id=event.conversation_id,
+                runner_id=descriptor.id,
+                bot_id=event.bot_id,
+                workspace_id=event.workspace_id,
+                thread_id=event.thread_id,
+            )
+            if other_actor_run_id is not None:
+                query.variables['_stop_command_denied'] = True
+        if target_run_id is None:
+            return None
+        if not await self._session_registry.cancel_task(target_run_id, reason='stop_command'):
+            return None
+        from .run_ledger_store import RunLedgerStore
+
+        store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+        await store.request_cancel(
+            run_id=target_run_id,
+            status_reason='cancelled by stop command',
+        )
+        return target_run_id
 
     async def try_claim_steering_from_query(
         self,

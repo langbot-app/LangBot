@@ -13,6 +13,7 @@ from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from ..api.http.authz import WorkspaceRequiredError
@@ -20,7 +21,7 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
-from ..i18n import language_scope
+from ..i18n import language_scope, t
 from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
@@ -464,6 +465,10 @@ class RuntimePipeline:
                     except asyncio.CancelledError:
                         lane_outcome = 'cancelled'
                         lane_error = 'cancelled'
+                        user_requested = (query.variables or {}).get('_runner_cancel_reason') == 'stop_command'
+                        await self._finalize_cancelled_response(query, user_visible=user_requested)
+                        if user_requested:
+                            return
                         raise
                     except BaseException as exc:
                         lane_outcome = 'failed'
@@ -496,6 +501,57 @@ class RuntimePipeline:
                         )
         finally:
             processing_mode.reset(token)
+
+    async def _finalize_cancelled_response(
+        self,
+        query: pipeline_query.Query,
+        *,
+        user_visible: bool,
+    ) -> None:
+        """Close the originating platform response after an active run is cancelled."""
+
+        last_chunk = next(
+            (
+                item
+                for item in reversed(getattr(query, 'resp_messages', []) or [])
+                if isinstance(item, provider_message.MessageChunk)
+            ),
+            None,
+        )
+        text = t('Task was cancelled') if user_visible else ''
+        if not user_visible and last_chunk is not None:
+            text = str(getattr(last_chunk, 'all_content', None) or getattr(last_chunk, 'content', None) or '')
+        message = platform_message.MessageChain([platform_message.Plain(text=text)])
+        quote_origin = query.pipeline_config.get('output', {}).get('misc', {}).get('quote-origin', False)
+        try:
+            if (
+                await query.adapter.is_stream_output_supported()
+                and last_chunk is not None
+                and last_chunk.resp_message_id
+            ):
+                chunk = provider_message.MessageChunk(
+                    role='assistant',
+                    content=text,
+                    all_content=text,
+                    resp_message_id=last_chunk.resp_message_id,
+                    msg_sequence=int(getattr(last_chunk, 'msg_sequence', 0) or 0) + 1,
+                    is_final=True,
+                )
+                await query.adapter.reply_message_chunk(
+                    message_source=query.message_event,
+                    bot_message=chunk,
+                    message=message,
+                    quote_origin=quote_origin,
+                    is_final=True,
+                )
+            elif user_visible:
+                await query.adapter.reply_message(
+                    message_source=query.message_event,
+                    message=message,
+                    quote_origin=quote_origin,
+                )
+        except Exception as exc:
+            self.ap.logger.warning('Failed to finalize cancelled platform response: %s', exc)
 
     async def _process_query(self, query: pipeline_query.Query):
         """Close monitoring on every exit, including cancellation and plugin veto."""

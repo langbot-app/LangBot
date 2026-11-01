@@ -15,6 +15,7 @@ ACP Runner 用于把兼容 Agent Client Protocol（ACP）的编码 Agent 接入 
 - 根据 ACP runtime 公告的能力转发图片或嵌入文本资源。
 - 通过 SDK MCP bridge 提供授权的 LangBot 工具、知识库和历史。
 - 支持运行中的 steering 跟进消息。
+- `!new` 可在任意运行位置重置当前 ACP 绑定；daemon 模式下仅在客户端声明对应 session capability 时额外提供 `!list`、`!sessions`、`!switch` 和 `!delete`；`!stop` 使用 Host 的通用 Runner 取消契约。
 
 ## 支持的预设
 
@@ -80,6 +81,24 @@ ACP Runner 用于把兼容 Agent Client Protocol（ACP）的编码 Agent 接入 
 ## 会话恢复
 
 启用 `reuse-session` 后，runner 会保存 ACP session ID，并在后续 LangBot 会话运行中优先调用 ACP session load/resume 能力。若 provider 声称支持恢复但实际恢复失败，runner 会创建新 session，并记录可诊断错误。不同 ACP provider 的恢复质量取决于其自身实现。
+
+## 会话管理命令
+
+`!list`、`!sessions`、`!switch` 和 `!delete` 用于 `location=daemon`，需要 daemon 端 ACP runtime 支持相应的 session capability；`!new` 只重置 ACPAgentRunner 绑定，可用于任意运行位置。它们属于 ACPAgentRunner 专属能力，不是通用 Runner Command 契约。命令状态使用可跨 Host context reset 保持稳定的 IM session identity，群聊和私聊不会共享当前会话指针。若 ACP 进程依赖 `env-json`，请改为在 daemon 进程环境中配置；daemon 会话控制命令不会把环境变量值持久化到插件存储。
+
+| 命令 | 说明 |
+| --- | --- |
+| `!new` | 清除当前绑定；下一条普通消息创建新 ACP 会话。旧会话保留，可稍后切回 |
+| `!list` / `!sessions` | 列出当前 daemon 工作目录中的 ACP 会话 |
+| `!switch <序号或 session ID>` | 切换到已有 ACP 会话，下一条消息通过 `session/load` 或 `session/resume` 继续 |
+| `!delete` | 调用 ACP `session/delete` 删除当前会话；成功后再清理 LangBot 绑定和可见上下文 |
+| `!stop` | 停止当前正在运行的任务，但保留 ACP 会话 |
+
+`!delete` 不会物理删除 LangBot 的运行审计记录；它删除 ACP 会话并创建新的 LangBot context generation，因此旧 transcript 不再进入后续上下文。若 ACP 删除失败，当前绑定会保留，避免 LangBot 与 ACP 状态不一致。
+
+`!stop` 的即时取消需要 LangBot Host 在 session 并发槽之前识别控制命令。较旧的 Host 会把它作为普通命令排队，不能立即停止运行中的任务。
+
+群聊中，`!new`、`!switch` 和 `!delete` 仅允许机器人管理员执行；普通成员只能停止自己发起的活动任务，机器人管理员可以停止群内任意活动任务。
 
 ## 多模态输入
 
