@@ -269,7 +269,22 @@ async def test_call_application_operation_success_and_audit(test_env):
         claimed_identity='langbot-team/LocalAgent',
     )
 
-    # Invoke authorized operation
+    # 1. 资源下发 (Delivery)
+    assert 'workspace_operations' in resources
+    assert len(resources['workspace_operations']) == 1
+    print(f"\n[CHAIN] 1. 资源下发 -> operations: {[op['id'] for op in resources['workspace_operations']]}")
+
+    # 2. 列出授权操作 (List)
+    list_result = await test_env.exec_api.invoke(
+        'execution.list_application_operations',
+        exec_context,
+        {},
+    )
+    assert len(list_result['operations']) == 1
+    assert list_result['operations'][0]['id'] == 'bot.list'
+    print(f"[CHAIN] 2. list_application_operations -> operations: {[op['id'] for op in list_result['operations']]}, domains: {list_result['domains']}")
+
+    # 3. 调用授权操作 (Call)
     call_result = await test_env.exec_api.invoke(
         'execution.call_application_operation',
         exec_context,
@@ -277,8 +292,9 @@ async def test_call_application_operation_success_and_audit(test_env):
     )
     assert call_result['ok'] is True
     assert isinstance(call_result['result'], list)
+    print(f"[CHAIN] 3. call_application_operation -> ok: {call_result['ok']}, result: {call_result['result']}")
 
-    # Verify audit record
+    # 4. 审计记录验证 (Audit Record)
     assert len(test_env.recorded_audits) > 0
     audit = test_env.recorded_audits[-1]
     assert audit['route'] == 'bot.list'
@@ -286,6 +302,7 @@ async def test_call_application_operation_success_and_audit(test_env):
     assert audit['detail']['processor_kind'] == 'agent'
     assert audit['detail']['processor_uuid'] == 'agent-uuid-999'
     assert audit['detail']['run_id'] == run_id
+    print(f"[CHAIN] 4. 审计记录 (_record) -> route: {audit['route']}, principal_type: {audit['principal_type']}, processor_kind: {audit['detail']['processor_kind']}, processor_uuid: {audit['detail']['processor_uuid']}, run_id: {audit['detail']['run_id']}")
 
 
 # 4. call 调用未授权的操作，返回 not_found
