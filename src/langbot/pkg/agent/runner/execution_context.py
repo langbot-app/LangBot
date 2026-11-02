@@ -12,6 +12,8 @@ from langbot_plugin.api.entities.builtin.platform import message as platform_mes
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
+from ...api.http.context import ExecutionContext
+
 from .host_models import AgentEventEnvelope
 
 
@@ -110,8 +112,11 @@ def prepare_execution_query(
 def build_execution_query(
     event: AgentEventEnvelope,
     authorized_skill_names: list[str],
+    execution_context: ExecutionContext,
 ) -> pipeline_query.Query:
     """Build the minimum Query view required by Host-owned tool loaders."""
+    if event.workspace_id and event.workspace_id != execution_context.workspace_uuid:
+        raise ValueError('Event Workspace does not match execution context')
     launcher_type, launcher_id, sender_id = _resolve_session_identity(event)
     message_chain = _build_message_chain(event)
     message_event = platform_events.MessageEvent(
@@ -133,6 +138,10 @@ def build_execution_query(
         user_content = event.input.text or ''
 
     query = pipeline_query.Query(
+        instance_uuid=execution_context.instance_uuid,
+        workspace_uuid=execution_context.workspace_uuid,
+        placement_generation=execution_context.placement_generation,
+        query_uuid=execution_context.query_uuid,
         query_id=_synthetic_query_id(event.event_id),
         launcher_type=launcher_type,
         launcher_id=launcher_id,

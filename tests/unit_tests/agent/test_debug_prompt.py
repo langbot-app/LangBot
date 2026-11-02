@@ -291,7 +291,7 @@ async def test_non_debug_query_keeps_effective_prompt_instead_of_static_config(h
         input={'text': 'hello'},
         delivery={'surface': 'test'},
     )
-    query = build_execution_query(event, [])
+    query = build_execution_query(event, [], ExecutionContext.from_request(request_context()))
     query.prompt = Prompt(name='preprocessed', messages=[Message(**message) for message in effective])
     original = query.prompt
     binding = AgentBinding(
