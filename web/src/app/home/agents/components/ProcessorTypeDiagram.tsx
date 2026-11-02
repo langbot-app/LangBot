@@ -375,86 +375,229 @@ function PipelineDiagram() {
 
 function RunnerDiagram() {
   const { t } = useTranslation();
-  const codeLines = [
-    <>
-      <span className="text-[#8b5cf6]">@handler</span>
-    </>,
-    <>
-      <span className="text-[#2288ee]">async def</span>{' '}
-      <span className="text-[#19b8c9]">on_event</span>(event):
-    </>,
-    <>
-      <span className="text-[#2288ee]">if</span> event.type =={' '}
-      <span className="text-amber-500">&quot;message&quot;</span>:
-    </>,
-    <>
-      <span className="text-[#2288ee]">await</span> event.process()
-    </>,
-    <>
-      <span className="text-muted-foreground"># output → trace</span>
-    </>,
+  const arrowId = `runner-arrow-${useId().replace(/:/g, '')}`;
+  const inputs = [
+    { label: t('agents.diagramMessages'), y: 175 },
+    { label: t('agents.diagramMembers'), y: 281 },
+    { label: t('agents.diagramFeedback'), y: 387 },
+  ];
+  const outputs = [
+    { kind: 'action' as const, label: t('agents.diagramActions'), y: 228 },
+    {
+      kind: 'tool' as const,
+      label: t('agents.eventProcessor.logsTab'),
+      y: 334,
+    },
+  ];
+  const mono = 'ui-monospace, SFMono-Regular, Menlo, monospace';
+  // Keyword colors follow the code-editor accents used across the console.
+  const code: { indent: number; parts: [string, string][] }[] = [
+    { indent: 0, parts: [['@handler', '#8b5cf6']] },
+    {
+      indent: 0,
+      parts: [
+        ['async def ', LANGBOT_BLUE],
+        ['on_event', LANGBOT_CYAN],
+        ['(event):', 'var(--foreground)'],
+      ],
+    },
+    {
+      indent: 1,
+      parts: [
+        ['if ', LANGBOT_BLUE],
+        ['event.type == ', 'var(--foreground)'],
+        ['"joined"', '#f59e0b'],
+        [':', 'var(--foreground)'],
+      ],
+    },
+    {
+      indent: 2,
+      parts: [
+        ['await ', LANGBOT_BLUE],
+        ['event.reply(...)', 'var(--foreground)'],
+      ],
+    },
   ];
 
   return (
-    <div
-      className="processor-diagram grid h-full w-full overflow-hidden bg-muted/20 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
+    <svg
+      viewBox="0 0 760 620"
+      role="img"
+      aria-label={t('agents.eventProcessor.type')}
+      className="processor-diagram h-full w-full"
       data-testid="event-processor-diagram"
     >
-      <div className="flex min-w-0 flex-col justify-center gap-5 p-8 lg:p-10">
-        <h3 className="text-lg font-semibold">
-          {t('agents.eventProcessor.type')}
-        </h3>
-        {['input', 'processWithPlugin', 'trace'].map((step, index) => (
-          <div
-            key={step}
-            className="flex items-center gap-3 rounded-lg border bg-background p-4"
-          >
-            <span className="text-primary">{index + 1}</span>
-            <span>{t(`agents.eventProcessor.${step}`)}</span>
-          </div>
-        ))}
-      </div>
+      <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
 
-      <div
-        className="relative hidden min-w-0 items-center border-l bg-background/45 p-8 lg:flex"
-        aria-hidden="true"
+      <rect width="760" height="620" fill="var(--card)" />
+
+      <text
+        x="40"
+        y="150"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
       >
-        <div className="absolute left-0 top-1/2 w-8 -translate-y-1/2 border-t border-dashed border-[#2288ee]/25" />
+        {t('agents.diagram.eventProcessor.input')}
+      </text>
+      {inputs.map((item, index) => (
+        <g key={item.label}>
+          <path
+            d={`M178 ${item.y + 26} C214 ${item.y + 26} 214 310 246 310`}
+            fill="none"
+            stroke={LANGBOT_BLUE}
+            strokeWidth="2"
+            strokeDasharray="4 11"
+            opacity="var(--processor-flow-opacity)"
+            markerEnd={`url(#${arrowId})`}
+            className="processor-line-flow"
+            data-motion="flow"
+            style={{ animationDelay: `${index * -0.35}s` }}
+          />
+          <rect
+            x="40"
+            y={item.y}
+            width="138"
+            height="52"
+            rx="14"
+            fill="var(--processor-blue-node-fill)"
+            stroke={LANGBOT_BLUE}
+            strokeOpacity="var(--processor-node-stroke-opacity)"
+          />
+          <circle
+            cx="64"
+            cy={item.y + 26}
+            r="5"
+            fill={index === 1 ? LANGBOT_CYAN : LANGBOT_BLUE}
+          />
+          <text
+            x="80"
+            y={item.y + 31}
+            fill="var(--foreground)"
+            fontSize="14"
+            fontWeight="550"
+          >
+            {item.label}
+          </text>
+        </g>
+      ))}
 
-        <div className="relative w-full rounded-xl border bg-card">
-          <div className="flex h-11 items-center gap-2 border-b px-4">
-            <span className="font-mono text-[11px] text-muted-foreground">
-              processor.py
-            </span>
-          </div>
-
-          <div className="space-y-3 px-4 py-5 font-mono text-[12px] leading-5">
-            {codeLines.map((line, index) => (
-              <div key={index} className="flex min-w-0 gap-3">
-                <span className="w-4 shrink-0 select-none text-right text-muted-foreground/45">
-                  {index + 1}
-                </span>
-                <code
-                  className={
-                    index === 2 || index === 3
-                      ? 'min-w-0 pl-3 text-foreground/80'
-                      : 'min-w-0 text-foreground/80'
-                  }
-                >
-                  {line}
-                </code>
-              </div>
+      <rect
+        x="250"
+        y="208"
+        width="270"
+        height="204"
+        rx="16"
+        fill="var(--card)"
+        stroke={LANGBOT_BLUE}
+        strokeOpacity="0.45"
+        strokeWidth="1.5"
+      />
+      <path
+        d="M250 224 a16 16 0 0 1 16 -16 h238 a16 16 0 0 1 16 16 v22 h-270z"
+        fill={LANGBOT_BLUE}
+      />
+      <text
+        x="268"
+        y="233"
+        fill="var(--primary-foreground)"
+        fontSize="14"
+        fontWeight="700"
+      >
+        {t('agents.eventProcessor.type')}
+      </text>
+      <text
+        x="502"
+        y="233"
+        textAnchor="end"
+        fill="var(--primary-foreground)"
+        fontSize="11"
+        fontFamily={mono}
+        opacity="0.8"
+      >
+        processor.py
+      </text>
+      {code.map((line, index) => (
+        <g key={index}>
+          <text
+            x="268"
+            y={280 + index * 30}
+            fill="var(--muted-foreground)"
+            fontSize="11"
+            fontFamily={mono}
+            opacity="0.6"
+          >
+            {index + 1}
+          </text>
+          <text
+            x={288 + line.indent * 14}
+            y={280 + index * 30}
+            fontSize="12.5"
+            fontFamily={mono}
+          >
+            {line.parts.map(([textPart, color], partIndex) => (
+              <tspan key={partIndex} fill={color}>
+                {textPart}
+              </tspan>
             ))}
-          </div>
+          </text>
+        </g>
+      ))}
 
-          <div className="mx-4 mb-4 border-t pt-3">
-            <span className="font-mono text-[11px] text-muted-foreground">
-              event → plugin → log
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
+      <text
+        x="566"
+        y="203"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagram.replyOrAction')}
+      </text>
+      {outputs.map((item, index) => (
+        <g key={item.label}>
+          <path
+            d={`M520 310 C546 310 544 ${item.y + 26} 566 ${item.y + 26}`}
+            fill="none"
+            stroke={LANGBOT_CYAN}
+            strokeWidth="1.8"
+            strokeDasharray="5 6"
+            className="processor-link-breathe"
+            data-motion="relation"
+            style={{ animationDelay: `${index * -0.45}s` }}
+          />
+          <rect
+            x="566"
+            y={item.y}
+            width="154"
+            height="52"
+            rx="14"
+            fill="var(--processor-capability-fill)"
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
+            strokeWidth="1.5"
+          />
+          <circle
+            cx="592"
+            cy={item.y + 26}
+            r="11"
+            fill="var(--processor-icon-fill)"
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
+          />
+          <CapabilityIcon kind={item.kind} x={592} y={item.y + 26} />
+          <text
+            x="611"
+            y={item.y + 31}
+            fill="var(--foreground)"
+            fontSize="14"
+            fontWeight="550"
+          >
+            {item.label}
+          </text>
+        </g>
+      ))}
+    </svg>
   );
 }
 

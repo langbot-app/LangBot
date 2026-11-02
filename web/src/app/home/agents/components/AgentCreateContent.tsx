@@ -265,12 +265,10 @@ export default function AgentCreateContent({
       bestFor: t('agents.diagram.commandProcessor.bestFor'),
     },
   ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
-  const pluginSelected = pluginOptions.some((option) => option.kind === kind);
+  const selectedPlugin = pluginOptions.find((option) => option.kind === kind);
   const optionClass =
     'h-auto w-full items-start justify-start gap-3 rounded-lg border px-4 py-3.5 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10';
-  function renderOption(
-    option: (typeof typeOptions)[number] | (typeof pluginOptions)[number],
-  ) {
+  function renderOption(option: (typeof typeOptions)[number]) {
     const Icon = option.icon;
     return (
       <ToggleGroupItem
@@ -290,14 +288,79 @@ export default function AgentCreateContent({
           <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
             {option.description}
           </span>
-          <span className="block text-xs font-normal leading-relaxed text-muted-foreground">
-            <span className="font-medium text-foreground/80">
-              {t('agents.diagram.bestFor')}
+          {kind === option.kind && (
+            <span className="block text-xs font-normal leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                {t('agents.diagram.bestFor')}
+              </span>
+              {option.bestFor}
             </span>
-            {option.bestFor}
-          </span>
+          )}
         </span>
       </ToggleGroupItem>
+    );
+  }
+  // Plugin-provided kinds stay compact until chosen; details appear for the selection only.
+  function renderPluginGroup() {
+    return (
+      <div
+        className={`w-full rounded-lg border px-4 py-3.5 transition-colors ${
+          selectedPlugin
+            ? 'border-[#2288ee]/50 bg-blue-50/60 dark:border-blue-500/50 dark:bg-blue-500/10'
+            : 'hover:bg-muted/40'
+        }`}
+      >
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 text-left"
+          onClick={() => {
+            if (!selectedPlugin && pluginOptions[0])
+              handleKindChange(pluginOptions[0].kind);
+          }}
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+            <Blocks className="size-4" />
+          </span>
+          <span className="min-w-0 space-y-1">
+            <span className="block text-sm font-medium">
+              {t('agents.fromPlugin')}
+            </span>
+            <span className="block text-sm leading-relaxed text-muted-foreground">
+              {t('agents.fromPluginDescription')}
+            </span>
+          </span>
+        </button>
+        <div className="mt-3 flex flex-wrap gap-2 pl-12">
+          {pluginOptions.map((option) => {
+            const Icon = option.icon;
+            return (
+              <ToggleGroupItem
+                key={option.kind}
+                value={option.kind}
+                data-processor-kind={option.kind}
+                aria-label={`${option.title} ${option.description}`}
+                className="h-8 flex-none gap-1.5 rounded-md border bg-background px-3 text-sm font-normal shadow-none data-[state=on]:border-[#2288ee] data-[state=on]:bg-background data-[state=on]:text-[#2288ee]"
+              >
+                <Icon className="size-4" />
+                {option.title}
+              </ToggleGroupItem>
+            );
+          })}
+        </div>
+        {selectedPlugin && (
+          <div className="mt-3 space-y-1 pl-12">
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {selectedPlugin.description}
+            </p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                {t('agents.diagram.bestFor')}
+              </span>
+              {selectedPlugin.bestFor}
+            </p>
+          </div>
+        )}
+      </div>
     );
   }
   return (
@@ -356,32 +419,7 @@ export default function AgentCreateContent({
                   className="flex w-full flex-col items-stretch gap-3"
                 >
                   {typeOptions.map(renderOption)}
-                  {pluginOptions.length > 0 && (
-                    <div
-                      className={`w-full rounded-xl border p-3 transition-colors ${
-                        pluginSelected
-                          ? 'border-[#2288ee]/40 bg-muted/20'
-                          : 'border-dashed'
-                      }`}
-                    >
-                      <div className="mb-3 flex items-start gap-3 px-1">
-                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
-                          <Blocks className="size-4" />
-                        </span>
-                        <span className="min-w-0 space-y-1">
-                          <span className="block text-sm font-medium">
-                            {t('agents.fromPlugin')}
-                          </span>
-                          <span className="block text-sm leading-relaxed text-muted-foreground">
-                            {t('agents.fromPluginDescription')}
-                          </span>
-                        </span>
-                      </div>
-                      <div className="grid gap-2">
-                        {pluginOptions.map(renderOption)}
-                      </div>
-                    </div>
-                  )}
+                  {pluginOptions.length > 0 && renderPluginGroup()}
                 </ToggleGroup>
               </section>
 
