@@ -35,11 +35,16 @@ import {
   ChevronRight,
   Webhook,
   Search,
+  TerminalSquare,
+  Route,
+  Puzzle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Switch } from '@/components/ui/switch';
 import EventBindingsEditor from './EventBindingsEditor';
 import EventRoutingHelp from './EventRoutingHelp';
 import LegacyAdapterHelp from './LegacyAdapterHelp';
+import PluginCommandBindings from './PluginCommandBindings';
 import PluginProcessorBindings from './PluginProcessorBindings';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -86,6 +91,50 @@ import GuidedTour, {
 } from '@/app/home/components/guided-tour/GuidedTour';
 
 type ConnectionMode = 'webhook' | 'persistent';
+
+function RoutingLayer({
+  icon: Icon,
+  title,
+  description,
+  count,
+  action,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  description: string;
+  count: number;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="overflow-hidden rounded-xl border bg-card"
+    >
+      <header className="flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
+        <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-background text-primary shadow-xs">
+          <Icon className="size-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold">{title}</h3>
+            {count > 0 && (
+              <span className="rounded-full bg-muted-foreground/15 px-1.5 text-[11px] leading-4 tabular-nums">
+                {count}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        </div>
+        {action && <div className="shrink-0 pt-0.5">{action}</div>}
+      </header>
+      <div className="p-4">{children}</div>
+    </section>
+  );
+}
 
 function supportsConnectionMode(
   config: IDynamicFormItemSchema[],
@@ -174,6 +223,18 @@ const getFormSchema = (t: (key: string) => string) =>
     plugin_processors: z
       .array(z.object({ processor_uuid: z.string(), enabled: z.boolean() }))
       .optional(),
+    command_settings: z
+      .object({
+        enabled: z.boolean(),
+        prefixes: z.array(z.string()),
+        processors: z.array(
+          z.object({
+            processor_uuid: z.string(),
+            enabled: z.boolean(),
+          }),
+        ),
+      })
+      .optional(),
     event_bindings: z
       .array(
         z.object({
@@ -234,6 +295,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: true,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: {
+        enabled: true,
+        prefixes: ['/'],
+        processors: [],
+      },
     },
   });
 
@@ -383,6 +449,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                 enable: val.enable,
                 event_bindings: val.event_bindings || [],
                 plugin_processors: val.plugin_processors || [],
+                command_settings: val.command_settings || {
+                  enabled: true,
+                  prefixes: ['/'],
+                  processors: [],
+                },
               });
               handleAdapterSelect(val.adapter, true);
 
@@ -509,6 +580,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
             enable: bot.enable ?? true,
             event_bindings: bot.event_bindings ?? [],
             plugin_processors: bot.plugin_processors ?? [],
+            command_settings: bot.command_settings,
             webhook_full_url: runtimeValues?.webhook_full_url as
               string | undefined,
             extra_webhook_full_url: runtimeValues?.extra_webhook_full_url as
@@ -667,6 +739,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: false,
       event_bindings: [],
       plugin_processors: [],
+      command_settings: form.getValues('command_settings') || {
+        enabled: true,
+        prefixes: ['/'],
+        processors: [],
+      },
     };
 
     try {
@@ -726,6 +803,7 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
       enable: true,
       event_bindings: form.getValues().event_bindings ?? [],
       plugin_processors: form.getValues().plugin_processors ?? [],
+      command_settings: form.getValues().command_settings,
     };
     httpClient
       .updateBot(initBotId, updateBot)
@@ -754,6 +832,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     (form.watch('plugin_processors') ?? []).some(
       (processor) => processor.enabled !== false && !!processor.processor_uuid,
     );
+
+  const routeCount = (form.watch('event_bindings') ?? []).length;
+  const commandProcessorCount = (
+    form.watch('command_settings')?.processors ?? []
+  ).length;
+  const pluginProcessorCount = (form.watch('plugin_processors') ?? []).length;
 
   if (loadFailed)
     return (
@@ -1310,33 +1394,94 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                   initBotId && 'lg:min-h-0 lg:flex-1 lg:overflow-y-auto',
                 )}
               >
-                <EventBindingsEditor
-                  form={form}
-                  onAgentCreated={(agent) =>
-                    setAgentNameList((items) => [
-                      ...items.filter((item) => item.uuid !== agent.uuid),
-                      agent,
-                    ])
-                  }
-                  botId={initBotId}
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  agentOptions={agentNameList.filter(
-                    (agent) => agent.kind !== 'event_processor',
-                  )}
-                />
-                <PluginProcessorBindings
-                  supportedEvents={adapterSupportedEvents[currentAdapter] || []}
-                  value={form.watch('plugin_processors') ?? []}
-                  onChange={(value) =>
-                    form.setValue('plugin_processors', value, {
-                      shouldDirty: true,
-                    })
-                  }
-                  agents={agentNameList}
-                  onCreated={(agent) =>
-                    setAgentNameList((items) => [...items, agent])
-                  }
-                />
+                <div className="flex flex-col gap-5">
+                  <RoutingLayer
+                    icon={TerminalSquare}
+                    title={t('bots.routingLayers.commands')}
+                    description={t('bots.pluginCommands.description')}
+                    count={commandProcessorCount}
+                    action={
+                      <Switch
+                        checked={
+                          form.watch('command_settings')?.enabled ?? true
+                        }
+                        onCheckedChange={(enabled) =>
+                          form.setValue(
+                            'command_settings',
+                            {
+                              prefixes: ['/'],
+                              processors: [],
+                              ...form.getValues('command_settings'),
+                              enabled,
+                            },
+                            { shouldDirty: true },
+                          )
+                        }
+                        aria-label={t('bots.routingLayers.commands')}
+                      />
+                    }
+                  >
+                    <PluginCommandBindings
+                      value={form.watch('command_settings')}
+                      onChange={(value) =>
+                        form.setValue('command_settings', value, {
+                          shouldDirty: true,
+                        })
+                      }
+                      agents={agentNameList}
+                      onCreated={(agent) =>
+                        setAgentNameList((items) => [...items, agent])
+                      }
+                    />
+                  </RoutingLayer>
+                  <RoutingLayer
+                    icon={Route}
+                    title={t('bots.routingLayers.rules')}
+                    description={t('bots.routingLayers.rulesDescription')}
+                    count={routeCount}
+                  >
+                    <EventBindingsEditor
+                      form={form}
+                      onAgentCreated={(agent) =>
+                        setAgentNameList((items) => [
+                          ...items.filter((item) => item.uuid !== agent.uuid),
+                          agent,
+                        ])
+                      }
+                      botId={initBotId}
+                      supportedEvents={
+                        adapterSupportedEvents[currentAdapter] || []
+                      }
+                      agentOptions={agentNameList.filter(
+                        (agent) =>
+                          agent.kind !== 'event_processor' &&
+                          agent.kind !== 'command_processor',
+                      )}
+                    />
+                  </RoutingLayer>
+                  <RoutingLayer
+                    icon={Puzzle}
+                    title={t('bots.routingLayers.processors')}
+                    description={t('bots.pluginSubscriptions.description')}
+                    count={pluginProcessorCount}
+                  >
+                    <PluginProcessorBindings
+                      supportedEvents={
+                        adapterSupportedEvents[currentAdapter] || []
+                      }
+                      value={form.watch('plugin_processors') ?? []}
+                      onChange={(value) =>
+                        form.setValue('plugin_processors', value, {
+                          shouldDirty: true,
+                        })
+                      }
+                      agents={agentNameList}
+                      onCreated={(agent) =>
+                        setAgentNameList((items) => [...items, agent])
+                      }
+                    />
+                  </RoutingLayer>
+                </div>
               </CardContent>
             </Card>
           )}

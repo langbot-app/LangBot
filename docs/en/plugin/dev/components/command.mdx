@@ -2,7 +2,7 @@
 title: "Component: Command"
 ---
 
-Command components are triggered by user command messages starting with `!` (or other configured prefixes). Here's an example of triggering the `!help` command:
+Command components are triggered by user command messages starting with a prefix (such as `/` or custom prefixes). You can now directly bind plugin commands in bot settings; when matched, commands execute directly at the routing layer and bypass plugin processors and pipelines. Here's an example of triggering a command:
 
 <img width="600" src="/images/zh/plugin/dev/components/command_use.png" />
 
@@ -52,6 +52,25 @@ execution:
     path: info.py  # Command handler, do not modify
     attr: Info  # Command handler class name, matches the class name in info.py
 ```
+
+## Command Configuration
+
+A command can declare a configuration form in its manifest `spec.config`, using the same format as a Runner's `spec.config`:
+
+```yaml
+spec:
+  config:
+    - name: style
+      type: string
+      label:
+        en_US: Style
+        zh_Hans: 风格
+      default: plain
+```
+
+Users create a **command processor** on the processors page by selecting a plugin, then fill in the configuration of each of its commands. One plugin can have several command processors, each bound to different bots. At execution time, read the values of the instance bound to the current bot from `context.config`; missing fields use their `default`. Commands triggered through a Pipeline use the defaults.
+
+Commands without `spec.config` need no changes: create a command processor and they work as before, with `context.config` as an empty dict. Plugin-level settings are still available through `self.get_plugin_config()`.
 
 ## Plugin Processing
 
@@ -185,6 +204,9 @@ class ExecuteContext(pydantic.BaseModel):
 
     privilege: int
     """Session privilege level"""
+
+    config: dict[str, Any]
+    """Configuration of the bound command processor instance, filled from spec.config"""
 
     ...
 ```

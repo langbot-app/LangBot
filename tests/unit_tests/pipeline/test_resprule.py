@@ -68,7 +68,10 @@ async def test_group_message_no_match(mock_app, sample_query):
 @pytest.mark.asyncio
 async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query):
     resprule, entities, rule, _ = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': True, 'prefix': ['!', '！']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.launcher_id = '12345'
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!stop')])
@@ -90,7 +93,10 @@ async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query
 @pytest.mark.asyncio
 async def test_other_group_commands_still_obey_response_rules(mock_app, sample_query):
     resprule, entities, rule, rule_entities = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': True, 'prefix': ['!', '！']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.launcher_id = '12345'
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!list')])
@@ -114,7 +120,10 @@ async def test_other_group_commands_still_obey_response_rules(mock_app, sample_q
 @pytest.mark.asyncio
 async def test_group_stop_obeys_response_rules_when_commands_are_disabled(mock_app, sample_query):
     resprule, entities, rule, rule_entities = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': False, 'prefix': ['!']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': False, 'prefixes': ['!']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!stop')])
     sample_query.pipeline_config = {

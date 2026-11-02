@@ -14,8 +14,9 @@ from langbot.pkg.pipeline.pool import QueryPool
 
 def make_app():
     app = SimpleNamespace()
-    app.instance_config = SimpleNamespace(
-        data={'concurrency': {'pipeline': 10}, 'command': {'enable': True, 'prefix': ['!', '！']}}
+    app.instance_config = SimpleNamespace(data={'concurrency': {'pipeline': 10}})
+    app.bot_service = SimpleNamespace(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
     )
     app.logger = MagicMock()
     app.pipeline_mgr = SimpleNamespace()
@@ -47,6 +48,7 @@ def make_query(query_id: int, pipeline_uuid: str):
     return SimpleNamespace(
         query_id=query_id,
         pipeline_uuid=pipeline_uuid,
+        bot_uuid='bot-test',
         variables={},
         _execution_context=context,
     )

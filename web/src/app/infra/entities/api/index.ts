@@ -217,7 +217,8 @@ export interface ApiRespPipelines {
   pipelines: Pipeline[];
 }
 
-export type AgentKind = 'agent' | 'pipeline' | 'event_processor';
+export type AgentKind =
+  'agent' | 'pipeline' | 'event_processor' | 'command_processor';
 
 export interface RunnerDescriptor {
   id: string;
@@ -251,7 +252,25 @@ export interface ProcessorRun {
     input?: { text?: string; contents?: unknown[]; attachments?: unknown[] };
     input_event?: unknown;
     delivery?: unknown;
+    command?: string;
   };
+}
+
+export interface CommandOutput {
+  text?: string;
+  error?: string;
+  image_url?: string;
+  image?: string;
+  file_url?: string;
+  file_name?: string;
+}
+
+export interface CommandDebugResult {
+  run_id: string | null;
+  status: 'completed' | 'failed';
+  command: string;
+  outputs: CommandOutput[];
+  error: string | null;
 }
 
 export interface ProcessorRunEvent {
@@ -303,6 +322,7 @@ export interface ApiRespAgent {
 
 export interface GetAgentMetadataResponseData {
   event_processors?: RunnerDescriptor[];
+  command_processors?: CommandProcessorDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];
   host_tools?: PluginTool[] | null;
@@ -378,9 +398,34 @@ export interface Bot {
   adapter_config: object;
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
+  command_settings?: BotCommandSettings;
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
+}
+
+export interface BotCommandProcessorBinding {
+  processor_uuid: string;
+  enabled: boolean;
+}
+
+export interface CommandComponentDescriptor {
+  name: string;
+  label: Record<string, string>;
+  description?: Record<string, string> | null;
+  config_schema: import('../form/dynamic').IDynamicFormItemSchema[];
+}
+
+export interface CommandProcessorDescriptor {
+  id: string;
+  plugin_id: string;
+  commands: CommandComponentDescriptor[];
+}
+
+export interface BotCommandSettings {
+  enabled: boolean;
+  prefixes: string[];
+  processors: BotCommandProcessorBinding[];
 }
 
 export interface PluginProcessorBinding {
@@ -391,7 +436,7 @@ export interface PluginProcessorBinding {
 export interface EventBinding {
   id?: string;
   event_pattern: string;
-  target_type: AgentKind | 'discard';
+  target_type: Exclude<AgentKind, 'command_processor'> | 'discard';
   target_uuid: string;
   filters?: Array<Record<string, unknown>>;
   priority: number;

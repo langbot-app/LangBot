@@ -6,6 +6,7 @@ import inspect
 from ..api.http.context import ExecutionContext
 from ..core import app
 from . import operator
+from . import processor as command_processor
 from ..utils import importutil
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -82,49 +83,80 @@ class CommandManager:
 
         for command in command_list:
             if command.metadata.name == context.command:
+                self._apply_command_config(context, command)
                 async for ret in self.ap.plugin_connector.execute_command(context, bound_plugins):
                     yield ret
                 break
         else:
             yield command_context.CommandReturn(error=command_errors.CommandNotFoundError(context.command))
 
-    async def resolve_privilege(self, query: pipeline_query.Query) -> int:
-        """Resolve the command privilege for one platform query."""
-        privilege = 1
+    @staticmethod
+    def _apply_command_config(context: command_context.ExecuteContext, command: typing.Any) -> None:
+        """Expose schema defaults under instance values; skipped on SDKs without ExecuteContext.config."""
+        if 'config' not in type(context).model_fields:
+            return
+        context.config = command_processor.merge_command_config(
+            command_processor.command_config_schema(command),
+            getattr(context, 'config', None),
+        )
 
+    async def is_admin(
+        self,
+        workspace_uuid: str,
+        bot_uuid: str,
+        launcher_type: str,
+        launcher_id: str,
+    ) -> bool:
+        """Check if launcher has admin privilege for bot"""
         import sqlalchemy as _sa
         from ..entity.persistence.bot import BotAdmin as _BotAdmin
 
         _admins = await self.ap.persistence_mgr.execute_async(
             _sa.select(_BotAdmin).where(
-                _BotAdmin.workspace_uuid == query.workspace_uuid,
-                _BotAdmin.bot_uuid == (query.bot_uuid or ''),
-                _BotAdmin.launcher_type == query.launcher_type.value,
-                _BotAdmin.launcher_id == str(query.launcher_id),
+                _BotAdmin.workspace_uuid == workspace_uuid,
+                _BotAdmin.bot_uuid == (bot_uuid or ''),
+                _BotAdmin.launcher_type == launcher_type,
+                _BotAdmin.launcher_id == str(launcher_id),
             )
         )
-        if _admins.first() is not None:
-            privilege = 2
+        return _admins.first() is not None
 
-        return privilege
+    async def resolve_privilege(self, query: pipeline_query.Query) -> int:
+        """Resolve the command privilege for one platform query."""
+        is_adm = await self.is_admin(
+            query.workspace_uuid,
+            query.bot_uuid or '',
+            query.launcher_type.value,
+            str(query.launcher_id),
+        )
+        return 2 if is_adm else 1
 
-    async def execute(
+    async def build_context(
         self,
+        *,
         command_text: str,
         full_command_text: str,
-        query: pipeline_query.Query,
         session: provider_session.Session,
-    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
-        """执行命令"""
-
-        privilege = await self.resolve_privilege(query)
+        instance_uuid: str,
+        workspace_uuid: str,
+        placement_generation: int,
+        query_id: str,
+        query_uuid: str,
+        bot_uuid: str,
+        launcher_type: str,
+        launcher_id: str,
+        config: dict | None = None,
+    ) -> command_context.ExecuteContext:
+        """Construct command execution context."""
+        is_adm = await self.is_admin(workspace_uuid, bot_uuid, launcher_type, launcher_id)
+        privilege = 2 if is_adm else 1
 
         ctx = command_context.ExecuteContext(
-            instance_uuid=query.instance_uuid,
-            workspace_uuid=query.workspace_uuid,
-            placement_generation=query.placement_generation,
-            query_id=query.query_id,
-            query_uuid=query.query_uuid,
+            instance_uuid=instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=placement_generation,
+            query_id=query_id,
+            query_uuid=query_uuid,
             session=session,
             command_text=command_text,
             full_command_text=full_command_text,
@@ -134,13 +166,45 @@ class CommandManager:
             crt_params=command_text.split(' '),
             privilege=privilege,
         )
+        if config and 'config' in command_context.ExecuteContext.model_fields:
+            ctx.config = dict(config)
 
         ctx.command = ctx.params[0]
-
         ctx.shift()
+        return ctx
 
-        # Get bound plugins from query
+    async def execute_command(
+        self,
+        context: command_context.ExecuteContext,
+        bound_plugins: list[str] | None = None,
+    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
+        """Execute a prepared command context."""
+        async for ret in self._execute(context, self.cmd_list, bound_plugins=bound_plugins):
+            yield ret
+
+    async def execute(
+        self,
+        command_text: str,
+        full_command_text: str,
+        query: pipeline_query.Query,
+        session: provider_session.Session,
+    ) -> typing.AsyncGenerator[command_context.CommandReturn, None]:
+        """执行命令（流水线入口）"""
+
         bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
+        ctx = await self.build_context(
+            command_text=command_text,
+            full_command_text=full_command_text,
+            session=session,
+            instance_uuid=query.instance_uuid,
+            workspace_uuid=query.workspace_uuid,
+            placement_generation=query.placement_generation,
+            query_id=query.query_id,
+            query_uuid=query.query_uuid,
+            bot_uuid=query.bot_uuid or '',
+            launcher_type=query.launcher_type.value,
+            launcher_id=str(query.launcher_id),
+        )
 
-        async for ret in self._execute(ctx, self.cmd_list, bound_plugins=bound_plugins):
+        async for ret in self.execute_command(ctx, bound_plugins=bound_plugins):
             yield ret

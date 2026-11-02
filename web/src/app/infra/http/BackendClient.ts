@@ -1,5 +1,6 @@
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
+import type { ComponentManifest } from '@/app/infra/entities/common';
 import type {
   PipelineMigrationPreview,
   PipelineMigrationRequest,
@@ -502,6 +503,13 @@ export class BackendClient extends BaseHttpClient {
     }>;
   }> {
     return this.post(`/api/v1/agents/${uuid}/debug`, payload);
+  }
+
+  public debugCommandProcessor(
+    uuid: string,
+    text: string,
+  ): Promise<import('../entities/api').CommandDebugResult> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, { text });
   }
 
   public async streamDebugAgent(
@@ -1058,6 +1066,10 @@ export class BackendClient extends BaseHttpClient {
   // ============ Plugins API ============
   public getPlugins(): Promise<ApiRespPlugins> {
     return this.get('/api/v1/plugins');
+  }
+
+  public getPluginCommands(): Promise<{ commands: ComponentManifest[] }> {
+    return this.get('/api/v1/plugins/commands');
   }
 
   public getPlugin(author: string, name: string): Promise<ApiRespPlugin> {

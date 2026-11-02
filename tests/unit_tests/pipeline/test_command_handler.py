@@ -157,152 +157,94 @@ class TestCommandHandlerReal:
         assert executed_commands[0] == 'help arg1 arg2'
 
     @pytest.mark.asyncio
-    async def test_admin_privilege_check(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """A per-bot admin from the database is marked as admin in command events."""
-        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
-
+    async def test_command_does_not_emit_events(self, fake_app, mock_execute_factory):
+        """CommandHandler executes directly without emitting PersonCommandSent or GroupCommandSent."""
         command = get_command_handler()
-
-        admin_result = Mock()
-        admin_result.first.return_value = Mock()
-        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
-        fake_app.instance_config.data = {}
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        fake_app.plugin_connector.emit_event = AsyncMock()
         fake_app.cmd_mgr.execute = mock_execute_factory()
 
         handler = command.CommandHandler(fake_app)
-        query = command_query('status')
-        query.bot_uuid = 'bot-1'
-        query.launcher_type = LauncherTypes.PERSON
-        query.launcher_id = 12345
+        query = command_query('help')
 
         results = []
         async for result in handler.handle(query):
             results.append(result)
 
-        fake_app.persistence_mgr.execute_async.assert_awaited_once()
-        call_args = fake_app.plugin_connector.emit_event.call_args
-        event = call_args[0][0]
-        assert event.is_admin is True
+        fake_app.plugin_connector.emit_event.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_non_admin_privilege_check(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """A launcher absent from the per-bot admin table is not an admin."""
-        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
-
+    async def test_command_custom_prefix_matching(self, fake_app, mock_execute_factory):
+        """CommandHandler respects custom prefix configured on bot."""
         command = get_command_handler()
+        fake_app.plugin_connector.emit_event = AsyncMock()
 
-        admin_result = Mock()
-        admin_result.first.return_value = None
-        fake_app.persistence_mgr.execute_async = AsyncMock(return_value=admin_result)
-        fake_app.instance_config.data = {}
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-        fake_app.cmd_mgr.execute = mock_execute_factory()
+        executed = []
+
+        async def track_execute(command_text, full_command_text, query, session):
+            executed.append(command_text)
+            ret = Mock()
+            ret.text = 'ok'
+            ret.error = None
+            ret.image_url = None
+            ret.image_base64 = None
+            ret.file_url = None
+            yield ret
+
+        fake_app.cmd_mgr.execute = track_execute
+        fake_app.bot_service = Mock()
+        fake_app.bot_service.get_bot = AsyncMock(
+            return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '//']}}
+        )
 
         handler = command.CommandHandler(fake_app)
-        query = command_query('status')
-        query.bot_uuid = 'bot-1'
-        query.launcher_type = LauncherTypes.PERSON
-        query.launcher_id = 67890
-
-        results = []
-        async for result in handler.handle(query):
-            results.append(result)
-
-        fake_app.persistence_mgr.execute_async.assert_awaited_once()
-        call_args = fake_app.plugin_connector.emit_event.call_args
-        event = call_args[0][0]
-        assert event.is_admin is False
-
-    @pytest.mark.asyncio
-    async def test_prevent_default_with_reply_continues(self, fake_app, mock_event_ctx):
-        """prevent_default with reply yields CONTINUE."""
+        query = command_query('test')
+        query.bot_uuid = 'bot-custom'
+        # The raw text has '//' prefix
         from tests.factories.message import text_chain
 
-        command = get_command_handler()
-        entities = get_entities()
+        query.message_chain = text_chain('//run action')
 
-        reply_chain = text_chain('plugin reply')
-        mock_event_ctx.is_prevented_default.return_value = True
-        mock_event_ctx.event.reply_message_chain = reply_chain
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+        results = []
+        async for result in handler.handle(query):
+            results.append(result)
+
+        assert executed[0] == 'run action'
+
+    @pytest.mark.asyncio
+    async def test_command_reads_from_platform_mgr_without_db(self, fake_app):
+        """CommandHandler reads prefixes from in-memory RuntimeBot in platform_mgr without hitting bot_service."""
+        command = get_command_handler()
+        executed = []
+
+        async def track_execute(*args, **kwargs):
+            executed.append(kwargs.get('command_text'))
+            ret = Mock()
+            ret.error = None
+            ret.text = 'ok'
+            ret.image_url = None
+            ret.image_base64 = None
+            ret.file_url = None
+            yield ret
+
+        fake_app.cmd_mgr.execute = track_execute
+        mock_runtime_bot = Mock()
+        mock_runtime_bot.bot_entity = Mock(command_settings={'enabled': True, 'prefixes': ['#']})
+        fake_app.platform_mgr = Mock(get_bot_by_uuid=AsyncMock(return_value=mock_runtime_bot))
+        fake_app.bot_service = Mock(get_bot=AsyncMock())
 
         handler = command.CommandHandler(fake_app)
         query = command_query('test')
-        query.resp_messages = []
+        query.bot_uuid = 'bot-runtime'
+        from tests.factories.message import text_chain
 
-        results = []
-        async for result in handler.handle(query):
-            results.append(result)
+        query.message_chain = text_chain('#run task')
 
-        assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.CONTINUE
-        assert len(query.resp_messages) == 1
-        assert query.resp_messages[0] == reply_chain
+        async for _ in handler.handle(query):
+            pass
 
-    @pytest.mark.asyncio
-    async def test_prevent_default_without_reply_interrupts(self, fake_app, mock_event_ctx):
-        """prevent_default without reply yields INTERRUPT."""
-        command = get_command_handler()
-        entities = get_entities()
-
-        mock_event_ctx.is_prevented_default.return_value = True
-        mock_event_ctx.event.reply_message_chain = None
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-
-        handler = command.CommandHandler(fake_app)
-        query = command_query('test')
-
-        results = []
-        async for result in handler.handle(query):
-            results.append(result)
-
-        assert len(results) == 1
-        assert results[0].result_type == entities.ResultType.INTERRUPT
-
-    @pytest.mark.asyncio
-    async def test_event_type_person_command(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """Person launcher creates PersonCommandSent event."""
-        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
-        from langbot_plugin.api.entities import events
-
-        command = get_command_handler()
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-        fake_app.cmd_mgr.execute = mock_execute_factory()
-
-        handler = command.CommandHandler(fake_app)
-        query = command_query('help')
-        query.launcher_type = LauncherTypes.PERSON
-
-        results = []
-        async for result in handler.handle(query):
-            results.append(result)
-
-        call_args = fake_app.plugin_connector.emit_event.call_args
-        event = call_args[0][0]
-        assert isinstance(event, events.PersonCommandSent)
-
-    @pytest.mark.asyncio
-    async def test_event_type_group_command(self, fake_app, mock_event_ctx, mock_execute_factory):
-        """Group launcher creates GroupCommandSent event."""
-        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
-        from langbot_plugin.api.entities import events
-
-        command = get_command_handler()
-        fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-        fake_app.cmd_mgr.execute = mock_execute_factory()
-
-        handler = command.CommandHandler(fake_app)
-        query = command_query('help')
-        query.launcher_type = LauncherTypes.GROUP
-
-        results = []
-        async for result in handler.handle(query):
-            results.append(result)
-
-        call_args = fake_app.plugin_connector.emit_event.call_args
-        event = call_args[0][0]
-        assert isinstance(event, events.GroupCommandSent)
+        assert executed[0] == 'run task'
+        fake_app.platform_mgr.get_bot_by_uuid.assert_awaited_once()
+        fake_app.bot_service.get_bot.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_command_result_text(self, fake_app, mock_event_ctx, mock_execute_factory):

@@ -8,6 +8,7 @@ import sqlalchemy
 
 from ....core import app
 from ....discover import engine
+from ....command import processor as command_processor
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -41,6 +42,7 @@ class BotService:
         'enable',
         'event_bindings',
         'plugin_processors',
+        'command_settings',
     }
 
     def __init__(self, ap: app.Application) -> None:
@@ -659,6 +661,62 @@ class BotService:
             normalized.append({'processor_uuid': processor_uuid, 'enabled': enabled})
         return normalized
 
+    async def _normalize_command_settings(self, context: TenantContext, settings: typing.Any) -> dict:
+        """Validate command settings for a bot."""
+        if not isinstance(settings, dict):
+            raise ValueError('command_settings must be an object')
+        enabled = settings.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValueError('command_settings.enabled must be a boolean')
+
+        prefixes = settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or len(prefixes) == 0:
+            raise ValueError('command_settings.prefixes must be a non-empty list')
+        normalized_prefixes = []
+        for p in prefixes:
+            if not isinstance(p, str) or not p.strip() or any(c.isspace() for c in p):
+                raise ValueError('Each prefix must be a non-empty string without whitespace')
+            if p not in normalized_prefixes:
+                normalized_prefixes.append(p)
+
+        processors = settings.get('processors', [])
+        if not isinstance(processors, list):
+            raise ValueError('command_settings.processors must be a list')
+
+        normalized_processors = []
+        seen_processors: set[str] = set()
+        seen_plugins: set[str] = set()
+        for item in processors:
+            if not isinstance(item, dict):
+                raise ValueError('Each command processor binding must be an object')
+            processor_uuid = item.get('processor_uuid')
+            if not isinstance(processor_uuid, str) or not processor_uuid.strip():
+                raise ValueError('Command processor UUID is required')
+            processor_uuid = processor_uuid.strip()
+            if processor_uuid in seen_processors:
+                raise ValueError('A command processor can only be bound once per bot')
+            processor_enabled = item.get('enabled', True)
+            if not isinstance(processor_enabled, bool):
+                raise ValueError('Command processor enabled must be a boolean')
+            agent = await self._get_agent_entity(context, processor_uuid)
+            if agent is None or agent.kind != command_processor.COMMAND_PROCESSOR_KIND:
+                raise ValueError('Command processor not found')
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+            if plugin_id is None:
+                raise ValueError('Command processor has no plugin')
+            if plugin_id in seen_plugins:
+                # Two instances of one plugin expose the same commands; the later one could never match.
+                raise ValueError('Only one command processor per plugin can be bound to a bot')
+            seen_processors.add(processor_uuid)
+            seen_plugins.add(plugin_id)
+            normalized_processors.append({'processor_uuid': processor_uuid, 'enabled': processor_enabled})
+
+        return {
+            'enabled': enabled,
+            'prefixes': normalized_prefixes,
+            'processors': normalized_processors,
+        }
+
     async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
@@ -675,6 +733,10 @@ class BotService:
         if 'plugin_processors' in update_data:
             update_data['plugin_processors'] = await self._normalize_plugin_processors(
                 context, update_data['plugin_processors']
+            )
+        if 'command_settings' in update_data:
+            update_data['command_settings'] = await self._normalize_command_settings(
+                context, update_data['command_settings']
             )
         return update_data
 
@@ -779,6 +841,7 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
+        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'processors': []})
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
         bot_data.setdefault('description', '')
@@ -814,7 +877,14 @@ class BotService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
 
-        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors'}
+        runtime_fields = {
+            'adapter',
+            'adapter_config',
+            'enable',
+            'event_bindings',
+            'plugin_processors',
+            'command_settings',
+        }
         if not runtime_fields.intersection(update_data):
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
             if runtime_bot is not None:

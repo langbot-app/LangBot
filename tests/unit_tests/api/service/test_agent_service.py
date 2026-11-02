@@ -151,6 +151,11 @@ class TestAgentServiceMetadata:
                 'message_only': True,
             },
             {'name': 'event_processor', 'supported_event_patterns': ['*'], 'message_only': False},
+            {
+                'name': 'command_processor',
+                'supported_event_patterns': ['message.received'],
+                'message_only': True,
+            },
         ]
 
 

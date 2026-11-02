@@ -907,11 +907,35 @@ const enUS = {
     },
   },
   bots: {
+    pluginCommands: {
+      missingProcessor: 'Processor unavailable',
+      instanceHint: 'Bind a configured command processor.',
+      createDefault: 'Create default instance',
+      createDefaultHint: 'Use command defaults.',
+      title: 'Plugin Command Bindings',
+      description:
+        'Only applies to message.received events; when a plugin command matches, execution happens directly at the routing layer and bypasses plugin processors, routing rules, and pipelines.',
+      prefixes: 'Command Prefixes',
+      prefixPlaceholder: 'Enter prefix and press Enter (e.g. / or !)',
+      addPrefix: 'Add Prefix',
+      prefixInvalid: 'Prefix cannot be empty and cannot contain whitespace',
+      prefixDuplicate: 'Prefix already exists',
+      plugins: 'Bound Plugin Commands',
+      empty: 'No plugin commands bound yet.',
+      addPlugin: 'Add Plugin',
+      noAvailablePlugins: 'No available plugins declare command components.',
+      selectPlugins: 'Select plugins to bind',
+      dragHint: 'Drag to reorder priority (higher plugins match first)',
+      commandsCount: '{{count}} commands',
+      noCommands: 'No commands declared by this plugin',
+      overriddenBy: 'Overridden by {{plugin}} (higher priority)',
+      remove: 'Unbind',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'This bot only supports some of the subscribed events ({{events}}). The processor may not behave as intended in all cases.',
       description:
-        'Automatically receive events declared by the plugin, independently of the routes above.',
+        'Automatically receive events declared by the plugin, independently of routes.',
       empty: 'No plugin processors are bound.',
       add: 'Add plugin processor',
       existing: 'Choose configuration',
@@ -1022,6 +1046,15 @@ const enUS = {
       play: 'Play',
     },
     eventRouting: 'Event Routing',
+    routingLayers: {
+      rules: 'Routes',
+      commands: 'Plugin commands',
+      processors: 'Plugin processors',
+      rulesDescription:
+        'Events not handled by a plugin command are matched in order; the first matching route handles them.',
+      commandsDisabled:
+        'Plugin commands are off; messages go straight to routes.',
+    },
     eventRoutingDescription: 'Choose which processor handles each event.',
     eventBindings: 'Event Routes',
     addEventBinding: 'Add Route',
@@ -1416,12 +1449,120 @@ const enUS = {
       rawEvents: 'Raw run events',
       inputUnavailable: 'Input was not recorded for this run.',
     },
+    commandProcessor: {
+      loadingCatalog: 'Loading command plugins...',
+      catalogUnavailable: 'Unable to load command plugins',
+      installFailed: 'Command plugin installation failed',
+      installTimeout:
+        'Command plugin installation timed out. Check the task on the Extensions page.',
+      registrationTimeout:
+        'The plugin was installed, but its commands did not register in time. Refresh and try again.',
+      diagnosis: {
+        missing:
+          'The selected command plugin is missing. Install or restore the plugin.',
+        disabled:
+          'The selected command plugin is disabled. Enable it on the plugins page.',
+        runtime:
+          'The plugin runtime is unavailable or disabled. Restore the connection and try again.',
+        draft:
+          'The repair page opens in a new tab; your current selection and unsaved draft are kept.',
+      },
+      debugTitle: 'Command Debug',
+      type: 'Command processor',
+      plugin: 'Plugin',
+      selectPlugin: 'Select command plugin',
+      unavailable: 'Plugin unavailable',
+      noSettings: 'No command settings',
+      notice: 'Handle plugin commands before event routing.',
+      bindBot: 'Bind to bot',
+      description:
+        'Handles commands that start with a prefix, such as /help or /draw. Matched before event routes; a hit replies directly.',
+      noPlugins: 'No installed plugin provides commands.',
+      noMarketplace: 'No plugins with commands in the marketplace.',
+      docs: 'Command component docs',
+      debugCommand: 'Command',
+      debugArgs: 'Arguments (optional)',
+      run: 'Run command',
+      saveAndRun: 'Save and run',
+      debugNotice:
+        'Runs the command once as an administrator. Replies stay here and are not sent to any platform.',
+      debugEmpty: 'Pick a command and run it to see its replies here.',
+      debugFailed: 'Command debugging failed',
+      noOutput: 'The command returned no reply.',
+      outputs: 'Replies',
+      noRuns:
+        'No command has run yet. Bind this processor to a bot or run one in Debug.',
+      sourceDebug: 'Debug',
+      sourcePlatform: 'Bot message',
+    },
+    diagram: {
+      bestFor: 'Best for: ',
+      messageReceived: 'Message received',
+      anyEvent: 'Any bot event',
+      anyEventCaption: 'Messages, member joins, friend requests…',
+      model: 'Model',
+      knowledge: 'Knowledge base',
+      tools: 'Tools',
+      externalAgent: 'External Agent',
+      reply: 'Reply to the conversation',
+      replyOrAction: 'Reply or platform action',
+      pipeline: {
+        summary:
+          'Takes a message through trigger rules and AI generation, then replies.',
+        group: 'Inside the pipeline',
+        trigger: 'Trigger rules and preprocessing',
+        generate: 'AI generates the reply',
+        generateCaption: 'Uses the model, knowledge base and tools',
+        bestFor: 'Q&A, customer service and knowledge-base chat.',
+      },
+      agent: {
+        summary:
+          'Reads your natural-language instructions and decides how to handle each event.',
+        group: 'Inside the Agent',
+        instructions: 'Your instructions',
+        instructionsCaption: 'How to handle each kind of event',
+        decide: 'AI decides and acts',
+        decideCaption: 'Calls tools or platform actions as needed',
+        bestFor:
+          'Handling many event types intelligently, or connecting an external Agent platform.',
+      },
+      eventProcessor: {
+        summary:
+          'Plugin code receives the events it subscribes to and handles them with fixed logic.',
+        input: 'Subscribed events',
+        inputCaption: 'Member joins, friend requests, messages…',
+        group: 'Inside the plugin',
+        handle: 'Plugin code handles the event',
+        outputCaption: 'Welcome message, approve request, statistics…',
+        branch: 'Runs alongside routes and does not block them.',
+        bestFor:
+          'Rule-based automation such as welcomes, request review and event logging.',
+      },
+      commandProcessor: {
+        hit: 'Matched',
+        miss: 'Not a command',
+        summary:
+          'Handles messages that start with a command prefix before any route runs.',
+        group: 'Inside the command processor',
+        match: 'Match prefix and command name',
+        matchCaption: 'Only registered command names match',
+        run: 'Plugin runs the command',
+        runCaption: "With this instance's configuration",
+        branch:
+          'No match: the message continues to plugin processors and routes.',
+        bestFor:
+          'Explicit operations users type, such as /help, /reset or /draw.',
+      },
+    },
+    fromPlugin: 'From a plugin',
+    fromPluginDescription:
+      'Run logic written by a plugin, with no AI involved. Pick how the plugin handles events:',
     eventProcessor: {
       configurations: 'Plugin processor configurations',
       configTab: 'Configuration',
       logsTab: 'Logs',
       noSettings: 'This plugin processor requires no configuration.',
-      createPageTitle: 'Create event processor',
+      createPageTitle: 'Create processor',
       processWithPlugin: 'Process with plugin code',
       pluginSettings: 'Plugin settings',
       pluginSettingsDescription: 'Parameters declared by this plugin.',
