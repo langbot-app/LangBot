@@ -63,11 +63,17 @@ def test_local_agent_memory_tools_without_pipeline(
     local_agent_e2e_config_path,
     local_agent_runtime_process,
     memory_embedding_url,
+    monkeypatch,
 ):
     """Read/write across runs and Host restart without Pipeline or KB grants."""
     from langbot_plugin.api.entities.builtin.provider import message as provider_message
     from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
     import yaml
+    from langbot.pkg.vector.vdbs import chroma
+
+    # Each app fixture needs a distinct Chroma cache identity across cwd changes.
+    persistent_client = chroma.PersistentClient
+    monkeypatch.setattr(chroma, 'PersistentClient', lambda *, path: persistent_client(path=str(Path(path).resolve())))
 
     config = yaml.safe_load(local_agent_e2e_config_path.read_text())
     config['api']['host'] = '127.0.0.1'
