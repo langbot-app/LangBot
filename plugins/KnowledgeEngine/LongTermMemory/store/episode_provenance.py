@@ -15,6 +15,7 @@ CLAIM_TYPES = {"unknown", "user_statement", "inference"}
 
 def normalize_provenance(values: dict[str, Any]) -> dict[str, str]:
     result = {}
+    parsed_times = {}
     for field in ("event_at", "valid_from", "valid_until"):
         value = values.get(field, "")
         if not isinstance(value, str):
@@ -33,11 +34,8 @@ def normalize_provenance(values: dict[str, Any]) -> dict[str, str]:
         if parsed.tzinfo is None:
             raise ValueError(f"{field} must include an explicit timezone")
         try:
-            result[field] = (
-                parsed.astimezone(timezone.utc)
-                .isoformat(timespec="seconds")
-                .replace("+00:00", "Z")
-            )
+            parsed_times[field] = parsed.astimezone(timezone.utc)
+            result[field] = parsed_times[field].isoformat().replace("+00:00", "Z")
         except (ValueError, OverflowError) as exc:
             raise ValueError(
                 f"{field} is outside the supported UTC date range"
@@ -45,7 +43,7 @@ def normalize_provenance(values: dict[str, Any]) -> dict[str, str]:
     if (
         result["valid_from"]
         and result["valid_until"]
-        and result["valid_from"] >= result["valid_until"]
+        and parsed_times["valid_from"] >= parsed_times["valid_until"]
     ):
         raise ValueError(
             "valid_from must be earlier than valid_until; validity uses [from, until)"

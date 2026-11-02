@@ -185,3 +185,29 @@ async def test_sensitive_user_text_is_not_sent_to_candidate_model(monkeypatch):
         "bot:person_user", include_statuses=["accepted", "pending"]
     )
     assert all("do-not-store-this" not in json.dumps(item) for item in entries)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("quote", ["We do not support v1.", "5."])
+async def test_model_cannot_select_a_span_cut_inside_a_version_number(quote):
+    text = "We do not support v1.5. Use v2.0."
+    plugin = ModelPlugin(
+        json.dumps([{"candidate_type": "l2_episode", "evidence_quote": quote}])
+    )
+    with pytest.raises(ValueError, match="original span"):
+        await extract_candidates(
+            plugin, "model", text, "2026-11-02T00:00:00Z", "alice", 3
+        )
+
+
+@pytest.mark.asyncio
+async def test_full_version_statement_keeps_its_negation_and_decimal():
+    text = "We do not support v1.5. Use v2.0."
+    quote = "We do not support v1.5."
+    plugin = ModelPlugin(
+        json.dumps([{"candidate_type": "l2_episode", "evidence_quote": quote}])
+    )
+    result = await extract_candidates(
+        plugin, "model", text, "2026-11-02T00:00:00Z", "alice", 3
+    )
+    assert result[0]["payload"]["content"] == quote

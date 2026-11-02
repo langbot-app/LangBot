@@ -292,3 +292,33 @@ async def test_document_ingestion_validates_and_preserves_provenance(invalid):
         assert meta["event_at"] == "2026-11-03T04:00:00Z"
         assert meta["claim_type"] == "user_statement"
         assert meta["source_ref"] == FACT["source_ref"]
+
+
+def test_subsecond_validity_and_offset_conversion_preserve_precision():
+    value = normalize_provenance(
+        {
+            "event_at": "2026-11-03T12:00:00.123456+08:00",
+            "valid_from": "2026-11-03T12:00:00.1+08:00",
+            "valid_until": "2026-11-03T12:00:00.2+08:00",
+        }
+    )
+    assert value["event_at"] == "2026-11-03T04:00:00.123456Z"
+    assert value["valid_from"] == "2026-11-03T04:00:00.100000Z"
+    assert value["valid_until"] == "2026-11-03T04:00:00.200000Z"
+
+
+def test_validity_compares_instants_instead_of_variable_precision_strings():
+    value = normalize_provenance(
+        {
+            "valid_from": "2026-11-03T04:00:00Z",
+            "valid_until": "2026-11-03T04:00:00.1Z",
+        }
+    )
+    assert value["valid_from"] == "2026-11-03T04:00:00Z"
+    with pytest.raises(ValueError, match="valid_from"):
+        normalize_provenance(
+            {
+                "valid_from": "2026-11-03T04:00:00.1Z",
+                "valid_until": "2026-11-03T04:00:00Z",
+            }
+        )

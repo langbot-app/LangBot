@@ -14,7 +14,7 @@ async def extract_candidates(
         return []
     spans = {
         part.strip()
-        for part in re.split(r"(?<=[.!?。！？])\s*|\n+", text)
+        for part in re.split(r"(?<=[.!?])\s+|(?<=[。！？])\s*|\n+", text)
         if part.strip()
     }
     spans.add(text.strip())
