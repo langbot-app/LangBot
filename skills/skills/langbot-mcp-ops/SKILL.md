@@ -60,6 +60,12 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 
 ## Tool surface
 
+`create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,
+and `bot_data.adapter_config` as an object with the adapter's settings.
+For `update_pipeline`, fetch the current pipeline before editing: `config` is a
+complete replacement containing `trigger`, `safety`, `ai`, and `output` objects,
+not a partial patch. Invalid configurations are rejected before persistence.
+
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
 `start_slack_setup` with the user's App Configuration access/refresh tokens.
 Choose `socket_mode=true` with a browser-reachable OAuth `redirect_url`, or

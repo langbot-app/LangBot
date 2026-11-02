@@ -357,7 +357,8 @@ class LangBotMCPServer:
         @mcp.tool(
             description=(
                 'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
-                'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
+                'POST /api/v1/platform/bots body: name and adapter are required non-empty strings; '
+                'adapter_config is a required object containing adapter-specific settings. '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
                 'Subscriptions run independently of each other and of event_bindings. Returns the new bot UUID.'
@@ -449,7 +450,9 @@ class LangBotMCPServer:
                 }
             )
 
-        @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
+        @mcp.tool(
+            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config replaces the complete configuration and requires trigger, safety, ai, and output objects. Invalid config is rejected before writing.'
+        )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)

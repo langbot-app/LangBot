@@ -834,6 +834,15 @@ def _contract(operation_id, method):
             annotation = annotation | None
         default = ... if default is inspect.Parameter.empty else default
         constraints = {}
+        if operation_id == 'bot.create' and name == 'bot_data':
+            constraints['json_schema_extra'] = {
+                'required': ['name', 'adapter', 'adapter_config'],
+                'properties': {
+                    'name': {'type': 'string', 'minLength': 1},
+                    'adapter': {'type': 'string', 'minLength': 1},
+                    'adapter_config': {'type': 'object'},
+                },
+            }
         if name in {'limit', 'max_count', 'max_entries'}:
             constraints = {'ge': 1, 'le': 100_000 if '.export.' in operation_id else 1000}
         elif name in {'offset', 'from_index', 'after_sequence', 'before_id'}:

@@ -411,6 +411,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = None  # No bot_service when not updating name
@@ -444,6 +446,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = SimpleNamespace()
@@ -497,6 +501,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
 
         # Mock session with conversation using this pipeline
@@ -965,7 +971,7 @@ class TestPipelineSecretRoundtrip:
         write_result = Mock(rowcount=1)
         ap = SimpleNamespace(
             persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=write_result)),
-            pipeline_mgr=SimpleNamespace(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock()),
+            pipeline_mgr=SimpleNamespace(prepare_pipeline=AsyncMock(), publish_pipeline=Mock()),
             sess_mgr=SimpleNamespace(session_list=[]),
         )
         service = PipelineService(ap)
@@ -976,13 +982,16 @@ class TestPipelineSecretRoundtrip:
             'pipeline-secret',
             {
                 'config': {
+                    'trigger': {},
+                    'safety': {},
+                    'output': {},
                     'ai': {
                         'n8n': {
                             'webhook-url': '***',
                             'headers': {'Authorization': '***'},
                             'timeout': 60,
                         }
-                    }
+                    },
                 }
             },
         )
@@ -990,6 +999,9 @@ class TestPipelineSecretRoundtrip:
         statement = ap.persistence_mgr.execute_async.await_args.args[0]
         stored_config = next(value.value for column, value in statement._values.items() if column.key == 'config')
         assert stored_config == {
+            'trigger': {},
+            'safety': {},
+            'output': {},
             'ai': {
                 'n8n': {
                     'webhook-url': 'https://hook.invalid/bearer-secret',

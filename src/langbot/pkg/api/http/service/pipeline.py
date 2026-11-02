@@ -4,6 +4,7 @@ import uuid
 import json
 import sqlalchemy
 import typing
+import copy
 
 from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
@@ -229,10 +230,16 @@ class PipelineService:
         for protected_field in ('uuid', 'workspace_uuid', 'for_version', 'stages', 'is_default'):
             pipeline_data.pop(protected_field, None)
 
+        current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
+        if current_pipeline is None:
+            raise WorkspaceNotFoundError('Pipeline not found')
         if 'config' in pipeline_data:
-            current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
-            if current_pipeline is None:
-                raise WorkspaceNotFoundError('Pipeline not found')
+            config = pipeline_data['config']
+            if not isinstance(config, dict):
+                raise ValueError('config must be an object containing trigger, safety, ai, and output')
+            for section in ('trigger', 'safety', 'ai', 'output'):
+                if not isinstance(config.get(section), dict):
+                    raise ValueError(f'config.{section} must be an object; config replaces the complete configuration')
             current_config = current_pipeline.get('config', {})
             old_ai = current_config.get('ai', {}) if isinstance(current_config, dict) else {}
             old_runner = old_ai.get('runner') if isinstance(old_ai, dict) else None
@@ -268,6 +275,13 @@ class PipelineService:
                     new_prefs['workspace_operations'] = old_ops
             self._validate_extension_preferences(pipeline_data['extensions_preferences'])
 
+        candidate_data = copy.deepcopy(current_pipeline)
+        candidate_data.update(copy.deepcopy(pipeline_data))
+        try:
+            candidate = await self.ap.pipeline_mgr.prepare_pipeline(context, candidate_data)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError('Invalid pipeline configuration: runtime initialization failed') from exc
+
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_pipeline.LegacyPipeline)
@@ -280,12 +294,7 @@ class PipelineService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Pipeline not found')
 
-        pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
-        if pipeline is None:
-            raise WorkspaceNotFoundError('Pipeline not found')
-
-        await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
-        await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
+        self.ap.pipeline_mgr.publish_pipeline(candidate)
 
         # update all conversation that use this pipeline
         for session in self.ap.sess_mgr.session_list:
