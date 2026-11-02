@@ -1558,6 +1558,8 @@ const esES = {
           'Automatización con reglas claras, como bienvenidas, revisión de solicitudes y registro de eventos.',
       },
       commandProcessor: {
+        hit: 'Coincide',
+        miss: 'Sin coincidencia',
         summary:
           'Gestiona los mensajes que empiezan con un prefijo de comando antes de cualquier ruta.',
         group: 'Dentro del procesador de comandos',

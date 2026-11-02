@@ -1,949 +1,642 @@
-import { useId, type ReactNode } from 'react';
+import { useId } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { TFunction } from 'i18next';
 import type { AgentKind } from '@/app/infra/entities/api';
 
-const BLUE = '#2288ee';
-const CYAN = '#19b8c9';
-const VIOLET = '#8b5cf6';
-const AMBER = '#f59e0b';
-const PINK = '#ec4899';
-const GREEN = '#10b981';
+const LANGBOT_BLUE = '#2288ee';
+const LANGBOT_CYAN = '#19b8c9';
 
-function reducedMotion() {
+function DiagramMotionStyles() {
   return (
-    typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    <style>{`
+      @keyframes processor-line-flow {
+        to { stroke-dashoffset: -30; }
+      }
+
+      @keyframes processor-link-breathe {
+        0%, 100% { stroke-opacity: var(--processor-relation-opacity-min); }
+        50% { stroke-opacity: var(--processor-relation-opacity-max); }
+      }
+
+      .processor-diagram {
+        --processor-blue-node-fill: color-mix(in srgb, ${LANGBOT_BLUE} 7%, var(--card));
+        --processor-cyan-node-fill: color-mix(in srgb, ${LANGBOT_CYAN} 7%, var(--card));
+        --processor-node-stroke-opacity: 0.18;
+        --processor-flow-opacity: 0.34;
+        --processor-relation-opacity-min: 0.28;
+        --processor-relation-opacity-max: 0.72;
+        --processor-capability-fill: color-mix(in srgb, ${LANGBOT_CYAN} 4%, var(--card));
+        --processor-capability-stroke-opacity: 0.45;
+        --processor-icon-fill: color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card));
+      }
+
+      .dark .processor-diagram {
+        --processor-blue-node-fill: color-mix(in srgb, ${LANGBOT_BLUE} 17%, var(--card));
+        --processor-cyan-node-fill: color-mix(in srgb, ${LANGBOT_CYAN} 15%, var(--card));
+        --processor-node-stroke-opacity: 0.5;
+        --processor-flow-opacity: 0.72;
+        --processor-relation-opacity-min: 0.58;
+        --processor-relation-opacity-max: 1;
+        --processor-capability-fill: color-mix(in srgb, ${LANGBOT_CYAN} 10%, var(--card));
+        --processor-capability-stroke-opacity: 0.78;
+        --processor-icon-fill: color-mix(in srgb, ${LANGBOT_CYAN} 20%, var(--card));
+      }
+
+      .processor-line-flow {
+        animation: processor-line-flow 1.8s linear infinite;
+      }
+
+      .processor-link-breathe {
+        animation: processor-link-breathe 2.8s ease-in-out infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .processor-line-flow,
+        .processor-link-breathe {
+          animation: none;
+        }
+      }
+    `}</style>
   );
 }
 
-/** A glowing token that travels along a path; omitted for reduced motion. */
-function Token({
-  path,
-  color = '#fff',
-  dur = 2.4,
-  begin = 0,
-  r = 4,
-  opacity = 1,
-}: {
-  path: string;
-  color?: string;
-  dur?: number;
-  begin?: number;
-  r?: number;
-  opacity?: number;
-}) {
-  if (reducedMotion()) return null;
+function ArrowMarker({ id }: { id: string }) {
   return (
-    <circle r={r} fill={color} opacity={opacity} visibility="hidden">
-      {/* Hidden until its motion starts so delayed tokens never flash at the origin. */}
-      <set attributeName="visibility" to="visible" begin={`${begin}s`} />
-      <animateMotion
-        dur={`${dur}s`}
-        begin={`${begin}s`}
-        repeatCount="indefinite"
-        path={path}
-      />
-    </circle>
+    <defs>
+      <marker
+        id={id}
+        markerWidth="8"
+        markerHeight="8"
+        refX="7"
+        refY="4"
+        orient="auto"
+      >
+        <path d="M0 0 8 4 0 8Z" fill={LANGBOT_BLUE} />
+      </marker>
+    </defs>
   );
 }
 
-function Label({
+function CapabilityIcon({
+  kind,
   x,
   y,
-  children,
-  size = 12,
-  weight = 500,
-  muted = false,
-  anchor = 'middle',
 }: {
+  kind: 'model' | 'tool' | 'action';
   x: number;
   y: number;
-  children: ReactNode;
-  size?: number;
-  weight?: number;
-  muted?: boolean;
-  anchor?: 'start' | 'middle' | 'end';
 }) {
   return (
-    <text
-      x={x}
-      y={y}
-      textAnchor={anchor}
-      fontSize={size}
-      fontWeight={weight}
-      fill="currentColor"
-      opacity={muted ? 0.6 : 0.9}
+    <g
+      transform={`translate(${x - 9} ${y - 9})`}
+      fill="none"
+      stroke={LANGBOT_CYAN}
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
     >
-      {children}
-    </text>
-  );
-}
-
-/** Soft colored blobs that give each scene its atmosphere. */
-function Atmosphere({ id, colors }: { id: string; colors: string[] }) {
-  const spots = [
-    [110, 90, 120],
-    [420, 230, 130],
-    [300, 60, 90],
-  ];
-  return (
-    <>
-      <defs>
-        {colors.map((color, index) => (
-          <radialGradient key={color} id={`${id}-blob-${index}`}>
-            <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
-          </radialGradient>
-        ))}
-      </defs>
-      {colors.map((color, index) => (
-        <circle
-          key={color}
-          cx={spots[index][0]}
-          cy={spots[index][1]}
-          r={spots[index][2]}
-          fill={`url(#${id}-blob-${index})`}
-        />
-      ))}
-    </>
-  );
-}
-
-function Bubble({
-  x,
-  y,
-  w,
-  h,
-  fill,
-  stroke,
-  tail = 'left',
-  children,
-}: {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  fill: string;
-  stroke?: string;
-  tail?: 'left' | 'right';
-  children?: ReactNode;
-}) {
-  const tailPath =
-    tail === 'left'
-      ? `M${x + 18} ${y + h - 2} l-12 16 l26 -14z`
-      : `M${x + w - 18} ${y + h - 2} l12 16 l-26 -14z`;
-  return (
-    <g>
-      <path d={tailPath} fill={fill} stroke={stroke} strokeWidth="1.2" />
-      <rect
-        x={x}
-        y={y}
-        width={w}
-        height={h}
-        rx="18"
-        fill={fill}
-        stroke={stroke}
-        strokeWidth="1.2"
-      />
-      {children}
+      {kind === 'model' && (
+        <>
+          <path d="m7 1 1.4 4.1L12.5 6.5 8.4 8 7 12 5.6 8 1.5 6.5l4.1-1.4L7 1Z" />
+          <path d="m14.5 10 .7 2.3 2.3.7-2.3.8-.7 2.2-.8-2.2-2.2-.8 2.2-.7.8-2.3Z" />
+        </>
+      )}
+      {kind === 'tool' && (
+        <path d="M12.8 2.1a4.1 4.1 0 0 0-5.2 5.2L2 12.9a2.1 2.1 0 1 0 3 3l5.6-5.6a4.1 4.1 0 0 0 5.2-5.2l-2.7 2.7-2.8-2.8 2.5-2.9Z" />
+      )}
+      {kind === 'action' && (
+        <path d="M10.5 1 3 10.5h6L8 17l7.5-9.5h-6L10.5 1Z" />
+      )}
     </g>
   );
 }
 
-function PipelineScene({ id, t }: { id: string; t: TFunction }) {
-  const stations = [
-    { x: 205, label: t('agents.diagram.model'), color: VIOLET, icon: 'spark' },
-    {
-      x: 265,
-      label: t('agents.diagram.knowledge'),
-      color: CYAN,
-      icon: 'book',
-    },
-    { x: 325, label: t('agents.diagram.tools'), color: AMBER, icon: 'wrench' },
-  ];
-  return (
-    <>
-      <defs>
-        <linearGradient id={`${id}-pipe`} x1="0" x2="1">
-          <stop offset="0%" stopColor={BLUE} />
-          <stop offset="100%" stopColor={CYAN} />
-        </linearGradient>
-        <linearGradient id={`${id}-reply`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={BLUE} />
-          <stop offset="100%" stopColor={VIOLET} />
-        </linearGradient>
-      </defs>
-      <Atmosphere id={id} colors={[BLUE, VIOLET, CYAN]} />
-
-      <Bubble
-        x={28}
-        y={128}
-        w={112}
-        h={60}
-        fill="var(--card)"
-        stroke={`${BLUE}55`}
-      >
-        {[0, 1, 2].map((dot) => (
-          <circle
-            key={dot}
-            cx={66 + dot * 18}
-            cy={158}
-            r="5"
-            fill={BLUE}
-            opacity={0.35 + dot * 0.25}
-          />
-        ))}
-      </Bubble>
-      <Label x={84} y={226}>
-        {t('agents.diagram.messageReceived')}
-      </Label>
-
-      <rect
-        x={150}
-        y={160}
-        width={232}
-        height={34}
-        rx={17}
-        fill={`url(#${id}-pipe)`}
-        opacity="0.92"
-      />
-      <rect
-        x={160}
-        y={165}
-        width={212}
-        height={7}
-        rx={3.5}
-        fill="#fff"
-        opacity="0.35"
-      />
-      {[0, 0.8, 1.6].map((begin) => (
-        <Token key={begin} path="M158 177 H374" begin={begin} r={4.5} />
-      ))}
-      {stations.map((station) => (
-        <g key={station.label}>
-          <line
-            x1={station.x}
-            y1={148}
-            x2={station.x}
-            y2={160}
-            stroke={station.color}
-            strokeWidth="3"
-            strokeLinecap="round"
-          />
-          <circle
-            cx={station.x}
-            cy={124}
-            r={24}
-            fill="var(--card)"
-            stroke={station.color}
-            strokeWidth="2"
-          />
-          {station.icon === 'spark' && (
-            <path
-              d={`M${station.x} 110 l4 10 10 4 -10 4 -4 10 -4 -10 -10 -4 10 -4z`}
-              fill={station.color}
-            />
-          )}
-          {station.icon === 'book' && (
-            <path
-              d={`M${station.x - 12} 114 h9 a3 3 0 0 1 3 3 v16 a3 3 0 0 0 -3 -3 h-9z M${station.x + 12} 114 h-9 a3 3 0 0 0 -3 3 v16 a3 3 0 0 1 3 -3 h9z`}
-              fill="none"
-              stroke={station.color}
-              strokeWidth="2.2"
-              strokeLinejoin="round"
-            />
-          )}
-          {station.icon === 'wrench' && (
-            <path
-              d={`M${station.x - 9} 135 l12 -12 M${station.x + 3} 123 a7 7 0 1 0 6 -11 l-4 4 -3 -1 -1 -3 4 -4 a7 7 0 0 0 -7 10`}
-              fill="none"
-              stroke={station.color}
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-          <Label x={station.x} y={88} size={11} muted>
-            {station.label}
-          </Label>
-        </g>
-      ))}
-      <Label x={266} y={220} size={11} muted>
-        {t('agents.diagram.pipeline.group')}
-      </Label>
-
-      <Bubble
-        x={392}
-        y={128}
-        w={104}
-        h={60}
-        fill={`url(#${id}-reply)`}
-        tail="right"
-      >
-        <rect x={408} y={146} width={70} height={7} rx={3.5} fill="#fff" />
-        <rect
-          x={408}
-          y={162}
-          width={48}
-          height={7}
-          rx={3.5}
-          fill="#fff"
-          opacity="0.7"
-        />
-      </Bubble>
-      <Label x={444} y={226}>
-        {t('agents.diagram.reply')}
-      </Label>
-    </>
-  );
-}
-
-function AgentScene({ id, t }: { id: string; t: TFunction }) {
-  const motion = !reducedMotion();
-  const inputs = [
-    { y: 100, color: BLUE, icon: 'chat' },
-    { y: 165, color: GREEN, icon: 'user' },
-    { y: 230, color: AMBER, icon: 'bell' },
-  ];
-  return (
-    <>
-      <defs>
-        <linearGradient id={`${id}-robot`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={VIOLET} />
-          <stop offset="100%" stopColor={BLUE} />
-        </linearGradient>
-        <radialGradient id={`${id}-halo`}>
-          <stop offset="60%" stopColor={VIOLET} stopOpacity="0.22" />
-          <stop offset="100%" stopColor={VIOLET} stopOpacity="0" />
-        </radialGradient>
-      </defs>
-      <Atmosphere id={id} colors={[VIOLET, BLUE, PINK]} />
-
-      {inputs.map((input, index) => {
-        const path = `M96 ${input.y} C 150 ${input.y}, 170 172, 208 172`;
-        return (
-          <g key={input.icon}>
-            <path
-              d={path}
-              fill="none"
-              stroke={input.color}
-              strokeOpacity="0.45"
-              strokeWidth="2"
-              strokeDasharray="5 5"
-            />
-            <Token path={path} color={input.color} begin={index * 0.7} />
-            <rect
-              x={46}
-              y={input.y - 22}
-              width={44}
-              height={44}
-              rx={14}
-              fill="var(--card)"
-              stroke={input.color}
-              strokeWidth="1.8"
-            />
-            {input.icon === 'chat' && (
-              <path
-                d={`M57 ${input.y - 8} h22 a4 4 0 0 1 4 4 v10 a4 4 0 0 1 -4 4 h-12 l-6 5 v-5 h-4 a4 4 0 0 1 -4 -4 v-10 a4 4 0 0 1 4 -4z`}
-                fill={input.color}
-              />
-            )}
-            {input.icon === 'user' && (
-              <>
-                <circle cx={64} cy={input.y - 5} r={6} fill={input.color} />
-                <path
-                  d={`M53 ${input.y + 12} a11 9 0 0 1 22 0z`}
-                  fill={input.color}
-                />
-                <path
-                  d={`M78 ${input.y - 6} v10 M73 ${input.y - 1} h10`}
-                  stroke={input.color}
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                />
-              </>
-            )}
-            {input.icon === 'bell' && (
-              <path
-                d={`M68 ${input.y - 12} a9 9 0 0 1 9 9 v7 l4 5 h-26 l4 -5 v-7 a9 9 0 0 1 9 -9z M64 ${input.y + 12} h8`}
-                fill={input.color}
-                stroke={input.color}
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            )}
-          </g>
-        );
-      })}
-      <Label x={68} y={284} size={11} muted>
-        {t('agents.diagram.anyEvent')}
-      </Label>
-
-      <circle cx={262} cy={172} r={92} fill={`url(#${id}-halo)`} />
-      <g>
-        <circle
-          cx={262}
-          cy={172}
-          r={74}
-          fill="none"
-          stroke={VIOLET}
-          strokeOpacity="0.35"
-          strokeDasharray="3 7"
-        />
-        {[0, 120, 240].map((angle, index) => (
-          <circle
-            key={angle}
-            cx={262 + 74 * Math.cos((angle * Math.PI) / 180)}
-            cy={172 + 74 * Math.sin((angle * Math.PI) / 180)}
-            r={6}
-            fill={[VIOLET, CYAN, AMBER][index]}
-          />
-        ))}
-        {motion && (
-          <animateTransform
-            attributeName="transform"
-            type="rotate"
-            from="0 262 172"
-            to="360 262 172"
-            dur="18s"
-            repeatCount="indefinite"
-          />
-        )}
-      </g>
-      <line
-        x1={262}
-        y1={128}
-        x2={262}
-        y2={112}
-        stroke={VIOLET}
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <circle cx={262} cy={108} r={6} fill={PINK}>
-        {motion && (
-          <animate
-            attributeName="opacity"
-            values="1;0.35;1"
-            dur="1.8s"
-            repeatCount="indefinite"
-          />
-        )}
-      </circle>
-      <rect
-        x={216}
-        y={128}
-        width={92}
-        height={80}
-        rx={26}
-        fill={`url(#${id}-robot)`}
-      />
-      <rect
-        x={230}
-        y={146}
-        width={64}
-        height={36}
-        rx={14}
-        fill="#fff"
-        opacity="0.92"
-      />
-      {[248, 276].map((cx) => (
-        <ellipse key={cx} cx={cx} cy={164} rx={6} ry={7} fill={VIOLET}>
-          {motion && (
-            <animate
-              attributeName="ry"
-              values="7;7;0.8;7"
-              keyTimes="0;0.9;0.95;1"
-              dur="4s"
-              repeatCount="indefinite"
-            />
-          )}
-        </ellipse>
-      ))}
-      <path
-        d="M248 194 q14 8 28 0"
-        fill="none"
-        stroke="#fff"
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-
-      <circle cx={318} cy={104} r={5} fill="var(--card)" stroke={VIOLET} />
-      <circle cx={332} cy={88} r={8} fill="var(--card)" stroke={VIOLET} />
-      <rect
-        x={340}
-        y={30}
-        width={140}
-        height={58}
-        rx={22}
-        fill="var(--card)"
-        stroke={VIOLET}
-        strokeOpacity="0.6"
-      />
-      <Label x={410} y={54} size={12}>
-        {t('agents.diagram.agent.instructions')}
-      </Label>
-      <rect
-        x={366}
-        y={64}
-        width={88}
-        height={6}
-        rx={3}
-        fill={VIOLET}
-        opacity="0.35"
-      />
-
-      <path
-        d="M310 172 C 360 172, 380 196, 420 196"
-        fill="none"
-        stroke={AMBER}
-        strokeOpacity="0.55"
-        strokeWidth="2"
-        strokeDasharray="5 5"
-      />
-      <Token
-        path="M310 172 C 360 172, 380 196, 420 196"
-        color={AMBER}
-        dur={1.8}
-      />
-      <circle cx={448} cy={196} r={28} fill={AMBER} opacity="0.18" />
-      <circle
-        cx={448}
-        cy={196}
-        r={22}
-        fill="var(--card)"
-        stroke={AMBER}
-        strokeWidth="2"
-      />
-      <path d="M452 182 l-12 16 h9 l-4 13 l13 -18 h-9z" fill={AMBER} />
-      <Label x={448} y={246} size={11} muted>
-        {t('agents.diagram.replyOrAction')}
-      </Label>
-    </>
-  );
-}
-
-function EventProcessorScene({ id, t }: { id: string; t: TFunction }) {
-  const motion = !reducedMotion();
-  const cards = [
-    { x: 40, y: 70, rotate: -8, color: GREEN },
-    { x: 66, y: 140, rotate: 5, color: PINK },
-    { x: 40, y: 210, rotate: -4, color: BLUE },
-  ];
-  const puzzle =
-    'M200 110 h36 a18 18 0 1 1 36 0 h36 v38 a18 18 0 1 1 0 36 v38 h-36 a18 18 0 1 0 -36 0 h-36 v-38 a18 18 0 1 0 0 -36z';
-  return (
-    <>
-      <defs>
-        <linearGradient id={`${id}-piece`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={AMBER} />
-          <stop offset="100%" stopColor={PINK} />
-        </linearGradient>
-      </defs>
-      <Atmosphere id={id} colors={[AMBER, PINK, GREEN]} />
-
-      {cards.map((card, index) => {
-        const path = `M${card.x + 72} ${card.y + 20} C 160 ${card.y + 20}, 170 166, 196 166`;
-        return (
-          <g key={index}>
-            <path
-              d={path}
-              fill="none"
-              stroke={card.color}
-              strokeOpacity="0.4"
-              strokeWidth="2"
-              strokeDasharray="4 6"
-            />
-            <Token path={path} color={card.color} begin={index * 0.8} />
-            <g
-              transform={`rotate(${card.rotate} ${card.x + 36} ${card.y + 20})`}
-            >
-              <rect
-                x={card.x}
-                y={card.y}
-                width={72}
-                height={40}
-                rx={10}
-                fill="var(--card)"
-                stroke={card.color}
-                strokeWidth="1.8"
-              />
-              <rect
-                x={card.x}
-                y={card.y}
-                width={10}
-                height={40}
-                rx={5}
-                fill={card.color}
-              />
-              <rect
-                x={card.x + 18}
-                y={card.y + 12}
-                width={42}
-                height={6}
-                rx={3}
-                fill={card.color}
-                opacity="0.6"
-              />
-              <rect
-                x={card.x + 18}
-                y={card.y + 24}
-                width={28}
-                height={6}
-                rx={3}
-                fill={card.color}
-                opacity="0.3"
-              />
-            </g>
-          </g>
-        );
-      })}
-      <Label x={78} y={286} size={11} muted>
-        {t('agents.diagram.eventProcessor.input')}
-      </Label>
-
-      <path
-        d={puzzle}
-        fill={`url(#${id}-piece)`}
-        transform="translate(4 6)"
-        opacity="0.25"
-      />
-      <path d={puzzle} fill={`url(#${id}-piece)`} />
-      {[
-        { cx: 240, cy: 160, r: 20, dur: 6, from: 0 },
-        { cx: 274, cy: 186, r: 13, dur: 4, from: 360 },
-      ].map((gear) => (
-        <g key={gear.cx}>
-          <circle
-            cx={gear.cx}
-            cy={gear.cy}
-            r={gear.r}
-            fill="none"
-            stroke="#fff"
-            strokeWidth={gear.r / 3}
-            strokeDasharray={`${gear.r / 2.2} ${gear.r / 2.2}`}
-          />
-          <circle cx={gear.cx} cy={gear.cy} r={gear.r / 2.4} fill="#fff" />
-          {motion && (
-            <animateTransform
-              attributeName="transform"
-              type="rotate"
-              from={`${gear.from} ${gear.cx} ${gear.cy}`}
-              to={`${gear.from === 0 ? 360 : 0} ${gear.cx} ${gear.cy}`}
-              dur={`${gear.dur}s`}
-              repeatCount="indefinite"
-            />
-          )}
-        </g>
-      ))}
-      <text
-        x={254}
-        y={232}
-        textAnchor="middle"
-        fontSize="12"
-        fontFamily="ui-monospace, monospace"
-        fill="#fff"
-      >
-        on_event()
-      </text>
-
-      <path
-        d="M312 166 C 340 166, 350 150, 372 150"
-        fill="none"
-        stroke={PINK}
-        strokeOpacity="0.5"
-        strokeWidth="2"
-        strokeDasharray="4 6"
-      />
-      <Token
-        path="M312 166 C 340 166, 350 150, 372 150"
-        color={PINK}
-        dur={1.6}
-      />
-      <rect
-        x={376}
-        y={104}
-        width={116}
-        height={92}
-        rx={16}
-        fill="var(--card)"
-        stroke={PINK}
-        strokeOpacity="0.6"
-        strokeWidth="1.8"
-      />
-      {[
-        [392, 118, AMBER],
-        [470, 122, GREEN],
-        [404, 176, BLUE],
-        [478, 180, VIOLET],
-        [440, 114, PINK],
-      ].map(([x, y, color], index) => (
-        <rect
-          key={index}
-          x={x as number}
-          y={y as number}
-          width={7}
-          height={4}
-          rx={1}
-          fill={color as string}
-          transform={`rotate(${index * 37} ${x} ${y})`}
-        >
-          {motion && (
-            <animate
-              attributeName="opacity"
-              values="1;0.2;1"
-              dur={`${1.4 + index * 0.3}s`}
-              repeatCount="indefinite"
-            />
-          )}
-        </rect>
-      ))}
-      <text x={434} y={156} textAnchor="middle" fontSize="26">
-        🎉
-      </text>
-      <rect
-        x={404}
-        y={168}
-        width={60}
-        height={6}
-        rx={3}
-        fill={PINK}
-        opacity="0.4"
-      />
-      <Label x={434} y={226} size={11} muted>
-        {t('agents.diagram.replyOrAction')}
-      </Label>
-    </>
-  );
-}
-
-function CommandScene({ id, t }: { id: string; t: TFunction }) {
-  const hit = 'M168 160 C 200 160, 214 100, 250 100 H300';
-  const miss = 'M168 160 C 200 160, 214 252, 250 252 H300';
-  return (
-    <>
-      <defs>
-        <linearGradient id={`${id}-gate`} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor={CYAN} />
-          <stop offset="100%" stopColor={BLUE} />
-        </linearGradient>
-      </defs>
-      <Atmosphere id={id} colors={[CYAN, BLUE, AMBER]} />
-
-      <Bubble
-        x={20}
-        y={134}
-        w={118}
-        h={52}
-        fill="var(--card)"
-        stroke={`${CYAN}88`}
-      >
-        <text
-          x={79}
-          y={166}
-          textAnchor="middle"
-          fontSize="16"
-          fontWeight="600"
-          fontFamily="ui-monospace, monospace"
-          fill="currentColor"
-        >
-          /draw cat
-        </text>
-      </Bubble>
-
-      <path
-        d={miss}
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.25"
-        strokeWidth="2"
-        strokeDasharray="4 6"
-      />
-      <Token path={miss} color="currentColor" opacity={0.25} dur={2.6} />
-      <path
-        d={hit}
-        fill="none"
-        stroke={CYAN}
-        strokeWidth="3"
-        strokeLinecap="round"
-      />
-      <Token path={hit} color={CYAN} dur={1.8} r={5} />
-      <Token path={hit} color={CYAN} dur={1.8} begin={0.9} r={5} />
-
-      <g transform="translate(176 160)">
-        <rect
-          x={-26}
-          y={-26}
-          width={52}
-          height={52}
-          rx={14}
-          transform="rotate(45)"
-          fill={`url(#${id}-gate)`}
-        />
-        <text
-          x={0}
-          y={10}
-          textAnchor="middle"
-          fontSize="30"
-          fontWeight="700"
-          fontFamily="ui-monospace, monospace"
-          fill="#fff"
-        >
-          /
-        </text>
-      </g>
-      <Label x={176} y={222} size={11} muted>
-        {t('agents.diagram.commandProcessor.match')}
-      </Label>
-
-      <rect
-        x={304}
-        y={36}
-        width={192}
-        height={128}
-        rx={14}
-        fill="#16181d"
-        stroke={CYAN}
-        strokeOpacity="0.5"
-      />
-      {[320, 334, 348].map((cx, index) => (
-        <circle
-          key={cx}
-          cx={cx}
-          cy={52}
-          r={4}
-          fill={[PINK, AMBER, GREEN][index]}
-        />
-      ))}
-      <text
-        x={318}
-        y={80}
-        fontSize="12"
-        fontFamily="ui-monospace, monospace"
-        fill={CYAN}
-      >
-        $ draw cat
-      </text>
-      <g transform="translate(400 124)">
-        <path
-          d="M-22 -14 l6 -18 l12 12z M22 -14 l-6 -18 l-12 12z"
-          fill={AMBER}
-        />
-        <circle cx={0} cy={0} r={24} fill={AMBER} />
-        <circle cx={-9} cy={-4} r={3.4} fill="#16181d" />
-        <circle cx={9} cy={-4} r={3.4} fill="#16181d" />
-        <path d="M-3 5 h6 l-3 3z" fill={PINK} />
-        <path
-          d="M-30 2 h16 M-30 9 h15 M30 2 h-16 M30 9 h-15"
-          stroke="#fff"
-          strokeOpacity="0.7"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      </g>
-      <Label x={400} y={186} size={11} muted>
-        {t('agents.diagram.commandProcessor.run')}
-      </Label>
-
-      <rect
-        x={304}
-        y={230}
-        width={150}
-        height={44}
-        rx={12}
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.3"
-        strokeDasharray="5 5"
-      />
-      <Label x={379} y={257} size={12} muted>
-        {t('bots.routingLayers.rules')}
-      </Label>
-    </>
-  );
-}
-
-const SCENES: Record<
-  AgentKind,
-  {
-    scene: (props: { id: string; t: TFunction }) => ReactNode;
-    title: string;
-    summary: string;
-    bestFor: string;
-    branch?: string;
-    accent: string;
-  }
-> = {
-  pipeline: {
-    scene: PipelineScene,
-    title: 'agents.pipelineType',
-    summary: 'agents.diagram.pipeline.summary',
-    bestFor: 'agents.diagram.pipeline.bestFor',
-    accent: BLUE,
-  },
-  agent: {
-    scene: AgentScene,
-    title: 'agents.agentType',
-    summary: 'agents.diagram.agent.summary',
-    bestFor: 'agents.diagram.agent.bestFor',
-    accent: VIOLET,
-  },
-  event_processor: {
-    scene: EventProcessorScene,
-    title: 'agents.eventProcessor.type',
-    summary: 'agents.diagram.eventProcessor.summary',
-    bestFor: 'agents.diagram.eventProcessor.bestFor',
-    branch: 'agents.diagram.eventProcessor.branch',
-    accent: AMBER,
-  },
-  command_processor: {
-    scene: CommandScene,
-    title: 'agents.commandProcessor.type',
-    summary: 'agents.diagram.commandProcessor.summary',
-    bestFor: 'agents.diagram.commandProcessor.bestFor',
-    branch: 'agents.diagram.commandProcessor.branch',
-    accent: CYAN,
-  },
-};
-
-export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+function AgentDiagram() {
   const { t } = useTranslation();
-  const id = `processor-${useId().replace(/[^a-zA-Z0-9-]/g, '')}`;
-  const resolved: AgentKind = SCENES[kind] ? kind : 'pipeline';
-  const spec = SCENES[resolved];
-  const Scene = spec.scene;
+  const arrowId = `agent-arrow-${useId().replace(/:/g, '')}`;
+  const inputs = [
+    { label: t('agents.diagramMessages'), y: 155 },
+    { label: t('agents.diagramMembers'), y: 275 },
+    { label: t('agents.diagramFeedback'), y: 395 },
+  ];
+  const outputs = [
+    { kind: 'model' as const, label: t('agents.diagramModel'), y: 155 },
+    { kind: 'tool' as const, label: t('agents.diagramTools'), y: 275 },
+    { kind: 'action' as const, label: t('agents.diagramActions'), y: 395 },
+  ];
+
+  return (
+    <svg
+      viewBox="0 0 760 620"
+      role="img"
+      aria-label={t('agents.agentDiagramTitle')}
+      className="processor-diagram h-full w-full"
+      data-testid="agent-diagram"
+    >
+      <desc>{t('agents.agentDiagramDescription')}</desc>
+      <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
+
+      <rect width="760" height="620" fill="var(--card)" />
+
+      <text
+        x="74"
+        y="112"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagramEvents')}
+      </text>
+
+      {inputs.map((item, index) => (
+        <g key={item.label}>
+          <path
+            d={`M222 ${item.y + 29} C286 ${item.y + 29} 292 310 324 310`}
+            fill="none"
+            stroke={LANGBOT_BLUE}
+            strokeWidth="2"
+            strokeDasharray="4 11"
+            opacity="var(--processor-flow-opacity)"
+            markerEnd={`url(#${arrowId})`}
+            className="processor-line-flow"
+            data-motion="flow"
+            style={{ animationDelay: `${index * -0.35}s` }}
+          />
+          <rect
+            x="64"
+            y={item.y}
+            width="158"
+            height="58"
+            rx="14"
+            fill="var(--processor-blue-node-fill)"
+            stroke={LANGBOT_BLUE}
+            strokeOpacity="var(--processor-node-stroke-opacity)"
+          />
+          <circle
+            cx="91"
+            cy={item.y + 29}
+            r="5"
+            fill={index === 1 ? LANGBOT_CYAN : LANGBOT_BLUE}
+          />
+          <text
+            x="110"
+            y={item.y + 34}
+            fill="var(--foreground)"
+            fontSize="14"
+            fontWeight="550"
+          >
+            {item.label}
+          </text>
+        </g>
+      ))}
+
+      <rect
+        x="324"
+        y="278"
+        width="112"
+        height="64"
+        rx="16"
+        fill={LANGBOT_BLUE}
+      />
+      <text
+        x="380"
+        y="317"
+        textAnchor="middle"
+        fill="var(--primary-foreground)"
+        fontSize="18"
+        fontWeight="700"
+      >
+        {t('agents.agentType')}
+      </text>
+
+      <text
+        x="538"
+        y="112"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagramAgentCanUse')}
+      </text>
+
+      {outputs.map((item, index) => (
+        <g key={item.label}>
+          <path
+            d={`M436 310 C468 310 474 ${item.y + 29} 538 ${item.y + 29}`}
+            fill="none"
+            stroke={LANGBOT_CYAN}
+            strokeWidth="1.8"
+            strokeDasharray="5 6"
+            className="processor-link-breathe"
+            data-motion="relation"
+            style={{ animationDelay: `${index * -0.45}s` }}
+          />
+          <rect
+            x="538"
+            y={item.y}
+            width="158"
+            height="58"
+            rx="14"
+            fill="var(--processor-capability-fill)"
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
+            strokeWidth="1.5"
+          />
+          <circle
+            cx="565"
+            cy={item.y + 29}
+            r="11"
+            fill="var(--processor-icon-fill)"
+            stroke={LANGBOT_CYAN}
+            strokeOpacity="var(--processor-capability-stroke-opacity)"
+          />
+          <CapabilityIcon kind={item.kind} x={565} y={item.y + 29} />
+          <text
+            x="584"
+            y={item.y + 34}
+            fill="var(--foreground)"
+            fontSize="14"
+            fontWeight="550"
+          >
+            {item.label}
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function PipelineDiagram() {
+  const { t } = useTranslation();
+  const arrowId = `pipeline-arrow-${useId().replace(/:/g, '')}`;
+  const steps = [
+    t('agents.diagramMessage'),
+    t('agents.diagramPreprocess'),
+    t('agents.diagramAI'),
+    t('agents.diagramPostprocess'),
+    t('agents.diagramOutput'),
+  ];
+
+  return (
+    <svg
+      viewBox="0 0 760 620"
+      role="img"
+      aria-label={t('agents.pipelineDiagramTitle')}
+      className="processor-diagram h-full w-full"
+      data-testid="pipeline-diagram"
+    >
+      <desc>{t('agents.pipelineDiagramDescription')}</desc>
+      <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
+
+      <rect width="760" height="620" fill="var(--card)" />
+      <text
+        x="40"
+        y="238"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.pipelineDiagramFlow')}
+      </text>
+      <path
+        d="M156 310H738"
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="2"
+        opacity="var(--processor-flow-opacity)"
+        markerEnd={`url(#${arrowId})`}
+      />
+      <path
+        d="M156 310H724"
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="3"
+        strokeDasharray="4 11"
+        strokeLinecap="round"
+        className="processor-line-flow"
+        data-motion="flow"
+        data-dash-cycle="15"
+      />
+
+      {steps.map((step, index) => {
+        const x = 40 + index * 142;
+        const active = index === 2;
+        return (
+          <g key={step}>
+            <rect
+              x={x}
+              y="281"
+              width="116"
+              height="58"
+              rx="14"
+              fill={
+                active
+                  ? LANGBOT_BLUE
+                  : index === 3
+                    ? 'var(--processor-cyan-node-fill)'
+                    : 'var(--processor-blue-node-fill)'
+              }
+              stroke={
+                active
+                  ? LANGBOT_BLUE
+                  : index === 3
+                    ? LANGBOT_CYAN
+                    : LANGBOT_BLUE
+              }
+              strokeOpacity={
+                active ? 1 : 'var(--processor-node-stroke-opacity)'
+              }
+            />
+            {!active && (
+              <circle
+                cx={x + 25}
+                cy="310"
+                r="5"
+                fill={index === 3 ? LANGBOT_CYAN : LANGBOT_BLUE}
+              />
+            )}
+            <text
+              x={active ? x + 58 : x + 44}
+              y="315"
+              textAnchor={active ? 'middle' : 'start'}
+              fill={active ? 'var(--primary-foreground)' : 'var(--foreground)'}
+              fontSize="13"
+              fontWeight="600"
+            >
+              {step}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function RunnerDiagram() {
+  const { t } = useTranslation();
+  const codeLines = [
+    <>
+      <span className="text-[#8b5cf6]">@handler</span>
+    </>,
+    <>
+      <span className="text-[#2288ee]">async def</span>{' '}
+      <span className="text-[#19b8c9]">on_event</span>(event):
+    </>,
+    <>
+      <span className="text-[#2288ee]">if</span> event.type =={' '}
+      <span className="text-amber-500">&quot;message&quot;</span>:
+    </>,
+    <>
+      <span className="text-[#2288ee]">await</span> event.process()
+    </>,
+    <>
+      <span className="text-muted-foreground"># output → trace</span>
+    </>,
+  ];
+
   return (
     <div
-      data-testid={`${resolved.replace('_', '-')}-diagram`}
-      className="flex h-full w-full flex-col justify-center gap-5 px-6 py-8 sm:px-10"
+      className="processor-diagram grid h-full w-full overflow-hidden bg-muted/20 lg:grid-cols-[minmax(0,1.05fr)_minmax(280px,0.95fr)]"
+      data-testid="event-processor-diagram"
     >
-      <header className="space-y-1.5">
-        <h3 className="text-lg font-semibold" style={{ color: spec.accent }}>
-          {t(spec.title)}
+      <div className="flex min-w-0 flex-col justify-center gap-5 p-8 lg:p-10">
+        <h3 className="text-lg font-semibold">
+          {t('agents.eventProcessor.type')}
         </h3>
-        <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-          {t(spec.summary)}
-        </p>
-      </header>
-      <svg
-        key={resolved}
-        viewBox="0 0 520 300"
-        role="img"
-        aria-label={t(spec.summary)}
-        overflow="visible"
-        className="w-full max-w-xl self-center overflow-visible text-foreground"
+        {['input', 'processWithPlugin', 'trace'].map((step, index) => (
+          <div
+            key={step}
+            className="flex items-center gap-3 rounded-lg border bg-background p-4"
+          >
+            <span className="text-primary">{index + 1}</span>
+            <span>{t(`agents.eventProcessor.${step}`)}</span>
+          </div>
+        ))}
+      </div>
+
+      <div
+        className="relative hidden min-w-0 items-center border-l bg-background/45 p-8 lg:flex"
+        aria-hidden="true"
       >
-        <Scene id={id} t={t} />
-      </svg>
-      <footer className="space-y-1.5 text-xs leading-relaxed">
-        {spec.branch && (
-          <p className="text-muted-foreground">{t(spec.branch)}</p>
-        )}
-        <p>
-          <span className="font-medium">{t('agents.diagram.bestFor')}</span>
-          <span className="text-muted-foreground">{t(spec.bestFor)}</span>
-        </p>
-      </footer>
+        <div className="absolute left-0 top-1/2 w-8 -translate-y-1/2 border-t border-dashed border-[#2288ee]/25" />
+
+        <div className="relative w-full rounded-xl border bg-card">
+          <div className="flex h-11 items-center gap-2 border-b px-4">
+            <span className="font-mono text-[11px] text-muted-foreground">
+              processor.py
+            </span>
+          </div>
+
+          <div className="space-y-3 px-4 py-5 font-mono text-[12px] leading-5">
+            {codeLines.map((line, index) => (
+              <div key={index} className="flex min-w-0 gap-3">
+                <span className="w-4 shrink-0 select-none text-right text-muted-foreground/45">
+                  {index + 1}
+                </span>
+                <code
+                  className={
+                    index === 2 || index === 3
+                      ? 'min-w-0 pl-3 text-foreground/80'
+                      : 'min-w-0 text-foreground/80'
+                  }
+                >
+                  {line}
+                </code>
+              </div>
+            ))}
+          </div>
+
+          <div className="mx-4 mb-4 border-t pt-3">
+            <span className="font-mono text-[11px] text-muted-foreground">
+              event → plugin → log
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
+}
+
+function CommandDiagram() {
+  const { t } = useTranslation();
+  const arrowId = `command-arrow-${useId().replace(/:/g, '')}`;
+
+  return (
+    <svg
+      viewBox="0 0 760 620"
+      role="img"
+      aria-label={t('agents.diagram.commandProcessor.summary')}
+      className="processor-diagram h-full w-full"
+      data-testid="command-processor-diagram"
+    >
+      <ArrowMarker id={arrowId} />
+      <DiagramMotionStyles />
+
+      <rect width="760" height="620" fill="var(--card)" />
+      <text
+        x="40"
+        y="150"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagram.commandProcessor.summary')}
+      </text>
+
+      <path
+        d="M196 310H262"
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="3"
+        strokeDasharray="4 11"
+        strokeLinecap="round"
+        className="processor-line-flow"
+        data-motion="flow"
+      />
+      <rect
+        x="40"
+        y="281"
+        width="156"
+        height="58"
+        rx="14"
+        fill="var(--processor-blue-node-fill)"
+        stroke={LANGBOT_BLUE}
+        strokeOpacity="var(--processor-node-stroke-opacity)"
+      />
+      <circle cx="65" cy="310" r="5" fill={LANGBOT_BLUE} />
+      <text
+        x="82"
+        y="315"
+        fill="var(--foreground)"
+        fontSize="14"
+        fontWeight="600"
+        fontFamily="ui-monospace, monospace"
+      >
+        /draw cat
+      </text>
+
+      <rect
+        x="262"
+        y="278"
+        width="176"
+        height="64"
+        rx="16"
+        fill={LANGBOT_BLUE}
+      />
+      <text
+        x="350"
+        y="316"
+        textAnchor="middle"
+        fill="var(--primary-foreground)"
+        fontSize="16"
+        fontWeight="700"
+      >
+        {t('agents.commandProcessor.type')}
+      </text>
+      <text
+        x="350"
+        y="370"
+        textAnchor="middle"
+        fill="var(--muted-foreground)"
+        fontSize="12"
+      >
+        {t('agents.diagram.commandProcessor.match')}
+      </text>
+
+      <text
+        x="512"
+        y="182"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagram.commandProcessor.hit')}
+      </text>
+      <path
+        d="M438 310 C474 310 476 225 512 225"
+        fill="none"
+        stroke={LANGBOT_BLUE}
+        strokeWidth="2"
+        strokeDasharray="4 11"
+        opacity="var(--processor-flow-opacity)"
+        markerEnd={`url(#${arrowId})`}
+        className="processor-line-flow"
+        data-motion="flow"
+      />
+      <rect
+        x="512"
+        y="196"
+        width="208"
+        height="58"
+        rx="14"
+        fill="var(--processor-capability-fill)"
+        stroke={LANGBOT_CYAN}
+        strokeOpacity="var(--processor-capability-stroke-opacity)"
+        strokeWidth="1.5"
+      />
+      <circle
+        cx="539"
+        cy="225"
+        r="11"
+        fill="var(--processor-icon-fill)"
+        stroke={LANGBOT_CYAN}
+        strokeOpacity="var(--processor-capability-stroke-opacity)"
+      />
+      <CapabilityIcon kind="action" x={539} y={225} />
+      <text
+        x="558"
+        y="230"
+        fill="var(--foreground)"
+        fontSize="14"
+        fontWeight="550"
+      >
+        {t('agents.diagram.commandProcessor.run')}
+      </text>
+
+      <text
+        x="512"
+        y="356"
+        fill="var(--muted-foreground)"
+        fontSize="13"
+        fontWeight="600"
+      >
+        {t('agents.diagram.commandProcessor.miss')}
+      </text>
+      <path
+        d="M438 310 C474 310 476 399 512 399"
+        fill="none"
+        stroke="var(--muted-foreground)"
+        strokeWidth="1.6"
+        strokeDasharray="5 6"
+        opacity="0.5"
+      />
+      <rect
+        x="512"
+        y="370"
+        width="208"
+        height="58"
+        rx="14"
+        fill="none"
+        stroke="var(--muted-foreground)"
+        strokeOpacity="0.45"
+        strokeDasharray="5 5"
+      />
+      <text
+        x="536"
+        y="404"
+        fill="var(--muted-foreground)"
+        fontSize="14"
+        fontWeight="550"
+      >
+        {t('bots.routingLayers.rules')}
+      </text>
+    </svg>
+  );
+}
+
+export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  if (kind === 'command_processor') return <CommandDiagram />;
+  if (kind === 'event_processor') return <RunnerDiagram />;
+  return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

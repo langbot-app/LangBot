@@ -1525,6 +1525,8 @@ const viVN = {
           'Tự động hóa theo quy tắc rõ ràng như chào mừng, duyệt yêu cầu, ghi nhận sự kiện.',
       },
       commandProcessor: {
+        hit: 'Khớp',
+        miss: 'Không khớp',
         summary: 'Xử lý tin nhắn bắt đầu bằng tiền tố lệnh trước mọi tuyến.',
         group: 'Bên trong bộ xử lý lệnh',
         match: 'So khớp tiền tố và tên lệnh',

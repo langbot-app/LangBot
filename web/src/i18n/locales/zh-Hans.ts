@@ -1440,6 +1440,8 @@ const zhHans = {
         bestFor: '规则明确的自动化，如入群欢迎、申请审核、事件记录。',
       },
       commandProcessor: {
+        hit: '命中',
+        miss: '未命中',
         summary: '在所有路由之前，处理以命令前缀开头的消息。',
         group: '命令处理器内部',
         match: '匹配前缀与命令名',
