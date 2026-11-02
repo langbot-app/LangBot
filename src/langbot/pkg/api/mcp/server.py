@@ -519,7 +519,7 @@ class LangBotMCPServer:
             return _dump(await ap.agent_service.get_agent_metadata(context))
 
         @mcp.tool(
-            description='List one Agent or plugin processor run history; use before_id to page older runs. '
+            description='List one Agent, Event processor or Command processor run history; use before_id to page older runs. '
             'created_at_ms, started_at_ms and finished_at_ms are Host lifecycle times in epoch milliseconds.'
         )
         async def list_processor_runs(processor_uuid: str, before_id: int | None = None) -> str:
@@ -527,7 +527,8 @@ class LangBotMCPServer:
             return _dump(await ap.agent_service.get_processor_runs(context, processor_uuid, before_id=before_id))
 
         @mcp.tool(
-            description='Read logs and action results for an Agent or plugin processor run; page using after_sequence.'
+            description='Read logs and action results for an Agent, Event processor or Command processor run; '
+            'page using after_sequence.'
         )
         async def get_processor_run_events(
             processor_uuid: str,
@@ -552,7 +553,9 @@ class LangBotMCPServer:
                 'Platform tools use mock adapters; other tools execute normally. '
                 'For Event processors, data contains the complete typed event fields. '
                 'Requires runtime.operate; payload accepts event_type, text, data, conversation_id, actor, subject and '
-                'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs).'
+                'mock (errors/results keyed by platform tool name; unsupported_apis lists unavailable platform APIs). '
+                'For Command processors, payload.text is a command line without the bot prefix (for example '
+                '"draw a cat"); it runs once with admin privilege and returns outputs, status and run_id.'
             )
         )
         async def debug_agent(processor_uuid: str, payload: dict) -> str:
