@@ -650,3 +650,6 @@ Active sources remain active; this feature does not promise lossy compression or
 Existing historical summary records without lineage cannot be retroactively traced. They are not migrated automatically. Semantic drafting and explicit approval are also available through the Memory Console review panel, so processor-only deployments do not need a Pipeline command route.
 
 Document deletion invalidates dependent summaries and pending drafts for every affected memory scope before removing imported records. Deleting a knowledge base clears only that collection's pending drafts. Preview generation and collection deletion share the same collection lock, so an in-flight model preview cannot save source text after deletion completes; a preview for a removed KB is rejected before calling the model. Each model call holding that lock is capped at 30 seconds; queued callers and storage operations still follow their normal API lifecycle.
+
+
+A reviewed summary must also fit the bounded recall record budget before publication; oversized summaries are rejected without writing an episode or hiding source facts. Reduce the consolidation candidate count and preview again. This is a character/serialization bound, not an exact token estimate.

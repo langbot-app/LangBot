@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from langbot_plugin.api.entities.builtin.provider.message import Message
 from store.episode_provenance import normalize_provenance, read_provenance
+from store.recall import select_memories
 
 MODEL_TIMEOUT_SECONDS = 30
 PROPOSAL_PREFIX = "ltm.consolidation.proposal."
@@ -204,6 +205,9 @@ async def apply_summary(store, collection_id: str, embedding_model_uuid: str, us
         "consolidation_source_ids": json.dumps(proposal["source_ids"]),
         "consolidation_source_hashes": json.dumps(proposal["source_hashes"], sort_keys=True),
     }
+    record = {"id": episode_id, "metadata": meta, "document": content, "score": None, "distance": 0.0}
+    if not select_memories([record], "", top_k=1):
+        raise ValueError("Summary exceeds the recall budget; reduce consolidation candidates and preview again")
     vectors = await store.plugin.invoke_embedding(embedding_model_uuid, [content])
     await store._writes.mutate(
         store.plugin,

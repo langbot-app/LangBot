@@ -345,3 +345,20 @@ async def test_summary_verification_allows_host_added_scope_metadata():
     assert result["summary_episode"]["status"] == "active"
     assert result["summary_episode"]["metadata"]["_langbot_workspace_uuid"] == "workspace-test"
     assert plugin.records["source"]["metadata"]["status"] == "active"
+
+
+@pytest.mark.asyncio
+async def test_summary_too_large_for_recall_is_not_published():
+    plugin = SemanticPlugin()
+    add_source(plugin, "one", "First source fact")
+    add_source(plugin, "two", "Second source fact")
+    plugin.response = {"facts": [
+        {"text": "a" * 2000, "source_ids": ["one"]},
+        {"text": "b" * 2000, "source_ids": ["two"]},
+    ]}
+    store = MemoryStore(plugin)
+    draft = await preview(store)
+    with pytest.raises(ValueError, match="recall budget"):
+        await store.apply_consolidation("kb", "emb", "scope", proposal_id=draft["proposal_id"])
+    assert set(plugin.records) == {"one", "two"}
+    assert all(item["metadata"]["status"] == "active" for item in plugin.records.values())
