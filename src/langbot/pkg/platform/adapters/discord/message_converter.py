@@ -136,16 +136,13 @@ class DiscordMessageConverter:
     async def _load_voice(element: platform_message.Voice) -> tuple[bytes | None, str]:
         from ....utils import audio as audio_utils
 
-        try:
-            raw_bytes, fmt = await audio_utils.extract_voice_bytes(element)
-            ext = fmt if fmt != 'unknown' else 'mp3'
-            filename = f'{uuid.uuid4()}.{ext}'
-            return raw_bytes, filename
-        except Exception:
-            return None, f'{uuid.uuid4()}.mp3'
+        raw_bytes = await DiscordMessageConverter._load_file(element)
+        fmt = audio_utils.detect_audio_format(raw_bytes) if raw_bytes else 'unknown'
+        ext = fmt if fmt != 'unknown' else 'mp3'
+        return raw_bytes, f'{uuid.uuid4()}.{ext}'
 
     @staticmethod
-    async def _load_file(element: platform_message.File) -> bytes | None:
+    async def _load_file(element: platform_message.File | platform_message.Voice) -> bytes | None:
         if element.base64:
             return await asyncio.to_thread(_decode_discord_base64_limited, element.base64)
         if element.url:

@@ -36,11 +36,16 @@ class TestAudioUtils(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(audio_utils.detect_audio_format(b'12'), 'unknown')
 
     def test_is_ffmpeg_and_silk_available(self):
-        # We know ffmpeg is installed in this test environment
-        self.assertTrue(audio_utils.is_ffmpeg_available())
-        # Silk is optional
-        self.assertIsInstance(audio_utils.is_silk_available(), bool)
+        with patch.object(audio_utils.shutil, 'which', return_value='/usr/bin/ffmpeg'):
+            self.assertTrue(audio_utils.is_ffmpeg_available())
+        with patch.object(audio_utils.shutil, 'which', return_value=None):
+            self.assertFalse(audio_utils.is_ffmpeg_available())
+        with patch.object(audio_utils.importlib.util, 'find_spec', return_value=object()):
+            self.assertTrue(audio_utils.is_silk_available())
+        with patch.object(audio_utils.importlib.util, 'find_spec', return_value=None):
+            self.assertFalse(audio_utils.is_silk_available())
 
+    @unittest.skipUnless(audio_utils.is_ffmpeg_available(), 'ffmpeg is not installed')
     async def test_transcode_audio_wav_to_mp3_and_ogg(self):
         sample_wav = _create_sample_wav()
         mp3_bytes = await audio_utils.transcode_audio(sample_wav, 'mp3', 'wav')

@@ -917,7 +917,7 @@ const PipelineFormComponent = forwardRef<
                 <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
                   <Tabs value={activeSection} onValueChange={setActiveSection}>
                     <div className="overflow-x-auto">
-                      <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                      <TabsList className="grid min-w-[34rem] w-full grid-cols-4">
                         {primarySections.map((section) => {
                           const Icon = section.icon;
                           return (

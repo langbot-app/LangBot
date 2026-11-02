@@ -37,8 +37,9 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     existing_tables = set(inspector.get_table_names())
+    model_parents_exist = {'workspaces', 'model_providers'} <= existing_tables
 
-    if 'asr_models' not in existing_tables:
+    if model_parents_exist and 'asr_models' not in existing_tables:
         op.create_table(
             'asr_models',
             sa.Column('uuid', sa.String(255), primary_key=True, unique=True),
@@ -71,7 +72,7 @@ def upgrade() -> None:
             ['workspace_uuid', 'name'],
         )
 
-    if 'tts_models' not in existing_tables:
+    if model_parents_exist and 'tts_models' not in existing_tables:
         op.create_table(
             'tts_models',
             sa.Column('uuid', sa.String(255), primary_key=True, unique=True),
@@ -106,6 +107,8 @@ def upgrade() -> None:
 
     if conn.dialect.name == 'postgresql':
         for tbl in ('asr_models', 'tts_models'):
+            if not sa.inspect(conn).has_table(tbl):
+                continue
             op.execute(f'ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY')
             op.execute(f'ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY')
             op.execute(f'DROP POLICY IF EXISTS langbot_workspace_isolation ON {tbl}')
