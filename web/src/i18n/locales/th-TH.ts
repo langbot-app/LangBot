@@ -281,9 +281,6 @@ const thTH = {
       speech: {
         title: "Configure speech capabilities",
         description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
-        title: 'เลือกข้อความที่จะตอบ',
-        description:
-          'ไปป์ไลน์ประมวลผลเหตุการณ์ข้อความและตอบด้วย AI อัตโนมัติ ตั้งเงื่อนไขในกลุ่ม กฎแชทส่วนตัว และตัวกรองข้อความได้ที่นี่',
       },
       ai: {
         title: 'ตั้งค่าความสามารถ AI',

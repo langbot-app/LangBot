@@ -106,6 +106,8 @@ class ModelProvidersRouterGroup(group.RouterGroup):
                 provider['llm_count'] = counts['llm_count']
                 provider['embedding_count'] = counts['embedding_count']
                 provider['rerank_count'] = counts['rerank_count']
+                provider['asr_count'] = counts['asr_count']
+                provider['tts_count'] = counts['tts_count']
             return self.success(data={'providers': providers})
 
         @self.route(
@@ -146,6 +148,8 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             provider['llm_count'] = counts['llm_count']
             provider['embedding_count'] = counts['embedding_count']
             provider['rerank_count'] = counts['rerank_count']
+            provider['asr_count'] = counts['asr_count']
+            provider['tts_count'] = counts['tts_count']
             return self.success(data={'provider': provider})
 
         @self.route(

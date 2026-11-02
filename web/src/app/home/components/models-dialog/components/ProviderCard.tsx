@@ -153,19 +153,25 @@ export default function ProviderCard({
     useState(false);
   const [addModelMode, setAddModelMode] = useState<'manual' | 'scan'>('manual');
 
+  const modelsCountFromLoaded = models
+    ? (models.llm?.length || 0) +
+      (models.embedding?.length || 0) +
+      (models.rerank?.length || 0) +
+      (models.asr?.length || 0) +
+      (models.tts?.length || 0)
+    : undefined;
+  const totalModels =
+    modelsCountFromLoaded !== undefined
+      ? modelsCountFromLoaded
+      : (provider.llm_count || 0) +
+        (provider.embedding_count || 0) +
+        (provider.rerank_count || 0) +
+        (provider.asr_count || 0) +
+        (provider.tts_count || 0);
+
   const canDelete =
     !isLangBotModels &&
-    (provider.llm_count || 0) === 0 &&
-    (provider.embedding_count || 0) === 0 &&
-    (provider.rerank_count || 0) === 0 &&
-    (provider.asr_count || 0) === 0 &&
-    (provider.tts_count || 0) === 0;
-  const totalModels =
-    (provider.llm_count || 0) +
-    (provider.embedding_count || 0) +
-    (provider.rerank_count || 0) +
-    (provider.asr_count || 0) +
-    (provider.tts_count || 0);
+    totalModels === 0;
 
   return (
     <Card className="mb-2">

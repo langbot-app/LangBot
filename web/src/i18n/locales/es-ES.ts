@@ -289,9 +289,6 @@ const esES = {
       speech: {
         title: "Configure speech capabilities",
         description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
-        title: 'Elegir qué mensajes responder',
-        description:
-          'Los flujos procesan eventos de mensajes y responden automáticamente con IA. Configura los activadores de grupo, las reglas de chat privado y los filtros.',
       },
       ai: {
         title: 'Configurar las funciones de IA',

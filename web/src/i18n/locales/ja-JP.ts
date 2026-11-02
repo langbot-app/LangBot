@@ -288,9 +288,6 @@ const jaJP = {
       speech: {
         title: "Configure speech capabilities",
         description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
-        title: '返信するメッセージを選ぶ',
-        description:
-          'パイプラインはメッセージイベントを処理し、AI が自動返信します。グループでの起動条件、個別チャットのルール、メッセージフィルターを設定します。',
       },
       ai: {
         title: 'AI 機能を設定する',
@@ -896,6 +893,8 @@ const jaJP = {
     rerank: '再順位付け',
     asr: '音声認識 (ASR)',
     tts: '音声合成 (TTS)',
+    asrTab: '音声認識',
+    ttsTab: '音声合成',
     rerankUrlTooltip:
       '再順位付けエンドポイントの完全URL（例: https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:

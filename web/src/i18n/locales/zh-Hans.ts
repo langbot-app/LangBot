@@ -847,6 +847,8 @@ const zhHans = {
     rerank: '重排序',
     asr: '语音识别 (ASR)',
     tts: '文本转语音 (TTS)',
+    asrTab: '语音识别',
+    ttsTab: '语音合成',
     rerankUrlTooltip:
       '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip: '添加到基础 URL 后的重排序路径（默认：rerank）',

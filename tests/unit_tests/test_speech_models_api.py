@@ -265,3 +265,15 @@ class TestSpeechModels(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(model.uuid, '')
             self.assertEqual(model.extra_args, {'voice': 'alloy'})
             mock_build_prov.assert_called_once()
+
+    def test_litellm_requester_infer_model_type_speech(self):
+        req = LiteLLMRequester('openai', {'base_url': 'https://api.openai.com/v1'})
+        self.assertEqual(req._infer_model_type('whisper-1'), 'asr')
+        self.assertEqual(req._infer_model_type('FunAudioLLM/SenseVoiceSmall'), 'asr')
+        self.assertEqual(req._infer_model_type('tts-1'), 'tts')
+        self.assertEqual(req._infer_model_type('tts-1-hd'), 'tts')
+        self.assertEqual(req._infer_model_type('FunAudioLLM/CosyVoice2-0.5B'), 'tts')
+        self.assertEqual(req._infer_model_type('text-embedding-3-small'), 'embedding')
+        self.assertEqual(req._infer_model_type('bge-reranker-v2-m3'), 'rerank')
+        self.assertEqual(req._infer_model_type('gpt-4o'), 'llm')
+

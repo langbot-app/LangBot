@@ -286,9 +286,6 @@ const viVN = {
       speech: {
         title: "Configure speech capabilities",
         description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
-        title: 'Chọn tin nhắn cần trả lời',
-        description:
-          'Pipeline xử lý sự kiện tin nhắn và tự động trả lời bằng AI. Đặt điều kiện kích hoạt trong nhóm, quy tắc trò chuyện riêng và bộ lọc tin nhắn tại đây.',
       },
       ai: {
         title: 'Cấu hình khả năng AI',

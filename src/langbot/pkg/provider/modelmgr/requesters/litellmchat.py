@@ -182,6 +182,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _ASR_MODEL_HINTS = ('whisper', 'sensevoice', 'asr', 'paraformer', 'conformer', 'speech-to-text', 'transcription', 'stt')
+    _TTS_MODEL_HINTS = ('tts', 'text-to-speech', 'speech-synthesis', 'cosyvoice', 'voice-clone', 'sambert', 'chattts')
     _QWEN_DEDICATED_THINKING_MODELS = frozenset(
         {
             'qwen3.7-max-preview',
@@ -786,12 +788,27 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _reasoning_level(self, model: requester.RuntimeLLMModel) -> str:
         return reasoning.normalize_reasoning_config(self._reasoning_config_value(model))['level']
 
-    def _infer_model_type(self, model_id: str) -> str:
+    def _infer_model_type(self, model_id: str, model_payload: dict[str, typing.Any] | None = None) -> str:
+        if model_payload:
+            explicit_type = (model_payload.get('type') or model_payload.get('task') or '').lower()
+            if explicit_type in ('asr', 'audio_transcription', 'speech-to-text', 'stt'):
+                return 'asr'
+            if explicit_type in ('tts', 'text_to_speech', 'text-to-speech', 'speech-synthesis'):
+                return 'tts'
+            if explicit_type in ('embedding', 'text-embedding'):
+                return 'embedding'
+            if explicit_type in ('rerank', 'reranking'):
+                return 'rerank'
+
         normalized_id = (model_id or '').lower()
         if any(kw in normalized_id for kw in self._RERANK_MODEL_HINTS):
             return 'rerank'
         if any(kw in normalized_id for kw in self._EMBEDDING_MODEL_HINTS):
             return 'embedding'
+        if any(kw in normalized_id for kw in self._ASR_MODEL_HINTS):
+            return 'asr'
+        if any(kw in normalized_id for kw in self._TTS_MODEL_HINTS):
+            return 'tts'
         return 'llm'
 
     def _enrich_scanned_model(
@@ -799,7 +816,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model_id: str,
         model_payload: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
-        model_type = self._infer_model_type(model_id)
+        model_type = self._infer_model_type(model_id, model_payload)
         scanned_model: dict[str, typing.Any] = {
             'id': model_id,
             'name': model_id,

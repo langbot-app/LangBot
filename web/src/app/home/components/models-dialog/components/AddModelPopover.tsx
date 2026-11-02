@@ -288,7 +288,7 @@ export default function AddModelPopover({
         )}
       </PopoverTrigger>
       <PopoverContent
-        className="w-[min(24rem,calc(100vw-2rem))] max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden"
+        className="w-[min(28rem,calc(100vw-2rem))] max-h-[calc(100vh-8rem)] flex flex-col overflow-hidden"
         align="end"
         side="bottom"
         sideOffset={8}
@@ -303,39 +303,63 @@ export default function AddModelPopover({
           <div className="flex-shrink-0">
             {!(trigger && initialMode === 'scan') && visibleTabs.length > 1 && (
               <TabsList
-                className="grid w-full"
+                className="grid w-full h-auto p-1 bg-muted/80 rounded-lg gap-1"
                 style={{
                   gridTemplateColumns: `repeat(${visibleTabs.length}, minmax(0, 1fr))`,
                 }}
               >
                 {visibleTabs.includes('llm') && (
-                  <TabsTrigger value="llm">
-                    <MessageSquareText className="h-4 w-4 mr-1" />
-                    {t('models.chat')}
+                  <TabsTrigger
+                    value="llm"
+                    className="flex items-center justify-center min-w-0 px-1.5 py-1.5 text-xs font-medium"
+                    title={t('models.chat')}
+                  >
+                    <MessageSquareText className="h-3.5 w-3.5 shrink-0 mr-1" />
+                    <span className="truncate">{t('models.chat')}</span>
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('embedding') && (
-                  <TabsTrigger value="embedding">
-                    <Cpu className="h-4 w-4 mr-1" />
-                    {t('models.embedding')}
+                  <TabsTrigger
+                    value="embedding"
+                    className="flex items-center justify-center min-w-0 px-1.5 py-1.5 text-xs font-medium"
+                    title={t('models.embedding')}
+                  >
+                    <Cpu className="h-3.5 w-3.5 shrink-0 mr-1" />
+                    <span className="truncate">{t('models.embedding')}</span>
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('rerank') && (
-                  <TabsTrigger value="rerank">
-                    <ArrowUpDown className="h-4 w-4 mr-1" />
-                    {t('models.rerank')}
+                  <TabsTrigger
+                    value="rerank"
+                    className="flex items-center justify-center min-w-0 px-1.5 py-1.5 text-xs font-medium"
+                    title={t('models.rerank')}
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5 shrink-0 mr-1" />
+                    <span className="truncate">{t('models.rerank')}</span>
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('asr') && (
-                  <TabsTrigger value="asr">
-                    <Mic className="h-4 w-4 mr-1" />
-                    {t('models.asr')}
+                  <TabsTrigger
+                    value="asr"
+                    className="flex items-center justify-center min-w-0 px-1.5 py-1.5 text-xs font-medium"
+                    title={t('models.asr')}
+                  >
+                    <Mic className="h-3.5 w-3.5 shrink-0 mr-1" />
+                    <span className="truncate">
+                      {t('models.asrTab', { defaultValue: 'ASR' })}
+                    </span>
                   </TabsTrigger>
                 )}
                 {visibleTabs.includes('tts') && (
-                  <TabsTrigger value="tts">
-                    <Volume2 className="h-4 w-4 mr-1" />
-                    {t('models.tts')}
+                  <TabsTrigger
+                    value="tts"
+                    className="flex items-center justify-center min-w-0 px-1.5 py-1.5 text-xs font-medium"
+                    title={t('models.tts')}
+                  >
+                    <Volume2 className="h-3.5 w-3.5 shrink-0 mr-1" />
+                    <span className="truncate">
+                      {t('models.ttsTab', { defaultValue: 'TTS' })}
+                    </span>
                   </TabsTrigger>
                 )}
               </TabsList>

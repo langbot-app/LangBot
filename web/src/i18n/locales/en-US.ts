@@ -892,6 +892,8 @@ const enUS = {
     rerank: 'Rerank',
     asr: 'ASR (Speech Recognition)',
     tts: 'TTS (Text to Speech)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip: 'Path appended to base URL (default: rerank)',

@@ -842,6 +842,8 @@ const zhHant = {
     rerank: '重排序',
     asr: '語音辨識 (ASR)',
     tts: '文字轉語音 (TTS)',
+    asrTab: '語音辨識',
+    ttsTab: '語音合成',
     rerankUrlTooltip:
       '完整 URL 覆蓋重排序端點（例如：https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:
