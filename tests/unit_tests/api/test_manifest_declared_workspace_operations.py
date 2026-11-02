@@ -194,9 +194,14 @@ def test_registry_real_new_sdk_manifest_loading_subprocess():
     import sys
     from pathlib import Path
 
-    sdk_path = Path(__file__).resolve().parents[4] / 'langbot-plugin-sdk' / 'src'
+    sdk_env = os.environ.get('LANGBOT_PLUGIN_SDK_PATH')
+    if sdk_env:
+        sdk_candidate = Path(sdk_env).resolve()
+        sdk_path = sdk_candidate / 'src' if (sdk_candidate / 'src').is_dir() else sdk_candidate
+    else:
+        sdk_path = Path(__file__).resolve().parents[4] / 'langbot-plugin-sdk' / 'src'
     if not sdk_path.exists():
-        pytest.skip('langbot-plugin-sdk repo not found')
+        pytest.skip(f'langbot-plugin-sdk not found at {sdk_path} (set LANGBOT_PLUGIN_SDK_PATH to override)')
 
     code = f"""
 import sys

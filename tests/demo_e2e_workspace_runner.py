@@ -12,6 +12,7 @@ Demonstrates:
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -20,10 +21,33 @@ from unittest.mock import AsyncMock, Mock
 
 import yaml
 
+sdk_env = os.environ.get('LANGBOT_PLUGIN_SDK_PATH')
+if sdk_env:
+    sdk_candidate = Path(sdk_env).resolve()
+    sdk_root = sdk_candidate if (sdk_candidate / 'examples').is_dir() else sdk_candidate.parent
+    sdk_src = sdk_candidate / 'src' if (sdk_candidate / 'src').is_dir() else sdk_candidate
+else:
+    sdk_root = Path(__file__).resolve().parents[2] / 'langbot-plugin-sdk'
+    sdk_src = sdk_root / 'src'
+
+if not sdk_src.exists():
+    if 'pytest' in sys.modules or os.environ.get('PYTEST_CURRENT_TEST'):
+        try:
+            import pytest
+
+            pytest.skip(
+                f'langbot-plugin-sdk not found at {sdk_src} (set LANGBOT_PLUGIN_SDK_PATH to override)',
+                allow_module_level=True,
+            )
+        except Exception:
+            pass
+    print(f'Skipped: langbot-plugin-sdk not found at {sdk_src} (set LANGBOT_PLUGIN_SDK_PATH to override)')
+    sys.exit(0)
+
 # Ensure new SDK from repo is in sys.path
-sdk_src = str(Path(__file__).resolve().parents[2] / 'langbot-plugin-sdk' / 'src')
-if sdk_src not in sys.path:
-    sys.path.insert(0, sdk_src)
+sdk_src_str = str(sdk_src)
+if sdk_src_str not in sys.path:
+    sys.path.insert(0, sdk_src_str)
 
 from langbot_plugin.api.entities.builtin.runner.manifest import RunnerPermissions  # noqa: E402
 from langbot_plugin.entities.io.context import InstallationBinding  # noqa: E402
@@ -46,15 +70,20 @@ async def run_demo():
 
     # Step 1: Manifest Reading via Registry
     print('--- Step 1: 清单声明读取 (RunnerRegistry._validate_and_build_descriptor) ---')
-    manifest_yaml_path = (
-        Path(__file__).resolve().parents[2]
-        / 'langbot-plugin-sdk'
-        / 'examples'
-        / 'workspace_runner_plugin'
-        / 'components'
-        / 'runner'
-        / 'default.yaml'
-    )
+    manifest_yaml_path = sdk_root / 'examples' / 'workspace_runner_plugin' / 'components' / 'runner' / 'default.yaml'
+    if not manifest_yaml_path.exists():
+        if 'pytest' in sys.modules or os.environ.get('PYTEST_CURRENT_TEST'):
+            try:
+                import pytest
+
+                pytest.skip(
+                    f'Example runner manifest not found at {manifest_yaml_path}',
+                    allow_module_level=True,
+                )
+            except Exception:
+                pass
+        print(f'Skipped: Example runner manifest not found at {manifest_yaml_path}')
+        return
     with open(manifest_yaml_path, 'r', encoding='utf-8') as f:
         comp_yaml = yaml.safe_load(f)
 
