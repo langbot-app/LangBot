@@ -395,88 +395,114 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                         from langbot.pkg.utils import audio as audio_utils
 
                         audio_fmt = audio_utils.detect_audio_format(voice_bytes)
-                        duration_sec = component.length or audio_utils.estimate_audio_duration(voice_bytes, audio_fmt)
-                        playtime_ms = int(duration_sec * 1000) if duration_sec > 0 else 0
+                        delivery_mode = self.config.get('voice_delivery', 'file')
 
-                        if audio_fmt == 'silk':
-                            if playtime_ms <= 0:
-                                silk_dur = audio_utils.estimate_audio_duration(voice_bytes, 'silk')
-                                playtime_ms = int(silk_dur * 1000) if silk_dur > 0 else 1000
+                        if delivery_mode == 'voice':
+                            duration_sec = component.length or audio_utils.estimate_audio_duration(voice_bytes, audio_fmt)
+                            playtime_ms = int(duration_sec * 1000) if duration_sec > 0 else 0
 
-                            await self.client.send_voice(
-                                target_id,
-                                voice_bytes,
-                                playtime=playtime_ms,
-                                encode_type=6,
-                                sample_rate=24000,
-                                bits_per_sample=16,
-                                context_token=context_token,
-                            )
-                        elif audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
-                            silk_bytes = None
-                            try:
-                                silk_bytes = await audio_utils.transcode_audio(voice_bytes, 'silk', audio_fmt)
-                            except Exception as exc:
-                                logger.warning(
-                                    f'Failed to transcode voice to SILK: {exc}; falling back to audio file.'
+                            if audio_fmt == 'silk':
+                                if playtime_ms <= 0:
+                                    silk_dur = audio_utils.estimate_audio_duration(voice_bytes, 'silk')
+                                    playtime_ms = int(silk_dur * 1000) if silk_dur > 0 else 1000
+
+                                await self.client.send_voice(
+                                    target_id,
+                                    voice_bytes,
+                                    playtime=playtime_ms,
+                                    encode_type=6,
+                                    sample_rate=24000,
+                                    bits_per_sample=16,
+                                    context_token=context_token,
                                 )
-                                await self.logger.warning(
-                                    f'Failed to transcode voice to SILK: {exc}; gracefully falling back to audio file.'
-                                )
-
-                            if silk_bytes:
+                            elif audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                                silk_bytes = None
                                 try:
-                                    if playtime_ms <= 0:
-                                        silk_dur = audio_utils.estimate_audio_duration(silk_bytes, 'silk')
-                                        playtime_ms = int(silk_dur * 1000) if silk_dur > 0 else 1000
-
-                                    await self.client.send_voice(
-                                        target_id,
-                                        silk_bytes,
-                                        playtime=playtime_ms,
-                                        encode_type=6,
-                                        sample_rate=24000,
-                                        bits_per_sample=16,
-                                        context_token=context_token,
-                                    )
-                                    logger.info(
-                                        f'Successfully sent SILK voice message to {target_id} (playtime={playtime_ms}ms)'
-                                    )
+                                    silk_bytes = await audio_utils.transcode_audio(voice_bytes, 'silk', audio_fmt)
                                 except Exception as exc:
                                     logger.warning(
-                                        f'Failed to send WeChat voice: {exc}; falling back to audio file.'
+                                        f'Failed to transcode voice to SILK: {exc}; falling back to audio file.'
                                     )
                                     await self.logger.warning(
-                                        f'Failed to send WeChat voice: {exc}; gracefully falling back to audio file.'
+                                        f'Failed to transcode voice to SILK: {exc}; gracefully falling back to audio file.'
                                     )
-                                    file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+
+                                if silk_bytes:
+                                    try:
+                                        if playtime_ms <= 0:
+                                            silk_dur = audio_utils.estimate_audio_duration(silk_bytes, 'silk')
+                                            playtime_ms = int(silk_dur * 1000) if silk_dur > 0 else 1000
+
+                                        await self.client.send_voice(
+                                            target_id,
+                                            silk_bytes,
+                                            playtime=playtime_ms,
+                                            encode_type=6,
+                                            sample_rate=24000,
+                                            bits_per_sample=16,
+                                            context_token=context_token,
+                                        )
+                                        logger.info(
+                                            f'Successfully sent SILK voice message to {target_id} (playtime={playtime_ms}ms)'
+                                        )
+                                    except Exception as exc:
+                                        logger.warning(
+                                            f'Failed to send WeChat voice: {exc}; falling back to audio file.'
+                                        )
+                                        await self.logger.warning(
+                                            f'Failed to send WeChat voice: {exc}; gracefully falling back to audio file.'
+                                        )
+                                        # Deliver as playable MP3 file
+                                        out_bytes = voice_bytes
+                                        if audio_fmt != 'mp3' and audio_utils.is_ffmpeg_available():
+                                            try:
+                                                out_bytes = await audio_utils.transcode_audio(voice_bytes, 'mp3', audio_fmt)
+                                            except Exception:
+                                                pass
+                                        await self.client.send_file(
+                                            target_id,
+                                            out_bytes,
+                                            'voice.mp3',
+                                            context_token,
+                                        )
+                                else:
+                                    out_bytes = voice_bytes
+                                    if audio_fmt != 'mp3' and audio_utils.is_ffmpeg_available():
+                                        try:
+                                            out_bytes = await audio_utils.transcode_audio(voice_bytes, 'mp3', audio_fmt)
+                                        except Exception:
+                                            pass
                                     await self.client.send_file(
                                         target_id,
-                                        voice_bytes,
-                                        f'voice.{file_ext}',
+                                        out_bytes,
+                                        'voice.mp3',
                                         context_token,
                                     )
                             else:
-                                file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+                                out_bytes = voice_bytes
+                                if audio_fmt != 'mp3' and audio_utils.is_ffmpeg_available():
+                                    try:
+                                        out_bytes = await audio_utils.transcode_audio(voice_bytes, 'mp3', audio_fmt)
+                                    except Exception:
+                                        pass
                                 await self.client.send_file(
                                     target_id,
-                                    voice_bytes,
-                                    f'voice.{file_ext}',
+                                    out_bytes,
+                                    'voice.mp3',
                                     context_token,
                                 )
                         else:
-                            # Graceful degradation when SILK transcoding is unavailable
-                            logger.info(
-                                'SILK transcoding not available (requires ffmpeg & pilk); degrading voice to audio file.'
-                            )
-                            await self.logger.info(
-                                'SILK transcoding not available (requires ffmpeg & pilk); gracefully degrading voice to audio file.'
-                            )
-                            file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+                            # Standard OpenClaw behavior: deliver as playable MP3 audio file card
+                            out_bytes = voice_bytes
+                            if audio_fmt != 'mp3' and audio_utils.is_ffmpeg_available():
+                                try:
+                                    out_bytes = await audio_utils.transcode_audio(voice_bytes, 'mp3', audio_fmt)
+                                except Exception:
+                                    pass
                             await self.client.send_file(
                                 target_id,
-                                voice_bytes,
-                                f'voice.{file_ext}',
+                                out_bytes,
+                                'voice.mp3',
                                 context_token,
                             )
 

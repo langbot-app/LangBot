@@ -149,14 +149,25 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             raise ValueError(f'Invalid {kind} attachment data') from exc
         if not data:
             raise ValueError(f'{kind} attachment has no data to upload')
-        result = await bot.upload_media(data, item.get('name') or f'attachment.{kind}', media_type=kind)
-        media_id = result.get('media_id') if isinstance(result, dict) else None
+
+        media_id = None
+        delivery_kind = kind
+        filename = item.get('name') or ('voice.mp3' if kind == 'voice' else f'attachment.{kind}')
+        result = await bot.upload_media(data, filename, media_type=kind)
+        if isinstance(result, dict):
+            media_id = result.get('media_id')
+        if not media_id and kind == 'voice':
+            # Fall back to uploading as audio file if voice-type upload is not accepted
+            result = await bot.upload_media(data, filename, media_type='file')
+            if isinstance(result, dict):
+                media_id = result.get('media_id')
+                delivery_kind = 'file'
         if not media_id:
             raise RuntimeError(f'WeCom {kind} upload failed: no media ID returned')
-        ack = await getattr(bot, f'reply_{kind}')(req_id, media_id)
+        ack = await getattr(bot, f'reply_{delivery_kind}')(req_id, media_id)
         if ack is None or ack.get('errcode', 0) != 0:
             code = ack.get('errcode') if isinstance(ack, dict) else 'no acknowledgement'
-            raise RuntimeError(f'WeCom {kind} delivery failed: {code}')
+            raise RuntimeError(f'WeCom {delivery_kind} delivery failed: {code}')
         return True
 
     async def send_message(

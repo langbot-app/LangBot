@@ -38,7 +38,11 @@ class TestAudioUtils(unittest.IsolatedAsyncioTestCase):
     def test_is_ffmpeg_and_silk_available(self):
         with patch.object(audio_utils.shutil, 'which', return_value='/usr/bin/ffmpeg'):
             self.assertTrue(audio_utils.is_ffmpeg_available())
-        with patch.object(audio_utils.shutil, 'which', return_value=None):
+        with (
+            patch.object(audio_utils.shutil, 'which', return_value=None),
+            patch.object(audio_utils.os.path, 'isfile', return_value=False),
+            patch.dict('sys.modules', {'imageio_ffmpeg': None}),
+        ):
             self.assertFalse(audio_utils.is_ffmpeg_available())
         with patch.object(audio_utils.importlib.util, 'find_spec', return_value=object()):
             self.assertTrue(audio_utils.is_silk_available())
