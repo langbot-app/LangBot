@@ -122,6 +122,14 @@ def build_platform_tools_system_message(ctx: typing.Any) -> Message | None:
         return None
     delivery = getattr(ctx, "delivery", None)
     capabilities = getattr(delivery, "platform_capabilities", None) or {}
+    reply_guidance = ""
+    if getattr(delivery, "automatic_reply", None) is False and "event_reply" in names:
+        reply_guidance = (
+            " Your final output text will not be sent to the user in this run. "
+            "To reply to the user, you must call `event_reply` with the reply text. "
+            "You may omit `event_reply` only when no reply is needed, such as when the event requires no response "
+            "or replying is outside this processor's responsibilities."
+        )
     mock_guidance = ""
     if capabilities.get("debug_mock") is True:
         mock_guidance = (
@@ -140,7 +148,7 @@ def build_platform_tools_system_message(ctx: typing.Any) -> Message | None:
             "Use them only when needed, wait for the tool result, and never claim an action succeeded before it returns successfully. "
             "Do not invent tool arguments; a tool with an empty object schema must be called with {}. "
             "Use names and IDs already present in the event data directly. Only query identity information "
-            "when it is missing or the user explicitly asks for a lookup." + mock_guidance
+            "when it is missing or the user explicitly asks for a lookup." + reply_guidance + mock_guidance
         ),
     )
 
