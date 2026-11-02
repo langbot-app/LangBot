@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 import time
 import uuid as uuid_mod
 from datetime import datetime, timezone
@@ -22,6 +21,7 @@ from langbot_plugin.api.entities.builtin.rag.models import (
     IngestionResult,
 )
 from langbot_plugin.api.entities.builtin.rag.enums import DocumentStatus
+from store.recall import matches_filters, select_memories
 from store.serialization import serialized_write
 
 logger = logging.getLogger(__name__)
@@ -64,57 +64,12 @@ class LongTermMemoryEngine(KnowledgeEngine):
     # ================================================================
 
     @staticmethod
-    def _time_decay_score(
-        similarity: float, timestamp_str: str, half_life_days: float = 30.0,
-    ) -> float:
-        """Blend similarity with exponential time decay.
-
-        final_score = similarity * exp(-ln2 * age_days / half_life_days)
-
-        A memory exactly ``half_life_days`` old retains 50 % of its
-        similarity weight; very recent memories are nearly unaffected.
-        """
-        if not timestamp_str:
-            return similarity * 0.5
-        try:
-            ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-            now = datetime.now(timezone.utc)
-            age_days = max(0.0, (now - ts).total_seconds() / 86400.0)
-            decay = math.exp(-math.log(2) * age_days / half_life_days)
-            return similarity * decay
-        except (ValueError, TypeError):
-            return similarity * 0.5
-
-    @staticmethod
     def _parse_importance(metadata: dict[str, Any]) -> int:
         raw = metadata.get("importance", "2")
         try:
             return max(1, min(5, int(raw)))
         except (TypeError, ValueError):
             return 2
-
-    @staticmethod
-    def _importance_weight(importance: int) -> float:
-        # Importance should influence ranking, but not overpower semantic match.
-        # The weights keep importance as a secondary signal.
-        return {
-            1: 0.9,
-            2: 1.0,
-            3: 1.08,
-            4: 1.16,
-            5: 1.24,
-        }.get(importance, 1.0)
-
-    @staticmethod
-    def _speaker_match_weight(
-        metadata: dict[str, Any],
-        current_sender_id: str,
-    ) -> float:
-        if not current_sender_id:
-            return 1.0
-        if str(metadata.get("sender_id", "") or "") == current_sender_id:
-            return 1.12
-        return 1.0
 
     @staticmethod
     def _has_update_signal(metadata: dict[str, Any]) -> bool:
@@ -169,7 +124,10 @@ class LongTermMemoryEngine(KnowledgeEngine):
         store = self.plugin.memory_store
 
         embedding_model_uuid = settings.get("embedding_model_uuid", "")
-        top_k = retrieval_settings.get("top_k", 5)
+        try:
+            top_k = max(1, min(20, int(retrieval_settings.get("top_k", 5))))
+        except (ValueError, TypeError):
+            top_k = 5
         logger.info(
             "[LongTermMemory] engine retrieve called: collection_id=%s top_k=%s session_name=%s sender_id=%s bot_uuid=%s query_len=%s",
             collection_id,
@@ -200,7 +158,7 @@ class LongTermMemoryEngine(KnowledgeEngine):
         isolation = settings.get("isolation", "session")
         # Over-fetch to allow time-decay re-ranking to surface recent
         # memories that would otherwise be pushed out by pure similarity.
-        fetch_k = top_k * 3
+        fetch_k = max(50, min(20, top_k) * 4)
         retrieval_strategy = store.normalize_retrieval_strategy(
             settings.get("retrieval_strategy", "auto")
         )
@@ -250,6 +208,8 @@ class LongTermMemoryEngine(KnowledgeEngine):
                 item_id = item.get("id", "")
                 if item_id and item_id in seen_ids:
                     continue
+                if not matches_filters(item.get("metadata", {}), filters):
+                    continue
                 if not store.episode_status_included(item.get("metadata", {})):
                     continue
                 if item_id:
@@ -263,11 +223,7 @@ class LongTermMemoryEngine(KnowledgeEngine):
                 bot_uuid, session_name, isolation
             )
 
-            if sender_id:
-                await extend_results({"$and": [{"user_key": scope_key}, {"sender_id": sender_id}]})
-
-            if len(results) < fetch_k:
-                await extend_results({"user_key": scope_key})
+            await extend_results({"user_key": scope_key})
         else:
             # Refuse to search without scope — returning unfiltered results
             # would leak memories across sessions / users.
@@ -277,48 +233,10 @@ class LongTermMemoryEngine(KnowledgeEngine):
             )
             return RetrievalResponse(results=[], total_found=0)
 
-        # Time-decay re-ranking: blend similarity with recency so that
-        # recent memories can outrank older ones with marginally higher
-        # vector similarity.
-        half_life = float(settings.get("recency_half_life_days", 30))
-        for r in results:
-            sim = r.get("score") or (1.0 - r.get("distance", 1.0))
-            metadata = r.get("metadata", {})
-            ts = metadata.get("timestamp", "")
-            importance = self._parse_importance(metadata)
-            time_score = self._time_decay_score(float(sim), ts, half_life)
-            importance_weight = self._importance_weight(importance)
-            speaker_weight = self._speaker_match_weight(metadata, sender_id)
-            update_weight = 1.08 if self._has_update_signal(metadata) else 1.0
-            exact_boost = 1.0
-            if exact_match_boost:
-                exact_score = store._metadata_exact_match_score(
-                    query,
-                    r.get("id", ""),
-                    metadata,
-                )
-                exact_boost += min(exact_score, 2.0) * 0.25
-            final_score = (
-                time_score
-                * importance_weight
-                * speaker_weight
-                * update_weight
-                * exact_boost
-            )
-            r["_final_score"] = max(0.0, min(1.0, final_score))
-            r["_recency_hint"] = self._recency_hint(ts)
-            r["_importance"] = importance
-            r["_speaker_match"] = speaker_weight > 1.0
-            r["_has_update_signal"] = update_weight > 1.0
-            r["_exact_match"] = exact_boost > 1.0
-
-        results.sort(key=lambda r: r["_final_score"], reverse=True)
-        results = results[:top_k]
-        logger.info(
-            "[LongTermMemory] engine retrieve completed: collection_id=%s result_count=%s half_life_days=%s",
-            collection_id,
-            len(results),
-            half_life,
+        results = select_memories(
+            results, query, top_k=top_k, exact_match_boost=exact_match_boost,
+            current_sender_id=sender_id,
+            half_life_days=settings.get("recency_half_life_days", 30),
         )
 
         entries: list[RetrievalResultEntry] = []
@@ -329,14 +247,14 @@ class LongTermMemoryEngine(KnowledgeEngine):
             importance = str(r.get("_importance", self._parse_importance(meta)))
             tags = meta.get("tags", "")
             hints = [f"importance:{importance}"]
-            recency_hint = r.get("_recency_hint", "unknown")
+            recency_hint = self._recency_hint(meta.get("event_at") or timestamp)
             if recency_hint != "unknown":
                 hints.append(f"recency:{recency_hint}")
-            if r.get("_speaker_match"):
+            if sender_id and str(meta.get("sender_id", "")) == sender_id:
                 hints.append("speaker:current")
-            if r.get("_has_update_signal"):
+            if self._has_update_signal(meta):
                 hints.append("signal:update")
-            if r.get("_exact_match"):
+            if exact_match_boost and store._metadata_exact_match_score(query, r.get("id", ""), meta):
                 hints.append("match:exact")
 
             display = f"[{timestamp}] ({', '.join(hints)})"
@@ -350,8 +268,8 @@ class LongTermMemoryEngine(KnowledgeEngine):
                     id=r.get("id", ""),
                     content=[{"type": "text", "text": display}],
                     metadata=meta,
-                    score=r.get("_final_score", r.get("score")),
-                    distance=1.0 - r.get("_final_score", r.get("score", 0.0)),
+                    score=r.get("score") or 0.0,
+                    distance=r.get("distance") or 0.0,
                 )
             )
 

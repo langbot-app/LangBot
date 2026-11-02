@@ -6,6 +6,7 @@ import re
 from langbot_plugin.api.definition.components.common.event_listener import EventListener
 from langbot_plugin.api.entities import events, context
 from langbot_plugin.api.entities.builtin.provider.message import Message
+from store.recall import bounded_profile
 from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 
 logger = logging.getLogger(__name__)
@@ -206,9 +207,11 @@ class MemoryInjector(EventListener):
         # Build injection parts
         blocks: list[str] = []
         if session_profile_block.strip():
-            blocks.append(session_profile_block)
+            if bounded_profile(session_profile_block):
+                blocks.append(session_profile_block)
         if speaker_profile_block.strip():
-            blocks.append(speaker_profile_block)
+            if bounded_profile(speaker_profile_block):
+                blocks.append(speaker_profile_block)
 
         # Inject current speaker identity so LLM knows who is talking
         if sender_name:

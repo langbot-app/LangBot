@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any
 from langbot_plugin.entities.io.errors import ActionCallError
+from store.recall import exact_match_score, matches_filters, select_memories
 from store.serialization import FENCE_KEY_PREFIX, BindingWrites, serialized_write
 
 logger = logging.getLogger(__name__)
@@ -144,27 +145,7 @@ class MemoryStore:
 
     @staticmethod
     def _metadata_exact_match_score(query: str, item_id: str, metadata: dict[str, Any]) -> float:
-        needle = query.strip().lower()
-        if not needle:
-            return 0.0
-        score = 0.0
-        if needle == str(item_id or "").strip().lower():
-            score += 2.0
-        for field in ("sender_id", "sender_name"):
-            value = str(metadata.get(field, "") or "").strip().lower()
-            if value and needle == value:
-                score += 1.2
-        tags = {
-            tag.strip().lower()
-            for tag in str(metadata.get("tags", "") or "").split(",")
-            if tag.strip()
-        }
-        if needle in tags:
-            score += 1.2
-        content = str(metadata.get("content", "") or "").lower()
-        if needle and needle in content:
-            score += 0.6
-        return score
+        return exact_match_score(query, item_id, metadata)
 
     # ======================== common helpers ========================
 
@@ -1389,9 +1370,10 @@ class MemoryStore:
             # string comparison works correctly for single-digit values in this range.
             filters["importance"] = {"$gte": str(importance_min)}
 
-        # ChromaDB requires $and wrapper when there are multiple filter conditions
-        if len(filters) > 1:
-            filters = {"$and": [{k: v} for k, v in filters.items()]}
+        # Legacy timestamps/importance are strings; Chroma range operators require numbers.
+        backend_filters = {key: value for key, value in filters.items() if not isinstance(value, dict)}
+        if len(backend_filters) > 1:
+            backend_filters = {"$and": [{key: value} for key, value in backend_filters.items()]}
 
         exact_episode = None
         if exact_match_boost and user_key:
@@ -1401,14 +1383,14 @@ class MemoryStore:
                 user_key=user_key,
             )
 
-        fetch_k = max(top_k, top_k * 4, 50)
+        fetch_k = max(50, min(20, top_k) * 4)
         strategy = self.normalize_retrieval_strategy(retrieval_strategy)
         normalized_weight = self.normalize_vector_weight(vector_weight)
         search_kwargs = {
             "collection_id": collection_id,
             "query_vector": query_vector,
             "top_k": fetch_k,
-            "filters": filters if filters else None,
+            "filters": backend_filters or None,
         }
         if strategy in {"auto", "hybrid"}:
             try:
@@ -1439,54 +1421,35 @@ class MemoryStore:
             filters if filters else None,
         )
 
-        seen_ids: set[str] = set()
-        episodes = []
-        if exact_episode and self.episode_status_included(
-            exact_episode.get("metadata", {}),
-            include_statuses,
-        ):
-            exact_episode["score"] = 1.0
-            exact_episode["_exact_match_score"] = 2.0
-            episodes.append(exact_episode)
-            seen_ids.add(exact_episode["id"])
-
-        for r in results:
-            rid = r.get("id", "")
-            if rid in seen_ids:
+        candidates = []
+        if exact_episode:
+            candidates.append({"id": exact_episode["id"], "metadata": exact_episode.get("metadata", {}), "score": exact_episode.get("score")})
+        candidates.extend(results)
+        seen_ids = set()
+        scoped = []
+        for record in candidates:
+            rid = record.get("id", "")
+            metadata = record.get("metadata", {})
+            if rid in seen_ids or not matches_filters(metadata, filters):
                 continue
-            meta = r.get("metadata", {})
-            if not self.episode_status_included(meta, include_statuses):
+            if not self.episode_status_included(metadata, include_statuses):
                 continue
-            exact_score = self._metadata_exact_match_score(query, rid, meta) if exact_match_boost else 0.0
-            episodes.append(
-                {
-                    "id": rid,
-                    "content": meta.get("content", ""),
-                    "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],
-                    "importance": int(meta.get("importance", "2")),
-                    "timestamp": meta.get("timestamp", ""),
-                    "sender_id": meta.get("sender_id", ""),
-                    "sender_name": meta.get("sender_name", ""),
-                    "source": meta.get("source", ""),
-                    "status": self.episode_status_from_metadata(meta),
-                    "superseded_by": meta.get("superseded_by", ""),
-                    "score": r.get("score"),
-                    "_exact_match_score": exact_score,
-                }
-            )
             seen_ids.add(rid)
-
-        if exact_match_boost:
-            episodes.sort(
-                key=lambda ep: (
-                    float(ep.get("_exact_match_score", 0.0)),
-                    float(ep.get("score") or 0.0),
-                ),
-                reverse=True,
-            )
-        for ep in episodes:
-            ep.pop("_exact_match_score", None)
-        return episodes[:top_k]
+            scoped.append(record)
+        selected = select_memories(
+            scoped, query, top_k=top_k, exact_match_boost=exact_match_boost,
+            historical=bool(time_after or time_before) or self.normalize_episode_statuses(include_statuses) != {self.EPISODE_STATUS_ACTIVE},
+        )
+        episodes = []
+        for record in selected:
+            meta = record.get("metadata", {})
+            episode = self._episode_from_vector_item(record)
+            episode.pop("metadata", None)
+            episode["score"] = record.get("score")
+            for field in ("event_at", "valid_from", "valid_until", "source_ref", "claim_type", "consolidation_source_ids"):
+                episode[field] = meta.get(field, "unknown" if field == "claim_type" else "")
+            episodes.append(episode)
+        return episodes
 
     @serialized_write
     async def delete_episodes_by_user(

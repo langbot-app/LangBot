@@ -46,8 +46,8 @@ spec:
         en_US: Recency Half-Life Days
         zh_Hans: 时效半衰期天数
       description:
-        en_US: Controls how quickly older episodic memories lose ranking weight during automatic recall.
-        zh_Hans: 控制自动召回时旧情景记忆的时效衰减速度。
+        en_US: Controls the small recency bonus for explicitly dated events. Undated stable and legacy facts do not decay.
+        zh_Hans: 控制明确事件时间的近期加分。无事件时间的稳定或旧记忆不衰减。
       type: integer
       required: false
       default: 30
