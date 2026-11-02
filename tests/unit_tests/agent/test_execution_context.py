@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 
 from langbot_plugin.api.entities.builtin.runner.delivery import DeliveryContext
 from langbot_plugin.api.entities.builtin.runner.input import AgentInput
@@ -15,6 +16,12 @@ from langbot.pkg.agent.runner.execution_context import (
     project_mcp_resource_config,
 )
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+from langbot.pkg.api.http.context import ExecutionContext
+
+
+CONTEXT = ExecutionContext(
+    instance_uuid='instance-1', workspace_uuid='workspace-1', placement_generation=2, query_uuid='query-1'
+)
 
 
 class PlatformAdapter:
@@ -54,7 +61,7 @@ def test_query_preparation_does_not_choose_a_box():
     event = make_event()
     query = pipeline_query.Query.model_construct(variables={})
     prepare_execution_query(query, event, ['pdf'])
-    event_query = build_execution_query(event, ['pdf'])
+    event_query = build_execution_query(event, ['pdf'], CONTEXT)
     assert query.variables == {'_pipeline_bound_skills': ['pdf']}
     assert event_query.variables == {'_pipeline_bound_skills': ['pdf']}
     assert getattr(query, '_box_binding', None) is None
@@ -111,7 +118,7 @@ def test_pinned_context_updates_text_and_structured_input():
 def test_event_reply_target_populates_valid_session_identity():
     event = make_event(conversation_id='rotating-transcript-id', target_type='group', target_id='room-1')
 
-    query = build_execution_query(event, [])
+    query = build_execution_query(event, [], CONTEXT)
 
     assert query.launcher_type.value == 'group'
     assert query.launcher_id == 'room-1'
@@ -131,8 +138,25 @@ def test_non_message_event_without_conversation_uses_event_scope():
     )
     event.event_type = 'schedule.triggered'
 
-    query = build_execution_query(event, [])
+    query = build_execution_query(event, [], CONTEXT)
 
     assert '_host_box_scope' not in query.variables
     assert query.pipeline_config is None
     assert query.pipeline_uuid is None
+
+
+def test_execution_scope_reaches_nested_event_and_session_at_construction():
+    query = build_execution_query(make_event(target_type='group'), [], CONTEXT)
+    for scoped in (query, query.session, query.message_event):
+        assert scoped.instance_uuid == CONTEXT.instance_uuid
+        assert scoped.workspace_uuid == CONTEXT.workspace_uuid
+        assert scoped.placement_generation == CONTEXT.placement_generation
+    assert query.query_uuid == CONTEXT.query_uuid
+    assert query.session.bot_uuid == 'bot-1'
+
+
+def test_execution_query_rejects_event_from_another_workspace():
+    event = make_event()
+    event.workspace_id = 'another-workspace'
+    with pytest.raises(ValueError, match='Workspace'):
+        build_execution_query(event, [], CONTEXT)

@@ -16,6 +16,7 @@ from langbot_plugin.box.client import BoxRuntimeClient
 from langbot_plugin.api.proxies.runner.box import RunnerBoxAPIMixin
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.agent.runner.execution_context import build_execution_query
 from langbot.pkg.agent.runner.platform_tools import (
     build_platform_tool_resources,
@@ -86,7 +87,15 @@ async def test_signed_http_file_reaches_box_and_authorized_agent_reply_reaches_s
     async def listener(inbound, live_adapter):
         event = envelope(bot, live_adapter, inbound)
         received.append(event)
-        query = build_execution_query(event, [])
+        query = build_execution_query(
+            event,
+            [],
+            ExecutionContext(
+                instance_uuid='instance-test',
+                workspace_uuid=event.workspace_id or 'workspace-test',
+                placement_generation=1,
+            ),
+        )
         prepare_input_files(query, event.input)
         object.__setattr__(query, '_box_binding', RunBoxBinding('run-test', 'box-test', {}, 'run-test'))
         imported = await runner_box.import_attachments(query, None)

@@ -11,11 +11,14 @@ Tests cover preprocessing behavior including:
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from unittest.mock import AsyncMock, Mock
 from importlib import import_module
 
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
+from langbot_plugin.api.entities.builtin.provider.prompt import Prompt
 
 from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from tests.factories import (
@@ -113,24 +116,28 @@ class TestPreProcessorNormalText:
         assert query.messages[0].content == 'plugin history'
 
     @pytest.mark.asyncio
-    async def test_normal_text_continues(self):
+    @pytest.mark.parametrize('cross_workspace', [False, True])
+    async def test_normal_text_continues(self, cross_workspace):
         """Normal text message should continue pipeline."""
         preproc = get_preproc_module()
         entities = get_entities_module()
 
         app = FakeApp()
         # Mock session manager to return a session
-        mock_session = make_session()
+        mock_session = make_session(provider_session.LauncherTypes.GROUP, 99999)
+        if cross_workspace:
+            mock_session.workspace_uuid = 'other-workspace'
+        mock_session._semaphore = asyncio.Semaphore(1)
         app.sess_mgr.get_session = AsyncMock(return_value=mock_session)
 
-        # Mock conversation
-        mock_conversation = Mock()
-        mock_conversation.prompt = Mock()
-        mock_conversation.prompt.messages = []
-        mock_conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
-        mock_conversation.messages = []
-        mock_conversation.update_time = Mock()
-        mock_conversation.uuid = None
+        mock_conversation = provider_session.Conversation(
+            prompt=Prompt(name='default', messages=[]),
+            messages=[],
+            pipeline_uuid='test-pipeline-uuid',
+            bot_uuid='test-bot-uuid',
+        )
+        mock_session.using_conversation = mock_conversation
+        mock_session.conversations.append(mock_conversation)
         app.sess_mgr.get_conversation = AsyncMock(return_value=mock_conversation)
 
         # Mock model manager
@@ -151,12 +158,26 @@ class TestPreProcessorNormalText:
         app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
 
         stage = preproc.PreProcessor(app)
-        query = text_query('hello world')
+        query = group_text_query('hello world', sender_id=67890)
+        if cross_workspace:
+            with pytest.raises(ValueError, match='Execution scope mismatch'):
+                await stage.process(query, 'PreProcessor')
+            app.plugin_connector.emit_event.assert_not_awaited()
+            return
 
         result = await stage.process(query, 'PreProcessor')
 
         assert result.result_type == entities.ResultType.CONTINUE
         assert result.new_query is not None
+
+        assert query.session is not mock_session
+        assert query.session.sender_id == 67890
+        assert mock_session.sender_id == 12345
+        assert query.session.bot_uuid == query.bot_uuid
+        assert query.session.workspace_uuid == query.workspace_uuid
+        assert query.session.conversations is mock_session.conversations
+        assert query.session.using_conversation is mock_session.using_conversation
+        assert query.session._semaphore is mock_session._semaphore
 
     @pytest.mark.asyncio
     async def test_normal_text_sets_user_message(self):
