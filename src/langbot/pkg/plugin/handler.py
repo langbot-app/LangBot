@@ -3067,7 +3067,6 @@ class RuntimeConnectionHandler(handler.Handler):
 
         Yields RunnerResult dicts.
         """
-        timeout = self._get_runner_action_timeout(context)
         gen = self.call_action_generator(
             LangBotToRuntimeAction.RUN_RUNNER,
             {
@@ -3076,27 +3075,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 'runner_name': runner_name,
                 'context': context,
             },
-            timeout=timeout,
+            timeout=None,
         )
 
         async with contextlib.aclosing(gen):
             async for ret in gen:
                 yield ret
-
-    def _get_runner_action_timeout(self, context: dict[str, Any]) -> float:
-        """Use the run deadline as the transport idle timeout when available."""
-        try:
-            import time
-
-            deadline_at = (context.get('runtime') or {}).get('deadline_at')
-            if deadline_at is None:
-                return 300
-            remaining = float(deadline_at) - time.time()
-            if remaining <= 0:
-                return 0.001
-            return max(remaining + 1.0, 0.001)
-        except (TypeError, ValueError):
-            return 300
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""

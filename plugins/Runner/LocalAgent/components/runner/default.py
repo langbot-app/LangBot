@@ -49,12 +49,18 @@ class RunCancelledError(Exception):
 class RunDeadline:
     """Wall-clock deadline shared by assembly, model calls, and tool calls."""
 
-    def __init__(self, timeout_seconds: float):
+    def __init__(self, timeout_seconds: float, runtime: Any = None):
         self.timeout_seconds = max(0.001, float(timeout_seconds))
         self._deadline = time.monotonic() + self.timeout_seconds
+        self._runtime = runtime
+        self._initial_host_deadline = getattr(runtime, "deadline_at", None)
 
     def remaining(self) -> float:
-        return max(0.0, self._deadline - time.monotonic())
+        extension = 0.0
+        current_host_deadline = getattr(self._runtime, "deadline_at", None)
+        if self._initial_host_deadline is not None and current_host_deadline is not None:
+            extension = float(current_host_deadline) - float(self._initial_host_deadline)
+        return max(0.0, self._deadline + extension - time.monotonic())
 
 
 class RunInterruptChecker:
@@ -148,16 +154,19 @@ class RunInterruptChecker:
         cancellation = asyncio.create_task(self._cancelled.wait())
         temporary_watcher = asyncio.create_task(self._watch()) if self.available and self._watcher is None else None
         try:
-            await asyncio.wait(
-                {task, cancellation},
-                timeout=deadline.remaining() if deadline else None,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            if self._cancelled.is_set():
-                raise RunCancelledError(CANCELLED_ERROR)
-            if not task.done():
-                raise asyncio.TimeoutError(TIMEOUT_ERROR)
-            return task.result()
+            while True:
+                if self._cancelled.is_set():
+                    raise RunCancelledError(CANCELLED_ERROR)
+                if task.done():
+                    return task.result()
+                remaining = deadline.remaining() if deadline else None
+                if remaining is not None and remaining <= 0:
+                    raise asyncio.TimeoutError(TIMEOUT_ERROR)
+                await asyncio.wait(
+                    {task, cancellation},
+                    timeout=min(remaining, self.interval_seconds) if remaining is not None else None,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
         finally:
             pending = [task, cancellation] + ([temporary_watcher] if temporary_watcher else [])
             for future in pending:
@@ -222,7 +231,7 @@ class DefaultRunner(Runner):
         api = self.get_run_api(ctx)
         config = ctx.config if isinstance(ctx.config, dict) else {}
         timeout_seconds = get_run_timeout_seconds(config)
-        deadline = RunDeadline(timeout_seconds) if timeout_seconds is not None else None
+        deadline = RunDeadline(timeout_seconds, ctx.runtime) if timeout_seconds is not None else None
         usage_tracker = RunUsageTracker()
 
         if await interrupt_checker.is_cancelled(force=True):
