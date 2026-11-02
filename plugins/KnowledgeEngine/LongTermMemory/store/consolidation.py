@@ -220,6 +220,10 @@ async def apply_summary(store, collection_id: str, embedding_model_uuid: str, us
     written = await store.get_episode_by_id(collection_id, episode_id, user_key)
     if written is None or any(written["metadata"].get(key) != value for key, value in meta.items()):
         raise RuntimeError("Consolidation draft could not be verified; source memories were retained")
+    stored_record = {"id": episode_id, "metadata": written["metadata"], "document": written["content"], "score": None, "distance": 0.0}
+    if not select_memories([stored_record], "", top_k=1):
+        await store.delete_episode_by_id(collection_id, episode_id, user_key)
+        raise ValueError("Stored summary exceeds the recall budget; source memories were retained")
     await store._write_json(proposal_key(collection_id, user_key), {}, collection_id)
     summary = await store.update_episode_status(
         collection_id, embedding_model_uuid, episode_id, user_key, store.EPISODE_STATUS_ACTIVE

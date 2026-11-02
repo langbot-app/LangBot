@@ -362,3 +362,20 @@ async def test_summary_too_large_for_recall_is_not_published():
         await store.apply_consolidation("kb", "emb", "scope", proposal_id=draft["proposal_id"])
     assert set(plugin.records) == {"one", "two"}
     assert all(item["metadata"]["status"] == "active" for item in plugin.records.values())
+
+
+@pytest.mark.asyncio
+async def test_host_metadata_cannot_make_published_summary_exceed_budget():
+    class VerboseHostPlugin(SemanticPlugin):
+        async def vector_upsert(self, *args, **kwargs):
+            kwargs["metadata"] = [{**metadata, "_backend_annotation": "x" * 8000} for metadata in kwargs["metadata"]]
+            await super().vector_upsert(*args, **kwargs)
+
+    plugin = VerboseHostPlugin()
+    add_source(plugin, "source", "A fact that must remain searchable")
+    store = MemoryStore(plugin)
+    draft = await preview(store)
+    with pytest.raises(ValueError, match="Stored summary exceeds"):
+        await store.apply_consolidation("kb", "emb", "scope", proposal_id=draft["proposal_id"])
+    assert set(plugin.records) == {"source"}
+    assert plugin.records["source"]["metadata"]["status"] == "active"

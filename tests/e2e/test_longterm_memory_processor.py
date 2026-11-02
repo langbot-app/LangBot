@@ -390,4 +390,31 @@ def test_local_agent_memory_tools_without_pipeline(
         )
         assert replay.get('error'), replay
 
+        remaining = next(item for item in source_memories if item['id'] != original_id)
+        model.queue_llm_responses(
+            json.dumps({'facts': [{'text': remaining['content'], 'source_ids': [remaining['id']]}]})
+        )
+        pending = await page_api('/consolidation/preview', body)
+        assert pending['proposal_id']
+        from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+        import sqlalchemy
+
+        async def proposal_values():
+            result = await ap.persistence_mgr.execute_async(
+                sqlalchemy.select(BinaryStorage.value).where(
+                    BinaryStorage.workspace_uuid == context.workspace_uuid,
+                    BinaryStorage.owner == 'langbot-team/LongTermMemory',
+                    BinaryStorage.key.like('ltm.consolidation.proposal.%'),
+                )
+            )
+            return [json.loads(row[0]) for row in result.all()]
+
+        assert any(value.get('id') == pending['proposal_id'] for value in await proposal_values())
+        await ap.knowledge_service.delete_knowledge_base(context, memory_kb_id)
+        assert all(value == {} for value in await proposal_values())
+        removed = await ap.plugin_connector.handle_page_api(
+            'langbot-team', 'LongTermMemory', 'memory_console', '/consolidation/preview', 'POST', body
+        )
+        assert removed.get('error'), removed
+
     local._run_local_agent_probe(local_agent_e2e_tmpdir, read_after_restart)
