@@ -275,6 +275,12 @@ const thTH = {
       'เลือกเหตุการณ์ที่รองรับ ใส่ข้อมูลทดสอบ แล้วดูผลลัพธ์และการเรียกเครื่องมือ การกระทำบนแพลตฟอร์มจะถูกจำลอง ส่วนโมเดลและเครื่องมืออื่นทำงานตามการตั้งค่าจริง',
     pipeline: {
       trigger: {
+        title: "Choose which messages to answer",
+        description: "Pipelines handle message events and reply automatically with AI.",
+      },
+      speech: {
+        title: "Configure speech capabilities",
+        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
         title: 'เลือกข้อความที่จะตอบ',
         description:
           'ไปป์ไลน์ประมวลผลเหตุการณ์ข้อความและตอบด้วย AI อัตโนมัติ ตั้งเงื่อนไขในกลุ่ม กฎแชทส่วนตัว และตัวกรองข้อความได้ที่นี่',

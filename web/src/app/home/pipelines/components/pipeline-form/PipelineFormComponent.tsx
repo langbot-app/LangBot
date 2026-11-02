@@ -252,6 +252,7 @@ const PipelineFormComponent = forwardRef<
   const guideSteps = useMemo<GuidedTourStep[]>(() => {
     const sections = [
       'trigger',
+      'speech',
       'ai',
       'output',
       'safety',

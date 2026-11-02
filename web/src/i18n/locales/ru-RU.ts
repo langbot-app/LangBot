@@ -281,6 +281,12 @@ const ruRU = {
       'Выберите поддерживаемое событие, введите тестовые данные и проверьте вывод и результаты инструментов. Действия платформы имитируются; модели и другие инструменты выполняются согласно настройкам.',
     pipeline: {
       trigger: {
+        title: "Choose which messages to answer",
+        description: "Pipelines handle message events and reply automatically with AI.",
+      },
+      speech: {
+        title: "Configure speech capabilities",
+        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
         title: 'Выберите сообщения для ответа',
         description:
           'Конвейер обрабатывает события сообщений и автоматически отвечает с помощью ИИ. Здесь задаются условия в группах, правила личных чатов и фильтры сообщений.',

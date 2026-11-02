@@ -270,6 +270,11 @@ const zhHant = {
         description:
           '流水線只處理訊息事件，並由 AI 自動回覆。在這裡設定群聊觸發方式、私聊規則和訊息過濾條件。',
       },
+      speech: {
+        title: '設定語音能力',
+        description:
+          '設定語音辨識（ASR）與文字轉語音（TTS）模型，支援接收語音訊息及合成語音回覆。',
+      },
       ai: {
         title: '設定 AI 能力',
         description:

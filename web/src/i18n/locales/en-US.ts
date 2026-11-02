@@ -286,6 +286,11 @@ const enUS = {
         description:
           'Pipelines handle message events and reply automatically with AI. Configure group triggers, private chat rules, and message filters here.',
       },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
+      },
       ai: {
         title: 'Configure AI capabilities',
         description:

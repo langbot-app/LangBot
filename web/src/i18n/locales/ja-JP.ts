@@ -282,6 +282,12 @@ const jaJP = {
       '対応するイベントを選び、テストデータを入力して出力とツールの結果を確認します。プラットフォーム操作は模擬実行され、モデルや他のツールは設定に従って実行されます。',
     pipeline: {
       trigger: {
+        title: "Choose which messages to answer",
+        description: "Pipelines handle message events and reply automatically with AI.",
+      },
+      speech: {
+        title: "Configure speech capabilities",
+        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
         title: '返信するメッセージを選ぶ',
         description:
           'パイプラインはメッセージイベントを処理し、AI が自動返信します。グループでの起動条件、個別チャットのルール、メッセージフィルターを設定します。',

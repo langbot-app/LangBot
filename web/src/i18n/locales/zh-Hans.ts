@@ -271,6 +271,11 @@ const zhHans = {
         description:
           '流水线只处理消息事件，并由 AI 自动回复。在这里设置群聊触发方式、私聊规则和消息过滤条件。',
       },
+      speech: {
+        title: '配置语音能力',
+        description:
+          '设置语音识别（ASR）与文本转语音（TTS）模型，支持接收语音消息及合成语音回复。',
+      },
       ai: {
         title: '配置 AI 能力',
         description:
