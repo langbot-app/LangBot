@@ -472,6 +472,7 @@ class OpenClawWeixinClient:
                 encode_type=encode_type,
                 bits_per_sample=bits_per_sample,
                 sample_rate=sample_rate,
+                size=len(voice_bytes),
                 text=text,
             ),
         )
@@ -826,6 +827,8 @@ def _message_item_to_dict(item: MessageItem) -> dict:
             voice_d['bits_per_sample'] = item.voice_item.bits_per_sample
         if item.voice_item.sample_rate is not None:
             voice_d['sample_rate'] = item.voice_item.sample_rate
+        if item.voice_item.size is not None:
+            voice_d['size'] = item.voice_item.size
         if item.voice_item.text is not None:
             voice_d['text'] = item.voice_item.text
         d['voice_item'] = voice_d

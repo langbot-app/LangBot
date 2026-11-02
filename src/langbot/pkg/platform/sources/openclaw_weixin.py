@@ -40,7 +40,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.api.http.context import ExecutionContext
 
 _MAX_OPENCLAW_COMPONENT_BYTES = 10 * 1024 * 1024
-logger = logging.getLogger('openclaw-weixin')
+logger = logging.getLogger('langbot.openclaw-weixin')
 
 
 class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageConverter):

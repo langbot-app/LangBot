@@ -20,6 +20,19 @@ class AudioDependencyError(RuntimeError):
     pass
 
 
+def _safe_tempdir() -> str | None:
+    """Return a valid temporary directory path even if TMPDIR was pointed to a deleted directory."""
+    current = tempfile.gettempdir()
+    if not os.path.isdir(current):
+        tempfile.tempdir = None
+        for candidate in ('/tmp', '/var/tmp'):
+            if os.path.isdir(candidate):
+                tempfile.tempdir = candidate
+                return candidate
+        current = tempfile.gettempdir()
+    return current if os.path.isdir(current) else None
+
+
 def get_ffmpeg_cmd() -> str:
     """Get the path to the ffmpeg executable."""
     cmd = shutil.which('ffmpeg')
@@ -120,7 +133,7 @@ def transcode_audio_sync(
 
         import pilk
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(dir=_safe_tempdir()) as tmpdir:
             silk_path = os.path.join(tmpdir, 'input.silk')
             pcm_path = os.path.join(tmpdir, 'decoded.pcm')
             with open(silk_path, 'wb') as f:
@@ -176,7 +189,7 @@ def transcode_audio_sync(
             )
         pcm_bytes = proc.stdout
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(dir=_safe_tempdir()) as tmpdir:
             pcm_path = os.path.join(tmpdir, 'input.pcm')
             silk_path = os.path.join(tmpdir, 'output.silk')
             with open(pcm_path, 'wb') as f:
