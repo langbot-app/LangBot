@@ -1418,6 +1418,8 @@ const zhHant = {
         bestFor: '規則明確的自動化，如入群歡迎、申請審核、事件紀錄。',
       },
       commandProcessor: {
+        hit: '命中',
+        miss: '未命中',
         summary: '在所有路由之前，處理以指令前綴開頭的訊息。',
         group: '指令處理器內部',
         match: '比對前綴與指令名稱',

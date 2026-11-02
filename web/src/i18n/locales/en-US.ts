@@ -1513,6 +1513,8 @@ const enUS = {
           'Rule-based automation such as welcomes, request review and event logging.',
       },
       commandProcessor: {
+        hit: 'Matched',
+        miss: 'Not a command',
         summary:
           'Handles messages that start with a command prefix before any route runs.',
         group: 'Inside the command processor',
