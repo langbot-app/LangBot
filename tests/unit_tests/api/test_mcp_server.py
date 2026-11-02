@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -12,6 +13,7 @@ from langbot.pkg.api.mcp.server import LangBotMCPServer
 
 def _make_app() -> SimpleNamespace:
     app = SimpleNamespace()
+    app.persistence_mgr = SimpleNamespace(tenant_scope=lambda workspace_uuid: nullcontext())
     app.instance_config = SimpleNamespace(data={'system': {'edition': 'community', 'instance_id': 'inst-1'}})
     app.ver_mgr = SimpleNamespace(get_current_version=lambda: 'test-version')
     app.bot_service = SimpleNamespace(

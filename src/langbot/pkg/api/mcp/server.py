@@ -636,8 +636,9 @@ class LangBotMCPServer:
             @functools.wraps(fn)
             async def observed(*args, **kwargs):
                 context = get_request_context()
-                with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
-                    return await fn(*args, **kwargs)
+                async with self.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
+                    with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                        return await fn(*args, **kwargs)
 
             return self.mcp.tool(**options)(observed)
 

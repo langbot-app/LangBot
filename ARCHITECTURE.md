@@ -268,6 +268,7 @@ Existing HTTP/MCP/assistant entrypoints retain their current service paths.
 - Service-layer logic lives under `pkg/api/http/service/`.
 - The built web UI is served from the frontend build path with SPA fallback.
 - The MCP server lives under `pkg/api/mcp/` and is mounted at `/mcp`.
+- The MCP mount binds authenticated request identity only. Each tool opens its own Workspace persistence scope in the session manager's execution task, before language lookup or service access; database scopes must not be inherited from the ASGI dispatcher.
 
 The MCP server intentionally exposes a curated subset of the API. Tools call service classes directly rather than making HTTP requests back into LangBot.
 
