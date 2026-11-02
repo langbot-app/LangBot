@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "Completa la lista de configuración del escenario antes de activar este bot.",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "Instala las dependencias compatibles del Runner del escenario antes de activar este bot.",
   "Request failed.": "La solicitud ha fallado.",
   "Too many requests. Please try again later.": "Demasiadas solicitudes. Inténtalo más tarde.",
   "Your message contains inappropriate content. Please revise it.": "Tu mensaje contiene contenido inapropiado. Modifícalo.",

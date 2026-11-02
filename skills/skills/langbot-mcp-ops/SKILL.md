@@ -8,6 +8,21 @@ description: Operate a LangBot instance through its built-in MCP (Model Context 
 LangBot exposes an **MCP server** so AI agents can manage an instance
 programmatically. It mirrors a curated subset of the HTTP service API.
 
+## Scenario packs
+
+Use `export_scenario(bot_uuid, metadata)` to build a portable bot template and
+`preview_scenario(package)` before importing. `import_scenario(package, request_id)`
+requires a UUID retry key and creates disabled resources with new identifiers.
+Use `get_scenario_import(import_id)` or `list_scenario_imports()` to recheck setup.
+All five tools require `resource.manage` in the current Workspace.
+
+Always show the returned required-field and plugin dependency checklist to the
+user. Ask them to enter credentials in resource settings, select their own models
+and knowledge resources, and install missing plugins. Never describe field
+completeness as a successful connection test. Knowledge files, contents and indexes
+are not included. Review prompt text before sharing. See
+`dev-docs/SCENARIO_PACKS.md` for the versioned HTTP contract and current boundaries.
+
 ## Endpoint
 
 ```

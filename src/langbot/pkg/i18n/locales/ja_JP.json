@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "このボットを有効にする前に、シナリオ設定のチェックリストを完了してください。",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "このボットを有効にする前に、互換性のあるシナリオ Runner の依存関係をインストールしてください。",
   "Request failed.": "リクエストに失敗しました。",
   "Too many requests. Please try again later.": "リクエストが多すぎます。しばらくしてから再試行してください。",
   "Your message contains inappropriate content. Please revise it.": "不適切な内容が含まれています。メッセージを修正してください。",

@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "請先完成場景設定清單，再啟用機器人。",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "請先安裝相容的場景 Runner 依賴，再啟用機器人。",
   "Request failed.": "請求失敗。",
   "Too many requests. Please try again later.": "請求過於頻繁，請稍後重試。",
   "Your message contains inappropriate content. Please revise it.": "訊息中存在不適當的內容，請修改。",
