@@ -437,6 +437,13 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/agents/${uuid}/debug`, payload);
   }
 
+  public debugCommandProcessor(
+    uuid: string,
+    text: string,
+  ): Promise<import('../entities/api').CommandDebugResult> {
+    return this.post(`/api/v1/agents/${uuid}/debug`, { text });
+  }
+
   public async streamDebugAgent(
     uuid: string,
     payload: Parameters<BackendClient['debugAgent']>[1],

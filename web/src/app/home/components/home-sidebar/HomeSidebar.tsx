@@ -105,6 +105,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { RiTerminalBoxLine } from '@remixicon/react';
 import {
   Tooltip,
   TooltipContent,
@@ -924,7 +925,7 @@ function NavItems({
                             }
                           >
                             {item.kind === 'command_processor' ? (
-                              <span className="text-xs">⌨</span>
+                              <RiTerminalBoxLine className="size-3.5" />
                             ) : item.kind === 'event_processor' ? (
                               <Puzzle className="size-3.5" />
                             ) : item.kind === 'pipeline' ? (

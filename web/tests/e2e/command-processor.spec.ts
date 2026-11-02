@@ -130,7 +130,7 @@ test('create a command instance and edit its command configuration', async ({
     component_ref: 'plugin:qa/draw',
   });
   expect(writes[0]).not.toHaveProperty('config.runner');
-  await page.getByRole('textbox').fill('anime');
+  await page.locator('input[name="style"]').fill('anime');
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1]).toMatchObject({
@@ -140,4 +140,85 @@ test('create a command instance and edit its command configuration', async ({
     path: 'test-results/command-processor.png',
     fullPage: true,
   });
+});
+
+test('debugs a command processor and shows its run logs', async ({ page }) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  const processor = {
+    uuid: 'command-debug',
+    kind: 'command_processor',
+    name: 'Painter',
+    component_ref: 'plugin:qa/draw',
+    config: { command_config: { draw: {} } },
+  };
+  const run = {
+    run_id: 'command:run-1',
+    status: 'completed',
+    created_at: 1_790_000_000,
+    started_at: 1_790_000_000,
+    finished_at: 1_790_000_001,
+    metadata: {
+      event_type: 'message.received',
+      command: 'draw',
+      source: 'platform',
+      input_event: { text: '/draw a cat', command: 'draw' },
+    },
+  };
+  const debugBodies: unknown[] = [];
+  await page.route('**/api/v1/agents**', async (route) => {
+    const path = decodeURIComponent(new URL(route.request().url()).pathname);
+    let data: unknown;
+    if (path.endsWith('/_/metadata')) {
+      data = {
+        command_processors: [
+          {
+            id: 'plugin:qa/draw',
+            plugin_id: 'qa/draw',
+            commands: [
+              { name: 'draw', label: { en_US: 'Draw' }, config_schema: [] },
+            ],
+          },
+        ],
+      };
+    } else if (path.endsWith('/command-debug/debug')) {
+      debugBodies.push(route.request().postDataJSON());
+      data = {
+        run_id: 'command:run-2',
+        status: 'completed',
+        command: 'draw',
+        outputs: [{ text: 'Here is your cat' }],
+        error: null,
+      };
+    } else if (path.endsWith('/runs/command:run-1/events')) {
+      data = {
+        run,
+        items: [
+          {
+            sequence: 1,
+            type: 'command.output',
+            data: { text: 'A cat, as requested' },
+          },
+        ],
+        next_cursor: null,
+        has_more: false,
+      };
+    } else if (path.endsWith('/command-debug/runs')) {
+      data = { items: [run], next_cursor: null, has_more: false };
+    } else if (path === '/api/v1/agents') data = { agents: [processor] };
+    else if (path.endsWith('/command-debug')) data = { agent: processor };
+    else return route.fallback();
+    await route.fulfill({ json: { code: 0, data } });
+  });
+
+  await page.goto('/home/agents?id=command-debug');
+  await page.getByRole('textbox', { name: 'Arguments (optional)' }).fill('cat');
+  await page.getByRole('button', { name: 'Run command' }).click();
+  await expect(page.getByText('Here is your cat')).toBeVisible();
+  expect(debugBodies).toEqual([{ text: 'draw cat' }]);
+
+  await page.getByRole('tab', { name: 'Run logs', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: /\/draw a cat/ }).first(),
+  ).toBeVisible();
+  await expect(page.getByText('A cat, as requested')).toBeVisible();
 });

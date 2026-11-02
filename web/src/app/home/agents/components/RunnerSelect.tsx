@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Bot, Puzzle, ExternalLink, Loader2, Store } from 'lucide-react';
+import {
+  Bot,
+  Puzzle,
+  SquareTerminal,
+  ExternalLink,
+  Loader2,
+  Store,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -7,18 +14,24 @@ import { getCloudServiceClientSync, httpClient } from '@/app/infra/http';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import type { IDynamicFormItemOption } from '@/app/infra/entities/form/dynamic';
 import type { PluginV4 } from '@/app/infra/entities/plugin';
-import type { RunnerDescriptor } from '@/app/infra/entities/api';
+import type {
+  CommandProcessorDescriptor,
+  RunnerDescriptor,
+} from '@/app/infra/entities/api';
 import {
   RunnerMarketplaceError,
   getErrorMessage,
   installMarketplaceRunner,
   installMarketplaceEventProcessor,
+  installMarketplaceCommandProcessor,
   resumePendingEventProcessorInstall,
+  resumePendingCommandProcessorInstall,
   loadRunnerCatalog,
   marketplacePluginId,
   runnerPluginPrefix,
   readPendingRunnerInstall,
   subscribePendingRunnerInstall,
+  type CatalogUsage,
   type RunnerCatalog,
   type InstalledRunner,
 } from '@/app/home/agents/runner-marketplace';
@@ -64,14 +77,22 @@ function pluginOptionParts(option: IDynamicFormItemOption): {
   return match ? { author: match[1], name: match[2] } : null;
 }
 
+function usageIcon(usage: CatalogUsage) {
+  return usage === 'command'
+    ? SquareTerminal
+    : usage === 'event'
+      ? Puzzle
+      : Bot;
+}
+
 function InstalledRunnerContent({
   option,
-  eventProcessor = false,
+  usage,
 }: {
   option: IDynamicFormItemOption;
-  eventProcessor?: boolean;
+  usage: CatalogUsage;
 }) {
-  const Icon = eventProcessor ? Puzzle : Bot;
+  const Icon = usageIcon(usage);
   const parts = pluginOptionParts(option);
   const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
@@ -94,13 +115,13 @@ function InstalledRunnerContent({
 function InstalledRunnerOptionContent({
   option,
   description,
-  eventProcessor = false,
+  usage,
 }: {
   option: IDynamicFormItemOption;
   description: string;
-  eventProcessor?: boolean;
+  usage: CatalogUsage;
 }) {
-  const Icon = eventProcessor ? Puzzle : Bot;
+  const Icon = usageIcon(usage);
   const parts = pluginOptionParts(option);
   const iconURL = useInstalledPluginIcon(parts?.author, parts?.name);
 
@@ -214,6 +235,7 @@ export default function RunnerSelect({
   usage = 'agent',
   disabled = false,
   onEventProcessorInstalled,
+  onCommandProcessorInstalled,
 }: {
   options: IDynamicFormItemOption[];
   label: string;
@@ -221,9 +243,10 @@ export default function RunnerSelect({
   onValueChange: (value: string) => void;
   installScope: string;
   onInstalled?: (installed: InstalledRunner) => void;
-  usage?: 'agent' | 'event';
+  usage?: CatalogUsage;
   disabled?: boolean;
   onEventProcessorInstalled?: (component: RunnerDescriptor) => void;
+  onCommandProcessorInstalled?: (component: CommandProcessorDescriptor) => void;
 }) {
   const { t } = useTranslation();
   const { addTask, tasks } = usePluginInstallTasks();
@@ -231,6 +254,9 @@ export default function RunnerSelect({
   const [installedPluginIds, setInstalledPluginIds] = useState<string[]>([]);
   const [installedPluginDescriptions, setInstalledPluginDescriptions] =
     useState<RunnerCatalog['installedPluginDescriptions']>({});
+  const [installedPluginLabels, setInstalledPluginLabels] = useState<
+    RunnerCatalog['installedPluginLabels']
+  >({});
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState(false);
   const [runnerProblem, setRunnerProblem] = useState<
@@ -288,6 +314,7 @@ export default function RunnerSelect({
       setMarketplaceRunners(catalog.marketplaceRunners);
       setInstalledPluginIds(catalog.installedPluginIds);
       setInstalledPluginDescriptions(catalog.installedPluginDescriptions);
+      setInstalledPluginLabels(catalog.installedPluginLabels);
     } catch (error) {
       console.error('Failed to load Runner catalog', error);
       setCatalogError(true);
@@ -298,22 +325,31 @@ export default function RunnerSelect({
 
   useEffect(() => {
     if (
-      usage !== 'event' ||
+      usage === 'agent' ||
       disabled ||
       !readPendingRunnerInstall(installScope)
     )
       return;
     let cancelled = false;
-    void resumePendingEventProcessorInstall(installScope)
-      .then((component) => {
-        if (!cancelled && component) {
-          onEventProcessorInstalled?.(component);
-          void loadCatalog();
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setInstallError(installErrorMessage(error, t));
-      });
+    const resume =
+      usage === 'command'
+        ? resumePendingCommandProcessorInstall(installScope).then(
+            (component) => {
+              if (!cancelled && component) {
+                onCommandProcessorInstalled?.(component);
+                void loadCatalog();
+              }
+            },
+          )
+        : resumePendingEventProcessorInstall(installScope).then((component) => {
+            if (!cancelled && component) {
+              onEventProcessorInstalled?.(component);
+              void loadCatalog();
+            }
+          });
+    void resume.catch((error) => {
+      if (!cancelled) setInstallError(installErrorMessage(error, t));
+    });
     return () => {
       cancelled = true;
     };
@@ -322,6 +358,7 @@ export default function RunnerSelect({
     usage,
     disabled,
     onEventProcessorInstalled,
+    onCommandProcessorInstalled,
     loadCatalog,
     t,
   ]);
@@ -342,14 +379,65 @@ export default function RunnerSelect({
       marketplaceRunners.filter((plugin) => {
         const pluginId = marketplacePluginId(plugin);
         if (installedPluginIds.includes(pluginId)) return false;
-        return !options.some((option) =>
-          option.name.startsWith(runnerPluginPrefix(plugin)),
+        return !options.some(
+          (option) =>
+            option.name === `plugin:${pluginId}` ||
+            option.name.startsWith(runnerPluginPrefix(plugin)),
         );
       }),
     [installedPluginIds, marketplaceRunners, options],
   );
 
-  const selectedOption = options.find((option) => option.name === value);
+  // Command processors are keyed by plugin; show the installed plugin's label.
+  const displayOptions = useMemo(
+    () =>
+      usage === 'command'
+        ? options.map((option) => {
+            const pluginId = runnerPluginId(option.name);
+            const pluginLabel = pluginId && installedPluginLabels[pluginId];
+            return pluginLabel ? { ...option, label: pluginLabel } : option;
+          })
+        : options,
+    [installedPluginLabels, options, usage],
+  );
+  const selectedOption = displayOptions.find((option) => option.name === value);
+  const UsageIcon = usageIcon(usage);
+  const copy =
+    usage === 'command'
+      ? {
+          placeholder: 'agents.commandProcessor.selectPlugin',
+          installed: 'plugins.installed',
+          noInstalled: 'agents.commandProcessor.noPlugins',
+          marketplace: 'plugins.marketplace',
+          marketUrl:
+            'https://space.langbot.app/market?type=plugin&component=Command',
+          noMarketplace: 'agents.commandProcessor.noMarketplace',
+          docs: 'agents.commandProcessor.docs',
+          docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/command',
+        }
+      : {
+          placeholder:
+            usage === 'event'
+              ? 'agents.eventProcessor.selectComponent'
+              : 'common.select',
+          installed:
+            usage === 'event' ? 'plugins.installed' : 'agents.installedRunners',
+          noInstalled:
+            usage === 'event'
+              ? 'agents.eventProcessor.noComponents'
+              : 'agents.noInstalledRunners',
+          marketplace:
+            usage === 'event'
+              ? 'plugins.marketplace'
+              : 'agents.marketplaceRunners',
+          marketUrl: `https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=${usage}`,
+          noMarketplace: 'wizard.aiEngine.noMarketplaceRunners',
+          docs:
+            usage === 'event'
+              ? 'bots.routingHelp.docs'
+              : 'bots.routingHelp.runnerDocs',
+          docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/runner',
+        };
   const activePluginId = pendingInstall?.pluginId ?? installingPluginId;
   const activeTask = pendingInstall
     ? tasks.find((task) => task.taskId === pendingInstall.taskId)
@@ -388,7 +476,11 @@ export default function RunnerSelect({
               extensionType: 'plugin',
             }),
         };
-        if (usage === 'event') {
+        if (usage === 'command') {
+          onCommandProcessorInstalled?.(
+            await installMarketplaceCommandProcessor(plugin, installOptions),
+          );
+        } else if (usage === 'event') {
           onEventProcessorInstalled?.(
             await installMarketplaceEventProcessor(plugin, installOptions),
           );
@@ -422,6 +514,7 @@ export default function RunnerSelect({
       usage,
       disabled,
       onEventProcessorInstalled,
+      onCommandProcessorInstalled,
     ],
   );
 
@@ -440,40 +533,23 @@ export default function RunnerSelect({
           className="w-full bg-[#ffffff] dark:bg-[#2a2a2e]"
         >
           {selectedOption ? (
-            <InstalledRunnerContent
-              option={selectedOption}
-              eventProcessor={usage === 'event'}
-            />
+            <InstalledRunnerContent option={selectedOption} usage={usage} />
           ) : value ? (
             <span className="truncate">{value}</span>
           ) : (
-            <SelectValue
-              placeholder={t(
-                usage === 'event'
-                  ? 'agents.eventProcessor.selectComponent'
-                  : 'common.select',
-              )}
-            />
+            <SelectValue placeholder={t(copy.placeholder)} />
           )}
         </SelectTrigger>
         <SelectContent className="z-[70] max-h-72 w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)]">
           <SelectGroup>
             <SelectLabel className="px-2 py-1 text-[11px] font-medium">
               <span className="inline-flex items-center gap-1.5">
-                {usage === 'event' ? (
-                  <Puzzle className="size-3.5" />
-                ) : (
-                  <Bot className="size-3.5" />
-                )}
-                {t(
-                  usage === 'event'
-                    ? 'plugins.installed'
-                    : 'agents.installedRunners',
-                )}
+                <UsageIcon className="size-3.5" />
+                {t(copy.installed)}
               </span>
             </SelectLabel>
-            {options.length > 0 ? (
-              options.map((option) => {
+            {displayOptions.length > 0 ? (
+              displayOptions.map((option) => {
                 const description = installedRunnerDescription(
                   option,
                   marketplaceRunners,
@@ -487,7 +563,7 @@ export default function RunnerSelect({
                   >
                     <InstalledRunnerOptionContent
                       option={option}
-                      eventProcessor={usage === 'event'}
+                      usage={usage}
                       description={description}
                     />
                   </SelectItem>
@@ -495,11 +571,7 @@ export default function RunnerSelect({
               })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {t(
-                  usage === 'event'
-                    ? 'agents.eventProcessor.noComponents'
-                    : 'agents.noInstalledRunners',
-                )}
+                {t(copy.noInstalled)}
               </div>
             )}
           </SelectGroup>
@@ -510,14 +582,10 @@ export default function RunnerSelect({
             <SelectLabel className="flex items-center justify-between gap-2 px-2 py-1 text-[11px] font-medium">
               <span className="inline-flex min-w-0 items-center gap-1.5">
                 <Store className="size-3.5" />
-                {t(
-                  usage === 'event'
-                    ? 'plugins.marketplace'
-                    : 'agents.marketplaceRunners',
-                )}
+                {t(copy.marketplace)}
               </span>
               <a
-                href={`https://space.langbot.app/market?type=plugin&component=Runner&runner_usage=${usage}`}
+                href={copy.marketUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium text-foreground hover:bg-accent"
@@ -558,24 +626,20 @@ export default function RunnerSelect({
               })
             ) : (
               <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                {t('wizard.aiEngine.noMarketplaceRunners')}
+                {t(copy.noMarketplace)}
               </div>
             )}
           </SelectGroup>
           <SelectSeparator />
           <a
-            href="https://langbot.app/docs/zh/plugin/dev/components/runner"
+            href={copy.docsUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-sm px-2 py-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
-            {t(
-              usage === 'event'
-                ? 'bots.routingHelp.docs'
-                : 'bots.routingHelp.runnerDocs',
-            )}
+            {t(copy.docs)}
             <ExternalLink className="size-3" />
           </a>
         </SelectContent>

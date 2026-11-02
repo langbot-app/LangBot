@@ -4,14 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow, Puzzle, SquareTerminal } from 'lucide-react';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Blocks, Bot, Workflow, Puzzle, SquareTerminal } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
@@ -49,7 +42,11 @@ export default function AgentCreateContent({
   embedded?: boolean;
 }) {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<AgentKind>(allowedKinds?.[0] ?? 'pipeline');
+  const [kind, setKind] = useState<AgentKind>(
+    allowedKinds?.includes('pipeline') || !allowedKinds
+      ? 'pipeline'
+      : allowedKinds[0],
+  );
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
   const [runner, setRunner] = useState('');
   const [loading, setLoading] = useState(true);
@@ -238,30 +235,71 @@ export default function AgentCreateContent({
   }
   const typeOptions = [
     {
-      kind: 'command_processor' as const,
-      icon: SquareTerminal,
-      title: t('agents.commandProcessor.type'),
-      description: t('agents.commandProcessor.notice'),
-    },
-    {
       kind: 'pipeline' as const,
       icon: Workflow,
       title: t('agents.pipelineType'),
       description: t('agents.pipelineTypeDescription'),
+      bestFor: t('agents.diagram.pipeline.bestFor'),
     },
     {
       kind: 'agent' as const,
       icon: Bot,
       title: t('agents.agentType'),
       description: t('agents.agentTypeDescription'),
+      bestFor: t('agents.diagram.agent.bestFor'),
     },
+  ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
+  const pluginOptions = [
     {
       kind: 'event_processor' as const,
       icon: Puzzle,
       title: t('agents.eventProcessor.type'),
       description: t('agents.eventProcessor.description'),
+      bestFor: t('agents.diagram.eventProcessor.bestFor'),
     },
-  ];
+    {
+      kind: 'command_processor' as const,
+      icon: SquareTerminal,
+      title: t('agents.commandProcessor.type'),
+      description: t('agents.commandProcessor.description'),
+      bestFor: t('agents.diagram.commandProcessor.bestFor'),
+    },
+  ].filter((option) => !allowedKinds || allowedKinds.includes(option.kind));
+  const pluginSelected = pluginOptions.some((option) => option.kind === kind);
+  const optionClass =
+    'h-auto w-full items-start justify-start gap-3 rounded-lg border px-4 py-3.5 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10';
+  function renderOption(
+    option: (typeof typeOptions)[number] | (typeof pluginOptions)[number],
+  ) {
+    const Icon = option.icon;
+    return (
+      <ToggleGroupItem
+        key={option.kind}
+        value={option.kind}
+        data-processor-kind={option.kind}
+        aria-label={`${option.title} ${option.description}`}
+        className={optionClass}
+      >
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+          <Icon className="size-4" />
+        </span>
+        <span className="min-w-0 space-y-1">
+          <span className="block text-sm font-medium text-foreground">
+            {option.title}
+          </span>
+          <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
+            {option.description}
+          </span>
+          <span className="block text-xs font-normal leading-relaxed text-muted-foreground">
+            <span className="font-medium text-foreground/80">
+              {t('agents.diagram.bestFor')}
+            </span>
+            {option.bestFor}
+          </span>
+        </span>
+      </ToggleGroupItem>
+    );
+  }
   return (
     <div className="flex h-full flex-col">
       <div
@@ -315,38 +353,35 @@ export default function AgentCreateContent({
                   }}
                   variant="outline"
                   spacing={3}
-                  className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-1"
+                  className="flex w-full flex-col items-stretch gap-3"
                 >
-                  {typeOptions
-                    .filter(
-                      (option) =>
-                        !allowedKinds || allowedKinds.includes(option.kind),
-                    )
-                    .map((option) => {
-                      const Icon = option.icon;
-                      return (
-                        <div key={option.kind} className="relative w-full">
-                          <ToggleGroupItem
-                            value={option.kind}
-                            data-processor-kind={option.kind}
-                            aria-label={`${option.title} ${option.description}`}
-                            className="h-auto min-h-28 w-full items-start justify-start gap-3 rounded-lg border px-4 py-4 text-left whitespace-normal shadow-none hover:bg-muted/40 data-[state=on]:border-[#2288ee]/50 data-[state=on]:bg-blue-50/60 data-[state=on]:text-foreground data-[state=on]:shadow-none dark:data-[state=on]:border-blue-500/50 dark:data-[state=on]:bg-blue-500/10"
-                          >
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
-                              <Icon className="size-4" />
-                            </span>
-                            <span className="min-w-0 space-y-1.5">
-                              <span className="block text-sm font-medium text-foreground">
-                                {option.title}
-                              </span>
-                              <span className="block text-sm font-normal leading-relaxed text-muted-foreground">
-                                {option.description}
-                              </span>
-                            </span>
-                          </ToggleGroupItem>
-                        </div>
-                      );
-                    })}
+                  {typeOptions.map(renderOption)}
+                  {pluginOptions.length > 0 && (
+                    <div
+                      className={`w-full rounded-xl border p-3 transition-colors ${
+                        pluginSelected
+                          ? 'border-[#2288ee]/40 bg-muted/20'
+                          : 'border-dashed'
+                      }`}
+                    >
+                      <div className="mb-3 flex items-start gap-3 px-1">
+                        <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background text-[#2288ee] shadow-xs">
+                          <Blocks className="size-4" />
+                        </span>
+                        <span className="min-w-0 space-y-1">
+                          <span className="block text-sm font-medium">
+                            {t('agents.fromPlugin')}
+                          </span>
+                          <span className="block text-sm leading-relaxed text-muted-foreground">
+                            {t('agents.fromPluginDescription')}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="grid gap-2">
+                        {pluginOptions.map(renderOption)}
+                      </div>
+                    </div>
+                  )}
                 </ToggleGroup>
               </section>
 
@@ -367,25 +402,34 @@ export default function AgentCreateContent({
                       <div className="space-y-2">
                         <p className="text-sm font-medium">{selectorLabel}</p>
                         {kind === 'command_processor' ? (
-                          <Select
+                          <RunnerSelect
+                            key="command"
+                            usage="command"
+                            options={runnerOptions}
+                            label={selectorLabel}
                             value={runner}
                             onValueChange={selectRunner}
                             disabled={loading || form.formState.isSubmitting}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder={selectorLabel} />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {runnerOptions.map((option) => (
-                                <SelectItem
-                                  key={option.name}
-                                  value={option.name}
-                                >
-                                  {extractI18nObject(option.label)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
+                            installScope="processor-create-command"
+                            onCommandProcessorInstalled={(component) => {
+                              setMetadata((previous) =>
+                                previous
+                                  ? {
+                                      ...previous,
+                                      command_processors: [
+                                        ...(
+                                          previous.command_processors ?? []
+                                        ).filter(
+                                          (item) => item.id !== component.id,
+                                        ),
+                                        component,
+                                      ],
+                                    }
+                                  : previous,
+                              );
+                              selectRunner(component.id, component.plugin_id);
+                            }}
+                          />
                         ) : (
                           <RunnerSelect
                             key={kind === 'event_processor' ? 'event' : 'agent'}
