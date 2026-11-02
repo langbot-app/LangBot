@@ -254,7 +254,16 @@ async def extract_voice_bytes(voice: platform_message.Voice) -> tuple[bytes, str
                     format_hint = mime_part.split('/')[-1]
         raw_bytes = await asyncio.to_thread(base64.b64decode, b64_str)
         detected = detect_audio_format(raw_bytes)
-        return raw_bytes, detected if detected != 'unknown' else format_hint
+        if detected != 'unknown':
+            return raw_bytes, detected
+        # Only trust audio subtypes ffmpeg can parse; generic hints such as
+        # "octet-stream" would make ffmpeg reject the input format.
+        format_hint = {'mpeg': 'mp3', 'x-wav': 'wav', 'wave': 'wav', 'x-m4a': 'm4a', 'mp4': 'm4a'}.get(
+            format_hint, format_hint
+        )
+        if format_hint not in ('wav', 'mp3', 'ogg', 'opus', 'amr', 'silk', 'flac', 'm4a', 'aac', 'webm'):
+            format_hint = 'unknown'
+        return raw_bytes, format_hint
 
     if voice.path:
         with open(voice.path, 'rb') as f:
@@ -301,12 +310,7 @@ def estimate_audio_duration(data: bytes, format_hint: str = 'unknown') -> float:
     if fmt == 'mp3':
         offset = 0
         if data.startswith(b'ID3') and len(data) >= 10:
-            size = (
-                ((data[6] & 0x7F) << 21)
-                | ((data[7] & 0x7F) << 14)
-                | ((data[8] & 0x7F) << 7)
-                | (data[9] & 0x7F)
-            )
+            size = ((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14) | ((data[8] & 0x7F) << 7) | (data[9] & 0x7F)
             offset = 10 + size
         audio_data = data[offset:]
         if audio_data:
@@ -336,5 +340,19 @@ def estimate_audio_duration(data: bytes, format_hint: str = 'unknown') -> float:
         body_len = max(0, len(data) - 6)
         return max(0.1, round((body_len / 32) * 0.02, 2))
 
-    return 0.0
+    if fmt in ('ogg', 'opus'):
+        # The granule position of the last Ogg page is the total sample count.
+        last_page = data.rfind(b'OggS')
+        if last_page >= 0 and last_page + 14 <= len(data):
+            granule = int.from_bytes(data[last_page + 6 : last_page + 14], byteorder='little')
+            sample_rate = 0
+            if fmt == 'opus':
+                sample_rate = 48000
+            else:
+                vorbis = data.find(b'\x01vorbis')
+                if vorbis >= 0 and vorbis + 16 <= len(data):
+                    sample_rate = int.from_bytes(data[vorbis + 12 : vorbis + 16], byteorder='little')
+            if sample_rate > 0 and 0 < granule < 2**62:
+                return max(0.1, round(granule / sample_rate, 2))
 
+    return 0.0

@@ -167,7 +167,11 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
         incoming_message = message_source.source_platform_object.incoming_message
         markdown_enabled = self.config.get('markdown_card', False)
         text_message = platform_message.MessageChain(
-            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+            [
+                part
+                for part in message
+                if not isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+            ]
         )
         content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         raw = await self.bot.send_message(content, incoming_message, at)
@@ -180,7 +184,7 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
     async def _send_attachments(self, message, incoming_message):
         failures = []
         for part in message:
-            if isinstance(part, (platform_message.Image, platform_message.File)):
+            if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice)):
                 try:
                     await self.bot.send_attachment(part, incoming_message)
                 except Exception as exc:
@@ -207,7 +211,11 @@ class DingTalkAdapter(DingTalkAPIMixin, abstract_platform_adapter.AbstractPlatfo
 
         markdown_enabled = self.config.get('markdown_card', False)
         text_message = platform_message.MessageChain(
-            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+            [
+                part
+                for part in message
+                if not isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+            ]
         )
         content, _ = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         card_instance, card_instance_id = self.card_instance_id_dict[message_id]
