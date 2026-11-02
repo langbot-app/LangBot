@@ -4,7 +4,7 @@ import types
 from unittest.mock import AsyncMock
 
 import pytest
-from components.commands.session_commands import NewSession, StopRun, SwitchSession
+from components.commands.session_commands import DeleteSession, NewSession, StopRun, SwitchSession
 from components.runner.default import DefaultRunner
 from daemon import RunnerDaemon
 from langbot_plugin.api.entities.builtin.runner.event import ConversationContext
@@ -348,6 +348,101 @@ async def test_switch_survives_host_conversation_reset(monkeypatch):
         )
     )
     assert await runner._managed_session_id(next_runner_context, config) == "ses_selected"
+
+
+@pytest.mark.asyncio
+async def test_delete_by_number_removes_non_current_session(monkeypatch):
+    plugin = FakeCommandPlugin()
+    conversation_id = "person_user-1"
+    plugin.values[storage_key("control", conversation_id)] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    plugin.values[storage_key("selected", conversation_id)] = b'{"session_id":"ses_current"}'
+    plugin.values[storage_key("list", conversation_id)] = (
+        b'[{"session_id":"ses_current","title":"Current","updated_at":"2026-01-02T00:00:00Z"},'
+        b'{"session_id":"ses_second","title":"Second","updated_at":"2026-01-01T00:00:00Z"}]'
+    )
+    control = AsyncMock()
+    monkeypatch.setattr("components.commands.session_commands.run_daemon_control", control)
+    command = DeleteSession()
+    command.plugin = plugin
+    await command.initialize()
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type=types.SimpleNamespace(value="person"), launcher_id="user-1"),
+        privilege=1,
+        crt_params=["2"],
+        create_new_conversation=AsyncMock(),
+    )
+    subcommand = command.registered_subcommands["*"].subcommand
+
+    results = [item async for item in subcommand(command, context)]
+
+    control.assert_awaited_once_with(
+        plugin,
+        {"location": "daemon", "daemon_id": "daemon-1"},
+        "session.delete",
+        session_id="ses_second",
+    )
+    context.create_new_conversation.assert_not_awaited()
+    stored = await plugin.get_plugin_storage(storage_key("list", conversation_id))
+    assert b"ses_current" in stored and b"ses_second" not in stored
+    assert "ses_second" in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_delete_without_argument_removes_current_session(monkeypatch):
+    plugin = FakeCommandPlugin()
+    conversation_id = "person_user-1"
+    plugin.values[storage_key("control", conversation_id)] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    plugin.values[storage_key("selected", conversation_id)] = b'{"session_id":"ses_current"}'
+    plugin.values[storage_key("last", conversation_id)] = b'{"session_id":"ses_current"}'
+    plugin.values[storage_key("list", conversation_id)] = b'[{"session_id":"ses_current","title":"Current"}]'
+    control = AsyncMock()
+    monkeypatch.setattr("components.commands.session_commands.run_daemon_control", control)
+    command = DeleteSession()
+    command.plugin = plugin
+    await command.initialize()
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type=types.SimpleNamespace(value="person"), launcher_id="user-1"),
+        privilege=1,
+        crt_params=[],
+        create_new_conversation=AsyncMock(),
+    )
+    subcommand = command.registered_subcommands["*"].subcommand
+
+    results = [item async for item in subcommand(command, context)]
+
+    control.assert_awaited_once_with(
+        plugin,
+        {"location": "daemon", "daemon_id": "daemon-1"},
+        "session.delete",
+        session_id="ses_current",
+    )
+    context.create_new_conversation.assert_awaited_once()
+    assert len(plugin.deleted) == 3
+    assert "ses_current" in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_delete_by_number_requires_list_first(monkeypatch):
+    plugin = FakeCommandPlugin()
+    conversation_id = "person_user-1"
+    plugin.values[storage_key("control", conversation_id)] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    control = AsyncMock()
+    monkeypatch.setattr("components.commands.session_commands.run_daemon_control", control)
+    command = DeleteSession()
+    command.plugin = plugin
+    await command.initialize()
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type=types.SimpleNamespace(value="person"), launcher_id="user-1"),
+        privilege=1,
+        crt_params=["2"],
+        create_new_conversation=AsyncMock(),
+    )
+    subcommand = command.registered_subcommands["*"].subcommand
+
+    results = [item async for item in subcommand(command, context)]
+
+    control.assert_not_awaited()
+    assert "Run !list first" in results[0].text
 
 
 @pytest.mark.asyncio
