@@ -1051,11 +1051,11 @@ class RuntimeBot:
     async def _match_plugin_command(
         self,
         event: platform_events.EBAEvent,
-    ) -> tuple[str, str, str, str, dict] | None:
+    ) -> tuple[str, str, str, str, dict, str] | None:
         """Match an incoming message against the bot's command processors.
 
-        Returns (plugin_id, command_name, command_text, full_command_text, command_config)
-        if a registered command name matches, else None.
+        Returns (plugin_id, command_name, command_text, full_command_text, command_config,
+        processor_uuid) if a registered command name matches, else None.
         """
         from ..command import processor as command_processor
 
@@ -1126,6 +1126,7 @@ class RuntimeBot:
                     command_text,
                     full_command_text,
                     command_processor.instance_command_config(agent, command_name),
+                    str(agent.get('uuid') or ''),
                 )
 
         return None
@@ -1141,7 +1142,7 @@ class RuntimeBot:
         matched = await self._match_plugin_command(event)
         if matched is None:
             return False
-        plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config = matched
+        plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
         await self._execute_matched_plugin_command(
             event=event,
             adapter=adapter,
@@ -1150,6 +1151,7 @@ class RuntimeBot:
             command_text=cmd_text,
             full_command_text=full_cmd_text,
             command_config=cmd_config,
+            processor_uuid=processor_uuid,
             execution_id=execution_id,
             node=node,
         )
@@ -1166,6 +1168,7 @@ class RuntimeBot:
         execution_id: str | None = None,
         node: str = '',
         command_config: dict | None = None,
+        processor_uuid: str = '',
     ) -> None:
         """Execute a matched plugin command and reply with the result."""
         legacy_event = event.to_legacy_event() if hasattr(event, 'to_legacy_event') else event
@@ -1239,9 +1242,28 @@ class RuntimeBot:
             text=f'Event {event_type} matched plugin command {command_name} from plugin {plugin_id}',
         )
 
+        from ..command.runs import CommandRunRecorder
+
+        run_recorder = CommandRunRecorder(self.ap, self.execution_context.workspace_uuid)
+        if processor_uuid:
+            await run_recorder.start(
+                processor_uuid=processor_uuid,
+                plugin_id=plugin_id,
+                command_name=command_name,
+                full_command_text=full_command_text,
+                bot_uuid=self.bot_entity.uuid,
+                conversation_id=f'{launcher_type.value}_{launcher_id}',
+                source='platform',
+                launcher={'type': launcher_type.value, 'id': str(launcher_id), 'sender_id': str(sender_id)},
+            )
+        command_error: str | None = None
+
         try:
             with trace_mod.scope(route_ref=route_ref):
                 async for ret in self.ap.cmd_mgr.execute_command(cmd_ctx, bound_plugins=[plugin_id]):
+                    await run_recorder.output(ret)
+                    if ret.error is not None:
+                        command_error = str(ret.error)
                     components: list[platform_message.MessageComponent] = []
                     if ret.error is not None:
                         components.append(platform_message.Plain(text=str(ret.error)))
@@ -1276,7 +1298,10 @@ class RuntimeBot:
                 reason=str(exc),
                 text=f'Plugin command {plugin_id}/{command_name} failed: {exc}',
             )
+            await run_recorder.finish(error=str(exc))
             raise
+
+        await run_recorder.finish(error=command_error)
 
         await self._record_event_route_trace(
             event_type=event_type,

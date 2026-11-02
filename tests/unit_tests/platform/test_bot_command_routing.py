@@ -570,3 +570,63 @@ async def test_legacy_command_without_config_schema_still_executes():
     ctx, _ = sent[0]
     assert ctx.command == 'draw'
     assert getattr(ctx, 'config', {}) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('error', 'expected_error'),
+    [(None, None), ('plugin failed', 'plugin failed')],
+)
+async def test_bot_command_execution_records_a_processor_run(monkeypatch, error, expected_error):
+    """Every matched bot command is logged as a run of the processor that matched it."""
+    calls = []
+
+    class FakeRecorder:
+        def __init__(self, ap, workspace_uuid):
+            calls.append(('init', workspace_uuid))
+
+        async def start(self, **kwargs):
+            calls.append(('start', kwargs))
+
+        async def output(self, ret):
+            calls.append(('output', ret.text, ret.error))
+
+        async def finish(self, *, error=None):
+            calls.append(('finish', error))
+
+    import langbot.pkg.command.runs as command_runs
+
+    monkeypatch.setattr(command_runs, 'CommandRunRecorder', FakeRecorder)
+    bot = make_bot(
+        command_settings={
+            'enabled': True,
+            'prefixes': ['/'],
+            'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
+        }
+    )
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'draw')]
+
+    async def execute(*args, **kwargs):
+        ret = Mock()
+        ret.error = error
+        ret.text = None if error else 'done'
+        ret.image_url = None
+        ret.image_base64 = None
+        ret.file_url = None
+        yield ret
+
+    bot.ap.cmd_mgr.execute_command = Mock(side_effect=execute)
+    adapter = SimpleNamespace(reply_message=AsyncMock(), get_launcher_id=Mock(return_value=None))
+
+    assert await bot._try_handle_plugin_command(make_message_event('/draw cat'), adapter)
+
+    assert calls[0] == ('init', 'ws-1')
+    start = calls[1][1]
+    assert start['processor_uuid'] == 'proc-plugin_a'
+    assert start['plugin_id'] == 'author/plugin_a'
+    assert start['command_name'] == 'draw'
+    assert start['full_command_text'] == '/draw cat'
+    assert start['bot_uuid'] == 'bot-123'
+    assert start['source'] == 'platform'
+    assert calls[2] == ('output', None if error else 'done', error)
+    assert calls[3] == ('finish', expected_error)

@@ -218,7 +218,25 @@ export interface ProcessorRun {
     input?: { text?: string; contents?: unknown[]; attachments?: unknown[] };
     input_event?: unknown;
     delivery?: unknown;
+    command?: string;
   };
+}
+
+export interface CommandOutput {
+  text?: string;
+  error?: string;
+  image_url?: string;
+  image?: string;
+  file_url?: string;
+  file_name?: string;
+}
+
+export interface CommandDebugResult {
+  run_id: string | null;
+  status: 'completed' | 'failed';
+  command: string;
+  outputs: CommandOutput[];
+  error: string | null;
 }
 
 export interface ProcessorRunEvent {

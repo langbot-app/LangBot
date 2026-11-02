@@ -1483,6 +1483,7 @@ const esES = {
       inputUnavailable: 'No se registró la entrada de esta ejecución.',
     },
     commandProcessor: {
+      debugTitle: 'Depurar comandos',
       type: 'Procesador de comandos',
       plugin: 'Plugin',
       selectPlugin: 'Seleccionar plugin',
@@ -1490,13 +1491,95 @@ const esES = {
       noSettings: 'Sin ajustes',
       notice: 'Procesa comandos antes del enrutamiento.',
       bindBot: 'Vincular a bot',
+      description:
+        'Gestiona comandos que empiezan con un prefijo, como /help o /draw. Se evalúa antes de las rutas y, si coincide, responde directamente.',
+      noPlugins: 'Ningún plugin instalado proporciona comandos.',
+      noMarketplace: 'No hay plugins con comandos en el marketplace.',
+      docs: 'Documentación de componentes de comando',
+      debugCommand: 'Comando',
+      debugArgs: 'Argumentos (opcional)',
+      run: 'Ejecutar comando',
+      saveAndRun: 'Guardar y ejecutar',
+      debugNotice:
+        'Ejecuta el comando una vez como administrador. Las respuestas se muestran aquí y no se envían a ninguna plataforma.',
+      debugEmpty: 'Elige un comando y ejecútalo para ver aquí sus respuestas.',
+      debugFailed: 'La depuración del comando falló',
+      noOutput: 'El comando no devolvió ninguna respuesta.',
+      outputs: 'Respuestas',
+      noRuns:
+        'Aún no se ha ejecutado ningún comando. Vincula este procesador a un bot o ejecuta uno en Depuración.',
+      sourceDebug: 'Depuración',
+      sourcePlatform: 'Mensaje del bot',
     },
+    diagram: {
+      bestFor: 'Ideal para: ',
+      messageReceived: 'Mensaje recibido',
+      anyEvent: 'Cualquier evento del bot',
+      anyEventCaption: 'Mensajes, nuevos miembros, solicitudes de amistad…',
+      model: 'Modelo',
+      knowledge: 'Base de conocimiento',
+      tools: 'Herramientas',
+      externalAgent: 'Agent externo',
+      reply: 'Responder en la conversación',
+      replyOrAction: 'Respuesta o acción de plataforma',
+      pipeline: {
+        summary:
+          'El mensaje pasa por reglas de activación y generación con IA, y luego se responde.',
+        group: 'Dentro del pipeline',
+        trigger: 'Reglas de activación y preprocesamiento',
+        generate: 'La IA genera la respuesta',
+        generateCaption:
+          'Usa el modelo, la base de conocimiento y herramientas',
+        bestFor:
+          'Preguntas y respuestas, atención al cliente y chat con base de conocimiento.',
+      },
+      agent: {
+        summary:
+          'Sigue tus instrucciones en lenguaje natural y decide cómo manejar cada evento.',
+        group: 'Dentro del Agent',
+        instructions: 'Tus instrucciones',
+        instructionsCaption: 'Cómo manejar cada tipo de evento',
+        decide: 'La IA decide y actúa',
+        decideCaption:
+          'Llama a herramientas o acciones de plataforma según haga falta',
+        bestFor:
+          'Manejar muchos tipos de eventos de forma inteligente o conectar una plataforma de Agent externa.',
+      },
+      eventProcessor: {
+        summary:
+          'El código del plugin recibe los eventos a los que se suscribe y los maneja con lógica fija.',
+        input: 'Eventos suscritos',
+        inputCaption: 'Nuevos miembros, solicitudes de amistad, mensajes…',
+        group: 'Dentro del plugin',
+        handle: 'El código del plugin maneja el evento',
+        outputCaption: 'Bienvenida, aprobar solicitudes, estadísticas…',
+        branch: 'Se ejecuta en paralelo a las rutas y no las bloquea.',
+        bestFor:
+          'Automatización con reglas claras, como bienvenidas, revisión de solicitudes y registro de eventos.',
+      },
+      commandProcessor: {
+        summary:
+          'Gestiona los mensajes que empiezan con un prefijo de comando antes de cualquier ruta.',
+        group: 'Dentro del procesador de comandos',
+        match: 'Comparar prefijo y nombre del comando',
+        matchCaption: 'Solo coinciden los nombres registrados por el plugin',
+        run: 'El plugin ejecuta el comando',
+        runCaption: 'Con la configuración de esta instancia',
+        branch:
+          'Sin coincidencia: el mensaje sigue hacia los procesadores de plugin y las rutas.',
+        bestFor:
+          'Operaciones explícitas que escribe el usuario, como /help, /reset o /draw.',
+      },
+    },
+    fromPlugin: 'Desde un plugin',
+    fromPluginDescription:
+      'Ejecuta lógica escrita por un plugin, sin IA. Elige cómo maneja los eventos:',
     eventProcessor: {
       configurations: 'Configuraciones de procesadores de plugins',
       configTab: 'Configuración',
       logsTab: 'Registros',
       noSettings: 'Este procesador de plugin no requiere configuración.',
-      createPageTitle: 'Crear procesador de eventos',
+      createPageTitle: 'Crear procesador',
       processWithPlugin: 'Procesar con código del plugin',
       pluginSettings: 'Ajustes del plugin',
       pluginSettingsDescription: 'Parámetros definidos por este plugin.',

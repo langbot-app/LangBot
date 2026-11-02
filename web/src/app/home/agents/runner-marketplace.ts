@@ -8,10 +8,18 @@ import {
   type PluginV4,
   type RunnerUsage,
 } from '@/app/infra/entities/plugin';
-import type { AsyncTask, RunnerDescriptor } from '@/app/infra/entities/api';
+import type {
+  AsyncTask,
+  CommandProcessorDescriptor,
+  RunnerDescriptor,
+} from '@/app/infra/entities/api';
 import type { I18nObject } from '@/app/infra/entities/common';
 
 export const RUNNER_COMPONENT_FILTER = 'Runner';
+export const COMMAND_COMPONENT_FILTER = 'Command';
+
+/** Catalog usage: Runner usages plus plugins that provide Command components. */
+export type CatalogUsage = RunnerUsage | 'command';
 
 const RUNNER_CATALOG_PAGE_SIZE = 100;
 const RUNNER_INSTALL_TIMEOUT_MS = 120_000;
@@ -33,6 +41,7 @@ export interface RunnerCatalog {
   marketplaceRunners: PluginV4[];
   installedPluginIds: string[];
   installedPluginDescriptions: Record<string, I18nObject>;
+  installedPluginLabels: Record<string, I18nObject>;
 }
 
 export interface InstalledRunner {
@@ -145,9 +154,12 @@ export function subscribePendingRunnerInstall(
 }
 
 export async function loadRunnerCatalog(
-  usage: RunnerUsage,
+  usage: CatalogUsage,
 ): Promise<RunnerCatalog> {
   const cloudClient = await getCloudServiceClient();
+  const componentFilter =
+    usage === 'command' ? COMMAND_COMPONENT_FILTER : RUNNER_COMPONENT_FILTER;
+  const runnerUsage = usage === 'command' ? undefined : usage;
   const [firstSearchResult, recommendationResult, installedResult] =
     await Promise.all([
       cloudClient.searchMarketplaceExtensions({
@@ -155,8 +167,8 @@ export async function loadRunnerCatalog(
         page: 1,
         page_size: RUNNER_CATALOG_PAGE_SIZE,
         type_filter: 'plugin',
-        component_filter: RUNNER_COMPONENT_FILTER,
-        runner_usage: usage,
+        component_filter: componentFilter,
+        runner_usage: runnerUsage,
       }),
       cloudClient.getRecommendationLists().catch(() => ({ lists: [] })),
       httpClient.getPlugins().catch(() => ({ plugins: [] })),
@@ -173,8 +185,8 @@ export async function loadRunnerCatalog(
         page: index + 2,
         page_size: RUNNER_CATALOG_PAGE_SIZE,
         type_filter: 'plugin',
-        component_filter: RUNNER_COMPONENT_FILTER,
-        runner_usage: usage,
+        component_filter: componentFilter,
+        runner_usage: runnerUsage,
       }),
     ),
   );
@@ -187,7 +199,7 @@ export async function loadRunnerCatalog(
   let nextOrder = 0;
   for (const list of recommendationResult.lists || []) {
     for (const plugin of list.plugins || []) {
-      if (!plugin.components?.[RUNNER_COMPONENT_FILTER]) continue;
+      if (!plugin.components?.[componentFilter]) continue;
       const id = marketplacePluginId(plugin);
       if (!recommendationOrder.has(id)) {
         recommendationOrder.set(id, nextOrder);
@@ -197,7 +209,11 @@ export async function loadRunnerCatalog(
   }
 
   const marketplaceRunners = catalogPlugins
-    .filter((plugin) => supportsRunnerUsage(plugin, usage))
+    .filter((plugin) =>
+      usage === 'command'
+        ? Boolean(plugin.components?.[COMMAND_COMPONENT_FILTER])
+        : supportsRunnerUsage(plugin, usage),
+    )
     .sort((left, right) => {
       const leftOrder = recommendationOrder.get(marketplacePluginId(left));
       const rightOrder = recommendationOrder.get(marketplacePluginId(right));
@@ -210,11 +226,15 @@ export async function loadRunnerCatalog(
     });
 
   const installedPluginDescriptions: Record<string, I18nObject> = {};
+  const installedPluginLabels: Record<string, I18nObject> = {};
   const installedPluginIds = installedResult.plugins.map((plugin) => {
     const metadata = plugin.manifest.manifest.metadata;
     const pluginId = `${metadata.author ?? ''}/${metadata.name}`;
     if (metadata.description) {
       installedPluginDescriptions[pluginId] = metadata.description;
+    }
+    if (metadata.label) {
+      installedPluginLabels[pluginId] = metadata.label;
     }
     return pluginId;
   });
@@ -223,6 +243,7 @@ export async function loadRunnerCatalog(
     marketplaceRunners,
     installedPluginIds,
     installedPluginDescriptions,
+    installedPluginLabels,
   };
 }
 
@@ -384,6 +405,43 @@ async function finishEventProcessorInstall(
     const component =
       candidates.find((component) => component.id.endsWith('/default')) ??
       candidates[0];
+    if (component) {
+      clearPendingRunnerInstall(pending.scope, pending.taskId);
+      return component;
+    }
+    await wait(1000);
+  }
+  clearPendingRunnerInstall(pending.scope, pending.taskId);
+  throw new RunnerMarketplaceError('registration-timeout');
+}
+
+export async function installMarketplaceCommandProcessor(
+  plugin: PluginV4,
+  options: InstallRunnerOptions,
+): Promise<CommandProcessorDescriptor> {
+  const pending = await startRunnerInstall(plugin, options);
+  return finishCommandProcessorInstall(pending, options.onProgress);
+}
+
+export async function resumePendingCommandProcessorInstall(
+  scope: string,
+): Promise<CommandProcessorDescriptor | null> {
+  const pending = readPendingRunnerInstall(scope);
+  return pending ? finishCommandProcessorInstall(pending) : null;
+}
+
+async function finishCommandProcessorInstall(
+  pending: PendingRunnerInstall,
+  onProgress?: (task: AsyncTask) => void,
+): Promise<CommandProcessorDescriptor> {
+  await waitForRunnerInstall(pending, onProgress);
+  const deadline = Date.now() + RUNNER_REGISTRATION_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const metadata = await httpClient.getAgentMetadata();
+    // Commands are usable once the Host lists the plugin's Command components.
+    const component = (metadata.command_processors ?? []).find(
+      (item) => item.plugin_id === pending.pluginId,
+    );
     if (component) {
       clearPendingRunnerInstall(pending.scope, pending.taskId);
       return component;
