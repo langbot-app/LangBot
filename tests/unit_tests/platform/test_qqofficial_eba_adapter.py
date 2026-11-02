@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import pathlib
 import datetime
 from unittest.mock import AsyncMock, patch
@@ -57,6 +58,11 @@ class DummyQQOfficialClient:
         self.send_markdown_keyboard = AsyncMock(return_value={'id': 'keyboard-message'})
         self.ack_interaction = AsyncMock()
         self._interaction_handler = None
+        self._msg_seq_counter = 0
+
+    def allocate_msg_seq(self):
+        self._msg_seq_counter += 1
+        return self._msg_seq_counter
 
     def on_message(self, msg_type: str):
         def decorator(func):
@@ -214,7 +220,8 @@ async def test_qqofficial_interaction_delivery_and_callback_event():
     assert result.message_id == 'keyboard-message' and result.rich is True
     calls = adapter.bot.send_markdown_keyboard.await_args_list
     assert [call.kwargs['msg_id'] for call in calls] == ['msg-1', 'msg-1']
-    assert [call.kwargs['msg_seq'] for call in calls] == [1, 2]
+    assert [call.kwargs['msg_seq'] for call in calls] == [None, None]
+    assert adapter._anchor_msg_seq['msg-1'] == 2
 
     event = interaction_event_from_payload(
         {
@@ -252,7 +259,88 @@ async def test_qqofficial_interaction_omits_synthetic_negative_message_id():
     call = adapter.bot.send_markdown_keyboard.await_args
     assert call.kwargs['msg_id'] is None
     assert call.kwargs['event_id'] is None
-    assert call.kwargs['msg_seq'] == 1
+    assert call.kwargs['msg_seq'] is None
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_stream_after_interaction_uses_fresh_sequence():
+    adapter = make_adapter()
+    sequences = []
+
+    async def send_keyboard(**kwargs):
+        assert kwargs['msg_seq'] is None
+        sequences.append(adapter.bot.allocate_msg_seq())
+        return {'id': f'card-{len(sequences)}'}
+
+    adapter.bot.send_markdown_keyboard.side_effect = send_keyboard
+    request = InteractionRequest.model_validate(
+        {
+            'interaction_id': 'form-1',
+            'title': 'Choose a plan',
+            'actions': [{'id': 'approve', 'label': 'Approve'}],
+        }
+    )
+    source = type('Source', (), {'source_platform_object': qq_event()})()
+
+    await adapter.send_interaction('person', 'user-openid', request, 'token', reply_to='msg-1')
+    await adapter.create_message_card('response-1', source)
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'response-1'},
+        platform_message.MessageChain([platform_message.Plain(text='Continuing')]),
+    )
+    await adapter.reply_message_chunk(
+        source,
+        {'resp_message_id': 'response-1'},
+        platform_message.MessageChain([platform_message.Plain(text='Continuing now')]),
+        is_final=True,
+    )
+    await adapter.send_interaction('person', 'user-openid', request, 'token', reply_to='msg-1')
+
+    streams = [item[1] for item in adapter.bot.sent if item[0] == 'stream']
+    assert sequences == [1, 3]
+    assert [item['msg_seq'] for item in streams] == [2, 2]
+    assert [item['index'] for item in streams] == [0, 1]
+
+
+@pytest.mark.asyncio
+async def test_qqofficial_gateway_ack_is_not_blocked_by_message_processing():
+    adapter = make_adapter(enable_webhook=False)
+    message_started = asyncio.Event()
+    release_message = asyncio.Event()
+    callback_seen = asyncio.Event()
+
+    async def slow_message(event):
+        message_started.set()
+        await release_message.wait()
+
+    async def on_callback(event, source):
+        callback_seen.set()
+
+    adapter.bot.get_message = AsyncMock(return_value=dict(qq_event()))
+    adapter.bot._handle_message = slow_message
+    adapter.register_listener(platform_events.InteractionCallbackEvent, on_callback)
+
+    async def fake_gateway(on_event, on_ready, on_error):
+        await on_event('C2C_MESSAGE_CREATE', {'id': 'msg-1'})
+        await asyncio.wait_for(message_started.wait(), 1)
+        await adapter.bot._interaction_handler(
+            {
+                'id': 'click-1',
+                'chat_type': 2,
+                'user_openid': 'user-openid',
+                'data': {'resolved': {'button_data': 'lbi:token:a:0'}},
+            },
+            'event-1',
+        )
+        await asyncio.wait_for(callback_seen.wait(), 1)
+        assert not release_message.is_set()
+        release_message.set()
+
+    adapter.bot.connect_gateway_loop = fake_gateway
+    await asyncio.wait_for(adapter._run_websocket(), 2)
+    await asyncio.gather(*tuple(adapter._gateway_tasks))
+    adapter.bot.ack_interaction.assert_awaited_once_with('click-1')
 
 
 @pytest.mark.asyncio

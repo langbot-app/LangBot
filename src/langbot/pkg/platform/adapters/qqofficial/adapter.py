@@ -63,6 +63,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
     _fallback_text_ts: dict[str, float] = {}
     _anchor_msg_seq: dict[str, int] = {}
     _ws_task: asyncio.Task | None = None
+    _gateway_tasks: set[asyncio.Task] = set()
 
     _STREAM_CTX_TTL = 300
     _MAX_REPLIES_PER_ANCHOR = 5
@@ -102,6 +103,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             _fallback_text_ts={},
             _anchor_msg_seq={},
             _ws_task=None,
+            _gateway_tasks=set(),
         )
         self._register_native_handlers()
 
@@ -309,6 +311,11 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             except asyncio.CancelledError:
                 pass
             self._ws_task = None
+        for task in tuple(self._gateway_tasks):
+            task.cancel()
+        if self._gateway_tasks:
+            await asyncio.gather(*self._gateway_tasks, return_exceptions=True)
+            self._gateway_tasks.clear()
         await self.bot.close()
         self._anchor_msg_seq.clear()
         self._stream_ctx.clear()
@@ -336,7 +343,7 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             'user_openid': source.user_openid,
             'msg_id': source.d_id,
             'stream_msg_id': None,
-            'msg_seq': 1,
+            'msg_seq': None,
             'index': 0,
             'last_update_ts': 0,
             'accumulated_text': '',
@@ -394,6 +401,9 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
             return
         ctx['last_update_ts'] = now
 
+        if ctx['msg_seq'] is None:
+            ctx['msg_seq'] = self.bot.allocate_msg_seq()
+
         resp = await self.bot.send_stream_msg(
             user_openid=ctx['user_openid'],
             content=content_to_send,
@@ -431,7 +441,20 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 await self.bot.ack_interaction(interaction_id)
             event = interaction_event_from_payload(event_data)
             if event is not None:
-                await self._dispatch_eba_event(event)
+                self._queue_gateway_event(self._dispatch_eba_event(event))
+
+    def _queue_gateway_event(self, awaitable: typing.Awaitable[None]) -> None:
+        async def run() -> None:
+            try:
+                await awaitable
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                await self.logger.error(f'Error in qqofficial gateway event: {traceback.format_exc()}')
+
+        task = asyncio.create_task(run())
+        self._gateway_tasks.add(task)
+        task.add_done_callback(self._gateway_tasks.discard)
 
     async def _handle_native_event(self, event: QQOfficialEvent):
         self.bot_account_id = self.config.get('appid', self.bot_account_id)
@@ -488,12 +511,12 @@ class QQOfficialAdapter(QQOfficialAPIMixin, abstract_platform_adapter.AbstractPl
                 await self.logger.warning(f'Event data is not dict, skipping: {event_type} -> {type(event_data)}')
                 return
             if event_type not in MESSAGE_EVENT_TYPES:
-                await self._handle_native_event(QQOfficialEvent({'t': event_type, **event_data}))
+                self._queue_gateway_event(self._handle_native_event(QQOfficialEvent({'t': event_type, **event_data})))
                 return
             payload = {'t': event_type, 'd': event_data}
             message_data = await self.bot.get_message(payload)
             if message_data:
-                await self.bot._handle_message(QQOfficialEvent.from_payload(message_data))
+                self._queue_gateway_event(self.bot._handle_message(QQOfficialEvent.from_payload(message_data)))
 
         async def on_error(error: Exception):
             await self.logger.error(f'QQ Official WebSocket error: {error}')
