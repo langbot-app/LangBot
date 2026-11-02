@@ -463,6 +463,11 @@ class OpenClawWeixinClient:
         text: Optional[str] = None,
     ) -> None:
         """Upload a voice message to CDN and send it."""
+        if encode_type == 6:
+            if bits_per_sample is None:
+                bits_per_sample = 16
+            if sample_rate is None:
+                sample_rate = 24000
         media = await self.upload_media(voice_bytes, to_user_id, media_type=4)
         item = MessageItem(
             type=MessageItem.VOICE,
@@ -724,6 +729,9 @@ def _parse_message_item(data: dict) -> MessageItem:
             media=_parse_cdn_media(v.get('media')),
             encode_type=v.get('encode_type'),
             playtime=v.get('playtime'),
+            bits_per_sample=v.get('bits_per_sample'),
+            sample_rate=v.get('sample_rate'),
+            size=v.get('size'),
             text=v.get('text'),
         )
 
