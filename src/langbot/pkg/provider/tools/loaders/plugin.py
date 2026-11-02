@@ -6,6 +6,7 @@ import traceback
 from langbot_plugin.api.entities.events import pipeline_query
 
 from .. import loader
+from ....pipeline.pool import get_query_execution_context
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 
@@ -73,10 +74,13 @@ class PluginToolLoader(loader.ToolLoader):
         source_id: str | None = None,
     ) -> typing.Any:
         try:
+            # Cached group sessions may belong to a previous speaker.
+            session = query.session.model_copy(update={'sender_id': query.sender_id, 'bot_uuid': query.bot_uuid})
+            session.inherit_execution_scope(get_query_execution_context(query))
             return await self.ap.plugin_connector.call_tool(
                 name,
                 parameters,
-                session=query.session,
+                session=session,
                 query_id=query.query_id,
                 bound_plugins=[source_id] if source_id else None,
                 query_uuid=query.query_uuid,

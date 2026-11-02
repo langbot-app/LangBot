@@ -14,6 +14,7 @@ from langbot.pkg.provider.tools.loaders.mcp import (
 )
 from langbot.pkg.provider.tools.loaders.plugin import PluginToolLoader
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
+from langbot_plugin.api.entities.builtin.provider.session import Session, LauncherTypes
 
 
 _CONTEXT = ExecutionContext(
@@ -174,8 +175,11 @@ async def test_two_plugins_with_same_tool_forward_only_authorized_plugin():
         call_tool=AsyncMock(return_value='authorized-result'),
     )
     loader = PluginToolLoader(SimpleNamespace(plugin_connector=connector, logger=Mock()))
-    query = SimpleNamespace(session=SimpleNamespace(), query_id=7, query_uuid='query-a')
-    query.session.model_dump = Mock(return_value={})
+    query = _query()
+    query.query_id = 7
+    query._execution_context = _CONTEXT
+    query.sender_id = 'current-speaker'
+    query.session = Session(launcher_type=LauncherTypes.GROUP, launcher_id='group-a', sender_id='previous-speaker')
 
     result = await loader.invoke_tool(
         'shared_tool',
@@ -185,11 +189,36 @@ async def test_two_plugins_with_same_tool_forward_only_authorized_plugin():
     )
 
     assert result == 'authorized-result'
+    invocation_session = connector.call_tool.call_args.kwargs['session']
+    assert invocation_session is not query.session
+    assert invocation_session.sender_id == 'current-speaker'
+    assert invocation_session.workspace_uuid == _CONTEXT.workspace_uuid
+    assert query.session.sender_id == 'previous-speaker'
     connector.call_tool.assert_awaited_once_with(
         'shared_tool',
         {},
-        session=query.session,
+        session=invocation_session,
         query_id=7,
         bound_plugins=['authorized/plugin'],
         query_uuid='query-a',
     )
+
+
+@pytest.mark.asyncio
+async def test_plugin_tool_rejects_cross_workspace_session():
+    connector = SimpleNamespace(call_tool=AsyncMock())
+    loader = PluginToolLoader(SimpleNamespace(plugin_connector=connector, logger=Mock()))
+    query = _query()
+    query._execution_context = _CONTEXT
+    query.query_id = 7
+    query.sender_id = 'alice'
+    query.session = Session(
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id='group-a',
+        workspace_uuid='workspace-b',
+    )
+
+    result = await loader.invoke_tool('remember', {}, query, source_id='langbot-team/LongTermMemory')
+
+    assert 'Execution scope mismatch' in result
+    connector.call_tool.assert_not_awaited()
