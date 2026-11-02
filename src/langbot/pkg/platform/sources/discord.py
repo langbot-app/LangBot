@@ -778,13 +778,22 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                 is_audio = (
                     is_voice_flag
                     or content_type.startswith('audio/')
-                    or any(filename.endswith(ext) for ext in ('.mp3', '.ogg', '.oga', '.opus', '.wav', '.m4a', '.aac', '.flac', '.weba'))
+                    or any(
+                        filename.endswith(ext)
+                        for ext in ('.mp3', '.ogg', '.oga', '.opus', '.wav', '.m4a', '.aac', '.flac', '.weba')
+                    )
                     or detected_fmt in ('wav', 'mp3', 'ogg', 'opus', 'flac', 'silk', 'amr')
                 )
 
                 if is_audio:
-                    mime = content_type if content_type.startswith('audio/') else (
-                        'audio/ogg' if detected_fmt in ('ogg', 'opus') else f'audio/{detected_fmt if detected_fmt != "unknown" else "mpeg"}'
+                    mime = (
+                        content_type
+                        if content_type.startswith('audio/')
+                        else (
+                            'audio/ogg'
+                            if detected_fmt in ('ogg', 'opus')
+                            else f'audio/{detected_fmt if detected_fmt != "unknown" else "mpeg"}'
+                        )
                     )
                     duration = getattr(attachment, 'duration_secs', None)
                     if duration is not None:
@@ -798,7 +807,9 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                             length=duration,
                         )
                     )
-                elif content_type.startswith('image/') or any(filename.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')):
+                elif content_type.startswith('image/') or any(
+                    filename.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')
+                ):
                     mime = content_type if content_type.startswith('image/') else 'image/png'
                     element_list.append(
                         platform_message.Image(url=attachment.url, base64=f'data:{mime};base64,{media_base64}')

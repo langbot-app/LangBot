@@ -283,12 +283,14 @@ const esES = {
       'Elige un evento compatible, introduce datos de prueba y revisa la salida y los resultados de las herramientas. Las acciones de plataforma se simulan; los modelos y las demás herramientas se ejecutan según su configuración.',
     pipeline: {
       trigger: {
-        title: "Choose which messages to answer",
-        description: "Pipelines handle message events and reply automatically with AI.",
+        title: 'Choose which messages to answer',
+        description:
+          'Pipelines handle message events and reply automatically with AI.',
       },
       speech: {
-        title: "Configure speech capabilities",
-        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Configurar las funciones de IA',

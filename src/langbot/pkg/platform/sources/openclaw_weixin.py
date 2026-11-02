@@ -398,7 +398,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                         delivery_mode = self.config.get('voice_delivery', 'file')
 
                         if delivery_mode == 'voice':
-                            duration_sec = component.length or audio_utils.estimate_audio_duration(voice_bytes, audio_fmt)
+                            duration_sec = component.length or audio_utils.estimate_audio_duration(
+                                voice_bytes, audio_fmt
+                            )
                             playtime_ms = int(duration_sec * 1000) if duration_sec > 0 else 0
 
                             if audio_fmt == 'silk':
@@ -456,7 +458,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                                         out_bytes = voice_bytes
                                         if audio_fmt != 'mp3' and audio_utils.is_ffmpeg_available():
                                             try:
-                                                out_bytes = await audio_utils.transcode_audio(voice_bytes, 'mp3', audio_fmt)
+                                                out_bytes = await audio_utils.transcode_audio(
+                                                    voice_bytes, 'mp3', audio_fmt
+                                                )
                                             except Exception:
                                                 pass
                                         await self.client.send_file(

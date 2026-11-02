@@ -182,7 +182,16 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
-    _ASR_MODEL_HINTS = ('whisper', 'sensevoice', 'asr', 'paraformer', 'conformer', 'speech-to-text', 'transcription', 'stt')
+    _ASR_MODEL_HINTS = (
+        'whisper',
+        'sensevoice',
+        'asr',
+        'paraformer',
+        'conformer',
+        'speech-to-text',
+        'transcription',
+        'stt',
+    )
     _TTS_MODEL_HINTS = ('tts', 'text-to-speech', 'speech-synthesis', 'cosyvoice', 'voice-clone', 'sambert', 'chattts')
     _QWEN_DEDICATED_THINKING_MODELS = frozenset(
         {
@@ -1291,7 +1300,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             message = t('Invalid request parameters')
             code = 'bad_request'
         elif status is not None:
-            message = f"{t('API error')} (HTTP {status})"
+            message = f'{t("API error")} (HTTP {status})'
         elif isinstance(e, (litellm.APIError, getattr(litellm, 'OpenAIError', ()))):
             message = t('API error')
         else:

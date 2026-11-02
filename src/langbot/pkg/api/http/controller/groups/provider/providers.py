@@ -103,11 +103,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             )
             for provider in providers:
                 counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider['uuid'])
-                provider['llm_count'] = counts['llm_count']
-                provider['embedding_count'] = counts['embedding_count']
-                provider['rerank_count'] = counts['rerank_count']
-                provider['asr_count'] = counts['asr_count']
-                provider['tts_count'] = counts['tts_count']
+                provider.update(counts)
             return self.success(data={'providers': providers})
 
         @self.route(
@@ -145,11 +141,7 @@ class ModelProvidersRouterGroup(group.RouterGroup):
             if provider is None:
                 return self.http_status(404, -1, 'provider not found')
             counts = await self.ap.provider_service.get_provider_model_counts(request_context, provider_uuid)
-            provider['llm_count'] = counts['llm_count']
-            provider['embedding_count'] = counts['embedding_count']
-            provider['rerank_count'] = counts['rerank_count']
-            provider['asr_count'] = counts['asr_count']
-            provider['tts_count'] = counts['tts_count']
+            provider.update(counts)
             return self.success(data={'provider': provider})
 
         @self.route(

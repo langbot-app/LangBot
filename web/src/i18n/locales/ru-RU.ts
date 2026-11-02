@@ -281,12 +281,14 @@ const ruRU = {
       'Выберите поддерживаемое событие, введите тестовые данные и проверьте вывод и результаты инструментов. Действия платформы имитируются; модели и другие инструменты выполняются согласно настройкам.',
     pipeline: {
       trigger: {
-        title: "Choose which messages to answer",
-        description: "Pipelines handle message events and reply automatically with AI.",
+        title: 'Choose which messages to answer',
+        description:
+          'Pipelines handle message events and reply automatically with AI.',
       },
       speech: {
-        title: "Configure speech capabilities",
-        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Настройте возможности ИИ',

@@ -471,15 +471,11 @@ class ModelProviderService:
         )
         asr_service = getattr(self.ap, 'asr_models_service', None)
         asr_models = (
-            await asr_service.get_asr_models_by_provider(context, provider_uuid)
-            if asr_service is not None
-            else []
+            await asr_service.get_asr_models_by_provider(context, provider_uuid) if asr_service is not None else []
         )
         tts_service = getattr(self.ap, 'tts_models_service', None)
         tts_models = (
-            await tts_service.get_tts_models_by_provider(context, provider_uuid)
-            if tts_service is not None
-            else []
+            await tts_service.get_tts_models_by_provider(context, provider_uuid) if tts_service is not None else []
         )
         existing_llm_names = {model['name'] for model in llm_models}
         existing_embedding_names = {model['name'] for model in embedding_models}

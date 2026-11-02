@@ -280,12 +280,14 @@ const viVN = {
       'Chọn sự kiện được hỗ trợ, nhập dữ liệu thử rồi xem đầu ra và kết quả công cụ. Hành động nền tảng được mô phỏng; mô hình và công cụ khác chạy theo cấu hình.',
     pipeline: {
       trigger: {
-        title: "Choose which messages to answer",
-        description: "Pipelines handle message events and reply automatically with AI.",
+        title: 'Choose which messages to answer',
+        description:
+          'Pipelines handle message events and reply automatically with AI.',
       },
       speech: {
-        title: "Configure speech capabilities",
-        description: "Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.",
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Cấu hình khả năng AI',

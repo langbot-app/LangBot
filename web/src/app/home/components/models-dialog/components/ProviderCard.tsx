@@ -169,9 +169,7 @@ export default function ProviderCard({
         (provider.asr_count || 0) +
         (provider.tts_count || 0);
 
-  const canDelete =
-    !isLangBotModels &&
-    totalModels === 0;
+  const canDelete = !isLangBotModels && totalModels === 0;
 
   return (
     <Card className="mb-2">
