@@ -1231,11 +1231,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         mappings = (
             (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
             (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (getattr(litellm, 'PermissionDeniedError', ()), 'permission_denied', t('Permission denied'), False),
             (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
             (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
             (litellm.Timeout, 'timeout', t('Request timed out'), True),
             (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
             (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
+            (getattr(litellm, 'InternalServerError', ()), 'internal_error', t('Internal server error'), True),
+            (getattr(litellm, 'BadGatewayError', ()), 'bad_gateway', t('Internal server error'), True),
+            (getattr(litellm, 'ServiceUnavailableError', ()), 'service_unavailable', t('Internal server error'), True),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
@@ -1247,9 +1251,38 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     code, retryable = 'quota_exceeded', False
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
         status = metadata['status_code']
+        code = 'upstream_error'
+        if status in (500, 502, 503):
+            message = t('Internal server error')
+            code = 'internal_error'
+        elif status == 504:
+            message = t('Request timed out')
+            code = 'timeout'
+        elif status == 401:
+            message = t('Invalid API key')
+            code = 'authentication'
+        elif status == 403:
+            message = t('Permission denied')
+            code = 'permission_denied'
+        elif status == 404:
+            message = t('Invalid model or endpoint')
+            code = 'not_found'
+        elif status == 429:
+            message = t('Rate limit exceeded or insufficient balance')
+            code = 'rate_limit'
+        elif status == 400:
+            message = t('Invalid request parameters')
+            code = 'bad_request'
+        elif status is not None:
+            message = f"{t('API error')} (HTTP {status})"
+        elif isinstance(e, (litellm.APIError, getattr(litellm, 'OpenAIError', ()))):
+            message = t('API error')
+        else:
+            message = t('Unknown error')
+
         raise errors.RequesterError(
-            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
-            code='upstream_error',
+            message,
+            code=code,
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
         ) from e
