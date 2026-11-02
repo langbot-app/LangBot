@@ -1441,10 +1441,27 @@ const enUS = {
       inputUnavailable: 'Input was not recorded for this run.',
     },
     commandProcessor: {
+      loadingCatalog: 'Loading command plugins...',
+      catalogUnavailable: 'Unable to load command plugins',
+      installFailed: 'Command plugin installation failed',
+      installTimeout:
+        'Command plugin installation timed out. Check the task on the Extensions page.',
+      registrationTimeout:
+        'The plugin was installed, but its commands did not register in time. Refresh and try again.',
+      diagnosis: {
+        missing:
+          'The selected command plugin is missing. Install or restore the plugin.',
+        disabled:
+          'The selected command plugin is disabled. Enable it on the plugins page.',
+        runtime:
+          'The plugin runtime is unavailable or disabled. Restore the connection and try again.',
+        draft:
+          'The repair page opens in a new tab; your current selection and unsaved draft are kept.',
+      },
       debugTitle: 'Command Debug',
       type: 'Command processor',
       plugin: 'Plugin',
-      selectPlugin: 'Select plugin',
+      selectPlugin: 'Select command plugin',
       unavailable: 'Plugin unavailable',
       noSettings: 'No command settings',
       notice: 'Handle plugin commands before event routing.',
