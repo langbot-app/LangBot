@@ -55,7 +55,7 @@ test('command configuration and platform registration catalogs have matching key
       ts.forEachChild(node, visit);
     }
     visit(ast);
-    assert.equal(Object.keys(entries).length, 21, locale);
+    assert.equal(Object.keys(entries).length, 45, locale);
     if (baseline) assert.deepEqual(entries, baseline, locale);
     else baseline = entries;
   }
