@@ -118,6 +118,7 @@ class Application:
     pipeline_config_meta_safety: config_mgr.ConfigManager = None
     pipeline_config_meta_ai: config_mgr.ConfigManager = None
     pipeline_config_meta_output: config_mgr.ConfigManager = None
+    pipeline_config_meta_speech: config_mgr.ConfigManager = None
 
     # =========================
 
@@ -178,6 +179,10 @@ class Application:
     embedding_models_service: model_service.EmbeddingModelsService = None
 
     rerank_models_service: model_service.RerankModelsService = None
+
+    asr_models_service: model_service.ASRModelsService = None
+
+    tts_models_service: model_service.TTSModelsService = None
 
     provider_service: provider_service.ModelProviderService = None
 

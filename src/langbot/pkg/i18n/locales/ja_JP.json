@@ -110,5 +110,8 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "ChatGPT のデバイスログインを開始できません。ChatGPT の設定でデバイスコードログインを有効にしてください。",
   "Option {number}": "選択肢 {number}",
   "Confirmation needed": "確認が必要です",
-  "Session reset successfully": "セッションをリセットしました"
+  "Session reset successfully": "セッションをリセットしました",
+  "Voice transcription failed.": "音声の文字起こしに失敗しました。",
+  "Voice message exceeds maximum duration.": "音声メッセージが最大時間を超えています。",
+  "Voice synthesis failed.": "音声合成に失敗しました。"
 }

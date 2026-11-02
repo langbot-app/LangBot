@@ -110,5 +110,8 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "ไม่สามารถเริ่มเข้าสู่ระบบด้วยอุปกรณ์ได้ โปรดเปิดการเข้าสู่ระบบด้วยรหัสอุปกรณ์ในการตั้งค่า ChatGPT",
   "Option {number}": "ตัวเลือก {number}",
   "Confirmation needed": "ต้องยืนยัน",
-  "Session reset successfully": "รีเซ็ตเซสชันแล้ว"
+  "Session reset successfully": "รีเซ็ตเซสชันแล้ว",
+  "Voice transcription failed.": "การแปลงเสียงเป็นข้อความล้มเหลว",
+  "Voice message exceeds maximum duration.": "ข้อความเสียงมีความยาวเกินกำหนดสูงสุด",
+  "Voice synthesis failed.": "การสังเคราะห์เสียงล้มเหลว"
 }

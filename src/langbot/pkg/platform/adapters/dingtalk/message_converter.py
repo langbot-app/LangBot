@@ -125,10 +125,11 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.file:
             components.append(platform_message.File(url=event.file, name=event.name or 'file'))
         if event.audio:
-            if event.content and event.type == 'audio':
-                components.append(platform_message.Plain(text=event.content))
-            else:
-                components.append(platform_message.Voice(base64=event.audio))
+            # Keep the audio so the pipeline's speech recognition setting decides how it is transcribed.
+            components.append(platform_message.Voice(base64=event.audio, length=event.audio_duration or None))
+        elif event.type == 'audio' and event.content:
+            # The audio could not be downloaded; fall back to DingTalk's own transcription.
+            components.append(platform_message.Plain(text=event.content))
 
         quote = DingTalkMessageConverter._quote_component(event)
         if quote:

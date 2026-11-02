@@ -275,9 +275,14 @@ const thTH = {
       'เลือกเหตุการณ์ที่รองรับ ใส่ข้อมูลทดสอบ แล้วดูผลลัพธ์และการเรียกเครื่องมือ การกระทำบนแพลตฟอร์มจะถูกจำลอง ส่วนโมเดลและเครื่องมืออื่นทำงานตามการตั้งค่าจริง',
     pipeline: {
       trigger: {
-        title: 'เลือกข้อความที่จะตอบ',
+        title: 'Choose which messages to answer',
         description:
-          'ไปป์ไลน์ประมวลผลเหตุการณ์ข้อความและตอบด้วย AI อัตโนมัติ ตั้งเงื่อนไขในกลุ่ม กฎแชทส่วนตัว และตัวกรองข้อความได้ที่นี่',
+          'Pipelines handle message events and reply automatically with AI.',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'ตั้งค่าความสามารถ AI',
@@ -868,6 +873,8 @@ const thTH = {
     chat: 'แชท',
     embedding: 'Embedding',
     rerank: 'จัดลำดับใหม่',
+    asr: 'ASR (การรู้จำเสียงพูด)',
+    tts: 'TTS (แปลงข้อความเป็นเสียง)',
     rerankUrlTooltip:
       'URL เต็มสำหรับ endpoint จัดลำดับใหม่ (เช่น: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2358,6 +2365,7 @@ const thTH = {
     triggerConditions: 'ทริกเกอร์',
     safetyControls: 'ความปลอดภัย',
     outputProcessing: 'เอาต์พุต',
+    speechProcessing: 'เสียง',
     nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
     descriptionRequired: 'คำอธิบายต้องไม่ว่างเปล่า',
     createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์ Pipeline',

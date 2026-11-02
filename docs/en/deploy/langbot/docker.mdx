@@ -44,6 +44,10 @@ docker compose --profile all up -d
 
 The first startup downloads the container images. On Windows / macOS, keep Docker Desktop running.
 
+<Note>
+The official Docker images come pre-equipped with minimal `ffmpeg` and `pilk` audio tools. Native voice transcoding (including SILK for WeChat) is supported out-of-the-box without extra host configuration.
+</Note>
+
 ## 4. Open the dashboard
 
 - **Local installation**: open `http://localhost:5300`.

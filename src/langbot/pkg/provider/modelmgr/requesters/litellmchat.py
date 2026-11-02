@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
-from litellm import acompletion, aembedding, arerank
+from litellm import acompletion, aembedding, arerank, atranscription, aspeech
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
@@ -182,6 +182,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _ASR_MODEL_HINTS = (
+        'whisper',
+        'sensevoice',
+        'asr',
+        'paraformer',
+        'conformer',
+        'speech-to-text',
+        'transcription',
+        'stt',
+    )
+    _TTS_MODEL_HINTS = ('tts', 'text-to-speech', 'speech-synthesis', 'cosyvoice', 'voice-clone', 'sambert', 'chattts')
     _QWEN_DEDICATED_THINKING_MODELS = frozenset(
         {
             'qwen3.7-max-preview',
@@ -786,12 +797,27 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _reasoning_level(self, model: requester.RuntimeLLMModel) -> str:
         return reasoning.normalize_reasoning_config(self._reasoning_config_value(model))['level']
 
-    def _infer_model_type(self, model_id: str) -> str:
+    def _infer_model_type(self, model_id: str, model_payload: dict[str, typing.Any] | None = None) -> str:
+        if model_payload:
+            explicit_type = (model_payload.get('type') or model_payload.get('task') or '').lower()
+            if explicit_type in ('asr', 'audio_transcription', 'speech-to-text', 'stt'):
+                return 'asr'
+            if explicit_type in ('tts', 'text_to_speech', 'text-to-speech', 'speech-synthesis'):
+                return 'tts'
+            if explicit_type in ('embedding', 'text-embedding'):
+                return 'embedding'
+            if explicit_type in ('rerank', 'reranking'):
+                return 'rerank'
+
         normalized_id = (model_id or '').lower()
         if any(kw in normalized_id for kw in self._RERANK_MODEL_HINTS):
             return 'rerank'
         if any(kw in normalized_id for kw in self._EMBEDDING_MODEL_HINTS):
             return 'embedding'
+        if any(kw in normalized_id for kw in self._ASR_MODEL_HINTS):
+            return 'asr'
+        if any(kw in normalized_id for kw in self._TTS_MODEL_HINTS):
+            return 'tts'
         return 'llm'
 
     def _enrich_scanned_model(
@@ -799,7 +825,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model_id: str,
         model_payload: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
-        model_type = self._infer_model_type(model_id)
+        model_type = self._infer_model_type(model_id, model_payload)
         scanned_model: dict[str, typing.Any] = {
             'id': model_id,
             'name': model_id,
@@ -1231,11 +1257,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         mappings = (
             (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
             (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (getattr(litellm, 'PermissionDeniedError', ()), 'permission_denied', t('Permission denied'), False),
             (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
             (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
             (litellm.Timeout, 'timeout', t('Request timed out'), True),
             (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
             (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
+            (getattr(litellm, 'InternalServerError', ()), 'internal_error', t('Internal server error'), True),
+            (getattr(litellm, 'BadGatewayError', ()), 'bad_gateway', t('Internal server error'), True),
+            (getattr(litellm, 'ServiceUnavailableError', ()), 'service_unavailable', t('Internal server error'), True),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
@@ -1247,9 +1277,38 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     code, retryable = 'quota_exceeded', False
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
         status = metadata['status_code']
+        code = 'upstream_error'
+        if status in (500, 502, 503):
+            message = t('Internal server error')
+            code = 'internal_error'
+        elif status == 504:
+            message = t('Request timed out')
+            code = 'timeout'
+        elif status == 401:
+            message = t('Invalid API key')
+            code = 'authentication'
+        elif status == 403:
+            message = t('Permission denied')
+            code = 'permission_denied'
+        elif status == 404:
+            message = t('Invalid model or endpoint')
+            code = 'not_found'
+        elif status == 429:
+            message = t('Rate limit exceeded or insufficient balance')
+            code = 'rate_limit'
+        elif status == 400:
+            message = t('Invalid request parameters')
+            code = 'bad_request'
+        elif status is not None:
+            message = f'{t("API error")} (HTTP {status})'
+        elif isinstance(e, (litellm.APIError, getattr(litellm, 'OpenAIError', ()))):
+            message = t('API error')
+        else:
+            message = t('Unknown error')
+
         raise errors.RequesterError(
-            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
-            code='upstream_error',
+            message,
+            code=code,
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
         ) from e
@@ -1880,6 +1939,123 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             )
 
         return results
+
+    async def invoke_asr(
+        self,
+        model: requester.RuntimeASRModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> str:
+        """Invoke speech recognition (ASR) and return transcript."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        ext = 'wav'
+        if 'mp3' in mime or 'mpeg' in mime:
+            ext = 'mp3'
+        elif 'ogg' in mime:
+            ext = 'ogg'
+        elif 'flac' in mime:
+            ext = 'flac'
+        elif 'm4a' in mime or 'mp4' in mime:
+            ext = 'm4a'
+        elif 'wav' in mime:
+            ext = 'wav'
+        filename = f'audio.{ext}'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'file': (filename, audio, mime),
+            'api_key': api_key,
+            'response_format': 'json',
+        }
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
+        args.update(extra_args)
+
+        try:
+            response = await atranscription(**args)
+            if hasattr(response, 'text'):
+                return response.text or ''
+            if isinstance(response, dict):
+                return response.get('text', '')
+            return str(response)
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
+
+    async def invoke_tts(
+        self,
+        model: requester.RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> tuple[bytes, str]:
+        """Invoke text-to-speech and return (audio_bytes, mime_type)."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        combined_extra = {**(model.model_entity.extra_args or {}), **extra_args}
+        voice = combined_extra.pop('voice', None)
+        response_format = combined_extra.pop('response_format', None) or combined_extra.pop('format', None) or 'mp3'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'input': text,
+            'response_format': response_format,
+            'api_key': api_key,
+        }
+        if voice:
+            args['voice'] = voice
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        args.update(combined_extra)
+
+        try:
+            response = await aspeech(**args)
+            content = b''
+            if hasattr(response, 'content'):
+                content = response.content
+            elif hasattr(response, 'read'):
+                res = response.read()
+                if asyncio.iscoroutine(res):
+                    content = await res
+                else:
+                    content = res
+            elif isinstance(response, bytes):
+                content = response
+            elif hasattr(response, 'response') and hasattr(response.response, 'content'):
+                content = response.response.content
+
+            # Determine mime type
+            mime = 'audio/mpeg'
+            if response_format == 'wav':
+                mime = 'audio/wav'
+            elif response_format in ('ogg', 'opus'):
+                mime = 'audio/ogg'
+            elif response_format == 'flac':
+                mime = 'audio/flac'
+            elif response_format == 'aac':
+                mime = 'audio/aac'
+            elif hasattr(response, 'response') and hasattr(response.response, 'headers'):
+                mime = response.response.headers.get('content-type', mime)
+
+            return content, mime
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
 
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         """Scan models supported by the provider."""

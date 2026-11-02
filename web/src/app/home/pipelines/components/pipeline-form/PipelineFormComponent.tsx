@@ -60,6 +60,7 @@ import {
   Info,
   Brain,
   Zap,
+  Mic,
   Shield,
   FileOutput,
   Puzzle,
@@ -170,6 +171,7 @@ const PipelineFormComponent = forwardRef<
         }),
         ai: z.record(z.string(), z.any()),
         trigger: z.record(z.string(), z.any()),
+        speech: z.record(z.string(), z.any()).optional(),
         safety: z.record(z.string(), z.any()),
         output: z.record(z.string(), z.any()),
       })
@@ -181,6 +183,7 @@ const PipelineFormComponent = forwardRef<
         }),
         ai: z.record(z.string(), z.any()).optional(),
         trigger: z.record(z.string(), z.any()).optional(),
+        speech: z.record(z.string(), z.any()).optional(),
         safety: z.record(z.string(), z.any()).optional(),
         output: z.record(z.string(), z.any()).optional(),
       });
@@ -191,6 +194,7 @@ const PipelineFormComponent = forwardRef<
     basic: Info,
     ai: Brain,
     trigger: Zap,
+    speech: Mic,
     safety: Shield,
     output: FileOutput,
     extensions: Puzzle,
@@ -212,6 +216,11 @@ const PipelineFormComponent = forwardRef<
           label: t('pipelines.triggerConditions'),
           name: 'trigger',
           icon: SECTION_ICONS.trigger,
+        },
+        {
+          label: t('pipelines.speechProcessing'),
+          name: 'speech',
+          icon: SECTION_ICONS.speech,
         },
         {
           label: t('pipelines.safetyControls'),
@@ -243,6 +252,7 @@ const PipelineFormComponent = forwardRef<
   const guideSteps = useMemo<GuidedTourStep[]>(() => {
     const sections = [
       'trigger',
+      'speech',
       'ai',
       'output',
       'safety',
@@ -286,7 +296,7 @@ const PipelineFormComponent = forwardRef<
       },
     ];
   }, [t, debugGuideEnabled, monitoringGuideEnabled]);
-  const primarySectionNames = ['trigger', 'ai', 'output'];
+  const primarySectionNames = ['trigger', 'speech', 'ai', 'output'];
   const primarySections = primarySectionNames
     .map((name) => formLabelList.find((section) => section.name === name))
     .filter((section): section is SectionItem => Boolean(section));
@@ -301,6 +311,8 @@ const PipelineFormComponent = forwardRef<
   const [aiConfigTabSchema, setAIConfigTabSchema] =
     useState<PipelineConfigTab>();
   const [triggerConfigTabSchema, setTriggerConfigTabSchema] =
+    useState<PipelineConfigTab>();
+  const [speechConfigTabSchema, setSpeechConfigTabSchema] =
     useState<PipelineConfigTab>();
   const [safetyConfigTabSchema, setSafetyConfigTabSchema] =
     useState<PipelineConfigTab>();
@@ -371,6 +383,8 @@ const PipelineFormComponent = forwardRef<
             setAIConfigTabSchema(config);
           } else if (config.name === 'trigger') {
             setTriggerConfigTabSchema(config);
+          } else if (config.name === 'speech') {
+            setSpeechConfigTabSchema(config);
           } else if (config.name === 'safety') {
             setSafetyConfigTabSchema(config);
           } else if (config.name === 'output') {
@@ -404,6 +418,7 @@ const PipelineFormComponent = forwardRef<
             },
             ai: resp.pipeline.config.ai,
             trigger: resp.pipeline.config.trigger,
+            speech: resp.pipeline.config.speech,
             safety: resp.pipeline.config.safety,
             output: resp.pipeline.config.output,
           };
@@ -528,6 +543,7 @@ const PipelineFormComponent = forwardRef<
     const realConfig = {
       ai: values.ai,
       trigger: values.trigger,
+      speech: values.speech,
       safety: values.safety,
       output: values.output,
     };
@@ -902,7 +918,7 @@ const PipelineFormComponent = forwardRef<
                 <nav className="mb-4 shrink-0 space-y-2 border-b pb-4">
                   <Tabs value={activeSection} onValueChange={setActiveSection}>
                     <div className="overflow-x-auto">
-                      <TabsList className="grid min-w-[34rem] w-full grid-cols-3">
+                      <TabsList className="grid min-w-[34rem] w-full grid-cols-4">
                         {primarySections.map((section) => {
                           const Icon = section.icon;
                           return (
@@ -1107,6 +1123,14 @@ const PipelineFormComponent = forwardRef<
                       <div className="space-y-6">
                         {triggerConfigTabSchema.stages.map((stage) =>
                           renderDynamicForms(stage, 'trigger'),
+                        )}
+                      </div>
+                    )}
+
+                    {activeSection === 'speech' && speechConfigTabSchema && (
+                      <div className="space-y-6">
+                        {speechConfigTabSchema.stages.map((stage) =>
+                          renderDynamicForms(stage, 'speech'),
                         )}
                       </div>
                     )}

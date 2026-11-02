@@ -1,0 +1,209 @@
+name: speech
+label:
+  en_US: Speech
+  zh_Hans: 语音
+stages:
+  - name: speech-recognition
+    label:
+      en_US: Speech Recognition (ASR)
+      zh_Hans: 语音识别 (ASR)
+    description:
+      en_US: Transcribe incoming voice messages to text
+      zh_Hans: 将收到的语音消息识别为文本
+    config:
+      - name: enable
+        label:
+          en_US: Enable
+          zh_Hans: 启用
+        type: boolean
+        required: true
+        default: false
+      - name: model
+        label:
+          en_US: Model
+          zh_Hans: 模型
+        type: asr-model-selector
+        required: false
+        default: ""
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: max-duration
+        label:
+          en_US: Maximum Duration (seconds)
+          zh_Hans: 最大语音时长（秒）
+        description:
+          en_US: Voice messages longer than this limit will not be processed
+          zh_Hans: 超过此时长的语音消息将不会被转写
+        type: integer
+        required: true
+        default: 60
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: keep-original-voice
+        label:
+          en_US: Keep Original Voice
+          zh_Hans: 保留原始语音
+        description:
+          en_US: Keep the original Voice component in the message chain alongside transcribed text
+          zh_Hans: 在消息链中保留原始语音组件（与转写后的文本共存）
+        type: boolean
+        required: true
+        default: false
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: on-failure
+        label:
+          en_US: On Failure
+          zh_Hans: 失败处理
+        description:
+          en_US: Action to take when transcription fails
+          zh_Hans: 语音识别失败时的处理策略
+        type: select
+        required: true
+        default: notify
+        options:
+          - name: notify
+            label:
+              en_US: Notify User
+              zh_Hans: 提示用户
+          - name: ignore
+            label:
+              en_US: Ignore
+              zh_Hans: 忽略
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+  - name: text-to-speech
+    label:
+      en_US: Text to Speech (TTS)
+      zh_Hans: 文本转语音 (TTS)
+    description:
+      en_US: "Synthesize outgoing response text to voice. Note: Native WeChat voice messages require SILK transcoding (ffmpeg & pilk); if not installed, the system gracefully degrades to audio file attachments or text."
+      zh_Hans: "将回复的文本内容转换为语音。注：微信原生语音气泡依赖 SILK 转码环境（ffmpeg 与 pilk）；若未安装，系统将自动优雅降级为音频文件或文本。"
+    config:
+      - name: enable
+        label:
+          en_US: Enable
+          zh_Hans: 启用
+        type: boolean
+        required: true
+        default: false
+      - name: model
+        label:
+          en_US: Model
+          zh_Hans: 模型
+        type: tts-model-selector
+        required: false
+        default: ""
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: trigger
+        label:
+          en_US: Trigger Mode
+          zh_Hans: 触发模式
+        description:
+          en_US: When to convert response text to voice
+          zh_Hans: 何时将回复文本转换为语音
+        type: select
+        required: true
+        default: voice-input-only
+        options:
+          - name: voice-input-only
+            label:
+              en_US: Voice Input Only
+              zh_Hans: 仅语音输入时
+          - name: always
+            label:
+              en_US: Always
+              zh_Hans: 总是转换为语音
+          - name: never
+            label:
+              en_US: Never
+              zh_Hans: 从不转换为语音
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: output
+        label:
+          en_US: Output Mode
+          zh_Hans: 输出模式
+        description:
+          en_US: "How to output synthesized voice. If platform-native voice transcoding (e.g. SILK for WeChat) is unavailable, output gracefully degrades to an audio file."
+          zh_Hans: "合成语音的输出形式。若平台原生语音转码环境（如微信 SILK）未安装，将自动优雅降级为音频文件。"
+        type: select
+        required: true
+        default: voice-only
+        options:
+          - name: voice-only
+            label:
+              en_US: Voice Only
+              zh_Hans: 仅语音
+          - name: voice-and-text
+            label:
+              en_US: Voice and Text
+              zh_Hans: 语音与文本并存
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: max-text-length
+        label:
+          en_US: Maximum Text Length
+          zh_Hans: 最大文本长度
+        description:
+          en_US: Text longer than this limit will fall back to text output
+          zh_Hans: 超过此时长的文本将降级为纯文本输出
+        type: integer
+        required: true
+        default: 500
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: voice
+        label:
+          en_US: Voice
+          zh_Hans: 发音人 / 音色
+        description:
+          en_US: Optional voice parameter to pass to the TTS model
+          zh_Hans: 传给 TTS 模型的发音人音色参数（可选）
+        type: string
+        required: false
+        default: ""
+        show_if:
+          field: enable
+          operator: eq
+          value: true
+      - name: on-failure
+        label:
+          en_US: On Failure
+          zh_Hans: 失败处理
+        description:
+          en_US: Action to take when synthesis fails
+          zh_Hans: 语音合成失败时的处理策略
+        type: select
+        required: true
+        default: fallback
+        options:
+          - name: fallback
+            label:
+              en_US: Fallback to Text
+              zh_Hans: 降级为纯文本
+          - name: notify
+            label:
+              en_US: Notify User and Fallback
+              zh_Hans: 提示用户并降级
+        show_if:
+          field: enable
+          operator: eq
+          value: true

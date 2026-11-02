@@ -163,3 +163,71 @@ class RerankModel(Base):
         sqlalchemy.Index('ix_rerank_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
         sqlalchemy.Index('ix_rerank_models_workspace_name', 'workspace_uuid', 'name'),
     )
+
+
+class ASRModel(Base):
+    """ASR model"""
+
+    __tablename__ = 'asr_models'
+
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
+    name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    provider_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    extra_args = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
+    prefered_ranking = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
+    updated_at = sqlalchemy.Column(
+        sqlalchemy.DateTime,
+        nullable=False,
+        server_default=sqlalchemy.func.now(),
+        onupdate=sqlalchemy.func.now(),
+    )
+
+    __table_args__ = (
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'provider_uuid'],
+            ['model_providers.workspace_uuid', 'model_providers.uuid'],
+            name='fk_asr_models_workspace_provider',
+        ),
+        sqlalchemy.Index('ix_asr_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
+        sqlalchemy.Index('ix_asr_models_workspace_name', 'workspace_uuid', 'name'),
+    )
+
+
+class TTSModel(Base):
+    """TTS model"""
+
+    __tablename__ = 'tts_models'
+
+    uuid = sqlalchemy.Column(sqlalchemy.String(255), primary_key=True, unique=True)
+    workspace_uuid = sqlalchemy.Column(
+        sqlalchemy.String(36),
+        sqlalchemy.ForeignKey('workspaces.uuid', ondelete='CASCADE'),
+        nullable=False,
+    )
+    name = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    provider_uuid = sqlalchemy.Column(sqlalchemy.String(255), nullable=False)
+    extra_args = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, default={})
+    prefered_ranking = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, default=0)
+    created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
+    updated_at = sqlalchemy.Column(
+        sqlalchemy.DateTime,
+        nullable=False,
+        server_default=sqlalchemy.func.now(),
+        onupdate=sqlalchemy.func.now(),
+    )
+
+    __table_args__ = (
+        sqlalchemy.ForeignKeyConstraint(
+            ['workspace_uuid', 'provider_uuid'],
+            ['model_providers.workspace_uuid', 'model_providers.uuid'],
+            name='fk_tts_models_workspace_provider',
+        ),
+        sqlalchemy.Index('ix_tts_models_workspace_provider', 'workspace_uuid', 'provider_uuid'),
+        sqlalchemy.Index('ix_tts_models_workspace_name', 'workspace_uuid', 'name'),
+    )

@@ -239,6 +239,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
                 sent_messages.append(await self.bot.send_document(**args))
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                sent_messages.append(await self.bot.send_voice(**args))
 
         return platform_events.MessageResult(
             message_id=sent_messages[-1].message_id if sent_messages else None,
@@ -290,6 +298,14 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 filename = component.get('filename', 'file')
                 args['document'] = telegram.InputFile(doc, filename=filename)
                 sent_messages.append(await self.bot.send_document(**args))
+            elif component_type == 'voice':
+                voice = component.get('voice')
+                if voice is None:
+                    continue
+                args['voice'] = telegram.InputFile(voice, filename='voice.ogg')
+                if component.get('duration'):
+                    args['duration'] = component['duration']
+                sent_messages.append(await self.bot.send_voice(**args))
 
         return platform_events.MessageResult(
             message_id=sent_messages[-1].message_id if sent_messages else None,
@@ -382,7 +398,11 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         # through the regular reply path, including attachment-only completions.
         if is_final and not bot_message.tool_calls:
             attachments = platform_message.MessageChain(
-                [part for part in message if isinstance(part, (platform_message.Image, platform_message.File))]
+                [
+                    part
+                    for part in message
+                    if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+                ]
             )
             if attachments:
                 await self.reply_message(message_source, attachments, quote_origin=quote_origin)
@@ -425,6 +445,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             if is_final and bot_message.tool_calls is None:
                 # Finalise: send the real message, discard the draft
                 args = self._build_message_args(chat_id, content, message_thread_id)
+                if quote_origin and effective_message:
+                    args['reply_to_message_id'] = effective_message.id
                 try:
                     await self.bot.send_message(**args)
                 except telegram.error.BadRequest as exc:

@@ -1,3 +1,4 @@
+import base64
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -26,6 +27,8 @@ def make_adapter(*, execution_context: ExecutionContext | None):
         ap=app,
         execution_context=execution_context,
         warning=AsyncMock(),
+        info=AsyncMock(),
+        error=AsyncMock(),
     )
     adapter = OpenClawWeixinAdapter.model_construct(
         config={'token': 'refreshed-token'},
@@ -93,3 +96,41 @@ async def test_component_base64_decode_is_bounded(monkeypatch):
 
     with pytest.raises(ValueError, match='exceeds'):
         await OpenClawWeixinAdapter._get_component_bytes(component)
+
+
+@pytest.mark.asyncio
+async def test_component_base64_strips_data_uri_prefix():
+    raw_payload = b'hello world audio payload'
+    encoded = base64.b64encode(raw_payload).decode('ascii')
+    component = platform_message.Voice(base64=f'data:audio/mpeg;base64,{encoded}')
+
+    result = await OpenClawWeixinAdapter._get_component_bytes(component)
+    assert result == raw_payload
+
+
+@pytest.mark.asyncio
+async def test_voice_send_gracefully_degrades_to_file_when_silk_unavailable(monkeypatch):
+    adapter, app, logger = make_adapter(execution_context=None)
+    adapter.client = AsyncMock()
+
+    # Emulate SILK or ffmpeg unavailable
+    monkeypatch.setattr('langbot.pkg.utils.audio.is_silk_available', lambda: False)
+    monkeypatch.setattr('langbot.pkg.utils.audio.is_ffmpeg_available', lambda: False)
+
+    raw_mp3 = b'ID3\x04\x00\x00\x00\x00\x00\x00\xff\xfb\x90\x00fake-mp3-audio'
+    encoded = base64.b64encode(raw_mp3).decode('ascii')
+    voice_comp = platform_message.Voice(base64=f'data:audio/mpeg;base64,{encoded}', length=3)
+
+    msg = platform_message.MessageChain([voice_comp])
+    await adapter.send_message('friend', 'target-wxid', msg)
+
+    # Should NOT call send_voice (which WeChat mobile would silently drop for MP3)
+    adapter.client.send_voice.assert_not_awaited()
+    # Should call send_file as graceful degradation
+    adapter.client.send_file.assert_awaited_once_with(
+        'target-wxid',
+        raw_mp3,
+        'voice.mp3',
+        '',
+    )
+
