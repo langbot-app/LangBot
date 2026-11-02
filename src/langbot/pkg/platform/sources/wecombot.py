@@ -464,6 +464,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         bot,
         req_id: str,
         item: dict,
+        config: dict | None = None,
     ) -> bool:
         """Upload *item* to the WeCom AI Bot CDN and send it as a media reply.
 
@@ -477,30 +478,84 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if upload is None:
             return False
         b64_text = item.get('base64') or ''
-        if not b64_text:
-            return False
-        if b64_text.startswith('data:') and ',' in b64_text:
-            b64_text = b64_text.split(',', 1)[1]
-        try:
-            data = base64.b64decode(b64_text, validate=False)
-        except Exception:
-            return False
+        data = b''
+        if b64_text:
+            if b64_text.startswith('data:') and ',' in b64_text:
+                b64_text = b64_text.split(',', 1)[1]
+            try:
+                data = base64.b64decode(b64_text, validate=False)
+            except Exception:
+                return False
+        elif item.get('path'):
+            with open(item['path'], 'rb') as f:
+                data = f.read()
         if not data:
             return False
+
+        delivery_kind = kind
+        filename = item.get('name')
+        voice_mode = (config or {}).get('voice_delivery', 'voice')
+
+        if kind == 'voice':
+            from langbot.pkg.utils import audio as audio_utils
+
+            fmt = audio_utils.detect_audio_format(data)
+            duration = audio_utils.estimate_audio_duration(data, fmt) if data else 0
+
+            if voice_mode == 'file' or (duration and duration > 60):
+                delivery_kind = 'file'
+                if fmt in ('silk', 'amr') and audio_utils.is_ffmpeg_available():
+                    try:
+                        data = await audio_utils.transcode_audio(data, 'mp3', fmt)
+                        fmt = 'mp3'
+                    except Exception:
+                        pass
+                filename = filename or f'voice.{fmt if fmt != "unknown" else "mp3"}'
+            else:
+                if fmt != 'silk' and fmt != 'amr':
+                    if audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                        try:
+                            data = await audio_utils.transcode_audio(data, 'silk', fmt)
+                            fmt = 'silk'
+                        except Exception:
+                            pass
+
+                if fmt == 'silk':
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.silk'
+                elif fmt == 'amr':
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.amr'
+                else:
+                    delivery_kind = 'file'
+                    filename = filename or f'voice.{fmt if fmt != "unknown" else "mp3"}'
+        else:
+            filename = filename or f'attachment.{kind}'
+
         try:
-            upload_result = await upload(data, item.get('name') or f'attachment.{kind}', media_type=kind)
+            upload_result = await upload(data, filename, media_type=delivery_kind)
         except Exception:
             return False
         media_id = getattr(upload_result, 'media_id', None) or (
             isinstance(upload_result, dict) and upload_result.get('media_id')
         )
+        if not media_id and delivery_kind == 'voice':
+            delivery_kind = 'file'
+            fallback_filename = filename.rsplit('.', 1)[0] + '.mp3' if filename else 'voice.mp3'
+            try:
+                upload_result = await upload(data, fallback_filename, media_type='file')
+                media_id = getattr(upload_result, 'media_id', None) or (
+                    isinstance(upload_result, dict) and upload_result.get('media_id')
+                )
+            except Exception:
+                return False
         if not media_id:
             return False
         reply_fn = {
             'image': getattr(bot, 'reply_image', None),
             'file': getattr(bot, 'reply_file', None),
             'voice': getattr(bot, 'reply_voice', None),
-        }.get(kind)
+        }.get(delivery_kind)
         if reply_fn is None:
             return False
         try:
@@ -550,7 +605,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 else:
                     await self.bot.set_message(event.message_id, text)
             for item in self._iter_media_components(items):
-                await self._send_media(self.bot, req_id, item)
+                await self._send_media(self.bot, req_id, item, config=self.config)
         else:
             await self.bot.set_message(event.message_id, text)
 
@@ -625,7 +680,7 @@ class WecomBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 event = message_source.source_platform_object
                 req_id = event.get('req_id', '')
                 for item in self._iter_media_components(items):
-                    await self._send_media(self.bot, req_id, item)
+                    await self._send_media(self.bot, req_id, item, config=self.config)
             return {'stream': success}
         else:
             success = await self.bot.push_stream_chunk(msg_id, text, is_final=is_final)
