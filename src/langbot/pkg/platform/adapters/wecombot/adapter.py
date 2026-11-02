@@ -194,9 +194,12 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 elif fmt == 'amr':
                     delivery_kind = 'voice'
                     filename = filename or 'voice.amr'
-                else:
+                elif fmt in ('mp3', 'wav', 'ogg', 'flac'):
                     delivery_kind = 'file'
-                    filename = filename or f'voice.{fmt if fmt != "unknown" else "mp3"}'
+                    filename = filename or f'voice.{fmt}'
+                else:
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.silk'
         else:
             filename = filename or f'attachment.{kind}'
 
