@@ -8,6 +8,7 @@ from langbot_plugin.api.entities import events, context
 from langbot_plugin.api.entities.builtin.provider.message import Message
 from store.recall import bounded_profile
 from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
+from store.candidate_extraction import extract_candidates
 
 logger = logging.getLogger(__name__)
 
@@ -296,12 +297,13 @@ class MemoryInjector(EventListener):
             "enabled": bool(config.get("candidate_extraction_enabled", False)),
             "auto_apply": bool(config.get("candidate_auto_apply", False)),
             "max_per_turn": max(1, min(10, as_int("candidate_max_per_turn", 3))),
+            "model_uuid": str(config.get("candidate_model_uuid", "") or "").strip(),
         }
 
     @staticmethod
-    def _candidate_text_from_query_vars(query_vars: dict, fallback: str = "") -> str:
+    def _candidate_text_from_query_vars(query_vars: dict) -> str:
         text = str(query_vars.get("user_message_text", "") or "").strip()
-        return text or str(fallback or "").strip()
+        return text
 
     @staticmethod
     def _redact_sensitive_candidate_text(text: str) -> str:
@@ -444,21 +446,29 @@ class MemoryInjector(EventListener):
         )
         sender_id = str(getattr(event, "sender_id", "") or query_vars.get("sender_id", "") or "")
         sender_name = str(query_vars.get("sender_name", "") or "")
-        text = self._candidate_text_from_query_vars(
-            query_vars,
-            getattr(event, "response_text", ""),
-        )
+        text = self._candidate_text_from_query_vars(query_vars)
         candidates = self._infer_candidates_from_text(
             text,
             sender_id=sender_id,
             sender_name=sender_name,
             max_candidates=candidate_config["max_per_turn"],
         )
+        if candidate_config["model_uuid"] and not any(item["candidate_type"] == "ignore" for item in candidates):
+            try:
+                candidates = await extract_candidates(
+                    self.plugin, candidate_config["model_uuid"], text,
+                    store._now_timestamp(), sender_id, candidate_config["max_per_turn"],
+                )
+            except Exception:
+                logger.exception("Memory candidate model extraction failed; no candidates written")
+                return
         if not candidates:
             return
 
         embedding_model_uuid = str(config.get("embedding_model_uuid", "") or "")
         for candidate in candidates:
+            candidate["payload"].setdefault("claim_type", "user_statement")
+            candidate["payload"]["source_ref"] = f"query:{event_ctx.query_id}"
             entry = await store.append_memory_candidate(
                 scope_key=session_key,
                 user_key=user_key,
@@ -469,7 +479,7 @@ class MemoryInjector(EventListener):
                 sender_name=sender_name,
                 query_id=event_ctx.query_id,
             )
-            if not candidate_config["auto_apply"]:
+            if not candidate_config["auto_apply"] or candidate["payload"]["claim_type"] == "inference":
                 continue
             if not embedding_model_uuid:
                 continue

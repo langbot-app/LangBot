@@ -23,6 +23,7 @@ from langbot_plugin.api.entities.builtin.rag.models import (
 from langbot_plugin.api.entities.builtin.rag.enums import DocumentStatus
 from store.recall import matches_filters, select_memories
 from store.serialization import serialized_write
+from store.episode_provenance import normalize_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -347,6 +348,15 @@ class LongTermMemoryEngine(KnowledgeEngine):
                 chunks_created=0,
             )
 
+        try:
+            if any(not isinstance(mem, dict) for mem in memories):
+                raise ValueError("each imported memory must be an object")
+            provenances = [normalize_provenance(mem) for mem in memories]
+        except ValueError as exc:
+            return IngestionResult(
+                document_id=doc_id, status=DocumentStatus.FAILED, error_message=str(exc),
+            )
+
         # batch embed and upsert
         total_stored = 0
         batch_texts: list[str] = []
@@ -354,7 +364,7 @@ class LongTermMemoryEngine(KnowledgeEngine):
         batch_metas: list[dict[str, Any]] = []
         imported_by_user: dict[str, int] = {}
 
-        for mem in memories:
+        for mem, provenance in zip(memories, provenances):
             content = mem.get("content", "")
             if not content:
                 continue
@@ -382,10 +392,13 @@ class LongTermMemoryEngine(KnowledgeEngine):
             user_key_text = str(user_key or "imported")
             imported_by_user[user_key_text] = imported_by_user.get(user_key_text, 0) + 1
 
+            if not provenance["source_ref"]:
+                provenance["source_ref"] = f"document:{doc_id}"
             mid = uuid_mod.uuid4().hex[:12]
             batch_texts.append(content)
             batch_ids.append(mid)
             batch_metas.append({
+                **provenance,
                 "episode_id": mid,
                 "content": content,
                 "tags": ",".join(tags) if isinstance(tags, list) else str(tags),

@@ -68,6 +68,11 @@ class Remember(Tool):
                 sender_id=sender_id,
                 bot_uuid=bot_uuid,
                 supersedes=params.get("supersedes"),
+                event_at=params.get("event_at", ""),
+                valid_from=params.get("valid_from", ""),
+                valid_until=params.get("valid_until", ""),
+                source_ref=params.get("source_ref", ""),
+                claim_type=params.get("claim_type", "unknown"),
             )
         except ValueError as exc:
             return f"Error: {exc}"
@@ -93,6 +98,8 @@ class Remember(Tool):
                 "tags": tags,
                 "importance": importance,
                 "status": episode.get("status", "active"),
+                "source_ref": episode.get("source_ref", ""),
+                "claim_type": episode.get("claim_type", "unknown"),
             },
         )
 

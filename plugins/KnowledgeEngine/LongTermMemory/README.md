@@ -607,3 +607,31 @@ Star the repo if you find it useful!
 - Consolidation is conservative archival, not semantic synthesis. It neither replaces active facts with statistics nor copies them into derived summaries. Existing archived records and previously generated summaries are not migrated automatically.
 - Recall ranks the complete bounded candidate set before taking `top_k`; exact matches beyond the backend's first `top_k` results can still win. Candidates remain bounded by the existing fetch window, so this is not a guarantee of exhaustive retrieval.
 - Deterministic regression cases cover correction ownership, unrelated similar facts, retention across consolidation, and ranking at the candidate boundary. They do not measure real-model extraction or answer quality on LongMemEval.
+
+### Fact time and declared provenance
+
+`timestamp` keeps its existing storage/import timestamp behavior. It is not automatically the date of the event described in the content. Episodic writes, candidate acceptance, JSON document ingestion, and scoped import/export also preserve:
+
+| Field | Meaning |
+|---|---|
+| `event_at` | Explicit time of the described event, when known. |
+| `valid_from` | Inclusive start of the fact's validity. |
+| `valid_until` | Exclusive end of the fact's validity. |
+| `source_ref` | Declared reference to a source message or document; not proof of Host verification. |
+| `claim_type` | `unknown` (default), `user_statement`, or `inference`. |
+
+Time fields require ISO-8601 values with an explicit timezone and are normalized to UTC with second precision. When both validity bounds are present, `valid_from` must precede `valid_until`. Leave unknown values empty; the plugin does not turn “tomorrow” into an invented date or assume a timezone for these fields. Imports reject malformed temporal/provenance metadata before writing the batch. Old records missing these fields remain readable with unknown evidence and no invented event time.
+
+`remember` accepts these optional fields. A caller can declare `user_statement` only for a direct user statement; this declaration is not a verification or authorization mechanism. Model deductions belong under `inference`. JSON document ingestion supplies a `document:<id>` reference when no explicit source reference was supplied. Exported references remain declarations when imported elsewhere.
+
+Automatic candidate extraction uses actual `user_message_text` only. An assistant response is never used as fallback user evidence. Its pending candidates carry a `query:<legacy-id>` reference and `user_statement` category; the query reference is an inspection hint within the current bot/session logs, not a globally stable message ID. The default extraction remains rule-based and may miss facts, resolve references poorly, or classify quoted/hypothetical user text imperfectly; candidate review remains useful. This change does not add per-fact provenance to the older L1 profile structure or claim full semantic extraction.
+
+#### Optional model selection of memory evidence
+
+Set `candidate_model_uuid` on the memory knowledge base to select a model for candidate extraction. Leave it empty to keep the existing rule-based path and avoid an extra model call. Extraction still requires `candidate_extraction_enabled=true`.
+
+The optional path selects and classifies complete original sentences or the full current user text; it does not rewrite statements into new facts. `evidence_quote` must match an original span exactly, and the quote itself becomes the episodic content or profile value. This preserves negations and qualifiers rather than accepting a generated fact that could contradict its evidence. Only the current actual user text and the Host's UTC processing timestamp are sent; assistant replies, older conversations, and model-invented source IDs are not used. No automatic relative-date conversion or cross-turn reference resolution is performed.
+
+Model-selected candidates are labeled `inference` because selection/classification remains a model judgment. They always remain pending for manual review, even when `candidate_auto_apply=true`; the original quote and the declared query reference stay inspectable in the candidate record. This is evidence selection, not proof that a statement is true or that a quotation is safe to treat as a current preference.
+
+One request is bounded to 8,000 input characters, a 30-second timeout, 16,000 output characters, the configured candidate count, and 2,000 characters per quote. Oversized or empty input is skipped. Malformed JSON, extra fields, unsupported classifications, or mismatched evidence reject the entire model result before any candidate write; model failures do not silently fall back to rules. Existing credential-marker checks produce a redacted ignore candidate without sending that text to the model. These checks are not an exhaustive secret detector.

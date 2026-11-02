@@ -164,6 +164,17 @@ spec:
       required: false
       default: false
 
+    - name: candidate_model_uuid
+      label:
+        en_US: Candidate Selection Model
+        zh_Hans: 候选筛选模型
+      description:
+        en_US: Optional model for selecting original evidence spans. Leave empty for rules. Model-selected candidates require manual review and are never auto-applied.
+        zh_Hans: 可选的原文证据筛选模型。留空使用规则。模型筛选结果需要人工审核，不会自动应用。
+      type: llm-model-selector
+      required: false
+      default: ''
+
     - name: candidate_auto_apply
       label:
         en_US: Auto Apply Memory Candidates

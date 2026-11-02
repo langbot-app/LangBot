@@ -10,6 +10,7 @@ from typing import Any
 from langbot_plugin.entities.io.errors import ActionCallError
 from store.recall import exact_match_score, matches_filters, select_memories
 from store.serialization import FENCE_KEY_PREFIX, BindingWrites, serialized_write
+from store.episode_provenance import normalize_provenance, read_provenance
 
 logger = logging.getLogger(__name__)
 
@@ -965,6 +966,7 @@ class MemoryStore:
                 sender_id=str(candidate.get("sender_id", "") or ""),
                 sender_name=str(candidate.get("sender_name", "") or ""),
                 bot_uuid=bot_uuid,
+                **normalize_provenance(payload),
             )
             result = {"type": "episode", "episode": episode}
         elif candidate_type == "l1_profile":
@@ -1218,8 +1220,17 @@ class MemoryStore:
         sender_name: str = "",
         bot_uuid: str = "",
         supersedes: list[str] | None = None,
+        event_at: str = "",
+        valid_from: str = "",
+        valid_until: str = "",
+        source_ref: str = "",
+        claim_type: str = "unknown",
     ) -> dict[str, Any]:
         """Store an episode, optionally replacing explicitly identified facts."""
+        provenance = normalize_provenance({
+            "event_at": event_at, "valid_from": valid_from, "valid_until": valid_until,
+            "source_ref": source_ref, "claim_type": claim_type,
+        })
         if supersedes is None:
             supersedes = []
         if (
@@ -1252,6 +1263,7 @@ class MemoryStore:
         )
 
         metadata = {
+            **provenance,
             "episode_id": episode_id,
             "content": content,
             "tags": ",".join(tags),
@@ -1297,6 +1309,7 @@ class MemoryStore:
             )
 
         return {
+            **provenance,
             "id": episode_id,
             "content": content,
             "tags": tags,
@@ -1505,6 +1518,7 @@ class MemoryStore:
                 if not self.episode_status_included(meta, include_statuses):
                     continue
                 included.append({
+                    **read_provenance(meta),
                     "id": item.get("id", ""),
                     "content": meta.get("content", "") or item.get("document", ""),
                     "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],
@@ -1595,8 +1609,13 @@ class MemoryStore:
         Any user_key in the input is intentionally ignored so imported data
         cannot overwrite or leak into another scope.
         """
-        imported: list[dict[str, Any]] = []
+        provenances = []
         for raw in episodes:
+            if not isinstance(raw, dict):
+                raise ValueError("each imported episode must be an object")
+            provenances.append(normalize_provenance(raw))
+        imported: list[dict[str, Any]] = []
+        for raw, provenance in zip(episodes, provenances):
             if not isinstance(raw, dict):
                 raise ValueError("each imported episode must be an object")
 
@@ -1626,6 +1645,7 @@ class MemoryStore:
             episode_id = uuid.uuid4().hex[:12]
 
             metadata = {
+                **provenance,
                 "episode_id": episode_id,
                 "content": content,
                 "tags": ",".join(tags),
@@ -1657,6 +1677,7 @@ class MemoryStore:
                 "Host vector_upsert outcome unknown",
             )
             imported.append({
+                **provenance,
                 "id": episode_id,
                 "imported_episode_id": imported_episode_id,
                 "content": content,
@@ -1881,6 +1902,7 @@ class MemoryStore:
     def _episode_from_vector_item(self, item: dict[str, Any]) -> dict[str, Any]:
         meta = item.get("metadata", {})
         return {
+            **read_provenance(meta),
             "id": item.get("id", ""),
             "content": meta.get("content", "") or item.get("document", ""),
             "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],

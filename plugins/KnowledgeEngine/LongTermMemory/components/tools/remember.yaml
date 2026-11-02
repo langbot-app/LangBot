@@ -28,6 +28,23 @@ spec:
           type: string
           minLength: 1
         description: IDs of active memories explicitly replaced by this correction. Retrieve them first; they must belong to the current speaker and memory scope. Omit when unsure.
+      event_at:
+        type: string
+        description: Optional event time with explicit timezone (ISO-8601). Keep relative wording in content when the date or timezone is unknown; never guess.
+      valid_from:
+        type: string
+        description: Optional inclusive validity start with explicit timezone (ISO-8601).
+      valid_until:
+        type: string
+        description: Optional exclusive validity end with explicit timezone (ISO-8601), later than valid_from.
+      source_ref:
+        type: string
+        maxLength: 1024
+        description: Optional declared reference to the original message or document. This is not proof that the Host verified its source.
+      claim_type:
+        type: string
+        enum: [unknown, user_statement, inference]
+        description: Evidence category. Default unknown. Use user_statement only for an explicit user statement; model guesses must be inference.
       importance:
         type: integer
         description: How important this memory is, from 1 (low) to 5 (critical). Default 2.
@@ -78,6 +95,13 @@ spec:
     - Private chat L2: "Alice said her flight to Tokyo is next Tuesday."
     - Group chat L2: "In the design group, Bob decided to own the database migration this week."
     - Not L2: "Alice prefers concise answers." Use update_profile instead.
+
+    Keep statement provenance and time distinct:
+    - timestamp is assigned by storage, not the date of the event.
+    - event_at, valid_from, and valid_until require explicit ISO-8601 timezones. Do not guess dates from "tomorrow" without a known reference date and timezone.
+    - valid_from is inclusive and valid_until is exclusive. Leave either empty when unknown.
+    - source_ref is only a declared reference, not Host-verified evidence. Omit it rather than inventing a message/document ID.
+    - claim_type defaults to unknown. Distinguish direct user statements from model inferences; never promote an assistant reply into a user statement.
 
     Parameters:
     - content (required): What to remember. Be concise and factual. Always attribute to the speaker.
