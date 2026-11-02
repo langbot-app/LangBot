@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .secrets import is_sensitive_key
+from .secrets import is_sensitive_key, redact_url_secrets
 
 MAX_PACKAGE_BYTES = 2 * 1024 * 1024
 SAFE_TYPES = {'boolean', 'integer', 'float', 'number', 'select', 'multi-select', 'prompt-editor'}
@@ -18,25 +18,36 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 
+class ScenarioSelection(StrictModel):
+    pipeline_uuids: list[str] = Field(default_factory=list, max_length=100)
+    agent_uuids: list[str] = Field(default_factory=list, max_length=100)
+    event_processor_uuids: list[str] = Field(default_factory=list, max_length=100)
+    plugin_ids: list[str] = Field(default_factory=list, max_length=100)
+    mcp_server_uuids: list[str] = Field(default_factory=list, max_length=100)
+    knowledge_base_uuids: list[str] = Field(default_factory=list, max_length=100)
+
+
 class ScenarioInput(StrictModel):
     resource: str = Field(min_length=1, max_length=100)
     path: list[str | int] = Field(min_length=1, max_length=20)
     kind: Literal['credential', 'configuration', 'model', 'knowledge', 'extensions', 'environment']
     label: str | dict[str, str]
     required: bool = True
+    model_type: Literal['llm', 'embedding', 'rerank'] = 'llm'
 
 
 class ScenarioResource(StrictModel):
     id: str = Field(pattern=r'^[a-z][a-z0-9_-]{0,63}$')
-    kind: Literal['bot', 'pipeline', 'agent', 'event_processor']
+    kind: Literal['bot', 'pipeline', 'agent', 'event_processor', 'knowledge_base', 'mcp_server']
     data: dict[str, Any]
 
 
 class ScenarioDependency(StrictModel):
-    kind: Literal['runner', 'knowledge_plugin']
+    kind: Literal['runner', 'knowledge_plugin', 'plugin']
     id: str = Field(min_length=1, max_length=255)
     plugin_id: str = Field(max_length=255)
     version: str | None = Field(default=None, max_length=100)
+    config: dict[str, Any] | None = None
 
 
 class ScenarioMetadata(StrictModel):
@@ -66,9 +77,27 @@ class ScenarioPackage(StrictModel):
         for item in self.inputs:
             if item.resource not in resources:
                 raise ValueError('Unknown input resource')
-            if item.path[0] not in {'config', 'adapter_config', 'extensions_preferences', 'event_bindings'}:
+            if item.path[0] not in {
+                'config',
+                'adapter_config',
+                'extensions_preferences',
+                'event_bindings',
+                'creation_settings',
+                'retrieval_settings',
+                'initialized',
+                'extra_args',
+                'enable',
+            }:
                 raise ValueError('Invalid input configuration path')
             read_path(resources[item.resource].data, item.path)
+        for item in self.inputs:
+            if item.kind != 'knowledge':
+                continue
+            value = read_path(resources[item.resource].data, item.path)
+            for reference in value if isinstance(value, list) else ([value] if value else []):
+                target = resources.get(reference)
+                if target is None or target.kind != 'knowledge_base':
+                    raise ValueError('Invalid scenario knowledge reference')
         for binding in bots[0].data.get('event_bindings', []):
             if not isinstance(binding, dict):
                 raise ValueError('Scenario route must be an object')
@@ -112,6 +141,47 @@ def empty_value(value: Any) -> Any:
     return ''
 
 
+def complete_pipeline_config(config: dict) -> dict:
+    """Fill absent Host stage settings without replacing scene configuration."""
+    from ....utils import paths
+
+    with open(paths.get_resource_path('templates/default-pipeline-config.json'), encoding='utf-8') as source:
+        defaults = json.load(source)
+
+    def complete(template, supplied):
+        if not isinstance(supplied, dict):
+            raise ValueError('Invalid scenario pipeline stage configuration')
+        result = copy.deepcopy(supplied)
+        for key, value in template.items():
+            if key not in result:
+                result[key] = copy.deepcopy(value)
+            elif isinstance(value, dict):
+                result[key] = complete(value, result[key])
+        return result
+
+    return complete(defaults, config)
+
+
+def field_is_visible(field: dict, values: dict) -> bool:
+    """Match the dynamic form's simple conditional visibility rules."""
+    condition = field.get('show_if')
+    if not condition:
+        return True
+    try:
+        actual = read_path(values, condition['field'].split('.'))
+    except ValueError:
+        actual = None
+    expected = condition.get('value')
+    operator = condition.get('operator')
+    if operator == 'eq':
+        return actual == expected
+    if operator == 'neq':
+        return actual != expected
+    if operator == 'in' and isinstance(expected, list):
+        return actual in expected
+    return True
+
+
 def project_config(
     config: dict, schema: list[dict], resource: str, prefix: list[str | int], *, platform: bool = False
 ) -> tuple[dict, list[ScenarioInput]]:
@@ -144,10 +214,22 @@ def project_config(
             kind = 'extensions'
         elif field_type == 'webhook-url' or name.startswith('__system.'):
             continue
-        elif not platform and (field_type in SAFE_TYPES or field.get('scenario_portable') is True):
+        elif not platform and (
+            field_type in SAFE_TYPES | {'string', 'text', 'textarea', 'array', 'object'}
+            or field.get('scenario_portable') is True
+        ):
             result[name] = scrub_nested(value)
             continue
-        elif platform and field_type in {'boolean', 'integer', 'float', 'number', 'select'}:
+        elif platform and field_type in {
+            'boolean',
+            'integer',
+            'float',
+            'number',
+            'select',
+            'string',
+            'text',
+            'textarea',
+        }:
             result[name] = scrub_nested(value)
             continue
         elif platform:
@@ -160,8 +242,10 @@ def project_config(
                 resource=resource,
                 path=[*prefix, name],
                 kind=kind,
+                model_type='embedding' if 'embedding' in field_type else 'rerank' if 'rerank' in field_type else 'llm',
                 label=field.get('label') or name,
-                required=bool(field.get('required') or value not in ('', None, [], {})),
+                required=field_is_visible(field, config)
+                and bool(field.get('required') or value not in ('', None, [], {})),
             )
         )
     return result, inputs
@@ -173,4 +257,7 @@ def scrub_nested(value: Any) -> Any:
         return {key: empty_value(item) if is_sensitive_key(key) else scrub_nested(item) for key, item in value.items()}
     if isinstance(value, list):
         return [scrub_nested(item) for item in value]
+    if isinstance(value, str) and '://' in value:
+        cleaned = redact_url_secrets(value)
+        return '' if cleaned != value else value
     return copy.deepcopy(value)

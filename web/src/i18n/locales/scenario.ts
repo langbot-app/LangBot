@@ -1,5 +1,33 @@
 const en = {
+  platformStep: 'Message platform',
+  pipelineStep: 'Pipelines',
+  agentStep: 'Agents',
+  extensionStep: 'Plugins / extensions',
+  knowledgeStep: 'Knowledge bases',
+  workspaceOnly:
+    'Choose resources already in this Workspace. No Marketplace resources are shown here.',
+  platformHint:
+    'Choose an existing bot as the platform configuration for this scene.',
+  selectionHint:
+    'Select the resources to include, or continue without selecting any. Existing routes are preserved for selected targets; extra resources are included without creating new routes.',
+  extensionHint:
+    'Select installed plugins, event processors and MCP servers. Required Runner plugins are included automatically. Missing plugins are installed when the scene is imported.',
+  knowledgeHint:
+    'Copy knowledge-base settings only. Documents, source files, indexes and collection identifiers are never exported. Unselected references become setup requirements.',
+  noResources: 'No resources of this type in this Workspace.',
+  processor: 'Plugin event processor',
+  exportReview: 'Review export',
+  previous: 'Previous',
+  next: 'Next',
+  cancel: 'Cancel',
+  selectionCount:
+    '{{count}} selected resources (required dependencies may be added).',
+  previewReady:
+    '{{count}} resources are ready to export. Review the package before downloading.',
   title: 'Scenario packs',
+  autoInstall:
+    'Required plugins are installed automatically from Marketplace. Knowledge-base settings are copied into empty, uninitialized knowledge bases; no documents or indexes are transferred.',
+  working: 'Installing dependencies and importing…',
   export: 'Export scenario',
   import: 'Import scenario',
   preview: 'Preview',
@@ -11,7 +39,7 @@ const en = {
   review:
     'Review the exported configuration before sharing. Prompts and descriptions may contain private information. Credentials and knowledge-base contents are not included.',
   setup:
-    'Imported bots remain disabled. Complete the required items below, configure platform-side subscriptions and your own knowledge resources, then enable the bot in its settings. Filled fields are not connection tests.',
+    'Imported bots remain disabled. Complete the required items below, configure platform-side subscriptions and initialize the imported empty knowledge bases, then enable the bot in its settings. Filled fields are not connection tests.',
   name: 'Scenario name',
   instructions: 'Instructions for the recipient',
   required: 'Required',
@@ -20,14 +48,38 @@ const en = {
   missing: 'Missing',
   version_mismatch: 'Different plugin version',
   dependencyReady: 'Installed',
-  dependencyConfigure: 'Install and configure your own knowledge plugin',
+  dependencyConfigure: 'Configure the empty knowledge base',
   fileTooLarge: 'Scenario packs must be at most 2 MiB.',
   failed: 'Scenario operation failed',
   imported: 'Scenario imported. Complete the setup checklist.',
   empty: 'No imported scenarios',
 };
 const zh = {
+  platformStep: '消息平台',
+  pipelineStep: '流水线',
+  agentStep: 'Agent',
+  extensionStep: '插件 / 扩展',
+  knowledgeStep: '知识库',
+  workspaceOnly: '从当前工作空间已有的资源中选择，这里不会展示插件市场资源。',
+  platformHint: '选择一个已有机器人，使用它的消息平台配置作为场景入口。',
+  selectionHint:
+    '勾选需要打包的资源，也可以不选并继续。已选目标保留原路由；额外选择的资源仅打包，不自动创建路由。',
+  extensionHint:
+    '选择已安装的插件、插件处理器和 MCP 服务。必需的 Runner 插件会自动包含，接收方导入时自动安装缺失插件。',
+  knowledgeHint:
+    '仅复制知识库配置，不导出文档、原文件、索引或集合标识。未选择的知识库引用将列为待配置项。',
+  noResources: '当前工作空间暂无此类资源。',
+  processor: '插件事件处理器',
+  exportReview: '预览并确认导出',
+  previous: '上一步',
+  next: '下一步',
+  cancel: '取消',
+  selectionCount: '已选择 {{count}} 个资源（必需的依赖可能会自动加入）。',
+  previewReady: '已准备 {{count}} 个资源，请检查场景包后下载。',
   title: '场景包',
+  autoInstall:
+    '导入时自动从插件市场安装所需插件。知识库配置会复制到未初始化的空知识库，不包含任何文件、内容或索引。',
+  working: '正在安装依赖并导入…',
   export: '导出场景包',
   import: '导入场景包',
   preview: '预览',
@@ -39,7 +91,7 @@ const zh = {
   review:
     '分享前请检查导出的配置。提示词和说明中可能包含私人信息。场景包不包含凭据、知识库内容或文件。',
   setup:
-    '导入的机器人保持未启用。请补全下面的必填项，配置平台侧事件订阅和自己的知识库资源，然后到机器人设置中启用。已填写不代表连接测试通过。',
+    '导入的机器人保持未启用。请补全下面的必填项，配置平台侧事件订阅，并初始化导入的空知识库，然后到机器人设置中启用。已填写不代表连接测试通过。',
   name: '场景名称',
   instructions: '给导入者的使用说明',
   required: '必填',
@@ -48,7 +100,7 @@ const zh = {
   missing: '待补全',
   version_mismatch: '插件版本不同',
   dependencyReady: '已安装',
-  dependencyConfigure: '安装并配置自己的知识库插件',
+  dependencyConfigure: '配置空知识库',
   fileTooLarge: '场景包不能超过 2 MiB。',
   failed: '场景包操作失败',
   imported: '场景已导入，请完成配置清单。',

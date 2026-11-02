@@ -10,7 +10,7 @@ programmatically. It mirrors a curated subset of the HTTP service API.
 
 ## Scenario packs
 
-Use `export_scenario(bot_uuid, metadata)` to build a portable bot template and
+Use `export_scenario(bot_uuid, metadata, selection)` to build a portable bot template and
 `preview_scenario(package)` before importing. `import_scenario(package, request_id)`
 requires a UUID retry key and creates disabled resources with new identifiers.
 Use `get_scenario_import(import_id)` or `list_scenario_imports()` to recheck setup.
@@ -18,7 +18,7 @@ All five tools require `resource.manage` in the current Workspace.
 
 Always show the returned required-field and plugin dependency checklist to the
 user. Ask them to enter credentials in resource settings, select their own models
-and knowledge resources, and install missing plugins. Never describe field
+and initialize the imported empty knowledge bases. Missing plugins install automatically. Never describe field
 completeness as a successful connection test. Knowledge files, contents and indexes
 are not included. Review prompt text before sharing. See
 `dev-docs/SCENARIO_PACKS.md` for the versioned HTTP contract and current boundaries.
@@ -328,3 +328,16 @@ request construction and `preparation_cache_hits` counts retry preparation reuse
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
 initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.
+
+### Scenario resource selection and automatic setup
+
+Export choices must come from the current Workspace's existing resources, not a
+Marketplace catalog. Optional `selection` arrays are `pipeline_uuids`, `agent_uuids`,
+`event_processor_uuids`, `plugin_ids`, `mcp_server_uuids`, and `knowledge_base_uuids`.
+Import automatically installs missing Marketplace plugin dependencies. Plugin
+configuration is applied only to newly installed plugins. Already installed
+incompatible versions are reported without changing shared configuration.
+Knowledge bases carry settings only, receive new collection IDs and stay empty and
+uninitialized. Never transfer documents, files, indexes or original collections.
+MCP servers are recreated disabled with fresh names; credentials require setup.
+Installed plugins survive a later import failure; retry with the same request ID.

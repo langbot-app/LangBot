@@ -88,15 +88,15 @@ class LangBotMCPServer:
         @mcp.tool(
             description='Export a bot scenario template without credentials or knowledge-base contents. Review before sharing.'
         )
-        async def export_scenario(bot_uuid: str, metadata: dict | None = None) -> str:
-            return _dump(await scenarios.export(_authorized(Permission.RESOURCE_MANAGE), bot_uuid, metadata))
+        async def export_scenario(bot_uuid: str, metadata: dict | None = None, selection: dict | None = None) -> str:
+            return _dump(await scenarios.export(_authorized(Permission.RESOURCE_MANAGE), bot_uuid, metadata, selection))
 
         @mcp.tool(description='Validate a scenario package and inspect its dependencies before importing.')
         async def preview_scenario(package: dict) -> str:
             return _dump(await scenarios.preview(_authorized(Permission.RESOURCE_MANAGE), package))
 
         @mcp.tool(
-            description='Import a scenario as disabled resources. Supply a unique UUID request_id for retry deduplication. Return the setup checklist to the user.'
+            description='Automatically install missing Marketplace plugins and import scenario configuration as disabled resources and empty knowledge bases. Supply a unique UUID request_id for retry deduplication. Return the setup checklist to the user.'
         )
         async def import_scenario(package: dict, request_id: str) -> str:
             return _dump(await scenarios.import_package(_authorized(Permission.RESOURCE_MANAGE), package, request_id))

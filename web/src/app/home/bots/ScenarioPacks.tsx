@@ -1,3 +1,4 @@
+import ScenarioExportWizard from './ScenarioExportWizard';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -23,8 +24,9 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
   const { t, i18n } = useTranslation();
   const workspace = useCurrentWorkspace();
   const canManage = workspace?.permissions.includes('resource.manage');
-  const { refreshBots } = useSidebarData();
+  const { refreshAll } = useSidebarData();
   const [open, setOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [document, setDocument] = useState<ScenarioPackage | null>(null);
   const [mode, setMode] = useState<'export' | 'import'>('import');
@@ -47,7 +49,9 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
       await operation();
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : t('scenario.failed'),
+        error instanceof Error
+          ? error.message
+          : (error as { msg?: string })?.msg || t('scenario.failed'),
       );
     } finally {
       setBusy(false);
@@ -60,7 +64,7 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
         value.en_US ||
         Object.values(value)[0];
   const resourceUrl = (resource: ScenarioReport['resources'][number]) =>
-    `/home/${resource.kind === 'bot' ? 'bots' : 'agents'}?id=${encodeURIComponent(resource.uuid)}`;
+    `/home/${resource.kind === 'bot' ? 'bots' : resource.kind === 'knowledge_base' ? 'knowledge' : resource.kind === 'mcp_server' ? 'mcp' : 'agents'}?id=${encodeURIComponent(resource.uuid)}`;
   const visibleReports = reports.filter(
     (report) =>
       !botId || report.resources.some((resource) => resource.uuid === botId),
@@ -70,21 +74,13 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
     <section className="space-y-3 rounded-lg border p-4">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="mr-auto font-medium">{t('scenario.title')}</h3>
-        {botId && (
-          <Button
-            variant="outline"
-            disabled={busy}
-            onClick={() =>
-              void run(async () => {
-                setDocument(await httpClient.exportScenario(botId));
-                setMode('export');
-                setOpen(true);
-              })
-            }
-          >
-            {t('scenario.export')}
-          </Button>
-        )}
+        <Button
+          variant="outline"
+          disabled={busy}
+          onClick={() => setExportOpen(true)}
+        >
+          {t('scenario.export')}
+        </Button>
         <Button
           variant="outline"
           disabled={busy}
@@ -177,6 +173,11 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
           </ul>
         </div>
       ))}
+      <ScenarioExportWizard
+        open={exportOpen}
+        onOpenChange={setExportOpen}
+        botId={botId}
+      />
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
@@ -219,6 +220,11 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
                   }
                 />
               </label>
+              {mode === 'import' && (
+                <p className="text-sm text-muted-foreground">
+                  {t('scenario.autoInstall')}
+                </p>
+              )}
               <ul className="text-sm">
                 {document.inputs.map((item, index) => (
                   <li key={index}>
@@ -254,16 +260,20 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
                         requestId.current,
                       );
                       await refresh();
-                      await refreshBots();
+                      await refreshAll();
                       toast.success(t('scenario.imported'));
                     }
                     setOpen(false);
                   })
                 }
               >
-                {t(
-                  mode === 'export' ? 'scenario.download' : 'scenario.confirm',
-                )}
+                {busy
+                  ? t('scenario.working')
+                  : t(
+                      mode === 'export'
+                        ? 'scenario.download'
+                        : 'scenario.confirm',
+                    )}
               </Button>
             </div>
           )}

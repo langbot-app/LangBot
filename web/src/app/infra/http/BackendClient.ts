@@ -122,8 +122,12 @@ export class BackendClient extends BaseHttpClient {
   public exportScenario(
     botId: string,
     metadata?: Partial<ScenarioPackage['metadata']>,
+    selection?: Record<string, string[]>,
   ): Promise<ScenarioPackage> {
-    return this.post(`/api/v1/scenarios/export/${botId}`, metadata || {});
+    return this.post(
+      `/api/v1/scenarios/export/${botId}`,
+      selection ? { metadata, selection } : metadata || {},
+    );
   }
 
   public previewScenario(document: unknown): Promise<{
@@ -139,10 +143,14 @@ export class BackendClient extends BaseHttpClient {
     document: ScenarioPackage,
     requestId: string,
   ): Promise<ScenarioReport> {
-    return this.post('/api/v1/scenarios/import', {
-      package: document,
-      request_id: requestId,
-    });
+    return this.post(
+      '/api/v1/scenarios/import',
+      {
+        package: document,
+        request_id: requestId,
+      },
+      { timeout: 0 },
+    );
   }
 
   public listScenarioImports(): Promise<{ imports: ScenarioReport[] }> {

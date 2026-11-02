@@ -27,7 +27,14 @@ class ScenariosRouterGroup(group.RouterGroup):
         async def export(bot_uuid: str, request_context: RequestContext):
             body = await quart.request.get_json()
             try:
-                return self.success(data=await service.export(request_context, bot_uuid, body))
+                return self.success(
+                    data=await service.export(
+                        request_context,
+                        bot_uuid,
+                        body.get('metadata') if isinstance(body, dict) and 'selection' in body else body,
+                        body.get('selection') if isinstance(body, dict) else None,
+                    )
+                )
             except ValueError as exc:
                 return self.http_status(400, 'invalid_scenario', str(exc))
 

@@ -6,17 +6,17 @@ persistent setup checklist. Imported bots are disabled.
 
 ## Sharing and setup
 
-1. Open a bot and choose **Export scenario**. Review the JSON, enter recipient
+1. Choose **Export scenario** and follow the five Workspace-resource steps: existing message-platform bot, Pipelines, Agents, installed plugins/event processors/MCP servers, and knowledge bases. No Marketplace catalog is used for export. Existing routes to selected targets are preserved; extra resources do not create implicit routes. Review the JSON, enter recipient
    instructions and download the `.langbot-scene.json` file.
 2. In another Workspace, choose **Import scenario**, select the file and review
    the required fields before confirming.
 3. Follow configuration links to enter platform credentials, select models and
-   bind local knowledge resources. Install missing plugins using plugin management.
+   initialize the imported empty knowledge bases. Missing plugins are installed automatically from Marketplace; existing plugins and their configuration are preserved.
 4. Save configuration, return to the bot and select **Check configuration**.
 5. Complete external platform subscriptions and enable the bot in its settings.
 
-Knowledge-base contents, source files, indexes and collection identifiers are
-never included. Knowledge-engine plugin IDs are dependencies; recipients supply
+Knowledge-base names, descriptions, creation/retrieval settings and engine dependencies are included. Contents, source files, indexes and collection identifiers are
+never included. Imported knowledge bases receive fresh collections and remain uninitialized until their settings are saved. MCP configuration is copied with fresh names and UUIDs; imported MCP servers remain disabled. Plugin configuration defaults are applied only to newly installed plugins. Knowledge-engine plugin IDs are dependencies; recipients supply
 their own knowledge resources. Filled fields are not successful connection tests.
 
 Structured credentials are removed. Unknown configuration fields are cleared
@@ -30,14 +30,14 @@ All endpoints require `resource.manage` and are Workspace scoped:
 
 | Method | Path | Body / result |
 | --- | --- | --- |
-| POST | `/api/v1/scenarios/export/<bot_uuid>` | Optional metadata; returns package |
+| POST | `/api/v1/scenarios/export/<bot_uuid>` | Optional metadata, or `{metadata, selection}`; returns package |
 | POST | `/api/v1/scenarios/preview` | Package; returns normalized package and dependency status |
 | POST | `/api/v1/scenarios/import` | `{package, request_id}`; request ID is a UUID |
 | GET | `/api/v1/scenarios` | `{imports: [...]}` with current setup reports |
 | GET | `/api/v1/scenarios/<import_id>` | Current setup report |
 
 Reuse `request_id` for retries of one import; use a new ID for a separate copy.
-Creation and import metadata are written in one tenant transaction. Imported
+Plugin installation completes before resource creation and is not held inside the resource transaction. Successfully installed plugins remain available if a later installation or resource creation fails; retries reuse them. Creation and import metadata are written in one tenant transaction. Imported
 resources receive fresh UUIDs; internal references are remapped. Existing resource
 configuration is never overwritten. Import records reuse `WorkspaceMetadata`
 under `scenario_import:<request_id>` and do not store subsequently entered secrets.
@@ -48,13 +48,12 @@ No dedicated `lbctl` command is introduced in this repository.
 ## Current boundaries
 
 - Runner compatibility currently uses exact exported versions, not semver ranges.
-- Missing plugins are installed through plugin management, not automatically.
-- Knowledge-plugin dependencies carry a setup reminder; readiness of their remote
+- Missing plugins are installed automatically from Marketplace using declared versions. Already installed incompatible versions are reported without silently upgrading or downgrading shared Workspace configuration. Unpublished/debug-only dependencies must be made available before importing.
+- Knowledge-engine plugins are installed automatically; readiness of their remote
   services is not probed by the scenario service.
 - Free-text credential detection, package editing, automatic external-platform
   setup and cross-resource connection tests are not implemented.
-- Explicit extension bindings must be rebound in the recipient Workspace. Broad
-  source Workspace extension grants are not copied.
+- Selected plugin bindings and MCP server references are rebuilt. Broad source Workspace grants are not copied. Skill and MCP resource bindings still require recipient configuration.
 - Imported Pipelines are loaded when the bot is enabled or their configuration is
   saved. The checklist records field completeness, not a runtime health guarantee.
 
@@ -70,3 +69,15 @@ The tests cover projection of credentials and resource references, package graph
 validation, actual SQLite creation, disabled state, ID remapping, retry deduplication
 and Workspace-scoped import-record lookup. Full two-instance platform/plugin smoke
 testing is still required before release.
+
+## Export selection
+
+`export_scenario(bot_uuid, metadata, selection)` accepts an optional object with
+`pipeline_uuids`, `agent_uuids`, `event_processor_uuids`, `plugin_ids`,
+`mcp_server_uuids`, and `knowledge_base_uuids` arrays. IDs must belong to the current
+Workspace. Unselected knowledge references become setup requirements. Required
+Runner plugins are included automatically. Omitting selection retains automatic
+collection of the bot graph for existing API clients.
+
+The browser import request allows time for dependency downloads. Credentials stay
+empty and the imported bot must pass its setup checklist before activation.
