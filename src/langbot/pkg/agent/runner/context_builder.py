@@ -284,13 +284,16 @@ class RunnerContextBuilder:
                 and identity.bot_id == event.bot_id
                 and identity.pipeline_id == (binding.processor_id or binding.agent_id)
             ):
-                # Query-backed platform events carry a Host-owned launcher
+                # Query-backed platform events carry a Host-owned entry-session
                 # identity even when the event-first conversation UUID changes
-                # after create_new_conversation(). Keep it separate from the
-                # protocol conversation UUID so reset-sensitive plugins can use
-                # a stable session key.
-                stable_launcher_type = identity.session_launcher_type or identity.query_launcher_type
-                stable_launcher_id = identity.session_launcher_id or identity.query_launcher_id
+                # after create_new_conversation(). This is a Core context
+                # contract: session_id is reset-stable while conversation_id
+                # remains the current Host conversation UUID.
+                stable_launcher_type = identity.session_launcher_type
+                stable_launcher_id = identity.session_launcher_id
+                if stable_launcher_type not in ('group', 'person') or not stable_launcher_id:
+                    stable_launcher_type = identity.query_launcher_type
+                    stable_launcher_id = identity.query_launcher_id
                 if stable_launcher_type in ('group', 'person') and stable_launcher_id:
                     conversation['session_id'] = f'{stable_launcher_type}_{stable_launcher_id}'
             if (
