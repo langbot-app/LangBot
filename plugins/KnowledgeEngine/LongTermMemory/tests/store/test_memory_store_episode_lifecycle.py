@@ -89,6 +89,7 @@ def _record(
     content: str | None = None,
 ) -> dict:
     metadata = {
+        "episode_id": item_id,
         "content": content or f"memory {item_id}",
         "tags": "",
         "importance": "2",

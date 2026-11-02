@@ -468,6 +468,7 @@ class LongTermMemoryEngine(KnowledgeEngine):
             batch_texts.append(content)
             batch_ids.append(mid)
             batch_metas.append({
+                "episode_id": mid,
                 "content": content,
                 "tags": ",".join(tags) if isinstance(tags, list) else str(tags),
                 "importance": str(importance),

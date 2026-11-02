@@ -6,7 +6,6 @@ from typing import Any
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
-from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 
 logger = logging.getLogger(__name__)
 
@@ -26,26 +25,18 @@ class RecallMemory(Tool):
         query_id: int,
     ) -> str:
         store = self.plugin.memory_store
-        api = QueryBasedAPIProxy(
-            query_id=query_id,
-            plugin_runtime_handler=self.plugin.plugin_runtime_handler,
-        )
         logger.info(
             "[LongTermMemory] recall_memory called: query_id=%s params_keys=%s",
             query_id,
             sorted(params.keys()),
         )
-        bot_uuid = await api.get_bot_uuid()
-        _, user_key, kb_id, _isolation, config = await store.resolve_user_context(
+        bot_uuid = session.bot_uuid or ""
+        session_key, user_key, kb_id, _isolation, config = await store.resolve_user_context(
             session, bot_uuid
         )
 
         if not kb_id:
             return "Error: no memory knowledge base configured. Create one first."
-
-        pipeline_kbs = await api.list_pipeline_knowledge_bases()
-        if not any(kb.get("uuid") == kb_id for kb in pipeline_kbs):
-            return "Error: memory knowledge base is not configured for the current pipeline."
 
         embedding_model_uuid = config.get("embedding_model_uuid", "")
         if not embedding_model_uuid:
@@ -140,7 +131,9 @@ class RecallMemory(Tool):
         except ValueError as exc:
             return f"Error: {exc}"
 
-        if not episodes:
+        session_profile = await store.load_session_profile(session_key)
+        speaker_profile = await store.load_speaker_profile(session_key, str(session.sender_id or ""))
+        if not episodes and not any(store.has_profile_data(profile) for profile in (session_profile, speaker_profile)):
             logger.info(
                 "[LongTermMemory] recall_memory no results: query_id=%s kb_id=%s",
                 query_id,
@@ -154,4 +147,8 @@ class RecallMemory(Tool):
             kb_id,
             len(episodes),
         )
-        return json.dumps(episodes, ensure_ascii=False)
+        return json.dumps({
+            "session_profile": store.format_profile_text(session_profile),
+            "speaker_profile": store.format_profile_text(speaker_profile),
+            "episodes": episodes,
+        }, ensure_ascii=False)
