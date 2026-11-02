@@ -75,6 +75,8 @@
       margin: 0;
       letter-spacing: 0;
     }
+    .review-approval { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
+    .review-approval input[type="checkbox"] { width: 16px; height: 16px; min-height: 16px; padding: 0; margin: 0; flex-shrink: 0; }
     h1 {
       font-size: 24px;
       line-height: 1.2;
@@ -517,7 +519,7 @@
           <p class="muted" data-i18n="consolidationHint">The summary is an inference, not a verified fact. Compare it with every complete source record before applying. The model and run policy are configured on the memory KB.</p>
           <div class="actions">
             <button id="previewConsolidationBtn" data-i18n="previewConsolidation">Preview Summary</button>
-            <label><input id="reviewConsolidation" type="checkbox" disabled> <span data-i18n="consolidationReviewed">I checked the inference against the source records.</span></label>
+            <label class="review-approval"><input id="reviewConsolidation" type="checkbox" disabled> <span data-i18n="consolidationReviewed">I checked the inference against the source records.</span></label>
             <button id="applyConsolidationBtn" disabled data-i18n="applyConsolidation">Apply Reviewed Summary</button>
           </div>
           <div id="consolidationOutput" class="list" style="margin-top:12px;"></div>

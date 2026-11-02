@@ -267,3 +267,11 @@ async def test_tool_omits_whole_oversized_profile_without_corrupting_json():
     assert result["session_profile"] == ""
     assert result["speaker_profile"] == "Alice prefers concise replies"
     assert result["profiles_omitted_for_budget"] == ["session"]
+
+
+def test_overflowing_legacy_validity_does_not_abort_recall():
+    records = [
+        {"id": "bad", "metadata": {"content": "Unusable historical record", "valid_from": "0001-01-01T00:00:00+01:00"}},
+        {"id": "good", "metadata": {"content": "Still valid fact"}},
+    ]
+    assert [item["id"] for item in select_memories(records, "fact")] == ["good"]

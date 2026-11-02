@@ -82,6 +82,7 @@ def test_local_agent_memory_tools_without_pipeline(
     plugin_root = Path(__file__).parents[2] / 'plugins' / 'KnowledgeEngine' / 'LongTermMemory'
     archive = Path(shutil.make_archive(str(local_agent_e2e_tmpdir / 'long-term-memory'), 'zip', plugin_root))
     counter = 0
+    memory_kb_id = None
 
     async def call(ap, model, name, params, *, group='group-a', speaker='alice', bot='bot-a', tools=None):
         nonlocal counter
@@ -122,6 +123,7 @@ def test_local_agent_memory_tools_without_pipeline(
         return local._message_text(results[-1])
 
     async def write_and_read(ap):
+        nonlocal memory_kb_id
         model = await local._inject_fake_llm_model(ap)
         await ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': archive.read_bytes()})
         for _ in range(60):
@@ -155,9 +157,16 @@ def test_local_agent_memory_tools_without_pipeline(
             context,
             name='Processor memory',
             knowledge_engine_plugin_id=engine,
-            creation_settings={'embedding_model_uuid': embedding, 'isolation': 'session'},
+            creation_settings={
+                'embedding_model_uuid': embedding,
+                'isolation': 'session',
+                'consolidation_model_uuid': local.FAKE_MODEL_UUID,
+                'consolidation_enabled': True,
+                'consolidation_min_age_days': 0,
+            },
         )
 
+        memory_kb_id = kb.uuid
         stored = await call(ap, model, 'remember', {'content': 'The release rendezvous is at Cedar Pier on Friday.'})
         assert stored.startswith('Remembered:'), stored
         updated = await call(
@@ -261,5 +270,124 @@ def test_local_agent_memory_tools_without_pipeline(
         )
         assert historical['episodes'][0]['id'] == original_id
         assert historical['episodes'][0]['superseded_by'] in {item['id'] for item in current['episodes']}
+
+        for content, fields in (
+            (
+                'Alice migration window expired in 2000.',
+                {'event_at': '1999-12-31T00:00:00Z', 'valid_until': '2000-01-01T00:00:00Z'},
+            ),
+            (
+                'Alice migration window opens in 2999.',
+                {'event_at': '2999-01-01T00:00:00Z', 'valid_from': '2999-01-01T00:00:00Z'},
+            ),
+            (
+                'Alice migration uses PostgreSQL.',
+                {
+                    'event_at': '2026-11-02T08:00:00+08:00',
+                    'source_ref': 'message:acceptance-1',
+                    'claim_type': 'user_statement',
+                },
+            ),
+        ):
+            stored = await call(ap, model, 'remember', {'content': content, **fields}, group='validity')
+            assert stored.startswith('Remembered:'), stored
+        valid = json.loads(await call(ap, model, 'recall_memory', {'query': 'migration'}, group='validity'))
+        assert [item['content'] for item in valid['episodes']] == ['Alice migration uses PostgreSQL.']
+        current_fact = valid['episodes'][0]
+        assert current_fact['event_at'] == '2026-11-02T00:00:00Z'
+        assert current_fact['source_ref'] == 'message:acceptance-1'
+        assert current_fact['claim_type'] == 'user_statement'
+        historical = json.loads(
+            await call(
+                ap,
+                model,
+                'recall_memory',
+                {'query': 'migration', 'time_after': '1990-01-01T00:00:00Z'},
+                group='validity',
+            )
+        )
+        assert len(historical['episodes']) == 3
+        expired_id = next(item['id'] for item in historical['episodes'] if 'expired' in item['content'])
+        recalled_by_id = json.loads(await call(ap, model, 'recall_memory', {'query': expired_id}, group='validity'))
+        assert expired_id not in {item['id'] for item in recalled_by_id['episodes']}
+        for query in (
+            {'query': current_fact['id'], 'speaker_id': 'bob'},
+            {'query': current_fact['id'], 'source': 'import'},
+            {'query': current_fact['id'], 'time_before': '1900-01-01T00:00:00Z'},
+        ):
+            empty = await call(ap, model, 'recall_memory', query, group='validity')
+            assert empty == 'No relevant memories found.', empty
+        invalid = await call(
+            ap,
+            model,
+            'remember',
+            {
+                'content': 'Invalid validity range',
+                'valid_from': '3000-01-01T00:00:00Z',
+                'valid_until': '2999-01-01T00:00:00Z',
+            },
+            group='validity',
+        )
+        assert invalid.startswith('Error:'), invalid
+
+        for content in ('Alice chose PostgreSQL for JSON queries.', 'Alice schedules a database review on Friday.'):
+            stored = await call(ap, model, 'remember', {'content': content}, group='summaries')
+            assert stored.startswith('Remembered:'), stored
+        source_memories = json.loads(await call(ap, model, 'recall_memory', {'query': 'Alice'}, group='summaries'))[
+            'episodes'
+        ]
+        source_ids = [item['id'] for item in source_memories]
+        model.queue_llm_responses(
+            json.dumps(
+                {
+                    'facts': [
+                        {
+                            'text': 'Alice chose PostgreSQL for JSON queries and schedules a database review on Friday.',
+                            'source_ids': source_ids,
+                        }
+                    ]
+                }
+            )
+        )
+        body = {
+            'collection_id': memory_kb_id,
+            'scope_key': 'bot-a:group_summaries',
+            'user_key': 'bot-a:group_summaries',
+        }
+
+        async def page_api(endpoint, payload):
+            response = await ap.plugin_connector.handle_page_api(
+                'langbot-team', 'LongTermMemory', 'memory_console', endpoint, 'POST', payload
+            )
+            assert response.get('error') is None, response
+            return response['data']
+
+        proposal = await page_api('/consolidation/preview', body)
+        assert set(item['id'] for item in proposal['source_records']) == set(source_ids)
+        assert proposal['proposal_id']
+        applied = await page_api('/consolidation/run', {**body, 'proposal_id': proposal['proposal_id']})
+        summary_id = applied['summary_episode']['id']
+        assert applied['summary_episode']['claim_type'] == 'inference'
+        context = await ap.plugin_connector._current_execution_context()
+        items, _ = await ap.rag_runtime_service.vector_list(
+            context, memory_kb_id, filters={'user_key': body['user_key']}, limit=20
+        )
+        assert {item['id'] for item in items} == set(source_ids) | {summary_id}
+        original_id = source_ids[0]
+        deleted = await call(ap, model, 'forget', {'episode_id': original_id}, group='summaries')
+        assert deleted == f'Deleted episode {original_id}.'
+        items, _ = await ap.rag_runtime_service.vector_list(
+            context, memory_kb_id, filters={'user_key': body['user_key']}, limit=20
+        )
+        assert {item['id'] for item in items} == set(source_ids) - {original_id}
+        replay = await ap.plugin_connector.handle_page_api(
+            'langbot-team',
+            'LongTermMemory',
+            'memory_console',
+            '/consolidation/run',
+            'POST',
+            {**body, 'proposal_id': proposal['proposal_id']},
+        )
+        assert replay.get('error'), replay
 
     local._run_local_agent_probe(local_agent_e2e_tmpdir, read_after_restart)

@@ -42,8 +42,8 @@ def validity(sources: list[dict]) -> tuple[str, str]:
     ):
         raise ValueError("Consolidation sources must have a shared currently valid interval")
     return (
-        start.strftime("%Y-%m-%dT%H:%M:%SZ") if start is not None else "",
-        end.strftime("%Y-%m-%dT%H:%M:%SZ") if end is not None else "",
+        start.isoformat().replace("+00:00", "Z") if start is not None else "",
+        end.isoformat().replace("+00:00", "Z") if end is not None else "",
     )
 
 
@@ -209,7 +209,7 @@ async def apply_summary(store, collection_id: str, embedding_model_uuid: str, us
         "Host consolidation vector_upsert outcome unknown",
     )
     written = await store.get_episode_by_id(collection_id, episode_id, user_key)
-    if written is None or written["metadata"] != meta:
+    if written is None or any(written["metadata"].get(key) != value for key, value in meta.items()):
         raise RuntimeError("Consolidation draft could not be verified; source memories were retained")
     await store._write_json(proposal_key(collection_id, user_key), {}, collection_id)
     summary = await store.update_episode_status(

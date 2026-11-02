@@ -321,3 +321,27 @@ async def test_cancelled_model_does_not_leave_an_escaped_write():
         await task
     assert plugin.storage == {}
     assert list(plugin.records) == ["one"]
+
+
+def test_summary_validity_preserves_source_subsecond_bounds():
+    from store.consolidation import validity
+
+    sources = [{"metadata": {"valid_from": "2020-01-01T00:00:00.123456Z", "valid_until": "2999-01-01T00:00:00.654321Z"}}]
+    assert validity(sources) == ("2020-01-01T00:00:00.123456Z", "2999-01-01T00:00:00.654321Z")
+
+
+@pytest.mark.asyncio
+async def test_summary_verification_allows_host_added_scope_metadata():
+    class ScopedPlugin(SemanticPlugin):
+        async def vector_upsert(self, *args, **kwargs):
+            kwargs["metadata"] = [{**metadata, "_langbot_workspace_uuid": "workspace-test"} for metadata in kwargs["metadata"]]
+            await super().vector_upsert(*args, **kwargs)
+
+    plugin = ScopedPlugin()
+    add_source(plugin, "source", "Alice chose PostgreSQL")
+    store = MemoryStore(plugin)
+    draft = await preview(store)
+    result = await store.apply_consolidation("kb", "emb", "scope", proposal_id=draft["proposal_id"])
+    assert result["summary_episode"]["status"] == "active"
+    assert result["summary_episode"]["metadata"]["_langbot_workspace_uuid"] == "workspace-test"
+    assert plugin.records["source"]["metadata"]["status"] == "active"
