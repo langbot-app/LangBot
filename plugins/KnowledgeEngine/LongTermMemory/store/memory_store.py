@@ -12,8 +12,6 @@ from store.serialization import FENCE_KEY_PREFIX, BindingWrites, serialized_writ
 
 logger = logging.getLogger(__name__)
 
-_SUPERSEDE_TAGS = {"correction", "fact-update", "clarification"}
-
 
 def _installation_scope(_store, _args, _kwargs):
     """Serialization identity for a write that carries no memory-scope identity.
@@ -1225,99 +1223,6 @@ class MemoryStore:
 
     # ======================== L2: episodes (ChromaDB vector) ========================
 
-    _SUPERSEDE_IMPORTANCE_FACTOR = 0.1  # multiplied onto old importance
-
-    @serialized_write
-    async def _auto_supersede(
-        self,
-        collection_id: str,
-        embedding_model_uuid: str,
-        query_vector: list[float],
-        user_key: str,
-        new_episode_id: str,
-        similarity_threshold: float = 0.85,
-        max_candidates: int = 5,
-    ) -> int:
-        """Find similar older episodes and mark them as superseded.
-
-        Superseding means re-upserting the old vector with:
-        - importance reduced by _SUPERSEDE_IMPORTANCE_FACTOR
-        - 'superseded_by' metadata field set to new_episode_id
-        - 'status' metadata field set to 'superseded'
-
-        Returns the number of superseded episodes.
-        """
-        filters: dict[str, Any] = {"user_key": user_key}
-        results = await self.plugin.vector_search(
-            collection_id=collection_id,
-            query_vector=query_vector,
-            top_k=max_candidates + 1,  # +1 because the new episode itself may appear
-            filters=filters,
-        )
-
-        superseded = 0
-        for r in results:
-            rid = r.get("id", "")
-            if rid == new_episode_id:
-                continue
-            meta = r.get("metadata", {})
-            # Already superseded — skip
-            if (
-                meta.get("superseded_by")
-                or self.episode_status_from_metadata(meta)
-                != self.EPISODE_STATUS_ACTIVE
-            ):
-                continue
-
-            # Check similarity: distance is cosine distance (lower = more similar)
-            distance = r.get("distance", 1.0)
-            similarity = 1.0 - distance
-            if similarity < similarity_threshold:
-                continue
-
-            # Re-upsert with reduced importance and superseded_by marker
-            old_importance = int(meta.get("importance", "2"))
-            new_importance = max(
-                1,
-                int(old_importance * self._SUPERSEDE_IMPORTANCE_FACTOR),
-            )
-            meta["importance"] = str(new_importance)
-            meta["superseded_by"] = new_episode_id
-            meta["status"] = self.EPISODE_STATUS_SUPERSEDED
-
-            # We need the original vector; re-embed from content
-            old_content = meta.get("content", "")
-            if not old_content:
-                continue
-            old_vectors = await self.plugin.invoke_embedding(
-                embedding_model_uuid,
-                [old_content],
-            )
-
-            await self._writes.mutate(
-                self.plugin,
-                collection_id,
-                lambda: self.plugin.vector_upsert(
-                    collection_id=collection_id,
-                    vectors=old_vectors,
-                    ids=[rid],
-                    metadata=[meta],
-                    documents=[old_content],
-                ),
-                "Host vector_upsert outcome unknown",
-            )
-            superseded += 1
-            logger.info(
-                "[LongTermMemory] auto_supersede: episode %s superseded by %s (similarity=%.3f, importance %s->%s)",
-                rid,
-                new_episode_id,
-                similarity,
-                old_importance,
-                new_importance,
-            )
-
-        return superseded
-
     @serialized_write
     async def add_episode(
         self,
@@ -1331,8 +1236,26 @@ class MemoryStore:
         sender_id: str = "",
         sender_name: str = "",
         bot_uuid: str = "",
+        supersedes: list[str] | None = None,
     ) -> dict[str, Any]:
-        """Store an episodic memory into vector DB."""
+        """Store an episode, optionally replacing explicitly identified facts."""
+        if supersedes is None:
+            supersedes = []
+        if (
+            not isinstance(supersedes, list)
+            or len(supersedes) > 20
+            or any(not isinstance(item, str) or not item.strip() for item in supersedes)
+        ):
+            raise ValueError("supersedes must be a list of at most 20 non-empty episode IDs")
+        supersedes = list(dict.fromkeys(supersedes))
+        for old_id in supersedes:
+            old = await self.get_episode_by_id(collection_id, old_id, user_key)
+            if (
+                old is None
+                or old["status"] != self.EPISODE_STATUS_ACTIVE
+                or str(old.get("sender_id", "")) != str(sender_id)
+            ):
+                raise ValueError("Replacement targets must be active memories in the current scope and speaker")
         episode_id = uuid.uuid4().hex[:12]
         timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         importance = max(1, min(5, importance))
@@ -1382,25 +1305,15 @@ class MemoryStore:
             timestamp,
         )
 
-        # Auto-supersede: when the new episode is a correction / fact-update /
-        # clarification, search for similar older episodes in the same scope and
-        # mark them as superseded by lowering their importance.
-        if _SUPERSEDE_TAGS & set(tags):
-            try:
-                await self._auto_supersede(
-                    collection_id=collection_id,
-                    embedding_model_uuid=embedding_model_uuid,
-                    query_vector=vectors[0],
-                    user_key=user_key,
-                    new_episode_id=episode_id,
-                    similarity_threshold=0.85,
-                )
-            except Exception:
-                logger.warning(
-                    "[LongTermMemory] auto_supersede failed for episode %s, skipping",
-                    episode_id,
-                    exc_info=True,
-                )
+        for old_id in supersedes:
+            await self.update_episode_status(
+                collection_id,
+                embedding_model_uuid,
+                old_id,
+                user_key,
+                self.EPISODE_STATUS_SUPERSEDED,
+                superseded_by=episode_id,
+            )
 
         return {
             "id": episode_id,
@@ -1544,27 +1457,24 @@ class MemoryStore:
             meta = r.get("metadata", {})
             if not self.episode_status_included(meta, include_statuses):
                 continue
-            exact_score = (
-                self._metadata_exact_match_score(query, rid, meta)
-                if exact_match_boost
-                else 0.0
+            exact_score = self._metadata_exact_match_score(query, rid, meta) if exact_match_boost else 0.0
+            episodes.append(
+                {
+                    "id": rid,
+                    "content": meta.get("content", ""),
+                    "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],
+                    "importance": int(meta.get("importance", "2")),
+                    "timestamp": meta.get("timestamp", ""),
+                    "sender_id": meta.get("sender_id", ""),
+                    "sender_name": meta.get("sender_name", ""),
+                    "source": meta.get("source", ""),
+                    "status": self.episode_status_from_metadata(meta),
+                    "superseded_by": meta.get("superseded_by", ""),
+                    "score": r.get("score"),
+                    "_exact_match_score": exact_score,
+                }
             )
-            episodes.append({
-                "id": rid,
-                "content": meta.get("content", ""),
-                "tags": meta.get("tags", "").split(",") if meta.get("tags") else [],
-                "importance": int(meta.get("importance", "2")),
-                "timestamp": meta.get("timestamp", ""),
-                "sender_id": meta.get("sender_id", ""),
-                "sender_name": meta.get("sender_name", ""),
-                "source": meta.get("source", ""),
-                "status": self.episode_status_from_metadata(meta),
-                "superseded_by": meta.get("superseded_by", ""),
-                "score": r.get("score"),
-                "_exact_match_score": exact_score,
-            })
-            if len(episodes) >= top_k:
-                break
+            seen_ids.add(rid)
 
         if exact_match_boost:
             episodes.sort(
@@ -1852,34 +1762,6 @@ class MemoryStore:
         now_dt = now or datetime.now(timezone.utc)
         return max(0.0, (now_dt - ts.astimezone(timezone.utc)).total_seconds() / 86400.0)
 
-    @staticmethod
-    def _summarize_consolidation_candidates(candidates: list[dict[str, Any]]) -> str:
-        if not candidates:
-            return ""
-
-        tag_counts: dict[str, int] = {}
-        sender_counts: dict[str, int] = {}
-        for episode in candidates:
-            for tag in episode.get("tags", []):
-                tag_counts[tag] = tag_counts.get(tag, 0) + 1
-            sender = episode.get("sender_name") or episode.get("sender_id") or ""
-            if sender:
-                sender_counts[sender] = sender_counts.get(sender, 0) + 1
-
-        top_tags = sorted(tag_counts.items(), key=lambda item: item[1], reverse=True)[:5]
-        top_senders = sorted(sender_counts.items(), key=lambda item: item[1], reverse=True)[:3]
-        parts = [f"Consolidated {len(candidates)} older or hidden memory episodes."]
-        if top_tags:
-            parts.append(
-                "Top tags: " + ", ".join(f"{tag} ({count})" for tag, count in top_tags)
-            )
-        if top_senders:
-            parts.append(
-                "Speakers: "
-                + ", ".join(f"{sender} ({count})" for sender, count in top_senders)
-            )
-        return " ".join(parts)
-
     async def preview_consolidation(
         self,
         collection_id: str,
@@ -1907,6 +1789,8 @@ class MemoryStore:
             importance = int(episode.get("importance", 2) or 2)
             age_days = self._age_days(str(episode.get("timestamp", "") or ""), now)
             reasons: list[str] = []
+            if episode.get("source") == "consolidation":
+                continue
             if status == self.EPISODE_STATUS_SUPERSEDED:
                 reasons.append("already superseded")
             elif status == self.EPISODE_STATUS_ARCHIVED:
@@ -1926,7 +1810,7 @@ class MemoryStore:
             candidate["consolidation_reasons"] = reasons
             candidate["age_days"] = age_days
             candidates.append(candidate)
-            if status != self.EPISODE_STATUS_ARCHIVED:
+            if status == self.EPISODE_STATUS_SUPERSEDED:
                 archive_ids.append(episode["id"])
             if len(candidates) >= max_candidates:
                 break
@@ -1938,16 +1822,15 @@ class MemoryStore:
         if not apply_profile_updates:
             risk_notes.append("Profile update application is disabled by default.")
         if archive_ids:
-            risk_notes.append("Run will archive selected active/superseded episodes in this scope only.")
+            risk_notes.append("Run will archive superseded episodes only; active facts are retained.")
 
-        summary_episode = ""
-        if len(candidates) >= 2:
-            summary_episode = self._summarize_consolidation_candidates(candidates)
+        if any(episode.get("status") == self.EPISODE_STATUS_ACTIVE for episode in candidates):
+            risk_notes.append("Active facts are retained: statistical summaries cannot replace their content.")
 
         return {
             "candidate_episode_ids": [episode["id"] for episode in candidates],
             "candidates": candidates,
-            "summary_episode": summary_episode,
+            "summary_episode": "",
             "profile_updates": [] if not apply_profile_updates else [],
             "episodes_to_archive": archive_ids,
             "risk_notes": risk_notes,
@@ -1966,7 +1849,7 @@ class MemoryStore:
         max_candidates: int = 20,
         apply_profile_updates: bool = False,
     ) -> dict[str, Any]:
-        """Apply scoped consolidation by writing a summary and archiving candidates."""
+        """Archive superseded episodes while retaining active source facts."""
         preview = await self.preview_consolidation(
             collection_id=collection_id,
             user_key=user_key,
@@ -1986,22 +1869,10 @@ class MemoryStore:
             if episode:
                 archived.append(episode_id)
 
-        summary = None
-        if preview.get("summary_episode"):
-            summary = await self.add_episode(
-                collection_id=collection_id,
-                embedding_model_uuid=embedding_model_uuid,
-                user_key=user_key,
-                content=preview["summary_episode"],
-                tags=["consolidation", "summary"],
-                importance=2,
-                source="consolidation",
-            )
-
         return {
             "preview": preview,
             "archived_episode_ids": archived,
-            "summary_episode": summary,
+            "summary_episode": None,
             "profile_updates_applied": [],
         }
 
@@ -2095,6 +1966,8 @@ class MemoryStore:
         episode_id: str,
         user_key: str,
         status: str,
+        *,
+        superseded_by: str = "",
     ) -> dict[str, Any] | None:
         """Update an episode lifecycle status while preserving metadata."""
         normalized_status = self.normalize_episode_status_value(status)
@@ -2111,6 +1984,8 @@ class MemoryStore:
         content = episode.get("content", "")
         meta["content"] = content
         meta["status"] = normalized_status
+        if superseded_by:
+            meta["superseded_by"] = superseded_by
         if normalized_status == self.EPISODE_STATUS_ACTIVE:
             meta.pop("superseded_by", None)
 

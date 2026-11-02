@@ -24,7 +24,7 @@ Long-term memory plugin for LangBot with a dual-layer design:
 - Provides `!memory audit [page|export]` to inspect scoped memory change history
 - Provides `!memory consolidate preview|run` for preview-first scoped L2 cleanup
 - Provides optional `!memory candidates` and `!memory candidate accept|reject` review workflow for extracted memory candidates
-- Automatically supersedes related older episodes when a correction/fact-update/clarification is stored
+- Supersedes explicitly identified older episodes when a correction names their IDs; similarity or tags alone never hide a fact
 
 ## Overall Design
 
@@ -312,7 +312,7 @@ L2 episodes carry a lifecycle `status` metadata field:
 - `archived`: retained for history, excluded from normal recall
 - `deleted`: reserved for tombstones or future audit workflows
 
-Existing records without `status` are treated as `active`, so no migration is required. Automatic recall and `recall_memory` only return active episodes by default. Correction-style writes mark similar older active episodes as `superseded`, which keeps them inspectable through explicit management commands without letting them compete with current memory.
+Existing records without `status` are treated as `active`, so no migration is required. Automatic recall and `recall_memory` only return active episodes by default. Correction writes can pass `supersedes` with IDs obtained from recall. Only active records in the current memory scope and from the same speaker can be replaced; invalid targets fail before any write. Tags and vector similarity do not imply replacement. Explicitly replaced records become `superseded`, which keeps them inspectable through explicit management commands without letting them compete with current memory.
 
 ## Audit Log
 
@@ -326,9 +326,9 @@ Use `!memory show <episode_id>` to inspect one episode, including status, sender
 
 ## Memory Consolidation
 
-Use `!memory consolidate preview` to inspect cleanup candidates for the current scope. Preview never modifies memory. It reports candidate episode IDs, a deterministic summary episode proposal, possible profile updates, episodes that would be archived, and risk notes.
+Use `!memory consolidate preview` to inspect cleanup candidates for the current scope. Preview never modifies memory. It reports candidate episode IDs, older active records to retain, superseded records to archive, and risk notes.
 
-Use `!memory consolidate run` only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It can archive selected active or superseded episodes and write one summary episode tagged `consolidation` and `summary`. Every archive and summary write creates scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
+Use `!memory consolidate run` only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It archives only records already marked superseded. Active records remain searchable regardless of age or importance; a count/tag summary cannot preserve their facts. No summary episode is generated. Archive writes create scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
 
 Relevant knowledge base settings:
 
@@ -600,3 +600,10 @@ We welcome contributions! Feel free to:
 - Share your ideas and feedback
 
 Star the repo if you find it useful!
+
+### Memory quality guarantees
+
+- Retrieve the relevant episode first, then pass its ID in `remember.supersedes` only for an explicit correction of the same fact or event by the same speaker. Omit targets when uncertain. Original content and importance are preserved for historical inspection.
+- Consolidation is conservative archival, not semantic synthesis. It neither replaces active facts with statistics nor copies them into derived summaries. Existing archived records and previously generated summaries are not migrated automatically.
+- Recall ranks the complete bounded candidate set before taking `top_k`; exact matches beyond the backend's first `top_k` results can still win. Candidates remain bounded by the existing fetch window, so this is not a guarantee of exhaustive retrieval.
+- Deterministic regression cases cover correction ownership, unrelated similar facts, retention across consolidation, and ranking at the candidate boundary. They do not measure real-model extraction or answer quality on LongMemEval.

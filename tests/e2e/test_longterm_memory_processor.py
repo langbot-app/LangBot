@@ -234,4 +234,32 @@ def test_local_agent_memory_tools_without_pipeline(
         assert profiles_only['episodes'] == []
         assert 'brief technical answers' in profiles_only['speaker_profile']
 
+        await call(ap, model, 'remember', {'content': 'Alice travels to Shanghai on Friday.'}, group='corrections')
+        await call(
+            ap, model, 'remember', {'content': 'Bob travels to Shanghai on Friday.'}, group='corrections', speaker='bob'
+        )
+        original = json.loads(
+            await call(ap, model, 'recall_memory', {'query': 'Shanghai', 'speaker_id': 'alice'}, group='corrections')
+        )
+        original_id = original['episodes'][0]['id']
+        correction = {
+            'content': 'Alice corrected her trip: Shanghai on Saturday.',
+            'tags': ['correction'],
+            'supersedes': [original_id],
+        }
+        refused = await call(ap, model, 'remember', correction, group='corrections', speaker='bob')
+        assert refused.startswith('Error: Replacement targets'), refused
+        replaced = await call(ap, model, 'remember', correction, group='corrections')
+        assert replaced.startswith('Remembered:'), replaced
+        current = json.loads(await call(ap, model, 'recall_memory', {'query': 'Shanghai'}, group='corrections'))
+        assert {item['content'] for item in current['episodes']} == {
+            'Bob travels to Shanghai on Friday.',
+            correction['content'],
+        }
+        historical = json.loads(
+            await call(ap, model, 'recall_memory', {'query': 'Shanghai', 'status': 'superseded'}, group='corrections')
+        )
+        assert historical['episodes'][0]['id'] == original_id
+        assert historical['episodes'][0]['superseded_by'] in {item['id'] for item in current['episodes']}
+
     local._run_local_agent_probe(local_agent_e2e_tmpdir, read_after_restart)

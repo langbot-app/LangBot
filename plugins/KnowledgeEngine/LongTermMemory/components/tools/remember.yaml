@@ -21,6 +21,13 @@ spec:
         items:
           type: string
         description: Short category tags for this memory (e.g. "travel", "work", "schedule").
+      supersedes:
+        type: array
+        maxItems: 20
+        items:
+          type: string
+          minLength: 1
+        description: IDs of active memories explicitly replaced by this correction. Retrieve them first; they must belong to the current speaker and memory scope. Omit when unsure.
       importance:
         type: integer
         description: How important this memory is, from 1 (low) to 5 (critical). Default 2.
@@ -58,6 +65,7 @@ spec:
     If the user explicitly corrects, retracts, or revises an earlier statement:
     - store the correction as an episodic memory with clear wording
     - describe the new statement as a correction, not as an unrelated new fact
+    - retrieve the old memory and pass its ID in supersedes only when the same speaker explicitly replaces the same fact or event; similarity alone is insufficient
     - when appropriate, add tags such as ["correction"], ["profile-update"], or ["preference-change"]
     - if the correction changes the user's current stable profile, also update that profile through "update_profile"
     - when updating a stable preference or trait that may change later, prefer giving update_profile a reusable fact_key such as "coffee_preference"
@@ -74,6 +82,7 @@ spec:
     Parameters:
     - content (required): What to remember. Be concise and factual. Always attribute to the speaker.
     - tags (optional): Category tags like ["travel", "work"].
+    - supersedes (optional): IDs of explicitly replaced memories. Tags alone never replace older memories.
     - importance (optional): 1-5 scale, default 2. Use 4-5 for critical facts.
 
 execution:
