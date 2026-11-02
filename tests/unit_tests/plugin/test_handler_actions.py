@@ -1611,7 +1611,7 @@ class TestAgentRunProxyActions:
                 platform_capabilities={'adapter': 'TestAdapter'},
             ),
         )
-        query = build_execution_query(event, [])
+        query = build_execution_query(event, [], TEST_EXECUTION_CONTEXT)
         app.box_service = SimpleNamespace(
             available=True,
             get_backend_status=AsyncMock(return_value={'backend': {'available': True}}),

@@ -1348,6 +1348,7 @@ class MemoryStore:
         )
 
         metadata = {
+            "episode_id": episode_id,
             "content": content,
             "tags": ",".join(tags),
             "importance": str(importance),
@@ -1752,6 +1753,7 @@ class MemoryStore:
             episode_id = uuid.uuid4().hex[:12]
 
             metadata = {
+                "episode_id": episode_id,
                 "content": content,
                 "tags": ",".join(tags),
                 "importance": str(importance),
@@ -2011,21 +2013,36 @@ class MemoryStore:
         user_key: str,
     ) -> int:
         """Delete a single episode by its ID, scoped to user_key for safety."""
+        episode = await self.get_episode_by_id(collection_id, episode_id, user_key)
+        if episode is None:
+            return 0
+        if episode["metadata"].get("episode_id") != episode_id:
+            # Legacy records need a filterable ID before exact, scoped deletion.
+            kb = await self.get_kb_config()
+            embedding_model_uuid = kb[1].get("embedding_model_uuid", "") if kb else ""
+            if not embedding_model_uuid:
+                raise ValueError("No embedding model configured for legacy memory deletion")
+            await self.update_episode_status(
+                collection_id, embedding_model_uuid, episode_id, user_key, episode["status"]
+            )
         filters: dict[str, Any] = {
             "$and": [
                 {"user_key": user_key},
+                {"episode_id": episode_id},
             ]
         }
-        return await self._writes.mutate(
+        await self._writes.mutate(
             self.plugin,
             collection_id,
             lambda: self.plugin.vector_delete(
                 collection_id=collection_id,
-                file_ids=[episode_id],
                 filters=filters,
             ),
             "Host vector_delete outcome unknown",
         )
+        if await self.get_episode_by_id(collection_id, episode_id, user_key) is not None:
+            raise RuntimeError("Memory deletion did not remove the episode")
+        return 1
 
     def _episode_from_vector_item(self, item: dict[str, Any]) -> dict[str, Any]:
         meta = item.get("metadata", {})
@@ -2090,6 +2107,7 @@ class MemoryStore:
             return None
 
         meta = dict(episode.get("metadata", {}))
+        meta["episode_id"] = episode_id
         content = episode.get("content", "")
         meta["content"] = content
         meta["status"] = normalized_status
