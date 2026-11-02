@@ -11,8 +11,7 @@ from langbot_plugin.entities.io.errors import ActionCallError
 from store.recall import exact_match_score, matches_filters, select_memories
 from store.serialization import FENCE_KEY_PREFIX, BindingWrites, serialized_write
 from store.episode_provenance import normalize_provenance, read_provenance
-
-from store.consolidation import apply_summary, clear_proposal, draft_summary, invalidate_derived
+from store.consolidation import apply_summary, clear_collection_proposals, clear_proposal, draft_summary, invalidate_derived
 
 logger = logging.getLogger(__name__)
 
@@ -634,12 +633,16 @@ class MemoryStore:
 
     @serialized_write(scope=_installation_scope, allow_fenced=True)
     async def remove_kb_config(self, kb_id: str) -> None:
-        configs = await self._read_json(self._KB_CONFIGS_KEY) or {}
-        configs.pop(kb_id, None)
-        await self._write_json(self._KB_CONFIGS_KEY, configs, None)
-        # Unregistering the KB deletes the fenced object, so whatever its last
-        # ambiguous write was is moot and the collection starts unfenced.
-        await self._writes.clear_fence(self.plugin, kb_id)
+        async def remove():
+            await clear_collection_proposals(self, kb_id)
+            configs = await self._read_json(self._KB_CONFIGS_KEY) or {}
+            configs.pop(kb_id, None)
+            await self._write_json(self._KB_CONFIGS_KEY, configs, None)
+            # The deleted collection no longer needs mutation reconciliation.
+            await self._writes.clear_fence(self.plugin, kb_id)
+
+        # Lock order is installation -> collection; collection operations only read configs.
+        await self._writes.run(self.plugin, kb_id, remove, allow_fenced=True)
 
     async def get_kb_configs(self) -> dict[str, dict[str, Any]]:
         return await self._read_json(self._KB_CONFIGS_KEY) or {}
@@ -1749,6 +1752,7 @@ class MemoryStore:
         now_dt = now or datetime.now(timezone.utc)
         return max(0.0, (now_dt - ts.astimezone(timezone.utc)).total_seconds() / 86400.0)
 
+    @serialized_write
     async def preview_consolidation(
         self,
         collection_id: str,

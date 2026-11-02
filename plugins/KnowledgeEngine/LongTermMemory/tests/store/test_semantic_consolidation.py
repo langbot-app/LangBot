@@ -12,7 +12,7 @@ from store.memory_store import MemoryStore
 class SemanticPlugin:
     def __init__(self):
         self.records = {}
-        self.storage = {}
+        self.storage = {"kb_configs": json.dumps({"kb": {"embedding_model_uuid": "emb"}}).encode()}
         self.response = None
         self.drop_summary = False
         self.model_calls = 0
@@ -134,7 +134,7 @@ async def test_model_schema_cannot_select_scope_or_omit_sources(facts):
     with pytest.raises(ValueError):
         await preview(MemoryStore(plugin))
     assert len(plugin.records) == 2
-    assert plugin.storage == {}
+    assert not any(key.startswith("ltm.consolidation.") for key in plugin.storage)
 
 
 @pytest.mark.asyncio
@@ -297,7 +297,7 @@ async def test_hanging_model_times_out_without_saving_a_proposal(monkeypatch):
     monkeypatch.setattr(consolidation, "MODEL_TIMEOUT_SECONDS", 0.001)
     with pytest.raises(ValueError, match="timed out"):
         await preview(MemoryStore(plugin))
-    assert plugin.storage == {}
+    assert not any(key.startswith("ltm.consolidation.") for key in plugin.storage)
     assert plugin.records["one"]["metadata"]["status"] == "active"
 
 
@@ -319,7 +319,7 @@ async def test_cancelled_model_does_not_leave_an_escaped_write():
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert plugin.storage == {}
+    assert not any(key.startswith("ltm.consolidation.") for key in plugin.storage)
     assert list(plugin.records) == ["one"]
 
 

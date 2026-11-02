@@ -24,6 +24,7 @@ from langbot_plugin.api.entities.builtin.rag.enums import DocumentStatus
 from store.recall import matches_filters, select_memories
 from store.serialization import serialized_write
 from store.episode_provenance import normalize_provenance
+from store.consolidation import invalidate_derived
 
 logger = logging.getLogger(__name__)
 
@@ -504,6 +505,33 @@ class LongTermMemoryEngine(KnowledgeEngine):
 
     @serialized_write
     async def _delete_document_vectors(self, kb_id: str, document_id: str) -> int:
+        # Resolve all sources before deleting summaries can change pagination.
+        sources: dict[str, set[str]] = {}
+        offset = 0
+        while True:
+            page = await self.plugin.vector_list(
+                collection_id=kb_id,
+                filters={"document_id": document_id},
+                limit=100,
+                offset=offset,
+            )
+            items = page.get("items", [])
+            for item in items:
+                metadata = item.get("metadata", {})
+                episode_id = item.get("id")
+                user_key = metadata.get("user_key")
+                if (
+                    metadata.get("document_id") != document_id
+                    or not isinstance(episode_id, str) or not episode_id
+                    or not isinstance(user_key, str) or not user_key
+                ):
+                    raise ValueError("Document memory source identity is missing or outside the requested document")
+                sources.setdefault(user_key, set()).add(episode_id)
+            offset += len(items)
+            if len(items) < 100 or (page.get("total", -1) >= 0 and offset >= page["total"]):
+                break
+        for user_key, episode_ids in sorted(sources.items()):
+            await invalidate_derived(self.plugin.memory_store, kb_id, episode_ids, user_key)
         return await self._writes.mutate(
             self.plugin,
             kb_id,

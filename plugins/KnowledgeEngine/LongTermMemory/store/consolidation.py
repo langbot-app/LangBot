@@ -12,11 +12,12 @@ from langbot_plugin.api.entities.builtin.provider.message import Message
 from store.episode_provenance import normalize_provenance, read_provenance
 
 MODEL_TIMEOUT_SECONDS = 30
+PROPOSAL_PREFIX = "ltm.consolidation.proposal."
 
 
 def proposal_key(collection_id: str, user_key: str) -> str:
     identity = json.dumps([collection_id, user_key], ensure_ascii=False)
-    return "ltm.consolidation.proposal." + hashlib.sha256(identity.encode()).hexdigest()
+    return PROPOSAL_PREFIX + hashlib.sha256(identity.encode()).hexdigest()
 
 
 def source_hash(episode: dict) -> str:
@@ -59,6 +60,8 @@ def source_record(source: dict) -> dict:
 
 async def draft_summary(store, preview: dict, collection_id: str, user_key: str, model_uuid: str) -> dict:
     """Generate a draft; the model never selects the memory scope or source set."""
+    if collection_id not in await store.get_kb_configs():
+        raise ValueError("Memory knowledge base is no longer configured")
     sources = []
     for candidate in preview["candidates"]:
         if candidate["status"] != store.EPISODE_STATUS_ACTIVE:
@@ -155,6 +158,8 @@ async def draft_summary(store, preview: dict, collection_id: str, user_key: str,
 
 
 async def apply_summary(store, collection_id: str, embedding_model_uuid: str, user_key: str, proposal_id: str) -> dict:
+    if collection_id not in await store.get_kb_configs():
+        raise ValueError("Memory knowledge base is no longer configured")
     proposal = await store._read_json(proposal_key(collection_id, user_key))
     if (
         not isinstance(proposal, dict)
@@ -223,18 +228,33 @@ async def apply_summary(store, collection_id: str, embedding_model_uuid: str, us
     }
 
 
-async def clear_proposal(store, collection_id: str, user_key: str, episode_id: str | None = None) -> None:
+async def clear_collection_proposals(store, collection_id: str) -> None:
+    for key in await store.plugin.get_plugin_storage_keys():
+        if not key.startswith(PROPOSAL_PREFIX):
+            continue
+        proposal = await store._read_json(key)
+        if isinstance(proposal, dict) and proposal.get("collection_id") == collection_id:
+            await store._write_json(key, {}, collection_id)
+
+
+async def clear_proposal(store, collection_id: str, user_key: str, episode_id: str | set[str] | None = None) -> None:
     key = proposal_key(collection_id, user_key)
     if key not in await store.plugin.get_plugin_storage_keys():
         return
     proposal = await store._read_json(key)
-    if isinstance(proposal, dict) and proposal and (episode_id is None or episode_id in proposal.get("source_ids", [])):
+    targets = {episode_id} if isinstance(episode_id, str) else episode_id
+    if (
+        isinstance(proposal, dict)
+        and proposal
+        and (targets is None or targets.intersection(proposal.get("source_ids", [])))
+    ):
         await store._write_json(proposal_key(collection_id, user_key), {}, collection_id)
 
 
-async def invalidate_derived(store, collection_id: str, episode_id: str, user_key: str) -> None:
+async def invalidate_derived(store, collection_id: str, episode_id: str | set[str], user_key: str) -> None:
     """Forget derived text before changing/deleting its authoritative source."""
     await clear_proposal(store, collection_id, user_key, episode_id)
+    targets = {episode_id} if isinstance(episode_id, str) else episode_id
     offset = 0
     dependents = []
     while True:
@@ -252,7 +272,7 @@ async def invalidate_derived(store, collection_id: str, episode_id: str, user_ke
                 raise ValueError("Consolidation lineage is corrupt; reconcile before changing its sources") from exc
             if not isinstance(references, list) or any(not isinstance(ref, str) for ref in references):
                 raise ValueError("Consolidation lineage is corrupt; reconcile before changing its sources")
-            if episode_id in references:
+            if targets.intersection(references):
                 dependents.append(item["id"])
         offset += len(items)
         if len(items) < 100 or (page.get("total", -1) >= 0 and offset >= page["total"]):
