@@ -12,6 +12,7 @@ import asyncio
 import base64
 import contextlib
 import os
+import logging
 import traceback
 import typing
 
@@ -39,6 +40,7 @@ import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.api.http.context import ExecutionContext
 
 _MAX_OPENCLAW_COMPONENT_BYTES = 10 * 1024 * 1024
+logger = logging.getLogger('openclaw-weixin')
 
 
 class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
@@ -404,19 +406,44 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                                 context_token=context_token,
                             )
                         elif audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                            silk_bytes = None
                             try:
                                 silk_bytes = await audio_utils.transcode_audio(voice_bytes, 'silk', audio_fmt)
-                                await self.client.send_voice(
-                                    target_id,
-                                    silk_bytes,
-                                    playtime=playtime_ms,
-                                    encode_type=6,
-                                    context_token=context_token,
-                                )
                             except Exception as exc:
+                                logger.warning(
+                                    f'Failed to transcode voice to SILK: {exc}; falling back to audio file.'
+                                )
                                 await self.logger.warning(
                                     f'Failed to transcode voice to SILK: {exc}; gracefully falling back to audio file.'
                                 )
+
+                            if silk_bytes:
+                                try:
+                                    await self.client.send_voice(
+                                        target_id,
+                                        silk_bytes,
+                                        playtime=playtime_ms,
+                                        encode_type=6,
+                                        context_token=context_token,
+                                    )
+                                    logger.info(
+                                        f'Successfully sent SILK voice message to {target_id} (playtime={playtime_ms}ms)'
+                                    )
+                                except Exception as exc:
+                                    logger.warning(
+                                        f'Failed to send WeChat voice: {exc}; falling back to audio file.'
+                                    )
+                                    await self.logger.warning(
+                                        f'Failed to send WeChat voice: {exc}; gracefully falling back to audio file.'
+                                    )
+                                    file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+                                    await self.client.send_file(
+                                        target_id,
+                                        voice_bytes,
+                                        f'voice.{file_ext}',
+                                        context_token,
+                                    )
+                            else:
                                 file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
                                 await self.client.send_file(
                                     target_id,
@@ -426,6 +453,9 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                                 )
                         else:
                             # Graceful degradation when SILK transcoding is unavailable
+                            logger.info(
+                                'SILK transcoding not available (requires ffmpeg & pilk); degrading voice to audio file.'
+                            )
                             await self.logger.info(
                                 'SILK transcoding not available (requires ffmpeg & pilk); gracefully degrading voice to audio file.'
                             )

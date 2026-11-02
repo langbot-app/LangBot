@@ -456,8 +456,11 @@ class OpenClawWeixinClient:
         to_user_id: str,
         voice_bytes: bytes,
         playtime: int = 0,
-        encode_type: Optional[int] = None,
+        encode_type: Optional[int] = 6,
         context_token: str = '',
+        bits_per_sample: Optional[int] = None,
+        sample_rate: Optional[int] = None,
+        text: Optional[str] = None,
     ) -> None:
         """Upload a voice message to CDN and send it."""
         media = await self.upload_media(voice_bytes, to_user_id, media_type=4)
@@ -467,6 +470,9 @@ class OpenClawWeixinClient:
                 media=media,
                 playtime=playtime,
                 encode_type=encode_type,
+                bits_per_sample=bits_per_sample,
+                sample_rate=sample_rate,
+                text=text,
             ),
         )
         await self.send_message(to_user_id, [item], context_token)
@@ -816,6 +822,12 @@ def _message_item_to_dict(item: MessageItem) -> dict:
             voice_d['playtime'] = item.voice_item.playtime
         if item.voice_item.encode_type is not None:
             voice_d['encode_type'] = item.voice_item.encode_type
+        if item.voice_item.bits_per_sample is not None:
+            voice_d['bits_per_sample'] = item.voice_item.bits_per_sample
+        if item.voice_item.sample_rate is not None:
+            voice_d['sample_rate'] = item.voice_item.sample_rate
+        if item.voice_item.text is not None:
+            voice_d['text'] = item.voice_item.text
         d['voice_item'] = voice_d
 
     if item.file_item:
