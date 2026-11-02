@@ -95,6 +95,18 @@ def test_event_first_context_preserves_reset_stable_session_identity():
     assert DefaultRunner()._conversation_id(context) == "person_user-1"
 
 
+def test_storage_missing_accepts_nested_action_call_error():
+    from pkg.session_management import _storage_key_missing
+
+    class ActionCallError(Exception):
+        pass
+
+    assert _storage_key_missing(
+        ActionCallError("ActionCallError: ActionCallError: Storage with key acp-session:v1:selected:x not found")
+    )
+    assert not _storage_key_missing(ActionCallError("Storage backend offline"))
+
+
 @pytest.mark.asyncio
 async def test_delete_value_only_ignores_explicit_missing_key_errors():
     missing_plugin = types.SimpleNamespace(get_plugin_storage=AsyncMock(side_effect=FileNotFoundError()))

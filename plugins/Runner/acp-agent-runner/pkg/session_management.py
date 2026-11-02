@@ -20,8 +20,8 @@ def _storage_key_missing(exc: Exception) -> bool:
     message = str(exc)
     explicit_action_error = (
         type(exc).__name__ == "ActionCallError"
-        and message.startswith("Storage with key ")
-        and message.endswith(" not found")
+        and "Storage with key " in message
+        and message.rstrip().endswith(" not found")
     )
     return (
         isinstance(exc, (FileNotFoundError, KeyError))
