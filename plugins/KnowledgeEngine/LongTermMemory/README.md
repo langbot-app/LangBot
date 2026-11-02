@@ -328,11 +328,12 @@ Use `!memory show <episode_id>` to inspect one episode, including status, sender
 
 Use `!memory consolidate preview` to inspect cleanup candidates for the current scope. Preview never modifies memory. It reports candidate episode IDs, older active records to retain, superseded records to archive, and risk notes.
 
-Use `!memory consolidate run` only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It archives only records already marked superseded. Active records remain searchable regardless of age or importance; a count/tag summary cannot preserve their facts. No summary episode is generated. Archive writes create scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
+Use `!memory consolidate run` (or `run <proposal_id>` for a reviewed semantic draft) only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It archives only records already marked superseded. Active records remain searchable regardless of age or importance; a count/tag summary cannot preserve their facts. Without a semantic model, no summary episode is generated. Archive writes create scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
 
 Relevant knowledge base settings:
 
 - `consolidation_enabled`: default `false`; required for `run`
+- `consolidation_model_uuid`: optional LLM selector; blank keeps safe archival only
 - `consolidation_min_age_days`: default `7`
 - `consolidation_max_candidates`: default `20`
 - `consolidation_apply_profile_updates`: default `false`
@@ -604,7 +605,7 @@ Star the repo if you find it useful!
 ### Memory quality guarantees
 
 - Retrieve the relevant episode first, then pass its ID in `remember.supersedes` only for an explicit correction of the same fact or event by the same speaker. Omit targets when uncertain. Original content and importance are preserved for historical inspection.
-- Consolidation is conservative archival, not semantic synthesis. It neither replaces active facts with statistics nor copies them into derived summaries. Existing archived records and previously generated summaries are not migrated automatically.
+- Without a configured semantic model, consolidation performs conservative archival only. It never replaces active facts with statistics. Optional reviewed semantic summaries coexist with their active source facts. Existing archived records and previously generated summaries are not migrated automatically.
 - Recall ranks the complete bounded candidate set before taking `top_k`; exact matches beyond the backend's first `top_k` results can still win. Candidates remain bounded by the existing fetch window, so this is not a guarantee of exhaustive retrieval.
 - Deterministic regression cases cover correction ownership, unrelated similar facts, retention across consolidation, and ranking at the candidate boundary. They do not measure real-model extraction or answer quality on LongMemEval.
 
@@ -635,3 +636,15 @@ The optional path selects and classifies complete original sentences or the full
 Model-selected candidates are labeled `inference` because selection/classification remains a model judgment. They always remain pending for manual review, even when `candidate_auto_apply=true`; the original quote and the declared query reference stay inspectable in the candidate record. This is evidence selection, not proof that a statement is true or that a quotation is safe to treat as a current preference.
 
 One request is bounded to 8,000 input characters, a 30-second timeout, 16,000 output characters, the configured candidate count, and 2,000 characters per quote. Oversized or empty input is skipped. Malformed JSON, extra fields, unsupported classifications, or mismatched evidence reject the entire model result before any candidate write; model failures do not silently fall back to rules. Existing credential-marker checks produce a redacted ignore candidate without sending that text to the model. These checks are not an exhaustive secret detector.
+
+### Human-reviewed semantic summaries
+
+Set `consolidation_model_uuid` on the memory knowledge base only when you want model-generated summary drafts. No LLM call is made by the default archival workflow.
+
+1. Run `!memory consolidate preview`. The configured model receives only the bounded active sources selected by the Host. The preview shows source IDs, full source statements, the proposed summary, and a one-use proposal ID. Preview does not change episodic memories, but persists the review draft in scoped plugin storage.
+2. Compare every summary statement with its sources. Model output must be bounded JSON, cite only the selected sources, and cover every source. These structural checks **do not prove factual or semantic correctness**: a correctly cited draft can still be wrong. Source statements are untrusted data, not instructions.
+3. After review, enable `consolidation_enabled` and run `!memory consolidate run <proposal_id>`. A missing, stale, replayed, or cross-scope proposal is rejected. The Host checks each source's metadata hash, active status, and common current validity interval again. It writes an archived draft with complete lineage and `claim_type=inference`, verifies the write, then makes the derived summary active.
+
+Active sources remain active; this feature does not promise lossy compression or token savings. A summary never extends its sources' validity: `valid_from` is their latest start and `valid_until` their earliest end. Changing a source to superseded/archived/deleted, explicitly correcting it through `remember.supersedes`, or forgetting it first removes same-scope derived summaries. Forgetting also clears any pending review draft that contains that source. Other source facts remain searchable; summaries from another memory scope are never cascaded. Scoped bulk deletion covers the same boundaries.
+
+Existing historical summary records without lineage cannot be retroactively traced. They are not migrated automatically. The Memory Console continues to inspect memories; semantic drafting and explicit approval use the existing `!memory consolidate` command, not a new Console action.

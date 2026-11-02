@@ -12,6 +12,8 @@ from store.recall import exact_match_score, matches_filters, select_memories
 from store.serialization import FENCE_KEY_PREFIX, BindingWrites, serialized_write
 from store.episode_provenance import normalize_provenance, read_provenance
 
+from store.consolidation import apply_summary, clear_proposal, draft_summary, invalidate_derived
+
 logger = logging.getLogger(__name__)
 
 
@@ -1469,6 +1471,7 @@ class MemoryStore:
         self, collection_id: str, user_key: str
     ) -> int:
         """Delete all episodes for a user_key."""
+        await clear_proposal(self, collection_id, user_key)
         return await self._writes.mutate(
             self.plugin,
             collection_id,
@@ -1754,8 +1757,9 @@ class MemoryStore:
         min_age_days: int = 7,
         max_candidates: int = 20,
         apply_profile_updates: bool = False,
+        summary_model_uuid: str = "",
     ) -> dict[str, Any]:
-        """Build a no-write consolidation preview for one user_key scope."""
+        """Build a scoped preview without changing episodic memories."""
         max_candidates = max(1, min(100, int(max_candidates or 20)))
         min_age_days = max(0, int(min_age_days or 0))
         episodes = await self.export_episodes_by_user(
@@ -1811,7 +1815,7 @@ class MemoryStore:
         if any(episode.get("status") == self.EPISODE_STATUS_ACTIVE for episode in candidates):
             risk_notes.append("Active facts are retained: statistical summaries cannot replace their content.")
 
-        return {
+        preview = {
             "candidate_episode_ids": [episode["id"] for episode in candidates],
             "candidates": candidates,
             "summary_episode": "",
@@ -1821,6 +1825,9 @@ class MemoryStore:
             "min_age_days": min_age_days,
             "max_candidates": max_candidates,
         }
+        if summary_model_uuid:
+            return await draft_summary(self, preview, collection_id, user_key, summary_model_uuid)
+        return preview
 
     @serialized_write
     async def apply_consolidation(
@@ -1832,8 +1839,11 @@ class MemoryStore:
         min_age_days: int = 7,
         max_candidates: int = 20,
         apply_profile_updates: bool = False,
+        proposal_id: str = "",
     ) -> dict[str, Any]:
-        """Archive superseded episodes while retaining active source facts."""
+        """Archive obsolete records or publish an explicitly approved derived summary."""
+        if proposal_id:
+            return await apply_summary(self, collection_id, embedding_model_uuid, user_key, proposal_id)
         preview = await self.preview_consolidation(
             collection_id=collection_id,
             user_key=user_key,
@@ -1869,6 +1879,7 @@ class MemoryStore:
     ) -> int:
         """Delete a single episode by its ID, scoped to user_key for safety."""
         episode = await self.get_episode_by_id(collection_id, episode_id, user_key)
+        await invalidate_derived(self, collection_id, episode_id, user_key)
         if episode is None:
             return 0
         if episode["metadata"].get("episode_id") != episode_id:
@@ -1964,6 +1975,8 @@ class MemoryStore:
         if not episode:
             return None
 
+        if normalized_status != self.EPISODE_STATUS_ACTIVE:
+            await invalidate_derived(self, collection_id, episode_id, user_key)
         meta = dict(episode.get("metadata", {}))
         meta["episode_id"] = episode_id
         content = episode.get("content", "")

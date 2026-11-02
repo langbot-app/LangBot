@@ -114,19 +114,30 @@ spec:
         en_US: Enable Consolidation Run
         zh_Hans: 启用记忆整理执行
       description:
-        en_US: Allows !memory consolidate run to archive scoped candidates and write a summary. Preview is always available.
-        zh_Hans: 允许 !memory consolidate run 归档当前范围候选并写入摘要。预览始终可用。
+        en_US: Allows scoped archival and explicitly approved semantic summaries. Configure a semantic model and review preview before using a proposal ID.
+        zh_Hans: 允许归档当前范围记录和写入明确审核的语义摘要。配置语义模型后，需先预览并核对，再使用提案 ID 执行。
       type: boolean
       required: false
       default: false
+
+    - name: consolidation_model_uuid
+      label:
+        en_US: Semantic Consolidation Model
+        zh_Hans: 语义整理模型
+      description:
+        en_US: Optional model for a human-reviewed semantic summary draft. Blank keeps safe archival only. Active source facts remain searchable.
+        zh_Hans: 可选，用于生成人工审核的语义摘要草稿。留空时仅安全归档。活跃来源事实始终保留。
+      type: llm-model-selector
+      required: false
+      default: ''
 
     - name: consolidation_min_age_days
       label:
         en_US: Consolidation Min Age Days
         zh_Hans: 记忆整理最小天数
       description:
-        en_US: Active low-importance memories must be at least this old before consolidation can propose archiving them.
-        zh_Hans: 低重要度活跃记忆至少达到该天数后，整理流程才会建议归档。
+        en_US: Minimum age for active low-importance sources considered by semantic summary preview; active sources remain searchable.
+        zh_Hans: 低重要度活跃来源达到该天数后可进入语义摘要预览；活跃来源继续参与召回。
       type: integer
       required: false
       default: 7
