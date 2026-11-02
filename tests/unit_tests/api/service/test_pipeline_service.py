@@ -1008,7 +1008,7 @@ class TestPipelineSecretRoundtrip:
                     'headers': {'Authorization': 'Bearer secret'},
                     'timeout': 60,
                 }
-            }
+            },
         }
 
 
