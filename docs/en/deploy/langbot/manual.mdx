@@ -29,6 +29,20 @@ Embedded-mode platform support depends on the available `pylibseekdb` wheels;
 Apple Silicon currently requires macOS 15 or later. All other LangBot features
 can use the default `uv sync` installation.
 
+### Optional Voice Transcoding Support (SILK / WeChat Native Voice)
+
+If you need native voice bubbles on platforms like WeChat (SILK encoding) or audio transcoding support, install system `ffmpeg` and the `audio` extra:
+
+- **System Dependency**: `ffmpeg` (macOS: `brew install ffmpeg`, Ubuntu/Debian: `sudo apt-get install -y ffmpeg`, Windows: `winget install Gyan.FFmpeg`)
+- **Python Extra**:
+  ```bash
+  uv sync --extra audio
+  # or combine with seekdb
+  uv sync --extra seekdb --extra audio
+  ```
+
+If transcoding dependencies are not installed, LangBot performs **graceful degradation** by delivering the audio as a playable audio file attachment rather than dropping the message.
+
 3. Run the main program once to generate configuration files
 
 ```bash

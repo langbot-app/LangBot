@@ -232,3 +232,69 @@ async def extract_voice_bytes(voice: platform_message.Voice) -> tuple[bytes, str
         return raw_bytes, detected
 
     raise ValueError('Voice component contains no base64, path, or url')
+
+
+def estimate_audio_duration(data: bytes, format_hint: str = 'unknown') -> float:
+    """Estimate or calculate audio duration in seconds from raw bytes."""
+    if not data:
+        return 0.0
+
+    fmt = detect_audio_format(data)
+    if fmt == 'unknown':
+        fmt = format_hint.lower().lstrip('.')
+
+    if fmt == 'wav' and len(data) >= 44:
+        try:
+            byte_rate = int.from_bytes(data[28:32], byteorder='little')
+            if byte_rate > 0:
+                pos = 12
+                while pos + 8 <= len(data):
+                    chunk_id = data[pos : pos + 4]
+                    chunk_size = int.from_bytes(data[pos + 4 : pos + 8], byteorder='little')
+                    if chunk_id == b'data':
+                        return max(0.1, round(chunk_size / byte_rate, 2))
+                    pos += 8 + chunk_size
+                return max(0.1, round((len(data) - 44) / byte_rate, 2))
+        except Exception:
+            pass
+
+    if fmt == 'mp3':
+        offset = 0
+        if data.startswith(b'ID3') and len(data) >= 10:
+            size = (
+                ((data[6] & 0x7F) << 21)
+                | ((data[7] & 0x7F) << 14)
+                | ((data[8] & 0x7F) << 7)
+                | (data[9] & 0x7F)
+            )
+            offset = 10 + size
+        audio_data = data[offset:]
+        if audio_data:
+            for i in range(min(4096, len(audio_data) - 4)):
+                if audio_data[i] == 0xFF and (audio_data[i + 1] & 0xE0) == 0xE0:
+                    bitrate_idx = (audio_data[i + 2] >> 4) & 15
+                    bitrates = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+                    if 0 < bitrate_idx < len(bitrates) and bitrates[bitrate_idx] > 0:
+                        kbps = bitrates[bitrate_idx]
+                        return max(0.1, round(len(audio_data) * 8 / (kbps * 1000), 2))
+            return max(0.1, round(len(audio_data) * 8 / 128000, 2))
+
+    if fmt == 'silk':
+        header_len = 10 if data.startswith(b'\x02#!SILK_V3') else (9 if data.startswith(b'#!SILK_V3') else 0)
+        pos = header_len
+        frames = 0
+        while pos + 2 <= len(data):
+            size = int.from_bytes(data[pos : pos + 2], byteorder='little')
+            if size <= 0 or pos + 2 + size > len(data):
+                break
+            frames += 1
+            pos += 2 + size
+        if frames > 0:
+            return max(0.1, round(frames * 0.02, 2))
+
+    if fmt == 'amr':
+        body_len = max(0, len(data) - 6)
+        return max(0.1, round((body_len / 32) * 0.02, 2))
+
+    return 0.0
+

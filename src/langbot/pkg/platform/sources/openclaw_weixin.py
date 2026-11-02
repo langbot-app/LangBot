@@ -389,7 +389,53 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                 elif isinstance(component, platform_message.Voice):
                     voice_bytes = await self._get_component_bytes(component)
                     if voice_bytes:
-                        await self.client.send_voice(target_id, voice_bytes, component.length or 0, context_token)
+                        from langbot.pkg.utils import audio as audio_utils
+
+                        audio_fmt = audio_utils.detect_audio_format(voice_bytes)
+                        duration_sec = component.length or audio_utils.estimate_audio_duration(voice_bytes, audio_fmt)
+                        playtime_ms = int(duration_sec * 1000) if duration_sec > 0 else 0
+
+                        if audio_fmt == 'silk':
+                            await self.client.send_voice(
+                                target_id,
+                                voice_bytes,
+                                playtime=playtime_ms,
+                                encode_type=6,
+                                context_token=context_token,
+                            )
+                        elif audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                            try:
+                                silk_bytes = await audio_utils.transcode_audio(voice_bytes, 'silk', audio_fmt)
+                                await self.client.send_voice(
+                                    target_id,
+                                    silk_bytes,
+                                    playtime=playtime_ms,
+                                    encode_type=6,
+                                    context_token=context_token,
+                                )
+                            except Exception as exc:
+                                await self.logger.warning(
+                                    f'Failed to transcode voice to SILK: {exc}; gracefully falling back to audio file.'
+                                )
+                                file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+                                await self.client.send_file(
+                                    target_id,
+                                    voice_bytes,
+                                    f'voice.{file_ext}',
+                                    context_token,
+                                )
+                        else:
+                            # Graceful degradation when SILK transcoding is unavailable
+                            await self.logger.info(
+                                'SILK transcoding not available (requires ffmpeg & pilk); gracefully degrading voice to audio file.'
+                            )
+                            file_ext = audio_fmt if audio_fmt != 'unknown' else 'mp3'
+                            await self.client.send_file(
+                                target_id,
+                                voice_bytes,
+                                f'voice.{file_ext}',
+                                context_token,
+                            )
 
                 elif isinstance(component, platform_message.Forward):
                     for node in component.node_list:
@@ -426,6 +472,8 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
         path_val = getattr(component, 'path', None)
 
         if b64_val:
+            if b64_val.startswith('data:'):
+                _, _, b64_val = b64_val.partition(',')
             max_encoded_chars = 4 * ((_MAX_OPENCLAW_COMPONENT_BYTES + 2) // 3) + 4
             if len(b64_val) > max_encoded_chars:
                 raise ValueError('OpenClaw media exceeds the size limit')

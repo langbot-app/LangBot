@@ -456,6 +456,7 @@ class OpenClawWeixinClient:
         to_user_id: str,
         voice_bytes: bytes,
         playtime: int = 0,
+        encode_type: Optional[int] = None,
         context_token: str = '',
     ) -> None:
         """Upload a voice message to CDN and send it."""
@@ -465,6 +466,7 @@ class OpenClawWeixinClient:
             voice_item=VoiceItem(
                 media=media,
                 playtime=playtime,
+                encode_type=encode_type,
             ),
         )
         await self.send_message(to_user_id, [item], context_token)
@@ -812,6 +814,8 @@ def _message_item_to_dict(item: MessageItem) -> dict:
             voice_d['media'] = _cdn_media_to_dict(item.voice_item.media)
         if item.voice_item.playtime is not None:
             voice_d['playtime'] = item.voice_item.playtime
+        if item.voice_item.encode_type is not None:
+            voice_d['encode_type'] = item.voice_item.encode_type
         d['voice_item'] = voice_d
 
     if item.file_item:

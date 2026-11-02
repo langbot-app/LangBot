@@ -288,7 +288,13 @@ class TextToSpeechStage(stage.PipelineStage):
             return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
         b64_audio = base64.b64encode(audio_bytes).decode('ascii')
-        voice_comp = platform_message.Voice(base64=f'data:{mime};base64,{b64_audio}')
+        audio_duration = audio_utils.estimate_audio_duration(
+            audio_bytes, mime.split('/')[-1] if '/' in mime else 'unknown'
+        )
+        voice_comp = platform_message.Voice(
+            base64=f'data:{mime};base64,{b64_audio}',
+            length=int(round(audio_duration)) if audio_duration > 0 else None,
+        )
 
         output_mode = config.get('output', 'voice-only')
         if output_mode == 'voice-only':

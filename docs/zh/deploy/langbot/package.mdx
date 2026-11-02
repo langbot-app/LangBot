@@ -37,3 +37,15 @@ SeekDB 嵌入式模式还要求当前平台存在兼容的 `pylibseekdb` wheel�
 [oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324)。受当前
 `pyseekdb` 包元数据影响，macOS 14 ARM64 即使只连接远程 SeekDB，也无法解析该
 extra。不使用 SeekDB 时，这些平台限制不影响 LangBot。
+
+## 可选的语音转码支持（SILK / 微信原生语音）
+
+如果需要在微信等平台发送原生语音条（SILK 格式）或进行音频格式转换，需要系统已安装 `ffmpeg`，并使用 `audio` extra 启动：
+
+```bash
+uvx --from 'langbot[audio]@latest' langbot
+# 或同时启用 seekdb 与 audio
+uvx --from 'langbot[seekdb,audio]@latest' langbot
+```
+
+若当前环境未安装 `ffmpeg` 或 `pilk`，LangBot 会自动**优雅降级**，将语音作为音频文件发送，保证用户端仍可正常接收播放。

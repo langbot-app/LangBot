@@ -37,3 +37,22 @@ async def test_upload_media_rejects_oversized_input_before_network_access():
             'recipient',
             3,
         )
+
+
+def test_voice_item_serialization_includes_encode_type_and_playtime():
+    from langbot.libs.openclaw_weixin_api.client import _message_item_to_dict
+    from langbot.libs.openclaw_weixin_api.types import CDNMedia, MessageItem, VoiceItem
+
+    media = CDNMedia(encrypt_query_param='param', aes_key='key', encrypt_type=1)
+    item = MessageItem(
+        type=MessageItem.VOICE,
+        voice_item=VoiceItem(media=media, playtime=4500, encode_type=6),
+    )
+    d = _message_item_to_dict(item)
+
+    assert d['type'] == MessageItem.VOICE
+    assert 'voice_item' in d
+    assert d['voice_item']['playtime'] == 4500
+    assert d['voice_item']['encode_type'] == 6
+    assert d['voice_item']['media']['encrypt_query_param'] == 'param'
+

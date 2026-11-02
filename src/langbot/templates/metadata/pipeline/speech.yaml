@@ -85,8 +85,8 @@ stages:
       en_US: Text to Speech (TTS)
       zh_Hans: 文本转语音 (TTS)
     description:
-      en_US: Synthesize outgoing response text to voice
-      zh_Hans: 将回复的文本内容转换为语音
+      en_US: "Synthesize outgoing response text to voice. Note: Native WeChat voice messages require SILK transcoding (ffmpeg & pilk); if not installed, the system gracefully degrades to audio file attachments or text."
+      zh_Hans: "将回复的文本内容转换为语音。注：微信原生语音气泡依赖 SILK 转码环境（ffmpeg 与 pilk）；若未安装，系统将自动优雅降级为音频文件或文本。"
     config:
       - name: enable
         label:
@@ -138,8 +138,8 @@ stages:
           en_US: Output Mode
           zh_Hans: 输出模式
         description:
-          en_US: How to output synthesized voice
-          zh_Hans: 合成语音的输出形式
+          en_US: "How to output synthesized voice. If platform-native voice transcoding (e.g. SILK for WeChat) is unavailable, output gracefully degrades to an audio file."
+          zh_Hans: "合成语音的输出形式。若平台原生语音转码环境（如微信 SILK）未安装，将自动优雅降级为音频文件。"
         type: select
         required: true
         default: voice-only
