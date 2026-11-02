@@ -1483,10 +1483,27 @@ const esES = {
       inputUnavailable: 'No se registró la entrada de esta ejecución.',
     },
     commandProcessor: {
+      loadingCatalog: 'Cargando plugins de comandos...',
+      catalogUnavailable: 'No se pudieron cargar los plugins de comandos',
+      installFailed: 'Falló la instalación del plugin de comandos',
+      installTimeout:
+        'La instalación del plugin de comandos agotó el tiempo. Revisa la tarea en la página de extensiones.',
+      registrationTimeout:
+        'El plugin se instaló, pero sus comandos no se registraron a tiempo. Actualiza e inténtalo de nuevo.',
+      diagnosis: {
+        missing:
+          'El plugin de comandos seleccionado no existe. Instala o restaura el plugin.',
+        disabled:
+          'El plugin de comandos seleccionado está desactivado. Actívalo en la página de plugins.',
+        runtime:
+          'El runtime de plugins no está disponible o está desactivado. Restablece la conexión e inténtalo de nuevo.',
+        draft:
+          'La página de reparación se abre en una pestaña nueva; se conservan tu selección actual y el borrador sin guardar.',
+      },
       debugTitle: 'Depurar comandos',
       type: 'Procesador de comandos',
       plugin: 'Plugin',
-      selectPlugin: 'Seleccionar plugin',
+      selectPlugin: 'Seleccionar plugin de comandos',
       unavailable: 'Plugin no disponible',
       noSettings: 'Sin ajustes',
       notice: 'Procesa comandos antes del enrutamiento.',

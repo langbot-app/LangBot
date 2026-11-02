@@ -55,17 +55,21 @@ import {
 function installErrorMessage(
   error: unknown,
   t: ReturnType<typeof useTranslation>['t'],
+  usage: CatalogUsage = 'agent',
 ) {
+  // Command plugins are not Runners; keep their install errors free of Runner wording.
+  const scope =
+    usage === 'command' ? 'agents.commandProcessor' : 'wizard.aiEngine';
   if (error instanceof RunnerMarketplaceError) {
     if (error.code === 'version-unavailable') {
       return t('wizard.aiEngine.versionUnavailable');
     }
     if (error.code === 'install-timeout') {
-      return t('wizard.aiEngine.installTimeout');
+      return t(`${scope}.installTimeout`);
     }
-    return t('wizard.aiEngine.registrationTimeout');
+    return t(`${scope}.registrationTimeout`);
   }
-  return getErrorMessage(error) || t('wizard.aiEngine.installFailed');
+  return getErrorMessage(error) || t(`${scope}.installFailed`);
 }
 
 function pluginOptionParts(option: IDynamicFormItemOption): {
@@ -348,7 +352,7 @@ export default function RunnerSelect({
             }
           });
     void resume.catch((error) => {
-      if (!cancelled) setInstallError(installErrorMessage(error, t));
+      if (!cancelled) setInstallError(installErrorMessage(error, t, usage));
     });
     return () => {
       cancelled = true;
@@ -414,6 +418,9 @@ export default function RunnerSelect({
           noMarketplace: 'agents.commandProcessor.noMarketplace',
           docs: 'agents.commandProcessor.docs',
           docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/command',
+          loadingCatalog: 'agents.commandProcessor.loadingCatalog',
+          catalogUnavailable: 'agents.commandProcessor.catalogUnavailable',
+          diagnosis: 'agents.commandProcessor.diagnosis',
         }
       : {
           placeholder:
@@ -437,6 +444,9 @@ export default function RunnerSelect({
               ? 'bots.routingHelp.docs'
               : 'bots.routingHelp.runnerDocs',
           docsUrl: 'https://langbot.app/docs/zh/plugin/dev/components/runner',
+          loadingCatalog: 'wizard.aiEngine.loadingCatalog',
+          catalogUnavailable: 'wizard.aiEngine.catalogUnavailable',
+          diagnosis: 'agents.runnerDiagnosis',
         };
   const activePluginId = pendingInstall?.pluginId ?? installingPluginId;
   const activeTask = pendingInstall
@@ -494,7 +504,7 @@ export default function RunnerSelect({
           }),
         );
       } catch (error) {
-        const message = installErrorMessage(error, t);
+        const message = installErrorMessage(error, t, usage);
         setInstallError(message);
         toast.error(message);
       } finally {
@@ -599,11 +609,11 @@ export default function RunnerSelect({
             {catalogLoading && marketplaceOptions.length === 0 ? (
               <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
                 <Loader2 className="size-3.5 animate-spin" />
-                {t('wizard.aiEngine.loadingCatalog')}
+                {t(copy.loadingCatalog)}
               </div>
             ) : catalogError ? (
               <div className="px-2 py-1.5 text-xs text-destructive">
-                {t('wizard.aiEngine.catalogUnavailable')}
+                {t(copy.catalogUnavailable)}
               </div>
             ) : marketplaceOptions.length > 0 ? (
               marketplaceOptions.map((plugin) => {
@@ -649,7 +659,7 @@ export default function RunnerSelect({
           role="alert"
           className="space-y-1 text-xs text-amber-700 dark:text-amber-400"
         >
-          <p>{t(`agents.runnerDiagnosis.${runnerProblem}`)}</p>
+          <p>{t(`${copy.diagnosis}.${runnerProblem}`)}</p>
           <a
             href="/home/plugins"
             target="_blank"
@@ -659,7 +669,7 @@ export default function RunnerSelect({
             {t('agents.runnerDiagnosis.repair')}
             <ExternalLink className="size-3" />
           </a>
-          <p>{t('agents.runnerDiagnosis.draft')}</p>
+          <p>{t(`${copy.diagnosis}.draft`)}</p>
         </div>
       )}
 

@@ -1453,10 +1453,26 @@ const viVN = {
       inputUnavailable: 'Đầu vào của lượt chạy này chưa được ghi lại.',
     },
     commandProcessor: {
+      loadingCatalog: 'Đang tải plugin lệnh...',
+      catalogUnavailable: 'Không thể tải plugin lệnh',
+      installFailed: 'Cài đặt plugin lệnh thất bại',
+      installTimeout:
+        'Cài đặt plugin lệnh quá thời gian. Hãy kiểm tra tác vụ ở trang Tiện ích mở rộng.',
+      registrationTimeout:
+        'Plugin đã được cài, nhưng lệnh chưa kịp đăng ký. Hãy tải lại và thử lại.',
+      diagnosis: {
+        missing:
+          'Không tìm thấy plugin lệnh đã chọn. Hãy cài đặt hoặc khôi phục plugin.',
+        disabled: 'Plugin lệnh đã chọn đang bị tắt. Hãy bật nó ở trang plugin.',
+        runtime:
+          'Runtime plugin không khả dụng hoặc đã tắt. Hãy khôi phục kết nối rồi thử lại.',
+        draft:
+          'Trang sửa lỗi sẽ mở trong tab mới; lựa chọn hiện tại và bản nháp chưa lưu được giữ lại.',
+      },
       debugTitle: 'Gỡ lỗi lệnh',
       type: 'Bộ xử lý lệnh',
       plugin: 'Plugin',
-      selectPlugin: 'Chọn plugin',
+      selectPlugin: 'Chọn plugin lệnh',
       unavailable: 'Plugin không khả dụng',
       noSettings: 'Không có cài đặt',
       notice: 'Xử lý lệnh trước khi định tuyến sự kiện.',
