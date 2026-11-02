@@ -6,6 +6,7 @@ import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import typing
 
@@ -19,9 +20,35 @@ class AudioDependencyError(RuntimeError):
     pass
 
 
+def get_ffmpeg_cmd() -> str:
+    """Get the path to the ffmpeg executable."""
+    cmd = shutil.which('ffmpeg')
+    if cmd:
+        return cmd
+    venv_ffmpeg = os.path.join(os.path.dirname(sys.executable), 'ffmpeg')
+    if os.path.isfile(venv_ffmpeg) and os.access(venv_ffmpeg, os.X_OK):
+        return venv_ffmpeg
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except (ImportError, Exception):
+        return 'ffmpeg'
+
+
 def is_ffmpeg_available() -> bool:
-    """Check if the ffmpeg command line tool is installed and available in PATH."""
-    return shutil.which('ffmpeg') is not None
+    """Check if the ffmpeg command line tool is installed and available."""
+    if shutil.which('ffmpeg') is not None:
+        return True
+    venv_ffmpeg = os.path.join(os.path.dirname(sys.executable), 'ffmpeg')
+    if os.path.isfile(venv_ffmpeg) and os.access(venv_ffmpeg, os.X_OK):
+        return True
+    try:
+        import imageio_ffmpeg
+
+        return bool(imageio_ffmpeg.get_ffmpeg_exe())
+    except (ImportError, Exception):
+        return False
 
 
 def is_silk_available() -> bool:
@@ -105,7 +132,7 @@ def transcode_audio_sync(
                 raise AudioDependencyError(f'Failed to decode SILK audio: {exc}') from exc
 
             # Convert PCM to target format via ffmpeg
-            cmd = ['ffmpeg', '-y', '-f', 's16le', '-ar', '24000', '-ac', '1', '-i', pcm_path]
+            cmd = [get_ffmpeg_cmd(), '-y', '-f', 's16le', '-ar', '24000', '-ac', '1', '-i', pcm_path]
             if target_format == 'mp3':
                 cmd.extend(['-f', 'mp3'])
             elif target_format == 'ogg':
@@ -137,7 +164,7 @@ def transcode_audio_sync(
         import pilk
 
         # Convert source audio to PCM s16le, 24000Hz, mono
-        cmd = ['ffmpeg', '-y']
+        cmd = [get_ffmpeg_cmd(), '-y']
         if source_format and source_format != 'unknown':
             cmd.extend(['-f', source_format])
         cmd.extend(['-i', 'pipe:0', '-f', 's16le', '-ar', '24000', '-ac', '1', 'pipe:1'])
@@ -167,7 +194,7 @@ def transcode_audio_sync(
     if not is_ffmpeg_available():
         raise AudioDependencyError("Transcoding requires 'ffmpeg' which is not installed on the system.")
 
-    cmd = ['ffmpeg', '-y']
+    cmd = [get_ffmpeg_cmd(), '-y']
     if source_format and source_format != 'unknown':
         cmd.extend(['-f', source_format])
     cmd.extend(['-i', 'pipe:0'])
