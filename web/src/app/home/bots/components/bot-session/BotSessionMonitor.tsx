@@ -575,7 +575,7 @@ const BotSessionMonitor = forwardRef<
 
       case 'Voice': {
         const voice = component as Voice;
-        const voiceUrl = voice.url || (voice.base64 ? voice.base64 : '');
+        const voiceUrl = voice.base64 || voice.url || '';
         if (!voiceUrl) {
           return (
             <span
