@@ -227,6 +227,9 @@ const getFormSchema = (t: (key: string) => string) =>
       .object({
         enabled: z.boolean(),
         prefixes: z.array(z.string()),
+        platform_commands: z
+          .object({ enabled: z.boolean(), selected: z.array(z.string()) })
+          .optional(),
         processors: z.array(
           z.object({
             processor_uuid: z.string(),
@@ -383,6 +386,12 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     [activeAdapters],
   );
   const [adapterSearch, setAdapterSearch] = useState('');
+  const [commandCapabilities, setCommandCapabilities] = useState<
+    Record<
+      string,
+      import('@/app/infra/entities/api').PlatformCommandCapability | undefined
+    >
+  >({});
   const adapterQuery = adapterSearch.trim().toLocaleLowerCase();
   const matchesAdapterSearch = (adapter: IChooseAdapterEntity) =>
     `${adapter.label} ${adapter.value} ${adapterDescriptionList[adapter.value] ?? ''}`
@@ -489,6 +498,14 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
     setAgentNameList(agentsRes.agents);
 
     const adaptersRes = await httpClient.getAdapters();
+    setCommandCapabilities(
+      Object.fromEntries(
+        adaptersRes.adapters.map((item) => [
+          item.name,
+          item.spec.command_registration,
+        ]),
+      ),
+    );
     setAdapterNameList(
       adaptersRes.adapters.map((item) => {
         return {
@@ -1422,6 +1439,11 @@ const BotForm = forwardRef<BotFormHandle, BotFormProps>(function BotForm(
                     }
                   >
                     <PluginCommandBindings
+                      registrationCapability={
+                        commandCapabilities[currentAdapter]
+                      }
+                      botId={initBotId}
+                      dirty={form.formState.isDirty}
                       value={form.watch('command_settings')}
                       onChange={(value) =>
                         form.setValue('command_settings', value, {

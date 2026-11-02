@@ -1,4 +1,8 @@
 {
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled должно быть логическим значением",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected должно быть списком имён команд",
+  "Platform command registration requires a running supported bot": "Для регистрации требуется работающий поддерживаемый бот",
+  "Command arguments": "Аргументы команды",
   "Request failed.": "Запрос не выполнен.",
   "Too many requests. Please try again later.": "Слишком много запросов. Повторите позже.",
   "Your message contains inappropriate content. Please revise it.": "Сообщение содержит недопустимый контент. Измените его.",

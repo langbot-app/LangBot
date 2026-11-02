@@ -913,6 +913,27 @@ const esES = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'Registrar en la plataforma',
+      overwrite:
+        'Reemplaza todos los comandos, incluidos los configurados manualmente. Al desactivar, se borra la lista registrada.',
+      limits:
+        'Hasta {{count}} comandos; descripciones de hasta {{length}} caracteres. Nombres:',
+      prefixWarning:
+        'Sin prefijo /: los comandos del menú de Telegram no coincidirán. Las interacciones de Discord siguen funcionando.',
+      failed: 'Error de sincronización',
+      synced: 'Última sincronización: {{time}}',
+      notSynced: 'Sin sincronizar',
+      sync: 'Sincronizar ahora',
+      saveFirst: 'Guarda los ajustes del bot antes de sincronizar.',
+      reasons: {
+        invalid_name: 'Nombre de comando no válido',
+        invalid_description: 'Descripción vacía o demasiado larga',
+        invalid_localized_description: 'Descripción traducida demasiado larga',
+        command_limit: 'Se excede el límite de comandos',
+        unavailable: 'Comando no disponible',
+      },
+    },
     pluginCommands: {
       missingProcessor: 'Procesador no disponible',
       instanceHint: 'Vincula un procesador configurado.',

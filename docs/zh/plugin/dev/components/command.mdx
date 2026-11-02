@@ -240,6 +240,31 @@ yield CommandReturn(
 
 以上约束的完整说明见[认证插件与共享运行](/zh/plugin/certified-plugins)。
 
+## 平台命令菜单
+
+在机器人「插件命令」中开启「注册到平台」，勾选已启用的命令处理器提供的命令。
+保存设置后可点击「立即同步」。注册会覆盖平台的全部命令，包括后台手动配置的命令；
+关闭后清空之前管理的命令列表。当前仅 Telegram 和 Discord 显示此面板。
+
+同名命令按处理器绑定顺序去重，优先使用第一个插件。描述取清单的 `metadata.description`，
+按 Workspace 消息语言选择，支持时同时注册多语言版本。不符合平台限制的命令不会注册，
+页面会显示原因。Telegram 最多 100 条命令，名称为 `[a-z0-9_]{1,32}`，描述为 1–256 字符。
+Discord 最多 100 条全局聊天输入命令，名称遵循其 Unicode 命名规则，长度为 1–32 字符，
+描述为 1–100 字符，每条命令带一个可选字符串参数 `args`。
+
+Telegram 仍通过文本消息执行，机器人前缀须包含 `/`。Discord 先延迟确认交互，再转换成
+`message.received`，跳过前缀校验，回复走交互 followup。其他事件类型不受影响。
+
+机器人启动、保存设置和插件变更时自动同步；内容未变则跳过平台写入。
+`GET /api/v1/platform/bots/{uuid}` 返回 `platform_command_sync` 和过滤诊断。
+手动同步接口为 `POST /api/v1/bots/{uuid}/platform-commands/sync`，需要 `resource.manage`，
+对应 MCP 工具 `sync_bot_platform_commands`。本期使用 Telegram 默认作用域和 Discord 全局作用域。
+
+平台限制以 [Telegram BotCommand](https://core.telegram.org/bots/api#botcommand)、
+[setMyCommands](https://core.telegram.org/bots/api#setmycommands)、
+[Discord Application Commands](https://docs.discord.com/developers/interactions/application-commands)
+及[交互响应协议](https://docs.discord.com/developers/interactions/receiving-and-responding)为准。
+
 ## 接下来做什么
 
 您已经了解了命令注册和命令执行的基本信息，接下来可以：

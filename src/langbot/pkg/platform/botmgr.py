@@ -43,6 +43,7 @@ from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
 from .adapter_names import canonical_adapter_name
+from .command_registration import PlatformCommandEvent, PlatformCommandRegistrar
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.events as plugin_events
@@ -116,6 +117,7 @@ class RuntimeBot:
         self.logger = logger
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._platform_command_sync_lock = asyncio.Lock()
 
     async def assert_execution_active(self) -> None:
         """Fail closed when this long-lived adapter belongs to a stale placement."""
@@ -1083,10 +1085,12 @@ class RuntimeBot:
                 matched_prefix = prefix
                 break
 
-        if matched_prefix is None:
+        if isinstance(event, PlatformCommandEvent):
+            command_text = f'{event.command_name} {event.command_args}'.strip()
+        elif matched_prefix is None:
             return None
-
-        command_text = full_command_text[len(matched_prefix) :].strip()
+        else:
+            command_text = full_command_text[len(matched_prefix) :].strip()
         if not command_text:
             return None
 
@@ -2153,6 +2157,18 @@ class RuntimeBot:
             platform_events.EBAEvent,
             tenant_scoped_listener(on_eba_event),
         )
+        if isinstance(self.adapter, PlatformCommandRegistrar):
+
+            async def sync_commands():
+                try:
+                    await self.ap.bot_service.sync_platform_commands(self.execution_context, self.bot_entity.uuid)
+                except Exception as exc:
+                    await self.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
+
+            settings = self.bot_entity.command_settings or {}
+            self.adapter.configure_platform_commands(
+                settings.get('prefixes', ['/'])[0], tenant_scoped_listener(sync_commands)
+            )
 
     async def run(self):
         async def exception_wrapper():
@@ -2783,15 +2799,42 @@ class PlatformManager:
                 self._pop_runtime_bot(key)
 
     def get_available_adapters_info(self) -> list[dict]:
-        return [
-            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'websocket'
-        ]
+        result = []
+        for component in self.adapter_components:
+            if component.metadata.name == 'websocket':
+                continue
+            item = component.to_plain_dict()
+            adapter_class = self.adapter_dict.get(component.metadata.name)
+            if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                item['spec']['command_registration'] = dataclasses.asdict(
+                    adapter_class.command_registration_capability()
+                )
+            result.append(item)
+        return result
+
+    async def sync_workspace_commands(self, context):
+        for bot in tuple(self.bots):
+            if (
+                bot.workspace_uuid == context.workspace_uuid
+                and bot.placement_generation == context.placement_generation
+                and isinstance(bot.adapter, PlatformCommandRegistrar)
+            ):
+                try:
+                    await self.ap.bot_service.sync_platform_commands(context, bot.bot_entity.uuid)
+                except Exception as exc:
+                    self.ap.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
         name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
-                return component.to_plain_dict()
+                item = component.to_plain_dict()
+                adapter_class = self.adapter_dict.get(name)
+                if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                    item['spec']['command_registration'] = dataclasses.asdict(
+                        adapter_class.command_registration_capability()
+                    )
+                return item
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:

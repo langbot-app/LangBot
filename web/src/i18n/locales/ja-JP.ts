@@ -902,6 +902,27 @@ const jaJP = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'プラットフォームに登録',
+      overwrite:
+        '手動設定を含む既存の全コマンドを置き換えます。無効にすると登録済みリストを消去します。',
+      limits:
+        '最大 {{count}} コマンド、説明は {{length}} 文字まで。名前の規則：',
+      prefixWarning:
+        '/ 接頭辞がありません。Telegram のメニューコマンドは一致しませんが、Discord の操作は実行できます。',
+      failed: '同期に失敗しました',
+      synced: '最終同期：{{time}}',
+      notSynced: '未同期',
+      sync: '今すぐ同期',
+      saveFirst: '同期前にボット設定を保存してください。',
+      reasons: {
+        invalid_name: '無効なコマンド名',
+        invalid_description: '説明が空または長すぎます',
+        invalid_localized_description: '翻訳された説明が長すぎます',
+        command_limit: 'コマンド数の上限を超えています',
+        unavailable: 'コマンドは利用できません',
+      },
+    },
     pluginCommands: {
       missingProcessor: 'プロセッサーが見つかりません',
       instanceHint: '設定済みプロセッサーを紐付けます。',

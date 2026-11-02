@@ -343,6 +343,7 @@ export interface Adapter {
     help_links?: Record<string, string>;
     supported_events?: string[];
     supported_apis?: string[];
+    command_registration?: PlatformCommandCapability;
     config: IDynamicFormItemSchema[];
   };
 }
@@ -365,6 +366,11 @@ export interface Bot {
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
   command_settings?: BotCommandSettings;
+  platform_command_sync?: PlatformCommandSync;
+  platform_command_registration?: {
+    rejected?: { name: string; reason: string }[];
+    error?: string;
+  };
   created_at?: string;
   updated_at?: string;
   adapter_runtime_values?: object;
@@ -392,6 +398,23 @@ export interface BotCommandSettings {
   enabled: boolean;
   prefixes: string[];
   processors: BotCommandProcessorBinding[];
+  platform_commands?: { enabled: boolean; selected: string[] };
+}
+
+export interface PlatformCommandCapability {
+  max_commands: number;
+  name_pattern: string;
+  description_max_length: number;
+  multilingual: boolean;
+  scopes: boolean;
+  lowercase?: boolean;
+}
+
+export interface PlatformCommandSync {
+  synced_at?: string;
+  error?: string | null;
+  skipped?: boolean;
+  rejected?: { name: string; reason: string }[];
 }
 
 export interface PluginProcessorBinding {

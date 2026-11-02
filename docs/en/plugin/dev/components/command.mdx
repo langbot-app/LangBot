@@ -240,6 +240,39 @@ A single command is triggered **concurrently by several conversations**:
 
 See [Certified plugins and shared runtime](/en/plugin/certified-plugins) for the full specification.
 
+## Platform command menus
+
+In the bot's **Plugin commands** section, enable **Register on platform** and select
+commands from its enabled command processor instances. Save the bot before using
+**Sync now**. Registration replaces the entire platform list, including manually
+configured commands. Disabling it clears the previously managed lists. Other adapters
+do not expose this panel.
+
+The effective list follows processor priority: the first plugin providing a command
+name wins. Descriptions come from `metadata.description` in the Workspace language,
+with localized variants registered where supported. Invalid names or descriptions
+are excluded with a reason shown in the panel. Telegram allows 100 commands, names
+matching `[a-z0-9_]{1,32}`, and descriptions of 1–256 characters. Discord allows 100
+global chat-input commands, names of 1–32 characters using its Unicode naming rules,
+and descriptions of 1–100 characters. Discord commands have one optional string
+argument, `args`.
+
+Telegram commands use normal incoming messages; include `/` in the bot prefixes.
+Discord interactions are deferred before dispatch and converted to `message.received`,
+with prefix validation bypassed. Replies use interaction followups.
+
+Menus synchronize on bot startup, settings saves, and plugin changes. Unchanged
+payloads skip remote writes. `GET /api/v1/platform/bots/{uuid}` returns
+`platform_command_sync` and filtering diagnostics. The `resource.manage` endpoint
+`POST /api/v1/bots/{uuid}/platform-commands/sync` and MCP tool
+`sync_bot_platform_commands` synchronize saved settings. This release registers
+Telegram's default scope and Discord's global command scope.
+
+Limits: [Telegram BotCommand](https://core.telegram.org/bots/api#botcommand),
+[setMyCommands](https://core.telegram.org/bots/api#setmycommands),
+[Discord application commands](https://docs.discord.com/developers/interactions/application-commands),
+[Discord interaction responses](https://docs.discord.com/developers/interactions/receiving-and-responding).
+
 ## What's Next
 
 You have learned the basic information about command registration and command execution. Next, you can:

@@ -342,6 +342,13 @@ class LangBotMCPServer:
             )
 
         # ----- Bots ---------------------------------------------------- #
+        @mcp.tool(
+            description='Synchronize a running Telegram or Discord bot command menu from its saved command_settings.platform_commands selection. Overwrites the entire platform command list; disabling registration clears previously managed commands. Returns sync time, errors, filtered commands and hash deduplication status.'
+        )
+        async def sync_bot_platform_commands(bot_uuid: str) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(await ap.bot_service.sync_platform_commands(context, bot_uuid))
+
         @mcp.tool(description='List all messaging-platform bots. Secrets are redacted.')
         async def list_bots() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
@@ -361,6 +368,7 @@ class LangBotMCPServer:
                 'Subscriptions run independently of each other and of event_bindings. '
                 'command_settings is an object: {enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]} '
                 'binding command_processor instances in priority order (message.received only). '
+                'Optional platform_commands: {enabled: bool, selected: [command_name]} registers Telegram/Discord menus and overwrites platform commands. '
                 'Returns the new bot UUID.'
             )
         )
@@ -375,6 +383,7 @@ class LangBotMCPServer:
                 'command_settings replaces the bot command settings with '
                 '{enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]}; '
                 'processors are command_processor instances, at most one per plugin, in priority order. '
+                'Include platform_commands: {enabled: bool, selected: [command_name]} to register Telegram/Discord menus; disabling clears the registered list. '
                 'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes.'
             )
         )
