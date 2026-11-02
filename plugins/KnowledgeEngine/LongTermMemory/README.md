@@ -122,6 +122,8 @@ This plugin intentionally stays close to LangBot's existing extension points ins
 - Pipeline event-based automatic injection still requires attaching this plugin's KnowledgeEngine.
 - The plugin currently assumes a single memory KB per plugin instance and isolates memory by metadata
 
+Tool access uses the Host-provided session identity and the existing authorized Host tool API. LocalAgent calls that API directly; external runners can expose it through their LangBot asset gateway. Authorizing memory tools does not enable the Pipeline lifecycle hooks: automatic prompt injection and response-based candidate extraction still use the existing Pipeline event listeners.
+
 The current implementation is built around the existing LangBot and SDK APIs. If LangBot later adds more explicit memory-oriented APIs, session identity APIs, or KB registration APIs, the plugin could be simplified, but the current architecture would still remain valid.
 
 ### Vector Database Backend Compatibility
