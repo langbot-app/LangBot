@@ -1,0 +1,37 @@
+name: message_trigger
+label:
+  en_US: Message Trigger
+  zh_Hans: 消息触发
+category: trigger
+icon: MessageSquare
+color: '#22c55e'
+description:
+  en_US: Trigger workflow when a message is received
+  zh_Hans: 当收到消息时触发工作流
+inputs: []
+outputs:
+- name: message
+  type: string
+  label:
+    en_US: Message
+    zh_Hans: 消息
+  description:
+    en_US: Received message text
+    zh_Hans: 收到的消息文本
+- name: sender_id
+  type: string
+  label:
+    en_US: Sender
+    zh_Hans: 发送者
+  description:
+    en_US: Message sender information
+    zh_Hans: 消息发送者信息
+- name: context
+  type: object
+  label:
+    en_US: Context
+    zh_Hans: 上下文
+  description:
+    en_US: Message context information
+    zh_Hans: 消息上下文信息
+config: []

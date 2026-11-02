@@ -120,11 +120,20 @@ export function SidebarDataProvider({
   const refreshPipelines = useCallback(async () => {
     const requestId = ++refreshRequestIds.current.pipelines;
     try {
-      const resp = await httpClient.getAgents();
+      const [resp, workflowResp] = await Promise.all([
+        httpClient.getAgents(),
+        httpClient.getWorkflows(),
+      ]);
       if (requestId !== refreshRequestIds.current.pipelines) return;
       setQuotaResourceLoaded('pipelines', true);
       setPipelines(
-        resp.agents.map((p) => ({
+        [
+          ...resp.agents,
+          ...workflowResp.workflows.map((workflow) => ({
+            ...workflow,
+            kind: 'workflow' as const,
+          })),
+        ].map((p) => ({
           id: p.uuid || '',
           name: p.name,
           description: p.description,

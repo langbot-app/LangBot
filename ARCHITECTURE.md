@@ -31,6 +31,14 @@ This split matters. If a change modifies SDK entities, component APIs, action pr
 
 ## Startup Path
 
+Workflows are a fourth processor kind alongside Pipeline, Agent and plugin event
+processors. `Bot.event_bindings` selects a Workspace-owned workflow for message
+events. `WorkflowService` creates a fresh executor for each run and persists its
+node records; `WorkflowRuntime` carries the Workspace execution context and the
+receiving adapter's senders. Manual HTTP/MCP runs require runtime-operation
+permission and collect replies without sending through a bot. See
+`docs/development/workflow-system.md` for the runtime and persistence boundaries.
+
 The process entrypoint is small and layered:
 
 1. `main.py` delegates to `langbot.__main__.main()`.

@@ -1,0 +1,49 @@
+---
+title: "Workflows"
+description: "Build a message-event processor from connected workflow nodes."
+---
+
+Workflows are processors, alongside Pipelines, Agents and plugin processors.
+A bot's event routes decide which processor receives each event. Workflows
+currently handle message events only.
+
+## Create and connect
+
+1. Open **Processors**, choose **Create**, and select **Workflow**.
+2. Name the workflow and open its editor.
+3. Add **Message Trigger**, **Condition** and **Reply Message** nodes. Set the
+   condition expression to `True` and the reply template to `Echo {{input}}`.
+4. Connect the trigger's `message` data output to the condition's `input`, then
+   the condition's `true` output to the reply's `input`. Connect the control
+   ports in the same order. Save the definition.
+5. Open the bot's **Event Routes**. Add a `message.received` route, choose the
+   workflow as its target, and save the bot.
+
+You can replace the condition with **LLM Call**, select a model from the current
+Workspace, and connect its response to **Reply Message**. Knowledge bases and
+rerank models must belong to the same Workspace.
+
+## Test and inspect
+
+The **Test run** panel accepts a message and a private/group conversation type.
+It displays collected replies and persisted execution details, including each
+node's inputs, outputs and errors. These runs do not deliver messages through
+a bot. Use a real bot message to verify adapter delivery; **Send Message** needs
+that bot context.
+
+The **Executions** tab lists recent runs and lets you inspect node records.
+Changes to a definition create version history. Enable or disable the workflow
+in its configuration. A disabled workflow cannot receive bot routes. Remove
+bot references before deleting it.
+
+## Available operations
+
+Nodes cover message input, LLM calls, classification, parameter extraction,
+conditions, switching, loops, iteration, merging, parallel branches, variables,
+transformation, execution-local memory, bounded waits, HTTP requests, replies,
+targeted sends and nested Workflow/Pipeline calls. HTTP requests cannot reach
+private network addresses or follow redirects. Nested workflow calls are limited
+to eight levels. Automatic retries are off by default to avoid duplicate sends.
+
+Viewing requires resource-view permission, editing requires resource-management
+permission, and test runs require runtime-operation permission.

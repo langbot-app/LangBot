@@ -356,6 +356,7 @@ function targetTypeLabel(
   t: TFunction,
 ) {
   if (type === 'pipeline') return t('bots.targetPipeline');
+  if (type === 'workflow') return t('workflows.title');
   if (type === 'discard') return t('bots.targetDiscard');
   return t('bots.targetAgent');
 }
@@ -511,6 +512,21 @@ function TargetCombobox({
   const [creating, setCreating] = useState(false);
   const { refreshPipelines } = useSidebarData();
   const pipelineAllowed = isMessageEventPattern(binding.event_pattern);
+  const [workflows, setWorkflows] = useState<
+    Array<{ uuid: string; name: string }>
+  >([]);
+  useEffect(() => {
+    backendClient
+      .getWorkflows()
+      .then((result) =>
+        setWorkflows(
+          result.workflows
+            .filter((workflow) => workflow.uuid)
+            .map((workflow) => ({ uuid: workflow.uuid!, name: workflow.name })),
+        ),
+      )
+      .catch(() => setWorkflows([]));
+  }, []);
   const targetType = binding.target_type || 'agent';
   const selectedTarget =
     targetType !== 'discard'
@@ -533,6 +549,11 @@ function TargetCombobox({
     : [];
 
   function currentLabel() {
+    if (targetType === 'workflow')
+      return (
+        workflows.find((workflow) => workflow.uuid === binding.target_uuid)
+          ?.name || binding.target_uuid
+      );
     if (targetType === 'discard')
       return (
         <span className="flex items-center gap-1.5 text-destructive">
@@ -624,6 +645,22 @@ function TargetCombobox({
                       {current === encodeTarget('pipeline', a.uuid || '') && (
                         <Check className="ml-auto size-3.5 shrink-0" />
                       )}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              )}
+              {pipelineAllowed && workflows.length > 0 && (
+                <CommandGroup heading={t('workflows.title')}>
+                  {workflows.map((workflow) => (
+                    <CommandItem
+                      key={workflow.uuid}
+                      value={`workflow:${workflow.uuid}:${workflow.name}`}
+                      onSelect={() =>
+                        select(encodeTarget('workflow', workflow.uuid))
+                      }
+                    >
+                      <Workflow className="mr-2 size-3.5" />
+                      {workflow.name}
                     </CommandItem>
                   ))}
                 </CommandGroup>

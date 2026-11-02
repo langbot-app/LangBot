@@ -1,0 +1,31 @@
+name: parallel
+label:
+  en_US: Parallel
+  zh_Hans: 并行执行
+category: control
+icon: Layers
+color: '#8b5cf6'
+description:
+  en_US: Execute multiple branches in parallel
+  zh_Hans: 并行执行多个分支
+inputs:
+- name: input
+  type: any
+  label:
+    en_US: Input
+    zh_Hans: 输入
+  description:
+    en_US: Input data for all branches
+    zh_Hans: 所有分支的输入数据
+outputs:
+- name: results
+  type: object
+  label:
+    en_US: Results
+    zh_Hans: 结果
+- name: errors
+  type: array
+  label:
+    en_US: Errors
+    zh_Hans: 错误
+config: []

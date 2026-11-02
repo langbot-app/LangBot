@@ -183,6 +183,7 @@ const getFormSchema = (t: (key: string) => string) =>
             'agent',
             'pipeline',
             'event_processor',
+            'workflow',
             'discard',
           ]),
           target_uuid: z.string(),

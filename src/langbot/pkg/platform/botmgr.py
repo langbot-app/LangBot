@@ -446,7 +446,9 @@ class RuntimeBot:
                         family='event_route',
                         operation=event_type,
                         adapter=type(getattr(self, 'adapter', None)).__name__,
-                        mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
+                        mode=target_type
+                        if target_type in {'pipeline', 'agent', 'event_processor', 'workflow'}
+                        else 'none',
                         outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
                         node=node,
                     )
@@ -1222,6 +1224,8 @@ class RuntimeBot:
                 target_uuid=event_binding.get('target_uuid'),
                 text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
             )
+        if target_type == 'workflow':
+            return await self._dispatch_eba_workflow(event, adapter, event_binding)
         if target_type not in {'agent', 'event_processor'}:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1403,6 +1407,70 @@ class RuntimeBot:
 
         except Exception as e:
             await self.logger.error(f'Failed to record discarded message: {e}')
+
+    async def _dispatch_eba_workflow(self, event, adapter, binding):
+        from ..api.http.service.workflow import WorkflowExecutionFailedError
+        from ..telemetry import trace as trace_mod
+        from ..workflow.entities import MessageContext
+        from ..workflow.runtime import WorkflowRuntime
+        from .processing_indicator import processing_indicator
+
+        target_uuid = binding.get('target_uuid')
+        failure_code = None
+        reason = None
+        if not isinstance(event, platform_events.MessageReceivedEvent):
+            failure_code, reason = 'processor_incompatible', 'Workflow targets only support message events'
+        else:
+            workflow = await self.ap.workflow_service.get_workflow(self.execution_context, target_uuid)
+            if not workflow or not workflow.get('is_enabled', True):
+                failure_code, reason = 'processor_not_found', 'Workflow not found or disabled'
+        if failure_code is None:
+            reply_type, reply_id, _ = self._infer_reply_target(event)
+
+            async def reply_sender(chain, quote):
+                await adapter.reply_message(event.to_legacy_event(), chain, quote_origin=quote)
+
+            runtime = WorkflowRuntime(self.execution_context, reply_sender, adapter.send_message)
+            message_context = MessageContext(
+                message_id=str(event.message_id),
+                message_content=''.join(
+                    part.text for part in event.message_chain if isinstance(part, platform_message.Plain)
+                ),
+                sender_id=str(event.sender.id),
+                sender_name=event.sender.nickname or '',
+                platform=type(adapter).__name__,
+                conversation_id=reply_id or '',
+                is_group=reply_type == 'group',
+                group_id=reply_id if reply_type == 'group' else None,
+            )
+            try:
+                with trace_mod.scope(route_ref=self._route_ref(binding)):
+                    async with processing_indicator(adapter, reply_type, reply_id):
+                        await self.ap.workflow_service.execute_workflow(
+                            self.execution_context,
+                            target_uuid,
+                            trigger_type='message',
+                            trigger_data=event.model_dump(
+                                mode='json', exclude={'source_platform_object', 'legacy_event'}
+                            ),
+                            message_context=message_context,
+                            session_id=f'{reply_type}_{reply_id}',
+                            user_id=str(event.sender.id),
+                            runtime=runtime,
+                        )
+            except WorkflowExecutionFailedError as exc:
+                failure_code, reason = 'runner_failed', str(exc)
+        return await self._record_event_route_trace(
+            event_type=event.type,
+            status='failed' if failure_code else 'delivered',
+            level='warning' if failure_code else 'info',
+            binding=binding,
+            target_type='workflow',
+            target_uuid=target_uuid,
+            failure_code=failure_code,
+            reason=reason,
+            text=reason or f'Event {event.type} delivered to Workflow {target_uuid}',
+        )
 
     async def _handle_legacy_message_event(
         self,

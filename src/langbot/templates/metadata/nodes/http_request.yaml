@@ -1,0 +1,90 @@
+name: http_request
+label:
+  en_US: HTTP Request
+  zh_Hans: HTTP 请求
+category: action
+icon: Globe
+color: '#10b981'
+description:
+  en_US: Make HTTP requests to external APIs
+  zh_Hans: 向外部 API 发送 HTTP 请求
+inputs:
+- name: body
+  type: any
+  required: false
+  label:
+    en_US: Body
+    zh_Hans: 请求体
+  description:
+    en_US: Request body data
+    zh_Hans: 请求体数据
+outputs:
+- name: response
+  type: any
+  label:
+    en_US: Response
+    zh_Hans: 响应
+  description:
+    en_US: Response body
+    zh_Hans: 响应体
+- name: status_code
+  type: number
+  label:
+    en_US: Status Code
+    zh_Hans: 状态码
+  description:
+    en_US: HTTP status code
+    zh_Hans: HTTP 状态码
+- name: headers
+  type: object
+  label:
+    en_US: Headers
+    zh_Hans: 响应头
+  description:
+    en_US: Response headers
+    zh_Hans: 响应头
+config:
+- name: method
+  type: select
+  required: true
+  default: GET
+  options:
+  - GET
+  - POST
+  - PUT
+  - PATCH
+  - DELETE
+  label:
+    en_US: Method
+    zh_Hans: 方法
+  description:
+    en_US: HTTP method
+    zh_Hans: HTTP 方法
+- name: url
+  type: string
+  required: true
+  default: ''
+  label:
+    en_US: URL
+    zh_Hans: URL
+  description:
+    en_US: Request URL
+    zh_Hans: 请求 URL
+- name: headers
+  type: json
+  default: {}
+  label:
+    en_US: Headers
+    zh_Hans: 请求头
+  description:
+    en_US: Request headers as JSON
+    zh_Hans: 请求头（JSON 格式）
+- name: timeout
+  type: integer
+  default: 30
+  label:
+    en_US: Timeout (seconds)
+    zh_Hans: 超时时间（秒）
+  description:
+    en_US: Request timeout in seconds
+    zh_Hans: 请求超时时间（秒）

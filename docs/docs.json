@@ -620,6 +620,7 @@
                 "pages": [
                   "en/usage/models/readme",
                   "en/usage/pipelines/readme",
+                  "en/usage/workflows",
                   {
                     "group": "Agent Platforms",
                     "pages": [
@@ -928,6 +929,7 @@
                 "pages": [
                   "zh/usage/models/readme",
                   "zh/usage/pipelines/readme",
+                  "zh/usage/workflows",
                   {
                     "group": "Agent 平台",
                     "pages": [

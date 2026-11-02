@@ -1,0 +1,41 @@
+name: switch
+label:
+  en_US: Switch
+  zh_Hans: 多路分支
+category: control
+icon: Split
+color: '#8b5cf6'
+description:
+  en_US: Branch workflow based on multiple cases
+  zh_Hans: 根据多个条件分支工作流
+inputs:
+- name: input
+  type: any
+  label:
+    en_US: Input
+    zh_Hans: 输入
+  description:
+    en_US: Value to switch on
+    zh_Hans: 用于切换的值
+outputs:
+- name: matched_case
+  type: any
+  label:
+    en_US: Matched case
+    zh_Hans: 命中分支
+- name: default
+  type: any
+  label:
+    en_US: Default
+    zh_Hans: 默认
+config:
+- name: cases
+  type: json
+  required: true
+  default: []
+  label:
+    en_US: Cases
+    zh_Hans: 情况
+  description:
+    en_US: Define cases as JSON array
+    zh_Hans: 使用 JSON 数组定义情况

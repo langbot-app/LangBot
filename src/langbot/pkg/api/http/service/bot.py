@@ -158,7 +158,7 @@ class BotService:
             return target_kind
         if target_type == 'discard':
             return 'discard'
-        if target_type in {'agent', 'pipeline', 'event_processor'}:
+        if target_type in {'agent', 'pipeline', 'event_processor', 'workflow'}:
             return str(target_type)
         return None
 
@@ -442,6 +442,25 @@ class BotService:
                 diagnostic_steps=diagnostic_steps,
             )
 
+        if target_type == 'workflow':
+            workflow = await self.ap.workflow_service.get_workflow(tenant_context, target_uuid)
+            compatible = RuntimeBot._is_message_event_type(event_type)
+            found = bool(workflow and workflow.get('is_enabled', True))
+            return self._diagnostic_result(
+                matched=found and compatible,
+                binding=selected_binding,
+                target_name=workflow.get('name') if workflow else None,
+                failure_code=(
+                    self.FAILURE_PROCESSOR_NOT_FOUND
+                    if not found
+                    else self.FAILURE_PROCESSOR_INCOMPATIBLE
+                    if not compatible
+                    else None
+                ),
+                reason='Workflow route matched' if found and compatible else 'Workflow unavailable or incompatible',
+                diagnostic_steps=diagnostic_steps,
+            )
+
         if target_type in {'agent', 'event_processor'}:
             agent = await self._get_agent_entity(tenant_context, target_uuid)
             if agent is None or getattr(agent, 'kind', 'agent') != target_type:
@@ -594,6 +613,11 @@ class BotService:
                 )
                 if result.first() is None:
                     raise ValueError('Pipeline not found')
+            elif target_type == 'workflow':
+                if not self._is_message_event_pattern(event_pattern):
+                    raise ValueError('Workflow can only be bound to message.received')
+                if await self.ap.workflow_service.get_workflow(context, target_uuid) is None:
+                    raise ValueError('Workflow not found')
             elif target_type == 'agent':
                 result = await self.ap.persistence_mgr.execute_async(
                     scope_statement(

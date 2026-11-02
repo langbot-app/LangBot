@@ -18,6 +18,7 @@ import MonitoringPage from '@/app/home/monitoring/page';
 import BotsPage from '@/app/home/bots/page';
 import AgentsPage from '@/app/home/agents/page';
 import PipelinesPage from '@/app/home/pipelines/page';
+import WorkflowsPage from '@/app/home/workflows/page';
 import PluginsPage from '@/app/home/plugins/page';
 import AddExtensionPage from '@/app/home/add-extension/page';
 import MCPPage from '@/app/home/mcp/page';
@@ -131,6 +132,16 @@ export const router = createBrowserRouter([
           <Suspense fallback={<Loading />}>
             <HomeLayout>
               <PipelinesPage />
+            </HomeLayout>
+          </Suspense>
+        ),
+      },
+      {
+        path: '/home/workflows',
+        element: (
+          <Suspense fallback={<Loading />}>
+            <HomeLayout>
+              <WorkflowsPage />
             </HomeLayout>
           </Suspense>
         ),

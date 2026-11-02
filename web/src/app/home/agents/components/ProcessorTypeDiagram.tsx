@@ -459,6 +459,26 @@ function RunnerDiagram() {
 }
 
 export default function ProcessorTypeDiagram({ kind }: { kind: AgentKind }) {
+  const { t } = useTranslation();
+  if (kind === 'workflow')
+    return (
+      <div
+        className="flex h-full items-center justify-center gap-3 p-6"
+        data-testid="workflow-diagram"
+      >
+        <span className="rounded border p-3">
+          {t('workflows.nodes.messageTrigger')}
+        </span>
+        <span aria-hidden="true">→</span>
+        <span className="rounded border p-3">
+          {t('workflows.nodes.condition')}
+        </span>
+        <span aria-hidden="true">→</span>
+        <span className="rounded border p-3">
+          {t('workflows.nodes.replyMessage')}
+        </span>
+      </div>
+    );
   if (kind === 'event_processor') return <RunnerDiagram />;
   return kind === 'agent' ? <AgentDiagram /> : <PipelineDiagram />;
 }

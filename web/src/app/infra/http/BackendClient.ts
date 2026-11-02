@@ -81,6 +81,15 @@ import {
   RagMigrationStatusResp,
   ApiRespTools,
   ApiRespToolDetail,
+  ApiRespWorkflows,
+  ApiRespWorkflow,
+  ApiRespWorkflowNodeTypes,
+  ApiRespWorkflowExecutions,
+  ApiRespWorkflowExecution,
+  ApiRespWorkflowVersions,
+  Workflow,
+  CreateWorkflowRequest,
+  UpdateWorkflowRequest,
   Skill,
   ApiRespSkills,
   ApiRespSkill,
@@ -2565,6 +2574,81 @@ export class BackendClient extends BaseHttpClient {
     }>;
   }): Promise<object> {
     return this.post('/api/v1/survey/feedback', data);
+  }
+
+  public getWorkflows(
+    sortBy?: string,
+    sortOrder?: string,
+  ): Promise<ApiRespWorkflows> {
+    const params = new URLSearchParams();
+    if (sortBy) params.set('sort_by', sortBy);
+    if (sortOrder) params.set('sort_order', sortOrder);
+    return this.get(`/api/v1/workflows?${params}`);
+  }
+  public getWorkflow(uuid: string): Promise<ApiRespWorkflow> {
+    return this.get(`/api/v1/workflows/${uuid}`);
+  }
+  public createWorkflow(
+    workflow: CreateWorkflowRequest,
+  ): Promise<{ uuid: string }> {
+    return this.post('/api/v1/workflows', workflow);
+  }
+  public updateWorkflow(
+    uuid: string,
+    workflow: UpdateWorkflowRequest,
+  ): Promise<object> {
+    return this.put(`/api/v1/workflows/${uuid}`, workflow);
+  }
+  public deleteWorkflow(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/workflows/${uuid}`);
+  }
+  public copyWorkflow(uuid: string): Promise<{ uuid: string }> {
+    return this.post(`/api/v1/workflows/${uuid}/copy`);
+  }
+  public getWorkflowVersions(uuid: string): Promise<ApiRespWorkflowVersions> {
+    return this.get(`/api/v1/workflows/${uuid}/versions`);
+  }
+  public rollbackWorkflow(uuid: string, version: number): Promise<object> {
+    return this.post(`/api/v1/workflows/${uuid}/rollback`, { version });
+  }
+  public runWorkflow(
+    uuid: string,
+    input: { message: string; session_type: 'person' | 'group' },
+  ): Promise<{
+    execution_uuid: string;
+    status: string;
+    replies: string[];
+    error?: string;
+  }> {
+    return this.post(`/api/v1/workflows/${uuid}/run`, input);
+  }
+  public getWorkflowExecutions(
+    uuid: string,
+    limit = 50,
+    offset = 0,
+  ): Promise<ApiRespWorkflowExecutions> {
+    return this.get(
+      `/api/v1/workflows/${uuid}/executions?limit=${limit}&offset=${offset}`,
+    );
+  }
+  public getWorkflowExecution(
+    workflowUuid: string,
+    executionUuid: string,
+  ): Promise<ApiRespWorkflowExecution> {
+    return this.get(
+      `/api/v1/workflows/${workflowUuid}/executions/${executionUuid}`,
+    );
+  }
+  public getWorkflowNodeTypes(): Promise<ApiRespWorkflowNodeTypes> {
+    return this.get('/api/v1/workflows/_/node-types');
+  }
+  public toggleWorkflow(uuid: string, enabled: boolean): Promise<object> {
+    return this.updateWorkflow(uuid, { is_enabled: enabled });
+  }
+  public getWorkflowStats(
+    uuid: string,
+  ): Promise<{ stats: Record<string, number> }> {
+    return this.get(`/api/v1/workflows/${uuid}/stats`);
   }
 
   // ============ Skills API ============
