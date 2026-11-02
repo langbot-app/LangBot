@@ -8,7 +8,7 @@ Long-term memory plugin for LangBot with a dual-layer design:
 ## What It Does
 
 - Exposes a `remember` tool for episodic memory writes
-- Exposes a `recall_memory` tool for active episodic memory lookup with controlled filters
+- Exposes a `recall_memory` tool to read session/speaker profiles and look up episodic memories with controlled filters
 - Exposes an `update_profile` tool for stable profile updates
 - Exposes a `forget` tool for agent-initiated deletion of specific episodic memories
 - Injects profile memory and current speaker identity through an EventListener
@@ -118,8 +118,11 @@ This plugin intentionally stays close to LangBot's existing extension points ins
 
 - L1 profile is stored in plugin storage as JSON
 - L2 episodic memory is stored in the vector database
-- Memory retrieval is enabled per pipeline by attaching this plugin's KnowledgeEngine
+- Agent processors access memory by authorizing this plugin's tools; attaching the memory KB to a Pipeline is not required.
+- Pipeline event-based automatic injection still requires attaching this plugin's KnowledgeEngine.
 - The plugin currently assumes a single memory KB per plugin instance and isolates memory by metadata
+
+Tool access uses the Host-provided session identity and the existing authorized Host tool API. LocalAgent calls that API directly; external runners can expose it through their LangBot asset gateway. Authorizing memory tools does not enable the Pipeline lifecycle hooks: automatic prompt injection and response-based candidate extraction still use the existing Pipeline event listeners.
 
 The current implementation is built around the existing LangBot and SDK APIs. If LangBot later adds more explicit memory-oriented APIs, session identity APIs, or KB registration APIs, the plugin could be simplified, but the current architecture would still remain valid.
 
@@ -287,12 +290,17 @@ That is intentional:
    - `isolation`
    - optional `recency_half_life_days`
    - optional `auto_recall_top_k`
-4. Let the agent use:
+4. Authorize these tools in the Agent processor or Pipeline:
    - `remember` for events, plans, and episodic facts
-   - `recall_memory` for active memory lookup when automatic recall is insufficient
+   - `recall_memory` to read the current session/speaker profiles and search episodic memory
    - `update_profile` for stable preferences and profile data
    - `forget` to delete a specific episodic memory by ID
-5. Run `!memory health` in a pipeline that includes the memory KB. Treat `ERROR` as a setup problem before relying on scoped recall.
+
+   `recall_memory` returns a JSON object containing `session_profile`, `speaker_profile`
+   (formatted profile text), and `episodes`. Tools use the Host-provided bot, chat,
+   and current-speaker identity. They do not require a Pipeline-bound Query.
+
+5. Run the Memory Console health check before relying on scoped recall. For Pipeline automatic injection, also attach the memory KB and run `!memory health` in that Pipeline.
 6. Use `!memory`, `!memory profile`, `!memory search <query>`, `!memory list [page]`, `!memory forget <id>`, `!memory export`, and `!memory consolidate preview` to inspect behavior. `!memory list` and `!memory search` show active episodes by default; add `--include-superseded`, `--include-archived`, or `--status <status>` when explicitly inspecting hidden lifecycle states.
 
 ## Episode Lifecycle
