@@ -193,6 +193,7 @@ class Memory(Command):
 
         return {
             "enabled": bool(config.get("consolidation_enabled", False)),
+            "summary_model_uuid": str(config.get("consolidation_model_uuid", "") or ""),
             "min_age_days": max(0, as_int("consolidation_min_age_days", 7)),
             "max_candidates": max(1, min(100, as_int("consolidation_max_candidates", 20))),
             "apply_profile_updates": bool(
@@ -209,10 +210,21 @@ class Memory(Command):
         lines.append(f"Will archive: {len(archive_ids)}")
         if candidate_ids:
             lines.append("Candidate IDs: " + ", ".join(candidate_ids))
+        if preview.get("proposal_id"):
+            lines.append("Derived claim type: inference. Check the summary against every source; citations do not prove correctness.")
+            for source in preview.get("source_records", []):
+                lines.append(
+                    f"Source {source['id']} (speaker={source['sender_id']}, written_at={source['timestamp']}, "
+                    f"event_at={source.get('event_at', '')}, valid_from={source.get('valid_from', '')}, "
+                    f"valid_until={source.get('valid_until', '')}, claim_type={source.get('claim_type', 'unknown')}, "
+                    f"source_ref={source.get('source_ref', '')}): {source['content']}"
+                )
         if preview.get("summary_episode"):
             lines.append(f"Summary episode: {preview['summary_episode']}")
         else:
             lines.append("Summary episode: (none)")
+        if preview.get("proposal_id"):
+            lines.append(f"After reviewing sources and summary: !memory consolidate run {preview['proposal_id']}")
         profile_updates = preview.get("profile_updates", [])
         lines.append(f"Profile updates: {len(profile_updates)}")
         for note in preview.get("risk_notes", []):
@@ -1013,7 +1025,7 @@ class Memory(Command):
         @self.subcommand(
             name="consolidate",
             help="Preview or run scoped memory consolidation",
-            usage="!memory consolidate preview|run",
+            usage="!memory consolidate preview|run [proposal_id]",
             aliases=[],
         )
         async def consolidate_cmd(
@@ -1024,10 +1036,10 @@ class Memory(Command):
             ctx = await self._build_runtime_context(self.plugin, context)
 
             if not context.crt_params or context.crt_params[0] not in {"preview", "run"}:
-                yield CommandReturn(text="Usage: !memory consolidate preview|run")
+                yield CommandReturn(text="Usage: !memory consolidate preview|run [proposal_id]")
                 return
-            if len(context.crt_params) > 1:
-                yield CommandReturn(text="Usage: !memory consolidate preview|run")
+            if len(context.crt_params) > 2 or (context.crt_params[0] == "preview" and len(context.crt_params) != 1):
+                yield CommandReturn(text="Usage: !memory consolidate preview|run [proposal_id]")
                 return
             if not ctx.kb_id or not await self._is_memory_kb_active(store, ctx.api, ctx.kb_id):
                 yield CommandReturn(
@@ -1039,13 +1051,19 @@ class Memory(Command):
             mode = context.crt_params[0]
 
             if mode == "preview":
-                preview = await store.preview_consolidation(
-                    collection_id=ctx.kb_id,
-                    user_key=ctx.user_key,
-                    min_age_days=cfg["min_age_days"],
-                    max_candidates=cfg["max_candidates"],
-                    apply_profile_updates=cfg["apply_profile_updates"],
-                )
+                semantic_args = {"summary_model_uuid": cfg["summary_model_uuid"]} if cfg["summary_model_uuid"] else {}
+                try:
+                    preview = await store.preview_consolidation(
+                        collection_id=ctx.kb_id,
+                        user_key=ctx.user_key,
+                        min_age_days=cfg["min_age_days"],
+                        max_candidates=cfg["max_candidates"],
+                        apply_profile_updates=cfg["apply_profile_updates"],
+                        **semantic_args,
+                    )
+                except ValueError as exc:
+                    yield CommandReturn(text=f"[Memory] {exc}")
+                    return
                 yield CommandReturn(text=self._format_consolidation_preview(preview))
                 return
 
@@ -1060,14 +1078,24 @@ class Memory(Command):
                 yield CommandReturn(text="[Memory] No embedding model configured.")
                 return
 
-            result = await store.apply_consolidation(
-                collection_id=ctx.kb_id,
-                embedding_model_uuid=embedding_model_uuid,
-                user_key=ctx.user_key,
-                min_age_days=cfg["min_age_days"],
-                max_candidates=cfg["max_candidates"],
-                apply_profile_updates=cfg["apply_profile_updates"],
-            )
+            proposal_id = context.crt_params[1] if len(context.crt_params) == 2 else ""
+            if cfg["summary_model_uuid"] and not proposal_id:
+                yield CommandReturn(text="[Memory] Semantic consolidation requires a reviewed proposal ID. Run preview, review the sources and summary, then run with its ID.")
+                return
+            semantic_args = {"proposal_id": proposal_id} if proposal_id else {}
+            try:
+                result = await store.apply_consolidation(
+                    collection_id=ctx.kb_id,
+                    embedding_model_uuid=embedding_model_uuid,
+                    user_key=ctx.user_key,
+                    min_age_days=cfg["min_age_days"],
+                    max_candidates=cfg["max_candidates"],
+                    apply_profile_updates=cfg["apply_profile_updates"],
+                    **semantic_args,
+                )
+            except ValueError as exc:
+                yield CommandReturn(text=f"[Memory] {exc}")
+                return
             archived_ids = result.get("archived_episode_ids", [])
             summary = result.get("summary_episode")
             for episode_id in archived_ids:

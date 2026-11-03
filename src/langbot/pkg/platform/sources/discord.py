@@ -659,33 +659,15 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                 text_string += ele.text
             elif isinstance(ele, platform_message.Voice):
                 file_bytes = None
-                filename = f'{uuid.uuid4()}.mp3'
+                filename = getattr(ele, 'name', '') or ''
                 if ele.base64:
-                    if ele.base64.startswith('data:'):
-                        data_header = ele.base64.split(',')[0]
-                        if 'wav' in data_header:
-                            filename = f'{uuid.uuid4()}.wav'
-                        elif 'mp3' in data_header:
-                            filename = f'{uuid.uuid4()}.mp3'
-                        elif 'ogg' in data_header:
-                            filename = f'{uuid.uuid4()}.ogg'
-                        elif 'm4a' in data_header:
-                            filename = f'{uuid.uuid4()}.m4a'
-                        elif 'aac' in data_header:
-                            filename = f'{uuid.uuid4()}.aac'
-                        elif 'flac' in data_header:
-                            filename = f'{uuid.uuid4()}.flac'
-                        elif 'alac' in data_header:
-                            filename = f'{uuid.uuid4()}.alac'
-                        elif 'opus' in data_header:
-                            filename = f'{uuid.uuid4()}.opus'
-                        elif 'webm' in data_header:
-                            filename = f'{uuid.uuid4()}.webm'
-
                     file_bytes = await asyncio.to_thread(
                         _decode_discord_base64_limited,
                         ele.base64,
                     )
+                elif getattr(ele, 'path', None):
+                    with open(ele.path, 'rb') as f:
+                        file_bytes = await asyncio.to_thread(f.read)
                 elif ele.url:
                     session = httpclient.get_session()
                     async with session.get(ele.url) as response:
@@ -694,6 +676,19 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
                             max_bytes=_MAX_DISCORD_MEDIA_BYTES,
                         )
                 if file_bytes:
+                    from langbot.pkg.utils import audio as audio_utils
+
+                    fmt = audio_utils.detect_audio_format(file_bytes)
+                    # If format is silk or amr, Discord client cannot decode it; transcode to mp3
+                    if fmt in ('silk', 'amr') and audio_utils.is_ffmpeg_available():
+                        try:
+                            file_bytes = await audio_utils.transcode_audio(file_bytes, 'mp3', fmt)
+                            fmt = 'mp3'
+                        except Exception:
+                            pass
+                    if not filename:
+                        ext = fmt if fmt != 'unknown' else 'mp3'
+                        filename = f'{uuid.uuid4()}.{ext}'
                     files.append(discord.File(fp=io.BytesIO(file_bytes), filename=filename))
             elif isinstance(ele, platform_message.File):
                 file_bytes = None
@@ -767,15 +762,67 @@ class DiscordMessageConverter(abstract_platform_adapter.AbstractMessageConverter
         for attachment in message.attachments:
             session = httpclient.get_session(trust_env=True)
             async with session.get(attachment.url) as response:
-                image_data = await httpclient.read_limited(
+                media_data = await httpclient.read_limited(
                     response,
                     max_bytes=_MAX_DISCORD_MEDIA_BYTES,
                 )
-                image_base64 = (await asyncio.to_thread(base64.b64encode, image_data)).decode('utf-8')
-                image_format = response.headers['Content-Type']
-                element_list.append(
-                    platform_message.Image(url=attachment.url, base64=f'data:{image_format};base64,{image_base64}')
+                media_base64 = (await asyncio.to_thread(base64.b64encode, media_data)).decode('utf-8')
+                content_type = response.headers.get('Content-Type') or getattr(attachment, 'content_type', None) or ''
+                filename = (getattr(attachment, 'filename', '') or '').lower()
+                flags = getattr(attachment, 'flags', None)
+                is_voice_flag = getattr(flags, 'voice', False) if flags else False
+
+                from langbot.pkg.utils import audio as audio_utils
+
+                detected_fmt = audio_utils.detect_audio_format(media_data)
+                is_audio = (
+                    is_voice_flag
+                    or content_type.startswith('audio/')
+                    or any(
+                        filename.endswith(ext)
+                        for ext in ('.mp3', '.ogg', '.oga', '.opus', '.wav', '.m4a', '.aac', '.flac', '.weba')
+                    )
+                    or detected_fmt in ('wav', 'mp3', 'ogg', 'opus', 'flac', 'silk', 'amr')
                 )
+
+                if is_audio:
+                    mime = (
+                        content_type
+                        if content_type.startswith('audio/')
+                        else (
+                            'audio/ogg'
+                            if detected_fmt in ('ogg', 'opus')
+                            else f'audio/{detected_fmt if detected_fmt != "unknown" else "mpeg"}'
+                        )
+                    )
+                    duration = getattr(attachment, 'duration_secs', None)
+                    if duration is not None:
+                        duration = int(round(duration))
+                    elif media_data:
+                        duration = int(round(audio_utils.estimate_audio_duration(media_data, detected_fmt)))
+                    element_list.append(
+                        platform_message.Voice(
+                            url=attachment.url,
+                            base64=f'data:{mime};base64,{media_base64}',
+                            length=duration,
+                        )
+                    )
+                elif content_type.startswith('image/') or any(
+                    filename.endswith(ext) for ext in ('.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.svg')
+                ):
+                    mime = content_type if content_type.startswith('image/') else 'image/png'
+                    element_list.append(
+                        platform_message.Image(url=attachment.url, base64=f'data:{mime};base64,{media_base64}')
+                    )
+                else:
+                    mime = content_type or 'application/octet-stream'
+                    element_list.append(
+                        platform_message.File(
+                            url=attachment.url,
+                            base64=f'data:{mime};base64,{media_base64}',
+                            name=getattr(attachment, 'filename', 'file'),
+                        )
+                    )
 
         return platform_message.MessageChain(element_list)
 

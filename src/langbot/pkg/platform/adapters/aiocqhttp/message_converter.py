@@ -99,7 +99,18 @@ class AiocqhttpMessageConverter(abstract_platform_adapter.AbstractMessageConvert
                 if file_arg:
                     target.append(aiocqhttp.MessageSegment.image(file_arg))
             elif isinstance(component, platform_message.Voice):
-                file_arg = AiocqhttpMessageConverter._file_arg(component)
+                file_arg = None
+                from ....utils import audio as audio_utils
+
+                if audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                    try:
+                        voice_bytes, src_fmt = await audio_utils.extract_voice_bytes(component)
+                        silk_bytes = await audio_utils.transcode_audio(voice_bytes, 'silk', src_fmt)
+                        file_arg = f'base64://{base64.b64encode(silk_bytes).decode("ascii")}'
+                    except Exception:
+                        pass
+                if not file_arg:
+                    file_arg = AiocqhttpMessageConverter._file_arg(component)
                 if file_arg:
                     target.append(aiocqhttp.MessageSegment.record(file_arg))
             elif isinstance(component, platform_message.File):

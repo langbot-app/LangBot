@@ -92,7 +92,7 @@ a pipeline retain these independent settings.
 | `list_processor_runs` / `get_processor_run_events` | Read one Agent or plugin processor run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
-| `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_model_providers` | Inspect models & providers |
+| `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_asr_models` / `list_tts_models` / `list_model_providers` | Inspect models & providers |
 | `list_knowledge_bases` / `get_knowledge_base` / `retrieve_knowledge_base` | RAG knowledge bases (incl. semantic search) |
 | `list_mcp_servers` | External MCP servers LangBot connects to (as a client) |
 | `list_skills` / `get_skill` | Installed skills |

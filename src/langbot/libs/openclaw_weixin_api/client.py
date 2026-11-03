@@ -456,15 +456,29 @@ class OpenClawWeixinClient:
         to_user_id: str,
         voice_bytes: bytes,
         playtime: int = 0,
+        encode_type: Optional[int] = 6,
         context_token: str = '',
+        bits_per_sample: Optional[int] = None,
+        sample_rate: Optional[int] = None,
+        text: Optional[str] = None,
     ) -> None:
         """Upload a voice message to CDN and send it."""
+        if encode_type == 6:
+            if bits_per_sample is None:
+                bits_per_sample = 16
+            if sample_rate is None:
+                sample_rate = 24000
         media = await self.upload_media(voice_bytes, to_user_id, media_type=4)
         item = MessageItem(
             type=MessageItem.VOICE,
             voice_item=VoiceItem(
                 media=media,
                 playtime=playtime,
+                encode_type=encode_type,
+                bits_per_sample=bits_per_sample,
+                sample_rate=sample_rate,
+                size=len(voice_bytes),
+                text=text,
             ),
         )
         await self.send_message(to_user_id, [item], context_token)
@@ -715,6 +729,9 @@ def _parse_message_item(data: dict) -> MessageItem:
             media=_parse_cdn_media(v.get('media')),
             encode_type=v.get('encode_type'),
             playtime=v.get('playtime'),
+            bits_per_sample=v.get('bits_per_sample'),
+            sample_rate=v.get('sample_rate'),
+            size=v.get('size'),
             text=v.get('text'),
         )
 
@@ -812,6 +829,16 @@ def _message_item_to_dict(item: MessageItem) -> dict:
             voice_d['media'] = _cdn_media_to_dict(item.voice_item.media)
         if item.voice_item.playtime is not None:
             voice_d['playtime'] = item.voice_item.playtime
+        if item.voice_item.encode_type is not None:
+            voice_d['encode_type'] = item.voice_item.encode_type
+        if item.voice_item.bits_per_sample is not None:
+            voice_d['bits_per_sample'] = item.voice_item.bits_per_sample
+        if item.voice_item.sample_rate is not None:
+            voice_d['sample_rate'] = item.voice_item.sample_rate
+        if item.voice_item.size is not None:
+            voice_d['size'] = item.voice_item.size
+        if item.voice_item.text is not None:
+            voice_d['text'] = item.voice_item.text
         d['voice_item'] = voice_d
 
     if item.file_item:

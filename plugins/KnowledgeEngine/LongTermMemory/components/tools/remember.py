@@ -5,7 +5,6 @@ from typing import Any
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
-from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 
 logger = logging.getLogger(__name__)
 
@@ -25,27 +24,16 @@ class Remember(Tool):
         query_id: int,
     ) -> str:
         store = self.plugin.memory_store
-        api = QueryBasedAPIProxy(
-            query_id=query_id,
-            plugin_runtime_handler=self.plugin.plugin_runtime_handler,
-        )
         logger.info(
             "[LongTermMemory] remember called: query_id=%s params_keys=%s",
             query_id,
             sorted(params.keys()),
         )
-        bot_uuid = await api.get_bot_uuid()
-        query_vars = await api.get_query_vars()
-        session_key, user_key, kb_id, _, config = await store.resolve_user_context(
-            session, bot_uuid
-        )
+        bot_uuid = session.bot_uuid or ""
+        session_key, user_key, kb_id, _, config = await store.resolve_user_context(session, bot_uuid)
 
         if not kb_id:
             return "Error: no memory knowledge base configured. Create one first."
-
-        pipeline_kbs = await api.list_pipeline_knowledge_bases()
-        if not any(kb.get("uuid") == kb_id for kb in pipeline_kbs):
-            return "Error: memory knowledge base is not configured for the current pipeline."
 
         embedding_model_uuid = config.get("embedding_model_uuid", "")
         if not embedding_model_uuid:
@@ -57,8 +45,7 @@ class Remember(Tool):
 
         tags = params.get("tags", [])
         importance = params.get("importance", 2)
-        sender_id = str(query_vars.get("sender_id", "") or "")
-        sender_name = str(query_vars.get("sender_name", "") or "")
+        sender_id = str(session.sender_id or "")
         logger.info(
             "[LongTermMemory] remember storing episode: query_id=%s kb_id=%s user_key=%s sender_id=%s importance=%s tags=%s content_len=%s",
             query_id,
@@ -70,17 +57,25 @@ class Remember(Tool):
             len(str(content)),
         )
 
-        episode = await store.add_episode(
-            collection_id=kb_id,
-            embedding_model_uuid=embedding_model_uuid,
-            user_key=user_key,
-            content=content,
-            tags=tags,
-            importance=importance,
-            sender_id=sender_id,
-            sender_name=sender_name,
-            bot_uuid=bot_uuid,
-        )
+        try:
+            episode = await store.add_episode(
+                collection_id=kb_id,
+                embedding_model_uuid=embedding_model_uuid,
+                user_key=user_key,
+                content=content,
+                tags=tags,
+                importance=importance,
+                sender_id=sender_id,
+                bot_uuid=bot_uuid,
+                supersedes=params.get("supersedes"),
+                event_at=params.get("event_at", ""),
+                valid_from=params.get("valid_from", ""),
+                valid_until=params.get("valid_until", ""),
+                source_ref=params.get("source_ref", ""),
+                claim_type=params.get("claim_type", "unknown"),
+            )
+        except ValueError as exc:
+            return f"Error: {exc}"
 
         logger.info(
             "[LongTermMemory] remember stored: query_id=%s episode_id=%s user_key=%s content_len=%s",
@@ -97,13 +92,14 @@ class Remember(Tool):
             target_id=episode["id"],
             summary=self._preview_text(str(content)),
             sender_id=sender_id,
-            sender_name=sender_name,
             query_id=query_id,
             metadata={
                 "kb_id": kb_id,
                 "tags": tags,
                 "importance": importance,
                 "status": episode.get("status", "active"),
+                "source_ref": episode.get("source_ref", ""),
+                "claim_type": episode.get("claim_type", "unknown"),
             },
         )
 

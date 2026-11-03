@@ -30,6 +30,20 @@ uv sync --extra seekdb
 
 SeekDB 嵌入式模式的平台支持取决于 `pylibseekdb` wheel；Apple Silicon 当前要求 macOS 15 或更高版本。其他功能仍可使用默认的 `uv sync` 安装。
 
+### 可选的语音转码支持（SILK / 微信原生语音）
+
+如果需要在微信等平台发送原生语音条（SILK 编码）或进行高级音频格式转码，需要系统安装 `ffmpeg` 并安装 `audio` 扩展依赖：
+
+- **系统依赖**：`ffmpeg`（macOS 可用 `brew install ffmpeg`，Ubuntu/Debian 可用 `sudo apt-get install -y ffmpeg`，Windows 可用 `winget install Gyan.FFmpeg`）
+- **Python 扩展**：
+  ```bash
+  uv sync --extra audio
+  # 或同时启用 seekdb 与 audio
+  uv sync --extra seekdb --extra audio
+  ```
+
+若未安装转码依赖，系统在需要转码为微信原生语音条时会自动进行**优雅降级**，将语音以音频文件的形式发送，确保用户仍能正常点击播放。
+
 或者使用清华源
 
 ```bash

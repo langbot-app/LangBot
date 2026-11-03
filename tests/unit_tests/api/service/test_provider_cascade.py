@@ -13,7 +13,15 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.api.http.controller.groups.provider.providers import ModelProvidersRouterGroup
 from langbot.pkg.api.http.service.provider import ModelProviderService
-from langbot.pkg.entity.persistence.model import CodexCredential, EmbeddingModel, LLMModel, ModelProvider, RerankModel
+from langbot.pkg.entity.persistence.model import (
+    ASRModel,
+    TTSModel,
+    CodexCredential,
+    EmbeddingModel,
+    LLMModel,
+    ModelProvider,
+    RerankModel,
+)
 from langbot.pkg.entity.persistence.user import User
 from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.workspace import Workspace
@@ -22,7 +30,7 @@ from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
 pytestmark = pytest.mark.asyncio
-MODEL_TYPES = (LLMModel, EmbeddingModel, RerankModel)
+MODEL_TYPES = (LLMModel, EmbeddingModel, RerankModel, ASRModel, TTSModel)
 TABLES = (*MODEL_TYPES, CodexCredential, ModelProvider)
 
 
@@ -100,6 +108,8 @@ async def deletion(tmp_path):
                     manager.llm_model_dict,
                     manager.embedding_model_dict,
                     manager.rerank_model_dict,
+                    manager.asr_model_dict,
+                    manager.tts_model_dict,
                 ),
             ):
                 for index in range(2):
@@ -121,6 +131,8 @@ async def deletion(tmp_path):
             manager.llm_model_dict,
             manager.embedding_model_dict,
             manager.rerank_model_dict,
+            manager.asr_model_dict,
+            manager.tts_model_dict,
         )
     ]
     try:
@@ -148,6 +160,8 @@ def assert_caches_unchanged(deletion):
             deletion.manager.llm_model_dict,
             deletion.manager.embedding_model_dict,
             deletion.manager.rerank_model_dict,
+            deletion.manager.asr_model_dict,
+            deletion.manager.tts_model_dict,
         )
     ]
 
@@ -167,6 +181,8 @@ async def test_cascade_deletes_all_model_types_and_credentials_after_commit(dele
         deletion.manager.llm_model_dict,
         deletion.manager.embedding_model_dict,
         deletion.manager.rerank_model_dict,
+        deletion.manager.asr_model_dict,
+        deletion.manager.tts_model_dict,
     ):
         assert all(not key[-1].startswith('target') for key in cache)
         assert any(key[1] == 'b' for key in cache)

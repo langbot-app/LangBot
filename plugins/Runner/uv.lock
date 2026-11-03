@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11, <4.0"
 
 [[package]]
@@ -830,7 +830,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langbot-plugin", git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=33dfff35859c30c63acc54deacaaf5b71cf6ef5c" },
+    { name = "langbot-plugin", specifier = "==0.7.20" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -847,8 +847,8 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.19"
-source = { git = "https://github.com/fdc310/langbot-plugin-sdk.git?rev=33dfff35859c30c63acc54deacaaf5b71cf6ef5c#33dfff35859c30c63acc54deacaaf5b71cf6ef5c" }
+version = "0.7.20"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
     { name = "aiohttp" },
@@ -867,6 +867,10 @@ dependencies = [
     { name = "types-pyyaml" },
     { name = "watchdog" },
     { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/b9/e93ee14ccb584b2351652e6b37a80d255ca99efcdd7761edf54223505f6b/langbot_plugin-0.7.20.tar.gz", hash = "sha256:10a8ad7dd15d040680962148357d49294faad0ae677f5b8989fedb81b4d936c0", size = 758993, upload-time = "2026-11-03T04:59:16.695Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/2f/7bfd9692fd142f919a7ee6d13957935155e6c9d8a6b4ec24a2ce3b6a99e0/langbot_plugin-0.7.20-py3-none-any.whl", hash = "sha256:de33471621e2bde6074ffae6174f14a9f34c6d5625a2aa1adbe92ec6d62ed2bc", size = 479090, upload-time = "2026-11-03T04:59:15.256Z" },
 ]
 
 [[package]]

@@ -270,6 +270,11 @@ const zhHant = {
         description:
           '流水線只處理訊息事件，並由 AI 自動回覆。在這裡設定群聊觸發方式、私聊規則和訊息過濾條件。',
       },
+      speech: {
+        title: '設定語音能力',
+        description:
+          '設定語音辨識（ASR）與文字轉語音（TTS）模型，支援接收語音訊息及合成語音回覆。',
+      },
       ai: {
         title: '設定 AI 能力',
         description:
@@ -835,6 +840,10 @@ const zhHant = {
     chat: '對話',
     embedding: '嵌入',
     rerank: '重排序',
+    asr: '語音辨識 (ASR)',
+    tts: '文字轉語音 (TTS)',
+    asrTab: '語音辨識',
+    ttsTab: '語音合成',
     rerankUrlTooltip:
       '完整 URL 覆蓋重排序端點（例如：https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:
@@ -2261,6 +2270,7 @@ const zhHant = {
     triggerConditions: '觸發條件',
     safetyControls: '安全控制',
     outputProcessing: '輸出處理',
+    speechProcessing: '語音處理',
     nameRequired: '名稱不能為空',
     descriptionRequired: '描述不能為空',
     createSuccess: '建立成功 請編輯流水線詳細參數',

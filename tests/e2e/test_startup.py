@@ -243,7 +243,7 @@ class TestMinimalStartupNoLLM:
         payload = response.json()
         assert payload['code'] == 0
         configs = payload['data']['configs']
-        assert [config['name'] for config in configs] == ['trigger', 'safety', 'ai', 'output']
+        assert [config['name'] for config in configs] == ['trigger', 'safety', 'ai', 'speech', 'output']
         ai = configs[2]
         runner = next(stage for stage in ai['stages'] if stage['name'] == 'runner')
         assert any(item['name'] == 'id' for item in runner['config'])

@@ -100,11 +100,11 @@ class DingTalkMessageConverter(abstract_platform_adapter.AbstractMessageConverte
         if event.file:
             yiri_msg_list.append(platform_message.File(url=event.file, name=event.name))
         if event.audio:
-            # 优先使用钉钉自带的语音转写文字（recognition字段）
-            if event.content and event.type == 'audio':
-                yiri_msg_list.append(platform_message.Plain(text=event.content))
-            else:
-                yiri_msg_list.append(platform_message.Voice(base64=event.audio))
+            # Keep the audio so the pipeline's speech recognition setting decides how it is transcribed.
+            yiri_msg_list.append(platform_message.Voice(base64=event.audio, length=event.audio_duration or None))
+        elif event.type == 'audio' and event.content:
+            # The audio could not be downloaded; fall back to DingTalk's own transcription.
+            yiri_msg_list.append(platform_message.Plain(text=event.content))
 
         # Handle quoted/replied message - extract content as top-level components
         # so that plugins like FileReader can process them the same way as direct messages
@@ -652,12 +652,16 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
         markdown_enabled = self.config.get('markdown_card', False)
         text_message = platform_message.MessageChain(
-            [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+            [
+                part
+                for part in message
+                if not isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+            ]
         )
         content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
         await self.bot.send_message(content, incoming_message, at)
         for part in message:
-            if isinstance(part, (platform_message.Image, platform_message.File)):
+            if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice)):
                 await self.bot.send_attachment(part, incoming_message)
 
     async def reply_message_chunk(
@@ -684,7 +688,11 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if (msg_seq - 1) % 8 == 0 or is_final:
             markdown_enabled = self.config.get('markdown_card', False)
             text_message = platform_message.MessageChain(
-                [part for part in message if not isinstance(part, (platform_message.Image, platform_message.File))]
+                [
+                    part
+                    for part in message
+                    if not isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice))
+                ]
             )
             content, at = await DingTalkMessageConverter.yiri2target(text_message, markdown_enabled)
             if not content and bot_message.content:
@@ -722,7 +730,7 @@ class DingTalkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                     self.card_instance_id_dict.pop(message_id, None)
                     event = await DingTalkEventConverter.yiri2target(message_source)
                     for part in message:
-                        if isinstance(part, (platform_message.Image, platform_message.File)):
+                        if isinstance(part, (platform_message.Image, platform_message.File, platform_message.Voice)):
                             await self.bot.send_attachment(part, event.incoming_message)
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):

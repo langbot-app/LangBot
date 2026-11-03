@@ -281,9 +281,14 @@ const ruRU = {
       'Выберите поддерживаемое событие, введите тестовые данные и проверьте вывод и результаты инструментов. Действия платформы имитируются; модели и другие инструменты выполняются согласно настройкам.',
     pipeline: {
       trigger: {
-        title: 'Выберите сообщения для ответа',
+        title: 'Choose which messages to answer',
         description:
-          'Конвейер обрабатывает события сообщений и автоматически отвечает с помощью ИИ. Здесь задаются условия в группах, правила личных чатов и фильтры сообщений.',
+          'Pipelines handle message events and reply automatically with AI.',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Настройте возможности ИИ',
@@ -894,6 +899,8 @@ const ruRU = {
     chat: 'Чат',
     embedding: 'Embedding',
     rerank: 'Переранжирование',
+    asr: 'ASR (Распознавание речи)',
+    tts: 'TTS (Синтез речи)',
     rerankUrlTooltip:
       'Полный URL для эндпоинта переранжирования (напр.: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2429,6 +2436,7 @@ const ruRU = {
     triggerConditions: 'Триггер',
     safetyControls: 'Безопасность',
     outputProcessing: 'Вывод',
+    speechProcessing: 'Речь',
     nameRequired: 'Название не может быть пустым',
     descriptionRequired: 'Описание не может быть пустым',
     createSuccess: 'Успешно создано. Отредактируйте параметры конвейера',

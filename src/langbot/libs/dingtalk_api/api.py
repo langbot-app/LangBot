@@ -36,6 +36,8 @@ DINGTALK_OPENAPI_BASE = 'https://api.dingtalk.com'
 # inbound event carried a forged destination.
 DINGTALK_WEBHOOK_DOMAINS = ('dingtalk.com',)
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024
+# DingTalk voice bubbles play at most 60 seconds of audio.
+_MAX_VOICE_DURATION_MS = 60 * 1000
 _MAX_GATEWAY_MESSAGE_BYTES = 1024 * 1024
 
 
@@ -295,11 +297,77 @@ class DingTalkClient:
         return self._check_send_result(response)
 
     async def send_attachment(self, component, incoming_message):
-        from langbot_plugin.api.entities.builtin.platform.message import Image
+        from langbot_plugin.api.entities.builtin.platform.message import Image, Voice
+
+        if isinstance(component, Voice):
+            return await self.send_voice(component, incoming_message)
 
         is_image = isinstance(component, Image)
         name = getattr(component, 'name', '') or ('image.png' if is_image else 'file')
         name = os.path.basename(name)
+        body = await self._read_component_bytes(component)
+        media_id = await self._upload_media(name, body, 'image' if is_image else 'file')
+        params = (
+            {'photoURL': media_id}
+            if is_image
+            else {'mediaId': media_id, 'fileName': name, 'fileType': os.path.splitext(name)[1].lstrip('.')}
+        )
+        return await self._send_robot_message('sampleImageMsg' if is_image else 'sampleFile', params, incoming_message)
+
+    async def send_voice(self, component, incoming_message):
+        """Send a Voice component as a native DingTalk audio message.
+
+        DingTalk plays ogg/opus and amr in its voice bubble, so other formats are
+        transcoded to ogg/opus. Audio longer than the voice limit, or audio that
+        cannot be transcoded or is rejected as a voice message, is delivered as
+        a regular file instead.
+        """
+        from langbot.pkg.utils import audio as audio_utils
+
+        body = await self._read_component_bytes(component)
+        fmt = audio_utils.detect_audio_format(body)
+        length = getattr(component, 'length', None)
+        duration = float(length) if length else audio_utils.estimate_audio_duration(body, fmt)
+        duration_ms = max(1000, int(round(duration * 1000)))
+        if fmt not in ('ogg', 'opus', 'amr'):
+            try:
+                body = await audio_utils.transcode_audio(body, 'ogg', fmt)
+                fmt = 'ogg'
+            except Exception as exc:
+                await self._log_warning(f'DingTalk voice transcode to ogg failed, sending as file: {exc}')
+        ext = 'amr' if fmt == 'amr' else ('ogg' if fmt in ('ogg', 'opus') else (fmt if fmt != 'unknown' else 'mp3'))
+        name = f'voice.{ext}'
+        if ext == 'ogg':
+            # Ogg carries an exact sample count, which beats bitrate-based estimates.
+            measured = audio_utils.estimate_audio_duration(body, fmt)
+            if measured > 0:
+                duration_ms = max(1000, int(round(measured * 1000)))
+
+        if ext in ('ogg', 'amr') and duration_ms <= _MAX_VOICE_DURATION_MS:
+            try:
+                media_id = await self._upload_media(name, body, 'voice')
+                return await self._send_robot_message(
+                    'sampleAudio',
+                    {'mediaId': media_id, 'duration': str(duration_ms)},
+                    incoming_message,
+                )
+            except Exception as exc:
+                await self._log_warning(f'DingTalk voice message failed, sending as file: {exc}')
+
+        media_id = await self._upload_media(name, body, 'file')
+        return await self._send_robot_message(
+            'sampleFile',
+            {'mediaId': media_id, 'fileName': name, 'fileType': ext},
+            incoming_message,
+        )
+
+    async def _log_warning(self, message: str):
+        if self.logger:
+            await self.logger.warning(message)
+        else:
+            _stdout_logger.warning(message)
+
+    async def _read_component_bytes(self, component) -> bytes:
         encoded = getattr(component, 'base64', None)
         if encoded:
             encoded = encoded.split(',', 1)[-1]
@@ -321,13 +389,16 @@ class DingTalkClient:
             raise ValueError('DingTalk attachment has no readable content')
         if len(body) > _MAX_MEDIA_BYTES:
             raise ValueError('DingTalk media exceeds the size limit')
+        return body
+
+    async def _upload_media(self, name: str, body: bytes, media_type: str) -> str:
         token = await self.get_legacy_access_token()
         if not token:
             raise RuntimeError('DingTalk media authentication failed')
         async with self._http_client_context() as client:
             response = await client.post(
                 'https://oapi.dingtalk.com/media/upload',
-                params={'access_token': token, 'type': 'image' if is_image else 'file'},
+                params={'access_token': token, 'type': media_type},
                 files={'media': (name, body)},
                 timeout=30.0,
             )
@@ -335,16 +406,14 @@ class DingTalkClient:
         media_id = uploaded.get('media_id')
         if not media_id:
             raise RuntimeError('DingTalk media upload returned no media ID')
+        return media_id
+
+    async def _send_robot_message(self, msg_key: str, params: dict, incoming_message):
         if not await self.check_access_token():
             await self.get_access_token()
-        params = (
-            {'photoURL': media_id}
-            if is_image
-            else {'mediaId': media_id, 'fileName': name, 'fileType': os.path.splitext(name)[1].lstrip('.')}
-        )
         payload = {
             'robotCode': self.robot_code or self.key,
-            'msgKey': 'sampleImageMsg' if is_image else 'sampleFile',
+            'msgKey': msg_key,
             'msgParam': json.dumps(params, ensure_ascii=False),
         }
         if str(incoming_message.conversation_type) == '2':
@@ -583,6 +652,11 @@ class DingTalkClient:
                 download_code = raw_content.get('downloadCode')
                 if download_code:
                     message_data['Audio'] = await self.get_audio_url(download_code)
+                try:
+                    # DingTalk reports the voice duration in milliseconds.
+                    message_data['AudioDuration'] = int(round(float(raw_content.get('duration') or 0) / 1000))
+                except (TypeError, ValueError):
+                    pass
 
                 message_data['Type'] = 'audio'
             elif incoming_message.message_type == 'file':

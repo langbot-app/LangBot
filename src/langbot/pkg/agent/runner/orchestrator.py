@@ -126,16 +126,13 @@ class AgentRunOrchestrator:
             raise ValueError(f'The selected Runner does not support {usage} usage')
 
         if execution_query is None:
-            execution_query = build_execution_query(event, [])
+            execution_query = build_execution_query(event, [], execution_context)
             # Event runs bypass pipeline prompt preparation, just like debug runs.
             prompt_config = extract_prompt_config(descriptor, binding.runner_config, [])
             execution_query.prompt = provider_prompt.Prompt(
                 name='default',
                 messages=[provider_message.Message(**item) for item in copy.deepcopy(prompt_config)],
             )
-            # Synthetic events must expose the same trusted scope as pipeline queries.
-            for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
-                object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
 

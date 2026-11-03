@@ -961,6 +961,12 @@ class WecomBotWsClient:
                 try:
                     await self._send_frame(frame)
                 except Exception:
+                    # A failed ping must also interrupt the listener. Otherwise
+                    # the heartbeat task exits while the receive loop can remain
+                    # blocked on an apparently open socket indefinitely.
+                    await self.logger.warning('Heartbeat send failed; closing WebSocket to reconnect')
+                    if self._ws and not self._ws.closed:
+                        await self._ws.close()
                     break
         except asyncio.CancelledError:
             pass

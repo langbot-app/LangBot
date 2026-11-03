@@ -199,6 +199,38 @@ async def test_discord_message_converter_maps_mentions_and_text_to_target():
     assert files == []
 
 
+@pytest.mark.asyncio
+async def test_discord_message_converter_maps_audio_attachments_to_voice(monkeypatch):
+    wav_header = b'RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80>\x00\x00\x00}\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00'
+    attachment = SimpleNamespace(
+        id=999,
+        filename='voice-message.ogg',
+        url='https://cdn.discordapp.com/attachments/1/2/voice-message.ogg',
+        size=len(wav_header),
+        content_type='audio/ogg',
+        flags=SimpleNamespace(voice=True),
+        duration_secs=4.5,
+    )
+    message = SimpleNamespace(
+        id=123,
+        content='Voice test',
+        created_at=datetime.datetime.now(),
+        attachments=[attachment],
+    )
+    monkeypatch.setattr(
+        DiscordMessageConverter,
+        '_download',
+        AsyncMock(return_value=(wav_header, 'audio/ogg')),
+    )
+
+    chain = await DiscordMessageConverter.target2yiri(message)
+    voices = [c for c in chain if isinstance(c, platform_message.Voice)]
+    assert len(voices) == 1
+    assert voices[0].url == attachment.url
+    assert voices[0].length == 4
+    assert voices[0].base64.startswith('data:audio/ogg;base64,')
+
+
 def test_discord_message_converter_splits_discord_mentions():
     components = DiscordMessageConverter._text_components('hi <@123> and @everyone')
 

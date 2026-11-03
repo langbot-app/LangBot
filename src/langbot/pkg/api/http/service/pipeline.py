@@ -21,6 +21,7 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 default_stage_order = [
     'GroupRespondRuleCheckStage',  # 群响应规则检查
     'BanSessionCheckStage',  # 封禁会话检查
+    'SpeechRecognitionStage',  # 语音识别（ASR）阶段
     'PreContentFilterStage',  # 内容过滤前置阶段
     'PreProcessor',  # 预处理器
     'RequireRateLimitOccupancy',  # 请求速率限制占用
@@ -28,6 +29,7 @@ default_stage_order = [
     'ReleaseRateLimitOccupancy',  # 释放速率限制占用
     'PostContentFilterStage',  # 内容过滤后置阶段
     'ResponseWrapper',  # 响应包装器
+    'TextToSpeechStage',  # 文本转语音阶段
     'LongTextProcessStage',  # 长文本处理
     'SendResponseBackStage',  # 发送响应
 ]
@@ -115,6 +117,7 @@ class PipelineService:
             self.ap.pipeline_config_meta_trigger,
             self.ap.pipeline_config_meta_safety,
             ai_metadata,
+            self.ap.pipeline_config_meta_speech,
             self.ap.pipeline_config_meta_output,
         ]
 

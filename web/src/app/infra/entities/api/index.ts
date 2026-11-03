@@ -52,6 +52,8 @@ export interface ModelProvider {
   llm_count?: number;
   embedding_count?: number;
   rerank_count?: number;
+  asr_count?: number;
+  tts_count?: number;
   created_at?: string;
   updated_at?: string;
 }
@@ -151,6 +153,38 @@ export interface ApiRespProviderRerankModel {
 }
 
 export interface RerankModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
+export interface ApiRespProviderASRModels {
+  models: ASRModel[];
+}
+
+export interface ApiRespProviderASRModel {
+  model: ASRModel;
+}
+
+export interface ASRModel {
+  uuid: string;
+  name: string;
+  provider_uuid: string;
+  provider?: ModelProvider;
+  extra_args?: object;
+}
+
+export interface ApiRespProviderTTSModels {
+  models: TTSModel[];
+}
+
+export interface ApiRespProviderTTSModel {
+  model: TTSModel;
+}
+
+export interface TTSModel {
   uuid: string;
   name: string;
   provider_uuid: string;
@@ -701,6 +735,7 @@ interface GetPipelineConfig {
   ai: object;
   output: object;
   safety: object;
+  speech?: object;
   trigger: object;
 }
 

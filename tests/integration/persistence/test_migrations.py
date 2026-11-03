@@ -123,6 +123,60 @@ class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('with_model_parents', [False, True])
+    async def test_speech_upgrade_preserves_pipeline_and_model_constraints(self, sqlite_engine, with_model_parents):
+        metadata = sqlalchemy.MetaData()
+        if with_model_parents:
+            sqlalchemy.Table('workspaces', metadata, sqlalchemy.Column('uuid', sqlalchemy.String(36), primary_key=True))
+            sqlalchemy.Table(
+                'model_providers',
+                metadata,
+                sqlalchemy.Column('uuid', sqlalchemy.String(255), primary_key=True),
+                sqlalchemy.Column('workspace_uuid', sqlalchemy.String(36), nullable=False),
+                sqlalchemy.UniqueConstraint('workspace_uuid', 'uuid'),
+            )
+        pipelines = sqlalchemy.Table(
+            'legacy_pipelines',
+            metadata,
+            sqlalchemy.Column('uuid', sqlalchemy.String(255), primary_key=True),
+            sqlalchemy.Column('stages', sqlalchemy.JSON),
+            sqlalchemy.Column('config', sqlalchemy.JSON),
+        )
+        stages = ['GroupRespondRuleCheckStage', 'PreContentFilterStage', 'ResponseWrapper', 'LongTextProcessStage']
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(metadata.create_all)
+            await conn.execute(
+                pipelines.insert().values(uuid='pipeline', stages=stages, config={'ai': {'model': 'llm'}})
+            )
+        await run_alembic_stamp(sqlite_engine, '0042_sqlite_incremental_vacuum')
+        await run_alembic_upgrade(sqlite_engine, '0043_speech_models')
+        async with sqlite_engine.connect() as conn:
+            pipeline = (await conn.execute(pipelines.select())).one()
+            assert pipeline.stages == [
+                'GroupRespondRuleCheckStage',
+                'SpeechRecognitionStage',
+                'PreContentFilterStage',
+                'ResponseWrapper',
+                'TextToSpeechStage',
+                'LongTextProcessStage',
+            ]
+            assert pipeline.config['ai'] == {'model': 'llm'}
+            assert pipeline.config['speech']['speech-recognition']['enabled'] is False
+            assert pipeline.config['speech']['text-to-speech']['enabled'] is False
+            for table_name in ('asr_models', 'tts_models'):
+                assert (
+                    await conn.run_sync(lambda sync: sqlalchemy.inspect(sync).has_table(table_name))
+                    is with_model_parents
+                )
+                if with_model_parents:
+                    foreign_keys = await conn.run_sync(
+                        lambda sync: sqlalchemy.inspect(sync).get_foreign_keys(table_name)
+                    )
+                    provider_key = next(key for key in foreign_keys if key['referred_table'] == 'model_providers')
+                    assert provider_key['constrained_columns'] == ['workspace_uuid', 'provider_uuid']
+                    assert provider_key['referred_columns'] == ['workspace_uuid', 'uuid']
+
+    @pytest.mark.asyncio
     async def test_execution_filter_index_round_trip_preserves_history(self, sqlite_engine):
         from langbot.pkg.entity.persistence.monitoring import MonitoringMessage
 

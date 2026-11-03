@@ -28,7 +28,7 @@ from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
 from ....agent.runner.resource_builder import AgentResourceBuilder
 from ....agent.runner.resource_policy import ResourcePolicyProjector
-from ....entity.persistence.model import LLMModel, RerankModel, EmbeddingModel
+from ....entity.persistence.model import LLMModel, RerankModel, EmbeddingModel, ASRModel, TTSModel
 from ....entity.persistence.rag import KnowledgeBase
 from ....entity.persistence.mcp import MCPServer
 from ....core.taskmgr import TaskContext
@@ -681,6 +681,8 @@ class PipelineMigrationService:
                         'llm-model-selector',
                         'embedding-model-selector',
                         'rerank-model-selector',
+                        'asr-model-selector',
+                        'tts-model-selector',
                     )
                     and isinstance(value, str)
                 )
@@ -768,9 +770,19 @@ class PipelineMigrationService:
         permissions = getattr(descriptor, 'permissions', None)
         for model_type, model_uuid in config_schema.iter_config_model_refs(descriptor, runner_config):
             allowed = set(getattr(permissions, 'models', []))
-            if not (allowed & ({'rerank'} if model_type == 'rerank' else {'invoke', 'stream'})):
+            needed = (
+                {'rerank'}
+                if model_type == 'rerank'
+                else ({'asr'} if model_type == 'asr' else ({'tts'} if model_type == 'tts' else {'invoke', 'stream'}))
+            )
+            if not (allowed & needed):
                 raise MigrationError('runner_resource_unavailable')
-            await require_row(RerankModel if model_type == 'rerank' else LLMModel, model_uuid)
+            target_cls = (
+                RerankModel
+                if model_type == 'rerank'
+                else (ASRModel if model_type == 'asr' else (TTSModel if model_type == 'tts' else LLMModel))
+            )
+            await require_row(target_cls, model_uuid)
         for field in config_schema.iter_schema_items(descriptor, {'embedding-model-selector'}):
             value = runner_config.get(field['name'])
             if value and value not in config_schema.NONE_SENTINELS:

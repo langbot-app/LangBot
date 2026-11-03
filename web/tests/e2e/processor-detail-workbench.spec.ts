@@ -500,7 +500,7 @@ test.describe('processor detail workbench', () => {
     expect(debugBox!.y).toBeGreaterThanOrEqual(0);
 
     const flow = configPanel.getByRole('tablist');
-    await expect(flow.getByRole('tab')).toHaveCount(3);
+    await expect(flow.getByRole('tab')).toHaveCount(4);
     const tabs = await flow.getByRole('tab').all();
     const positions = await Promise.all(tabs.map((tab) => tab.boundingBox()));
     expect(positions.every((position) => position !== null)).toBe(true);
@@ -511,10 +511,11 @@ test.describe('processor detail workbench', () => {
       expect(positions[index]!.x).toBeGreaterThan(positions[index - 1]!.x);
     }
     await expect(flow.getByRole('tab').nth(0)).toContainText('Trigger');
-    await expect(flow.getByRole('tab').nth(1)).toContainText('AI');
-    await expect(flow.getByRole('tab').nth(2)).toContainText('Output');
+    await expect(flow.getByRole('tab').nth(1)).toContainText('Speech');
+    await expect(flow.getByRole('tab').nth(2)).toContainText('AI');
+    await expect(flow.getByRole('tab').nth(3)).toContainText('Output');
 
-    await flow.getByRole('tab').nth(1).click();
+    await flow.getByRole('tab').nth(2).click();
     await expect(
       configPanel.getByText('Runtime', { exact: true }).last(),
     ).toBeVisible();

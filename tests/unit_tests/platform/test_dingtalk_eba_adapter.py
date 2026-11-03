@@ -866,3 +866,47 @@ async def test_dingtalk_subscription_retry_does_not_repeat_successful_members():
     assert (await handler.process(message))[0] == 200
     assert (await handler.process(message))[0] == 200
     assert [call.args[0].member.id for call in adapter._dispatch_eba_event.await_args_list] == ['a', 'b', 'b']
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_inbound_voice_keeps_audio_for_pipeline_speech_recognition():
+    event = dingtalk_event(
+        conversation='OneToOneMessage',
+        msg_type='audio',
+        content='DingTalk recognition text',
+        audio='data:audio/ogg;base64,AAAA',
+    )
+    event['AudioDuration'] = 4
+    chain = await DingTalkMessageConverter.target2yiri(event, 'LangBot')
+
+    voices = [part for part in chain if isinstance(part, platform_message.Voice)]
+    assert len(voices) == 1
+    assert voices[0].base64 == 'data:audio/ogg;base64,AAAA'
+    assert voices[0].length == 4
+    assert not any(isinstance(part, platform_message.Plain) for part in chain)
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_inbound_voice_falls_back_to_recognition_without_audio():
+    event = dingtalk_event(conversation='OneToOneMessage', msg_type='audio', content='DingTalk recognition text')
+    chain = await DingTalkMessageConverter.target2yiri(event, 'LangBot')
+
+    assert not any(isinstance(part, platform_message.Voice) for part in chain)
+    plains = [part for part in chain if isinstance(part, platform_message.Plain)]
+    assert [part.text for part in plains] == ['DingTalk recognition text']
+
+
+@pytest.mark.asyncio
+async def test_dingtalk_reply_sends_voice_as_attachment_not_text():
+    adapter = make_adapter()
+    adapter.bot.send_attachment = AsyncMock()
+    voice = platform_message.Voice(base64='data:audio/mpeg;base64,AAAA', length=3)
+    message = platform_message.MessageChain([platform_message.Plain(text='hello'), voice])
+
+    source_event = await DingTalkEventConverter.target2yiri(dingtalk_event(), 'LangBot')
+    await adapter.reply_message(source_event, message)
+
+    content = adapter.bot.send_message.await_args.args[0]
+    assert content == 'hello'
+    adapter.bot.send_attachment.assert_awaited_once()
+    assert adapter.bot.send_attachment.await_args.args[0] is voice

@@ -222,6 +222,12 @@ def iter_config_model_refs(
         elif field_type == 'rerank-model-selector':
             if isinstance(value, str) and value not in NONE_SENTINELS:
                 yield 'rerank', value
+        elif field_type == 'asr-model-selector':
+            if isinstance(value, str) and value not in NONE_SENTINELS:
+                yield 'asr', value
+        elif field_type == 'tts-model-selector':
+            if isinstance(value, str) and value not in NONE_SENTINELS:
+                yield 'tts', value
 
 
 def set_empty_llm_model_selection(

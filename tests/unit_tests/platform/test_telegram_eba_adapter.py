@@ -561,6 +561,7 @@ async def test_telegram_reply_message_sends_text_image_and_file_components():
         send_message=AsyncMock(),
         send_photo=AsyncMock(),
         send_document=AsyncMock(),
+        send_voice=AsyncMock(),
     )
     object.__setattr__(adapter, 'bot', bot)
     update = make_update({'message': base_message_payload(message_id=88)})
@@ -582,6 +583,10 @@ async def test_telegram_reply_message_sends_text_image_and_file_components():
                     size=4,
                     base64='data:text/plain;base64,' + base64.b64encode(b'test').decode('utf-8'),
                 ),
+                platform_message.Voice(
+                    base64='data:audio/ogg;base64,' + base64.b64encode(b'OggS-voice').decode('utf-8'),
+                    length=5,
+                ),
             ]
         ),
         quote_origin=True,
@@ -590,11 +595,15 @@ async def test_telegram_reply_message_sends_text_image_and_file_components():
     bot.send_message.assert_awaited_once()
     bot.send_photo.assert_awaited_once()
     bot.send_document.assert_awaited_once()
+    bot.send_voice.assert_awaited_once()
     assert bot.send_message.await_args.kwargs['reply_to_message_id'] == 88
     assert bot.send_photo.await_args.kwargs['reply_to_message_id'] == 88
     assert bot.send_photo.await_args.kwargs['photo'].input_file_content == b'image-bytes'
     assert bot.send_document.await_args.kwargs['document'].filename == 'test.txt'
     assert bot.send_document.await_args.kwargs['document'].input_file_content == b'test'
+    assert bot.send_voice.await_args.kwargs['reply_to_message_id'] == 88
+    assert bot.send_voice.await_args.kwargs['duration'] == 5
+    assert bot.send_voice.await_args.kwargs['voice'].filename == 'voice.ogg'
 
 
 @pytest.mark.asyncio
@@ -713,6 +722,7 @@ async def test_stream_completion_delivers_attachments_once(with_text):
         edit_message_text=AsyncMock(),
         send_photo=AsyncMock(return_value=SimpleNamespace(message_id=901)),
         send_document=AsyncMock(return_value=SimpleNamespace(message_id=902)),
+        send_voice=AsyncMock(return_value=SimpleNamespace(message_id=903)),
     )
     object.__setattr__(adapter, 'bot', bot)
     adapter.msg_stream_id['stream'] = ('message', 999, True)
@@ -726,6 +736,10 @@ async def test_stream_completion_delivers_attachments_once(with_text):
             platform_message.File(
                 name='result.txt', base64='data:text/plain;base64,' + base64.b64encode(b'result').decode()
             ),
+            platform_message.Voice(
+                base64='data:audio/ogg;base64,' + base64.b64encode(b'OggS-voice').decode(),
+                length=3,
+            ),
         ]
     )
     chunk = SimpleNamespace(resp_message_id='stream', msg_sequence=2, tool_calls=None)
@@ -733,12 +747,16 @@ async def test_stream_completion_delivers_attachments_once(with_text):
     await adapter.reply_message_chunk(source, chunk, chain, is_final=False)
     bot.send_photo.assert_not_awaited()
     bot.send_document.assert_not_awaited()
+    bot.send_voice.assert_not_awaited()
     await adapter.reply_message_chunk(source, chunk, chain, quote_origin=True, is_final=True)
     await adapter.reply_message_chunk(source, chunk, chain, quote_origin=True, is_final=True)
     bot.send_photo.assert_awaited_once()
     bot.send_document.assert_awaited_once()
+    bot.send_voice.assert_awaited_once()
     assert bot.send_document.await_args.kwargs['document'].filename == 'result.txt'
     assert bot.send_photo.await_args.kwargs['reply_to_message_id'] == 88
+    assert bot.send_voice.await_args.kwargs['reply_to_message_id'] == 88
+    assert bot.send_voice.await_args.kwargs['duration'] == 3
     assert 'stream' not in adapter.msg_stream_id
 
 

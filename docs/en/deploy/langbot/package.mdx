@@ -39,3 +39,15 @@ Silicon currently requires macOS 15 or later; follow
 macOS 14 ARM64 support plan. Because of the current `pyseekdb` package
 metadata, the extra also fails to resolve on macOS 14 ARM64 for server-only
 use. These platform limits do not affect LangBot when SeekDB is not installed.
+
+## Optional Voice Transcoding Support (SILK / WeChat Native Voice)
+
+If you need native voice bubbles on platforms like WeChat (SILK encoding) or audio transcoding support, make sure `ffmpeg` is installed on your system and launch LangBot with the `audio` extra:
+
+```bash
+uvx --from 'langbot[audio]@latest' langbot
+# or combine with seekdb
+uvx --from 'langbot[seekdb,audio]@latest' langbot
+```
+
+If transcoding dependencies (`ffmpeg` / `pilk`) are not installed, LangBot automatically performs **graceful degradation** by delivering the audio as an audio file attachment.

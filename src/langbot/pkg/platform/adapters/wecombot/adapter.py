@@ -190,26 +190,88 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
     _iter_media_components = staticmethod(LegacyWecomBotAdapter._iter_media_components)
 
     @staticmethod
-    async def _send_media(bot, req_id: str, item: dict) -> bool:
+    async def _send_media(bot, req_id: str, item: dict, config: dict | None = None) -> bool:
         """Require upload and delivery acknowledgements instead of dropping attachments."""
         kind = item['type']
         payload = item.get('base64') or ''
-        if payload.startswith('data:'):
-            payload = payload.split(',', 1)[-1]
-        try:
-            data = base64.b64decode(payload, validate=True)
-        except ValueError as exc:
-            raise ValueError(f'Invalid {kind} attachment data') from exc
+        data = b''
+        if payload:
+            if payload.startswith('data:'):
+                payload = payload.split(',', 1)[-1]
+            try:
+                data = base64.b64decode(payload, validate=False)
+            except Exception as exc:
+                raise ValueError(f'Invalid {kind} attachment data') from exc
+        elif item.get('path'):
+            with open(item['path'], 'rb') as f:
+                data = f.read()
+
         if not data:
             raise ValueError(f'{kind} attachment has no data to upload')
-        result = await bot.upload_media(data, item.get('name') or f'attachment.{kind}', media_type=kind)
-        media_id = result.get('media_id') if isinstance(result, dict) else None
+
+        media_id = None
+        delivery_kind = kind
+        filename = item.get('name')
+        voice_mode = (config or {}).get('voice_delivery', 'voice')
+
+        if kind == 'voice':
+            from langbot.pkg.utils import audio as audio_utils
+
+            fmt = audio_utils.detect_audio_format(data)
+            duration = audio_utils.estimate_audio_duration(data, fmt) if data else 0
+
+            if voice_mode == 'file' or (duration and duration > 60):
+                delivery_kind = 'file'
+                if fmt in ('silk', 'amr') and audio_utils.is_ffmpeg_available():
+                    try:
+                        data = await audio_utils.transcode_audio(data, 'mp3', fmt)
+                        fmt = 'mp3'
+                    except Exception:
+                        pass
+                filename = filename or f'voice.{fmt if fmt != "unknown" else "mp3"}'
+            else:
+                # WeCom native voice message ONLY supports SILK or AMR format.
+                # If audio is MP3/WAV/etc. (e.g. from TTS), transcode it to SILK
+                # so the WeCom client can play the native voice bubble.
+                if fmt != 'silk' and fmt != 'amr':
+                    if audio_utils.is_silk_available() and audio_utils.is_ffmpeg_available():
+                        try:
+                            data = await audio_utils.transcode_audio(data, 'silk', fmt)
+                            fmt = 'silk'
+                        except Exception:
+                            pass
+
+                if fmt == 'silk':
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.silk'
+                elif fmt == 'amr':
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.amr'
+                elif fmt in ('mp3', 'wav', 'ogg', 'flac'):
+                    delivery_kind = 'file'
+                    filename = filename or f'voice.{fmt}'
+                else:
+                    delivery_kind = 'voice'
+                    filename = filename or 'voice.silk'
+        else:
+            filename = filename or f'attachment.{kind}'
+
+        result = await bot.upload_media(data, filename, media_type=delivery_kind)
+        if isinstance(result, dict):
+            media_id = result.get('media_id')
+        if not media_id and delivery_kind == 'voice':
+            # Fall back to uploading as audio file if voice-type upload is not accepted
+            delivery_kind = 'file'
+            fallback_filename = filename.rsplit('.', 1)[0] + '.mp3' if filename else 'voice.mp3'
+            result = await bot.upload_media(data, fallback_filename, media_type='file')
+            if isinstance(result, dict):
+                media_id = result.get('media_id')
         if not media_id:
             raise RuntimeError(f'WeCom {kind} upload failed: no media ID returned')
-        ack = await getattr(bot, f'reply_{kind}')(req_id, media_id)
+        ack = await getattr(bot, f'reply_{delivery_kind}')(req_id, media_id)
         if ack is None or ack.get('errcode', 0) != 0:
             code = ack.get('errcode') if isinstance(ack, dict) else 'no acknowledgement'
-            raise RuntimeError(f'WeCom {kind} delivery failed: {code}')
+            raise RuntimeError(f'WeCom {delivery_kind} delivery failed: {code}')
         return True
 
     async def send_message(
@@ -281,7 +343,7 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 if not finished and content.strip(' \t\r\n\u200b\u200c\u200d\ufeff'):
                     raw = await self.bot.send_message(str(event.get('chatid') or event.get('userid') or ''), content)
             for item in self._iter_media_components(items):
-                await self._send_media(self.bot, event.get('req_id'), item)
+                await self._send_media(self.bot, event.get('req_id'), item, self.config)
         else:
             raw = await self.bot.set_message(event.message_id, content)
         return platform_events.MessageResult(message_id=event.message_id, raw={'result': raw})
@@ -315,7 +377,7 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
         if is_final:
             if not self.config.get('enable-webhook', False) and event.get('req_id'):
                 for item in self._iter_media_components(items):
-                    await self._send_media(self.bot, event.get('req_id'), item)
+                    await self._send_media(self.bot, event.get('req_id'), item, self.config)
             elif not success:
                 await self.bot.set_message(event.message_id, content)
         return {'stream': success}
