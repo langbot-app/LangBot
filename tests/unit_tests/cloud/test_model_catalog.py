@@ -10,13 +10,15 @@ import sqlalchemy
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.cloud.model_catalog import (
+    SUPPORTED_MODEL_CATEGORIES,
+    CloudModelCatalogItem,
     CloudModelCatalogSnapshot,
     CloudModelCatalogSyncService,
     system_model_uuid,
     system_provider_uuid,
 )
 from langbot.pkg.entity.persistence.base import Base
-from langbot.pkg.entity.persistence.model import EmbeddingModel, LLMModel, ModelProvider
+from langbot.pkg.entity.persistence.model import ASRModel, TTSModel, EmbeddingModel, LLMModel, ModelProvider
 from langbot.pkg.entity.persistence.workspace import Workspace
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 
@@ -27,6 +29,72 @@ WORKSPACE_A = '00000000-0000-4000-8000-000000000001'
 WORKSPACE_B = '00000000-0000-4000-8000-000000000002'
 OWNER_A = '10000000-0000-4000-8000-000000000001'
 OWNER_B = '10000000-0000-4000-8000-000000000002'
+
+
+@pytest.mark.parametrize('category,table', [('tts', TTSModel), ('asr', ASRModel)])
+async def test_audio_catalog_create_update_delete_and_voice(tmp_path, category, table):
+    assert SUPPORTED_MODEL_CATEGORIES == ('chat', 'embedding', 'rerank', 'tts', 'asr')
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "audio.db"}')
+    manager = PersistenceManager(object(), mode=PersistenceMode.CLOUD_RUNTIME)
+    manager.db = SimpleNamespace(get_engine=lambda: engine)
+    app = SimpleNamespace(persistence_mgr=manager)
+    snapshot = _snapshot()
+    item = CloudModelCatalogItem(uuid='audio', model_id='audio-test', category=category, default_voice='cosy:alex')
+    snapshot = snapshot.model_copy(update={'models': (item,)})
+    service = CloudModelCatalogSyncService(app, _CatalogProvider(snapshot), INSTANCE_UUID)
+    billing = snapshot.workspaces[0]
+    model_uuid = system_model_uuid(WORKSPACE_A, category, 'audio')
+    try:
+        async with engine.begin() as connection:
+            await connection.run_sync(Base.metadata.create_all)
+            await connection.execute(
+                sqlalchemy.insert(Workspace).values(
+                    uuid=WORKSPACE_A,
+                    instance_uuid=INSTANCE_UUID,
+                    name='A',
+                    slug='a',
+                    source='cloud_projection',
+                )
+            )
+        assert await service._sync_workspace(WORKSPACE_A, snapshot, billing) == {
+            'created': 2,
+            'updated': 0,
+            'deleted': 0,
+        }
+        assert await service._sync_workspace(WORKSPACE_A, snapshot, billing) == {
+            'created': 0,
+            'updated': 0,
+            'deleted': 0,
+        }
+        async with manager.tenant_uow(WORKSPACE_A) as uow:
+            model = await uow.session.get(table, model_uuid)
+            assert model.extra_args == ({'voice': 'cosy:alex'} if category == 'tts' else {})
+        item = item.model_copy(update={'model_id': 'renamed', 'default_voice': 'cosy:bella', 'is_featured': True})
+        snapshot = snapshot.model_copy(update={'models': (item,)})
+        assert await service._sync_workspace(WORKSPACE_A, snapshot, billing) == {
+            'created': 0,
+            'updated': 1,
+            'deleted': 0,
+        }
+        async with manager.tenant_uow(WORKSPACE_A) as uow:
+            model = await uow.session.get(table, model_uuid)
+            assert model.name == 'renamed'
+            assert model.extra_args == ({'voice': 'cosy:bella'} if category == 'tts' else {})
+        item = item.model_copy(update={'default_voice': None})
+        snapshot = snapshot.model_copy(update={'models': (item,)})
+        await service._sync_workspace(WORKSPACE_A, snapshot, billing)
+        async with manager.tenant_uow(WORKSPACE_A) as uow:
+            assert (await uow.session.get(table, model_uuid)).extra_args == {}
+        snapshot = snapshot.model_copy(update={'models': ()})
+        assert await service._sync_workspace(WORKSPACE_A, snapshot, billing) == {
+            'created': 0,
+            'updated': 0,
+            'deleted': 1,
+        }
+        async with manager.tenant_uow(WORKSPACE_A) as uow:
+            assert await uow.session.get(table, model_uuid) is None
+    finally:
+        await engine.dispose()
 
 
 class _CatalogProvider:

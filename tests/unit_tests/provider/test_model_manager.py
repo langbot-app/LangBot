@@ -34,6 +34,61 @@ from tests.unit_tests.provider.conftest import (
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('category,voice', [('tts', 'cosy:alex'), ('tts', None), ('asr', None)])
+async def test_space_audio_sync_creates_updates_and_preserves_custom_models(mock_app_for_modelmgr, category, voice):
+    app = mock_app_for_modelmgr
+    provider = persistence_model.ModelProvider(uuid='space-provider', requester='space-chat-completions')
+    app.persistence_mgr.execute_async = AsyncMock(return_value=_make_mock_result([provider], first_item=provider))
+    app.space_service.get_models = AsyncMock(
+        return_value=[
+            SimpleNamespace(
+                uuid='audio-model', model_id='audio-test', category=category, default_voice=voice, featured_order=10
+            )
+        ]
+    )
+    app.llm_model_service.get_llm_models = AsyncMock(return_value=[])
+    app.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
+    app.rerank_models_service = AsyncMock()
+    app.rerank_models_service.get_rerank_models.return_value = []
+    app.tts_models_service = AsyncMock()
+    app.asr_models_service = AsyncMock()
+    service = getattr(app, f'{category}_models_service')
+    list_models = getattr(service, f'get_{category}_models')
+    create_model = getattr(service, f'create_{category}_model')
+    update_model = getattr(service, f'update_{category}_model')
+    list_models.return_value = []
+    manager = ModelManager(app)
+    await manager.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
+    values = {
+        'uuid': 'audio-model',
+        'name': 'audio-test',
+        'provider_uuid': 'space-provider',
+        'extra_args': {'voice': voice} if voice else {},
+        'prefered_ranking': 10,
+    }
+    create_model.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, values, preserve_uuid=True)
+
+    list_models.return_value = [{**values, 'name': 'old-name', 'extra_args': {'voice': 'user-choice'}}]
+    await manager.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
+    update_model.assert_awaited_once_with(
+        TEST_EXECUTION_CONTEXT,
+        'audio-model',
+        {
+            'name': 'audio-test',
+            'provider_uuid': 'space-provider',
+            'prefered_ranking': 10,
+        },
+    )
+    update_model.reset_mock()
+    list_models.return_value = [values]
+    await manager.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
+    update_model.assert_not_awaited()
+    list_models.return_value = [{**values, 'name': 'custom', 'provider_uuid': 'custom-provider'}]
+    await manager.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
+    update_model.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_model_manager_initialize_with_fake_requesters(fake_requester_registry):
     """Test ModelManager initializes with fake requester registry."""
     model_mgr = fake_requester_registry
@@ -112,6 +167,8 @@ async def test_sync_new_models_from_space_creates_rerank_models(mock_app_for_mod
     app.embedding_models_service.get_embedding_models = AsyncMock(return_value=[])
     app.rerank_models_service = AsyncMock()
     app.rerank_models_service.get_rerank_models = AsyncMock(return_value=[])
+    app.tts_models_service = AsyncMock()
+    app.asr_models_service = AsyncMock()
 
     model_mgr = ModelManager(app)
     await model_mgr.sync_new_models_from_space(TEST_EXECUTION_CONTEXT)
