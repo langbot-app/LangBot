@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -143,7 +143,8 @@ async def test_generation_advance_shuts_down_and_prunes_old_workspace_bots():
 
 
 @pytest.mark.asyncio
-async def test_concurrent_websocket_proxy_creation_reuses_one_runtime():
+@pytest.mark.parametrize('lazy', [False, True])
+async def test_concurrent_websocket_proxy_creation_reuses_one_runtime(lazy):
     created_adapters = []
 
     class WebsocketAdapter:
@@ -155,7 +156,13 @@ async def test_concurrent_websocket_proxy_creation_reuses_one_runtime():
 
     application = SimpleNamespace(workspace_service=_WorkspaceService())
     manager = PlatformManager(application)
-    manager.adapter_dict = {'websocket': WebsocketAdapter}
+    loader = Mock(return_value=WebsocketAdapter)
+    if lazy:
+        manager.adapter_components = [
+            SimpleNamespace(metadata=SimpleNamespace(name='websocket'), get_python_component_class=loader)
+        ]
+    else:
+        manager.adapter_dict = {'websocket': WebsocketAdapter}
     context = ExecutionContext(
         instance_uuid='instance',
         workspace_uuid=WORKSPACE_A,
@@ -167,6 +174,7 @@ async def test_concurrent_websocket_proxy_creation_reuses_one_runtime():
     assert len(created_adapters) == 1
     assert len({id(runtime) for runtime in runtimes}) == 1
     assert manager.websocket_proxy_bots == {WORKSPACE_A: runtimes[0]}
+    assert loader.call_count == int(lazy)
 
 
 @pytest.mark.asyncio
@@ -242,12 +250,13 @@ async def test_reload_stops_and_drops_existing_platform_runtimes():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('lazy', [False, True])
 @pytest.mark.parametrize(
     ('saved_adapter', 'registered_adapter'),
     [('probe', 'probe'), ('aiocqhttp-eba', 'onebot-v11'), ('aiocqhttp-omni', 'onebot-v11')]
     + [(f'{name}-eba', f'{name}-omni') for name in sorted(OMNI_ADAPTER_NAMES)],
 )
-async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, registered_adapter):
+async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, registered_adapter, lazy):
     class TenantUow:
         async def __aenter__(self):
             return self
@@ -302,13 +311,20 @@ async def test_cloud_startup_reuses_validated_platform_binding(saved_adapter, re
         workspace_service=workspace_service,
     )
     manager = PlatformManager(application)
-    manager.adapter_dict = {registered_adapter: ProbeAdapter}
+    loader = Mock(return_value=ProbeAdapter)
+    if lazy:
+        manager.adapter_components = [
+            SimpleNamespace(metadata=SimpleNamespace(name=registered_adapter), get_python_component_class=loader)
+        ]
+    else:
+        manager.adapter_dict = {registered_adapter: ProbeAdapter}
 
     await manager.load_bots_from_db()
 
     assert len(manager.bots) == 1
     assert manager.bots[0].bot_entity.adapter == registered_adapter
     workspace_service.get_execution_binding.assert_not_awaited()
+    assert loader.call_count == int(lazy)
 
 
 @pytest.mark.asyncio
