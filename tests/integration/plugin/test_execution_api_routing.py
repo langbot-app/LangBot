@@ -24,6 +24,7 @@ from langbot_plugin.api.proxies.langbot_api import LangBotAPIProxy
 from langbot_plugin.api.proxies.query_based_api import QueryBasedAPIProxy
 from langbot_plugin.api.proxies.runner.admin import RunnerAdminAPIProxy
 from langbot_plugin.api.proxies.runner.api import RunnerAPIProxy
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 from langbot_plugin.entities.io.context import InstallationBinding
 from langbot_plugin.entities.io.resp import ActionResponse
@@ -123,7 +124,7 @@ def _make_dummy_output(op: ExecutionOperation) -> dict[str, typing.Any]:
 
 
 async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
-    """Drive SDK 0.7.19 proxy methods against a mock handler to capture actual outgoing payloads."""
+    """Drive the pinned SDK proxy methods against a mock handler to capture actual outgoing payloads."""
     recorded: dict[str, dict[str, typing.Any]] = {}
 
     class Interceptor(Handler):
@@ -259,6 +260,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(runner.state_set('run', 'k', 'v'))
     await try_call(runner.state_delete('run', 'k'))
     await try_call(runner.state_list('run'))
+    # Blocking human interaction (SDK 0.7.20)
+    await try_call(runner.request_interaction(InteractionRequest(title='Confirm', kind='confirmation'), timeout=60))
 
     # Box operations in 0.7.19
     for box_act, payload in [
@@ -299,8 +302,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 71
-    assert len(test_host.api.catalog()) == 71
+    assert len(operations) == 72
+    assert len(test_host.api.catalog()) == 72
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())
@@ -316,7 +319,7 @@ def test_action_audit_and_catalog_completeness(test_host):
     )
 
 
-def test_all_69_operations_secured_through_facade(test_host):
+def test_all_operations_secured_through_facade(test_host):
     """Verify that every ExecutionAPI operation in handler is wrapped by the security facade."""
     operations = test_host.api.operations()
     for op in operations:
@@ -327,11 +330,11 @@ def test_all_69_operations_secured_through_facade(test_host):
 
 
 @pytest.mark.asyncio
-async def test_all_69_operations_route_through_execution_api(test_host):
+async def test_all_operations_route_through_execution_api(test_host):
     """Drive all operations through handler with real SDK payloads and verify raw dispatch."""
     sdk_payloads = await _capture_sdk_payloads()
     operations = test_host.api.operations()
-    assert len(sdk_payloads) == 71, f'Expected 71 SDK payloads, got {len(sdk_payloads)}'
+    assert len(sdk_payloads) == 72, f'Expected 72 SDK payloads, got {len(sdk_payloads)}'
 
     for op in operations:
         raw_called = False

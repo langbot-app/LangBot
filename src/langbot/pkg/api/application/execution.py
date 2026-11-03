@@ -237,6 +237,21 @@ EXECUTION_OPERATIONS = (
         'run',
         True,
     ),
+    ExecutionOperation(
+        'request_interaction',
+        _input(
+            'ExecutionInteractionInput',
+            request=(Object, ...),
+            timeout=(Annotated[float | int, Field(gt=0, le=86400)], 600),
+            on_unsupported=(Literal['error', 'degrade'], 'error'),
+            responders=(Text | list[Text], 'actor'),
+            target_type=(Text | None, None),
+            target_id=(Text | None, None),
+        ),
+        _output('ExecutionInteractionOutput'),
+        'run',
+        True,
+    ),
     ExecutionOperation('get_llm_models', Empty, _output('ExecutionModelsOutput', llm_models=(list[str], ...))),
     ExecutionOperation('count_tokens', ModelCall, _output('ExecutionTokensOutput', tokens=(int, ...)), 'plugin_or_run'),
     ExecutionOperation(
