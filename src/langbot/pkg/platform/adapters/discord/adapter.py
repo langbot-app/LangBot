@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import collections
 import os
 import time
 import traceback
@@ -37,6 +38,13 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
 
     _stream_buffer: dict = pydantic.PrivateAttr(default_factory=dict)
     _STREAM_EDIT_INTERVAL: typing.ClassVar[int] = 8
+    # Guild conversations are keyed by guild id, so interaction replies resolve
+    # their channel from the message they answer.
+    _message_channels: collections.OrderedDict = pydantic.PrivateAttr(default_factory=collections.OrderedDict)
+    # Callbacks must report the conversation the card was sent for, which may be
+    # a guild rather than the channel the button lives in.
+    _interaction_targets: collections.OrderedDict = pydantic.PrivateAttr(default_factory=collections.OrderedDict)
+    _MESSAGE_CHANNEL_LIMIT: typing.ClassVar[int] = 1024
     config: dict
     listeners: dict[
         typing.Type[platform_events.Event],
@@ -59,6 +67,7 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     return
                 if message.author.bot:
                     return
+                adapter_self._remember_message_channel(message)
                 try:
                     if (
                         platform_events.FriendMessage in adapter_self.listeners
@@ -90,7 +99,12 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                 if not interaction.response.is_done():
                     await interaction.response.defer()
                 try:
-                    await adapter_self._dispatch_eba_event(interaction_event_from_component(interaction, parsed))
+                    conversation = adapter_self._interaction_targets.get(
+                        str(interaction.message.id) if interaction.message is not None else ''
+                    )
+                    await adapter_self._dispatch_eba_event(
+                        interaction_event_from_component(interaction, parsed, conversation)
+                    )
                     if interaction.message is not None:
                         await interaction.message.edit(view=None)
                 except Exception:
@@ -237,7 +251,31 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         handle = InteractionHandle.model_validate(result)
         handle.context['request'] = request.model_dump(mode='json')
         handle.context['target_id'] = target_id
+        self._remember(self._interaction_targets, str(handle.message_id), (target_type, str(target_id)))
         return handle
+
+    def _remember_message_channel(self, message: discord.Message) -> None:
+        self._remember(self._message_channels, str(message.id), message.channel.id)
+
+    def _remember(self, cache: collections.OrderedDict, key: str, value: typing.Any) -> None:
+        cache[key] = value
+        cache.move_to_end(key)
+        while len(cache) > self._MESSAGE_CHANNEL_LIMIT:
+            cache.popitem(last=False)
+
+    async def _resolve_interaction_channel(
+        self, target_type: str, target_id: str, reply_to: str | None
+    ) -> discord.abc.Messageable:
+        channel_id = self._message_channels.get(str(reply_to)) if reply_to is not None else None
+        if channel_id is not None:
+            return await self._get_channel(channel_id)
+        guild = self.bot.get_guild(int(target_id)) if target_type == 'group' else None
+        if guild is not None:
+            # Match send_message: without an originating message, use the system channel.
+            if guild.system_channel is None:
+                raise ValueError('Discord guild has no system channel configured for interactions')
+            return guild.system_channel
+        return await self._get_channel(target_id)
 
     async def update_interaction(
         self,
@@ -246,7 +284,7 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         submission: InteractionSubmission | None = None,
     ) -> InteractionHandle:
         del submission
-        channel = await self._get_channel(str(handle.context['target_id']))
+        channel = await self._get_channel(str(handle.context.get('channel_id') or handle.context['target_id']))
         message = await channel.fetch_message(int(handle.message_id))
         label = {'submitted': 'Submitted', 'expired': 'Expired', 'cancelled': 'Cancelled'}[state]
         await message.edit(content=f'{handle.context["request"]["title"]}\n\n{label}', view=None)
