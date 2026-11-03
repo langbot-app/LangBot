@@ -123,6 +123,82 @@ async def test_sdk_stream_reuses_adapter_or_sends_one_final_message(native, sour
     await session.close()
 
 
+async def test_target_streaming_adapter_updates_card_without_source_message():
+    session, adapter, _ = make_session(source=False)
+    adapter.create_message_card_for_target = AsyncMock(return_value=True)
+    adapter.reply_message_chunk_for_target = AsyncMock()
+    key = uuid4()
+
+    await session.apply(request(key, text='hello'))
+    result = await session.apply(request(key, 'finish', 'hello world'))
+
+    assert result['delivery'] == 'streaming'
+    adapter.create_message_card_for_target.assert_awaited_once_with(
+        adapter.reply_message_chunk_for_target.await_args.kwargs['message_id'], 'person', 'user-1'
+    )
+    assert [call.kwargs['content'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [
+        'hello',
+        'hello world',
+    ]
+    assert [call.kwargs['is_final'] for call in adapter.reply_message_chunk_for_target.await_args_list] == [False, True]
+    adapter.send_message.assert_not_awaited()
+    await session.close()
+
+
+async def test_non_message_event_buffers_one_final_reply():
+    event = SimpleNamespace(
+        event_type='platform.specific',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1'},
+        ),
+    )
+    source = events.PlatformSpecificEvent(
+        type='platform.specific',
+        adapter_name='wecombot-omni',
+        action='test.event',
+        data={'callback_req_id': 'callback-1'},
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
+    await session.close()
+
+
+async def test_target_reply_is_sent_as_new_message():
+    event = SimpleNamespace(
+        event_type='message.received',
+        delivery=SimpleNamespace(
+            surface='platform',
+            platform_capabilities={},
+            reply_target={'target_type': 'person', 'target_id': 'user-1', 'message_id': 'original-1'},
+        ),
+    )
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=True),
+        send_message=AsyncMock(),
+    )
+    session = ReplyStreamSession(event, adapter, source=None)
+    key = uuid4()
+    await session.apply(request(key, text='partial'))
+    result = await session.apply(request(key, 'finish', 'complete'))
+
+    assert result['delivery'] == 'buffered'
+    adapter.send_message.assert_awaited_once()
+    assert adapter.send_message.await_args.args[2][0].text == 'complete'
+    await session.close()
+
+
 @pytest.mark.parametrize('native', [True, False])
 @pytest.mark.parametrize('error', [RuntimeError, asyncio.CancelledError])
 async def test_exception_finalizes_visible_card_without_sending_buffered_partial(native, error):

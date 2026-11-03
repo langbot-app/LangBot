@@ -588,6 +588,16 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.embedding_models_service.get_embedding_models(context, include_secret=False))
 
+        @mcp.tool(description='List all configured ASR (speech recognition) models.')
+        async def list_asr_models() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.asr_models_service.get_asr_models(context, include_secret=False))
+
+        @mcp.tool(description='List all configured TTS (text-to-speech) models.')
+        async def list_tts_models() -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await ap.tts_models_service.get_tts_models(context, include_secret=False))
+
         @mcp.tool(description='List all model providers (OpenAI-compatible, Anthropic, etc.).')
         async def list_model_providers() -> str:
             context = _authorized(Permission.RESOURCE_VIEW)

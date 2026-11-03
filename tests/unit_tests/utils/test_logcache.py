@@ -159,6 +159,17 @@ class TestLogCache:
         assert 'page0 log 0' in result
         assert 'page1 log 0' in result
 
+    def test_get_log_by_pointer_across_pages_keeps_line_boundaries(self):
+        """Lines from adjacent pages are separated by a newline, not glued together."""
+        cache = LogCache()
+        logs = [f'log {i}' for i in range(LOG_PAGE_SIZE * 2 + 1)]
+        for log in logs:
+            cache.add_log(log)
+
+        result, _, _ = cache.get_log_by_pointer(0, 0)
+
+        assert result.split('\n') == logs
+
     def test_get_log_by_pointer_from_second_page(self):
         """get_log_by_pointer can start from second page."""
         cache = LogCache()

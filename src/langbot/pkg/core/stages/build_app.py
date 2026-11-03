@@ -112,6 +112,12 @@ class BuildAppStage(stage.BootingStage):
         rerank_models_service_inst = model_service.RerankModelsService(ap)
         ap.rerank_models_service = rerank_models_service_inst
 
+        asr_models_service_inst = model_service.ASRModelsService(ap)
+        ap.asr_models_service = asr_models_service_inst
+
+        tts_models_service_inst = model_service.TTSModelsService(ap)
+        ap.tts_models_service = tts_models_service_inst
+
         provider_service_inst = provider_service.ModelProviderService(ap)
         ap.provider_service = provider_service_inst
 
@@ -349,6 +355,7 @@ class BuildAppStage(stage.BootingStage):
 
         agent_run_orchestrator_inst = AgentRunOrchestrator(ap, runner_registry_inst)
         ap.agent_run_orchestrator = agent_run_orchestrator_inst
+        await agent_run_orchestrator_inst.interaction_manager.store.cancel_orphaned_pending(set())
 
         ctrl = controller.Controller(ap)
         ap.ctrl = ctrl

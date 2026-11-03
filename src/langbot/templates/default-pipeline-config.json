@@ -43,6 +43,24 @@
         },
         "runner_config": {}
     },
+    "speech": {
+        "speech-recognition": {
+            "enable": false,
+            "model": "",
+            "max-duration": 60,
+            "keep-original-voice": false,
+            "on-failure": "notify"
+        },
+        "text-to-speech": {
+            "enable": false,
+            "model": "",
+            "trigger": "voice-input-only",
+            "output": "voice-only",
+            "max-text-length": 500,
+            "voice": "",
+            "on-failure": "fallback"
+        }
+    },
     "output": {
         "long-text-processing": {
             "threshold": 1000,

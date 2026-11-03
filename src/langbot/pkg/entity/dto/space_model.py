@@ -40,7 +40,8 @@ class SpaceModel(pydantic.BaseModel):
     uuid: str
     model_id: str
     provider: str
-    category: str  # chat / embedding
+    category: str  # chat / embedding / rerank / tts / asr
+    default_voice: str | None = None
     llm_abilities: list[str] | None = None
     is_featured: bool = False
     featured_order: int = 0

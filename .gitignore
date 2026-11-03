@@ -31,6 +31,7 @@ bard.json
 !.pre-commit-config.yaml
 !components.yaml
 !/docker-compose.yaml
+docker/data
 data/labels/instance_id.json
 .DS_Store
 /data

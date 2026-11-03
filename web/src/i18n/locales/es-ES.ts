@@ -283,9 +283,14 @@ const esES = {
       'Elige un evento compatible, introduce datos de prueba y revisa la salida y los resultados de las herramientas. Las acciones de plataforma se simulan; los modelos y las demás herramientas se ejecutan según su configuración.',
     pipeline: {
       trigger: {
-        title: 'Elegir qué mensajes responder',
+        title: 'Choose which messages to answer',
         description:
-          'Los flujos procesan eventos de mensajes y responden automáticamente con IA. Configura los activadores de grupo, las reglas de chat privado y los filtros.',
+          'Pipelines handle message events and reply automatically with AI.',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Configurar las funciones de IA',
@@ -899,6 +904,10 @@ const esES = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Reordenar',
+    asr: 'ASR (Reconocimiento de voz)',
+    tts: 'TTS (Texto a voz)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'URL completa para el endpoint de reordenación (ej: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2442,6 +2451,7 @@ const esES = {
     triggerConditions: 'Disparador',
     safetyControls: 'Seguridad',
     outputProcessing: 'Salida',
+    speechProcessing: 'Voz',
     nameRequired: 'El nombre no puede estar vacío',
     descriptionRequired: 'La descripción no puede estar vacía',
     createSuccess:

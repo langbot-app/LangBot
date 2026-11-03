@@ -1483,6 +1483,41 @@ class RuntimeConnectionHandler(handler.Handler):
                 },
             )
 
+        @self.action(PluginToRuntimeAction.REQUEST_INTERACTION)
+        async def request_interaction(data: dict[str, Any]) -> handler.ActionResponse:
+            action_context, _ = await self._require_plugin_action_context()
+            session, error = await _validate_agent_run_session(
+                data.get('run_id'), data.get('caller_plugin_identity'), self.ap, 'request_interaction'
+            )
+            if error:
+                return error
+            authorization = session['authorization']
+            if authorization.get('workspace_id') != action_context.workspace_uuid:
+                return handler.ActionResponse.error('Run belongs to another Workspace')
+            if not authorization.get('interactions_enabled') or not authorization.get('interactions_authorized'):
+                return handler.ActionResponse.error('Runner did not declare interaction capability and permission')
+            bot_id = authorization.get('bot_id')
+            if not bot_id:
+                return handler.ActionResponse.error('Interaction requires a platform bot')
+            bot = await self.ap.platform_mgr.get_bot_by_uuid(self._execution_context(action_context), bot_id)
+            if bot is None:
+                return handler.ActionResponse.error('Interaction bot is not running')
+            manager = self.ap.agent_run_orchestrator.interaction_manager
+            try:
+                result = await manager.request_interaction(
+                    session=session,
+                    adapter=bot.adapter,
+                    request_payload=data['request'],
+                    timeout=float(data['timeout']),
+                    on_unsupported=data.get('on_unsupported', 'error'),
+                    responders=data.get('responders', 'actor'),
+                    target_type=data.get('target_type'),
+                    target_id=data.get('target_id'),
+                )
+                return handler.ActionResponse.success(data=result)
+            except (ValueError, KeyError, TypeError, pydantic.ValidationError) as exc:
+                return handler.ActionResponse.error(str(exc))
+
         @self.action(PluginToRuntimeAction.GET_LLM_MODELS)
         async def get_llm_models(data: dict[str, Any]) -> handler.ActionResponse:
             """Get llm models, returns list of UUID strings"""
@@ -3268,7 +3303,6 @@ class RuntimeConnectionHandler(handler.Handler):
 
         Yields RunnerResult dicts.
         """
-        timeout = self._get_runner_action_timeout(context)
         gen = self.call_action_generator(
             LangBotToRuntimeAction.RUN_RUNNER,
             {
@@ -3277,27 +3311,12 @@ class RuntimeConnectionHandler(handler.Handler):
                 'runner_name': runner_name,
                 'context': context,
             },
-            timeout=timeout,
+            timeout=None,
         )
 
         async with contextlib.aclosing(gen):
             async for ret in gen:
                 yield ret
-
-    def _get_runner_action_timeout(self, context: dict[str, Any]) -> float:
-        """Use the run deadline as the transport idle timeout when available."""
-        try:
-            import time
-
-            deadline_at = (context.get('runtime') or {}).get('deadline_at')
-            if deadline_at is None:
-                return 300
-            remaining = float(deadline_at) - time.time()
-            if remaining <= 0:
-                return 0.001
-            return max(remaining + 1.0, 0.001)
-        except (TypeError, ValueError):
-            return 300
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""

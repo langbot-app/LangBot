@@ -6,6 +6,7 @@ import uuid
 import time
 import typing
 
+from ...api.http.context import ExecutionContext
 from ...core import app
 from .descriptor import RunnerDescriptor
 from .persistent_state_store import get_persistent_state_store
@@ -207,7 +208,9 @@ class RunnerContextBuilder:
             return bool({'invoke', 'stream', 'count_tokens'} & {str(operation) for operation in operations})
         return model_resource.get('model_type') != 'rerank'
 
-    async def _build_model_context_window_tokens(self, resources: AgentResources) -> int | None:
+    async def _build_model_context_window_tokens(
+        self, execution_context: ExecutionContext, resources: AgentResources
+    ) -> int | None:
         model_mgr = getattr(self.ap, 'model_mgr', None)
         if model_mgr is None:
             return None
@@ -221,7 +224,7 @@ class RunnerContextBuilder:
                 continue
 
             try:
-                model = await model_mgr.get_model_by_uuid(model_uuid)
+                model = await model_mgr.get_model_by_uuid(execution_context, model_uuid)
             except Exception as exc:
                 logger = getattr(self.ap, 'logger', None)
                 if logger is not None:
@@ -236,6 +239,7 @@ class RunnerContextBuilder:
 
     async def build_context_from_event(
         self,
+        execution_context: ExecutionContext,
         event: AgentEventEnvelope,
         binding: AgentBinding,
         descriptor: RunnerDescriptor,
@@ -247,6 +251,7 @@ class RunnerContextBuilder:
         Does NOT inline full history by default.
 
         Args:
+            execution_context: Trusted tenant context used to resolve models
             event: Event envelope
             binding: Agent binding
             descriptor: Runner descriptor
@@ -265,19 +270,7 @@ class RunnerContextBuilder:
             'timestamp': event.event_time or int(time.time()),
         }
 
-        # A legacy Tbox resume must use the persisted original bot, not a
-        # newly reconstructed callback envelope. Ordinary sender mode is unchanged.
         bot_id = event.bot_id
-        if event.event_type == 'interaction.submitted' and binding.runner_config.get('user-id-source') == 'legacy-bot':
-            identity = event.legacy_identity
-            bot_id = (
-                identity.bot_id
-                if identity is not None
-                and identity.workspace_id == event.workspace_id
-                and identity.bot_id == event.bot_id
-                and identity.pipeline_id == (binding.processor_id or binding.agent_id)
-                else None
-            )
 
         # Build conversation context from event
         conversation: ConversationContext | None = None
@@ -294,6 +287,24 @@ class RunnerContextBuilder:
             }
 
             identity = event.legacy_identity
+            if (
+                identity is not None
+                and identity.workspace_id == event.workspace_id
+                and identity.bot_id == event.bot_id
+                and identity.pipeline_id == (binding.processor_id or binding.agent_id)
+            ):
+                # Query-backed platform events carry a Host-owned entry-session
+                # identity even when the event-first conversation UUID changes
+                # after create_new_conversation(). This is a Core context
+                # contract: session_id is reset-stable while conversation_id
+                # remains the current Host conversation UUID.
+                stable_launcher_type = identity.session_launcher_type
+                stable_launcher_id = identity.session_launcher_id
+                if stable_launcher_type not in ('group', 'person') or not stable_launcher_id:
+                    stable_launcher_type = identity.query_launcher_type
+                    stable_launcher_id = identity.query_launcher_id
+                if stable_launcher_type in ('group', 'person') and stable_launcher_id:
+                    conversation['session_id'] = f'{stable_launcher_type}_{stable_launcher_id}'
             if (
                 binding.runner_config.get('user-id-source') == 'legacy-session'
                 and identity is not None
@@ -370,7 +381,7 @@ class RunnerContextBuilder:
         persistent_state_store = get_persistent_state_store(self.ap.persistence_mgr.get_db_engine())
         state: AgentRunState = await persistent_state_store.build_snapshot_from_event(event, binding, descriptor)
 
-        model_context_window_tokens = await self._build_model_context_window_tokens(resources)
+        model_context_window_tokens = await self._build_model_context_window_tokens(execution_context, resources)
 
         # Build runtime context
         runtime: AgentRuntimeContext = {

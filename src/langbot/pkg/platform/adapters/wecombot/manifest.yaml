@@ -170,6 +170,29 @@ spec:
       type: boolean
       required: false
       default: true
+    - name: voice_delivery
+      label:
+        en_US: Voice Delivery Mode
+        zh_Hans: 语音发送模式
+        zh_Hant: 語音傳送模式
+      description:
+        en_US: Choose how voice responses are delivered. 'voice' sends native voice messages (requires SILK transcoding). 'file' sends audio files.
+        zh_Hans: 选择语音回复的发送方式。'voice' 为企微原生语音条（默认自动转码为 SILK），'file' 为音频文件卡片。
+        zh_Hant: 選擇語音回覆的傳送方式。'voice' 為企微原生語音條（預設自動轉碼為 SILK），'file' 為音訊檔案卡片。
+      type: select
+      options:
+        - label:
+            en_US: Native Voice (Recommended)
+            zh_Hans: 原生语音条（推荐）
+            zh_Hant: 原生語音條（推薦）
+          value: voice
+        - label:
+            en_US: Audio File
+            zh_Hans: 音频文件
+            zh_Hant: 音訊檔案
+          value: file
+      required: false
+      default: voice
 
   supported_events:
     - message.received
@@ -177,6 +200,7 @@ spec:
     - wecombot.enter_chat
     - wecombot.template_card_event
     - platform.specific
+    - interaction.callback
 
   supported_apis:
     required:
@@ -190,7 +214,9 @@ spec:
       - get_group_member_info
       - get_group_member_list
       - call_platform_api
-      - interaction.request
+      - send_interaction
+      - update_interaction
+      - get_interaction_capabilities
 
   platform_specific_apis:
     - action: is_websocket_mode

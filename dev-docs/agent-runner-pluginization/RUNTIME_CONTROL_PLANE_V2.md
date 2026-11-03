@@ -2,7 +2,7 @@
 
 本文档记录 Runner 插件化之后，LangBot 如何继续演进成 Agent Platform 基础设施层。这里讨论的是 Host capability layer，不是 `Runner Protocol v2`，也不是把某个具体 Agent Platform 产品写进 LangBot core。
 
-> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
+> 本文是当前决策版。协议数据结构仍以 [PROTOCOL_V1.md](./PROTOCOL_V1.md) 为准；测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)；扩展边界见 [EXTENSION_SCOPE_MATRIX.md](./EXTENSION_SCOPE_MATRIX.md)。
 >
 > 实现状态说明：本文描述的是 Runtime Control Plane v2 的目标能力和分阶段落地建议。当前 Runner 插件化主线已经具备 event-first context、run-scoped authorization、EventLog / Transcript / State / sandbox 文件等 Host capability，并已落地持久 `AgentRun` / `AgentRunEvent` ledger、run control actions、最小 runtime heartbeat/claim lease 和 admin reconcile 原语。完整 Agent Platform 产品形态、daemon supervisor、runtime wakeup channel 和分布式 runtime 管控仍未完成。当前实现状态以 [STATUS.md](./STATUS.md) 为准。
 

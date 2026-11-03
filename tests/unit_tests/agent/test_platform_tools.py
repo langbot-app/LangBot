@@ -6,6 +6,7 @@ from langbot_plugin.api.entities.builtin.runner import (
     ActorContext,
     AgentInput,
     DeliveryContext,
+    InteractionDeliveryCapabilities,
     RawEventRef,
     SubjectContext,
 )
@@ -16,6 +17,7 @@ from langbot_plugin.api.entities.builtin.platform import events as platform_even
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
 from langbot.pkg.agent.runner.platform_tools import (
     PLATFORM_TOOL_DEFINITIONS,
+    PRESENT_INTERACTIVE_CARD_TOOL,
     build_platform_tool_resources,
     execute_platform_tool,
     freeze_platform_context,
@@ -207,8 +209,8 @@ def test_platform_resources_require_runner_call_permission() -> None:
     assert capabilities['unavailable_tools'] == [{'name': 'event_reply', 'reason': 'runner_call_permission_missing'}]
 
 
-def test_interaction_resume_can_reply_only_to_a_frozen_delivery_target() -> None:
-    event = _event().model_copy(update={'event_type': 'interaction.submitted'})
+def test_message_can_reply_only_to_a_frozen_delivery_target() -> None:
+    event = _event()
     names = resolve_agent_platform_tool_names({}, event.event_type)
     assert 'event_reply' in names
     resources, _ = build_platform_tool_resources(event, names, ['detail', 'call'])
@@ -360,6 +362,135 @@ async def test_event_reply_builds_message_chain_for_the_frozen_target() -> None:
     assert call.kwargs['target_id'] == 'group-1'
     assert isinstance(call.kwargs['message'], platform_message.MessageChain)
     assert call.kwargs['message'][0].text == 'hello'
+
+
+@pytest.mark.asyncio
+async def test_event_reply_uses_run_reply_stream_when_available() -> None:
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['send_message'],
+        send_message=AsyncMock(return_value=None),
+    )
+    reply_streams = SimpleNamespace(
+        adapter=adapter,
+        apply=AsyncMock(return_value={'status': 'completed', 'delivery': 'streaming'}),
+    )
+    ap = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    )
+    session = {
+        'reply_streams': reply_streams,
+        'authorization': {
+            'bot_id': 'bot-1',
+            'platform_context': freeze_platform_context(_event()),
+        },
+    }
+
+    result = await execute_platform_tool(ap, object(), session, 'event_reply', {'text': 'hello'})
+
+    request = reply_streams.apply.await_args.args[0]
+    assert request.operation == 'finish'
+    assert request.text == 'hello'
+    assert result == {'status': 'completed', 'delivery': 'streaming'}
+    adapter.send_message.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_request_interaction_uses_host_interaction_manager() -> None:
+    adapter = SimpleNamespace(get_supported_apis=lambda: ['send_interaction'])
+    manager = SimpleNamespace(
+        request_interaction=AsyncMock(
+            return_value={'status': 'submitted', 'submission': {'interaction_id': 'card-host-generated'}}
+        )
+    )
+    ap = SimpleNamespace(
+        agent_run_orchestrator=SimpleNamespace(interaction_manager=manager),
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter))),
+    )
+    event = _event('message.received')
+    event.delivery.platform_capabilities['supported_apis'].append('send_interaction')
+    session = {
+        'run_id': 'run-1',
+        'runner_id': 'plugin:test/Agent/default',
+        'authorization': {
+            'bot_id': 'bot-1',
+            'platform_context': freeze_platform_context(event),
+        },
+    }
+
+    result = await execute_platform_tool(
+        ap,
+        object(),
+        session,
+        PRESENT_INTERACTIVE_CARD_TOOL,
+        {
+            'kind': 'choice',
+            'title': 'Choose deployment environment',
+            'fields': [
+                {
+                    'id': 'environment',
+                    'label': 'Environment',
+                    'type': 'select',
+                    'options': [
+                        {'value': 'staging', 'label': 'Staging'},
+                        {'value': 'production', 'label': 'Production'},
+                    ],
+                }
+            ],
+        },
+    )
+
+    assert result == {'status': 'submitted', 'submission': {'interaction_id': 'card-host-generated'}}
+    payload = manager.request_interaction.await_args.kwargs['request_payload']
+    assert payload['interaction_id'].startswith('card-')
+    assert payload['fallback_text'].startswith('Choose deployment environment')
+    assert 'callback_token' not in payload
+    assert manager.request_interaction.await_args.kwargs['session'] is session
+    assert manager.request_interaction.await_args.kwargs['adapter'] is adapter
+    assert manager.request_interaction.await_args.kwargs['on_unsupported'] == 'degrade'
+
+    with pytest.raises(ValueError, match='cannot combine fields and actions'):
+        await execute_platform_tool(
+            ap,
+            object(),
+            session,
+            PRESENT_INTERACTIVE_CARD_TOOL,
+            {
+                'title': 'Invalid mixed step',
+                'fields': [
+                    {
+                        'id': 'environment',
+                        'label': 'Environment',
+                        'type': 'select',
+                        'options': [{'value': 'staging', 'label': 'Staging'}],
+                    }
+                ],
+                'actions': [{'id': 'continue', 'label': 'Continue'}],
+            },
+        )
+
+
+def test_interactive_card_tool_is_automatic_only_for_interactive_message_surfaces() -> None:
+    selected = resolve_agent_platform_tool_names({}, 'message.received')
+    assert PRESENT_INTERACTIVE_CARD_TOOL in selected
+    assert PRESENT_INTERACTIVE_CARD_TOOL not in resolve_agent_platform_tool_names({}, 'group.member_joined')
+
+
+def test_interactive_card_tool_schema_is_narrowed_to_adapter_capabilities() -> None:
+    event = _event('message.received')
+    event.delivery.platform_capabilities['supported_apis'].append('send_interaction')
+    event.delivery.interactions = InteractionDeliveryCapabilities(
+        field_types=['select'],
+        action_styles=['default', 'primary'],
+        supports_updates=True,
+        max_fields=1,
+    )
+
+    resources, _ = build_platform_tool_resources(event, [PRESENT_INTERACTIVE_CARD_TOOL], ['call'])
+
+    parameters = resources[0]['parameters']['properties']
+    assert parameters['fields']['maxItems'] == 1
+    assert parameters['fields']['items']['properties']['type']['enum'] == ['select']
+    assert parameters['actions']['items']['properties']['style']['enum'] == ['default', 'primary']
 
 
 @pytest.mark.asyncio

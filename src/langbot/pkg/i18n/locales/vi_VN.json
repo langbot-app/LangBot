@@ -110,5 +110,8 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "Không thể bắt đầu đăng nhập thiết bị ChatGPT. Hãy bật đăng nhập bằng mã thiết bị trong cài đặt ChatGPT.",
   "Option {number}": "Lựa chọn {number}",
   "Confirmation needed": "Cần xác nhận",
-  "Session reset successfully": "Đã đặt lại phiên"
+  "Session reset successfully": "Đã đặt lại phiên",
+  "Voice transcription failed.": "Chuyển đổi giọng nói thành văn bản thất bại.",
+  "Voice message exceeds maximum duration.": "Tin nhắn thoại vượt quá thời lượng tối đa.",
+  "Voice synthesis failed.": "Tổng hợp giọng nói thất bại."
 }

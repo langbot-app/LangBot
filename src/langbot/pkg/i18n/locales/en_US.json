@@ -110,5 +110,8 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.",
   "Option {number}": "Option {number}",
   "Confirmation needed": "Confirmation needed",
-  "Session reset successfully": "Session reset successfully"
+  "Session reset successfully": "Session reset successfully",
+  "Voice transcription failed.": "Voice transcription failed.",
+  "Voice message exceeds maximum duration.": "Voice message exceeds maximum duration.",
+  "Voice synthesis failed.": "Voice synthesis failed."
 }

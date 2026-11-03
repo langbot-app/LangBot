@@ -208,18 +208,25 @@ class AsyncDifyClient:
                 timeout=self.timeout,
                 trust_env=False,
             ) as client:
-                response = await limited_post(
-                    client,
+                async with client.stream(
+                    "POST",
                     f"/form/human_input/{form_token}",
-                    DifyAPIError,
                     headers=headers,
                     json={"inputs": inputs, "user": user, "action": action},
-                )
-                if not response.is_success:
-                    raise DifyAPIError(
-                        f"Dify API error: {response.status_code} - {response.text[:200]}",
-                        code="dify.http_error",
-                    )
+                ) as response:
+                    if not response.is_success:
+                        body = await limited_body(response, DifyAPIError)
+                        raise DifyAPIError(
+                            f"Dify API error: {response.status_code} - {body.decode('utf-8', errors='replace')[:200]}",
+                            code="dify.http_error",
+                        )
+
+                    content_type = response.headers.get("content-type", "").lower()
+                    if content_type.split(";", 1)[0].strip() == "text/event-stream":
+                        async for event in _iter_sse_json(response):
+                            yield event
+                        return
+                    await limited_body(response, DifyAPIError)
 
                 async with client.stream(
                     "GET",

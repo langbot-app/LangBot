@@ -345,4 +345,5 @@ class LoadConfigStage(stage.BootingStage):
         ap.pipeline_config_meta_trigger = await load_resource_yaml_template_data('metadata/pipeline/trigger.yaml')
         ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
+        ap.pipeline_config_meta_speech = await load_resource_yaml_template_data('metadata/pipeline/speech.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')

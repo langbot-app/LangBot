@@ -62,7 +62,7 @@ async def _create_client(role: str):
     application.provider_service = SimpleNamespace(
         get_providers=AsyncMock(side_effect=get_providers),
         get_provider=AsyncMock(side_effect=get_provider),
-        get_provider_model_counts=AsyncMock(return_value={'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1}),
+        get_provider_model_counts=AsyncMock(return_value={'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1, 'asr_count': 1, 'tts_count': 1}),
     )
 
     def model_service(list_name: str, get_name: str):
@@ -135,7 +135,7 @@ async def test_default_preserves_secrets_and_explicit_false_redacts_high_permiss
     default_value = default_data['data'].get('providers', default_data['data'].get('models'))[0]
     false_value = false_data['data'].get('providers', false_data['data'].get('models'))[0]
     expected = (
-        {**RAW_PROVIDER, 'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1}
+        {**RAW_PROVIDER, 'llm_count': 1, 'embedding_count': 1, 'rerank_count': 1, 'asr_count': 1, 'tts_count': 1}
         if endpoint.endswith('/providers')
         else RAW_MODEL
     )

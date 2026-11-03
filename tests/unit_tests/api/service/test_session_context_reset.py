@@ -153,7 +153,7 @@ async def test_reset_starts_new_external_runner_conversation(context_service):
     snapshot = await store.build_snapshot_from_event(event, binding, descriptor)
     generation = await get_reset_generation(engine, 'w', 'b', 'person_u')
     assert isinstance(generation, str) and generation and generation not in {'remote-old', 'person_u'}
-    assert snapshot['conversation']['external.conversation_id'] == generation
+    assert 'external.conversation_id' not in snapshot['conversation']
 
 
 @pytest.mark.asyncio

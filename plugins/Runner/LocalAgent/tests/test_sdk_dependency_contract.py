@@ -22,15 +22,15 @@ def _sdk_requirements():
 def test_project_and_packaged_sdk_constraints_match():
     project, packaged = _sdk_requirements()
     assert project.specifier == packaged.specifier
-    assert str(project.specifier) == ">=0.7.18"
+    assert str(project.specifier) == "<0.8,>=0.7.16"
 
 
-@pytest.mark.parametrize("version", ["0.7.18", "0.7.19", "0.8.0", "1.0.0"])
+@pytest.mark.parametrize("version", ["0.7.16", "0.7.17", "0.7.18", "0.7.19"])
 def test_sdk_constraints_accept_stable_releases_from_minimum(version):
     assert all(requirement.specifier.contains(version) for requirement in _sdk_requirements())
 
 
-@pytest.mark.parametrize("version", ["0.7.16", "0.7.17"])
+@pytest.mark.parametrize("version", ["0.7.4", "0.7.15", "0.8.0", "1.0.0"])
 def test_sdk_constraints_reject_older_releases(version):
     assert not any(requirement.specifier.contains(version) for requirement in _sdk_requirements())
 

@@ -324,13 +324,11 @@ class AgentService:
         # prompt before advertising the Host prompt API. Keep explicit [] intact.
         descriptor = await self.ap.runner_registry.get(execution_context, runner_id)
         prompt_config = extract_prompt_config(descriptor, runner_config, [])
-        execution_query = build_execution_query(event, [])
+        execution_query = build_execution_query(event, [], execution_context)
         execution_query.prompt = provider_prompt.Prompt(
             name='default',
             messages=[provider_message.Message(**message) for message in copy.deepcopy(prompt_config)],
         )
-        for field_name in ('instance_uuid', 'workspace_uuid', 'placement_generation', 'query_uuid'):
-            object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
         project_mcp_resource_config(execution_query, runner_config)
 
         output_items: list[dict[str, typing.Any]] = []
@@ -446,6 +444,7 @@ class AgentService:
                     'description': agent_data.get('description') or '',
                     'emoji': agent_data.get('emoji') or '⚙️',
                 },
+                runner_id=agent_data.get('runner_id'),
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 

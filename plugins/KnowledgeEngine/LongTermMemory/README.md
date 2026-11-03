@@ -8,7 +8,7 @@ Long-term memory plugin for LangBot with a dual-layer design:
 ## What It Does
 
 - Exposes a `remember` tool for episodic memory writes
-- Exposes a `recall_memory` tool for active episodic memory lookup with controlled filters
+- Exposes a `recall_memory` tool to read session/speaker profiles and look up episodic memories with controlled filters
 - Exposes an `update_profile` tool for stable profile updates
 - Exposes a `forget` tool for agent-initiated deletion of specific episodic memories
 - Injects profile memory and current speaker identity through an EventListener
@@ -24,7 +24,7 @@ Long-term memory plugin for LangBot with a dual-layer design:
 - Provides `!memory audit [page|export]` to inspect scoped memory change history
 - Provides `!memory consolidate preview|run` for preview-first scoped L2 cleanup
 - Provides optional `!memory candidates` and `!memory candidate accept|reject` review workflow for extracted memory candidates
-- Automatically supersedes related older episodes when a correction/fact-update/clarification is stored
+- Supersedes explicitly identified older episodes when a correction names their IDs; similarity or tags alone never hide a fact
 
 ## Overall Design
 
@@ -118,8 +118,11 @@ This plugin intentionally stays close to LangBot's existing extension points ins
 
 - L1 profile is stored in plugin storage as JSON
 - L2 episodic memory is stored in the vector database
-- Memory retrieval is enabled per pipeline by attaching this plugin's KnowledgeEngine
+- Agent processors access memory by authorizing this plugin's tools; attaching the memory KB to a Pipeline is not required.
+- Pipeline event-based automatic injection still requires attaching this plugin's KnowledgeEngine.
 - The plugin currently assumes a single memory KB per plugin instance and isolates memory by metadata
+
+Tool access uses the Host-provided session identity and the existing authorized Host tool API. LocalAgent calls that API directly; external runners can expose it through their LangBot asset gateway. Authorizing memory tools does not enable the Pipeline lifecycle hooks: automatic prompt injection and response-based candidate extraction still use the existing Pipeline event listeners.
 
 The current implementation is built around the existing LangBot and SDK APIs. If LangBot later adds more explicit memory-oriented APIs, session identity APIs, or KB registration APIs, the plugin could be simplified, but the current architecture would still remain valid.
 
@@ -287,12 +290,17 @@ That is intentional:
    - `isolation`
    - optional `recency_half_life_days`
    - optional `auto_recall_top_k`
-4. Let the agent use:
+4. Authorize these tools in the Agent processor or Pipeline:
    - `remember` for events, plans, and episodic facts
-   - `recall_memory` for active memory lookup when automatic recall is insufficient
+   - `recall_memory` to read the current session/speaker profiles and search episodic memory
    - `update_profile` for stable preferences and profile data
    - `forget` to delete a specific episodic memory by ID
-5. Run `!memory health` in a pipeline that includes the memory KB. Treat `ERROR` as a setup problem before relying on scoped recall.
+
+   `recall_memory` returns a JSON object containing `session_profile`, `speaker_profile`
+   (formatted profile text), and `episodes`. Tools use the Host-provided bot, chat,
+   and current-speaker identity. They do not require a Pipeline-bound Query.
+
+5. Run the Memory Console health check before relying on scoped recall. For Pipeline automatic injection, also attach the memory KB and run `!memory health` in that Pipeline.
 6. Use `!memory`, `!memory profile`, `!memory search <query>`, `!memory list [page]`, `!memory forget <id>`, `!memory export`, and `!memory consolidate preview` to inspect behavior. `!memory list` and `!memory search` show active episodes by default; add `--include-superseded`, `--include-archived`, or `--status <status>` when explicitly inspecting hidden lifecycle states.
 
 ## Episode Lifecycle
@@ -304,7 +312,7 @@ L2 episodes carry a lifecycle `status` metadata field:
 - `archived`: retained for history, excluded from normal recall
 - `deleted`: reserved for tombstones or future audit workflows
 
-Existing records without `status` are treated as `active`, so no migration is required. Automatic recall and `recall_memory` only return active episodes by default. Correction-style writes mark similar older active episodes as `superseded`, which keeps them inspectable through explicit management commands without letting them compete with current memory.
+Existing records without `status` are treated as `active`, so no migration is required. Automatic recall and `recall_memory` only return active episodes by default. Correction writes can pass `supersedes` with IDs obtained from recall. Only active records in the current memory scope and from the same speaker can be replaced; invalid targets fail before any write. Tags and vector similarity do not imply replacement. Explicitly replaced records become `superseded`, which keeps them inspectable through explicit management commands without letting them compete with current memory.
 
 ## Audit Log
 
@@ -318,13 +326,14 @@ Use `!memory show <episode_id>` to inspect one episode, including status, sender
 
 ## Memory Consolidation
 
-Use `!memory consolidate preview` to inspect cleanup candidates for the current scope. Preview never modifies memory. It reports candidate episode IDs, a deterministic summary episode proposal, possible profile updates, episodes that would be archived, and risk notes.
+Use `!memory consolidate preview` to inspect cleanup candidates for the current scope. Preview never changes episodic records. Without a semantic model it reports cleanup candidates and risk notes; with a model it also persists a scoped review draft and returns its proposal ID.
 
-Use `!memory consolidate run` only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It can archive selected active or superseded episodes and write one summary episode tagged `consolidation` and `summary`. Every archive and summary write creates scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
+Use `!memory consolidate run` (or `run <proposal_id>` for a reviewed semantic draft) only after setting `consolidation_enabled=true` on the memory knowledge base. Run applies only the current `user_key` scope. It archives only records already marked superseded. Active records remain searchable regardless of age or importance; a count/tag summary cannot preserve their facts. Without a semantic model, no summary episode is generated. Archive writes create scoped audit entries. Profile update application is disabled by default through `consolidation_apply_profile_updates=false`.
 
 Relevant knowledge base settings:
 
 - `consolidation_enabled`: default `false`; required for `run`
+- `consolidation_model_uuid`: optional LLM selector; blank keeps safe archival only
 - `consolidation_min_age_days`: default `7`
 - `consolidation_max_candidates`: default `20`
 - `consolidation_apply_profile_updates`: default `false`
@@ -592,3 +601,55 @@ We welcome contributions! Feel free to:
 - Share your ideas and feedback
 
 Star the repo if you find it useful!
+
+### Memory quality guarantees
+
+- Retrieve the relevant episode first, then pass its ID in `remember.supersedes` only for an explicit correction of the same fact or event by the same speaker. Omit targets when uncertain. Original content and importance are preserved for historical inspection.
+- Without a configured semantic model, consolidation performs conservative archival only. It never replaces active facts with statistics. Optional reviewed semantic summaries coexist with their active source facts. Existing archived records and previously generated summaries are not migrated automatically.
+- Recall ranks the complete bounded candidate set before taking `top_k`; exact matches beyond the backend's first `top_k` results can still win. Candidates remain bounded by the existing fetch window, so this is not a guarantee of exhaustive retrieval.
+- Deterministic regression cases cover correction ownership, unrelated similar facts, retention across consolidation, and ranking at the candidate boundary. They do not measure real-model extraction or answer quality on LongMemEval.
+
+### Fact time and declared provenance
+
+`timestamp` keeps its existing storage/import timestamp behavior. It is not automatically the date of the event described in the content. Episodic writes, candidate acceptance, JSON document ingestion, and scoped import/export also preserve:
+
+| Field | Meaning |
+|---|---|
+| `event_at` | Explicit time of the described event, when known. |
+| `valid_from` | Inclusive start of the fact's validity. |
+| `valid_until` | Exclusive end of the fact's validity. |
+| `source_ref` | Declared reference to a source message or document; not proof of Host verification. |
+| `claim_type` | `unknown` (default), `user_statement`, or `inference`. |
+
+Time fields require ISO-8601 values with an explicit timezone and are normalized to UTC while preserving subsecond precision. When both validity bounds are present, `valid_from` must precede `valid_until`. Leave unknown values empty; the plugin does not turn “tomorrow” into an invented date or assume a timezone for these fields. Imports reject malformed temporal/provenance metadata before writing the batch. Old records missing these fields remain readable with unknown evidence and no invented event time.
+
+`remember` accepts these optional fields. A caller can declare `user_statement` only for a direct user statement; this declaration is not a verification or authorization mechanism. Model deductions belong under `inference`. JSON document ingestion supplies a `document:<id>` reference when no explicit source reference was supplied. Exported references remain declarations when imported elsewhere.
+
+Automatic candidate extraction uses actual `user_message_text` only. An assistant response is never used as fallback user evidence. Its pending candidates carry a `query:<legacy-id>` reference and `user_statement` category; the query reference is an inspection hint within the current bot/session logs, not a globally stable message ID. The default extraction remains rule-based and may miss facts, resolve references poorly, or classify quoted/hypothetical user text imperfectly; candidate review remains useful. This change does not add per-fact provenance to the older L1 profile structure or claim full semantic extraction.
+
+#### Optional model selection of memory evidence
+
+Set `candidate_model_uuid` on the memory knowledge base to select a model for candidate extraction. Leave it empty to keep the existing rule-based path and avoid an extra model call. Extraction still requires `candidate_extraction_enabled=true`.
+
+The optional path selects and classifies complete original sentences or the full current user text; it does not rewrite statements into new facts. `evidence_quote` must match an original span exactly, and the quote itself becomes the episodic content or profile value. This preserves negations and qualifiers rather than accepting a generated fact that could contradict its evidence. Only the current actual user text and the plugin Runtime's UTC processing timestamp are sent; assistant replies, older conversations, and model-invented source IDs are not used. No automatic relative-date conversion or cross-turn reference resolution is performed.
+
+Model-selected candidates are labeled `inference` because selection/classification remains a model judgment. They always remain pending for manual review, even when `candidate_auto_apply=true`; the original quote and the declared query reference stay inspectable in the candidate record. This is evidence selection, not proof that a statement is true or that a quotation is safe to treat as a current preference.
+
+One request is bounded to 8,000 input characters, a 30-second timeout, 16,000 output characters, the configured candidate count, and 2,000 characters per quote. Oversized or empty input is skipped. Malformed JSON, extra fields, unsupported classifications, or mismatched evidence reject the entire model result before any candidate write; model failures do not silently fall back to rules. This call is awaited in the current event hook; enabling it can add up to the timeout to hook completion. It is not background extraction. Existing credential-marker checks produce a redacted ignore candidate without sending that text to the model. These checks are not an exhaustive secret detector.
+
+### Human-reviewed semantic summaries
+
+Set `consolidation_model_uuid` on the memory knowledge base only when you want model-generated summary drafts. No LLM call is made by the default archival workflow.
+
+1. Run `!memory consolidate preview`. The configured model receives only the bounded active sources selected by the Host. The preview shows source IDs, full source statements, the proposed summary, and a one-use proposal ID. Preview does not change episodic memories, but persists the review draft in scoped plugin storage.
+2. Compare every summary statement with its sources. Model output must be bounded JSON, cite only the selected sources, and cover every source. These structural checks **do not prove factual or semantic correctness**: a correctly cited draft can still be wrong. Source statements are untrusted data, not instructions.
+3. After review, enable `consolidation_enabled` and run `!memory consolidate run <proposal_id>`. A missing, stale, replayed, or cross-scope proposal is rejected. The plugin checks each source's metadata hash, active status, and common current validity interval again. It writes an archived draft with complete lineage and `claim_type=inference`, verifies the write, then makes the derived summary active.
+
+Active sources remain active; this feature does not promise lossy compression or token savings. A summary never extends its sources' validity: `valid_from` is their latest start and `valid_until` their earliest end. Changing a source to superseded/archived/deleted, explicitly correcting it through `remember.supersedes`, or forgetting it first removes same-scope derived summaries. Forgetting also clears any pending review draft that contains that source. Other source facts remain searchable; summaries from another memory scope are never cascaded. Scoped bulk deletion covers the same boundaries.
+
+Existing historical summary records without lineage cannot be retroactively traced. They are not migrated automatically. Semantic drafting and explicit approval are also available through the Memory Console review panel, so processor-only deployments do not need a Pipeline command route.
+
+Document deletion invalidates dependent summaries and pending drafts for every affected memory scope before removing imported records. Deleting a knowledge base clears only that collection's pending drafts. Preview generation and collection deletion share the same collection lock, so an in-flight model preview cannot save source text after deletion completes; a preview for a removed KB is rejected before calling the model. Each model call holding that lock is capped at 30 seconds; queued callers and storage operations still follow their normal API lifecycle.
+
+
+A reviewed summary must also fit the bounded recall record budget before publication; oversized summaries are rejected before activation, with source facts retained. If Host-added metadata takes a staged summary over budget, the staged record is removed. Reduce the consolidation candidate count and preview again. This is a character/serialization bound, not an exact token estimate.

@@ -1101,3 +1101,521 @@ class RerankModelsService:
             ],
             execution_context=runtime_rerank_model.execution_context,
         )
+
+
+def _generate_test_wav() -> bytes:
+    import io
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, 'wb') as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16000)
+        wav.writeframes(b'\x00' * 3200)
+    return buf.getvalue()
+
+
+class ASRModelsService:
+    ap: app.Application
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+
+    async def get_asr_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
+        """Get all ASR models with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(persistence_model.ASRModel), persistence_model.ASRModel, context)
+        )
+        models = result.all()
+
+        providers_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider), persistence_model.ModelProvider, context
+            )
+        )
+        providers = {p.uuid: p for p in providers_result.all()}
+
+        models_list = []
+        for model in models:
+            model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ASRModel, model)
+            provider = providers.get(model.provider_uuid)
+            if provider:
+                provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+                provider_dict = _parse_provider_api_keys(provider_dict)
+                model_dict['provider'] = provider_dict
+            if not include_secret:
+                model_dict = _redact_model_secrets(model_dict)
+            models_list.append(model_dict)
+
+        return models_list
+
+    async def get_asr_models_by_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> list[dict]:
+        """Get ASR models by provider UUID"""
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ASRModel).where(
+                    persistence_model.ASRModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.ASRModel,
+                context,
+            )
+        )
+        models = result.all()
+        serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.ASRModel, m) for m in models]
+        return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
+
+    async def create_asr_model(
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+    ) -> str:
+        """Create a new ASR model"""
+        model_data = model_data.copy()
+        if not preserve_uuid:
+            model_data['uuid'] = str(uuid.uuid4())
+        model_data['workspace_uuid'] = require_workspace_uuid(context)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(model_data['extra_args'])
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
+        await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'asr')
+
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.ASRModel).values(**model_data))
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
+        runtime_asr_model = await self.ap.model_mgr.load_asr_model_with_provider(
+            context,
+            persistence_model.ASRModel(**model_data),
+            runtime_provider,
+        )
+        await self.ap.model_mgr.cache_asr_model(context, runtime_asr_model)
+
+        return model_data['uuid']
+
+    async def get_asr_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
+        """Get a single ASR model with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ASRModel).where(persistence_model.ASRModel.uuid == model_uuid),
+                persistence_model.ASRModel,
+                context,
+            )
+        )
+        model = result.first()
+        if model is None:
+            return None
+
+        model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ASRModel, model)
+
+        provider_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == model.provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
+            )
+        )
+        provider = provider_result.first()
+        if provider:
+            provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+            provider_dict = _parse_provider_api_keys(provider_dict)
+            model_dict['provider'] = provider_dict
+
+        if not include_secret:
+            model_dict = _redact_model_secrets(model_dict)
+
+        return model_dict
+
+    async def update_asr_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
+        """Update an existing ASR model"""
+        existing_model = await self.get_asr_model(context, model_uuid, include_secret=True)
+        if existing_model is None:
+            raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        model_data = model_data.copy()
+        model_data.pop('uuid', None)
+        model_data.pop('workspace_uuid', None)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(
+                model_data['extra_args'],
+                existing_model.get('extra_args', {}),
+            )
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
+        await _validate_provider_supports(self.ap, context, provider_uuid, 'asr')
+
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.ASRModel)
+                .where(persistence_model.ASRModel.uuid == model_uuid)
+                .values(**model_data),
+                persistence_model.ASRModel,
+                context,
+            )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+
+        await self.ap.model_mgr.remove_asr_model(context, model_uuid)
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
+        runtime_asr_model = await self.ap.model_mgr.load_asr_model_with_provider(
+            context,
+            persistence_model.ASRModel(
+                **_runtime_model_data(
+                    model_uuid,
+                    {
+                        key: value
+                        for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+                        if key not in {'provider', 'created_at', 'updated_at'}
+                    },
+                )
+            ),
+            runtime_provider,
+        )
+        await self.ap.model_mgr.cache_asr_model(context, runtime_asr_model)
+
+    async def delete_asr_model(self, context: TenantContext, model_uuid: str) -> None:
+        """Delete an ASR model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_asr_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.ASRModel).where(persistence_model.ASRModel.uuid == model_uuid),
+                persistence_model.ASRModel,
+                context,
+            )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+        await self.ap.model_mgr.remove_asr_model(context, model_uuid)
+
+    async def test_asr_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
+        """Test an ASR model"""
+        require_workspace_uuid(context)
+        runtime_asr_model: model_requester.RuntimeASRModel | None = None
+
+        if model_uuid != '_':
+            if await self.get_asr_model(context, model_uuid) is None:
+                raise WorkspaceNotFoundError('Model not found')
+            runtime_asr_model = await self.ap.model_mgr.get_asr_model_by_uuid(context, model_uuid)
+        else:
+            runtime_asr_model = await self.ap.model_mgr.init_temporary_runtime_asr_model(
+                context,
+                model_data,
+            )
+
+        await runtime_asr_model.provider.invoke_asr(
+            model=runtime_asr_model,
+            audio=_generate_test_wav(),
+            mime='audio/wav',
+            execution_context=runtime_asr_model.execution_context,
+        )
+
+
+class TTSModelsService:
+    ap: app.Application
+
+    def __init__(self, ap: app.Application) -> None:
+        self.ap = ap
+
+    async def get_tts_models(self, context: TenantContext, include_secret: bool = False) -> list[dict]:
+        """Get all TTS models with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(sqlalchemy.select(persistence_model.TTSModel), persistence_model.TTSModel, context)
+        )
+        models = result.all()
+
+        providers_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider), persistence_model.ModelProvider, context
+            )
+        )
+        providers = {p.uuid: p for p in providers_result.all()}
+
+        models_list = []
+        for model in models:
+            model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.TTSModel, model)
+            provider = providers.get(model.provider_uuid)
+            if provider:
+                provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+                provider_dict = _parse_provider_api_keys(provider_dict)
+                model_dict['provider'] = provider_dict
+            if not include_secret:
+                model_dict = _redact_model_secrets(model_dict)
+            models_list.append(model_dict)
+
+        return models_list
+
+    async def get_tts_models_by_provider(
+        self,
+        context: TenantContext,
+        provider_uuid: str,
+        *,
+        include_secret: bool = False,
+    ) -> list[dict]:
+        """Get TTS models by provider UUID"""
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.TTSModel).where(
+                    persistence_model.TTSModel.provider_uuid == provider_uuid
+                ),
+                persistence_model.TTSModel,
+                context,
+            )
+        )
+        models = result.all()
+        serialized = [self.ap.persistence_mgr.serialize_model(persistence_model.TTSModel, m) for m in models]
+        return serialized if include_secret else [_redact_model_secrets(model) for model in serialized]
+
+    async def create_tts_model(
+        self,
+        context: TenantContext,
+        model_data: dict,
+        preserve_uuid: bool = False,
+    ) -> str:
+        """Create a new TTS model"""
+        model_data = model_data.copy()
+        if not preserve_uuid:
+            model_data['uuid'] = str(uuid.uuid4())
+        model_data['workspace_uuid'] = require_workspace_uuid(context)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(model_data['extra_args'])
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        await _require_workspace_provider(self.ap, context, model_data['provider_uuid'])
+        await _assert_cloud_managed_provider_mutable(self.ap, context, model_data['provider_uuid'])
+        await _validate_provider_supports(self.ap, context, model_data['provider_uuid'], 'tts')
+
+        await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_model.TTSModel).values(**model_data))
+
+        runtime_provider = await _require_runtime_provider(self.ap, context, model_data['provider_uuid'])
+        runtime_tts_model = await self.ap.model_mgr.load_tts_model_with_provider(
+            context,
+            persistence_model.TTSModel(**model_data),
+            runtime_provider,
+        )
+        await self.ap.model_mgr.cache_tts_model(context, runtime_tts_model)
+
+        return model_data['uuid']
+
+    async def get_tts_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        include_secret: bool = False,
+    ) -> dict | None:
+        """Get a single TTS model with provider info"""
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.TTSModel).where(persistence_model.TTSModel.uuid == model_uuid),
+                persistence_model.TTSModel,
+                context,
+            )
+        )
+        model = result.first()
+        if model is None:
+            return None
+
+        model_dict = self.ap.persistence_mgr.serialize_model(persistence_model.TTSModel, model)
+
+        provider_result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.uuid == model.provider_uuid
+                ),
+                persistence_model.ModelProvider,
+                context,
+            )
+        )
+        provider = provider_result.first()
+        if provider:
+            provider_dict = self.ap.persistence_mgr.serialize_model(persistence_model.ModelProvider, provider)
+            provider_dict = _parse_provider_api_keys(provider_dict)
+            model_dict['provider'] = provider_dict
+
+        if not include_secret:
+            model_dict = _redact_model_secrets(model_dict)
+
+        return model_dict
+
+    async def update_tts_model(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+        model_data: dict,
+    ) -> None:
+        """Update an existing TTS model"""
+        existing_model = await self.get_tts_model(context, model_uuid, include_secret=True)
+        if existing_model is None:
+            raise WorkspaceNotFoundError('Model not found')
+        await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        model_data = model_data.copy()
+        model_data.pop('uuid', None)
+        model_data.pop('workspace_uuid', None)
+        if 'extra_args' in model_data:
+            model_data['extra_args'] = restore_secret_placeholders(
+                model_data['extra_args'],
+                existing_model.get('extra_args', {}),
+            )
+
+        if 'provider' in model_data:
+            provider_data = model_data.pop('provider')
+            if provider_data.get('uuid'):
+                model_data['provider_uuid'] = provider_data['uuid']
+            else:
+                provider_uuid = await self.ap.provider_service.find_or_create_provider(
+                    context,
+                    requester=provider_data.get('requester', ''),
+                    base_url=provider_data.get('base_url', ''),
+                    api_keys=provider_data.get('api_keys', []),
+                )
+                model_data['provider_uuid'] = provider_uuid
+
+        provider_uuid = model_data.get('provider_uuid', existing_model['provider_uuid'])
+        await _require_workspace_provider(self.ap, context, provider_uuid)
+        await _assert_cloud_managed_provider_mutable(self.ap, context, provider_uuid)
+        await _validate_provider_supports(self.ap, context, provider_uuid, 'tts')
+
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.update(persistence_model.TTSModel)
+                .where(persistence_model.TTSModel.uuid == model_uuid)
+                .values(**model_data),
+                persistence_model.TTSModel,
+                context,
+            )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+
+        await self.ap.model_mgr.remove_tts_model(context, model_uuid)
+        runtime_provider = await _require_runtime_provider(self.ap, context, provider_uuid)
+        runtime_tts_model = await self.ap.model_mgr.load_tts_model_with_provider(
+            context,
+            persistence_model.TTSModel(
+                **_runtime_model_data(
+                    model_uuid,
+                    {
+                        key: value
+                        for key, value in {**existing_model, **model_data, 'provider_uuid': provider_uuid}.items()
+                        if key not in {'provider', 'created_at', 'updated_at'}
+                    },
+                )
+            ),
+            runtime_provider,
+        )
+        await self.ap.model_mgr.cache_tts_model(context, runtime_tts_model)
+
+    async def delete_tts_model(self, context: TenantContext, model_uuid: str) -> None:
+        """Delete a TTS model"""
+        if _is_cloud_runtime(self.ap):
+            existing_model = await self.get_tts_model(context, model_uuid, include_secret=True)
+            if existing_model is None:
+                raise WorkspaceNotFoundError('Model not found')
+            await _assert_cloud_managed_provider_mutable(self.ap, context, existing_model['provider_uuid'])
+        result = await self.ap.persistence_mgr.execute_async(
+            scope_statement(
+                sqlalchemy.delete(persistence_model.TTSModel).where(persistence_model.TTSModel.uuid == model_uuid),
+                persistence_model.TTSModel,
+                context,
+            )
+        )
+        if getattr(result, 'rowcount', None) == 0:
+            raise WorkspaceNotFoundError('Model not found')
+        await self.ap.model_mgr.remove_tts_model(context, model_uuid)
+
+    async def test_tts_model(self, context: TenantContext, model_uuid: str, model_data: dict) -> None:
+        """Test a TTS model"""
+        require_workspace_uuid(context)
+        runtime_tts_model: model_requester.RuntimeTTSModel | None = None
+
+        if model_uuid != '_':
+            if await self.get_tts_model(context, model_uuid) is None:
+                raise WorkspaceNotFoundError('Model not found')
+            runtime_tts_model = await self.ap.model_mgr.get_tts_model_by_uuid(context, model_uuid)
+        else:
+            runtime_tts_model = await self.ap.model_mgr.init_temporary_runtime_tts_model(
+                context,
+                model_data,
+            )
+
+        model_extra = (
+            getattr(runtime_tts_model, 'extra_args', None)
+            or getattr(runtime_tts_model.model_entity, 'extra_args', {})
+            or {}
+        )
+        voice = model_extra.get('voice')
+        extra_args: dict[str, typing.Any] = {'response_format': 'mp3'}
+        if voice:
+            extra_args['voice'] = voice
+        await runtime_tts_model.provider.invoke_tts(
+            model=runtime_tts_model,
+            text='Hello, this is a test.',
+            extra_args=extra_args,
+            execution_context=runtime_tts_model.execution_context,
+        )

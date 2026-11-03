@@ -110,5 +110,8 @@
   "Unable to start ChatGPT device login. Enable device code login in ChatGPT settings.": "Не удалось начать вход с устройства. Включите вход по коду устройства в настройках ChatGPT.",
   "Option {number}": "Вариант {number}",
   "Confirmation needed": "Требуется подтверждение",
-  "Session reset successfully": "Сессия сброшена"
+  "Session reset successfully": "Сессия сброшена",
+  "Voice transcription failed.": "Не удалось распознать голосовое сообщение.",
+  "Voice message exceeds maximum duration.": "Длительность голосового сообщения превышает максимум.",
+  "Voice synthesis failed.": "Сбой синтеза речи."
 }

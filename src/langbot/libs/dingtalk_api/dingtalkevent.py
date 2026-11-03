@@ -36,6 +36,10 @@ class DingTalkEvent(dict):
         return self.get('Audio', '')
 
     @property
+    def audio_duration(self) -> int:
+        return self.get('AudioDuration') or 0
+
+    @property
     def file(self):
         return self.get('File', '')
 

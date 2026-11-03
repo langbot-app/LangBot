@@ -28,6 +28,7 @@ import {
   ApiRespAgents,
   ApiRespAgent,
   Agent,
+  CreateAgentRequest,
   Pipeline,
   ApiRespPlatformAdapters,
   ApiRespPlatformAdapter,
@@ -60,6 +61,12 @@ import {
   ApiRespProviderRerankModels,
   ApiRespProviderRerankModel,
   RerankModel,
+  ApiRespProviderASRModels,
+  ApiRespProviderASRModel,
+  ASRModel,
+  ApiRespProviderTTSModels,
+  ApiRespProviderTTSModel,
+  TTSModel,
   ApiRespPluginSystemStatus,
   ApiRespBoxStatus,
   BoxSessionInfo,
@@ -236,7 +243,7 @@ export class BackendClient extends BaseHttpClient {
 
   public scanProviderModels(
     uuid: string,
-    modelType?: 'llm' | 'embedding' | 'rerank',
+    modelType?: 'llm' | 'embedding' | 'rerank' | 'asr' | 'tts',
   ): Promise<ApiRespScannedProviderModels> {
     const params = modelType ? { type: modelType } : {};
     return this.get(`/api/v1/provider/providers/${uuid}/scan-models`, params);
@@ -350,6 +357,68 @@ export class BackendClient extends BaseHttpClient {
     return this.post(`/api/v1/provider/models/rerank/${uuid}/test`, model);
   }
 
+  // ============ Provider Model ASR ============
+  public getProviderASRModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderASRModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/asr', params);
+  }
+
+  public getProviderASRModel(uuid: string): Promise<ApiRespProviderASRModel> {
+    return this.get(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public createProviderASRModel(model: ASRModel): Promise<object> {
+    return this.post('/api/v1/provider/models/asr', model);
+  }
+
+  public deleteProviderASRModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/asr/${uuid}`);
+  }
+
+  public updateProviderASRModel(
+    uuid: string,
+    model: ASRModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/asr/${uuid}`, model);
+  }
+
+  public testASRModel(uuid: string, model: ASRModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/asr/${uuid}/test`, model);
+  }
+
+  // ============ Provider Model TTS ============
+  public getProviderTTSModels(
+    providerUuid?: string,
+  ): Promise<ApiRespProviderTTSModels> {
+    const params = providerUuid ? { provider_uuid: providerUuid } : {};
+    return this.get('/api/v1/provider/models/tts', params);
+  }
+
+  public getProviderTTSModel(uuid: string): Promise<ApiRespProviderTTSModel> {
+    return this.get(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public createProviderTTSModel(model: TTSModel): Promise<object> {
+    return this.post('/api/v1/provider/models/tts', model);
+  }
+
+  public deleteProviderTTSModel(uuid: string): Promise<object> {
+    return this.delete(`/api/v1/provider/models/tts/${uuid}`);
+  }
+
+  public updateProviderTTSModel(
+    uuid: string,
+    model: TTSModel,
+  ): Promise<object> {
+    return this.put(`/api/v1/provider/models/tts/${uuid}`, model);
+  }
+
+  public testTTSModel(uuid: string, model: TTSModel): Promise<object> {
+    return this.post(`/api/v1/provider/models/tts/${uuid}/test`, model);
+  }
+
   // ============ Pipeline API ============
   public getAgents(
     sortBy?: string,
@@ -389,7 +458,9 @@ export class BackendClient extends BaseHttpClient {
     );
   }
 
-  public createAgent(agent: Agent): Promise<{ uuid: string; kind: string }> {
+  public createAgent(
+    agent: CreateAgentRequest,
+  ): Promise<{ uuid: string; kind: string }> {
     return this.post('/api/v1/agents', agent);
   }
 

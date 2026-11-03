@@ -37,3 +37,68 @@ async def test_upload_media_rejects_oversized_input_before_network_access():
             'recipient',
             3,
         )
+
+
+def test_voice_item_serialization_includes_encode_type_and_playtime():
+    from langbot.libs.openclaw_weixin_api.client import _message_item_to_dict
+    from langbot.libs.openclaw_weixin_api.types import CDNMedia, MessageItem, VoiceItem
+
+    media = CDNMedia(encrypt_query_param='param', aes_key='key', encrypt_type=1)
+    item = MessageItem(
+        type=MessageItem.VOICE,
+        voice_item=VoiceItem(
+            media=media,
+            playtime=4500,
+            encode_type=6,
+            bits_per_sample=16,
+            sample_rate=24000,
+            size=1024,
+        ),
+    )
+    d = _message_item_to_dict(item)
+
+    assert d['type'] == MessageItem.VOICE
+    assert 'voice_item' in d
+    assert d['voice_item']['playtime'] == 4500
+    assert d['voice_item']['encode_type'] == 6
+    assert d['voice_item']['bits_per_sample'] == 16
+    assert d['voice_item']['sample_rate'] == 24000
+    assert d['voice_item']['size'] == 1024
+    assert d['voice_item']['media']['encrypt_query_param'] == 'param'
+
+
+@pytest.mark.asyncio
+async def test_inbound_voice_conversion_to_voice_component():
+    import base64
+    import langbot_plugin.api.entities.builtin.platform.message as platform_message
+    from langbot.libs.openclaw_weixin_api.types import CDNMedia, MessageItem, VoiceItem, WeixinMessage
+    from langbot.pkg.platform.sources.openclaw_weixin import OpenClawWeixinMessageConverter
+
+    fake_silk_data = b'\x02#!SILK_V3' + b'\x05\x00abcde' * 50
+    item = MessageItem(
+        type=MessageItem.VOICE,
+        voice_item=VoiceItem(
+            media=CDNMedia(encrypt_query_param='param', aes_key='key'),
+            playtime=1000,
+            _downloaded_bytes=fake_silk_data,
+        ),
+    )
+    msg = WeixinMessage(
+        message_id=1,
+        from_user_id='user1',
+        to_user_id='bot1',
+        item_list=[item],
+    )
+
+    converter = OpenClawWeixinMessageConverter()
+    chain = await converter.target2yiri(msg)
+
+    assert len(chain) == 1
+    voice = chain[0]
+    assert isinstance(voice, platform_message.Voice)
+    assert voice.length == 1
+    assert voice.base64.startswith('data:audio/silk;base64,')
+    b64_payload = voice.base64.split(',', 1)[1]
+    assert base64.b64decode(b64_payload) == fake_silk_data
+
+

@@ -474,10 +474,10 @@ test('pipeline guide follows its configuration sections, debug, history and bot 
     .elementHandle();
   await guide.getByRole('button', { name: 'Next', exact: true }).click();
   await expect(
-    page.locator('[data-guide="pipeline-section-ai"]'),
+    page.locator('[data-guide="pipeline-section-speech"]'),
   ).toHaveAttribute('data-state', 'active');
   await expect(
-    guide.getByRole('heading', { name: 'Configure AI capabilities' }),
+    guide.getByRole('heading', { name: 'Configure speech capabilities' }),
   ).toBeVisible();
   await guide.getByRole('button', { name: 'Previous', exact: true }).click();
   await expect(
@@ -487,6 +487,7 @@ test('pipeline guide follows its configuration sections, debug, history and bot 
     true,
   );
   for (const title of [
+    'Configure speech capabilities',
     'Configure AI capabilities',
     'Adjust replies',
     'Set safety controls',

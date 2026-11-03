@@ -40,6 +40,8 @@ class ModelManager:
     llm_model_dict: dict[_CacheKey, requester.RuntimeLLMModel]
     embedding_model_dict: dict[_CacheKey, requester.RuntimeEmbeddingModel]
     rerank_model_dict: dict[_CacheKey, requester.RuntimeRerankModel]
+    asr_model_dict: dict[_CacheKey, requester.RuntimeASRModel]
+    tts_model_dict: dict[_CacheKey, requester.RuntimeTTSModel]
 
     requester_components: list[engine.Component]
     requester_dict: dict[str, type[requester.ProviderAPIRequester]]
@@ -50,6 +52,8 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
+        self.asr_model_dict = {}
+        self.tts_model_dict = {}
         self.requester_components = []
         self.requester_dict = {}
         self._scope_generations: dict[tuple[str, str], int] = {}
@@ -57,6 +61,8 @@ class ModelManager:
         self._llm_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._embedding_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._rerank_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._asr_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        self._tts_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
 
     def _cache_index(self, cache: dict) -> dict[tuple[str, str], set[_CacheKey]]:
         if cache is self.provider_dict:
@@ -67,6 +73,10 @@ class ModelManager:
             return self._embedding_keys_by_scope
         if cache is self.rerank_model_dict:
             return self._rerank_keys_by_scope
+        if cache is self.asr_model_dict:
+            return self._asr_keys_by_scope
+        if cache is self.tts_model_dict:
+            return self._tts_keys_by_scope
         raise ValueError('Unknown model runtime cache')
 
     def _cache_set(self, cache: dict, key: _CacheKey, value: object) -> None:
@@ -89,6 +99,8 @@ class ModelManager:
                 self._llm_keys_by_scope,
                 self._embedding_keys_by_scope,
                 self._rerank_keys_by_scope,
+                self._asr_keys_by_scope,
+                self._tts_keys_by_scope,
             )
         ):
             self._scope_generations.pop(scope, None)
@@ -113,6 +125,8 @@ class ModelManager:
                 (self.llm_model_dict, self._llm_keys_by_scope),
                 (self.embedding_model_dict, self._embedding_keys_by_scope),
                 (self.rerank_model_dict, self._rerank_keys_by_scope),
+                (self.asr_model_dict, self._asr_keys_by_scope),
+                (self.tts_model_dict, self._tts_keys_by_scope),
             ):
                 for key in index.pop(scope, ()):
                     removed = cache.pop(key, None)
@@ -156,6 +170,8 @@ class ModelManager:
                     self._llm_keys_by_scope,
                     self._embedding_keys_by_scope,
                     self._rerank_keys_by_scope,
+                    self._asr_keys_by_scope,
+                    self._tts_keys_by_scope,
                 )
             ):
                 self._scope_generations.pop(scope, None)
@@ -168,11 +184,15 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
+        self.asr_model_dict = {}
+        self.tts_model_dict = {}
         self._scope_generations = {}
         self._provider_keys_by_scope = {}
         self._llm_keys_by_scope = {}
         self._embedding_keys_by_scope = {}
         self._rerank_keys_by_scope = {}
+        self._asr_keys_by_scope = {}
+        self._tts_keys_by_scope = {}
         await self._close_runtime_providers(providers)
 
     @staticmethod
@@ -336,11 +356,15 @@ class ModelManager:
         self.llm_model_dict = {}
         self.embedding_model_dict = {}
         self.rerank_model_dict = {}
+        self.asr_model_dict = {}
+        self.tts_model_dict = {}
         self._scope_generations = {}
         self._provider_keys_by_scope = {}
         self._llm_keys_by_scope = {}
         self._embedding_keys_by_scope = {}
         self._rerank_keys_by_scope = {}
+        self._asr_keys_by_scope = {}
+        self._tts_keys_by_scope = {}
 
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
@@ -412,6 +436,18 @@ class ModelManager:
             self._build_rerank_model,
             context_for,
         )
+        await self._load_model_kind(
+            persistence_model.ASRModel,
+            self.asr_model_dict,
+            self._build_asr_model,
+            context_for,
+        )
+        await self._load_model_kind(
+            persistence_model.TTSModel,
+            self.tts_model_dict,
+            self._build_tts_model,
+            context_for,
+        )
 
     async def _load_model_kind(self, entity_type, cache: dict, builder, context_for) -> None:
         result = await self.ap.persistence_mgr.execute_async(sqlalchemy.select(entity_type))
@@ -480,6 +516,18 @@ class ModelManager:
             self.rerank_model_dict,
             self._build_rerank_model,
         )
+        await self._load_workspace_model_kind(
+            context,
+            persistence_model.ASRModel,
+            self.asr_model_dict,
+            self._build_asr_model,
+        )
+        await self._load_workspace_model_kind(
+            context,
+            persistence_model.TTSModel,
+            self.tts_model_dict,
+            self._build_tts_model,
+        )
 
     async def _load_workspace_model_kind(self, context, entity_type, cache: dict, builder) -> None:
         result = await self.ap.persistence_mgr.execute_async(
@@ -530,6 +578,16 @@ class ModelManager:
             for model in await self.ap.embedding_models_service.get_embedding_models(context, include_secret=True)
         }
         existing_rerank_models = {m['uuid']: m for m in await self.ap.rerank_models_service.get_rerank_models(context)}
+        audio_services = {
+            'tts': self.ap.tts_models_service,
+            'asr': self.ap.asr_models_service,
+        }
+        existing_audio_models = {}
+        for category, service in audio_services.items():
+            if any(model.category == category for model in space_models):
+                existing_audio_models[category] = {
+                    model['uuid']: model for model in await getattr(service, f'get_{category}_models')(context)
+                }
 
         created = 0
         updated = 0
@@ -628,6 +686,31 @@ class ModelManager:
                         )
                         updated += 1
 
+            elif space_model.category in audio_services:
+                category = space_model.category
+                service = audio_services[category]
+                existing = existing_audio_models[category].get(space_model.uuid)
+                desired = {
+                    'name': space_model.model_id,
+                    'provider_uuid': space_model_provider.uuid,
+                    'prefered_ranking': space_model.featured_order,
+                }
+                if existing is None:
+                    extra_args = {}
+                    if category == 'tts' and space_model.default_voice:
+                        extra_args['voice'] = space_model.default_voice
+                    await getattr(service, f'create_{category}_model')(
+                        context,
+                        {'uuid': space_model.uuid, **desired, 'extra_args': extra_args},
+                        preserve_uuid=True,
+                    )
+                    created += 1
+                elif existing.get('provider_uuid') == space_model_provider.uuid and any(
+                    existing.get(key) != value for key, value in desired.items()
+                ):
+                    await getattr(service, f'update_{category}_model')(context, space_model.uuid, dict(desired))
+                    updated += 1
+
         if created or updated:
             self.ap.logger.info(f'Synced models from LangBot Space: {created} added, {updated} updated.')
 
@@ -715,6 +798,68 @@ class ModelManager:
             extra_args=model_info.get('extra_args', {}),
         )
         return self._build_rerank_model(execution_context, model_entity, runtime_provider)
+
+    async def init_temporary_runtime_asr_model(
+        self,
+        context: TenantContext,
+        model_info: dict,
+    ) -> requester.RuntimeASRModel:
+        execution_context = await self.resolve_execution_context(context)
+        provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
+        provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
+        provider_entity = persistence_model.ModelProvider(**provider_info)
+        if provider_uuid and not provider_entity.requester:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_model.ModelProvider.uuid == provider_uuid,
+                )
+            )
+            saved_provider = result.first()
+            if saved_provider is not None:
+                provider_entity = self._coerce_provider(saved_provider, execution_context)
+            elif model_info.get('provider_uuid'):
+                raise WorkspaceNotFoundError('Provider not found')
+        runtime_provider = await self._build_provider(execution_context, provider_entity)
+        model_entity = persistence_model.ASRModel(
+            workspace_uuid=execution_context.workspace_uuid,
+            uuid=model_info.get('uuid', ''),
+            name=model_info.get('name', ''),
+            provider_uuid=runtime_provider.provider_entity.uuid,
+            extra_args=model_info.get('extra_args', {}),
+        )
+        return self._build_asr_model(execution_context, model_entity, runtime_provider)
+
+    async def init_temporary_runtime_tts_model(
+        self,
+        context: TenantContext,
+        model_info: dict,
+    ) -> requester.RuntimeTTSModel:
+        execution_context = await self.resolve_execution_context(context)
+        provider_info = {**model_info.get('provider', {}), 'workspace_uuid': execution_context.workspace_uuid}
+        provider_uuid = model_info.get('provider_uuid') or provider_info.get('uuid')
+        provider_entity = persistence_model.ModelProvider(**provider_info)
+        if provider_uuid and not provider_entity.requester:
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_model.ModelProvider).where(
+                    persistence_model.ModelProvider.workspace_uuid == execution_context.workspace_uuid,
+                    persistence_model.ModelProvider.uuid == provider_uuid,
+                )
+            )
+            saved_provider = result.first()
+            if saved_provider is not None:
+                provider_entity = self._coerce_provider(saved_provider, execution_context)
+            elif model_info.get('provider_uuid'):
+                raise WorkspaceNotFoundError('Provider not found')
+        runtime_provider = await self._build_provider(execution_context, provider_entity)
+        model_entity = persistence_model.TTSModel(
+            workspace_uuid=execution_context.workspace_uuid,
+            uuid=model_info.get('uuid', ''),
+            name=model_info.get('name', ''),
+            provider_uuid=runtime_provider.provider_entity.uuid,
+            extra_args=model_info.get('extra_args', {}),
+        )
+        return self._build_tts_model(execution_context, model_entity, runtime_provider)
 
     @staticmethod
     def _coerce_provider(
@@ -906,6 +1051,34 @@ class ModelManager:
             provider=provider,
         )
 
+    def _build_asr_model(
+        self,
+        context: ExecutionContext,
+        model_info: persistence_model.ASRModel | sqlalchemy.Row,
+        provider: requester.RuntimeProvider,
+    ) -> requester.RuntimeASRModel:
+        model_entity = self._coerce_model(model_info, persistence_model.ASRModel)
+        self._validate_model_provider(context, model_entity, provider)
+        return requester.RuntimeASRModel(
+            execution_context=context,
+            model_entity=model_entity,
+            provider=provider,
+        )
+
+    def _build_tts_model(
+        self,
+        context: ExecutionContext,
+        model_info: persistence_model.TTSModel | sqlalchemy.Row,
+        provider: requester.RuntimeProvider,
+    ) -> requester.RuntimeTTSModel:
+        model_entity = self._coerce_model(model_info, persistence_model.TTSModel)
+        self._validate_model_provider(context, model_entity, provider)
+        return requester.RuntimeTTSModel(
+            execution_context=context,
+            model_entity=model_entity,
+            provider=provider,
+        )
+
     async def load_llm_model_with_provider(
         self,
         context: TenantContext,
@@ -932,6 +1105,24 @@ class ModelManager:
     ) -> requester.RuntimeRerankModel:
         execution_context = await self.resolve_execution_context(context)
         return self._build_rerank_model(execution_context, model_info, provider)
+
+    async def load_asr_model_with_provider(
+        self,
+        context: TenantContext,
+        model_info: persistence_model.ASRModel | sqlalchemy.Row,
+        provider: requester.RuntimeProvider,
+    ) -> requester.RuntimeASRModel:
+        execution_context = await self.resolve_execution_context(context)
+        return self._build_asr_model(execution_context, model_info, provider)
+
+    async def load_tts_model_with_provider(
+        self,
+        context: TenantContext,
+        model_info: persistence_model.TTSModel | sqlalchemy.Row,
+        provider: requester.RuntimeProvider,
+    ) -> requester.RuntimeTTSModel:
+        execution_context = await self.resolve_execution_context(context)
+        return self._build_tts_model(execution_context, model_info, provider)
 
     async def cache_llm_model(self, context: TenantContext, model: requester.RuntimeLLMModel) -> None:
         execution_context = await self.resolve_execution_context(context)
@@ -963,6 +1154,26 @@ class ModelManager:
         self._observe_execution_context(execution_context)
         self._cache_set(
             self.rerank_model_dict,
+            self._cache_key(execution_context, model.model_entity.uuid),
+            model,
+        )
+
+    async def cache_asr_model(self, context: TenantContext, model: requester.RuntimeASRModel) -> None:
+        execution_context = await self.resolve_execution_context(context)
+        self._ensure_same_scope(execution_context, model.execution_context, resource='ASR model')
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.asr_model_dict,
+            self._cache_key(execution_context, model.model_entity.uuid),
+            model,
+        )
+
+    async def cache_tts_model(self, context: TenantContext, model: requester.RuntimeTTSModel) -> None:
+        execution_context = await self.resolve_execution_context(context)
+        self._ensure_same_scope(execution_context, model.execution_context, resource='TTS model')
+        self._observe_execution_context(execution_context)
+        self._cache_set(
+            self.tts_model_dict,
             self._cache_key(execution_context, model.model_entity.uuid),
             model,
         )
@@ -999,6 +1210,30 @@ class ModelManager:
         self._ensure_same_scope(execution_context, model.execution_context, resource='Rerank model')
         return model
 
+    async def get_asr_model_by_uuid(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+    ) -> requester.RuntimeASRModel:
+        execution_context = await self.resolve_execution_context(context)
+        model = self.asr_model_dict.get(self._cache_key(execution_context, model_uuid))
+        if model is None:
+            raise ValueError(f'ASR model {model_uuid} not found')
+        self._ensure_same_scope(execution_context, model.execution_context, resource='ASR model')
+        return model
+
+    async def get_tts_model_by_uuid(
+        self,
+        context: TenantContext,
+        model_uuid: str,
+    ) -> requester.RuntimeTTSModel:
+        execution_context = await self.resolve_execution_context(context)
+        model = self.tts_model_dict.get(self._cache_key(execution_context, model_uuid))
+        if model is None:
+            raise ValueError(f'TTS model {model_uuid} not found')
+        self._ensure_same_scope(execution_context, model.execution_context, resource='TTS model')
+        return model
+
     async def remove_llm_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)
         self._cache_pop(
@@ -1017,6 +1252,20 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         self._cache_pop(
             self.rerank_model_dict,
+            self._cache_key(execution_context, model_uuid),
+        )
+
+    async def remove_asr_model(self, context: TenantContext, model_uuid: str) -> None:
+        execution_context = await self.resolve_execution_context(context)
+        self._cache_pop(
+            self.asr_model_dict,
+            self._cache_key(execution_context, model_uuid),
+        )
+
+    async def remove_tts_model(self, context: TenantContext, model_uuid: str) -> None:
+        execution_context = await self.resolve_execution_context(context)
+        self._cache_pop(
+            self.tts_model_dict,
             self._cache_key(execution_context, model_uuid),
         )
 

@@ -28,7 +28,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install PyYAML==6.0.3
       - name: Check regression tools
-        run: timeout 60s python -m unittest discover -s tools -p 'test_*.py' -v
+        run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
 
   smoke:
     name: Core smoke (60s)
@@ -59,7 +59,7 @@ jobs:
           docker pull python:3.12-alpine
       - name: Prepare real services and run the 60-second smoke
         run: |
-          uv run --no-sync python tools/regression_ci.py \
+          uv run --no-sync python -m tools.entrypoints.regression_ci \
             --lbctl .smoke-bin/lbctl_linux_amd64 --plugins plugins --output .qa/core-smoke
       - name: Publish gate result
         if: always()

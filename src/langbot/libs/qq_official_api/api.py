@@ -401,11 +401,15 @@ class QQOfficialClient:
         content_type = attachment.get('content_type', '')
         return content_type.startswith('image/')
 
+    def allocate_msg_seq(self) -> int:
+        """Reserve a sequence for a new outgoing message, including a stream."""
+        self._msg_seq_counter += 1
+        return self._msg_seq_counter
+
     def _resolve_msg_seq(self, msg_seq: Optional[int] = None) -> int:
         """Allocate automatic sequences across message types, preserving explicit stream sequences."""
         if msg_seq is None:
-            self._msg_seq_counter += 1
-            return self._msg_seq_counter
+            return self.allocate_msg_seq()
         self._msg_seq_counter = max(self._msg_seq_counter, msg_seq)
         return msg_seq
 

@@ -82,6 +82,29 @@ spec:
       type: integer
       required: false
       default: 35
+    - name: voice_delivery
+      label:
+        en_US: Voice Delivery Format
+        zh_Hans: 语音发送方式
+        zh_Hant: 語音發送方式
+      description:
+        en_US: Choose whether to send audio as a playable audio file card (recommended, as WeChat personal bots often silently drop native voice bubbles) or attempt native SILK voice bubble.
+        zh_Hans: 选择以可播放音频文件卡片发送（推荐，微信官方个人助手常静默丢弃机器人的原生语音条），或尝试原生 SILK 语音条。
+        zh_Hant: 選擇以可播放音訊檔案卡片發送（推薦，微信官方個人助手常靜默丟棄機器人的原生語音條），或嘗試原生 SILK 語音條。
+      type: select
+      options:
+        - label:
+            en_US: Playable Audio File (Recommended)
+            zh_Hans: 可播放音频文件（推荐，稳定投递）
+            zh_Hant: 可播放音訊檔案（推薦，穩定投遞）
+          value: file
+        - label:
+            en_US: Native Voice Bubble (Experimental)
+            zh_Hans: 原生语音条（实验性，可能被微信平台静默拦截）
+            zh_Hant: 原生語音條（實驗性，可能被微信平台靜默攔截）
+          value: voice
+      required: false
+      default: file
 execution:
   python:
     path: ./openclaw_weixin.py

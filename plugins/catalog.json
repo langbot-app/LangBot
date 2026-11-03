@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.3",
+    "version": "0.2.5",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
@@ -50,7 +50,7 @@
   },
   {
     "id": "langbot-team/ACPAgentRunner",
-    "version": "0.1.16",
+    "version": "0.1.18",
     "category": "Runner",
     "path": "Runner/acp-agent-runner",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"

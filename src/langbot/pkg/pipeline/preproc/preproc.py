@@ -264,7 +264,9 @@ class PreProcessor(stage.PipelineStage):
         conversation.update_time = now
 
         # Attach resolved session state to the query.
-        query.session = session
+        # Keep per-request identity separate from cached conversation state.
+        query.session = session.model_copy(update={'sender_id': query.sender_id, 'bot_uuid': query.bot_uuid})
+        query.session.inherit_execution_scope(get_query_execution_context(query))
         query.prompt = conversation.prompt.copy()
         query.messages = await self._resolve_history_messages(
             runner_id,

@@ -70,12 +70,29 @@ def upgrade():
             cursor = rows[-1][key.name]
 
 
+def _ensure_sqlite_expansion(connection) -> None:
+    """Install the expansion UDF on this already-open SQLite connection.
+
+    Downgrade is often run by a standalone migration process whose engine was
+    created outside the application boot path, so the ``connect`` hook never
+    registered `langbot_expand_resource_urls` for the connection in use.
+    """
+    from langbot.pkg.persistence.resource_urls import register_sqlite
+
+    dbapi = getattr(connection.connection, 'dbapi_connection', None)
+    if dbapi is None:
+        raise RuntimeError('SQLite resource URL downgrade requires a DBAPI connection')
+    register_sqlite(dbapi, None)
+
+
 def downgrade():
     from langbot.pkg.entity.persistence.base import Base
     from langbot.pkg.persistence.media import MediaReferenceText, MediaReferenceJSON
     from langbot.pkg.persistence.resource_urls import uninstall
 
     connection = op.get_bind()
+    if connection.dialect.name == 'sqlite':
+        _ensure_sqlite_expansion(connection)
     existing = set(sa.inspect(connection).get_table_names())
     for table in sorted(Base.metadata.tables.values(), key=lambda table: table.name):
         if table.name not in existing:

@@ -3,7 +3,7 @@
 Run the test backend with Python 3.11 or newer:
 
 ```sh
-python tools/mock_llm.py --port 18080 --record /tmp/mock-requests.jsonl
+python -m tools.entrypoints.mock_llm --port 18080 --record /tmp/mock-requests.jsonl
 ```
 
 Point the LangBot OpenAI-compatible provider at `http://127.0.0.1:18080/v1`
@@ -98,5 +98,5 @@ count as a successful fault test. Records contain request bodies; use test data.
 Run the HTTP tests without installing LangBot dependencies:
 
 ```sh
-python -m unittest discover -s tools -p test_mock_llm.py -v
+python -m unittest discover -s tools/tests -p test_mock_llm.py -v
 ```

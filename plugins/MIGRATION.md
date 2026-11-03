@@ -20,10 +20,12 @@ remain historical evidence, not certification of newly built packages.
   installation, configuration and Marketplace publication remain independent.
 - Each plugin retains its dependency declarations and test environment. Core's
   pytest configuration and pre-commit formatting do not apply to plugin suites.
-- Core consumer tests use this checkout's `plugins/` and integrity-checked files
-  in `tests/fixtures/legacy_plugin_identity_sources.json`. Refresh the relevant
-  hashes deliberately when changing those consumer contracts. Published SDK
-  compatibility continues to be tested by the independent plugin workflows.
+- Core consumer tests use this checkout's `plugins/` directly when the source lock
+  is marked `in-tree`; the listed files are required to exist, but their contents
+  are not pinned so ordinary plugin changes do not require fixture updates.
+  Hashes remain available for externally provisioned, revision-pinned sources.
+  Published SDK compatibility continues to be tested by the independent plugin
+  workflows.
 - Core wheels, sdists, Docker contexts, release ZIPs and fnOS staging exclude
   this tree and `.lbpkg` files. Git export archives exclude this tree as well;
   a normal Git checkout still contains all plugin sources.

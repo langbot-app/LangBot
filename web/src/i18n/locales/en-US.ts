@@ -292,6 +292,11 @@ const enUS = {
         description:
           'Pipelines handle message events and reply automatically with AI. Configure group triggers, private chat rules, and message filters here.',
       },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
+      },
       ai: {
         title: 'Configure AI capabilities',
         description:
@@ -891,6 +896,10 @@ const enUS = {
     chat: 'Chat',
     embedding: 'Embedding',
     rerank: 'Rerank',
+    asr: 'ASR (Speech Recognition)',
+    tts: 'TTS (Text to Speech)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'Full URL override for rerank endpoint (e.g. https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip: 'Path appended to base URL (default: rerank)',
@@ -2412,6 +2421,7 @@ const enUS = {
     triggerConditions: 'Trigger',
     safetyControls: 'Safety',
     outputProcessing: 'Output',
+    speechProcessing: 'Speech',
     nameRequired: 'Name cannot be empty',
     descriptionRequired: 'Description cannot be empty',
     createSuccess: 'Created successfully. Please edit pipeline parameters',

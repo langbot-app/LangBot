@@ -2,7 +2,7 @@
 
 本文档是 LangBot Host 与插件 SDK / Runtime / Runner 之间协议合同的**唯一规范来源（single source of truth）**。
 
-- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [RUNNER_QA_GUIDE.md](./RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
+- 本文件描述当前 Protocol v1 稳定合同，不混入验收流水。当前实现状态见 [STATUS.md](./STATUS.md)，测试执行入口见 [AGENT_RUNNER_QA_GUIDE.md](./AGENT_RUNNER_QA_GUIDE.md)，安全发布门槛见 [SECURITY_HARDENING.md](./SECURITY_HARDENING.md)。
 - 本文件之外的任何文档**不得重新定义这里的数据结构**，只能引用，例如"见 PROTOCOL_V1 §4.2"。
 - Host 内部模型（`AgentEventEnvelope`、`AgentBinding`、Descriptor、各 Store）不属于 SDK 协议，定义在 [HOST_SDK_INFRASTRUCTURE.md](./HOST_SDK_INFRASTRUCTURE.md)。
 

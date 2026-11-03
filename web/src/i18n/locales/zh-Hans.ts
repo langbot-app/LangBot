@@ -277,6 +277,11 @@ const zhHans = {
         description:
           '流水线只处理消息事件，并由 AI 自动回复。在这里设置群聊触发方式、私聊规则和消息过滤条件。',
       },
+      speech: {
+        title: '配置语音能力',
+        description:
+          '设置语音识别（ASR）与文本转语音（TTS）模型，支持接收语音消息及合成语音回复。',
+      },
       ai: {
         title: '配置 AI 能力',
         description:
@@ -846,6 +851,10 @@ const zhHans = {
     chat: '对话',
     embedding: '嵌入',
     rerank: '重排序',
+    asr: '语音识别 (ASR)',
+    tts: '文本转语音 (TTS)',
+    asrTab: '语音识别',
+    ttsTab: '语音合成',
     rerankUrlTooltip:
       '重排序接口的完整 URL 覆盖（如 https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip: '添加到基础 URL 后的重排序路径（默认：rerank）',
@@ -2271,6 +2280,7 @@ const zhHans = {
     triggerConditions: '触发条件',
     safetyControls: '安全控制',
     outputProcessing: '输出处理',
+    speechProcessing: '语音处理',
     nameRequired: '名称不能为空',
     descriptionRequired: '描述不能为空',
     createSuccess: '创建成功 请编辑流水线详细参数',

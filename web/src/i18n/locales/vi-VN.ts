@@ -280,9 +280,14 @@ const viVN = {
       'Chọn sự kiện được hỗ trợ, nhập dữ liệu thử rồi xem đầu ra và kết quả công cụ. Hành động nền tảng được mô phỏng; mô hình và công cụ khác chạy theo cấu hình.',
     pipeline: {
       trigger: {
-        title: 'Chọn tin nhắn cần trả lời',
+        title: 'Choose which messages to answer',
         description:
-          'Pipeline xử lý sự kiện tin nhắn và tự động trả lời bằng AI. Đặt điều kiện kích hoạt trong nhóm, quy tắc trò chuyện riêng và bộ lọc tin nhắn tại đây.',
+          'Pipelines handle message events and reply automatically with AI.',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'Cấu hình khả năng AI',
@@ -883,6 +888,10 @@ const viVN = {
     chat: 'Trò chuyện',
     embedding: 'Embedding',
     rerank: 'Sắp xếp lại',
+    asr: 'ASR (Nhận dạng giọng nói)',
+    tts: 'TTS (Văn bản thành giọng nói)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'URL đầy đủ cho endpoint sắp xếp lại (vd: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
@@ -2394,6 +2403,7 @@ const viVN = {
     triggerConditions: 'Điều kiện kích hoạt',
     safetyControls: 'An toàn',
     outputProcessing: 'Đầu ra',
+    speechProcessing: 'Giọng nói',
     nameRequired: 'Tên không được để trống',
     descriptionRequired: 'Mô tả không được để trống',
     createSuccess: 'Tạo thành công. Vui lòng chỉnh sửa tham số Pipeline',

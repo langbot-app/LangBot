@@ -14,7 +14,9 @@ from langbot.pkg.pipeline.pool import QueryPool
 
 def make_app():
     app = SimpleNamespace()
-    app.instance_config = SimpleNamespace(data={'concurrency': {'pipeline': 10}})
+    app.instance_config = SimpleNamespace(
+        data={'concurrency': {'pipeline': 10}, 'command': {'enable': True, 'prefix': ['!', '！']}}
+    )
     app.logger = MagicMock()
     app.pipeline_mgr = SimpleNamespace()
     app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock()
@@ -22,6 +24,8 @@ def make_app():
     app.sess_mgr.get_session = AsyncMock(return_value=SimpleNamespace())
     app.agent_run_orchestrator = SimpleNamespace()
     app.agent_run_orchestrator.try_claim_steering_from_query = AsyncMock()
+    app.agent_run_orchestrator.cancel_active_from_query = AsyncMock()
+    app.cmd_mgr = SimpleNamespace(resolve_privilege=AsyncMock(return_value=1))
     return app
 
 
@@ -82,6 +86,42 @@ async def test_try_claim_steering_sets_pipeline_context_before_claiming():
 
 
 @pytest.mark.asyncio
+async def test_busy_command_is_not_claimed_as_steering():
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    query = make_query(3, 'pipeline-003')
+    query.message_chain = MessageChain([Plain(text='!list')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_stop_requests_active_run_cancellation():
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-stop'
+    query = make_query(4, 'pipeline-004')
+    query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        query,
+        allow_other_actors=False,
+    )
+    assert query.variables['_stop_command_run_id'] == 'run-stop'
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('text,expected', [('ordinary chat', False), ('qa: hello', True)])
 @pytest.mark.parametrize('claim_result', [True, False])
 async def test_busy_group_steering_obeys_response_rules(sample_query, text, expected, claim_result):
@@ -112,6 +152,173 @@ async def test_busy_group_steering_obeys_response_rules(sample_query, text, expe
         assert str(forwarded.message_chain) == ' hello'
     else:
         app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_group_stop_bypasses_response_rule_gate(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    pipeline = make_pipeline()
+    pipeline.pipeline_entity.config['trigger'] = {
+        'group-respond-rules': {'at': True, 'prefix': [], 'regexp': [], 'random': 0}
+    }
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-group-stop'
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.cmd_mgr.resolve_privilege.assert_awaited_once_with(sample_query)
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        sample_query,
+        allow_other_actors=False,
+    )
+    assert sample_query.variables['_stop_command_run_id'] == 'run-group-stop'
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_busy_group_admin_can_stop_another_members_run(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.cmd_mgr.resolve_privilege.return_value = 2
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-admin-stop'
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='!stop')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        sample_query,
+        allow_other_actors=True,
+    )
+    assert sample_query.variables['_stop_command_run_id'] == 'run-admin-stop'
+
+
+@pytest.mark.asyncio
+async def test_busy_group_command_is_recognized_after_trigger_prefix_is_removed(sample_query):
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.sess_mgr.get_session.return_value = Session(
+        instance_uuid='test-instance',
+        workspace_uuid='test-workspace',
+        placement_generation=1,
+        launcher_type=LauncherTypes.GROUP,
+        launcher_id=sample_query.launcher_id,
+    )
+    pipeline = make_pipeline()
+    pipeline.pipeline_entity.config['trigger'] = {
+        'group-respond-rules': {'at': False, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
+    }
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
+    sample_query.launcher_type = LauncherTypes.GROUP
+    sample_query.message_chain = MessageChain([Plain(text='qa: !list')])
+
+    claimed = await Controller(app)._try_claim_steering_before_session_slot(sample_query)
+
+    assert claimed is False
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_stop_is_handled_before_an_available_second_session_slot():
+    from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
+
+    app = make_app()
+    app.query_pool = QueryPool()
+    session = SimpleNamespace(_semaphore=asyncio.Semaphore(2))
+    app.sess_mgr.get_session = AsyncMock(return_value=session)
+    app.persistence_mgr = SimpleNamespace(mode=SimpleNamespace(value='oss'))
+    app.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-test',
+                workspace_uuid='workspace-test',
+                placement_generation=1,
+            )
+        )
+    )
+    runtime_pipeline = SimpleNamespace(run=AsyncMock())
+    app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(side_effect=[make_pipeline(), runtime_pipeline])
+    app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-already-active'
+
+    worker_tasks = []
+    task_created = asyncio.Event()
+
+    def create_task(coro, **_kwargs):
+        task = asyncio.create_task(coro)
+        worker_tasks.append(task)
+        task_created.set()
+        return task
+
+    app.task_mgr = SimpleNamespace(create_task=create_task)
+    query = Mock()
+    query.query_id = 5
+    query.bot_uuid = 'bot-test'
+    query.pipeline_uuid = 'pipeline-stop'
+    query.message_chain = MessageChain([Plain(text='!stop')])
+    query.variables = {}
+    query._execution_context = ExecutionContext(
+        instance_uuid='instance-test',
+        workspace_uuid='workspace-test',
+        placement_generation=1,
+        pipeline_uuid='pipeline-stop',
+    )
+
+    with patch('langbot.pkg.pipeline.pool.pipeline_query.Query', return_value=query):
+        await app.query_pool.add_query(
+            bot_uuid='bot-test',
+            launcher_type=Mock(),
+            launcher_id='launcher-test',
+            sender_id='sender-test',
+            message_event=Mock(),
+            message_chain=query.message_chain,
+            adapter=Mock(),
+            pipeline_uuid='pipeline-stop',
+            execution_context=query._execution_context,
+        )
+
+    controller = Controller(app)
+    consumer_task = asyncio.create_task(controller.consumer())
+    try:
+        await asyncio.wait_for(task_created.wait(), timeout=1)
+        await asyncio.wait_for(worker_tasks[0], timeout=1)
+    finally:
+        consumer_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await consumer_task
+
+    app.agent_run_orchestrator.cancel_active_from_query.assert_awaited_once_with(
+        query,
+        allow_other_actors=False,
+    )
+    assert query.variables['_stop_command_run_id'] == 'run-already-active'
+    runtime_pipeline.run.assert_awaited_once_with(query)
+    assert session._semaphore._value == 2
 
 
 @pytest.mark.asyncio

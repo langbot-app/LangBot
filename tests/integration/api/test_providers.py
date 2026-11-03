@@ -102,7 +102,7 @@ def fake_provider_app():
     app.provider_service.update_provider = AsyncMock(return_value={})
     app.provider_service.delete_provider = AsyncMock()
     app.provider_service.get_provider_model_counts = AsyncMock(
-        return_value={'llm_count': 2, 'embedding_count': 1, 'rerank_count': 0}
+        return_value={'llm_count': 2, 'embedding_count': 1, 'rerank_count': 0, 'asr_count': 1, 'tts_count': 0}
     )
 
     # LLM model service
@@ -271,10 +271,13 @@ class TestProviderEndpoints:
         assert called.await_args.args[0].workspace_uuid == 'workspace-test'
         assert called.await_args.args[1:] == ('test-provider-uuid',)
         assert called.await_args.kwargs == {}
-        assert {key: provider_data[key] for key in ('llm_count', 'embedding_count', 'rerank_count')} == {
+        count_keys = ('llm_count', 'embedding_count', 'rerank_count', 'asr_count', 'tts_count')
+        assert {key: provider_data[key] for key in count_keys} == {
             'llm_count': 2,
             'embedding_count': 1,
             'rerank_count': 0,
+            'asr_count': 1,
+            'tts_count': 0,
         }
 
 

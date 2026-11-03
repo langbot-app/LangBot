@@ -19,11 +19,12 @@ from urllib.parse import urlsplit
 from ..request_policy import current_call, RequestPolicy, error_metadata
 
 import litellm
-from litellm import acompletion, aembedding, arerank
+from litellm import acompletion, aembedding, arerank, atranscription, aspeech
 from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 from litellm.secret_managers.main import get_secret, get_secret_bool
 
 from .. import errors, reasoning, requester
+from . import minimax
 from ....utils import httpclient, image
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -181,6 +182,17 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
+    _ASR_MODEL_HINTS = (
+        'whisper',
+        'sensevoice',
+        'asr',
+        'paraformer',
+        'conformer',
+        'speech-to-text',
+        'transcription',
+        'stt',
+    )
+    _TTS_MODEL_HINTS = ('tts', 'text-to-speech', 'speech-synthesis', 'cosyvoice', 'voice-clone', 'sambert', 'chattts')
     _QWEN_DEDICATED_THINKING_MODELS = frozenset(
         {
             'qwen3.7-max-preview',
@@ -213,6 +225,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         'bailian-chat-completions': 'qwen',
         'doubao-chat-completions': 'doubao',
         'mimo-chat-completions': 'mimo',
+        'minimax-chat-completions': 'minimax',
     }
 
     default_config: dict[str, typing.Any] = {
@@ -569,6 +582,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _known_reasoning_levels(self, model_name: str, family: str) -> list[str] | None:
         normalized_name = model_name.lower().rsplit('/', 1)[-1]
 
+        if family == 'minimax':
+            return minimax.reasoning_levels(normalized_name)
+
         if family == 'deepseek' and normalized_name.startswith('deepseek-'):
             if normalized_name.startswith('deepseek-v4-'):
                 return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
@@ -728,6 +744,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             raise errors.RequesterError(str(exc), code='invalid_policy') from exc
 
         family = self._reasoning_family(model.model_entity.name, model)
+        if family == 'minimax':
+            return minimax.reasoning_parameters(level)
         budget = config.get('budget_tokens')
         if budget is not None:
             if self._uses_openrouter_protocol():
@@ -779,12 +797,27 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     def _reasoning_level(self, model: requester.RuntimeLLMModel) -> str:
         return reasoning.normalize_reasoning_config(self._reasoning_config_value(model))['level']
 
-    def _infer_model_type(self, model_id: str) -> str:
+    def _infer_model_type(self, model_id: str, model_payload: dict[str, typing.Any] | None = None) -> str:
+        if model_payload:
+            explicit_type = (model_payload.get('type') or model_payload.get('task') or '').lower()
+            if explicit_type in ('asr', 'audio_transcription', 'speech-to-text', 'stt'):
+                return 'asr'
+            if explicit_type in ('tts', 'text_to_speech', 'text-to-speech', 'speech-synthesis'):
+                return 'tts'
+            if explicit_type in ('embedding', 'text-embedding'):
+                return 'embedding'
+            if explicit_type in ('rerank', 'reranking'):
+                return 'rerank'
+
         normalized_id = (model_id or '').lower()
         if any(kw in normalized_id for kw in self._RERANK_MODEL_HINTS):
             return 'rerank'
         if any(kw in normalized_id for kw in self._EMBEDDING_MODEL_HINTS):
             return 'embedding'
+        if any(kw in normalized_id for kw in self._ASR_MODEL_HINTS):
+            return 'asr'
+        if any(kw in normalized_id for kw in self._TTS_MODEL_HINTS):
+            return 'tts'
         return 'llm'
 
     def _enrich_scanned_model(
@@ -792,7 +825,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         model_id: str,
         model_payload: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any]:
-        model_type = self._infer_model_type(model_id)
+        model_type = self._infer_model_type(model_id, model_payload)
         scanned_model: dict[str, typing.Any] = {
             'id': model_id,
             'name': model_id,
@@ -837,6 +870,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         for m in messages:
             msg_dict = m.dict(exclude_none=True)
             provider_fields = msg_dict.get('provider_specific_fields')
+            replay_fields = minimax.take_replay_fields(provider_fields) if isinstance(provider_fields, dict) else {}
             if isinstance(provider_fields, dict):
                 # Stream completion metadata belongs to the response, never to
                 # replayed chat messages. Keep provider signatures for LiteLLM.
@@ -877,6 +911,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                         msg_dict['provider_specific_fields'] = cleaned_provider_fields
                     else:
                         msg_dict.pop('provider_specific_fields', None)
+
+            if msg_dict.get('role') == 'assistant' and reasoning_family == 'minimax':
+                msg_dict.update(replay_fields)
 
             if isinstance(content, list):
                 converted_parts = []
@@ -1220,11 +1257,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         mappings = (
             (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
             (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
+            (getattr(litellm, 'PermissionDeniedError', ()), 'permission_denied', t('Permission denied'), False),
             (litellm.NotFoundError, 'not_found', t('Invalid model or endpoint'), False),
             (litellm.RateLimitError, 'rate_limit', t('Rate limit exceeded or insufficient balance'), True),
             (litellm.Timeout, 'timeout', t('Request timed out'), True),
             (litellm.APIConnectionError, 'connection', t('Connection failed'), True),
             (litellm.BadRequestError, 'bad_request', t('Invalid request parameters'), False),
+            (getattr(litellm, 'InternalServerError', ()), 'internal_error', t('Internal server error'), True),
+            (getattr(litellm, 'BadGatewayError', ()), 'bad_gateway', t('Internal server error'), True),
+            (getattr(litellm, 'ServiceUnavailableError', ()), 'service_unavailable', t('Internal server error'), True),
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
@@ -1236,9 +1277,38 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     code, retryable = 'quota_exceeded', False
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
         status = metadata['status_code']
+        code = 'upstream_error'
+        if status in (500, 502, 503):
+            message = t('Internal server error')
+            code = 'internal_error'
+        elif status == 504:
+            message = t('Request timed out')
+            code = 'timeout'
+        elif status == 401:
+            message = t('Invalid API key')
+            code = 'authentication'
+        elif status == 403:
+            message = t('Permission denied')
+            code = 'permission_denied'
+        elif status == 404:
+            message = t('Invalid model or endpoint')
+            code = 'not_found'
+        elif status == 429:
+            message = t('Rate limit exceeded or insufficient balance')
+            code = 'rate_limit'
+        elif status == 400:
+            message = t('Invalid request parameters')
+            code = 'bad_request'
+        elif status is not None:
+            message = f'{t("API error")} (HTTP {status})'
+        elif isinstance(e, (litellm.APIError, getattr(litellm, 'OpenAIError', ()))):
+            message = t('API error')
+        else:
+            message = t('Unknown error')
+
         raise errors.RequesterError(
-            t('API error') if isinstance(e, litellm.APIError) else t('Unknown error'),
-            code='upstream_error',
+            message,
+            code=code,
             retryable=status in (408, 409, 429, 500, 502, 503, 504),
             **metadata,
         ) from e
@@ -1476,6 +1546,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 content = message_data.get('content', '')
                 reasoning_content = message_data.get('reasoning_content', None)
                 thinking_blocks = message_data.get('thinking_blocks')
+                if self._reasoning_family(model.model_entity.name, model) == 'minimax':
+                    message_data['provider_specific_fields'] = minimax.capture_content(message_data)
                 if reasoning_content or thinking_blocks:
                     provider_fields = dict(message_data.get('provider_specific_fields') or {})
                     if reasoning_content:
@@ -1520,6 +1592,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         reasoning_started = False
         reasoning_closed = False
         thinking_blocks_state: list[dict[str, typing.Any]] = []
+        keep_minimax_content = self._reasoning_family(model.model_entity.name, model) == 'minimax'
+        raw_content_parts: list[str] = []
         response = None
 
         async with self._client_args(args) as args:
@@ -1562,6 +1636,12 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     delta_content = delta.get('content') or ''
                     reasoning_content = delta.get('reasoning_content') or ''
                     provider_fields = dict(delta.get('provider_specific_fields') or {})
+                    if keep_minimax_content:
+                        if isinstance(delta.get('content'), str):
+                            raw_content_parts.append(delta['content'])
+                        if finish_reason and raw_content_parts:
+                            provider_fields[minimax.RAW_CONTENT_FIELD] = ''.join(raw_content_parts)
+                            raw_content_parts.clear()
                     if finish_reason:
                         # Preserve an explicit provider stop even when the final delta is empty.
                         provider_fields['finish_reason'] = finish_reason
@@ -1636,6 +1716,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     chunk_data = {k: v for k, v in chunk_data.items() if v is not None}
                     yield provider_message.MessageChunk(**chunk_data)
                     chunk_idx += 1
+
+                if raw_content_parts:
+                    yield provider_message.MessageChunk(
+                        role=role,
+                        is_final=True,
+                        provider_specific_fields={minimax.RAW_CONTENT_FIELD: ''.join(raw_content_parts)},
+                    )
 
                 if reasoning_started and not reasoning_closed:
                     yield provider_message.MessageChunk(
@@ -1853,6 +1940,123 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
         return results
 
+    async def invoke_asr(
+        self,
+        model: requester.RuntimeASRModel,
+        audio: bytes,
+        mime: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> str:
+        """Invoke speech recognition (ASR) and return transcript."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        ext = 'wav'
+        if 'mp3' in mime or 'mpeg' in mime:
+            ext = 'mp3'
+        elif 'ogg' in mime:
+            ext = 'ogg'
+        elif 'flac' in mime:
+            ext = 'flac'
+        elif 'm4a' in mime or 'mp4' in mime:
+            ext = 'm4a'
+        elif 'wav' in mime:
+            ext = 'wav'
+        filename = f'audio.{ext}'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'file': (filename, audio, mime),
+            'api_key': api_key,
+            'response_format': 'json',
+        }
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        if model.model_entity.extra_args:
+            args.update(model.model_entity.extra_args)
+        args.update(extra_args)
+
+        try:
+            response = await atranscription(**args)
+            if hasattr(response, 'text'):
+                return response.text or ''
+            if isinstance(response, dict):
+                return response.get('text', '')
+            return str(response)
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
+
+    async def invoke_tts(
+        self,
+        model: requester.RuntimeTTSModel,
+        text: str,
+        extra_args: dict[str, typing.Any] = {},
+    ) -> tuple[bytes, str]:
+        """Invoke text-to-speech and return (audio_bytes, mime_type)."""
+        model_name = self._build_litellm_model_name(model.model_entity.name)
+        api_key = model.provider.token_mgr.get_token()
+
+        combined_extra = {**(model.model_entity.extra_args or {}), **extra_args}
+        voice = combined_extra.pop('voice', None)
+        response_format = combined_extra.pop('response_format', None) or combined_extra.pop('format', None) or 'mp3'
+
+        args: dict[str, typing.Any] = {
+            'model': model_name,
+            'input': text,
+            'response_format': response_format,
+            'api_key': api_key,
+        }
+        if voice:
+            args['voice'] = voice
+        self._build_common_args(args, include_retry_params=False)
+
+        provider = self._get_custom_llm_provider()
+        if provider:
+            args['custom_llm_provider'] = provider
+
+        args.update(combined_extra)
+
+        try:
+            response = await aspeech(**args)
+            content = b''
+            if hasattr(response, 'content'):
+                content = response.content
+            elif hasattr(response, 'read'):
+                res = response.read()
+                if asyncio.iscoroutine(res):
+                    content = await res
+                else:
+                    content = res
+            elif isinstance(response, bytes):
+                content = response
+            elif hasattr(response, 'response') and hasattr(response.response, 'content'):
+                content = response.response.content
+
+            # Determine mime type
+            mime = 'audio/mpeg'
+            if response_format == 'wav':
+                mime = 'audio/wav'
+            elif response_format in ('ogg', 'opus'):
+                mime = 'audio/ogg'
+            elif response_format == 'flac':
+                mime = 'audio/flac'
+            elif response_format == 'aac':
+                mime = 'audio/aac'
+            elif hasattr(response, 'response') and hasattr(response.response, 'headers'):
+                mime = response.response.headers.get('content-type', mime)
+
+            return content, mime
+        except errors.RequesterError:
+            raise
+        except Exception as e:
+            self._handle_litellm_error(e)
+
     async def scan_models(self, api_key: str | None = None) -> dict[str, typing.Any]:
         """Scan models supported by the provider."""
         import httpx
@@ -1882,8 +2086,11 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                     # rather than /models. Providers whose configured base_url
                     # already ends in /v1 keep their original (working) URL.
                     response = await client.get(f'{base_url}/v1/models', headers=headers)
-                response.raise_for_status()
-                payload = await httpclient.parse_json_response(response)
+                if self._requester_name() == 'minimax-chat-completions' and response.status_code == 404:
+                    payload = {}
+                else:
+                    response.raise_for_status()
+                    payload = await httpclient.parse_json_response(response)
 
             models = []
             for item in payload.get('data', []):
@@ -1894,6 +2101,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 models.append(self._enrich_scanned_model(model_id, item))
 
             models.sort(key=lambda x: (x['type'] != 'llm', x['name'].lower()))
+
+            direct_minimax = self._requester_name() == 'minimax-chat-completions'
+            if direct_minimax or self._uses_openrouter_protocol():
+                models = minimax.arrange_catalog(models, direct=direct_minimax)
 
             return {'models': models}
 

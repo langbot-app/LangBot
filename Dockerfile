@@ -49,7 +49,7 @@ COPY --from=node /app/web/dist ./web/dist
 COPY --from=nsjail-build /usr/local/bin/nsjail /usr/local/bin/nsjail
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc ca-certificates curl git gnupg \
+    && apt-get install -y --no-install-recommends gcc libc6-dev ca-certificates curl git gnupg ffmpeg \
     # nsjail runtime libraries (the build toolchain stays in the nsjail-build
     # stage; only these shared libs are needed to execute the binary).
     && apt-get install -y --no-install-recommends libprotobuf32t64 libnl-route-3-200 \
@@ -73,7 +73,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -f /tmp/nodesource_setup.sh \
     && python -m pip install --no-cache-dir uv \
-    && uv sync --extra seekdb \
+    && uv sync --extra seekdb --extra audio \
     && apt-get purge -y --auto-remove curl git gnupg \
     && rm -rf /var/lib/apt/lists/* \
     && touch /.dockerenv

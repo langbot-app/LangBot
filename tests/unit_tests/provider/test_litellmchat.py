@@ -12,6 +12,7 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 
 import litellm
+import httpx
 
 from langbot.pkg.provider.modelmgr.requesters import litellmchat
 from langbot.pkg.provider.modelmgr import errors
@@ -812,6 +813,33 @@ class TestHandleLiteLLMError:
             requester._handle_litellm_error(error)
 
         assert 'Context length exceeded' in str(exc_info.value)
+
+    def test_internal_server_error(self):
+        """Test InternalServerError translation"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        error = litellm.InternalServerError(message='server error', model='gpt-4o', llm_provider='openai')
+
+        with pytest.raises(errors.RequesterError) as exc_info:
+            requester._handle_litellm_error(error)
+
+        assert 'Internal server error' in str(exc_info.value)
+        assert exc_info.value.retryable
+
+    def test_permission_denied_error(self):
+        """Test PermissionDeniedError translation"""
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={})
+
+        response = httpx.Response(403, request=httpx.Request('POST', 'https://example.com'))
+        error = litellm.PermissionDeniedError(
+            message='forbidden', model='gpt-4o', llm_provider='openai', response=response
+        )
+
+        with pytest.raises(errors.RequesterError) as exc_info:
+            requester._handle_litellm_error(error)
+
+        assert 'Permission denied' in str(exc_info.value)
+        assert not exc_info.value.retryable
 
     def test_unknown_error(self):
         """Test unknown error translation"""

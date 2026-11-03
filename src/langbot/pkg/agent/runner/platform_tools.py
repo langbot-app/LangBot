@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import copy
 import fnmatch
+import time
 import typing
+import uuid
 from dataclasses import dataclass
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -44,8 +46,78 @@ _TARGET_TYPE = {'type': 'string', 'enum': ['person', 'group']}
 _CHAT_TYPE = {'type': 'string', 'enum': ['person', 'private', 'group']}
 _APPROVE = {'type': 'boolean', 'description': 'true to accept; false to reject'}
 
+PRESENT_INTERACTIVE_CARD_TOOL = 'request_interaction'
+
+_INTERACTION_OPTION_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'value': {'type': 'string', 'minLength': 1, 'maxLength': 512},
+        'label': {'type': 'string', 'minLength': 1, 'maxLength': 512},
+        'description': {'type': 'string', 'maxLength': 2000},
+    },
+    'required': ['value', 'label'],
+    'additionalProperties': False,
+}
+_INTERACTION_FIELD_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'id': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+        'label': {'type': 'string', 'minLength': 1, 'maxLength': 512},
+        'type': {
+            'type': 'string',
+            'enum': ['text', 'textarea', 'select', 'multiselect', 'number', 'boolean', 'file'],
+        },
+        'required': {'type': 'boolean'},
+        'options': {'type': 'array', 'items': _INTERACTION_OPTION_SCHEMA, 'maxItems': 100},
+        'placeholder': {'type': 'string', 'maxLength': 2000},
+        'default': {},
+    },
+    'required': ['id', 'label', 'type'],
+    'additionalProperties': False,
+}
+_INTERACTION_ACTION_SCHEMA = {
+    'type': 'object',
+    'properties': {
+        'id': {'type': 'string', 'minLength': 1, 'maxLength': 128},
+        'label': {'type': 'string', 'minLength': 1, 'maxLength': 512},
+        'style': {'type': 'string', 'enum': ['default', 'primary', 'danger']},
+    },
+    'required': ['id', 'label'],
+    'additionalProperties': False,
+}
+
 
 PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
+    PlatformToolDefinition(
+        PRESENT_INTERACTIVE_CARD_TOOL,
+        'send_interaction',
+        'event',
+        'interaction',
+        'write',
+        {'en_US': 'Request user interaction'},
+        {
+            'en_US': (
+                'Present a native interactive card in the current conversation. Define semantic buttons, selects, '
+                'and input fields; LangBot owns the target, callback token, validation, and platform rendering. '
+                'Each card is one step: provide either actions or fields, never both. '
+                'The tool waits for the user and returns the structured submission in this run.'
+            ),
+        },
+        _object_schema(
+            {
+                'kind': {'type': 'string', 'enum': ['form', 'confirmation', 'choice']},
+                'title': {'type': 'string', 'minLength': 1, 'maxLength': 1000},
+                'description': {'type': 'string', 'maxLength': 10000},
+                'fields': {'type': 'array', 'items': _INTERACTION_FIELD_SCHEMA, 'maxItems': 50},
+                'actions': {'type': 'array', 'items': _INTERACTION_ACTION_SCHEMA, 'maxItems': 20},
+                'expires_in_seconds': {'type': 'integer', 'minimum': 60, 'maximum': 86400},
+                'responders': {'type': 'string', 'enum': ['actor', 'any']},
+            },
+            ['title'],
+        ),
+        ('message.*',),
+        'reply_target',
+    ),
     PlatformToolDefinition(
         'event_reply',
         'send_message',
@@ -55,12 +127,12 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
         {'zh_Hans': '回复当前会话', 'en_US': 'Reply to current conversation'},
         {
             'zh_Hans': '向触发当前事件的会话发送回复或任务进度。目标由 LangBot 固定，Agent 无法改写。'
-            '需要发送消息时请调用此工具，Agent 的输出文本不会自动发送。',
+            '需要显式发送消息时请调用此工具；独立 Agent 的文本输出也可能自动回复。',
             'en_US': 'Send a reply or task progress to the conversation that triggered this run. LangBot fixes the target. '
-            'Call this tool to send a message; Agent output text is not sent automatically.',
+            'Call this tool to send an explicit message. Direct Agent text output may also be delivered automatically.',
         },
         _object_schema({'text': {**_TEXT, 'description': 'Reply text'}}, ['text']),
-        ('message.*', 'friend.*', 'group.*', 'feedback.*', 'interaction.submitted'),
+        ('message.*', 'friend.*', 'group.*', 'feedback.*'),
         'reply_target',
     ),
     PlatformToolDefinition(
@@ -211,9 +283,9 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
         'write',
         {'zh_Hans': '发送消息', 'en_US': 'Send message'},
         {
-            'zh_Hans': '使用当前机器人向指定用户或群组发送回复或任务进度。Agent 的输出文本不会自动发送。',
+            'zh_Hans': '使用当前机器人向指定用户或群组发送回复或任务进度。独立 Agent 的文本输出也可能自动回复。',
             'en_US': 'Send a reply or task progress to a specified person or group using the current bot. '
-            'Agent output text is not sent automatically.',
+            'Direct Agent text output may also be delivered automatically.',
         },
         _object_schema(
             {'target_type': _TARGET_TYPE, 'target_id': _ID, 'text': _TEXT}, ['target_type', 'target_id', 'text']
@@ -465,10 +537,14 @@ def build_platform_tool_resources(
         reason = None
         if definition is None:
             reason = 'unknown_tool'
-        elif definition.api not in supported_apis and not (
-            definition.name == 'event_reply'
-            and {'reply_message', 'get_message'} <= supported_apis
-            and (event.delivery.reply_target or {}).get('message_id')
+        elif (
+            definition.api not in supported_apis
+            and not (definition.name == PRESENT_INTERACTIVE_CARD_TOOL and 'send_message' in supported_apis)
+            and not (
+                definition.name == 'event_reply'
+                and {'reply_message', 'get_message'} <= supported_apis
+                and (event.delivery.reply_target or {}).get('message_id')
+            )
         ):
             reason = 'adapter_api_unsupported'
         elif definition.scope == 'event' and not _event_matches(event.event_type, definition.event_patterns):
@@ -479,13 +555,26 @@ def build_platform_tool_resources(
             unavailable.append({'name': name, 'reason': reason})
             continue
         assert definition is not None
+        parameters = copy.deepcopy(definition.parameters)
+        if definition.name == PRESENT_INTERACTIVE_CARD_TOOL:
+            capabilities = getattr(event.delivery, 'interactions', None)
+            field_types = list(getattr(capabilities, 'field_types', []) or [])
+            action_styles = list(getattr(capabilities, 'action_styles', []) or [])
+            max_fields = getattr(capabilities, 'max_fields', None)
+            field_schema = parameters['properties']['fields']
+            if field_types:
+                field_schema['items']['properties']['type']['enum'] = field_types
+            if isinstance(max_fields, int):
+                field_schema['maxItems'] = max_fields
+            if action_styles:
+                parameters['properties']['actions']['items']['properties']['style']['enum'] = action_styles
         resources.append(
             {
                 'tool_name': definition.name,
                 'tool_type': 'platform',
                 'description': definition.description.get('en_US') or definition.description.get('zh_Hans'),
                 'operations': list(operations),
-                'parameters': copy.deepcopy(definition.parameters),
+                'parameters': parameters,
                 'source': 'platform',
                 'source_id': definition.name,
             }
@@ -537,6 +626,8 @@ def _event_params(
         subject.get('subject_id') if subject.get('subject_type') == 'group' else None
     )
     actor_id = actor.get('actor_id')
+    if definition.name == PRESENT_INTERACTIVE_CARD_TOOL:
+        return dict(parameters)
     if definition.binding == 'reply_target':
         return {
             'target_type': reply_target.get('target_type'),
@@ -606,6 +697,49 @@ def _normalize_platform_params(
         if 'enum' in field and value not in field['enum']:
             raise ValueError(f'{name} must be one of: {", ".join(field["enum"])}')
     return dict(parameters)
+
+
+def _interactive_card_request(parameters: dict[str, typing.Any]) -> dict[str, typing.Any]:
+    fields = copy.deepcopy(parameters.get('fields') or [])
+    actions = copy.deepcopy(parameters.get('actions') or [])
+    if not isinstance(fields, list) or not isinstance(actions, list):
+        raise ValueError('fields and actions must be arrays')
+    if not fields and not actions:
+        raise ValueError('An interactive card requires at least one field or action')
+    if fields and actions:
+        raise ValueError('An interactive card step cannot combine fields and actions')
+
+    title = _require_string(parameters, 'title')
+    description = parameters.get('description')
+    lines = [title]
+    if isinstance(description, str) and description.strip():
+        lines.extend(['', description.strip()])
+    for field in fields:
+        if not isinstance(field, dict):
+            raise ValueError('Every interaction field must be an object')
+        label = str(field.get('label') or field.get('id') or 'Input')
+        options = field.get('options') if isinstance(field.get('options'), list) else []
+        option_labels = [str(item.get('label')) for item in options if isinstance(item, dict) and item.get('label')]
+        lines.append(f'{label}: {", ".join(option_labels) if option_labels else "input required"}')
+    if actions:
+        lines.append(
+            'Actions: '
+            + ', '.join(str(item.get('label')) for item in actions if isinstance(item, dict) and item.get('label'))
+        )
+
+    expires_in = parameters.get('expires_in_seconds', 30 * 60)
+    if isinstance(expires_in, bool) or not isinstance(expires_in, int) or not 60 <= expires_in <= 86400:
+        raise ValueError('expires_in_seconds must be an integer from 60 to 86400')
+    return {
+        'interaction_id': f'card-{uuid.uuid4().hex}',
+        'kind': parameters.get('kind', 'form'),
+        'title': title,
+        'description': description,
+        'fields': fields,
+        'actions': actions,
+        'expires_at': int(time.time()) + expires_in,
+        'fallback_text': '\n'.join(lines),
+    }
 
 
 def resolve_platform_api_call(session, bot_uuid, action, params, context_tool=None):
@@ -738,8 +872,24 @@ async def execute_platform_tool(
             and {'reply_message', 'get_message'} <= supported_apis
             and (delivery.get('reply_target') or {}).get('message_id')
         )
-        if definition.api not in supported_apis and not reply_via_source:
+        if (
+            definition.api not in supported_apis
+            and not reply_via_source
+            and not (definition.name == PRESENT_INTERACTIVE_CARD_TOOL and 'send_message' in supported_apis)
+        ):
             raise ValueError(f'Platform API {definition.api} is no longer supported by bot {bot_id}')
+        if definition.name == PRESENT_INTERACTIVE_CARD_TOOL:
+            manager = getattr(getattr(ap, 'agent_run_orchestrator', None), 'interaction_manager', None)
+            if manager is None:
+                raise ValueError('Interactive card delivery is unavailable')
+            return await manager.request_interaction(
+                request_payload=_interactive_card_request(normalized),
+                session=session,
+                adapter=bot.adapter,
+                timeout=normalized.get('expires_in_seconds', 600),
+                on_unsupported='degrade',
+                responders=normalized.get('responders', 'actor'),
+            )
         api_func = getattr(bot.adapter, definition.api, None)
         if reply_via_source:
 
@@ -759,6 +909,27 @@ async def execute_platform_tool(
             async def api_func(target_type, target_id, message):
                 return await event_reply_handler(
                     context=context, target_type=target_type, target_id=target_id, message=message
+                )
+
+        reply_streams = session.get('reply_streams')
+        if (
+            definition.name == 'event_reply'
+            and message_chain is None
+            and reply_streams is not None
+            and getattr(reply_streams, 'adapter', None) is bot.adapter
+        ):
+            from uuid import uuid4
+
+            from .reply_stream import ReplyStreamRequest
+
+            async def api_func(target_type, target_id, message):
+                text = ''.join(part.text for part in message if isinstance(part, platform_message.Plain))
+                return await reply_streams.apply(
+                    ReplyStreamRequest(
+                        stream_id=uuid4(),
+                        operation='finish',
+                        text=text,
+                    )
                 )
 
         if not callable(api_func):
@@ -879,6 +1050,7 @@ def _execute_mock_platform_tool(
 
 __all__ = [
     'PLATFORM_TOOL_DEFINITIONS',
+    'PRESENT_INTERACTIVE_CARD_TOOL',
     'build_platform_tool_resources',
     'execute_platform_tool',
     'freeze_platform_context',

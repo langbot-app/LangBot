@@ -14,11 +14,14 @@ from ..entity.persistence import model as persistence_model
 LANGBOT_MODELS_PROVIDER_REQUESTER = 'space-chat-completions'
 LANGBOT_MODELS_PROVIDER_NAME = 'LangBot Models'
 _MODEL_RESOURCE_NAMESPACE = uuid.UUID('94c703ca-1df5-4e91-bcd3-74ac65cb7921')
-_SUPPORTED_CATEGORIES = {'chat', 'embedding', 'rerank'}
+SUPPORTED_MODEL_CATEGORIES = ('chat', 'embedding', 'rerank', 'tts', 'asr')
+_SUPPORTED_CATEGORIES = set(SUPPORTED_MODEL_CATEGORIES)
 _MODEL_TABLES = (
     persistence_model.LLMModel,
     persistence_model.EmbeddingModel,
     persistence_model.RerankModel,
+    persistence_model.TTSModel,
+    persistence_model.ASRModel,
 )
 
 
@@ -27,7 +30,8 @@ class CloudModelCatalogItem(BaseModel):
 
     uuid: str = Field(min_length=1, max_length=255)
     model_id: str = Field(min_length=1, max_length=255)
-    category: Literal['chat', 'embedding', 'rerank']
+    category: Literal['chat', 'embedding', 'rerank', 'tts', 'asr']
+    default_voice: str | None = None
     llm_abilities: tuple[str, ...] = ()
     is_featured: bool = False
     featured_order: int = 0
@@ -334,4 +338,10 @@ class CloudModelCatalogSyncService:
             return persistence_model.EmbeddingModel, common
         if item.category == 'rerank':
             return persistence_model.RerankModel, common
+        if item.category == 'tts':
+            if item.default_voice:
+                common['extra_args'] = {'voice': item.default_voice}
+            return persistence_model.TTSModel, common
+        if item.category == 'asr':
+            return persistence_model.ASRModel, common
         raise ValueError(f'Unsupported model category: {item.category}')

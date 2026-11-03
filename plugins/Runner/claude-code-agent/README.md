@@ -70,13 +70,9 @@ Run Claude Code CLI as a LangBot Runner.
 
 The runner exposes a real MCP tool named `ask_user_question` through the
 run-scoped LangBot MCP bridge. Its standard Claude `tool_use` event is converted
-to LangBot's provider-neutral `interaction.requested` contract. The CLI process
-is stopped while the user is answering. A card submission starts a new
-AgentRun, resumes the same Claude Code session, and sends the answer as the next
-authoritative user turn. Claude CLI must complete an MCP call before persisting
-a resumable session, so it cannot accept a second result for the old
-`tool_use_id` after the process exits. No Python coroutine or Claude process is
-kept waiting for the user.
+to a single LangBot `request_interaction` call. The call waits for the user's
+card submission and returns all form values to the MCP tool in the same AgentRun.
+The CLI process remains active while the interaction is pending.
 
 
 ## Shared-worker candidate / daemon upgrade

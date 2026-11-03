@@ -51,6 +51,12 @@ class Bot:
     async def reply_image(self, req_id, media_id):
         self.calls.append(('reply_image', req_id, media_id))
 
+    async def reply_voice(self, req_id, media_id):
+        self.calls.append(('reply_voice', req_id, media_id))
+
+    async def reply_file(self, req_id, media_id):
+        self.calls.append(('reply_file', req_id, media_id))
+
     async def send_message(self, target_id, content):
         self.calls.append(('send_message', target_id, content))
 
@@ -103,6 +109,23 @@ async def test_reply_message_uploads_and_replies_image_media():
     assert bot.calls == [
         ('upload_media', 'image', 'attachment.image', png_data),
         ('reply_image', 'req-1', 'media-1'),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_reply_message_uploads_and_replies_voice_media():
+    bot = Bot()
+    adapter = make_adapter(bot)
+    silk_data = b'\x02#!SILK_V3test'
+    silk_b64 = base64.b64encode(silk_data).decode('utf-8')
+    chain = platform_message.MessageChain([platform_message.Voice(base64=f'data:audio/silk;base64,{silk_b64}')])
+
+    items = await WecomBotMessageConverter.yiri2target(chain)
+    await adapter._send_media(bot, 'req-1', items[0])
+
+    assert bot.calls == [
+        ('upload_media', 'voice', 'voice.silk', silk_data),
+        ('reply_voice', 'req-1', 'media-1'),
     ]
 
 

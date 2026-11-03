@@ -44,6 +44,10 @@ docker compose --profile all up -d
 
 首次启动需要下载镜像。Windows / macOS 用户请保持 Docker Desktop 运行。
 
+<Note>
+官方 Docker 镜像已默认预装 `ffmpeg` 与 `pilk` 音频工具链（最小化安装），开箱即用支持微信原生语音条（SILK）转码与语音处理，无需额外在宿主机安装音频环境。
+</Note>
+
 ## 4. 打开管理页面
 
 - **本机部署**：打开 `http://localhost:5300`。

@@ -1,7 +1,14 @@
 name: Build Dev Image
 
+# Tag churn control: every push used to publish a permanent
+# `rockchin/langbot:sha-<sha>` tag plus a branch-name tag, so ~265 feature,
+# agent, experiment and test branches had each accumulated dozens of Docker Hub
+# tags (678 live tags, 467 of them `sha-*`). Only `master` now builds on push;
+# any other branch can still be built through workflow_dispatch.
 on:
   push:
+    branches:
+      - master
     paths-ignore:
       - "plugins/**"
       - ".github/workflows/plugins-*.yml"

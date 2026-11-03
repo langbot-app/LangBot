@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.2"
+version = "4.11.4"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.19",
+    "langbot-plugin==0.7.20",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -111,6 +111,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+audio = [
+    "pilk>=0.1.0",
+]
 seekdb = [
     "pyseekdb==1.4.0.post1",
     "pylibseekdb==1.4.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",

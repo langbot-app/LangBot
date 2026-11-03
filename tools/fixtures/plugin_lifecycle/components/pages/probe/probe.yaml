@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: probe
+  label:
+    en_US: Lifecycle probe
+spec:
+  path: index.html
+execution:
+  python:
+    path: probe.py
+    attr: ProbePage

@@ -282,9 +282,14 @@ const jaJP = {
       '対応するイベントを選び、テストデータを入力して出力とツールの結果を確認します。プラットフォーム操作は模擬実行され、モデルや他のツールは設定に従って実行されます。',
     pipeline: {
       trigger: {
-        title: '返信するメッセージを選ぶ',
+        title: 'Choose which messages to answer',
         description:
-          'パイプラインはメッセージイベントを処理し、AI が自動返信します。グループでの起動条件、個別チャットのルール、メッセージフィルターを設定します。',
+          'Pipelines handle message events and reply automatically with AI.',
+      },
+      speech: {
+        title: 'Configure speech capabilities',
+        description:
+          'Configure speech recognition (ASR) and text-to-speech (TTS) models to handle voice messages and synthesized voice replies.',
       },
       ai: {
         title: 'AI 機能を設定する',
@@ -888,6 +893,10 @@ const jaJP = {
     chat: 'チャット',
     embedding: '埋め込み',
     rerank: '再順位付け',
+    asr: '音声認識 (ASR)',
+    tts: '音声合成 (TTS)',
+    asrTab: '音声認識',
+    ttsTab: '音声合成',
     rerankUrlTooltip:
       '再順位付けエンドポイントの完全URL（例: https://dashscope.aliyuncs.com/compatible-api/v1/reranks）',
     rerankPathTooltip:
@@ -2416,6 +2425,7 @@ const jaJP = {
     triggerConditions: 'トリガー条件',
     safetyControls: '安全制御',
     outputProcessing: '出力処理',
+    speechProcessing: '音声処理',
     nameRequired: '名前は必須です',
     descriptionRequired: '説明は必須です',
     createSuccess:

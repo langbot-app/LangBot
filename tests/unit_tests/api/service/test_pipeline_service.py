@@ -76,6 +76,7 @@ class TestPipelineServiceGetPipelineMetadata:
         ap.pipeline_config_meta_trigger = {'trigger': {}}
         ap.pipeline_config_meta_safety = {'safety': {}}
         ap.pipeline_config_meta_ai = {'ai': {}}
+        ap.pipeline_config_meta_speech = {'speech': {}}
         ap.pipeline_config_meta_output = {'output': {}}
 
         service = PipelineService(ap)
@@ -86,11 +87,12 @@ class TestPipelineServiceGetPipelineMetadata:
         )
 
         # Verify
-        assert len(result) == 4
+        assert len(result) == 5
         assert 'trigger' in result[0]
         assert 'safety' in result[1]
         assert 'ai' in result[2]
-        assert 'output' in result[3]
+        assert 'speech' in result[3]
+        assert 'output' in result[4]
 
 
 class TestPipelineServiceGetPipelines:
