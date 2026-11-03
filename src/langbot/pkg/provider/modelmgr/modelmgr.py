@@ -578,6 +578,16 @@ class ModelManager:
             for model in await self.ap.embedding_models_service.get_embedding_models(context, include_secret=True)
         }
         existing_rerank_models = {m['uuid']: m for m in await self.ap.rerank_models_service.get_rerank_models(context)}
+        audio_services = {
+            'tts': self.ap.tts_models_service,
+            'asr': self.ap.asr_models_service,
+        }
+        existing_audio_models = {}
+        for category, service in audio_services.items():
+            if any(model.category == category for model in space_models):
+                existing_audio_models[category] = {
+                    model['uuid']: model for model in await getattr(service, f'get_{category}_models')(context)
+                }
 
         created = 0
         updated = 0
@@ -675,6 +685,31 @@ class ModelManager:
                             context, space_model.uuid, dict(desired)
                         )
                         updated += 1
+
+            elif space_model.category in audio_services:
+                category = space_model.category
+                service = audio_services[category]
+                existing = existing_audio_models[category].get(space_model.uuid)
+                desired = {
+                    'name': space_model.model_id,
+                    'provider_uuid': space_model_provider.uuid,
+                    'prefered_ranking': space_model.featured_order,
+                }
+                if existing is None:
+                    extra_args = {}
+                    if category == 'tts' and space_model.default_voice:
+                        extra_args['voice'] = space_model.default_voice
+                    await getattr(service, f'create_{category}_model')(
+                        context,
+                        {'uuid': space_model.uuid, **desired, 'extra_args': extra_args},
+                        preserve_uuid=True,
+                    )
+                    created += 1
+                elif existing.get('provider_uuid') == space_model_provider.uuid and any(
+                    existing.get(key) != value for key, value in desired.items()
+                ):
+                    await getattr(service, f'update_{category}_model')(context, space_model.uuid, dict(desired))
+                    updated += 1
 
         if created or updated:
             self.ap.logger.info(f'Synced models from LangBot Space: {created} added, {updated} updated.')

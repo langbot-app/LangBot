@@ -57,6 +57,10 @@ Requests without a valid PAT get `401 Unauthorized`.
 `/api/v1/marketplace/*`; `select_models` mirrors `/api/v1/models/selection`.
 All tools are read-only.
 
+`select_models.category` accepts `chat`, `embedding`, `rerank`, `tts`, or `asr`.
+TTS entries include `model.default_voice`; pass it as `extra_args.voice` when
+creating a TTS model. Some providers require a model-qualified voice name.
+
 ## How to use
 
 1. Create a PAT in your Space account settings.
