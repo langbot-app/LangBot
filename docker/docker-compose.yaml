@@ -63,6 +63,8 @@ services:
     restart: on-failure
     environment:
       - TZ=Asia/Shanghai
+      - LANGBOT_BOX_DATA_DIR=${LANGBOT_BOX_ROOT:-${PWD}/data/box}/runtime
+      - LANGBOT_BOX_INSTANCE_ID=${LANGBOT_BOX_INSTANCE_ID:-}
       # Optional shared control-plane secret used to authenticate both the RPC
       # socket and managed-process relay. Leave unset on both OSS services, or
       # generate one with ``openssl rand -hex 32`` and set the same value on
