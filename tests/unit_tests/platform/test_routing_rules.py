@@ -169,7 +169,9 @@ class TestEventRouteTrace:
         bot.ap = SimpleNamespace(
             workspace_service=active_workspace_service(),
             agent_service=SimpleNamespace(get_agent=AsyncMock(side_effect=[malformed_agent, valid_agent])),
-            agent_run_orchestrator=SimpleNamespace(run=fake_run),
+            agent_run_orchestrator=SimpleNamespace(
+                run=fake_run, try_claim_steering_from_event=AsyncMock(return_value=False)
+            ),
         )
         from langbot_plugin.api.entities.builtin.platform.events import EBAEvent
 
@@ -486,204 +488,6 @@ class TestEBAEventBindings:
         assert binding.resource_policy.allowed_kb_uuids == ['kb-1']
 
 
-class TestInteractionResumeRouting:
-    """Interaction callbacks resume the processor that created the request."""
-
-    @staticmethod
-    def _event():
-        from langbot_plugin.api.entities.builtin.platform.events import PlatformSpecificEvent
-
-        return PlatformSpecificEvent(
-            action='interaction.submitted',
-            timestamp=1234,
-            data={
-                'callback_token': 'callback-token',
-                'interaction_id': 'form-1',
-                'action_id': 'approve',
-                'values': {'name': 'Alice'},
-                'actor_id': 'user-1',
-                'target_type': 'group',
-                'target_id': 'chat-1',
-                'message_id': 'card-message-1',
-            },
-        )
-
-    @staticmethod
-    def _record(processor_type: str):
-        return {
-            'id': 1,
-            'interaction_id': 'form-1',
-            'binding_id': 'binding-1',
-            'runner_id': 'plugin:test/Dify/default',
-            'processor_type': processor_type,
-            'processor_id': f'{processor_type}-1',
-            'workspace_id': None,
-            'conversation_id': 'group_chat-1',
-            'thread_id': None,
-            'delivery_target': {'target_type': 'group', 'target_id': 'chat-1'},
-            'submission': {
-                'interaction_id': 'form-1',
-                'action_id': 'approve',
-                'values': {'name': 'Alice'},
-                'submitted_at': 1234,
-            },
-        }
-
-    @staticmethod
-    def _make_bot(record):
-        from langbot.pkg.platform.botmgr import RuntimeBot
-
-        bot = object.__new__(RuntimeBot)
-        bot.bot_entity = SimpleNamespace(uuid='bot-1', name='Test', event_bindings=[])
-        bot.execution_context = TEST_CONTEXT
-        bot.workspace_uuid = TEST_CONTEXT.workspace_uuid
-        bot.placement_generation = TEST_CONTEXT.placement_generation
-        interaction_manager = SimpleNamespace(
-            consume_callback=AsyncMock(return_value=record),
-            acknowledge_submission=AsyncMock(),
-        )
-        bot.ap = SimpleNamespace(
-            agent_run_orchestrator=SimpleNamespace(interaction_manager=interaction_manager),
-            msg_aggregator=SimpleNamespace(add_message=AsyncMock()),
-            pipeline_service=SimpleNamespace(
-                get_pipeline=AsyncMock(
-                    return_value={
-                        'uuid': record['processor_id'],
-                        'config': {
-                            'ai': {
-                                'runner': {'id': record['runner_id']},
-                                'runner_config': {record['runner_id']: {}},
-                            }
-                        },
-                    }
-                )
-            ),
-        )
-        return bot
-
-    @pytest.mark.asyncio
-    async def test_pipeline_callback_bypasses_route_table_and_targets_original_pipeline(self):
-        bot = self._make_bot(self._record('pipeline'))
-        adapter = SimpleNamespace()
-
-        await bot._handle_interaction_submission(self._event(), adapter)
-
-        bot.ap.msg_aggregator.add_message.assert_awaited_once()
-        kwargs = bot.ap.msg_aggregator.add_message.await_args.kwargs
-        assert kwargs['pipeline_uuid'] == 'pipeline-1'
-        assert kwargs['routed_by_rule'] is True
-        assert kwargs['variables']['_interaction_submission']['interaction_id'] == 'form-1'
-        assert kwargs['message_chain'].message_id == 'card-message-1'
-        assert kwargs['message_event'].message_chain.message_id == 'card-message-1'
-        manager = bot.ap.agent_run_orchestrator.interaction_manager
-        manager.consume_callback.assert_awaited_once_with(
-            callback_token='callback-token',
-            submission={
-                'interaction_id': 'form-1',
-                'action_id': 'approve',
-                'values': {'name': 'Alice'},
-                'submitted_at': 1234,
-            },
-            bot_id='bot-1',
-            conversation_id='group_chat-1',
-            actor_id='user-1',
-        )
-
-    @pytest.mark.asyncio
-    async def test_callback_forwards_compact_platform_references(self):
-        bot = self._make_bot(self._record('pipeline'))
-        adapter = SimpleNamespace()
-        event = self._event()
-        event.data.pop('interaction_id')
-        event.data.pop('action_id')
-        event.data['action_ref'] = 1
-
-        await bot._handle_interaction_submission(event, adapter)
-
-        manager = bot.ap.agent_run_orchestrator.interaction_manager
-        submission = manager.consume_callback.await_args.kwargs['submission']
-        assert submission['action_ref'] == 1
-        assert submission['interaction_id'] is None
-
-    @pytest.mark.asyncio
-    async def test_pipeline_callback_rejects_changed_runner(self):
-        bot = self._make_bot(self._record('pipeline'))
-        bot.ap.pipeline_service.get_pipeline.return_value['config']['ai']['runner']['id'] = 'plugin:test/Other/default'
-
-        with pytest.raises(ValueError, match='Pipeline runner changed'):
-            await bot._handle_interaction_submission(self._event(), SimpleNamespace())
-
-        bot.ap.msg_aggregator.add_message.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_agent_callback_targets_original_agent_and_runner(self):
-        import langbot_plugin.api.entities.builtin.provider.message as provider_message
-
-        captured = []
-
-        async def fake_run(envelope, binding, adapter_context=None):
-            captured.append((envelope, binding, adapter_context))
-            yield provider_message.Message(role='assistant', content='approved')
-
-        bot = self._make_bot(self._record('agent'))
-        bot.ap.agent_service = SimpleNamespace(
-            get_agent=AsyncMock(
-                return_value={
-                    'uuid': 'agent-1',
-                    'kind': 'agent',
-                    'enabled': True,
-                    'config': {
-                        'runner': {'id': 'plugin:test/Dify/default'},
-                        'runner_config': {'plugin:test/Dify/default': {}},
-                    },
-                }
-            )
-        )
-        bot.ap.agent_run_orchestrator.run = fake_run
-        adapter = SimpleNamespace(
-            get_supported_apis=Mock(return_value=['send_message']),
-            send_message=AsyncMock(),
-        )
-
-        event = self._event()
-        await bot._handle_interaction_submission(event, adapter)
-
-        envelope, binding, adapter_context = captured[0]
-        assert envelope.event_type == 'interaction.submitted'
-        assert envelope.data['interaction']['action_id'] == 'approve'
-        assert binding.binding_id == 'binding-1'
-        assert binding.processor_type == 'agent'
-        assert binding.processor_id == 'agent-1'
-        assert adapter_context == {
-            '_delivery_adapter': adapter,
-            '_platform_event': event,
-            '_execution_context': TEST_CONTEXT,
-        }
-        assert envelope.delivery.supports_streaming is False
-        assert binding.delivery_policy.enable_reply is False
-        adapter.send_message.assert_not_awaited()
-
-    def test_agent_product_to_binding_does_not_fallback_to_component_ref(self):
-        """An empty config runner stays unconfigured even if component_ref is stale."""
-        from langbot.pkg.platform.botmgr import RuntimeBot
-
-        binding = RuntimeBot._agent_product_to_binding(
-            {
-                'uuid': 'agent-1',
-                'component_ref': 'plugin:test/stale/default',
-                'config': {
-                    'runner': {'id': ''},
-                    'runner_config': {},
-                },
-            },
-            {'id': 'binding-1'},
-            'platform.member.joined',
-            'bot-1',
-        )
-
-        assert binding is None
-
-
 def test_websocket_task_override_does_not_mutate_bot_default():
     from langbot.pkg.platform.botmgr import RuntimeBot
 
@@ -702,6 +506,83 @@ def test_websocket_task_override_does_not_mutate_bot_default():
     assert pipeline_uuid == 'connection-pipeline'
     assert routed is False
     assert bot.bot_entity.use_pipeline_uuid == 'default-uuid'
+
+
+@pytest.mark.asyncio
+async def test_interaction_callback_wakes_original_run_without_new_route():
+    from langbot.pkg.platform.botmgr import RuntimeBot
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
+
+    record = {'run_id': 'run-1', 'interaction_id': 'form-1', 'submission': {'action_id': 'approve'}}
+    manager = SimpleNamespace(
+        consume_callback=AsyncMock(return_value=record),
+        wake_waiter=Mock(return_value=True),
+    )
+    bot = object.__new__(RuntimeBot)
+    bot.bot_entity = SimpleNamespace(uuid='bot-1')
+    bot.ap = SimpleNamespace(agent_run_orchestrator=SimpleNamespace(interaction_manager=manager))
+    adapter = SimpleNamespace(update_interaction=AsyncMock())
+    event = InteractionCallbackEvent(
+        adapter_name='wecombot-omni',
+        callback_token='token-1',
+        actor_id='user-1',
+        target_type='group',
+        target_id='chat-1',
+        action_id='approve',
+        callback_context={'req_id': 'request-1', 'task_id': 'task-1'},
+        raw_submission={'action_ref': 0},
+    )
+
+    await bot._handle_interaction_submission(event, adapter)
+
+    manager.consume_callback.assert_awaited_once_with(
+        callback_token='token-1',
+        submission={'action_id': 'approve', 'values': {}, 'action_ref': 0},
+        bot_id='bot-1',
+        conversation_id='group_chat-1',
+        actor_id='user-1',
+    )
+    manager.wake_waiter.assert_called_once_with(
+        record,
+        'user-1',
+        {'req_id': 'request-1', 'task_id': 'task-1'},
+    )
+    adapter.update_interaction.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_restart_expired_callback_invalidates_old_card():
+    from langbot.pkg.agent.runner.interaction_store import InteractionExpiredError
+    from langbot.pkg.platform.botmgr import RuntimeBot
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
+
+    stale = {
+        'request': {'title': 'Approve?'},
+        'delivery_result': {'message_id': 'card-1', 'context': {'request': {'title': 'Approve?'}}},
+    }
+    manager = SimpleNamespace(
+        consume_callback=AsyncMock(side_effect=InteractionExpiredError('cancelled')),
+        store=SimpleNamespace(get_by_callback_token=AsyncMock(return_value=stale)),
+    )
+    bot = object.__new__(RuntimeBot)
+    bot.bot_entity = SimpleNamespace(uuid='bot-1')
+    bot.ap = SimpleNamespace(agent_run_orchestrator=SimpleNamespace(interaction_manager=manager))
+    adapter = SimpleNamespace(update_interaction=AsyncMock())
+    event = InteractionCallbackEvent(
+        adapter_name='lark-omni',
+        callback_token='old-token',
+        actor_id='user-1',
+        target_type='group',
+        target_id='chat-1',
+        callback_context={'message_id': 'card-1'},
+    )
+
+    await bot._handle_interaction_submission(event, adapter)
+
+    handle, state = adapter.update_interaction.await_args.args
+    assert handle.message_id == 'card-1'
+    assert handle.context['callback_context'] == {'message_id': 'card-1'}
+    assert state == 'expired'
 
 
 @pytest.mark.asyncio
@@ -745,7 +626,7 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
                 }
             )
         ),
-        agent_run_orchestrator=SimpleNamespace(run=run),
+        agent_run_orchestrator=SimpleNamespace(run=run, try_claim_steering_from_event=AsyncMock(return_value=False)),
         plugin_connector=SimpleNamespace(emit_event=AsyncMock()),
     )
     bot.ap.runner_registry = SimpleNamespace(
@@ -774,8 +655,8 @@ async def test_bound_event_processor_receives_one_complete_typed_event():
 @pytest.mark.parametrize('output_kind', ['message', 'chunks', 'tool_rounds'])
 @pytest.mark.parametrize('explicit_reply', [False, True])
 @pytest.mark.parametrize('runner_fails', [False, True])
-async def test_processor_outputs_require_explicit_platform_actions(kind, output_kind, explicit_reply, runner_fails):
-    """Draining runner results must not send text, duplicate replies, or stream cards."""
+async def test_processor_output_delivery_policy(kind, output_kind, explicit_reply, runner_fails):
+    """Direct Agents may auto-deliver output; event processors remain explicit-only."""
     from langbot_plugin.api.entities.builtin.platform import entities, events, message
     from langbot_plugin.api.entities.builtin.provider import message as provider_message
     from datetime import datetime
@@ -799,9 +680,9 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
             restored = message.MessageChain.model_validate(envelope.data['message_chain'])
             assert restored.source.id == 'source-1'
             assert restored.source.time == datetime(2026, 10, 8, 12)
-        assert envelope.delivery.supports_streaming is False
-        assert binding.delivery_policy.enable_streaming is False
-        assert binding.delivery_policy.enable_reply is False
+        assert envelope.delivery.supports_streaming is (kind == 'agent')
+        assert binding.delivery_policy.enable_streaming is (kind == 'agent')
+        assert binding.delivery_policy.enable_reply is (kind == 'agent')
         assert adapter_context['_delivery_adapter'] is adapter
         if explicit_reply:
             session = {'authorization': {'bot_id': 'bot-1', 'platform_context': freeze_platform_context(envelope)}}
@@ -835,7 +716,7 @@ async def test_processor_outputs_require_explicit_platform_actions(kind, output_
                 }
             )
         ),
-        agent_run_orchestrator=SimpleNamespace(run=run),
+        agent_run_orchestrator=SimpleNamespace(run=run, try_claim_steering_from_event=AsyncMock(return_value=False)),
     )
     event = events.MessageReceivedEvent(
         message_id='message-1',

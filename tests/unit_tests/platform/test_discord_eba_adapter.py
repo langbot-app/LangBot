@@ -22,6 +22,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
 
 
 class DummyLogger(AbstractEventLogger):
@@ -88,7 +89,7 @@ def test_discord_interaction_custom_id_parser_uses_host_indexes():
 @pytest.mark.asyncio
 async def test_discord_interaction_view_and_delivery():
     adapter = make_adapter()
-    channel = SimpleNamespace(send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    channel = SimpleNamespace(id=789, send=AsyncMock(return_value=SimpleNamespace(id=321)))
     adapter._get_channel = AsyncMock(return_value=channel)
     request = {
         'interaction_id': 'form-1',
@@ -100,17 +101,52 @@ async def test_discord_interaction_view_and_delivery():
     view = build_interaction_view(request, 'callback-token')
     assert view.children[0].custom_id == 'lbi:callback-token:a:0'
 
-    result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'request': request,
-            'callback_token': 'callback-token',
-            'reply_target': {'target_type': 'group', 'target_id': '789'},
-        },
+    result = await adapter.send_interaction(
+        'group', '789', InteractionRequest.model_validate(request), 'callback-token'
     )
 
-    assert result == {'ok': True, 'message_id': 321, 'rich': True}
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 321 and result.rich is True
+    assert result.context['channel_id'] == '789'
     assert channel.send.await_args.kwargs['view'].children[0].label == 'Approve'
+
+
+@pytest.mark.asyncio
+async def test_discord_guild_interaction_targets_the_originating_channel():
+    adapter = make_adapter()
+    channel = SimpleNamespace(id=555, send=AsyncMock(return_value=SimpleNamespace(id=321)))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    adapter._remember_message_channel(SimpleNamespace(id=42, channel=SimpleNamespace(id=555)))
+    request = InteractionRequest.model_validate(
+        {'interaction_id': 'form-1', 'title': 'Approve?', 'actions': [{'id': 'approve', 'label': 'Approve'}]}
+    )
+
+    # Pipeline group conversations are keyed by guild id; the card must go to the message's channel.
+    result = await adapter.send_interaction('group', '1558675416288333856', request, 'callback-token', reply_to='42')
+
+    adapter._get_channel.assert_awaited_once_with(555)
+    assert result.context['channel_id'] == '555'
+    assert result.context['target_id'] == '1558675416288333856'
+
+    message = SimpleNamespace(edit=AsyncMock())
+    channel.fetch_message = AsyncMock(return_value=message)
+    adapter._get_channel.reset_mock()
+    await adapter.update_interaction(result, 'submitted')
+    adapter._get_channel.assert_awaited_once_with('555')
+    message.edit.assert_awaited_once_with(content='Approve?\n\nSubmitted', view=None)
+
+    # The click happens in the channel, but the Host recorded the guild conversation.
+    interaction = SimpleNamespace(
+        user=SimpleNamespace(id=7),
+        channel=SimpleNamespace(id=555),
+        guild=SimpleNamespace(id=1558675416288333856),
+        message=SimpleNamespace(id=321),
+    )
+    event = interaction_event_from_component(
+        interaction, {'callback_token': 'callback-token', 'action_ref': 0}, adapter._interaction_targets.get('321')
+    )
+    assert (event.target_type, event.target_id) == ('group', '1558675416288333856')
+    assert event.callback_context == {'channel_id': '555'}
 
 
 def test_discord_interaction_component_builds_scoped_host_event():
@@ -125,10 +161,31 @@ def test_discord_interaction_component_builds_scoped_host_event():
         {'callback_token': 'callback-token', 'action_ref': 0},
     )
 
-    assert event.action == 'interaction.submitted'
-    assert event.data['actor_id'] == '123'
-    assert event.data['target_type'] == 'group'
-    assert event.data['target_id'] == '789'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.actor_id == '123'
+    assert event.target_type == 'group'
+    assert event.target_id == '789'
+
+
+@pytest.mark.asyncio
+async def test_discord_update_interaction_removes_components():
+    adapter = make_adapter()
+    message = SimpleNamespace(edit=AsyncMock())
+    channel = SimpleNamespace(fetch_message=AsyncMock(return_value=message))
+    adapter._get_channel = AsyncMock(return_value=channel)
+    handle = InteractionHandle(
+        message_id=321,
+        context={
+            'target_id': '789',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'cancelled')
+
+    channel.fetch_message.assert_awaited_once_with(321)
+    message.edit.assert_awaited_once_with(content='Approve?\n\nCancelled', view=None)
 
 
 @pytest.mark.asyncio

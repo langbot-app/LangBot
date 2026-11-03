@@ -376,29 +376,16 @@ async def test_matched_subscription_keeps_failed_timeout_and_cancelled_execution
     await counters.shutdown()
 
 
-@pytest.mark.parametrize('processor', ['agent', 'pipeline', 'invalid', 'expired', 'duplicate'])
-async def test_interaction_admission_requires_valid_callback(processor):
-    from langbot_plugin.api.entities.builtin.platform import events
+async def test_interaction_callback_failure_does_not_start_a_traced_run():
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
 
     bot, manager, counters = make_bot([])
-    callbacks = SimpleNamespace(
-        consume_callback=AsyncMock(return_value={'processor_type': processor, 'processor_id': 'target'}),
-        acknowledge_submission=AsyncMock(),
-    )
-    if processor in {'expired', 'duplicate'}:
-        callbacks.consume_callback.side_effect = ValueError(processor)
+    callbacks = SimpleNamespace(consume_callback=AsyncMock(side_effect=RuntimeError('store unavailable')))
     bot.ap.agent_run_orchestrator = SimpleNamespace(interaction_manager=callbacks)
-    bot._resume_agent_interaction = AsyncMock(side_effect=ValueError('target unavailable'))
-    event = events.PlatformSpecificEvent(platform='test', action='interaction.submitted', data={})
+    event = InteractionCallbackEvent(callback_token='token-1', actor_id='user-1')
     await bot._handle_platform_event(event, FakeAdapter())
-    if processor in {'agent', 'pipeline'}:
-        (chain,) = execution_chains(await flushed_records(counters, manager))
-        assert chain['outcome'] == 'failed'
-        callbacks.acknowledge_submission.assert_awaited_once()
-        await counters.shutdown()
-    else:
-        callbacks.acknowledge_submission.assert_not_awaited()
-        await assert_no_upload(counters, manager)
+    callbacks.consume_callback.assert_awaited_once()
+    await assert_no_upload(counters, manager)
 
 
 async def test_rejected_event_does_not_contaminate_next_matched_event_or_monitoring():
@@ -537,32 +524,17 @@ async def test_retry_of_matched_batch_cannot_include_intervening_unrouted_event(
     assert counters.dropped == 0
 
 
-async def test_valid_interaction_success_keeps_acknowledgement_and_execution():
-    from langbot.pkg.telemetry.execution import record
-    from langbot_plugin.api.entities.builtin.platform import events
+async def test_valid_interaction_callback_wakes_waiter_without_new_execution():
+    from langbot_plugin.api.entities.builtin.platform.events import InteractionCallbackEvent
 
     bot, manager, counters = make_bot([])
-
-    async def acknowledge(*args):
-        record(bot.ap, TEST_CONTEXT, family='platform_api', operation='ack', outcome='success')
-
-    async def resume(*args):
-        record(bot.ap, TEST_CONTEXT, family='runner', operation='execute', outcome='success')
-
-    bot.ap.agent_run_orchestrator = SimpleNamespace(
-        interaction_manager=SimpleNamespace(
-            consume_callback=AsyncMock(return_value={'processor_type': 'agent'}),
-            acknowledge_submission=acknowledge,
-        )
-    )
-    bot._resume_agent_interaction = resume
-    event = events.PlatformSpecificEvent(platform='test', action='interaction.submitted', data={})
+    record = {'run_id': 'run-1', 'submission': {'action_id': 'approve'}}
+    callbacks = SimpleNamespace(consume_callback=AsyncMock(return_value=record), wake_waiter=Mock(return_value=True))
+    bot.ap.agent_run_orchestrator = SimpleNamespace(interaction_manager=callbacks)
+    event = InteractionCallbackEvent(callback_token='token-1', actor_id='user-1')
     await bot._handle_platform_event(event, FakeAdapter())
-    records = await flushed_records(counters, manager)
-    (chain,) = execution_chains(records)
-    assert chain['outcome'] == 'success'
-    assert {node['family'] for node in execution_nodes(records)} == {'platform_event', 'platform_api', 'runner'}
-    await counters.shutdown()
+    callbacks.wake_waiter.assert_called_once_with(record, 'user-1', {})
+    await assert_no_upload(counters, manager)
 
 
 @pytest.mark.parametrize('channel_id', ['channel-1', 'channel-2'])

@@ -13,7 +13,7 @@ MAX_STREAM_BYTES = 16 * 1024 * 1024
 
 async def limited_bytes(response, error):
     total = 0
-    async for chunk in response.aiter_bytes(chunk_size=8192):
+    async for chunk in response.aiter_bytes():
         total += len(chunk)
         if total > MAX_STREAM_BYTES:
             raise error("Provider stream exceeds the runtime limit")

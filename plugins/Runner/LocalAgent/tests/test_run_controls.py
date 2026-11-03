@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 
 import pytest
 
@@ -29,6 +30,25 @@ async def test_slow_ledger_does_not_delay_chunks_or_deadline():
         with pytest.raises(asyncio.TimeoutError):
             await checker.wait_for(asyncio.sleep(10), deadline=RunDeadline(0.02))
     assert checker._watcher is None
+
+
+@pytest.mark.asyncio
+async def test_interaction_extension_keeps_local_runner_wait_alive():
+    context = make_context()
+    context.runtime.deadline_at = time.time() + 0.03
+    deadline = RunDeadline(0.03, context.runtime)
+    checker = RunInterruptChecker(None, context, interval_seconds=0.01)
+
+    async def interaction():
+        await asyncio.sleep(0.01)
+        context.runtime.deadline_at += 0.1
+        await asyncio.sleep(0.06)
+        return "submitted"
+
+    assert await checker.wait_for(interaction(), deadline=deadline) == "submitted"
+    assert deadline.remaining() > 0
+    assert await checker.wait_for(interaction(), deadline=deadline) == "submitted"
+    assert deadline.remaining() > 0
 
 
 @pytest.mark.asyncio

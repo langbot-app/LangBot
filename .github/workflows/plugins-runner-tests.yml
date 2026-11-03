@@ -40,17 +40,17 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --locked --dev
-      - name: Verify published SDK pin
-        run: uv run --no-sync python -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"; print("langbot-plugin", version("langbot-plugin"))'
+      - name: Verify SDK snapshot
+        run: uv run --no-sync python -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.20"; print("langbot-plugin", version("langbot-plugin"))'
       - name: Prepare isolated certified coding Runner SDK environment
         run: |
-          uv venv "$RUNNER_TEMP/coding-074"
-          # PyPI's aggregate index can lag the exact 0.7.4 release endpoint.
-          uv pip install --python "$RUNNER_TEMP/coding-074/bin/python" \
-            'https://files.pythonhosted.org/packages/f2/c7/c870377771cbe27e047b19778b5f249b15efef52409358901af94d13e6c0/langbot_plugin-0.7.4-py3-none-any.whl#sha256=596ecd776c13efa6f6cfe178463dc4a967653238548c9569195cdbb5aa47506e' \
+          uv venv "$RUNNER_TEMP/coding-sdk"
+          # Coding Runners call ctx.request_interaction, first released in SDK 0.7.20.
+          uv pip install --python "$RUNNER_TEMP/coding-sdk/bin/python" \
+            'langbot-plugin==0.7.20' \
             -r acp-agent-runner/requirements.txt -r claude-code-agent/requirements.txt -r codex-agent/requirements.txt pytest pyyaml packaging
-          "$RUNNER_TEMP/coding-074/bin/python" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"'
-          printf 'CODING_RUNNER_TEST_PYTHON=%s/coding-074/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/coding-sdk/bin/python" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.20"'
+          printf 'CODING_RUNNER_TEST_PYTHON=%s/coding-sdk/bin/python\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Prepare isolated LocalAgent environment with the latest stable SDK
         run: |
           UV_PROJECT_ENVIRONMENT="$RUNNER_TEMP/localagent-latest" uv sync --project LocalAgent --extra dev --upgrade-package langbot-plugin
@@ -73,9 +73,9 @@ jobs:
         run: uv run --no-sync python -m pytest http-certification-tests -q --junitxml="${RUNNER_EVIDENCE_DIR}/http-certification.xml"
       - name: Certified RunnerDemo SDK admission and package tests
         run: |
-          "$RUNNER_TEMP/coding-074/bin/python" certification-tests/test_runner_demo_dependency_admission.py -v
+          "$RUNNER_TEMP/coding-sdk/bin/python" certification-tests/test_runner_demo_dependency_admission.py -v
           cd RunnerDemo
-          "$RUNNER_TEMP/coding-074/bin/python" -m unittest discover -s tests -v
+          "$RUNNER_TEMP/coding-sdk/bin/python" -m unittest discover -s tests -v
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4

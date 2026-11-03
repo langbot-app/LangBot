@@ -26,6 +26,10 @@ from dingtalk_stream.card_callback import CardCallbackMessage
 
 
 _PARAM_PATHS = (
+    ('actionData', 'a2uiAction', 'context'),
+    ('a2uiAction', 'context'),
+    ('action', 'context'),
+    ('context',),
     ('params',),
     ('cardPrivateData', 'params'),
     ('userPrivateData', 'params'),
@@ -77,7 +81,7 @@ class DingTalkCardActionHandler(dingtalk_stream.CallbackHandler):
             # there). Pull it from the raw callback.data instead.
             raw = callback.data if isinstance(callback.data, dict) else {}
             params = _merge_params(_extract_params(content), _extract_params(raw))
-            action_id = raw.get('actionId') or ''
+            action_id = raw.get('actionId') or params.get('actionId') or params.get('action_id') or ''
             if not action_id:
                 # Some templates nest it under actionData / cardPrivateData.
                 action_data = raw.get('actionData') or {}

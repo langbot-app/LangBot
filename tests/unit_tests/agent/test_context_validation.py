@@ -178,22 +178,15 @@ class TestContextValidation:
         assert validated.input.text == 'Hello world'
 
     @pytest.mark.asyncio
-    async def test_build_context_preserves_interaction_protocol_fields(self):
-        """Validated submissions and delivery capabilities survive the final context projection."""
+    async def test_build_context_preserves_interaction_delivery_capabilities(self):
+        """Delivery capabilities survive the final context projection."""
         from langbot_plugin.api.entities.builtin.runner.interaction import (
             InteractionDeliveryCapabilities,
-            InteractionSubmission,
         )
 
         mock_app = self._make_mock_app()
         builder = RunnerContextBuilder(mock_app)
         event = self._make_event_envelope()
-        event.event_type = 'interaction.submitted'
-        event.input.interaction = InteractionSubmission(
-            interaction_id='form-1',
-            action_id='approve',
-            values={'comment': 'looks good'},
-        )
         event.delivery.interactions = InteractionDeliveryCapabilities(
             field_types=['text', 'select'],
             action_styles=['primary'],
@@ -213,9 +206,6 @@ class TestContextValidation:
             )
 
         validated = RunnerContext.model_validate(context_dict)
-        assert validated.input.interaction is not None
-        assert validated.input.interaction.interaction_id == 'form-1'
-        assert validated.input.interaction.values == {'comment': 'looks good'}
         assert validated.delivery.interactions is not None
         assert validated.delivery.interactions.field_types == ['text', 'select']
 

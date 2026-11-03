@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: LocalAgent
-  version: 0.2.4
+  version: 0.2.5
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent
   label:
     en_US: Local Agent

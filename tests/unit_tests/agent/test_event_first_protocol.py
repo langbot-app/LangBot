@@ -245,8 +245,8 @@ class TestQueryConfigToAgentConfig:
         assert binding.processor_type == 'pipeline'
         assert binding.processor_id == mock_query.pipeline_uuid
 
-    def test_interaction_submission_projects_control_event(self, mock_query):
-        """Pipeline callbacks keep structured submission data and match the runner binding."""
+    def test_legacy_submission_variable_does_not_create_control_event(self, mock_query):
+        """Legacy query variables cannot forge an interaction callback."""
         mock_query.variables = {
             '_interaction_submission': {
                 'interaction_id': 'form-1',
@@ -259,10 +259,10 @@ class TestQueryConfigToAgentConfig:
         agent_config = QueryEntryAdapter.config_to_agent_config(mock_query, 'plugin:langbot-team/DifyAgent/default')
         binding = AgentBindingResolver().resolve_one(event, [agent_config])
 
-        assert event.event_type == 'interaction.submitted'
-        assert event.data['interaction']['values'] == {'name': 'Alice'}
-        assert event.subject.subject_type == 'interaction'
-        assert agent_config.event_types == ['interaction.submitted']
+        assert event.event_type == 'message.received'
+        assert 'interaction' not in event.data
+        assert event.subject.subject_type == 'message'
+        assert agent_config.event_types == ['message.received']
         assert binding.processor_type == 'pipeline'
 
     def test_resolver_rejects_multiple_matching_agents(self, mock_query):

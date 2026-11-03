@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Workflow, Puzzle } from 'lucide-react';
+import { Bot, Workflow, Puzzle, Loader2 } from 'lucide-react';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { AgentKind } from '@/app/infra/entities/api';
 import { Button } from '@/components/ui/button';
@@ -46,7 +46,6 @@ export default function AgentCreateContent({
   const [metadata, setMetadata] = useState<GetAgentMetadataResponseData>();
   const [runner, setRunner] = useState('');
   const [loading, setLoading] = useState(true);
-  const createdPipeline = useRef<string | null>(null);
   const loadMetadata = useCallback(async () => {
     setLoading(true);
     try {
@@ -135,58 +134,13 @@ export default function AgentCreateContent({
       runner_config: { [runner]: parameters },
     };
     try {
-      if (
-        kind === 'pipeline' &&
-        runnerStage?.config.some((field) =>
-          [
-            'llm-model-selector',
-            'select-llm-model',
-            'model-fallback-selector',
-          ].includes(field.type),
-        )
-      ) {
-        const { uuid } = await httpClient.getDefaultModel();
-        if (uuid) {
-          for (const field of runnerStage.config) {
-            if (
-              ['llm-model-selector', 'select-llm-model'].includes(field.type) &&
-              !parameters[field.name]
-            )
-              parameters[field.name] = uuid;
-            if (
-              field.type === 'model-fallback-selector' &&
-              !parameters[field.name]?.primary
-            ) {
-              parameters[field.name] = {
-                ...parameters[field.name],
-                primary: uuid,
-                fallbacks: parameters[field.name]?.fallbacks ?? [],
-              };
-            }
-          }
-        }
-      }
       if (kind === 'pipeline') {
-        // Keep the created ID if configuration fails, so retry does not create duplicates.
-        const uuid =
-          createdPipeline.current ??
-          (
-            await httpClient.createAgent({
-              kind,
-              name: values.name,
-              description: '',
-              emoji: values.emoji,
-            })
-          ).uuid;
-        createdPipeline.current = uuid;
-        const { pipeline } = await httpClient.getPipeline(uuid);
-        await httpClient.updatePipeline(uuid, {
+        const { uuid } = await httpClient.createAgent({
+          kind,
           name: values.name,
+          description: '',
           emoji: values.emoji,
-          config: {
-            ...pipeline.config,
-            ai: { ...pipeline.config.ai, ...config },
-          },
+          runner_id: runner,
         });
         toast.success(t('agents.createSuccess'));
         onCreated(uuid);
@@ -248,7 +202,12 @@ export default function AgentCreateContent({
           form="agent-create-form"
           disabled={form.formState.isSubmitting || loading || !runner}
         >
-          {t('common.submit')}
+          {form.formState.isSubmitting && (
+            <Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />
+          )}
+          {form.formState.isSubmitting
+            ? t('common.loading')
+            : t('common.submit')}
         </Button>
       </div>
 

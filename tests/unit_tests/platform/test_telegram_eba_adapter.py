@@ -23,6 +23,7 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+from langbot_plugin.api.entities.builtin.runner.interaction import InteractionRequest, InteractionHandle
 from langbot_plugin.api.entities import events as plugin_events
 
 
@@ -185,12 +186,11 @@ async def test_telegram_interaction_request_renders_action_buttons_and_thread_ta
     bot = SimpleNamespace(send_message=AsyncMock(return_value=sent))
     object.__setattr__(adapter, 'bot', bot)
 
-    result = await adapter.call_platform_api(
-        'interaction.request',
-        {
-            'callback_token': 'callback-token',
-            'reply_target': {'target_type': 'group', 'target_id': '-1001#7'},
-            'request': {
+    result = await adapter.send_interaction(
+        'group',
+        '-1001#7',
+        InteractionRequest.model_validate(
+            {
                 'interaction_id': 'form-1',
                 'kind': 'choice',
                 'title': 'Approve?',
@@ -199,11 +199,13 @@ async def test_telegram_interaction_request_renders_action_buttons_and_thread_ta
                     {'id': 'reject', 'label': 'Reject', 'style': 'danger'},
                 ],
                 'fallback_text': 'Reply approve or reject.',
-            },
-        },
+            }
+        ),
+        'callback-token',
     )
 
-    assert result == {'ok': True, 'message_id': 321, 'rich': True}
+    assert isinstance(result, InteractionHandle)
+    assert result.message_id == 321 and result.rich is True
     kwargs = bot.send_message.await_args.kwargs
     assert kwargs['chat_id'] == -1001
     assert kwargs['message_thread_id'] == 7
@@ -235,17 +237,45 @@ async def test_telegram_interaction_request_renders_select_or_falls_back():
         },
     }
 
-    result = await adapter.call_platform_api('interaction.request', base_params)
-    assert result['rich'] is True
+    result = await adapter.send_interaction(
+        'person', '123', InteractionRequest.model_validate(base_params['request']), 'callback-token'
+    )
+    assert result.rich is True
     button = bot.send_message.await_args.kwargs['reply_markup'].inline_keyboard[0][0]
     assert button.callback_data == 'lbi:callback-token:f:0:0'
 
     base_params['request']['fields'][0]['type'] = 'text'
-    result = await adapter.call_platform_api('interaction.request', base_params)
-    assert result['rich'] is False
+    result = await adapter.send_interaction(
+        'person', '123', InteractionRequest.model_validate(base_params['request']), 'callback-token'
+    )
+    assert result.rich is False
     kwargs = bot.send_message.await_args.kwargs
     assert 'reply_markup' not in kwargs
     assert 'Reply with a priority.' in kwargs['text']
+
+
+@pytest.mark.asyncio
+async def test_telegram_update_interaction_removes_buttons():
+    adapter = make_adapter()
+    bot = SimpleNamespace(edit_message_text=AsyncMock())
+    object.__setattr__(adapter, 'bot', bot)
+    handle = InteractionHandle(
+        message_id=321,
+        context={
+            'target_id': '-1001#7',
+            'request': {'title': 'Approve?'},
+        },
+    )
+
+    assert 'update_interaction' in adapter.get_supported_apis()
+    await adapter.update_interaction(handle, 'expired')
+
+    bot.edit_message_text.assert_awaited_once_with(
+        chat_id=-1001,
+        message_id=321,
+        text='Approve?\n\nExpired',
+        reply_markup=None,
+    )
 
 
 def test_telegram_interaction_callback_builds_scoped_host_event():
@@ -264,12 +294,12 @@ def test_telegram_interaction_callback_builds_scoped_host_event():
         {'callback_token': 'callback-token', 'action_ref': 1},
     )
 
-    assert event.action == 'interaction.submitted'
-    assert event.data['callback_token'] == 'callback-token'
-    assert event.data['action_ref'] == 1
-    assert event.data['actor_id'] == '456'
-    assert event.data['target_type'] == 'group'
-    assert event.data['target_id'] == '-1001#7'
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.callback_token == 'callback-token'
+    assert event.raw_submission['action_ref'] == 1
+    assert event.actor_id == '456'
+    assert event.target_type == 'group'
+    assert event.target_id == '-1001#7'
 
 
 @pytest.mark.asyncio
@@ -305,8 +335,8 @@ async def test_telegram_interaction_callback_answers_and_dispatches_once():
     query.edit_message_reply_markup.assert_awaited_once_with(reply_markup=None)
     listener.assert_awaited_once()
     event = listener.await_args.args[0]
-    assert event.action == 'interaction.submitted'
-    assert event.data['action_ref'] == 0
+    assert isinstance(event, platform_events.InteractionCallbackEvent)
+    assert event.raw_submission['action_ref'] == 0
 
 
 @pytest.mark.asyncio

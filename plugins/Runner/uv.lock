@@ -830,7 +830,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "langbot-plugin", specifier = "==0.7.4" },
+    { name = "langbot-plugin", specifier = "==0.7.20" },
     { name = "pydantic", specifier = ">=2.0.0" },
 ]
 
@@ -847,7 +847,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.4"
+version = "0.7.20"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -868,9 +868,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/92/71/b4bed3cfe28ba7a24e1108465429d833c1f702e33fdbc0d31d7bea3587d9/langbot_plugin-0.7.4.tar.gz", hash = "sha256:af3a0bcb9711fd734af811c0e178d259ae4a0d3e45d25e844661aba3dd574f96", size = 673043, upload-time = "2026-09-28T10:43:41.289Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/b9/e93ee14ccb584b2351652e6b37a80d255ca99efcdd7761edf54223505f6b/langbot_plugin-0.7.20.tar.gz", hash = "sha256:10a8ad7dd15d040680962148357d49294faad0ae677f5b8989fedb81b4d936c0", size = 758993, upload-time = "2026-11-03T04:59:16.695Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f2/c7/c870377771cbe27e047b19778b5f249b15efef52409358901af94d13e6c0/langbot_plugin-0.7.4-py3-none-any.whl", hash = "sha256:596ecd776c13efa6f6cfe178463dc4a967653238548c9569195cdbb5aa47506e", size = 433419, upload-time = "2026-09-28T10:43:40.073Z" },
+    { url = "https://files.pythonhosted.org/packages/66/2f/7bfd9692fd142f919a7ee6d13957935155e6c9d8a6b4ec24a2ce3b6a99e0/langbot_plugin-0.7.20-py3-none-any.whl", hash = "sha256:de33471621e2bde6074ffae6174f14a9f34c6d5625a2aa1adbe92ec6d62ed2bc", size = 479090, upload-time = "2026-11-03T04:59:15.256Z" },
 ]
 
 [[package]]
