@@ -890,6 +890,8 @@ const viVN = {
     rerank: 'Sắp xếp lại',
     asr: 'ASR (Nhận dạng giọng nói)',
     tts: 'TTS (Văn bản thành giọng nói)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'URL đầy đủ cho endpoint sắp xếp lại (vd: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
