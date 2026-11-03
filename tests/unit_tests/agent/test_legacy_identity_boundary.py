@@ -14,7 +14,7 @@ from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.context_builder import RunnerContextBuilder
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
 from tests.unit_tests.agent import test_event_first_protocol as event_fixtures
-from tests.unit_tests.agent.test_context_validation import TestContextValidation as Helpers
+from tests.unit_tests.agent.test_context_validation import EXECUTION_CONTEXT, TestContextValidation as Helpers
 from tests.utils.legacy_plugin_contract import load_identity_helper, verified_plugin_root
 
 
@@ -35,7 +35,7 @@ async def build(event, runner, source='legacy-session'):
     with patch('langbot.pkg.agent.runner.context_builder.get_persistent_state_store') as store:
         store.return_value.build_snapshot_from_event = AsyncMock(return_value={})
         context = await builder.build_context_from_event(
-            event, binding, helper._make_descriptor(), helper._make_resources()
+            EXECUTION_CONTEXT, event, binding, helper._make_descriptor(), helper._make_resources()
         )
     return context, binding
 

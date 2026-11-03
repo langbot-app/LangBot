@@ -171,6 +171,7 @@ class AgentRunOrchestrator:
             pass
 
         context = await self.context_builder.build_context_from_event(
+            execution_context=execution_context,
             event=execution_event,
             binding=binding,
             descriptor=descriptor,
