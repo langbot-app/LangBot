@@ -344,9 +344,20 @@ class DefaultRunner(Runner):
         content_parts: list[dict[str, typing.Any]] = []
 
         # Process attachments first
-        attachments = list(ctx.input.attachments or [])
-        if not any(_attachment_get(attachment, "content") for attachment in attachments):
-            attachments.extend(_attachments_from_contents(ctx.input.contents))
+        # The Host strips image payloads already inlined in contents and keeps only the ref.
+        attachments = [
+            attachment
+            for attachment in ctx.input.attachments or []
+            if _attachment_get(attachment, "content") or _attachment_get(attachment, "url")
+        ]
+        payloads = [
+            _attachment_get(attachment, "content") or _attachment_get(attachment, "url") for attachment in attachments
+        ]
+        attachments.extend(
+            attachment
+            for attachment in _attachments_from_contents(ctx.input.contents)
+            if (attachment.get("content") or attachment.get("url")) not in payloads
+        )
 
         for attachment in attachments:
             try:
