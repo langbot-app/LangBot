@@ -22,7 +22,15 @@ from langbot.pkg.agent.runner.context_builder import (
 )
 from langbot.pkg.agent.runner.descriptor import RunnerDescriptor
 from langbot.pkg.agent.runner.host_models import AgentEventEnvelope, AgentBinding, BindingScope
+from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.core import app
+
+
+EXECUTION_CONTEXT = ExecutionContext(
+    instance_uuid='test-instance',
+    workspace_uuid='test-workspace',
+    placement_generation=1,
+)
 
 
 class TestContextValidation:
@@ -131,6 +139,7 @@ class TestContextValidation:
 
             # Build context
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
@@ -199,6 +208,7 @@ class TestContextValidation:
             )
             mock_get_store.return_value = mock_store
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=self._make_binding(),
                 descriptor=self._make_descriptor(),
@@ -253,6 +263,7 @@ class TestContextValidation:
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
@@ -260,7 +271,7 @@ class TestContextValidation:
             )
 
         assert context_dict['runtime']['metadata']['model_context_window_tokens'] == 128000
-        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('llm-model')
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with(EXECUTION_CONTEXT, 'llm-model')
 
     @pytest.mark.asyncio
     async def test_model_context_window_uses_primary_llm_only(self):
@@ -289,8 +300,8 @@ class TestContextValidation:
             },
         ]
 
-        assert await builder._build_model_context_window_tokens(resources) is None
-        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with('primary-model')
+        assert await builder._build_model_context_window_tokens(EXECUTION_CONTEXT, resources) is None
+        mock_app.model_mgr.get_model_by_uuid.assert_awaited_once_with(EXECUTION_CONTEXT, 'primary-model')
 
     @pytest.mark.asyncio
     async def test_build_context_preserves_subject_data_for_non_message_events(self):
@@ -338,6 +349,7 @@ class TestContextValidation:
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
@@ -378,6 +390,7 @@ class TestContextValidation:
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
@@ -421,6 +434,7 @@ class TestContextValidation:
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
@@ -459,6 +473,7 @@ class TestContextValidation:
             mock_get_store.return_value = mock_store
 
             context_dict = await builder.build_context_from_event(
+                execution_context=EXECUTION_CONTEXT,
                 event=event,
                 binding=binding,
                 descriptor=descriptor,
