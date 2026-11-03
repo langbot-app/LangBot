@@ -18,7 +18,9 @@ spec:
         description: Semantic query for the memory search.
       top_k:
         type: integer
-        description: Number of memories to return. Optional, default is 5.
+        minimum: 1
+        maximum: 20
+        description: Number of memories to return, between 1 and 20. Optional, default is 5.
       speaker_id:
         type: string
         description: Optional speaker ID filter. Use when you need memories from a specific participant.
@@ -70,7 +72,11 @@ spec:
 
     Important behavior:
     - This is a read-only lookup tool. Do not call remember or update_profile just because recall returned no result.
-    - These filters narrow results rather than broaden them.
+    - Identity and scope filters always narrow results; they also apply to exact episode-ID lookup.
+    - Default current recall omits records before valid_from or at/after valid_until.
+    - time_after/time_before continue to filter recorded timestamp (not event time). Providing either bound requests historical inspection and permits expired or future-valid records within that recorded-time range.
+    - Hidden lifecycle status filters also permit historical inspection.
+    - Complete records are selected within a fixed context budget; oversized records and profile blocks are omitted rather than cut in half. profiles_omitted_for_budget names profile blocks omitted for this reason.
     - By default, recall only returns active memories. Use status=superseded or status=archived only when the user asks to inspect older hidden records.
     - When multiple filters are provided together, they are typically combined as restrictive conditions.
     - Do not add filters unless they are clearly needed.

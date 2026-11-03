@@ -4,6 +4,8 @@ import json
 import logging
 from typing import Any
 
+from store.recall import bounded_profile
+
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
 
@@ -47,8 +49,8 @@ class RecallMemory(Tool):
             return "Error: query is required."
 
         top_k = params.get("top_k", 5)
-        if not isinstance(top_k, int) or top_k <= 0:
-            return "Error: top_k must be a positive integer."
+        if not isinstance(top_k, int) or isinstance(top_k, bool) or not 1 <= top_k <= 20:
+            return "Error: top_k must be an integer between 1 and 20."
 
         speaker_id = params.get("speaker_id", "")
         if speaker_id is None:
@@ -147,8 +149,16 @@ class RecallMemory(Tool):
             kb_id,
             len(episodes),
         )
+        profile_texts = {
+            "session": store.format_profile_text(session_profile),
+            "speaker": store.format_profile_text(speaker_profile),
+        }
         return json.dumps({
-            "session_profile": store.format_profile_text(session_profile),
-            "speaker_profile": store.format_profile_text(speaker_profile),
+            "session_profile": bounded_profile(profile_texts["session"]),
+            "speaker_profile": bounded_profile(profile_texts["speaker"]),
             "episodes": episodes,
+            "profiles_omitted_for_budget": [
+                name for name, text in profile_texts.items()
+                if text and not bounded_profile(text)
+            ],
         }, ensure_ascii=False)

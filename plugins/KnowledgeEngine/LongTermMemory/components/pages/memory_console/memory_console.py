@@ -32,6 +32,10 @@ class MemoryConsolePage(Page):
                 return PageResponse.ok(await self._list_audit(self._body(request)))
             if request.endpoint == "/audit/export" and request.method == "POST":
                 return PageResponse.ok(await self._export_audit(self._body(request)))
+            if request.endpoint == "/consolidation/preview" and request.method == "POST":
+                return PageResponse.ok(await self._consolidation_preview(self._body(request)))
+            if request.endpoint == "/consolidation/run" and request.method == "POST":
+                return PageResponse.ok(await self._consolidation_run(self._body(request)))
             if request.endpoint == "/health" and request.method == "POST":
                 return PageResponse.ok(await self._health(self._body(request)))
             if request.endpoint == "/injection" and request.method == "POST":
@@ -385,6 +389,61 @@ class MemoryConsolePage(Page):
             metadata={"collection_id": collection_id, "deleted": deleted},
         )
         return {"episode_id": episode_id, "deleted": deleted}
+
+    async def _consolidation_context(self, body: dict[str, Any], *, run: bool = False):
+        allowed = {"collection_id", "scope_key", "user_key"}
+        if run:
+            allowed.add("proposal_id")
+        if set(body) - allowed:
+            raise ValueError("unsupported consolidation fields; model and policy come from KB configuration")
+        collection_id = self._required_string(body, "collection_id")
+        scope_key = self._required_string(body, "scope_key")
+        user_key = self._required_string(body, "user_key")
+        config = (await self._store.get_kb_configs()).get(collection_id)
+        if config is None:
+            raise ValueError("memory knowledge base is not configured")
+        isolation = self._string(config, "isolation", "session")
+        if isolation not in {"session", "bot"}:
+            raise ValueError("KB isolation must be session or bot")
+        expected_key = self._infer_user_key(scope_key, isolation)
+        if user_key != expected_key:
+            raise ValueError("user_key does not match the selected scope and KB isolation")
+        if run:
+            if config.get("consolidation_enabled") is not True:
+                raise ValueError("consolidation run is disabled in the memory KB")
+            self._required_string(config, "embedding_model_uuid")
+        return collection_id, scope_key, user_key, config
+
+    async def _consolidation_preview(self, body: dict[str, Any]) -> dict[str, Any]:
+        collection_id, _scope_key, user_key, config = await self._consolidation_context(body)
+        return await self._store.preview_consolidation(
+            collection_id=collection_id,
+            user_key=user_key,
+            min_age_days=self._int(config, "consolidation_min_age_days", 7, 0, 36500),
+            max_candidates=self._int(config, "consolidation_max_candidates", 20, 1, 100),
+            summary_model_uuid=self._string(config, "consolidation_model_uuid"),
+        )
+
+    async def _consolidation_run(self, body: dict[str, Any]) -> dict[str, Any]:
+        proposal_id = self._required_string(body, "proposal_id")
+        collection_id, scope_key, user_key, config = await self._consolidation_context(body, run=True)
+        result = await self._store.apply_consolidation(
+            collection_id=collection_id,
+            embedding_model_uuid=self._required_string(config, "embedding_model_uuid"),
+            user_key=user_key,
+            proposal_id=proposal_id,
+        )
+        summary = result.get("summary_episode") or {}
+        await self._store.append_audit_entry(
+            scope_key=scope_key,
+            user_key=user_key,
+            operation="consolidate_run",
+            target_type="episode",
+            target_id=summary.get("id", proposal_id),
+            summary="Applied a reviewed inference summary from Memory Console",
+            metadata={"collection_id": collection_id, "proposal_id": proposal_id},
+        )
+        return result
 
     async def _list_audit(self, body: dict[str, Any]) -> dict[str, Any]:
         scope_key = self._required_string(body, "scope_key")

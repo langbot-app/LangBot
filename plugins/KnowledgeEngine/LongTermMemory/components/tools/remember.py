@@ -30,9 +30,7 @@ class Remember(Tool):
             sorted(params.keys()),
         )
         bot_uuid = session.bot_uuid or ""
-        session_key, user_key, kb_id, _, config = await store.resolve_user_context(
-            session, bot_uuid
-        )
+        session_key, user_key, kb_id, _, config = await store.resolve_user_context(session, bot_uuid)
 
         if not kb_id:
             return "Error: no memory knowledge base configured. Create one first."
@@ -59,16 +57,25 @@ class Remember(Tool):
             len(str(content)),
         )
 
-        episode = await store.add_episode(
-            collection_id=kb_id,
-            embedding_model_uuid=embedding_model_uuid,
-            user_key=user_key,
-            content=content,
-            tags=tags,
-            importance=importance,
-            sender_id=sender_id,
-            bot_uuid=bot_uuid,
-        )
+        try:
+            episode = await store.add_episode(
+                collection_id=kb_id,
+                embedding_model_uuid=embedding_model_uuid,
+                user_key=user_key,
+                content=content,
+                tags=tags,
+                importance=importance,
+                sender_id=sender_id,
+                bot_uuid=bot_uuid,
+                supersedes=params.get("supersedes"),
+                event_at=params.get("event_at", ""),
+                valid_from=params.get("valid_from", ""),
+                valid_until=params.get("valid_until", ""),
+                source_ref=params.get("source_ref", ""),
+                claim_type=params.get("claim_type", "unknown"),
+            )
+        except ValueError as exc:
+            return f"Error: {exc}"
 
         logger.info(
             "[LongTermMemory] remember stored: query_id=%s episode_id=%s user_key=%s content_len=%s",
@@ -91,6 +98,8 @@ class Remember(Tool):
                 "tags": tags,
                 "importance": importance,
                 "status": episode.get("status", "active"),
+                "source_ref": episode.get("source_ref", ""),
+                "claim_type": episode.get("claim_type", "unknown"),
             },
         )
 
