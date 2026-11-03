@@ -8,6 +8,7 @@ import {
   BookMarked,
   Puzzle,
   PlusCircle,
+  Package,
 } from 'lucide-react';
 
 const t = (key: string) => {
@@ -82,6 +83,15 @@ export const sidebarConfigList = [
     section: 'home',
   }),
   // ── Extensions section ──
+  new SidebarChildVO({
+    id: 'scenarios',
+    name: t('scenario.title'),
+    icon: <Package className="text-blue-500" />,
+    route: '/home/scenarios',
+    description: t('scenario.marketSubtitle'),
+    helpLink: { en_US: '', zh_Hans: '' },
+    section: 'extensions',
+  }),
   new SidebarChildVO({
     id: 'plugins',
     name: t('sidebar.installedPlugins'),

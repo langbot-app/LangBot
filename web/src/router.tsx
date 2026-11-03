@@ -16,6 +16,7 @@ import SpaceCallbackPage from '@/app/auth/space/callback/page';
 import HomePage from '@/app/home/page';
 import MonitoringPage from '@/app/home/monitoring/page';
 import BotsPage from '@/app/home/bots/page';
+import ScenariosPage from '@/app/home/scenarios/page';
 import AgentsPage from '@/app/home/agents/page';
 import PipelinesPage from '@/app/home/pipelines/page';
 import PluginsPage from '@/app/home/plugins/page';
@@ -113,6 +114,14 @@ export const router = createBrowserRouter([
               <BotsPage />
             </HomeLayout>
           </Suspense>
+        ),
+      },
+      {
+        path: '/home/scenarios',
+        element: (
+          <HomeLayout>
+            <ScenariosPage />
+          </HomeLayout>
         ),
       },
       {

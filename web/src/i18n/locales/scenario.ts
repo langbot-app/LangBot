@@ -1,4 +1,57 @@
 const en = {
+  marketSubtitle:
+    'Discover ready-to-use scenarios from the community. Make them your own.',
+  createPack: 'Create scenario pack',
+  importLocal: 'Import local pack',
+  discover: 'Discover',
+  myScenarios: 'My imports',
+  demoBadge: 'Preview · sample data',
+  demoNotice:
+    'These listings are sample data for the UI preview. Space downloads and publishing are simulated; local creation and import use your Workspace.',
+  searchMarket: 'Search scenarios, authors or plugins…',
+  allCategories: 'All scenarios',
+  categorySupport: 'Customer support',
+  categoryProductivity: 'Productivity',
+  categoryCommunity: 'Community',
+  categoryKnowledge: 'Knowledge',
+  popular: 'Most popular',
+  newest: 'Recently added',
+  featured: 'Featured',
+  marketDownload: 'Get scenario',
+  downloads: 'downloads',
+  viewDetails: 'View details',
+  included: 'Included resources',
+  requirements: 'Before you start',
+  demoDownload:
+    'Preview only: this sample has no downloadable package yet. Use local import to test a real package.',
+  publishSpace: 'Publish to Space',
+  publishTitle: 'Publish your scenario',
+  publishDescription:
+    'Your scenario will appear in Space so others can discover and use it. This is a preview of the publishing flow; no data will be uploaded.',
+  publishConfirm: 'Preview publishing',
+  publishDone: 'Publishing preview completed. Nothing was uploaded to Space.',
+  noResults: 'No matching scenarios. Try another search.',
+  resourceSummary: '{{agents}} Agent · {{plugins}} plugins',
+  setupHint:
+    'Supply your own model credentials and platform connection. Knowledge content is not included.',
+  sampleSupport: 'Customer support assistant',
+  sampleSupportDesc:
+    'Answer product questions, retrieve knowledge and hand off complex questions to your team.',
+  sampleResearch: 'Daily research digest',
+  sampleResearchDesc:
+    'Collect industry news, summarize key developments and deliver a concise daily briefing.',
+  sampleCommunity: 'Community companion',
+  sampleCommunityDesc:
+    'Welcome new members, answer recurring questions and keep your community informed.',
+  sampleKnowledge: 'Team knowledge assistant',
+  sampleKnowledgeDesc:
+    'Connect your own knowledge resources and help teammates find reliable answers.',
+  sampleWriting: 'Writing studio',
+  sampleWritingDesc:
+    'Turn rough ideas into outlines, polished drafts and posts in your preferred style.',
+  sampleWorkflow: 'Workflow assistant',
+  sampleWorkflowDesc:
+    'Connect external tools and turn everyday requests into repeatable workflows.',
   platformStep: 'Message platform',
   pipelineStep: 'Pipelines',
   agentStep: 'Agents',
@@ -55,6 +108,57 @@ const en = {
   empty: 'No imported scenarios',
 };
 const zh = {
+  marketSubtitle: '发现社区分享的实用场景，把好用的机器人带到你的工作区。',
+  createPack: '创建场景包',
+  importLocal: '导入本地场景包',
+  discover: '发现',
+  myScenarios: '已导入',
+  demoBadge: '界面预览 · 示例数据',
+  demoNotice:
+    '当前列表为设计用假数据，Space 下载与发布为模拟交互；创建和本地导入使用当前工作区的真实资源。',
+  searchMarket: '搜索场景、作者或插件…',
+  allCategories: '全部场景',
+  categorySupport: '客户服务',
+  categoryProductivity: '效率工具',
+  categoryCommunity: '社群运营',
+  categoryKnowledge: '知识问答',
+  popular: '热门优先',
+  newest: '最近上新',
+  featured: '精选',
+  marketDownload: '获取场景包',
+  downloads: '次下载',
+  viewDetails: '查看详情',
+  included: '包含的资源',
+  requirements: '使用前需要准备',
+  demoDownload:
+    '这是展示用示例，尚无真实场景包可下载。可以通过「导入本地场景包」体验真实导入。',
+  publishSpace: '上传到 Space',
+  publishTitle: '发布你的场景包',
+  publishDescription:
+    '发布后，其他用户可以在 Space 中发现和使用你的场景。当前仅预览发布流程，不会上传任何数据。',
+  publishConfirm: '模拟发布',
+  publishDone: '发布流程预览完成，未向 Space 上传数据。',
+  noResults: '没有找到相关场景，换个关键词试试。',
+  resourceSummary: '{{agents}} 个 Agent · {{plugins}} 个插件',
+  setupHint: '需要填写自己的模型凭据和平台连接信息。场景包不包含知识库内容。',
+  sampleSupport: '智能客服助手',
+  sampleSupportDesc:
+    '结合产品知识回答常见问题，将复杂诉求转交团队，让每一次咨询都有回应。',
+  sampleResearch: '每日资讯简报',
+  sampleResearchDesc:
+    '搜集行业动态、提炼关键信息，定时把一份简洁的每日简报送到你的会话中。',
+  sampleCommunity: '社群小管家',
+  sampleCommunityDesc:
+    '从新人欢迎到常见问题解答，轻松处理社群日常，让交流更有温度。',
+  sampleKnowledge: '团队知识助手',
+  sampleKnowledgeDesc:
+    '接入你自己的知识库，让团队成员随时查找资料，快速获得有依据的回答。',
+  sampleWriting: '灵感写作工作室',
+  sampleWritingDesc:
+    '从一个想法到完整文章，帮你梳理大纲、润色表达，创作符合个人风格的内容。',
+  sampleWorkflow: '自动化工作流助手',
+  sampleWorkflowDesc:
+    '连接外部工具与业务流程，把重复操作变成一句话就能触发的自动化任务。',
   platformStep: '消息平台',
   pipelineStep: '流水线',
   agentStep: 'Agent',

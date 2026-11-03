@@ -20,7 +20,15 @@ import type {
   ScenarioReport,
 } from '@/app/infra/entities/api/scenario';
 
-export default function ScenarioPacks({ botId }: { botId?: string }) {
+export default function ScenarioPacks({
+  botId,
+  toolbarOnly = false,
+  reportsOnly = false,
+}: {
+  botId?: string;
+  toolbarOnly?: boolean;
+  reportsOnly?: boolean;
+}) {
   const { t, i18n } = useTranslation();
   const workspace = useCurrentWorkspace();
   const canManage = workspace?.permissions.includes('resource.manage');
@@ -71,30 +79,36 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
   );
 
   return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="mr-auto font-medium">{t('scenario.title')}</h3>
+    <section className={toolbarOnly ? '' : 'space-y-3 rounded-lg border p-4'}>
+      <div
+        className={reportsOnly ? 'hidden' : 'flex flex-wrap items-center gap-2'}
+      >
+        {!toolbarOnly && (
+          <h3 className="mr-auto font-medium">{t('scenario.title')}</h3>
+        )}
         <Button
           variant="outline"
           disabled={busy}
           onClick={() => setExportOpen(true)}
         >
-          {t('scenario.export')}
+          {t('scenario.createPack')}
         </Button>
         <Button
           variant="outline"
           disabled={busy}
           onClick={() => fileInput.current?.click()}
         >
-          {t('scenario.import')}
+          {t('scenario.importLocal')}
         </Button>
-        <Button
-          variant="ghost"
-          disabled={busy}
-          onClick={() => void run(refresh)}
-        >
-          {t('scenario.check')}
-        </Button>
+        {!toolbarOnly && (
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void run(refresh)}
+          >
+            {t('scenario.check')}
+          </Button>
+        )}
         <input
           ref={fileInput}
           type="file"
@@ -118,61 +132,81 @@ export default function ScenarioPacks({ botId }: { botId?: string }) {
           }}
         />
       </div>
-      {visibleReports.map((report) => (
-        <div key={report.id} className="space-y-3 border-t pt-3">
-          <h4 className="font-medium">{report.metadata.name}</h4>
-          <p className="text-sm text-muted-foreground">{t('scenario.setup')}</p>
-          {report.metadata.instructions && (
-            <p className="whitespace-pre-wrap text-sm">
-              {report.metadata.instructions}
-            </p>
-          )}
-          {report.resources.map((resource) => (
-            <Link
-              key={resource.id}
-              className="mr-4 inline-block text-sm underline"
-              to={resourceUrl(resource)}
-            >
-              {resource.name} · {t('scenario.configure')}
-            </Link>
-          ))}
-          <ul className="space-y-2 text-sm">
-            {report.inputs.map((item, index) => {
-              const resource = report.resources.find(
-                (resource) => resource.id === item.resource,
-              );
-              return (
-                <li key={index} className="flex flex-wrap gap-2">
-                  <span>
-                    {item.status === 'ready' ? '✓' : '○'} {resource?.name} /{' '}
-                    {label(item.label)}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {t(`scenario.${item.required ? 'required' : 'optional'}`)} ·{' '}
-                    {t(`scenario.${item.status}`)}
-                  </span>
-                  {resource && (
-                    <Link className="underline" to={resourceUrl(resource)}>
-                      {t('scenario.configure')}
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-            {report.dependencies.map((item) => (
-              <li key={`${item.kind}:${item.id}`}>
-                {item.plugin_id} {item.version} ·{' '}
-                {t(
-                  `scenario.${item.status === 'ready' ? 'dependencyReady' : item.status === 'configure' ? 'dependencyConfigure' : item.status}`,
-                )}{' '}
-                <Link className="underline" to="/home/plugins">
-                  {t('scenario.plugins')}
-                </Link>
-              </li>
-            ))}
-          </ul>
+      {reportsOnly && (
+        <div className="flex items-center justify-between">
+          <h3 className="font-medium">{t('scenario.myScenarios')}</h3>
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => void run(refresh)}
+          >
+            {t('scenario.check')}
+          </Button>
         </div>
-      ))}
+      )}
+      {reportsOnly && !visibleReports.length && (
+        <p className="py-12 text-center text-sm text-muted-foreground">
+          {t('scenario.empty')}
+        </p>
+      )}
+      {!toolbarOnly &&
+        visibleReports.map((report) => (
+          <div key={report.id} className="space-y-3 border-t pt-3">
+            <h4 className="font-medium">{report.metadata.name}</h4>
+            <p className="text-sm text-muted-foreground">
+              {t('scenario.setup')}
+            </p>
+            {report.metadata.instructions && (
+              <p className="whitespace-pre-wrap text-sm">
+                {report.metadata.instructions}
+              </p>
+            )}
+            {report.resources.map((resource) => (
+              <Link
+                key={resource.id}
+                className="mr-4 inline-block text-sm underline"
+                to={resourceUrl(resource)}
+              >
+                {resource.name} · {t('scenario.configure')}
+              </Link>
+            ))}
+            <ul className="space-y-2 text-sm">
+              {report.inputs.map((item, index) => {
+                const resource = report.resources.find(
+                  (resource) => resource.id === item.resource,
+                );
+                return (
+                  <li key={index} className="flex flex-wrap gap-2">
+                    <span>
+                      {item.status === 'ready' ? '✓' : '○'} {resource?.name} /{' '}
+                      {label(item.label)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {t(`scenario.${item.required ? 'required' : 'optional'}`)}{' '}
+                      · {t(`scenario.${item.status}`)}
+                    </span>
+                    {resource && (
+                      <Link className="underline" to={resourceUrl(resource)}>
+                        {t('scenario.configure')}
+                      </Link>
+                    )}
+                  </li>
+                );
+              })}
+              {report.dependencies.map((item) => (
+                <li key={`${item.kind}:${item.id}`}>
+                  {item.plugin_id} {item.version} ·{' '}
+                  {t(
+                    `scenario.${item.status === 'ready' ? 'dependencyReady' : item.status === 'configure' ? 'dependencyConfigure' : item.status}`,
+                  )}{' '}
+                  <Link className="underline" to="/home/plugins">
+                    {t('scenario.plugins')}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
       <ScenarioExportWizard
         open={exportOpen}
         onOpenChange={setExportOpen}

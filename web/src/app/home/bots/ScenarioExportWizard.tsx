@@ -86,6 +86,7 @@ export default function ScenarioExportWizard({
   const [name, setName] = useState('');
   const [instructions, setInstructions] = useState('');
   const [preview, setPreview] = useState<ScenarioPackage | null>(null);
+  const [publishOpen, setPublishOpen] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -277,14 +278,14 @@ export default function ScenarioExportWizard({
       }}
     >
       <DialogContent
-        className="fixed inset-0 top-0 left-0 flex h-dvh w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 p-0 sm:max-w-none"
+        className="flex max-h-[85dvh] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-xl p-0 sm:max-w-3xl"
         aria-describedby="scenario-export-description"
         data-suspend-guided-tours
       >
         <div className="flex shrink-0 items-center gap-2 border-b px-4 py-4 sm:px-6">
           <Package className="size-5 text-primary" />
           <DialogTitle className="text-base sm:text-lg">
-            {t('scenario.export')}
+            {t('scenario.createPack')}
           </DialogTitle>
         </div>
         <div className="shrink-0 overflow-x-auto px-4 py-4 sm:px-6">
@@ -498,6 +499,15 @@ export default function ScenarioExportWizard({
             <ArrowLeft className="mr-2 size-4" />
             {t(step === 0 ? 'scenario.cancel' : 'scenario.previous')}
           </Button>
+          {step === 4 && preview && (
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setPublishOpen(true)}
+            >
+              {t('scenario.publishSpace')}
+            </Button>
+          )}
           {step < 4 ? (
             <Button
               disabled={loading || error || !selectedBot}
@@ -520,6 +530,28 @@ export default function ScenarioExportWizard({
             </Button>
           )}
         </div>
+        <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+          <DialogContent>
+            <DialogTitle>{t('scenario.publishTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('scenario.publishDescription')}
+            </DialogDescription>
+            <div className="rounded-lg border p-4">
+              <p className="font-medium">{name}</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">
+                {instructions}
+              </p>
+            </div>
+            <Button
+              onClick={() => {
+                toast.info(t('scenario.publishDone'));
+                setPublishOpen(false);
+              }}
+            >
+              {t('scenario.publishConfirm')}
+            </Button>
+          </DialogContent>
+        </Dialog>
       </DialogContent>
     </Dialog>
   );
