@@ -901,6 +901,8 @@ const ruRU = {
     rerank: 'Переранжирование',
     asr: 'ASR (Распознавание речи)',
     tts: 'TTS (Синтез речи)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'Полный URL для эндпоинта переранжирования (напр.: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:

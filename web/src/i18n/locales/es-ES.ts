@@ -906,6 +906,8 @@ const esES = {
     rerank: 'Reordenar',
     asr: 'ASR (Reconocimiento de voz)',
     tts: 'TTS (Texto a voz)',
+    asrTab: 'ASR',
+    ttsTab: 'TTS',
     rerankUrlTooltip:
       'URL completa para el endpoint de reordenación (ej: https://dashscope.aliyuncs.com/compatible-api/v1/reranks)',
     rerankPathTooltip:
