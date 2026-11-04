@@ -1162,6 +1162,25 @@ class TestRunnerAPIProxyFieldConsistency:
         assert result.items[0].input.text == "follow up"
 
     @pytest.mark.anyio
+    async def test_steering_ack_sends_delivery_ids(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "acknowledged": ["delivery_1"],
+            "unknown": [],
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(steering_ack=True)
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+
+        result = await proxy.steering_ack(["delivery_1"])
+
+        assert result.acknowledged == ["delivery_1"]
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.STEERING_ACK
+        assert data == {"run_id": "test_run", "delivery_ids": ["delivery_1"]}
+
+    @pytest.mark.anyio
     async def test_action_error_is_wrapped_as_agent_api_exception(self):
         """Host action failures surface as structured AgentAPIException."""
         mock_handler = MockHandler()
@@ -1455,6 +1474,34 @@ class TestRunnerAPIProxyRunLedgerAPI:
             "status": "completed",
             "reason": "stop",
         }
+
+    @pytest.mark.anyio
+    async def test_run_finalize_forwards_usage_cost_and_metadata(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "id": 1,
+            "run_id": "run_target",
+            "runner_id": "plugin:test/plugin/default",
+            "status": "completed",
+            "metadata": {},
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(run_finalize=True)
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+
+        await proxy.run_finalize(
+            "run_target",
+            status="completed",
+            usage={"total_tokens": 3},
+            cost={"amount": 0.1},
+            metadata={"source": "runner"},
+        )
+
+        _action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert data["usage"] == {"total_tokens": 3}
+        assert data["cost"] == {"amount": 0.1}
+        assert data["metadata"] == {"source": "runner"}
 
 
 class TestRunnerAdminAPIProxy:
