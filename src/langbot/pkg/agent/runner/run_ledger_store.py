@@ -333,9 +333,6 @@ class RunLedgerStore:
         returned. This supports retrying append calls idempotently.
         """
         async with self._session_factory() as session:
-            run = await self._get_run_row(session, run_id)
-            if run is None:
-                raise ValueError(f'Run {run_id} not found')
             if sequence is None:
                 # Serialize Host allocation across store instances and database connections.
                 locked = await session.execute(
@@ -372,8 +369,10 @@ class RunLedgerStore:
                 # Usage events are cumulative snapshots. Promote the latest
                 # snapshot to the run row so cancellation/timeout recovery
                 # does not depend on receiving a terminal result.
-                run.usage_json = _json_dumps(usage)
-                run.updated_at = as_naive_utc(_utc_now())
+                run = await self._get_run_row(session, run_id)
+                if run is not None:
+                    run.usage_json = _json_dumps(usage)
+                    run.updated_at = as_naive_utc(_utc_now())
             await session.commit()
             inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
