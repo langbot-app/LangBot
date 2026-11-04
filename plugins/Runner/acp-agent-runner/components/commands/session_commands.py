@@ -153,8 +153,8 @@ class ListSessions(Command):
             lines.append(
                 _text(
                     self,
-                    "\n使用 !switch <序号> 切换，!new 新建，!delete 删除当前会话。",
-                    "\nUse !switch <number>, !new, or !delete.",
+                    "\n使用 !switch <序号> 切换，!new 新建，!delete [序号] 删除会话（不带参数删除当前会话）。",
+                    "\nUse !switch <number>, !new, or !delete [number] (omit the number to delete the current session).",
                 )
             )
             yield CommandReturn(text="\n".join(lines))
@@ -234,18 +234,49 @@ class DeleteSession(Command):
     async def initialize(self) -> None:
         await super().initialize()
 
-        @self.subcommand(name="", help="Delete current ACP session", usage="delete")
+        @self.subcommand(name="*", help="Delete an ACP session", usage="delete [number|session_id]")
         async def _(self: DeleteSession, context: ExecuteContext) -> AsyncGenerator[CommandReturn, None]:
             if _group_admin_required(context):
                 yield CommandReturn(text=_group_admin_message(self))
                 return
             conversation_id, control, current = await _conversation_state(self, context)
-            session_id = str(current.get("session_id") or "").strip()
+            current_id = str(current.get("session_id") or "").strip()
+            reference = context.crt_params[0] if context.crt_params else ""
+            sessions = await read_json(self.plugin, storage_key("list", conversation_id), [])
+            if not isinstance(sessions, list):
+                sessions = []
+
+            if reference:
+                if not sessions:
+                    yield CommandReturn(
+                        text=_text(
+                            self,
+                            "请先使用 !list 查询会话，再按序号删除。",
+                            "Run !list first, then delete by number.",
+                        )
+                    )
+                    return
+                session_id = resolve_session_target(reference, sessions)
+                if not session_id:
+                    yield CommandReturn(
+                        text=_text(self, "找不到指定会话，请先使用 !list。", "Session not found. Run !list first.")
+                    )
+                    return
+            else:
+                session_id = current_id
+
             if not session_id:
                 yield CommandReturn(
                     text=_text(self, "当前没有可删除的 ACP 会话。", "There is no current ACP session to delete.")
                 )
                 return
+
+            title = next(
+                (item.get("title") for item in sessions if item.get("session_id") == session_id),
+                current.get("title") if session_id == current_id else None,
+            ) or _text(self, "未命名会话", "Untitled session")
+            session_label = f"{title} ({session_id})"
+
             try:
                 await run_daemon_control(
                     self.plugin,
@@ -262,6 +293,29 @@ class DeleteSession(Command):
                     )
                 )
                 return
+
+            if session_id != current_id:
+                try:
+                    await delete_value(self.plugin, storage_key("list", conversation_id))
+                except Exception as exc:
+                    yield CommandReturn(
+                        text=_text(
+                            self,
+                            f"远端 ACP 会话已删除，但本地会话列表更新失败：{exc}",
+                            f"The remote ACP session was deleted, but updating the local session list failed: {exc}",
+                        )
+                    )
+                    return
+                yield CommandReturn(
+                    text=_text(
+                        self,
+                        f"✅ 已删除 ACP 会话：{session_label}（当前绑定未改变）。列表缓存已清空，请重新 !list 后再按序号删除。",
+                        f"✅ Deleted ACP session: {session_label} (current binding unchanged). "
+                        "List cache cleared. Run !list again before deleting by number.",
+                    )
+                )
+                return
+
             try:
                 await _clear_session_values(self, conversation_id)
             except Exception as exc:
@@ -289,8 +343,8 @@ class DeleteSession(Command):
             yield CommandReturn(
                 text=_text(
                     self,
-                    f"✅ 已删除当前 ACP 会话：{session_id}",
-                    f"✅ Deleted current ACP session: {session_id}",
+                    f"✅ 已删除当前 ACP 会话：{session_label}",
+                    f"✅ Deleted current ACP session: {session_label}",
                 )
             )
 
