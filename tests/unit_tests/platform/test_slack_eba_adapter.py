@@ -88,6 +88,66 @@ def make_adapter() -> SlackAdapter:
         return SlackAdapter(config, DummyLogger())
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('thread_ts', [None, '1710003600.000001'])
+async def test_platform_post_message(thread_ts):
+    adapter = make_adapter()
+    adapter.bot.client.chat_postMessage = AsyncMock(
+        return_value={'ts': '1710003600.000100', 'channel': 'C-1', 'message': {'thread_ts': thread_ts}}
+    )
+    params = {'channel': 'C-1', 'text': 'reply'}
+    if thread_ts:
+        params['thread_ts'] = thread_ts
+    result = await adapter.call_platform_api('post_message', params)
+    adapter.bot.client.chat_postMessage.assert_awaited_once_with(**params)
+    assert result == {'ts': '1710003600.000100', 'channel': 'C-1', 'thread_ts': thread_ts}
+
+
+@pytest.mark.asyncio
+async def test_platform_message_context_from_native_event():
+    adapter = make_adapter()
+    received = AsyncMock()
+    adapter.register_listener(platform_events.MessageReceivedEvent, received)
+    raw = {
+        'type': 'message',
+        'channel_type': 'channel',
+        'channel': 'C-1',
+        'user': 'U-1',
+        'ts': '1710003600.000100',
+        'thread_ts': '1710003600.000001',
+        'parent_user_id': 'B-1',
+        'text': 'reply',
+    }
+    await adapter._handle_native_event(SlackEvent({'event': raw, 'token': 'private-token'}))
+    received.assert_awaited_once()
+    event = received.await_args.args[0]
+    source = next(part for part in event.message_chain if isinstance(part, platform_message.Source))
+    result = await adapter.call_platform_api('get_message_context', {'channel': 'C-1', 'message_id': source.id})
+    assert result == {field: raw[field] for field in ('ts', 'thread_ts', 'channel', 'user', 'parent_user_id')}
+    assert 'token' not in event.source_platform_object
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('channel,message_id', [('C-1', 'missing'), ('other-channel', '1710003600.000100')])
+async def test_platform_message_context_not_found(channel, message_id):
+    adapter = make_adapter()
+    await adapter._handle_native_event(slack_event('channel'))
+    with pytest.raises(KeyError, match='message_not_found'):
+        await adapter.call_platform_api('get_message_context', {'channel': channel, 'message_id': message_id})
+
+
+@pytest.mark.asyncio
+async def test_platform_post_message_propagates_slack_error():
+    from slack_sdk.errors import SlackApiError
+
+    adapter = make_adapter()
+    error = SlackApiError('channel_not_found', {'ok': False, 'error': 'channel_not_found'})
+    adapter.bot.client.chat_postMessage = AsyncMock(side_effect=error)
+    with pytest.raises(SlackApiError) as raised:
+        await adapter.call_platform_api('post_message', {'channel': 'C-1', 'text': 'reply'})
+    assert raised.value is error
+
+
 def slack_event(channel_type: str = 'im', **overrides) -> SlackEvent:
     text = overrides.get('text', 'hello')
     payload = {

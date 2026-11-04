@@ -79,11 +79,11 @@ Slack でアプリの **Messages** タブを開き、DM を送信します。ボ
 
 ## イベント、インタラクション、既存アプリの更新
 
-クイック設定は以下の購読とインタラクションの受信設定を行います。インストール時にメッセージ、チャンネル、ユーザー、ファイル、リアクションの権限を要求し、リアクションには `reactions:read` を使用します。チャンネルの通常返信には引き続き @メンションが必要です。編集・削除やチャンネル変更のためのメッセージ購読によって、すべての会話に返信することはありません。
+クイック設定は以下の購読とインタラクションの受信設定を行います。インストール時にメッセージ、チャンネル、ユーザー、ファイル、リアクションの権限を要求し、リアクションには `reactions:read` を使用します。このボットが開始したスレッドへの返信は @メンションなしで受信できます。他のチャンネルメッセージには引き続き @メンションが必要です。スレッド返信の受信には `message.channels` と `channels:history`、プライベートチャンネルにはさらに `message.groups` と `groups:history` が必要です。権限を追加したら Slack アプリを再インストールしてください。
 
 | Slack イベント | LangBot イベント |
 | --- | --- |
-| DM、`app_mention` | `message.received` |
+| DM、`app_mention`、このボットが開始したスレッドへの返信 | `message.received` |
 | `message_changed` / `message_deleted` サブタイプ | `message.edited` / `message.deleted` |
 | `reaction_added` / `reaction_removed` | `message.reaction`、`is_add` で区別 |
 | `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
@@ -104,6 +104,13 @@ Slack でアプリの **Messages** タブを開き、DM を送信します。ボ
 4. Slack の設定を保存し、LangBot のイベントルートを設定します。再インストールで Bot Token が変わった場合は更新してボットを保存してください。
 
 各フィールドは [Slack App Manifest リファレンス](https://docs.slack.dev/reference/app-manifest/)を参照してください。
+
+## プラグインのスレッド API
+
+既存のプラグイン API `call_platform_api(bot_uuid, 'call_platform_api', {'action': action, 'params': params})` を使用します。
+
+- `post_message`: `channel` と `text` は必須、`thread_ts` は任意です。`ts`、`channel`、`thread_ts`（親メッセージでは `null`）を返します。Slack API エラーは呼び出し元に伝播します。
+- `get_message_context`: `channel` と `message_id`（イベントの `Source.id`、つまり Slack の `ts`）は必須です。`ts`、`thread_ts`、`channel`、`user`、`parent_user_id` を返し、存在しないフィールドは `null` になります。容量制限のあるメモリキャッシュのみを検索し、Slack の履歴は取得しません。見つからない場合は `KeyError('message_not_found')` が発生し、アダプターの再起動でキャッシュは消去されます。
 
 ## 手動設定（Webhook）
 

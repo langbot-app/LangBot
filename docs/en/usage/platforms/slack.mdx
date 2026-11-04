@@ -79,11 +79,11 @@ If no reply arrives, check that both the bot and message route are enabled, the 
 
 ## Events, interactions and upgrading existing apps
 
-Quick setup configures the subscriptions and interaction endpoint below. Installation requests message, channel, user, file and reaction permissions; `reactions:read` enables reaction events. Normal channel replies still require an @mention. Subscribing to channel messages for edits, deletions and channel changes does not trigger replies to all channel traffic.
+Quick setup configures the subscriptions and interaction endpoint below. Installation requests message, channel, user, file and reaction permissions; `reactions:read` enables reaction events. Replies in threads started by this bot are delivered without an @mention; other channel messages still require one. Subscribe to `message.channels` with `channels:history` (and `message.groups` with `groups:history` for private channels) to receive these thread replies. Reinstall the Slack app after adding scopes.
 
 | Slack event | LangBot event |
 | --- | --- |
-| Direct messages, `app_mention` | `message.received` |
+| Direct messages, `app_mention`, replies in this bot's threads | `message.received` |
 | `message_changed` / `message_deleted` message subtypes | `message.edited` / `message.deleted` |
 | `reaction_added` / `reaction_removed` | `message.reaction`, distinguished by `is_add` |
 | `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
@@ -104,6 +104,13 @@ Interactions are acknowledged first and processed asynchronously. Synchronous fi
 4. Save Slack settings and configure the corresponding LangBot routes. If reinstallation changes the Bot Token, update it and save the bot.
 
 See the [Slack App Manifest reference](https://docs.slack.dev/reference/app-manifest/) for field definitions.
+
+## Plugin thread APIs
+
+Use the existing plugin call `call_platform_api(bot_uuid, 'call_platform_api', {'action': action, 'params': params})`:
+
+- `post_message`: required `channel` and `text`, optional `thread_ts`. Returns `ts`, `channel`, and `thread_ts` (`null` for a root message). Slack API errors propagate to the caller.
+- `get_message_context`: required `channel` and `message_id` (the event's `Source.id` / Slack `ts`). Returns `ts`, `thread_ts`, `channel`, `user`, and `parent_user_id`; absent fields are `null`. Only received messages in the adapter's bounded in-memory cache are available. A cache miss raises `KeyError('message_not_found')`; this does not fetch Slack history. Restarting the adapter clears the cache.
 
 ## Manual setup (Webhook)
 

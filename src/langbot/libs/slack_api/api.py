@@ -36,6 +36,7 @@ class SlackClient:
         self.socket_client = None
         self.socket_queue = asyncio.Queue(maxsize=100)
         self.socket_seen = OrderedDict()
+        self.channel_message_seen = OrderedDict()
         self.socket_stop = asyncio.Event()
         self.socket_worker = None
 
@@ -102,7 +103,20 @@ class SlackClient:
             await self._handle_message(SlackEvent(data), 'event')
         elif raw.get('channel_type') == 'im' and kind == 'message':
             await self._handle_message(SlackEvent.from_payload(data))
-        elif kind == 'app_mention':
+        elif kind == 'app_mention' or (
+            kind == 'message'
+            and raw.get('channel_type') in {'channel', 'group'}
+            and raw.get('thread_ts')
+            and self.bot_user_id
+            and raw.get('parent_user_id') == self.bot_user_id
+        ):
+            key = (raw.get('channel'), raw.get('ts'))
+            if all(key):
+                if key in self.channel_message_seen:
+                    return
+                self.channel_message_seen[key] = True
+                while len(self.channel_message_seen) > 4096:
+                    self.channel_message_seen.popitem(last=False)
             raw['channel_type'] = 'channel'
             await self._handle_message(SlackEvent.from_payload(data))
         elif kind != 'message':
@@ -173,6 +187,7 @@ class SlackClient:
             worker.cancel()
             await asyncio.gather(worker, return_exceptions=True)
         self.socket_seen.clear()
+        self.channel_message_seen.clear()
         while not self.socket_queue.empty():
             self.socket_queue.get_nowait()
             self.socket_queue.task_done()
