@@ -541,6 +541,7 @@ class RunnerContextBuilder:
                 'state': state_enabled,
                 'storage': storage_enabled,
                 'steering_pull': steering_pull_enabled,
+                'steering_ack': steering_pull_enabled,
                 'run_get': run_get_enabled,
                 'run_list': run_list_enabled,
                 'run_events_page': run_events_page_enabled,

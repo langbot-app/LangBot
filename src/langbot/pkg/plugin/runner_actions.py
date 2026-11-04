@@ -419,7 +419,13 @@ def register(h):
 
         event_data = data.get('data') if isinstance(data.get('data'), dict) else result.get('data')
         usage = data.get('usage') if isinstance(data.get('usage'), dict) else result.get('usage')
-        metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else None
+        metadata = (
+            data.get('metadata')
+            if isinstance(data.get('metadata'), dict)
+            else result.get('metadata')
+            if isinstance(result.get('metadata'), dict)
+            else None
+        )
 
         session, error = await _validate_agent_run_session(
             run_id,

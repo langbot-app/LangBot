@@ -384,6 +384,14 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        usage = result_dict.get('usage')
+                        if isinstance(usage, dict):
+                            # Runners may emit cumulative usage snapshots on
+                            # progress or message events. Keep the latest
+                            # snapshot for cancellation, timeout, and
+                            # disconnect finalization.
+                            terminal_usage = usage
+
                         if result_type == 'tool.call.started':
                             result_data = result_dict.get('data') or {}
                             tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
@@ -419,6 +427,7 @@ class AgentRunOrchestrator:
                                 str(result_data.get('tool_call_id') or ''), None
                             )
 
+                        self.result_normalizer.annotate_result_size(result_dict, descriptor)
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
@@ -457,16 +466,14 @@ class AgentRunOrchestrator:
                                 if isinstance(result_dict.get('data'), dict)
                                 else None
                             )
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
                         elif result_type == 'run.failed':
                             data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
                             terminal_status = 'cancelled' if data.get('code') == 'cancelled' else 'failed'
                             terminal_reason = data.get('error') or data.get('code')
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
+                        elif result_type == 'run.cancelled':
+                            data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                            terminal_status = 'cancelled'
+                            terminal_reason = data.get('reason') or 'runner_cancelled'
 
                         has_completed_message = result_type == 'message.completed' or (
                             result_type == 'run.completed'
