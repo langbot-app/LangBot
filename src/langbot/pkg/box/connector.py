@@ -243,6 +243,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         env = os.environ.copy()
         env[BOX_CONTROL_TOKEN_ENV] = self._control_token
         env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
+        env['LANGBOT_BOX_INSTANCE_ID'] = str(
+            self._filtered_box_config.get('instance_id')
+            or env.get('LANGBOT_BOX_INSTANCE_ID')
+            or self._trusted_instance_uuid
+        )
         if self._filtered_box_config:
             env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 
@@ -281,6 +286,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         env = os.environ.copy()
         env[BOX_CONTROL_TOKEN_ENV] = self._control_token
         env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
+        env['LANGBOT_BOX_INSTANCE_ID'] = str(
+            self._filtered_box_config.get('instance_id')
+            or env.get('LANGBOT_BOX_INSTANCE_ID')
+            or self._trusted_instance_uuid
+        )
         if self._filtered_box_config:
             env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
 

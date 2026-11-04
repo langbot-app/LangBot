@@ -270,6 +270,8 @@ metadata:
     app: langbot-box
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: langbot-box
@@ -298,6 +300,8 @@ spec:
           name: box-rpc
           protocol: TCP
         env:
+        - name: LANGBOT_BOX_DATA_DIR
+          value: /app/data/box/runtime
         - name: TZ
           valueFrom:
             configMapKeyRef:
