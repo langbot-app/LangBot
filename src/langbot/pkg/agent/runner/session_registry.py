@@ -409,6 +409,36 @@ class AgentRunSessionRegistry:
             session['status']['last_activity_at'] = int(time.time())
             return True
 
+    async def restore_steering(
+        self,
+        run_id: str,
+        items: typing.Iterable[SteeringQueueItem],
+    ) -> int:
+        """Restore unacknowledged steering inputs from durable event log state."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return 0
+            existing_ids = {
+                item.get('event', {}).get('event_id')
+                for item in session['steering_queue']
+                if isinstance(item.get('event'), dict)
+            }
+            restored = 0
+            for item in items:
+                event = item.get('event') if isinstance(item, dict) else None
+                event_id = event.get('event_id') if isinstance(event, dict) else None
+                if not event_id or event_id in existing_ids:
+                    continue
+                if len(session['steering_queue']) >= MAX_STEERING_QUEUE_ITEMS:
+                    break
+                session['steering_queue'].append(copy.deepcopy(item))
+                existing_ids.add(event_id)
+                restored += 1
+            if restored:
+                session['status']['last_activity_at'] = int(time.time())
+            return restored
+
     async def pull_steering(
         self,
         run_id: str,

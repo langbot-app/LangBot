@@ -419,6 +419,32 @@ class TestSessionRegistryBasic:
         delivery_id = first[0]['delivery_id']
         assert await registry.pull_steering('run_steering_claim', claim=True) == []
 
+    @pytest.mark.asyncio
+    async def test_restore_steering_rehydrates_after_session_restart(self):
+        """Durable pending input can be restored into a replacement run session."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_steering_restarted',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='conv_1',
+            available_apis={'steering_pull': True, 'steering_ack': True},
+        )
+        assert await registry.restore_steering(
+            'run_steering_restarted',
+            [
+                {
+                    'event': {'event_id': 'event_recovered'},
+                    'input': {'text': 'recover me'},
+                }
+            ],
+        ) == 1
+
+        claimed = await registry.pull_steering('run_steering_restarted', claim=True)
+        assert claimed[0]['event']['event_id'] == 'event_recovered'
+
         acknowledged, unknown = await registry.ack_steering(
             'run_steering_claim', [delivery_id, 'missing']
         )

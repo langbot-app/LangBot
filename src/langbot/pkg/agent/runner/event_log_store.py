@@ -190,6 +190,104 @@ class EventLogStore:
                 return None
             return self._row_to_dict(row)
 
+    async def list_pending_steering(
+        self,
+        *,
+        conversation_id: str,
+        runner_id: str,
+        bot_id: str | None = None,
+        workspace_id: str | None = None,
+        thread_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, typing.Any]]:
+        """List queued or leased steering source events for recovery.
+
+        Steering delivery is kept in the event log so a run restart can
+        reconstruct inputs that were pulled but never acknowledged.
+        """
+        limit = max(1, min(int(limit), 100))
+        async with self._session_factory() as session:
+            query = (
+                sqlalchemy.select(EventLog)
+                .where(
+                    EventLog.event_type == 'message.received',
+                    EventLog.conversation_id == conversation_id,
+                    EventLog.runner_id == runner_id,
+                )
+                .order_by(EventLog.id.asc())
+                .limit(limit * 2)
+            )
+            if bot_id is not None:
+                query = query.where(EventLog.bot_id == bot_id)
+            if workspace_id is not None:
+                query = query.where(EventLog.workspace_id == workspace_id)
+            if thread_id is None:
+                query = query.where(EventLog.thread_id.is_(None))
+            else:
+                query = query.where(EventLog.thread_id == thread_id)
+            result = await session.execute(query)
+            pending: list[dict[str, typing.Any]] = []
+            for row in result.scalars().all():
+                item = self._row_to_dict(row)
+                steering = item.get('metadata', {}).get('steering', {})
+                if steering.get('status') not in {'queued', 'claimed'}:
+                    continue
+                pending.append(item)
+                if len(pending) >= limit:
+                    break
+            return pending
+
+    async def update_steering_status(
+        self,
+        event_id: str,
+        *,
+        status: str,
+        delivery_id: str | None = None,
+        lease_expires_at: int | None = None,
+    ) -> bool:
+        """Update durable steering delivery state for one source event."""
+        async with self._session_factory() as session:
+            row = (
+                await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_id == event_id))
+            ).scalar_one_or_none()
+            if row is None:
+                return False
+            metadata = json.loads(row.metadata_json) if row.metadata_json else {}
+            steering = metadata.setdefault('steering', {})
+            steering['status'] = status
+            if delivery_id is not None:
+                steering['delivery_id'] = delivery_id
+            if lease_expires_at is not None:
+                steering['lease_expires_at'] = lease_expires_at
+            row.metadata_json = json.dumps(metadata)
+            await session.commit()
+            return True
+
+    async def acknowledge_steering_deliveries(
+        self,
+        delivery_ids: typing.Iterable[str],
+    ) -> int:
+        """Mark durable steering deliveries acknowledged by their IDs."""
+        requested = {str(item) for item in delivery_ids if item}
+        if not requested:
+            return 0
+        async with self._session_factory() as session:
+            result = await session.execute(
+                sqlalchemy.select(EventLog).where(EventLog.event_type == 'message.received')
+            )
+            updated = 0
+            for row in result.scalars().all():
+                metadata = json.loads(row.metadata_json) if row.metadata_json else {}
+                steering = metadata.get('steering', {})
+                if steering.get('delivery_id') not in requested:
+                    continue
+                steering['status'] = 'acknowledged'
+                row.metadata_json = json.dumps(metadata)
+                updated += 1
+            if updated:
+                await session.commit()
+            return updated
+
     async def page_events(
         self,
         conversation_id: str | None = None,
