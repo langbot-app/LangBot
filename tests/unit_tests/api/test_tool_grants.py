@@ -12,6 +12,7 @@ from langbot.pkg.api.application.contracts import ApplicationAPIException
 from langbot.pkg.api.application.tool_grants import (
     get_workspace_operations_catalog,
     validate_grant_change,
+    validate_operation_preferences,
 )
 from langbot.pkg.api.authz import Permission, permissions_for_role
 from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
@@ -144,7 +145,7 @@ def test_granting_non_all_exposure_or_invalid_operations_rejected(test_host):
 
 # 5. 复制流水线时的权限检查
 @pytest.mark.asyncio
-async def test_copy_pipeline_permission_check(test_host):
+async def test_copy_pipeline_preferences_do_not_grant_permissions(test_host):
     # Setup mock pipeline service
     ap = SimpleNamespace(
         persistence_mgr=SimpleNamespace(),
@@ -178,15 +179,24 @@ async def test_copy_pipeline_permission_check(test_host):
     copy_uuid = await service.copy_pipeline(admin_ctx, 'orig-uuid')
     assert copy_uuid is not None
 
-    # 2) Member without provider_secret.manage copies: raises ApplicationAPIException (permission_denied)
     member_ctx = make_context(
         'operator',
         frozenset({Permission.RESOURCE_VIEW.value, Permission.RESOURCE_MANAGE.value}),
     )
+    assert await service.copy_pipeline(member_ctx, 'orig-uuid') is not None
+    inserted = ap.persistence_mgr.execute_async.await_args.args[0].compile().params
+    assert inserted['extensions_preferences']['workspace_operations'] == ['model.llm.create']
     with pytest.raises(ApplicationAPIException) as exc_info:
-        await service.copy_pipeline(member_ctx, 'orig-uuid')
+        validate_grant_change(test_host, member_ctx, [], ['model.llm.create'], principal_type=PrincipalType.PLUGIN)
     assert exc_info.value.error.code == 'permission_denied'
     assert exc_info.value.error.status_code == 403
+
+
+@pytest.mark.parametrize('operation_ids', [['unknown.operation'], ['bot.*'], ['bot.list', 1]])
+def test_pipeline_preferences_still_reject_invalid_operations(test_host, operation_ids):
+    with pytest.raises(ApplicationAPIException) as exc_info:
+        validate_operation_preferences(test_host, make_context('admin'), [], operation_ids)
+    assert exc_info.value.error.code == 'invalid_input'
 
 
 # 6. enable_all_plugins=True 时，工作区操作仍然是空的

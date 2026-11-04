@@ -20,6 +20,7 @@ class PrincipalType(enum.StrEnum):
     SYSTEM = 'system'
     PUBLIC_BOT = 'public_bot'
     PROCESSOR = 'processor'
+    PLUGIN = 'plugin'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -35,6 +36,7 @@ class PrincipalContext:
     processor_uuid: str | None = None
     run_id: str | None = None
     trigger_actor: str | None = None
+    installation_uuid: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)

@@ -17,7 +17,7 @@ sys.modules.setdefault('langbot.pkg.core.app', core_app_module)
 pytestmark = pytest.mark.asyncio
 
 
-async def test_pipeline_extensions_returns_workspace_catalog_and_saved_grants():
+async def test_pipeline_extensions_returns_catalog_and_saved_preferences_without_granting():
     pipeline_service = SimpleNamespace(
         get_pipeline=AsyncMock(
             return_value={
@@ -39,7 +39,9 @@ async def test_pipeline_extensions_returns_workspace_catalog_and_saved_grants():
     data = (await response.get_json())['data']
     assert data['workspace_operations'] == ['stats.basic']
     stats = next(op for op in data['available_workspace_operations'] if op['id'] == 'stats.basic')
-    assert stats['grantable'] is True
+    assert stats['grantable'] is False
+    assert data['allowed_platform_tools'] == []
+    assert data['available_platform_tools']
     assert any(domain['domain'] == stats['domain'] for domain in data['domains'])
     assert data['available_skills'] == []
 
@@ -66,6 +68,7 @@ async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
     if plugin_connector is not None and not hasattr(plugin_connector, 'is_enable_plugin'):
         plugin_connector.is_enable_plugin = False
     extra_ap.setdefault('logger', SimpleNamespace(warning=Mock()))
+    extra_ap.setdefault('persistence_mgr', SimpleNamespace(execute_async=AsyncMock(return_value=[])))
     ap = SimpleNamespace(
         pipeline_service=pipeline_service,
         user_service=user_service,
@@ -77,6 +80,13 @@ async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
         ),
         **extra_ap,
     )
+    if hasattr(pipeline_service, 'get_pipeline') and not hasattr(pipeline_service, 'get_pipeline_extensions'):
+        from langbot.pkg.api.http.service.pipeline import PipelineService
+
+        pipeline_service.ap = ap
+        pipeline_service.get_pipeline_extensions = types.MethodType(
+            PipelineService.get_pipeline_extensions, pipeline_service
+        )
     router_class = import_module('langbot.pkg.api.http.controller.groups.pipelines.pipelines').PipelinesRouterGroup
     group = router_class(ap, app)
     await group.initialize()

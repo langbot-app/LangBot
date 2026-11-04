@@ -42,7 +42,8 @@ from ....agent.runner.platform_tools import (
 )
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
-from ...application.tool_grants import get_workspace_operations_catalog, validate_grant_change
+from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
+from ...application.plugin_permissions import workspace_operation_grants
 from ..context import ExecutionContext, RequestContext
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -86,10 +87,6 @@ class AgentService:
                 use_cache=False,
             ):
                 dumped = item.model_dump(mode='json')
-                if 'permissions' not in dumped or not isinstance(dumped['permissions'], dict):
-                    dumped['permissions'] = {}
-                if 'workspace_operations' not in dumped['permissions']:
-                    dumped['permissions']['workspace_operations'] = item.declared_workspace_operations()
                 event_processors.append(dumped)
         ws_catalog = get_workspace_operations_catalog(self.ap, context)
         return {
@@ -98,6 +95,7 @@ class AgentService:
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
             'workspace_operations': ws_catalog['workspace_operations'],
+            'workspace_operation_grants': await workspace_operation_grants(self.ap, context),
             'domains': ws_catalog['domains'],
             'kinds': [
                 {
@@ -467,7 +465,7 @@ class AgentService:
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
         if isinstance(config, dict) and 'allowed_workspace_operations' in config:
             new_ops = config['allowed_workspace_operations']
-            config['allowed_workspace_operations'] = validate_grant_change(self.ap, context, [], new_ops)
+            config['allowed_workspace_operations'] = validate_operation_preferences(self.ap, context, [], new_ops)
         new_uuid = str(uuid.uuid4())
         values = {
             'workspace_uuid': workspace_uuid,
@@ -518,7 +516,9 @@ class AgentService:
             new_config = update_data['config']
             if 'allowed_workspace_operations' in new_config:
                 new_ops = new_config['allowed_workspace_operations']
-                new_config['allowed_workspace_operations'] = validate_grant_change(self.ap, context, old_ops, new_ops)
+                new_config['allowed_workspace_operations'] = validate_operation_preferences(
+                    self.ap, context, old_ops, new_ops
+                )
             else:
                 new_config['allowed_workspace_operations'] = old_ops
 
@@ -600,12 +600,6 @@ class AgentService:
             if not draft and field.get('required') and parameters.get(field['name']) in (None, ''):
                 raise ValueError(f'Required processor parameter: {field["name"]}')
         config['runner_config'] = {component_ref: parameters}
-        if existing is None and 'allowed_workspace_operations' not in config:
-            from ...application.tool_grants import get_default_workspace_operations
-
-            config['allowed_workspace_operations'] = get_default_workspace_operations(
-                self.ap, descriptor.declared_workspace_operations()
-            )
         # Component-only creation keeps defaults for the detail form, but does
         # not subscribe to events until configuration is saved and validated.
         return config, component_ref, [] if draft else descriptor.supported_event_patterns

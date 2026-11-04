@@ -1,4 +1,5 @@
 {
+  "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "插件 {plugin} 未声明权限。请在插件设置中确认兼容模式访问权限。",
   "Request failed.": "请求失败。",
   "Too many requests. Please try again later.": "请求过于频繁，请稍后重试。",
   "Your message contains inappropriate content. Please revise it.": "消息中存在不合适的内容，请修改。",

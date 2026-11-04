@@ -1,4 +1,5 @@
 {
+  "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "El complemento {plugin} no declara permisos. Revise el acceso de compatibilidad en sus ajustes.",
   "Request failed.": "La solicitud ha fallado.",
   "Too many requests. Please try again later.": "Demasiadas solicitudes. Inténtalo más tarde.",
   "Your message contains inappropriate content. Please revise it.": "Tu mensaje contiene contenido inapropiado. Modifícalo.",

@@ -14,6 +14,7 @@ from langbot.pkg.api.application.contracts import ApplicationAPIException
 from langbot.pkg.api.application.execution import ExecutionAPI, ExecutionAPIContext
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot.pkg.agent.runner.session_registry import get_session_registry
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 
 
 @pytest.fixture
@@ -27,9 +28,18 @@ def host():
         artifact_digest='a' * 64,
     )
     tenant = contextvars.ContextVar('execution_test_tenant', default=None)
+    setting = PluginSetting(
+        workspace_uuid=binding.workspace_uuid,
+        installation_uuid=binding.installation_uuid,
+        plugin_author='author-a',
+        plugin_name='plugin-a',
+        enabled=True,
+        runtime_revision=binding.runtime_revision,
+        artifact_digest=binding.artifact_digest,
+    )
 
     class Persistence:
-        execute_async = AsyncMock()
+        execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=(setting,))))
 
         @contextlib.asynccontextmanager
         async def tenant_scope(self, workspace):
@@ -45,11 +55,20 @@ def host():
         logger=Mock(),
         workspace_service=SimpleNamespace(get_execution_binding=AsyncMock(return_value=binding)),
         instance_config=SimpleNamespace(data={}),
+        tool_mgr=SimpleNamespace(
+            get_resolved_tool_catalog=AsyncMock(
+                return_value=[
+                    {'name': 'tool', 'source': 'plugin', 'source_id': 'author-b/tool-plugin'},
+                ]
+            )
+        ),
     )
     handler = RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), ap)
     handler.register_installation_binding(binding, plugin_author='author-a', plugin_name='plugin-a')
-    ap.plugin_connector = SimpleNamespace(handler=handler)
-    return SimpleNamespace(ap=ap, handler=handler, binding=binding, api=ExecutionAPI(ap), tenant=tenant)
+    ap.plugin_connector = SimpleNamespace(handler=handler, _runtime_handler=lambda: handler)
+    return SimpleNamespace(
+        ap=ap, handler=handler, binding=binding, setting=setting, api=ExecutionAPI(ap), tenant=tenant
+    )
 
 
 def run_session(host, **changes):
@@ -169,15 +188,16 @@ async def test_run_context_cannot_cross_workspace_or_plugin(host, monkeypatch, s
 
 
 @pytest.mark.asyncio
-async def test_run_identity_is_injected_and_cannot_fall_back_to_plugin_privileges(host, monkeypatch):
+async def test_run_identity_is_injected_without_removing_installation_privileges(host, monkeypatch):
     stub_run(monkeypatch, run_session(host))
     business = AsyncMock(return_value=ActionResponse.success({'version': 'test'}))
     install_action(host, 'get_langbot_version', business)
     await host.api.invoke('execution.get_langbot_version', ExecutionAPIContext(host.binding, 'run-a'))
     assert business.call_args.args[0] == {'run_id': 'run-a', 'caller_plugin_identity': 'author-a/plugin-a'}
-    with pytest.raises(ApplicationAPIException) as exc:
-        await host.api.invoke('execution.get_bots', ExecutionAPIContext(host.binding, 'run-a'))
-    assert exc.value.error.code == 'permission_denied'
+    bots = AsyncMock(return_value=ActionResponse.success({'bots': []}))
+    install_action(host, 'get_bots', bots)
+    assert await host.api.invoke('execution.get_bots', ExecutionAPIContext(host.binding, 'run-a')) == {'bots': []}
+    assert bots.call_args.args[0]['run_id'] == 'run-a'
     with pytest.raises(ApplicationAPIException) as exc:
         await host.api.invoke('execution.get_prompt', ExecutionAPIContext(host.binding))
     assert exc.value.error.code == 'permission_denied'
@@ -360,7 +380,10 @@ async def test_resource_families_preserve_frozen_grants(host, monkeypatch, opera
     stub_run(monkeypatch, run_session(host))
     with pytest.raises(ApplicationAPIException) as exc:
         await host.api.invoke(f'execution.{operation}', ExecutionAPIContext(host.binding, 'run-a'), payload)
-    assert 'not authorized' in exc.value.error.message
+    if operation in {'call_tool', 'get_tool_detail'}:
+        assert exc.value.error.code == 'not_found'
+    else:
+        assert 'not authorized' in exc.value.error.message
     assert host.handler.current_action_context is None
 
 
@@ -406,17 +429,17 @@ async def test_box_export_preserves_structured_failure(host, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_frozen_tool_source_cannot_be_replaced(host, monkeypatch):
+async def test_selected_tool_missing_from_workspace_catalog_cannot_execute(host, monkeypatch):
     session = run_session(host)
     session['authorization']['authorized_ids'] = {'tool': {'tool-a'}}
     session['authorization']['resources'] = {'tools': [{'tool_name': 'tool-a'}]}
     stub_run(monkeypatch, session)
-    host.ap.tool_mgr = SimpleNamespace(execute_func_call=AsyncMock())
+    host.ap.tool_mgr.execute_func_call = AsyncMock()
     with pytest.raises(ApplicationAPIException) as exc:
         await host.api.invoke(
             'execution.call_tool', ExecutionAPIContext(host.binding, 'run-a'), {'tool_name': 'tool-a', 'parameters': {}}
         )
-    assert 'source' in exc.value.error.message.lower()
+    assert exc.value.error.code == 'not_found'
     host.ap.tool_mgr.execute_func_call.assert_not_called()
 
 
@@ -522,3 +545,59 @@ async def test_platform_call_requires_bot_identity_outside_run(host):
             'execution.call_platform_api', ExecutionAPIContext(host.binding), {'action': 'send_message'}
         )
     assert exc.value.error.code == 'invalid_input'
+
+
+@pytest.mark.asyncio
+async def test_bot_send_uses_installation_grants_and_denies_foreign_workspace(host, monkeypatch):
+    monkeypatch.setattr(
+        'langbot.pkg.api.application.plugin_permissions.load_installation', AsyncMock(return_value=host.setting)
+    )
+    adapter = SimpleNamespace(send_message=AsyncMock(return_value={'message_id': 'sent'}))
+    host.ap.platform_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    host.handler._resource_exists = AsyncMock(return_value=True)
+    stub_run(monkeypatch, run_session(host))
+    payload = {
+        'bot_uuid': 'bot-owned',
+        'target_type': 'person',
+        'target_id': 'recipient',
+        'message_chain': [{'type': 'Plain', 'text': 'hello'}],
+    }
+    result = await host.api.invoke('execution.send_message', ExecutionAPIContext(host.binding, 'run-a'), payload)
+    assert result['result']['message_id'] == 'sent'
+    assert adapter.send_message.await_count == 1
+    host.ap.persistence_mgr.execute_async.return_value = Mock(first=Mock(return_value=None))
+    with pytest.raises(ApplicationAPIException) as error:
+        await host.api.invoke(
+            'execution.send_message', ExecutionAPIContext(host.binding), {**payload, 'bot_uuid': 'foreign'}
+        )
+    assert error.value.error.code == 'permission_denied'
+    assert adapter.send_message.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_granted_bot_tool_is_not_limited_by_model_selection(host, monkeypatch):
+    from langbot.pkg.agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME
+
+    definition = next(
+        tool for tool in PLATFORM_TOOLS_BY_NAME.values() if tool.scope == 'platform' and tool.api == 'send_message'
+    )
+    session = run_session(host)
+    session['authorization']['bot_id'] = 'bot-owned'
+    stub_run(monkeypatch, session)
+    adapter = SimpleNamespace(
+        get_supported_apis=lambda: ['send_message'], send_message=AsyncMock(return_value={'message_id': 'sent'})
+    )
+    host.ap.platform_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    result = await host.api.invoke(
+        'execution.get_tool_detail', ExecutionAPIContext(host.binding, 'run-a'), {'tool_name': definition.name}
+    )
+    assert result['tool']['name'] == definition.name
+    result = await host.api.invoke(
+        'execution.call_tool',
+        ExecutionAPIContext(host.binding, 'run-a'),
+        {
+            'tool_name': definition.name,
+            'parameters': {'target_type': 'person', 'target_id': 'recipient', 'text': 'hello'},
+        },
+    )
+    assert result['result']['message_id'] == 'sent'

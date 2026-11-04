@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 import datetime
 import hashlib
+import io
+import json
+import zipfile
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -12,6 +15,8 @@ from langbot_plugin.entities.io.context import InstallationBinding, PluginExecut
 from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.api.application.api import ApplicationAPI
+from langbot.pkg.api.application.plugin_capabilities import LEGACY_CAPABILITIES
 from langbot.pkg.plugin.connector import (
     PluginInstallationFailedError,
     PluginInstallationDesiredState,
@@ -40,9 +45,17 @@ def execution_binding(workspace_uuid: str, generation: int = 1) -> SimpleNamespa
     )
 
 
+def plugin_package(*, permissions: dict | None = None) -> bytes:
+    manifest = {'metadata': {'author': 'author', 'name': 'plugin'}, 'spec': {}}
+    if permissions is not None:
+        manifest['spec']['permissions'] = permissions
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w') as archive:
+        archive.writestr('manifest.yaml', json.dumps(manifest))
+    return buffer.getvalue()
+
+
 def mock_archive_admission(connector: PluginRuntimeConnector, digest: str) -> None:
-    # These lifecycle tests use opaque package bytes. Real certificate admission
-    # is exercised by integration/plugin/test_certified_plugin_admission.py.
     connector._admit_plugin_archive = Mock(
         side_effect=lambda _package, info: (
             {
@@ -77,6 +90,9 @@ def plugin_setting(
         runtime_revision=1,
         artifact_digest=artifact_digest,
         enabled=True,
+        permission_declaration=None,
+        permission_grants=None,
+        permission_snapshot={'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)},
         priority=0,
         created_at=datetime.datetime(2026, 1, 1),
         install_source='local',
@@ -309,15 +325,18 @@ async def test_oss_upgrade_keeps_legacy_data_plugins_when_no_lbpkg_was_backfille
     await connector._prepare_connected_runtime()
     plugins = await connector.list_plugins()
 
-    assert plugins == [legacy_plugin]
+    assert len(plugins) == 1
+    assert plugins[0]['manifest'] == legacy_plugin['manifest']
+    assert plugins[0]['permission_status'] == {'compatibility_mode': True, 'pending_confirmation': False}
     assert connector.handler.list_plugins.await_count >= 2
     connector._load_artifact_package.assert_awaited_once()
     assert not hasattr(connector.handler, 'delete_plugin')
 
 
 @pytest.mark.asyncio
-async def test_local_install_persists_verified_package_before_runtime_apply():
-    package = b'local-lbpkg-bytes'
+@pytest.mark.parametrize('permissions', [None, {'workspace_operations': [], 'capabilities': []}])
+async def test_local_install_persists_verified_package_before_runtime_apply(permissions):
+    package = plugin_package(permissions=permissions)
     digest = hashlib.sha256(package).hexdigest()
     execution_context = ExecutionContext(
         instance_uuid='instance-a',
@@ -337,12 +356,14 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
         deployment=SimpleNamespace(mode='cloud'),
         logger=Mock(),
     )
+    app.application_api = ApplicationAPI(app)
     connector = PluginRuntimeConnector(app, AsyncMock())
     connector.handler = runtime_handler()
     connector._current_execution_context = AsyncMock(return_value=execution_context)
     connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._setting_for_plugin = AsyncMock(return_value=(execution_context, SimpleNamespace(enabled=False)))
     connector._admit_plugin_archive = Mock(
         return_value=(
             {'_certification': {'normalized_digest': digest}},
@@ -360,14 +381,19 @@ async def test_local_install_persists_verified_package_before_runtime_apply():
     connector.handler.apply_plugin_installation.assert_awaited_once_with(
         binding,
         artifact_package=package,
-        enabled=True,
+        enabled=False,
         execution_mode=PluginExecutionMode.DEDICATED,
     )
+    connector._wait_for_installed_plugin_ready.assert_not_awaited()
+    persisted_info = connector._persist_installation_package.await_args.kwargs['install_info']
+    assert persisted_info['_manifest']['spec'] == ({} if permissions is None else {'permissions': permissions})
+    assert connector._known_desired_states[binding.installation_uuid].enabled is False
 
 
 @pytest.mark.asyncio
 async def test_marketplace_upgrade_reports_multistep_progress():
-    package = b'marketplace-lbpkg-bytes'
+    permissions = {'workspace_operations': [], 'capabilities': ['models.invoke']}
+    package = plugin_package(permissions=permissions)
     digest = hashlib.sha256(package).hexdigest()
     execution_context = ExecutionContext(
         instance_uuid='instance-a',
@@ -387,11 +413,21 @@ async def test_marketplace_upgrade_reports_multistep_progress():
         deployment=SimpleNamespace(mode='cloud'),
         logger=Mock(),
     )
+    app.application_api = ApplicationAPI(app)
     connector = PluginRuntimeConnector(app, AsyncMock())
     connector.handler = runtime_handler()
     connector._current_execution_context = AsyncMock(return_value=execution_context)
     connector._setting_for_plugin = AsyncMock(
-        return_value=(execution_context, SimpleNamespace(install_source=PluginInstallSource.MARKETPLACE.value))
+        return_value=(
+            execution_context,
+            SimpleNamespace(
+                install_source=PluginInstallSource.MARKETPLACE.value,
+                enabled=True,
+                permission_declaration=permissions,
+                permission_grants=permissions,
+                permission_snapshot=permissions,
+            ),
+        )
     )
     observed_actions: list[str] = []
     task_context = SimpleNamespace(current_action='default', metadata={})
@@ -457,11 +493,12 @@ async def test_marketplace_upgrade_reports_multistep_progress():
     assert connector.handler.apply_plugin_installation.await_args.kwargs['execution_mode'] is (
         PluginExecutionMode.SHARED_CERTIFIED
     )
+    assert connector.handler.apply_plugin_installation.await_args.kwargs['enabled'] is True
 
 
 @pytest.mark.asyncio
 async def test_workspace_reads_do_not_wait_for_an_installation_apply():
-    package = b'local-lbpkg-bytes'
+    package = plugin_package()
     digest = hashlib.sha256(package).hexdigest()
     execution_context = ExecutionContext(
         instance_uuid='instance-a',
@@ -489,13 +526,14 @@ async def test_workspace_reads_do_not_wait_for_an_installation_apply():
     connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._setting_for_plugin = AsyncMock(return_value=(execution_context, SimpleNamespace(enabled=False)))
     connector._wait_for_installed_plugin_ready = AsyncMock()
     connector._load_workspace_settings = AsyncMock(return_value=[])
     connector._load_workspace_desired_states = AsyncMock(
         return_value=[
             PluginInstallationDesiredState(
                 binding=binding,
-                enabled=True,
+                enabled=False,
                 execution_mode=PluginExecutionMode.SHARED_CERTIFIED,
             )
         ]
@@ -533,7 +571,7 @@ async def test_workspace_reads_do_not_wait_for_an_installation_apply():
 
 @pytest.mark.asyncio
 async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply():
-    package = b'local-lbpkg-bytes'
+    package = plugin_package()
     digest = hashlib.sha256(package).hexdigest()
     execution_context = ExecutionContext(
         instance_uuid='instance-a',
@@ -559,6 +597,7 @@ async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply
     connector._inspect_plugin_package = Mock(return_value=('author', 'plugin'))
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    connector._setting_for_plugin = AsyncMock(return_value=(execution_context, SimpleNamespace(enabled=False)))
     connector._wait_for_installed_plugin_ready = AsyncMock()
     events: list[str] = []
     mock_archive_admission(connector, digest)
@@ -581,6 +620,8 @@ async def test_local_install_cleans_untracked_legacy_plugin_before_runtime_apply
     )
 
     assert events == ['cleanup', 'apply']
+    assert connector.handler.apply_plugin_installation.await_args.kwargs['enabled'] is False
+    connector._wait_for_installed_plugin_ready.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -692,7 +733,8 @@ async def test_workspace_settings_accept_connection_mapping_results():
 
 
 @pytest.mark.asyncio
-async def test_installation_update_accepts_connection_row_result():
+@pytest.mark.parametrize('strict', [True, False])
+async def test_installation_update_accepts_connection_row_result(strict):
     old_digest = 'a' * 64
     new_digest = 'b' * 64
     existing = SimpleNamespace(
@@ -700,6 +742,9 @@ async def test_installation_update_accepts_connection_row_result():
         runtime_revision=4,
         artifact_digest=old_digest,
         install_info={'_artifact_storage': 'tenant_binary_storage_v1'},
+        enabled=True,
+        permission_grants={'workspace_operations': [], 'capabilities': ['models.invoke']},
+        permission_snapshot={'workspace_operations': [], 'capabilities': ['models.invoke']},
     )
     execute_async = AsyncMock(
         side_effect=[
@@ -719,7 +764,7 @@ async def test_installation_update_accepts_connection_row_result():
         plugin_author='author',
         plugin_name='plugin',
         install_source=PluginInstallSource.LOCAL,
-        install_info={},
+        install_info={'_manifest': {'spec': {'permissions': existing.permission_snapshot}}} if strict else {},
         artifact_digest=new_digest,
     )
 
@@ -728,6 +773,37 @@ async def test_installation_update_accepts_connection_row_result():
     assert binding.artifact_digest == new_digest
     assert previous_digest == old_digest
     assert previous_was_durable is True
+    updated = execute_async.await_args.args[0].compile().params
+    assert updated['enabled'] is strict
+    assert updated['permission_grants'] == existing.permission_grants
+    assert updated['permission_snapshot'] == (existing.permission_snapshot if strict else None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('permissions', [None, {'workspace_operations': [], 'capabilities': ['models.invoke']}])
+async def test_new_installation_is_persisted_disabled_without_grants(permissions):
+    execute_async = AsyncMock(side_effect=[SimpleNamespace(first=lambda: None), SimpleNamespace(rowcount=1)])
+    connector = connection_result_connector(execute_async)
+    context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+    manifest = {'spec': {} if permissions is None else {'permissions': permissions}}
+
+    binding, previous_digest, previous_was_durable = await connector._persist_installation_package(
+        context,
+        plugin_author='author',
+        plugin_name='plugin',
+        install_source=PluginInstallSource.LOCAL,
+        install_info={'_manifest': manifest},
+        artifact_digest='a' * 64,
+    )
+
+    inserted = execute_async.await_args.args[0].compile().params
+    assert inserted['enabled'] is False
+    assert inserted['permission_grants'] == {}
+    assert inserted['permission_snapshot'] is None
+    assert inserted['permission_declaration'] == permissions
+    assert binding.runtime_revision == 1
+    assert previous_digest is None
+    assert previous_was_durable is False
 
 
 @pytest.mark.asyncio

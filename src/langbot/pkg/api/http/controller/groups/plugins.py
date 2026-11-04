@@ -161,6 +161,30 @@ class PluginsRouterGroup(group.RouterGroup):
         return persisted_config if persisted_config is not None else plugin['plugin_config']
 
     async def initialize(self) -> None:
+        @self.route(
+            '/<author>/<plugin_name>/permissions',
+            methods=['GET', 'PUT'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def permissions(author: str, plugin_name: str, request_context: RequestContext):
+            from .....api.application.contracts import ApplicationAPIException
+
+            payload = {'author': author, 'plugin_name': plugin_name}
+            operation_id = 'plugin.permissions.get'
+            if quart.request.method == 'PUT':
+                body = await quart.request.get_json()
+                if not isinstance(body, dict):
+                    return self.http_status(400, 'invalid_input', 'Expected an object')
+                payload = {**body, **payload}
+                operation_id = 'plugin.permissions.update'
+            try:
+                return self.success(data=await self.ap.application_api.execute(operation_id, request_context, payload))
+            except ApplicationAPIException as exc:
+                return quart.jsonify(
+                    {'code': exc.error.code, 'msg': exc.error.message, 'data': exc.error.details}
+                ), exc.error.status_code
+
         @self.route('/_sdk/page-sdk.js', methods=['GET'], auth_type=group.AuthType.NONE)
         async def _() -> quart.Response:
             """Serve the built-in LangBot page SDK JavaScript."""

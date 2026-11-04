@@ -193,6 +193,9 @@ EXECUTION_OPERATIONS = (
         'get_langbot_version', Empty, _output('ExecutionVersionOutput', version=(str, ...)), 'plugin_or_run'
     ),
     ExecutionOperation('get_bots', Empty, _output('ExecutionBotsOutput', bots=(list[JsonValue], ...))),
+    ExecutionOperation('list_tools', Empty, _output('ExecutionToolsOutput', tools=(list[Object], ...))),
+    ExecutionOperation('list_commands', Empty, _output('ExecutionCommandsOutput', commands=(list[Object], ...))),
+    ExecutionOperation('list_plugins_manifest', Empty, _output('ExecutionPluginsOutput', plugins=(list[Object], ...))),
     ExecutionOperation(
         'get_bot_info',
         _input('ExecutionBotInput', bot_uuid=(Text, ...)),
@@ -676,7 +679,7 @@ EXECUTION_OPERATIONS = (
             operations=(list[JsonValue], ...),
             domains=(list[JsonValue], ...),
         ),
-        'run',
+        'plugin_or_run',
         False,
     ),
     ExecutionOperation(
@@ -692,7 +695,7 @@ EXECUTION_OPERATIONS = (
             result=(JsonValue | None, None),
             error=(Object | None, None),
         ),
-        'run',
+        'plugin_or_run',
         True,
     ),
 )
@@ -733,8 +736,6 @@ class ExecutionAPI:
             if context.from_handler:
                 _fail('permission_denied', 'run_id is required', 400)
             _fail('permission_denied', 'This operation requires a trusted run context', 403)
-        if context.run_id is not None and operation.scope == 'plugin':
-            _fail('permission_denied', 'A run cannot use legacy plugin-wide operations', 403)
         try:
             data = operation.input_type.model_validate(payload).model_dump(exclude_unset=True)
         except ValidationError as exc:
@@ -779,27 +780,29 @@ class ExecutionAPI:
                 if context.run_id is not None:
                     if 'query_id' in data or 'query_uuid' in data:
                         _fail('invalid_input', 'A run context supplies its own query identity')
-                    if not context.from_handler:
-                        from ...agent.runner.session_registry import get_session_registry
-                        from ...plugin.agent_run_support import _load_persistent_agent_run_session
+                    from ...agent.runner.session_registry import get_session_registry
+                    from ...plugin.agent_run_support import _load_persistent_agent_run_session
 
-                        session = await get_session_registry().get(context.run_id)
-                        if session is None and operation.scope == 'runner_admin':
-                            session = await _load_persistent_agent_run_session(
-                                context.run_id, self.ap, operation.action
-                            )
-                        if (
-                            session is None
-                            or session['authorization'].get('workspace_id') != context.binding.workspace_uuid
-                            or session.get('plugin_identity') != trusted_plugin_identity
-                        ):
-                            _fail('permission_denied', 'Run does not belong to this installation Workspace', 403)
+                    session = await get_session_registry().get(context.run_id)
+                    if session is None and operation.scope == 'runner_admin':
+                        session = await _load_persistent_agent_run_session(context.run_id, self.ap, operation.action)
+                    if (
+                        session is None
+                        or session['authorization'].get('workspace_id') != context.binding.workspace_uuid
+                        or session.get('plugin_identity') != trusted_plugin_identity
+                    ):
+                        _fail('permission_denied', 'Run does not belong to this installation Workspace', 403)
                     data['run_id'] = context.run_id
                 data['caller_plugin_identity'] = trusted_plugin_identity
-                action_handler = getattr(handler, '_raw_actions', {}).get(
-                    operation.action, handler.actions[operation.action]
-                )
-                yield operation, action_handler, data
+                from .plugin_permissions import authorize_action
+                from .plugin_audit import audit_action
+
+                async with audit_action(self.ap, context.binding, operation.action, side_effect=operation.side_effect):
+                    await authorize_action(self.ap, context.binding, operation.action, data)
+                    action_handler = getattr(handler, '_raw_actions', {}).get(
+                        operation.action, handler.actions[operation.action]
+                    )
+                    yield operation, action_handler, data
         finally:
             handler._current_action_context.reset(token)
 

@@ -45,6 +45,7 @@ def normalize_extension_preferences(value: typing.Any) -> dict[str, typing.Any]:
             'skills': [],
             'mcp_resources': [],
             'workspace_operations': [],
+            'allowed_platform_tools': [],
         }
 
     normalized = dict(value)
@@ -82,6 +83,12 @@ def normalize_extension_preferences(value: typing.Any) -> dict[str, typing.Any]:
     workspace_operations = value.get('workspace_operations', [])
     ops_are_valid = isinstance(workspace_operations, list) and all(_valid_name(op) for op in workspace_operations)
     normalized['workspace_operations'] = list(workspace_operations) if ops_are_valid else []
+    platform_tools = value.get('allowed_platform_tools', [])
+    normalized['allowed_platform_tools'] = (
+        list(platform_tools)
+        if isinstance(platform_tools, list) and all(_valid_name(name) for name in platform_tools)
+        else []
+    )
     return normalized
 
 
@@ -139,6 +146,9 @@ def validate_extension_preferences(
         _valid_name,
         'a non-empty string',
         context,
+    )
+    _validate_list_field(
+        value, 'allowed_platform_tools', 'allowed_platform_tools', _valid_name, 'a non-empty string', context
     )
     return value
 

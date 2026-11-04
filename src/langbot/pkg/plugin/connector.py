@@ -957,6 +957,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             for installation_uuid, desired in desired_by_uuid.items():
                 if self._known_desired_states.get(installation_uuid) == desired:
                     continue
+                setting = next(item for item in settings if item.installation_uuid == installation_uuid)
+                if setting.permission_declaration is None:
+                    from ..api.application.plugin_permissions import warn_compatibility
+
+                    await warn_compatibility(
+                        self.ap, execution_context.workspace_uuid, f'{setting.plugin_author}/{setting.plugin_name}'
+                    )
                 try:
                     await self._apply_desired_state(desired)
                 except PluginInstallationFailedError:
@@ -1386,7 +1393,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         for setting in settings:
             if setting.plugin_author == plugin_author and setting.plugin_name == plugin_name:
                 if require_enabled and not setting.enabled:
-                    raise ValueError(f'Plugin {plugin_author}/{plugin_name} is disabled')
+                    from ..api.application.plugin_permissions import fail
+
+                    fail('permission_denied', f'Plugin {plugin_author}/{plugin_name} is disabled')
                 return execution_context, setting
         raise ValueError(f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace')
 
@@ -1578,6 +1587,9 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 persistence_plugin.PluginSetting.runtime_revision,
                 persistence_plugin.PluginSetting.artifact_digest,
                 persistence_plugin.PluginSetting.install_info,
+                persistence_plugin.PluginSetting.enabled,
+                persistence_plugin.PluginSetting.permission_grants,
+                persistence_plugin.PluginSetting.permission_snapshot,
             )
             .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
             .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
@@ -1585,6 +1597,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
 
         async def persist(execute):
+            from ..api.application.plugin_permissions import read_declaration
+            from ..api.application.plugin_capabilities import LEGACY_CAPABILITIES
+
+            declaration = read_declaration(safe_install_info.get('_manifest', {}))
             result = await execute(statement)
             setting = result.first()
             if setting is None:
@@ -1602,7 +1618,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         runtime_revision=runtime_revision,
                         install_source=install_source.value,
                         install_info=safe_install_info,
-                        enabled=True,
+                        enabled=False,
+                        permission_declaration=declaration,
+                        permission_grants={},
+                        permission_snapshot=None,
                         priority=0,
                         config={},
                     )
@@ -1625,7 +1644,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         runtime_revision=runtime_revision,
                         install_source=install_source.value,
                         install_info=safe_install_info,
-                        enabled=True,
+                        enabled=setting.enabled if declaration is not None else False,
+                        permission_declaration=declaration,
+                        permission_grants=setting.permission_grants
+                        if setting.permission_grants is not None
+                        else {
+                            'workspace_operations': [],
+                            'capabilities': sorted(LEGACY_CAPABILITIES),
+                        },
+                        permission_snapshot=setting.permission_snapshot if declaration is not None else None,
                     )
                 )
             return (
@@ -2030,6 +2057,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         if plugin_name and plugin_name != manifest_name:
             raise ValueError('Plugin package name does not match the requested plugin')
         plugin_author, plugin_name = manifest_author, manifest_name
+        manifest, _, _ = inspect_plugin_archive_metadata(file_bytes, require_manifest=True)
+        from ..api.application.plugin_permissions import read_declaration, expand_declaration
+
+        expand_declaration(self.ap, read_declaration(manifest))
+        if read_declaration(manifest) is None:
+            from ..api.application.plugin_permissions import warn_compatibility
+
+            await warn_compatibility(self.ap, execution_context.workspace_uuid, f'{plugin_author}/{plugin_name}')
+        install_info = {**install_info, '_manifest': manifest}
         if task_context is not None:
             task_context.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
             task_context.set_current_action('preparing plugin installation')
@@ -2055,9 +2091,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     install_info=install_info,
                     artifact_digest=artifact_digest,
                 )
+                _, permission_setting = await self._setting_for_plugin(plugin_author, plugin_name)
                 desired = PluginInstallationDesiredState(
                     binding=binding,
-                    enabled=True,
+                    enabled=permission_setting.enabled,
                     execution_mode=execution_mode_for_persisted_installation(
                         artifact_digest=artifact_digest,
                         install_info=install_info,
@@ -2096,6 +2133,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         if previous_digest is not None and previous_digest != artifact_digest:
             await self._delete_artifact_if_unreferenced(execution_context, previous_digest)
+        if not desired.enabled:
+            if task_context is not None:
+                task_context.metadata['pending_permission_confirmation'] = True
+            return
         if task_context is not None:
             task_context.set_current_action('waiting for plugin initialization')
             task_context.metadata['progress_percent'] = 84
@@ -2226,21 +2267,40 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                            component of the specified kinds will be returned.
                            E.g., ['Command', 'EventListener', 'Tool'] for pipeline-related plugins.
         """
-        if not self.is_enable_plugin or not self._runtime_available():
+        if not self.is_enable_plugin:
             return []
 
-        runtime_handler = self._runtime_handler()
         plugins: list[dict[str, Any]] = []
         seen_plugin_ids: set[str] = set()
-        for binding in await self._operation_bindings():
-            with runtime_handler.installation_scope(binding):
-                scoped_plugins = await runtime_handler.list_plugins()
-            for plugin in scoped_plugins:
+        if self._runtime_available():
+            runtime_handler = self._runtime_handler()
+            for binding in await self._operation_bindings():
+                with runtime_handler.installation_scope(binding):
+                    scoped_plugins = await runtime_handler.list_plugins()
+                for plugin in scoped_plugins:
+                    metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
+                    plugin_id = f'{metadata.get("author", "")}/{metadata.get("name", "")}'
+                    if plugin_id not in seen_plugin_ids:
+                        seen_plugin_ids.add(plugin_id)
+                        plugins.append(plugin)
+
+        execution_context = await self._current_execution_context()
+        settings = await self._load_workspace_settings(execution_context)
+        for setting in settings:
+            plugin_id = f'{setting.plugin_author}/{setting.plugin_name}'
+            if (
+                plugin_id not in seen_plugin_ids
+                and not setting.enabled
+                and (setting.install_info or {}).get('_manifest')
+            ):
+                plugins.append(self._pending_plugin_info(setting))
+                seen_plugin_ids.add(plugin_id)
+            from ..api.application.plugin_permissions import permission_status
+
+            for plugin in plugins:
                 metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
-                plugin_id = f'{metadata.get("author", "")}/{metadata.get("name", "")}'
-                if plugin_id not in seen_plugin_ids:
-                    seen_plugin_ids.add(plugin_id)
-                    plugins.append(plugin)
+                if plugin_id == f'{metadata.get("author", "")}/{metadata.get("name", "")}':
+                    plugin['permission_status'] = permission_status(self.ap, setting)
 
         # Filter plugins by component kinds if specified
         if component_kinds is not None:
@@ -2262,8 +2322,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         plugin_timestamps = {}
 
         if plugins:
-            execution_context = await self._current_execution_context()
-            for setting in await self._load_workspace_settings(execution_context):
+            for setting in settings:
                 plugin_timestamps[f'{setting.plugin_author}/{setting.plugin_name}'] = setting.created_at
 
         # Sort: debug plugins first (descending), then by created_at (descending)
@@ -2344,15 +2403,72 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             return await runtime_handler.get_plugin_info(author, plugin_name)
 
     async def get_plugin_info(self, author: str, plugin_name: str) -> dict[str, Any] | None:
-        runtime_handler = self._runtime_handler()
         try:
+            _, setting = await self._setting_for_plugin(author, plugin_name)
+            if not setting.enabled:
+                info = self._pending_plugin_info(setting)
+                from ..api.application.plugin_permissions import permission_status
+
+                info['permission_status'] = permission_status(self.ap, setting)
+                return info
             binding = await self._target_binding(author, plugin_name)
         except ValueError as exc:
             if str(exc) == f'Plugin {author}/{plugin_name} is not installed in this Workspace':
                 return None
             raise
+        runtime_handler = self._runtime_handler()
         with runtime_handler.installation_scope(binding):
-            return await runtime_handler.get_plugin_info(author, plugin_name)
+            info = await runtime_handler.get_plugin_info(author, plugin_name)
+        if info is not None:
+            from ..api.application.plugin_permissions import permission_status
+
+            info['permission_status'] = permission_status(self.ap, setting)
+        return info
+
+    @staticmethod
+    def _pending_plugin_info(setting) -> dict[str, Any]:
+        manifest = (setting.install_info or {}).get('_manifest', {})
+        return {
+            'manifest': {
+                'manifest': manifest,
+                'owner': f'{setting.plugin_author}/{setting.plugin_name}',
+                'rel_path': 'manifest.yaml',
+            },
+            'enabled': False,
+            'debug': False,
+            'priority': setting.priority,
+            'plugin_config': setting.config,
+            'components': [],
+            'status': 'pending_confirmation',
+            'install_source': setting.install_source,
+            'install_info': {},
+        }
+
+    async def activate_permission_installation(self, context, setting) -> None:
+        execution = await self.require_workspace_context(context)
+        if (
+            self.runtime_profile == 'oss_dev'
+            and (setting.install_info or {}).get('_artifact_storage') != _PLUGIN_ARTIFACT_STORAGE_MARKER
+        ):
+            runtime_handler = self._runtime_handler()
+            with runtime_handler.installation_scope(self._legacy_oss_bridge_binding(execution)):
+                await runtime_handler.set_plugin_config(setting.plugin_author, setting.plugin_name, setting.config)
+            return
+        binding = self._binding_from_setting(execution, setting)
+        desired = PluginInstallationDesiredState(
+            binding=binding,
+            enabled=True,
+            execution_mode=self._execution_mode_from_setting(setting),
+        )
+        async with self._state_lock:
+            self._runtime_handler().register_installation_binding(
+                binding,
+                plugin_author=setting.plugin_author,
+                plugin_name=setting.plugin_name,
+            )
+            await self._apply_desired_state(desired)
+            self._known_desired_states[binding.installation_uuid] = desired
+        await self._refresh_runner_registry()
 
     async def set_plugin_config(self, plugin_author: str, plugin_name: str, config: dict[str, Any]) -> dict[str, Any]:
         runtime_handler = self._runtime_handler()

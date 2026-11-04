@@ -6,7 +6,7 @@ import typing
 
 from ...core import app
 from ...api.http.context import ExecutionContext
-from .descriptor import RunnerDescriptor, is_local_agent, resolve_authorized_workspace_operations
+from .descriptor import RunnerDescriptor
 from .context_builder import (
     AgentResources,
     ModelResource,
@@ -153,63 +153,21 @@ class AgentResourceBuilder:
         binding: AgentBinding,
         descriptor: RunnerDescriptor,
     ) -> list[dict[str, typing.Any]] | None:
-        """Build authorized workspace operations for this run.
-
-        Delivered as an independent 'workspace_operations' resource field (never added to tools).
-        Delivery conditions:
-        - Runner manifest declares workspace_operations permission, OR
-        - Builtin LocalAgent with user-configured operations.
-        """
-        local_agent = is_local_agent(descriptor)
-        manifest_declares = bool(descriptor.declared_workspace_operations()) if descriptor else False
-
-        if not (local_agent or manifest_declares):
-            return None
-
-        allowed_ops = resolve_authorized_workspace_operations(
-            descriptor,
-            binding.resource_policy.allowed_workspace_operations,
-        )
-        if not allowed_ops:
-            return []
-
-        # Processor identity is strictly required; do not fall back to event ID
-        if not binding.processor_id:
-            return []
-
-        workspace_service = getattr(self.ap, 'workspace_service', None)
-        if workspace_service is None:
-            return []
-
-        from ...api.application.processor_context import build_processor_request_context
+        """Deliver the selected subset of installation grants as model preferences."""
+        from ...api.application.plugin_permissions import installation_context
         from ...api.application.granted_operations import list_granted
 
-        workspace_uuid = execution_context.workspace_uuid or event.workspace_id or ''
-        processor_kind = binding.processor_type or 'agent'
-        trigger_actor = event.actor.actor_id if event.actor else None
-
-        try:
-            processor_context = await build_processor_request_context(
-                self.ap,
-                workspace_uuid=workspace_uuid,
-                processor_kind=processor_kind,
-                processor_uuid=binding.processor_id,
-                run_id=event.event_id,
-                operation_ids=allowed_ops,
-                trigger_actor=trigger_actor,
-            )
-            granted_ops = list_granted(
-                self.ap,
-                processor_context,
-                consumer='processor',
-                granted=allowed_ops,
-            )
-            return [op.as_dict() for op in granted_ops]
-        except Exception as e:
-            getattr(self.ap, 'logger', None) and self.ap.logger.warning(
-                f'Failed to resolve workspace operations for run: {e}'
-            )
+        selected = binding.resource_policy.allowed_workspace_operations or []
+        if not selected:
             return []
+        await self.ap.plugin_connector.require_workspace_context(execution_context)
+        _, setting = await self.ap.plugin_connector._setting_for_plugin(
+            descriptor.plugin_author, descriptor.plugin_name
+        )
+        installation = self.ap.plugin_connector._binding_from_setting(execution_context, setting)
+        context = await installation_context(self.ap, installation, run_id=event.event_id)
+        operations = list_granted(self.ap, context, consumer='processor', granted=selected)
+        return [operation.as_dict() for operation in operations]
 
     async def _build_models_from_binding(
         self,

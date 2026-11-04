@@ -68,11 +68,15 @@ class ApplicationAPI:
             PrincipalType.API_KEY,
             PrincipalType.SUPPORT_ADMIN,
             PrincipalType.PROCESSOR,
+            PrincipalType.PLUGIN,
         }:
             raise AuthenticationDeniedError('This principal cannot invoke Workspace management operations')
         if spec.principals is not None and context.principal.principal_type not in spec.principals:
             raise AuthenticationDeniedError('This operation requires a different principal')
-        if context.principal.principal_type == PrincipalType.PROCESSOR and context.allowed_operation_ids is None:
+        if (
+            context.principal.principal_type in {PrincipalType.PROCESSOR, PrincipalType.PLUGIN}
+            and context.allowed_operation_ids is None
+        ):
             raise PermissionDeniedError('allowed_operation_ids')
         if context.allowed_operation_ids is not None and spec.operation_id not in context.allowed_operation_ids:
             raise PermissionDeniedError(spec.operation_id)
@@ -189,11 +193,14 @@ class ApplicationAPI:
                 PrincipalType.API_KEY,
                 PrincipalType.SUPPORT_ADMIN,
                 PrincipalType.PROCESSOR,
+                PrincipalType.PLUGIN,
             }
         ):
             return
         principal_id = (
-            context.principal.api_key_uuid
+            context.principal.installation_uuid
+            if context.principal.principal_type == PrincipalType.PLUGIN
+            else context.principal.api_key_uuid
             if context.principal.principal_type == PrincipalType.API_KEY
             else context.principal.actor_account_uuid
             if context.principal.principal_type == PrincipalType.SUPPORT_ADMIN
@@ -266,6 +273,15 @@ class ApplicationAPI:
             detail = {'operation': spec.operation_id, 'version': spec.version}
             actor_name = None
             dedupe_actor = None
+            if context.principal.principal_type == PrincipalType.PLUGIN:
+                from .plugin_audit import application_audit_chain
+
+                actor_name = context.principal.installation_uuid
+                detail.update(installation_uuid=context.principal.installation_uuid, run_id=context.principal.run_id)
+                chain = application_audit_chain(context.principal.installation_uuid, spec.operation_id)
+                if chain is not None:
+                    detail['chain'] = chain
+                    dedupe_actor = f'plugin:{context.request_id}'
             if context.principal.principal_type == PrincipalType.PROCESSOR:
                 actor_name = (
                     f'{context.principal.processor_kind}:{context.principal.processor_uuid}'

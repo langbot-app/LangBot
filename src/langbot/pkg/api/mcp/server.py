@@ -81,6 +81,39 @@ class LangBotMCPServer:
         ap = self.ap
         mcp = self
 
+        @mcp.tool(description='Inspect plugin installation permissions and pending member confirmation.')
+        async def get_plugin_permissions(author: str, plugin_name: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.application_api.invoke(
+                    'plugin.permissions.get', context, {'author': author, 'plugin_name': plugin_name}
+                )
+            )
+
+        @mcp.tool(
+            description='Replace plugin grants with a subset of existing grants. API keys cannot confirm or add grants; use WebUI.'
+        )
+        async def revoke_plugin_permissions(
+            author: str,
+            plugin_name: str,
+            workspace_operations: list[str],
+            capabilities: list[str],
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await ap.application_api.invoke(
+                    'plugin.permissions.update',
+                    context,
+                    {
+                        'author': author,
+                        'plugin_name': plugin_name,
+                        'workspace_operations': workspace_operations,
+                        'capabilities': capabilities,
+                        'confirm': False,
+                    },
+                )
+            )
+
         @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
         async def get_workspace_message_language() -> str:
             context = _authorized(Permission.WORKSPACE_VIEW)
@@ -150,6 +183,7 @@ class LangBotMCPServer:
             enable_all_skills: bool,
             mcp_resource_agent_read_enabled: bool,
             workspace_operations: list[str] | None = None,
+            allowed_platform_tools: list[str] | None = None,
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
@@ -165,6 +199,7 @@ class LangBotMCPServer:
                 bound_mcp_resources,
                 mcp_resource_agent_read_enabled,
                 workspace_operations=workspace_operations,
+                allowed_platform_tools=allowed_platform_tools,
             )
             return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
 

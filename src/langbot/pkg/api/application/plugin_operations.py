@@ -89,6 +89,35 @@ class ConfigInput(PluginInput):
     config: dict[str, Any]
 
 
+class PermissionsInput(PluginInput):
+    workspace_operations: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    confirm: bool = False
+
+
+async def get_permissions(ap, context, payload):
+    from .plugin_permissions import describe_permissions
+
+    await _fence(ap, context)
+    _, setting = await ap.plugin_connector._setting_for_plugin(payload.author, payload.plugin_name)
+    return describe_permissions(ap, context, setting)
+
+
+async def update_permissions(ap, context, payload):
+    from .plugin_permissions import change_permissions
+
+    await _fence(ap, context)
+    _, setting = await ap.plugin_connector._setting_for_plugin(payload.author, payload.plugin_name)
+    return await change_permissions(
+        ap,
+        context,
+        setting,
+        workspace_operations=payload.workspace_operations,
+        capabilities=payload.capabilities,
+        confirm=payload.confirm,
+    )
+
+
 class ReadmeInput(PluginInput):
     language: str = 'en'
 
@@ -502,6 +531,8 @@ def operations() -> list[Operation]:
     return [
         Operation('plugin.list', view, list_plugins, Input, PluginsResult),
         Operation('plugin.get', view, get_plugin, PluginInput, PluginResult),
+        Operation('plugin.permissions.get', view, get_permissions, PluginInput, dict),
+        Operation('plugin.permissions.update', manage, update_permissions, PermissionsInput, dict, side_effect=True),
         Operation('plugin.debug_info', manage, debug_info, Input, DebugResult),
         Operation('plugin.config.get', view, get_config, PluginInput, ConfigResult),
         Operation('plugin.config.update', manage, update_config, ConfigInput, dict, side_effect=True),

@@ -31,7 +31,7 @@ from .host_models import (
 )
 from .config_resolver import RunnerConfigResolver
 from .resource_policy import ResourcePolicyProjector
-from .platform_tools import PRESENT_INTERACTIVE_CARD_TOOL, resolve_agent_platform_tool_names
+from .platform_tools import resolve_agent_platform_tool_names
 from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
@@ -132,11 +132,10 @@ class QueryEntryAdapter:
         pipeline_config = query.pipeline_config or {}
         runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
-        platform_tool_names = [
-            name
-            for name in resolve_agent_platform_tool_names({}, runner_events.MESSAGE_RECEIVED)
-            if name == PRESENT_INTERACTIVE_CARD_TOOL
-        ]
+        platform_tool_names = resolve_agent_platform_tool_names(
+            {'allowed_platform_tools': (query.variables or {}).get('_pipeline_allowed_platform_tools', [])},
+            runner_events.MESSAGE_RECEIVED,
+        )
 
         resource_policy = ResourcePolicyProjector.from_runner_config(
             runner_config,

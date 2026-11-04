@@ -30,7 +30,10 @@ from langbot_plugin.entities.io.context import InstallationBinding
 from langbot_plugin.entities.io.resp import ActionResponse
 from langbot_plugin.runtime.io.handler import Handler
 
+from langbot.pkg.api.application.api import ApplicationAPI
 from langbot.pkg.api.application.execution import ExecutionOperation
+from langbot.pkg.api.application.plugin_capabilities import LEGACY_CAPABILITIES
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler, _plugin_runtime_action
 
 
@@ -48,8 +51,8 @@ NON_EXECUTION_ACTIONS = frozenset(
 )
 
 
-@pytest.fixture
-def test_host():
+@pytest.fixture(params=['legacy', 'strict'])
+def test_host(request, monkeypatch):
     binding = InstallationBinding(
         instance_uuid='instance-a',
         workspace_uuid='workspace-a',
@@ -59,9 +62,23 @@ def test_host():
         artifact_digest='a' * 64,
     )
     tenant = contextvars.ContextVar('routing_test_tenant', default=None)
+    permissions = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+    setting = PluginSetting(
+        workspace_uuid=binding.workspace_uuid,
+        plugin_author='author-a',
+        plugin_name='plugin-a',
+        installation_uuid=binding.installation_uuid,
+        runtime_revision=binding.runtime_revision,
+        artifact_digest=binding.artifact_digest,
+        enabled=True,
+        permission_declaration=permissions if request.param == 'strict' else None,
+        permission_grants=permissions if request.param == 'strict' else None,
+        permission_snapshot=permissions,
+    )
 
     class Persistence:
-        execute_async = AsyncMock()
+        def __init__(self):
+            self.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=(setting,))))
 
         @contextlib.asynccontextmanager
         async def tenant_scope(self, workspace):
@@ -77,12 +94,43 @@ def test_host():
         logger=Mock(),
         workspace_service=SimpleNamespace(get_execution_binding=AsyncMock(return_value=binding)),
         instance_config=SimpleNamespace(data={}),
+        tool_mgr=SimpleNamespace(
+            get_resolved_tool_catalog=AsyncMock(
+                return_value=[
+                    {'name': 't-1', 'source': 'plugin', 'source_id': 'author-b/tool-plugin'},
+                    {'name': 'test_tool', 'source': 'plugin', 'source_id': 'author-b/tool-plugin'},
+                ]
+            )
+        ),
+        workspace_settings_service=SimpleNamespace(
+            get_configured_level=AsyncMock(return_value=2),
+            record=AsyncMock(),
+        ),
     )
+    ap.application_api = ApplicationAPI(ap)
     handler = RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), ap)
     handler.register_installation_binding(binding, plugin_author='author-a', plugin_name='plugin-a')
     handler._current_action_context.set(binding)
-    ap.plugin_connector = SimpleNamespace(handler=handler)
-    return SimpleNamespace(ap=ap, handler=handler, binding=binding, api=handler.execution_api, tenant=tenant)
+    ap.plugin_connector = SimpleNamespace(handler=handler, _runtime_handler=lambda: handler)
+    registry = SimpleNamespace(
+        get=AsyncMock(
+            side_effect=lambda run_id: {
+                'authorization': {'workspace_id': binding.workspace_uuid},
+                'plugin_identity': 'author-a/plugin-a',
+            }
+            if run_id == 'run-123'
+            else None
+        )
+    )
+    monkeypatch.setattr('langbot.pkg.agent.runner.session_registry.get_session_registry', lambda: registry)
+    return SimpleNamespace(
+        ap=ap,
+        handler=handler,
+        binding=binding,
+        setting=setting,
+        api=handler.execution_api,
+        tenant=tenant,
+    )
 
 
 def _is_union(t: typing.Any) -> bool:
@@ -192,6 +240,9 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(api.get_tool_detail('t-1'))
     await try_call(api.get_bot_info('bot-1'))
     await try_call(api.get_bots())
+    await try_call(api.list_tools())
+    await try_call(api.list_commands())
+    await try_call(api.list_plugins_manifest())
     await try_call(api.get_config_file('cfg-1'))
     await try_call(api.get_knowledge_file_stream('storage/path'))
     await try_call(api.get_langbot_version())
@@ -302,8 +353,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 72
-    assert len(test_host.api.catalog()) == 72
+    assert len(operations) == 75
+    assert len(test_host.api.catalog()) == 75
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())
@@ -334,7 +385,7 @@ async def test_all_operations_route_through_execution_api(test_host):
     """Drive all operations through handler with real SDK payloads and verify raw dispatch."""
     sdk_payloads = await _capture_sdk_payloads()
     operations = test_host.api.operations()
-    assert len(sdk_payloads) == 72, f'Expected 72 SDK payloads, got {len(sdk_payloads)}'
+    assert len(sdk_payloads) == 75, f'Expected 75 SDK payloads, got {len(sdk_payloads)}'
 
     for op in operations:
         raw_called = False
@@ -522,6 +573,63 @@ async def test_sdk_0_7_19_call_tool_parameters_and_session_compatibility(test_ho
     )
     assert resp.code == 0
     assert resp.data == {'result': 'tool-result'}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('denial', ['disabled', 'ungranted', 'undeclared'])
+async def test_denied_model_invocation_never_reaches_raw_action(test_host, denial):
+    permissions = {'workspace_operations': [], 'capabilities': ['models.invoke']}
+    test_host.setting.permission_declaration = permissions
+    test_host.setting.permission_grants = permissions
+    if denial == 'disabled':
+        test_host.setting.enabled = False
+    elif denial == 'ungranted':
+        test_host.setting.permission_grants = {'workspace_operations': [], 'capabilities': []}
+    else:
+        test_host.setting.permission_declaration = {'workspace_operations': [], 'capabilities': []}
+    raw = AsyncMock(return_value=ActionResponse.success({}))
+    test_host.handler._raw_actions['invoke_llm'] = raw
+
+    response = await test_host.handler.actions['invoke_llm'](
+        {
+            'llm_model_uuid': 'model-uuid-1',
+            'messages': [],
+            'caller_plugin_identity': 'author-a/plugin-a',
+        }
+    )
+
+    assert response.code != 0
+    assert response.data['code'] == 'permission_denied'
+    raw.assert_not_awaited()
+    assert test_host.tenant.get() is None
+    audit = test_host.ap.workspace_settings_service.record.await_args.kwargs
+    assert audit['outcome'] == 'denied'
+    assert audit['status_code'] == 403
+
+
+@pytest.mark.asyncio
+async def test_plugin_tool_grant_does_not_authorize_mcp_tool(test_host):
+    permissions = {'workspace_operations': [], 'capabilities': ['plugin_tools']}
+    test_host.setting.permission_declaration = permissions
+    test_host.setting.permission_grants = permissions
+    test_host.ap.tool_mgr.get_resolved_tool_catalog.return_value = [
+        {'name': 'test_tool', 'source': 'mcp', 'source_id': 'mcp-server-a'},
+    ]
+    raw = AsyncMock(return_value=ActionResponse.success({'result': 'unexpected'}))
+    test_host.handler._raw_actions['call_tool'] = raw
+
+    response = await test_host.handler.actions['call_tool'](
+        {
+            'tool_name': 'test_tool',
+            'parameters': {},
+            'caller_plugin_identity': 'author-a/plugin-a',
+        }
+    )
+
+    assert response.code != 0
+    assert response.data['code'] == 'permission_denied'
+    assert response.data['denied_capabilities'] == ['mcp']
+    raw.assert_not_awaited()
 
 
 @pytest.mark.asyncio

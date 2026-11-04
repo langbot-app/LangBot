@@ -51,9 +51,6 @@ class RunnerDescriptor(pydantic.BaseModel):
     permissions: RunnerPermissions = pydantic.Field(default_factory=RunnerPermissions)
     """Requested LangBot resource permissions."""
 
-    manifest_workspace_operations: list[str] = pydantic.Field(default_factory=list, exclude=True)
-    """Workspace operations declared in a manifest when the installed SDK lacks the field."""
-
     raw_manifest: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
     """Original manifest for reference"""
 
@@ -85,36 +82,6 @@ class RunnerDescriptor(pydantic.BaseModel):
         """Check if runner supports run steering/follow-up input."""
         return bool(getattr(self.capabilities, 'steering', False))
 
-    @pydantic.model_validator(mode='before')
-    @classmethod
-    def _split_unsupported_workspace_operations(cls, data: typing.Any) -> typing.Any:
-        # SDK releases without RunnerPermissions.workspace_operations reject the
-        # field; keep the declaration aside so permissions stay a typed model.
-        if not isinstance(data, dict) or 'workspace_operations' in RunnerPermissions.model_fields:
-            return data
-        permissions = data.get('permissions')
-        if not isinstance(permissions, dict) or 'workspace_operations' not in permissions:
-            return data
-        permissions = dict(permissions)
-        declared = permissions.pop('workspace_operations') or []
-        return {**data, 'permissions': permissions, 'manifest_workspace_operations': declared}
-
-    def declared_workspace_operations(self) -> list[str]:
-        """Return list of workspace operations declared in runner manifest permissions.
-
-        Uses getattr for compatibility with SDK 0.7.19 where workspace_operations does not exist.
-        In SDK 0.7.19 environment, this returns empty list so the feature is disabled safely.
-        """
-        declared = getattr(getattr(self, 'permissions', None), 'workspace_operations', None)
-        if declared is None:
-            declared = getattr(self, 'manifest_workspace_operations', None)
-        return list(declared or [])
-
-    @property
-    def workspace_operations(self) -> list[str]:
-        """Declared workspace operations from manifest."""
-        return self.declared_workspace_operations()
-
 
 def is_local_agent(descriptor: RunnerDescriptor | None) -> bool:
     """Check if descriptor represents LocalAgent."""
@@ -127,21 +94,3 @@ def is_local_agent(descriptor: RunnerDescriptor | None) -> bool:
         getattr(descriptor, 'plugin_author', None) == 'langbot-team'
         and getattr(descriptor, 'plugin_name', None) == 'LocalAgent'
     )
-
-
-def resolve_authorized_workspace_operations(
-    descriptor: RunnerDescriptor | None,
-    configured_operations: typing.Iterable[str] | None,
-) -> list[str]:
-    """Calculate effective authorized workspace operations at runtime.
-
-    LocalAgent is not constrained by manifest; it receives all operations
-    configured by the user.
-    Plugin runners are restricted to the intersection of configured operations and
-    operations declared in the runner's manifest permissions.
-    """
-    configured = [str(op) for op in (configured_operations or [])]
-    if is_local_agent(descriptor):
-        return configured
-    declared = set(descriptor.declared_workspace_operations() if descriptor is not None else [])
-    return [op for op in configured if op in declared]

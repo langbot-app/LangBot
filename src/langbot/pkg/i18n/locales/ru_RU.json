@@ -1,4 +1,5 @@
 {
+  "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Плагин {plugin} не объявляет разрешения. Проверьте доступ в режиме совместимости в настройках плагина.",
   "Request failed.": "Запрос не выполнен.",
   "Too many requests. Please try again later.": "Слишком много запросов. Повторите позже.",
   "Your message contains inappropriate content. Please revise it.": "Сообщение содержит недопустимый контент. Измените его.",
