@@ -326,8 +326,8 @@ class TestVectorDBManagerInitialization:
 class TestVectorDBManagerProxies:
     """Tests for VectorDBManager proxy methods."""
 
-    def test_get_supported_search_types_no_vector_db(self):
-        """get_supported_search_types returns vector when no vector_db."""
+    def test_get_supported_search_types_initializes_selected_backend(self):
+        """Capability discovery uses the selected backend even before its first query."""
         mock_app = MagicMock()
         mock_app.instance_config = MagicMock()
         mock_app.instance_config.data = MagicMock()
@@ -340,12 +340,21 @@ class TestVectorDBManagerProxies:
 
         with isolated_sys_modules(mocks):
             from langbot.pkg.vector.mgr import VectorDBManager
+            from langbot.pkg.vector.vdb import SearchType
+
+            backend_class = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+            backend_class.return_value.supported_search_types.return_value = [
+                SearchType.VECTOR,
+                SearchType.FULL_TEXT,
+                SearchType.HYBRID,
+            ]
 
             mgr = VectorDBManager(mock_app)
             mgr.vector_db = None  # Explicitly None
 
             result = mgr.get_supported_search_types()
-            assert result == ['vector']
+            assert result == ['vector', 'full_text', 'hybrid']
+            backend_class.assert_called_once_with(mock_app)
 
     def test_get_supported_search_types_with_vector_db(self):
         """get_supported_search_types delegates to vector_db."""
@@ -390,3 +399,90 @@ class TestVectorDBManagerProxies:
 
             backend.close.assert_awaited_once_with()
             assert mgr.vector_db is None
+
+
+class TestLazyVectorBackend:
+    _create_mock_app = TestVectorDBManagerInitialization._create_mock_app
+    _make_vector_import_mocks = TestVectorDBManagerInitialization._make_vector_import_mocks
+
+    @pytest.mark.asyncio
+    async def test_concurrent_first_access_shares_backend(self):
+        import asyncio
+
+        app = self._create_mock_app({'use': 'chroma'})
+        mocks = self._make_vector_import_mocks()
+        factory = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(app)
+            assert manager.vector_db is None
+            factory.assert_not_called()
+            await asyncio.gather(*(manager.initialize() for _ in range(16)))
+            factory.assert_called_once_with(app)
+            assert manager.vector_db is factory.return_value
+
+    @pytest.mark.asyncio
+    async def test_failed_creation_can_retry(self):
+        app = self._create_mock_app({'use': 'chroma'})
+        mocks = self._make_vector_import_mocks()
+        factory = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+        backend = MagicMock()
+        factory.side_effect = [RuntimeError('unavailable'), backend]
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(app)
+            with pytest.raises(RuntimeError, match='unavailable'):
+                await manager.initialize()
+            assert manager.vector_db is None
+            await manager.initialize()
+            assert manager.vector_db is backend
+            assert factory.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_unused_shutdown_does_not_create_or_reopen_backend(self):
+        app = self._create_mock_app({'use': 'chroma'})
+        mocks = self._make_vector_import_mocks()
+        factory = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(app)
+            await manager.shutdown()
+            await manager.shutdown()
+            with pytest.raises(RuntimeError, match='closed'):
+                await manager.initialize()
+            factory.assert_not_called()
+
+    def test_other_backend_does_not_import_pgvector(self):
+        import sys
+
+        with isolated_sys_modules({'langbot.pkg.core.app': MagicMock()}):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(self._create_mock_app({'use': 'chroma'}))
+            manager.vector_db = object()
+            module_name = 'langbot.pkg.vector.vdbs.pgvector_db'
+            original = sys.modules.pop(module_name, None)
+            try:
+                assert manager._pgvector_database() is None
+                assert module_name not in sys.modules
+            finally:
+                if original is not None:
+                    sys.modules[module_name] = original
+
+    @pytest.mark.asyncio
+    async def test_invalid_context_does_not_initialize_backend(self):
+        from langbot.pkg.api.http.authz import WorkspaceRequiredError
+
+        app = self._create_mock_app({'use': 'chroma'})
+        mocks = self._make_vector_import_mocks()
+        factory = mocks['langbot.pkg.vector.vdbs.chroma'].ChromaVectorDatabase
+        with isolated_sys_modules(mocks):
+            from langbot.pkg.vector.mgr import VectorDBManager
+
+            manager = VectorDBManager(app)
+            with pytest.raises(WorkspaceRequiredError):
+                await manager.search(None, 'kb', [1.0], 5)
+            factory.assert_not_called()
