@@ -2244,7 +2244,7 @@ requires-dist = [
     { name = "gewechat-client", specifier = ">=0.1.5" },
     { name = "html2text", specifier = ">=2024.2.26" },
     { name = "httpx", extras = ["socks"], specifier = ">=0.28.1" },
-    { name = "langbot-plugin", specifier = "==0.7.20" },
+    { name = "langbot-plugin", specifier = "==0.7.21" },
     { name = "langchain", specifier = ">=1.3.9" },
     { name = "langchain-core", specifier = ">=1.3.3" },
     { name = "langchain-text-splitters", specifier = ">=1.1.2" },
@@ -2315,7 +2315,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.20"
+version = "0.7.21"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiofiles" },
@@ -2336,9 +2336,9 @@ dependencies = [
     { name = "watchdog" },
     { name = "websockets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/b9/e93ee14ccb584b2351652e6b37a80d255ca99efcdd7761edf54223505f6b/langbot_plugin-0.7.20.tar.gz", hash = "sha256:10a8ad7dd15d040680962148357d49294faad0ae677f5b8989fedb81b4d936c0", size = 758993, upload-time = "2026-11-03T04:59:16.695Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/00/b3ed68d2baedb55faafde82b1fd7425faeaf242056469950417ce1efe8f7/langbot_plugin-0.7.21.tar.gz", hash = "sha256:f412d8b63843bab7a4cb0b6dac2d6d36360ecec91338d3e310481f49eb905634", size = 762782, upload-time = "2026-11-04T04:18:17.680Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/66/2f/7bfd9692fd142f919a7ee6d13957935155e6c9d8a6b4ec24a2ce3b6a99e0/langbot_plugin-0.7.20-py3-none-any.whl", hash = "sha256:de33471621e2bde6074ffae6174f14a9f34c6d5625a2aa1adbe92ec6d62ed2bc", size = 479090, upload-time = "2026-11-03T04:59:15.256Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/2b/eb8c13ddb0b8e6acdec3b29f2b96145e28057a80950e303129d1cb910b05/langbot_plugin-0.7.21-py3-none-any.whl", hash = "sha256:bd4044e4f74a7b823c47643cae236672c5cd40479fe86807fc458c8f7d9ad212", size = 480954, upload-time = "2026-11-04T04:18:16.175Z" },
 ]
 
 [[package]]
