@@ -102,10 +102,6 @@ spec:
       description: { en_US: "Return adapter webhook mode", zh_Hans: "返回适配器 Webhook 模式" }
     - action: auth_test
       description: { en_US: "Call Slack auth.test with the configured bot token", zh_Hans: "使用配置的机器人令牌调用 Slack auth.test" }
-    - action: post_message
-      description: { en_US: "Post text to a channel or thread and return its timestamp", zh_Hans: "向频道或线程发送文本并返回消息时间戳" }
-    - action: get_message_context
-      description: { en_US: "Look up cached message and thread context by channel and timestamp", zh_Hans: "按频道和消息时间戳查询缓存的消息及线程上下文" }
 
 execution:
   python:

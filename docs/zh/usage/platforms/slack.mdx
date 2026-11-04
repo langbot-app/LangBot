@@ -107,12 +107,13 @@ Webhook 模式可跳过本步。长连接模式中，点击助手的 **打开应
 
 字段定义参考 [Slack App Manifest](https://docs.slack.dev/reference/app-manifest/)。
 
-## 插件 thread API
+## 使用标准消息 API 操作 thread
 
-通过现有插件接口调用：`call_platform_api(bot_uuid, 'call_platform_api', {'action': action, 'params': params})`。
+使用 `send_message`、`reply_message` 和标准消息组件：
 
-- `post_message`：必填 `channel`、`text`，可选 `thread_ts`。返回 `ts`、`channel`、`thread_ts`（根消息为 `null`）。Slack API 错误会传给调用方。
-- `get_message_context`：必填 `channel`、`message_id`（事件中的 `Source.id`，即 Slack `ts`）。返回 `ts`、`thread_ts`、`channel`、`user`、`parent_user_id`，缺失字段为 `null`。仅查询适配器有限容量的内存缓存，不请求 Slack 历史记录；未命中抛出 `KeyError('message_not_found')`，重启适配器会清空缓存。
+- `send_message` 返回 `MessageResult`，其 `message_id` 为第一条发出消息的 Slack `ts`；文本后附文件时也取第一条消息。保存此 ID 即可在该消息下创建 thread。
+- 出站消息链加入 `Quote(id=message_id, origin=MessageChain([]))`，文本和文件都会发到该 thread。取第一个 ID 非空的 Quote，优先于 `reply_message` 的来源 thread 或 `quote_origin` 选择，且不发送其 origin 内容。没有显式 Quote ID 时，原有发送和回复行为不变。
+- 入站频道 thread 回复带有 `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))`，当前消息 ID 仍在 `Source.id` 中。thread 根消息和非 thread 消息不带此 Quote，插件可直接从消息链读取父消息 ID，无需另查上下文。
 
 ## 手动配置（Webhook）
 

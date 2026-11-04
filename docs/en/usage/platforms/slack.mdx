@@ -107,12 +107,13 @@ Interactions are acknowledged first and processed asynchronously. Synchronous fi
 
 See the [Slack App Manifest reference](https://docs.slack.dev/reference/app-manifest/) for field definitions.
 
-## Plugin thread APIs
+## Threads with standard message APIs
 
-Use the existing plugin call `call_platform_api(bot_uuid, 'call_platform_api', {'action': action, 'params': params})`:
+Use `send_message` and `reply_message` with standard message components:
 
-- `post_message`: required `channel` and `text`, optional `thread_ts`. Returns `ts`, `channel`, and `thread_ts` (`null` for a root message). Slack API errors propagate to the caller.
-- `get_message_context`: required `channel` and `message_id` (the event's `Source.id` / Slack `ts`). Returns `ts`, `thread_ts`, `channel`, `user`, and `parent_user_id`; absent fields are `null`. Only received messages in the adapter's bounded in-memory cache are available. A cache miss raises `KeyError('message_not_found')`; this does not fetch Slack history. Restarting the adapter clears the cache.
+- `send_message` returns a `MessageResult` whose `message_id` is the first sent message's Slack `ts`, including when text is followed by a file. Save this ID to start a thread beneath that message.
+- Include `Quote(id=message_id, origin=MessageChain([]))` in the outgoing chain to send text and files into that thread. The first Quote with a nonempty ID takes precedence, including over `reply_message`'s source thread or `quote_origin` selection. Its origin content is not sent. Without an explicit Quote ID, existing send/reply behavior is unchanged.
+- Incoming channel thread replies include `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))`. The current message's ID remains in `Source.id`. Root messages and messages outside threads have no thread Quote. Plugins can read the parent ID directly from the chain without a separate context lookup.
 
 ## Manual setup (Webhook)
 

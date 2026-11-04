@@ -29,9 +29,7 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             elif isinstance(component, platform_message.File):
                 parts.append(component.url or component.name or component.id or '[File]')
             elif isinstance(component, platform_message.Quote):
-                if component.id is not None:
-                    parts.append(f'[Quote {component.id}]')
-                if component.origin:
+                if not component.id and component.origin:
                     parts.append(await SlackMessageConverter.yiri2target(component.origin))
             elif isinstance(component, platform_message.Forward):
                 for node in component.node_list:
@@ -56,6 +54,17 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         raw = event.get('event', {})
         if event.type == 'channel' and (raw.get('type') == 'app_mention' or raw.get('mentioned')):
             components.append(platform_message.At(target='SlackBot'))
+
+        thread_ts = raw.get('thread_ts')
+        if event.type == 'channel' and thread_ts and thread_ts != raw.get('ts'):
+            components.append(
+                platform_message.Quote(
+                    id=thread_ts,
+                    group_id=event.channel_id,
+                    target_id=event.channel_id,
+                    origin=platform_message.MessageChain([]),
+                )
+            )
 
         for file in event.get('event', {}).get('files', []):
             url = file.get('url_private_download') or file.get('url_private')

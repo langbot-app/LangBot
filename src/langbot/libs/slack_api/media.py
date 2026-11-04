@@ -99,9 +99,22 @@ async def send_chain(
 
     if target_type not in {'person', 'channel'}:
         raise ValueError(f'Unsupported Slack target type: {target_type}')
+    thread_ts = next(
+        (str(component.id) for component in chain if isinstance(component, pm.Quote) and component.id), thread_ts
+    )
     responses = []
     pending = []
     channel = None
+
+    async def resolve_channel():
+        nonlocal channel
+        if channel is None:
+            if target_type == 'person' and not target_id.startswith('D'):
+                opened = await bot.client.conversations_open(users=[target_id])
+                channel = opened['channel']['id']
+            else:
+                channel = target_id
+        return channel
 
     async def flush():
         if not pending:
@@ -110,7 +123,9 @@ async def send_chain(
         pending.clear()
         if text:
             if thread_ts:
-                response = await bot.client.chat_postMessage(channel=target_id, text=text, thread_ts=thread_ts)
+                response = await bot.client.chat_postMessage(
+                    channel=await resolve_channel(), text=text, thread_ts=thread_ts
+                )
                 responses.append(response.data if hasattr(response, 'data') else response)
             else:
                 method = bot.send_message_to_one if target_type == 'person' else bot.send_message_to_channel
@@ -120,14 +135,8 @@ async def send_chain(
         if isinstance(component, MEDIA_TYPES):
             data, filename = await attachment_bytes(component, bot.bot_token)
             await flush()
-            if channel is None:
-                if target_type == 'person' and not target_id.startswith('D'):
-                    opened = await bot.client.conversations_open(users=[target_id])
-                    channel = opened['channel']['id']
-                else:
-                    channel = target_id
             response = await bot.client.files_upload_v2(
-                channel=channel,
+                channel=await resolve_channel(),
                 file=data,
                 filename=filename,
                 title=filename,

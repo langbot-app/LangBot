@@ -125,67 +125,98 @@ async def test_channel_dispatch_preserves_actual_bot_mention(channel_type, kinds
         event = listener.await_args.args[0]
         assert any(isinstance(part, platform_message.At) for part in event.message_chain) is mentioned
         assert any(isinstance(part, platform_message.Plain) and part.text == text for part in event.message_chain)
+        quotes = [part for part in event.message_chain if isinstance(part, platform_message.Quote)]
+        assert [quote.id for quote in quotes] == (['1710003600.000001'] if is_thread else [])
     assert received.await_args.args[0].message_id == '1710003600.000100'
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('thread_ts', [None, '1710003600.000001'])
-async def test_platform_post_message(thread_ts):
+@pytest.mark.parametrize('with_file', [False, True])
+async def test_send_message_returns_first_message_id(with_file):
     adapter = make_adapter()
-    adapter.bot.client.chat_postMessage = AsyncMock(
-        return_value={'ts': '1710003600.000100', 'channel': 'C-1', 'message': {'thread_ts': thread_ts}}
-    )
-    params = {'channel': 'C-1', 'text': 'reply'}
+    adapter.bot.client.files_upload_v2 = AsyncMock(return_value={'ok': True, 'files': [{'id': 'F-1'}]})
+    components = [platform_message.Plain(text='root')]
+    if with_file:
+        components.append(platform_message.File(name='test.txt', base64='dGVzdA=='))
+    result = await adapter.send_message('group', 'C-1', platform_message.MessageChain(components))
+    assert result.message_id == '1.1'
+    assert len(result.raw['responses']) == (2 if with_file else 1)
+    assert adapter.bot.sent == [('channel', 'C-1', 'root')]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('target_type,target_id,channel', [('group', 'C-1', 'C-1'), ('person', 'U-1', 'D-1')])
+@pytest.mark.parametrize('with_file', [False, True])
+async def test_send_message_quote_routes_text_and_files(target_type, target_id, channel, with_file):
+    adapter = make_adapter()
+    adapter.bot.client.chat_postMessage = AsyncMock(return_value={'ok': True, 'ts': '4.4'})
+    adapter.bot.client.files_upload_v2 = AsyncMock(return_value={'ok': True, 'files': [{'id': 'F-1'}]})
+    adapter.bot.client.conversations_open = AsyncMock(return_value={'ok': True, 'channel': {'id': 'D-1'}})
+    components = [
+        platform_message.Plain(text='reply'),
+        platform_message.Quote(
+            id='2.2', origin=platform_message.MessageChain([platform_message.Plain(text='quoted context')])
+        ),
+        platform_message.Quote(id='3.3', origin=platform_message.MessageChain([])),
+    ]
+    if with_file:
+        components.append(platform_message.File(name='test.txt', base64='dGVzdA=='))
+    result = await adapter.send_message(target_type, target_id, platform_message.MessageChain(components))
+    assert result.message_id == '4.4'
+    adapter.bot.client.chat_postMessage.assert_awaited_once_with(channel=channel, text='reply', thread_ts='2.2')
+    if with_file:
+        adapter.bot.client.files_upload_v2.assert_awaited_once_with(
+            channel=channel, file=b'test', filename='test.txt', title='test.txt', thread_ts='2.2'
+        )
+    else:
+        adapter.bot.client.files_upload_v2.assert_not_awaited()
+    if target_type == 'person':
+        adapter.bot.client.conversations_open.assert_awaited_once_with(users=['U-1'])
+    else:
+        adapter.bot.client.conversations_open.assert_not_awaited()
+    assert adapter.bot.sent == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('source_thread,quote_origin', [(None, False), (None, True), ('2.2', False)])
+@pytest.mark.parametrize('explicit_quote', [False, True])
+async def test_reply_message_quote_takes_priority(source_thread, quote_origin, explicit_quote):
+    adapter = make_adapter()
+    adapter.bot.client.chat_postMessage = AsyncMock(return_value={'ok': True, 'ts': '4.4'})
+    native = slack_event('channel')
+    if source_thread:
+        native['event']['thread_ts'] = source_thread
+    source = await adapter.event_converter.target2yiri(native)
+    components = [platform_message.Plain(text='reply')]
+    if explicit_quote:
+        components.append(platform_message.Quote(id='3.3', origin=platform_message.MessageChain([])))
+    result = await adapter.reply_message(source, platform_message.MessageChain(components), quote_origin)
+    expected_thread = '3.3' if explicit_quote else source_thread or (source.message_id if quote_origin else None)
+    if expected_thread:
+        adapter.bot.client.chat_postMessage.assert_awaited_once_with(
+            channel='C-1', text='reply', thread_ts=expected_thread
+        )
+        assert result.message_id == '4.4'
+    else:
+        adapter.bot.client.chat_postMessage.assert_not_awaited()
+        assert adapter.bot.sent == [('channel', 'C-1', 'reply')]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('thread_ts', [None, '1710003600.000100', '1710003600.000001'])
+async def test_inbound_thread_quote(thread_ts):
+    native = slack_event('channel')
     if thread_ts:
-        params['thread_ts'] = thread_ts
-    result = await adapter.call_platform_api('post_message', params)
-    adapter.bot.client.chat_postMessage.assert_awaited_once_with(**params)
-    assert result == {'ts': '1710003600.000100', 'channel': 'C-1', 'thread_ts': thread_ts}
-
-
-@pytest.mark.asyncio
-async def test_platform_message_context_from_native_event():
-    adapter = make_adapter()
-    received = AsyncMock()
-    adapter.register_listener(platform_events.MessageReceivedEvent, received)
-    raw = {
-        'type': 'message',
-        'channel_type': 'channel',
-        'channel': 'C-1',
-        'user': 'U-1',
-        'ts': '1710003600.000100',
-        'thread_ts': '1710003600.000001',
-        'parent_user_id': 'B-1',
-        'text': 'reply',
-    }
-    await adapter._handle_native_event(SlackEvent({'event': raw, 'token': 'private-token'}))
-    received.assert_awaited_once()
-    event = received.await_args.args[0]
-    source = next(part for part in event.message_chain if isinstance(part, platform_message.Source))
-    result = await adapter.call_platform_api('get_message_context', {'channel': 'C-1', 'message_id': source.id})
-    assert result == {field: raw[field] for field in ('ts', 'thread_ts', 'channel', 'user', 'parent_user_id')}
-    assert 'token' not in event.source_platform_object
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize('channel,message_id', [('C-1', 'missing'), ('other-channel', '1710003600.000100')])
-async def test_platform_message_context_not_found(channel, message_id):
-    adapter = make_adapter()
-    await adapter._handle_native_event(slack_event('channel'))
-    with pytest.raises(KeyError, match='message_not_found'):
-        await adapter.call_platform_api('get_message_context', {'channel': channel, 'message_id': message_id})
-
-
-@pytest.mark.asyncio
-async def test_platform_post_message_propagates_slack_error():
-    from slack_sdk.errors import SlackApiError
-
-    adapter = make_adapter()
-    error = SlackApiError('channel_not_found', {'ok': False, 'error': 'channel_not_found'})
-    adapter.bot.client.chat_postMessage = AsyncMock(side_effect=error)
-    with pytest.raises(SlackApiError) as raised:
-        await adapter.call_platform_api('post_message', {'channel': 'C-1', 'text': 'reply'})
-    assert raised.value is error
+        native['event']['thread_ts'] = thread_ts
+    event = await SlackEventConverter().target2yiri(native)
+    quotes = [part for part in event.message_chain if isinstance(part, platform_message.Quote)]
+    if thread_ts and thread_ts != native.message_id:
+        assert len(quotes) == 1
+        assert quotes[0].id == thread_ts
+        assert quotes[0].group_id == quotes[0].target_id == 'C-1'
+        assert list(quotes[0].origin) == []
+    else:
+        assert quotes == []
 
 
 def slack_event(channel_type: str = 'im', **overrides) -> SlackEvent:
@@ -246,6 +277,7 @@ def test_slack_platform_api_map_matches_manifest():
     manifest_actions = {item['action'] for item in manifest()['spec']['platform_specific_apis']}
 
     assert set(PLATFORM_API_MAP) == manifest_actions
+    assert manifest_actions == {'get_mode', 'auth_test'}
 
 
 @pytest.mark.asyncio

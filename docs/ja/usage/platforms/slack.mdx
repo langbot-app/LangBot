@@ -107,12 +107,13 @@ Slack でアプリの **Messages** タブを開き、DM を送信します。ボ
 
 各フィールドは [Slack App Manifest リファレンス](https://docs.slack.dev/reference/app-manifest/)を参照してください。
 
-## プラグインのスレッド API
+## 標準メッセージ API でスレッドを操作する
 
-既存のプラグイン API `call_platform_api(bot_uuid, 'call_platform_api', {'action': action, 'params': params})` を使用します。
+`send_message`、`reply_message` と標準メッセージコンポーネントを使用します。
 
-- `post_message`: `channel` と `text` は必須、`thread_ts` は任意です。`ts`、`channel`、`thread_ts`（親メッセージでは `null`）を返します。Slack API エラーは呼び出し元に伝播します。
-- `get_message_context`: `channel` と `message_id`（イベントの `Source.id`、つまり Slack の `ts`）は必須です。`ts`、`thread_ts`、`channel`、`user`、`parent_user_id` を返し、存在しないフィールドは `null` になります。容量制限のあるメモリキャッシュのみを検索し、Slack の履歴は取得しません。見つからない場合は `KeyError('message_not_found')` が発生し、アダプターの再起動でキャッシュは消去されます。
+- `send_message` が返す `MessageResult.message_id` は、最初に送信したメッセージの Slack `ts` です。テキストの後にファイルを送信する場合も同様です。この ID を保存して、そのメッセージの下にスレッドを作成できます。
+- 送信チェーンに `Quote(id=message_id, origin=MessageChain([]))` を含めると、テキストとファイルをそのスレッドへ送信します。空でない ID を持つ最初の Quote が優先され、`reply_message` の元のスレッドや `quote_origin` の指定よりも優先します。origin の内容は送信しません。明示的な Quote ID がなければ、既存の送信・返信動作を維持します。
+- 受信したチャンネルのスレッド返信には `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))` が含まれます。現在のメッセージ ID は `Source.id` に残ります。スレッドの親メッセージとスレッド外のメッセージにはこの Quote は付きません。プラグインは別のコンテキスト照会なしで親メッセージ ID を取得できます。
 
 ## 手動設定（Webhook）
 
