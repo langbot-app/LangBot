@@ -199,8 +199,7 @@ async def test_repository_rejects_stale_workspace_placement(tmp_path):
 @pytest.mark.asyncio
 async def test_repository_imports_only_from_the_fenced_workspace(tmp_path):
     repository = _repository(tmp_path)
-    namespace = repository._namespace(_CONTEXT)
-    source = tmp_path / 'box' / 'default' / 'tenants' / namespace / 'draft'
+    source = type(tmp_path)(repository.import_staging_root(_CONTEXT)) / 'draft'
     source.mkdir(parents=True)
     (source / 'SKILL.md').write_text(
         '---\nname: draft\ndescription: Draft skill\n---\n\nFollow the guide.',

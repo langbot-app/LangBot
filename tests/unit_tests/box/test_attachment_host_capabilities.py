@@ -12,7 +12,7 @@ async def test_host_without_openat_uses_sandbox_attachment_channel(monkeypatch, 
     monkeypatch.setattr('os.supports_dir_fd', set())
     service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
     service._available = True
-    service._tenant_workspace = Mock(return_value=str(tmp_path))
+    service._box_workspace = Mock(return_value=str(tmp_path))
     service._read_outbox_host = Mock(side_effect=AssertionError('POSIX host reader must not run'))
     service._read_outbox_via_exec = AsyncMock(return_value=[])
     service._clear_outbox = AsyncMock()
@@ -45,7 +45,7 @@ async def test_outbox_exec_preserves_workspace_and_full_attachment(monkeypatch, 
     )
     service = BoxService(make_app(Mock(), [str(tmp_path)]), client=client, output_limit_chars=100)
     service._available = True
-    service._tenant_workspace = Mock(return_value=str(tmp_path))
+    service._box_workspace = Mock(return_value=str(tmp_path))
     service._clear_outbox = AsyncMock()
     query = make_query()
     attachments = await service.collect_outbound_attachments(query)

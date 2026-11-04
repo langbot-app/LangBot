@@ -51,14 +51,6 @@ class SkillRepository:
                 configured = os.path.join(self._host_root(), configured)
         return os.path.realpath(os.path.abspath(os.path.expanduser(configured)))
 
-    def _default_workspace(self) -> str:
-        configured = str(self._local_config.get('default_workspace') or '').strip()
-        if not configured:
-            configured = os.path.join(self._host_root(), 'default')
-        elif not os.path.isabs(configured):
-            configured = os.path.join(self._host_root(), configured)
-        return os.path.realpath(os.path.abspath(os.path.expanduser(configured)))
-
     @staticmethod
     def _execution_context(context: TenantContext) -> ExecutionContext:
         workspace_uuid = require_workspace_uuid(context)
@@ -100,8 +92,11 @@ class SkillRepository:
             raise ValueError('Skill execution context belongs to a stale Workspace placement')
         return execution_context
 
-    def _workspace_root(self, namespace: str) -> str:
-        return os.path.join(self._default_workspace(), 'tenants', namespace)
+    def _import_root(self, namespace: str) -> str:
+        return os.path.join(self._store.root, '.imports', namespace)
+
+    def import_staging_root(self, context: TenantContext) -> str:
+        return self._import_root(self._namespace(context))
 
     def storage_root(self, context: TenantContext) -> str:
         return self._store.scoped(self._namespace(context)).root
@@ -150,7 +145,7 @@ class SkillRepository:
             'import_skill_directory',
             path,
             skill,
-            source_root=self._workspace_root(namespace),
+            source_root=self._import_root(namespace),
             base_revision=base_revision,
         )
 
@@ -179,7 +174,7 @@ class SkillRepository:
             context,
             'scan_import_directory',
             path,
-            source_root=self._workspace_root(namespace),
+            source_root=self._import_root(namespace),
         )
 
     async def list_skill_files(

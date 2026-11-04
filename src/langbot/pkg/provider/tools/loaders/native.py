@@ -382,7 +382,11 @@ class NativeToolLoader(loader.ToolLoader):
 
         # Validate the virtual path before choosing remote or local file operations.
         relative_parts = _relative_workspace_parts(rewritten_path)
-        if self._should_use_box_workspace_files(selected_skill):
+        if (
+            selected_skill is None
+            and getattr(query, '_box_binding', None) is not None
+            and not query._box_binding.host_filesystem_accessible
+        ) or self._should_use_box_workspace_files(selected_skill):
             return None
         box_service = self.ap.box_service
         if selected_skill is not None:
@@ -391,7 +395,12 @@ class NativeToolLoader(loader.ToolLoader):
             host_root = selected_skill.get('package_root')
             workspace_anchor = None
         else:
-            host_root = box_service._tenant_workspace(self._execution_context(query))
+            binding = getattr(query, '_box_binding', None)
+            host_root = (
+                box_service._box_workspace(self._execution_context(query), binding.session_id)
+                if binding is not None
+                else box_service._tenant_workspace(self._execution_context(query))
+            )
             workspace_anchor = getattr(box_service, 'default_workspace', None)
         if not host_root:
             raise ValueError('No host workspace configured for file operations.')
