@@ -89,6 +89,46 @@ def make_adapter() -> SlackAdapter:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('channel_type', ['channel', 'group'])
+@pytest.mark.parametrize(
+    'kinds,text,is_thread,mentioned',
+    [
+        (('message',), 'just chatting, no mention', True, False),
+        (('message',), '<@OTHER> reply', True, False),
+        (('message', 'app_mention'), '<@B-1> reply', True, True),
+        (('app_mention', 'message'), '<@B-1> reply', True, True),
+        (('app_mention',), 'hello', False, True),
+    ],
+)
+async def test_channel_dispatch_preserves_actual_bot_mention(channel_type, kinds, text, is_thread, mentioned):
+    adapter = SlackAdapter({'bot_token': 'test', 'signing_secret': 'test'}, DummyLogger())
+    received = AsyncMock()
+    legacy_received = AsyncMock()
+    adapter.register_listener(platform_events.MessageReceivedEvent, received)
+    adapter.register_listener(platform_events.GroupMessage, legacy_received)
+    for kind in kinds:
+        raw = {
+            'type': kind,
+            'channel_type': channel_type,
+            'channel': 'C-1',
+            'user': 'U-1',
+            'ts': '1710003600.000100',
+            'text': text,
+        }
+        if is_thread:
+            raw.update(thread_ts='1710003600.000001', parent_user_id='B-1')
+        await adapter.bot.handle_payload(
+            {'event': raw, 'event_id': kind, 'authorizations': [{'is_bot': True, 'user_id': 'B-1'}]}
+        )
+    for listener in (received, legacy_received):
+        listener.assert_awaited_once()
+        event = listener.await_args.args[0]
+        assert any(isinstance(part, platform_message.At) for part in event.message_chain) is mentioned
+        assert any(isinstance(part, platform_message.Plain) and part.text == text for part in event.message_chain)
+    assert received.await_args.args[0].message_id == '1710003600.000100'
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('thread_ts', [None, '1710003600.000001'])
 async def test_platform_post_message(thread_ts):
     adapter = make_adapter()

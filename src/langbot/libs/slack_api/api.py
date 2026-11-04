@@ -118,6 +118,9 @@ class SlackClient:
                 while len(self.channel_message_seen) > 4096:
                     self.channel_message_seen.popitem(last=False)
             raw['channel_type'] = 'channel'
+            raw['mentioned'] = kind == 'app_mention' or bool(
+                self.bot_user_id and f'<@{self.bot_user_id}>' in (raw.get('text') or '')
+            )
             await self._handle_message(SlackEvent.from_payload(data))
         elif kind != 'message':
             await self._handle_message(SlackEvent(data), 'event')

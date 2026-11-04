@@ -81,6 +81,8 @@ If no reply arrives, check that both the bot and message route are enabled, the 
 
 Quick setup configures the subscriptions and interaction endpoint below. Installation requests message, channel, user, file and reaction permissions; `reactions:read` enables reaction events. Replies in threads started by this bot are delivered without an @mention; other channel messages still require one. Subscribe to `message.channels` with `channels:history` (and `message.groups` with `groups:history` for private channels) to receive these thread replies. Reinstall the Slack app after adding scopes.
 
+Thread delivery does not imply a bot mention. Unmentioned replies remain available to plugins but do not satisfy the default pipeline's mention-based group response rule.
+
 | Slack event | LangBot event |
 | --- | --- |
 | Direct messages, `app_mention`, replies in this bot's threads | `message.received` |

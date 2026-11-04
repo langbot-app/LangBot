@@ -81,6 +81,8 @@ Webhook 模式可跳过本步。长连接模式中，点击助手的 **打开应
 
 新版快速配置向导会自动配置下列事件订阅和交互入口。安装授权页会申请消息、频道、用户、文件和表情反应权限，其中 `reactions:read` 用于表情反应事件。在本机器人发起的 thread 中回复无需 @ 机器人；其他频道消息仍需 @。接收这些 thread 回复需要订阅 `message.channels` 并授权 `channels:history`；私有频道还需要 `message.groups` 和 `groups:history`。添加权限后需重新安装 Slack 应用。
 
+派发 thread 回复不等于 @ 机器人。没有 @ 的回复仍可供插件处理，但不会满足默认流水线基于 @ 的群响应条件。
+
 | Slack 事件 | LangBot 事件 |
 | --- | --- |
 | 私聊消息、`app_mention`、本机器人发起的 thread 中的回复 | `message.received` |

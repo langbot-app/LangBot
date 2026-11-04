@@ -53,7 +53,8 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
             )
         ]
 
-        if event.type == 'channel':
+        raw = event.get('event', {})
+        if event.type == 'channel' and (raw.get('type') == 'app_mention' or raw.get('mentioned')):
             components.append(platform_message.At(target='SlackBot'))
 
         for file in event.get('event', {}).get('files', []):
