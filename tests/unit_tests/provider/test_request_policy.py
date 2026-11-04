@@ -23,6 +23,54 @@ from tests.unit_tests.provider.conftest import TEST_EXECUTION_CONTEXT
 from tests.unit_tests.provider.test_litellmchat import MockRuntimeModel
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('lane', ['pipeline', 'agent', 'event_processor'])
+@pytest.mark.parametrize('streaming', [False, True])
+async def test_execution_telemetry_captures_actual_llm_on_every_lane(
+    runtime_provider, runtime_llm_model, lane, streaming
+):
+    import contextvars
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    _, counters = make_counters()
+    runtime_provider.requester.ap.telemetry = SimpleNamespace(execution=counters)
+    state = trace.TraceState('execution')
+    counters.register_trace(state, 'run')
+    query = SimpleNamespace(
+        _agent_run_session={'run_id': 'run'},
+        _execution_context=TEST_EXECUTION_CONTEXT,
+        variables={},
+    )
+    runtime_provider._record_call = AsyncMock()
+    runtime_provider.requester.invoke_llm = AsyncMock(return_value=Message(role='assistant', content='private'))
+
+    async def stream(**kwargs):
+        yield MessageChunk(role='assistant', content='private')
+
+    runtime_provider.requester.invoke_llm_stream = stream
+
+    async def invoke():
+        if streaming:
+            return [chunk async for chunk in runtime_provider.invoke_llm_stream(query, runtime_llm_model, [])]
+        return await runtime_provider.invoke_llm(query, runtime_llm_model, [])
+
+    binding = trace.bind() if lane == 'pipeline' else None
+    try:
+        if binding is not None:
+            state = binding.state
+            await invoke()
+        else:
+            await asyncio.create_task(invoke(), context=contextvars.Context())
+        assert state.model_name == runtime_llm_model.model_entity.name
+        assert state.features == {'llm_calls': 1}
+        assert counters.records == []
+        assert 'private' not in str(state.features)
+    finally:
+        if binding is not None:
+            trace.unbind_root(binding)
+
+
 @pytest.fixture
 async def image_url_engine(tmp_path):
     engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "resource_urls.db"}')

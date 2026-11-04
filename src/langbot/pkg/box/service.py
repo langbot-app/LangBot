@@ -22,6 +22,7 @@ from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
 from .export_errors import export_error, script_export_error, transport_export_error
 from ..utils import httpclient
+from ..telemetry import features as telemetry_features
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
 from langbot_plugin.box.errors import BoxAdmissionError, BoxError, BoxValidationError
@@ -649,6 +650,7 @@ class BoxService:
         except BoxError as exc:
             self._record_error(exc, query)
             raise
+        telemetry_features.increment(self.ap, 'sandbox', 'execs', query=query)
         try:
             result = await self.client.execute(
                 spec,
@@ -673,6 +675,8 @@ class BoxService:
             f'query_id={query.query_id} '
             f'summary={json.dumps(self._summarize_result(result), ensure_ascii=False)}'
         )
+        if not result.ok:
+            telemetry_features.increment(self.ap, 'sandbox', 'errors', query=query)
         return result
 
     def resolve_box_session_id(self, query: pipeline_query.Query) -> str:
@@ -1977,6 +1981,7 @@ class BoxService:
     # ── Observability ─────────────────────────────────────────────────
 
     def _record_error(self, exc: Exception, query: pipeline_query.Query):
+        telemetry_features.increment(self.ap, 'sandbox', 'errors', query=query)
         self._recent_errors.append(
             {
                 'timestamp': _dt.datetime.now(_UTC).isoformat(),

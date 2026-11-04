@@ -301,18 +301,6 @@ class ChatMessageHandler(handler.MessageHandler):
                         state.runner_category = state.runner_category or runner_utils.get_runner_category_from_runner(
                             runner_name, None, query.pipeline_config
                         )
-                        model_name = ''
-                        try:
-                            if getattr(query, 'use_llm_model_uuid', None):
-                                m = await self.ap.model_mgr.get_model_by_uuid(
-                                    get_query_execution_context(query),
-                                    query.use_llm_model_uuid,
-                                )
-                                if m and getattr(m, 'model_entity', None):
-                                    model_name = getattr(m.model_entity, 'name', '') or ''
-                        except Exception:
-                            model_name = ''
-                        state.model_name = state.model_name or model_name
                         if state.pipeline_plugins is None:
                             state.pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 except Exception as ex:

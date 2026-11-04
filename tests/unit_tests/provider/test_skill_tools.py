@@ -260,6 +260,8 @@ class TestSkillToolLoader:
 
     @pytest.mark.asyncio
     async def test_activate_returns_instructions_and_registers_skill(self):
+        from langbot.pkg.telemetry import trace
+        from tests.unit_tests.telemetry.test_trace import make_counters
         from langbot.pkg.provider.tools.loaders.skill_authoring import (
             ACTIVATE_SKILL_TOOL_NAME,
             SkillToolLoader,
@@ -284,7 +286,14 @@ class TestSkillToolLoader:
         loader = SkillToolLoader(ap)
         query = _make_query()
 
-        result = await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query)
+        _, counters = make_counters()
+        ap.telemetry = SimpleNamespace(execution=counters)
+        binding = trace.bind()
+        try:
+            result = await loader.invoke_tool(ACTIVATE_SKILL_TOOL_NAME, {'skill_name': 'demo'}, query)
+            assert binding.state.features == {'activated_skills': 1}
+        finally:
+            trace.unbind_root(binding)
 
         assert result['activated'] is True
         assert result['skill_name'] == 'demo'

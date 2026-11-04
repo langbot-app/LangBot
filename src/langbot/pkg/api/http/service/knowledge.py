@@ -337,7 +337,9 @@ class KnowledgeService:
         if runtime_kb is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
 
-        # Pass retrieval_settings
+        from ....telemetry import features as telemetry_features
+
+        telemetry_features.increment(self.ap, 'kb', 'retrievals')
         results = await runtime_kb.retrieve(execution_context, query, settings=retrieval_settings)
 
         return [result.model_dump() for result in results]
