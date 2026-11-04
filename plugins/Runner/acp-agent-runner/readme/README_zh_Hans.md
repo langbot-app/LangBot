@@ -91,7 +91,7 @@ ACP Runner 用于把兼容 Agent Client Protocol（ACP）的编码 Agent 接入 
 | `!new` | 清除当前绑定；下一条普通消息创建新 ACP 会话。旧会话保留，可稍后切回 |
 | `!list` / `!sessions` | 列出当前 daemon 工作目录中的 ACP 会话 |
 | `!switch <序号或 session ID>` | 切换到已有 ACP 会话，下一条消息通过 `session/load` 或 `session/resume` 继续 |
-| `!delete` | 调用 ACP `session/delete` 删除当前会话；成功后再清理 LangBot 绑定和可见上下文 |
+| `!delete [序号\|会话ID]` | 不带参数时删除当前会话，成功后清理 LangBot 绑定和可见上下文；带参数时删除最近一次 `!list` 中的指定会话。成功提示包含标题和 ID。删除非当前会话保留当前绑定并清空列表缓存，再次按序号删除前必须重新 `!list`。 |
 | `!stop` | 停止当前正在运行的任务，但保留 ACP 会话 |
 
 `!delete` 不会物理删除 LangBot 的运行审计记录；它删除 ACP 会话并创建新的 LangBot context generation，因此旧 transcript 不再进入后续上下文。若 ACP 删除失败，当前绑定会保留，避免 LangBot 与 ACP 状态不一致。

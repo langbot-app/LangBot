@@ -4,7 +4,7 @@ import types
 from unittest.mock import AsyncMock
 
 import pytest
-from components.commands.session_commands import DeleteSession, NewSession, StopRun, SwitchSession
+from components.commands.session_commands import DeleteSession, ListSessions, NewSession, StopRun, SwitchSession
 from components.runner.default import DefaultRunner
 from daemon import RunnerDaemon
 from langbot_plugin.api.entities.builtin.runner.event import ConversationContext
@@ -12,6 +12,7 @@ from pkg.session_management import (
     conversation_id_from_command,
     delete_value,
     normalize_sessions,
+    read_json,
     resolve_session_target,
     run_daemon_control,
     runner_session_identity,
@@ -108,6 +109,30 @@ def test_storage_missing_accepts_nested_action_call_error():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("missing", [True, False])
+async def test_storage_missing_through_real_sdk_runner_adapter(missing):
+    from langbot_plugin.api.entities.builtin.runner.errors import AgentAPIException
+    from langbot_plugin.api.proxies.runner.common import _AgentRunHandlerAdapter
+    from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
+    from langbot_plugin.entities.io.errors import ActionCallError
+
+    message = "ActionCallError: Storage with key selected not found" if missing else "Storage backend offline"
+    adapter = _AgentRunHandlerAdapter(
+        types.SimpleNamespace(call_action=AsyncMock(side_effect=ActionCallError(message)))
+    )
+
+    async def get_storage(key):
+        return await adapter.call_action(PluginToRuntimeAction.GET_PLUGIN_STORAGE, {"key": key})
+
+    plugin = types.SimpleNamespace(get_plugin_storage=get_storage)
+    if missing:
+        assert await read_json(plugin, "selected", {}) == {}
+    else:
+        with pytest.raises(AgentAPIException, match="Storage backend offline"):
+            await read_json(plugin, "selected", {})
+
+
+@pytest.mark.asyncio
 async def test_delete_value_only_ignores_explicit_missing_key_errors():
     missing_plugin = types.SimpleNamespace(get_plugin_storage=AsyncMock(side_effect=FileNotFoundError()))
     await delete_value(missing_plugin, "missing")
@@ -150,6 +175,7 @@ class FakeCommandPlugin:
 
     async def delete_plugin_storage(self, key):
         self.deleted.append(key)
+        self.values.pop(key, None)
 
     async def set_plugin_storage(self, key, value):
         self.values[key] = value
@@ -351,14 +377,18 @@ async def test_switch_survives_host_conversation_reset(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_delete_by_number_removes_non_current_session(monkeypatch):
+@pytest.mark.parametrize("language", ["en_US", "zh_Hans"])
+@pytest.mark.parametrize("reference", ["2", "ses_second"])
+async def test_delete_by_number_removes_non_current_session(monkeypatch, language, reference):
     plugin = FakeCommandPlugin()
+    plugin.get_config = lambda: {"language": language}
     conversation_id = "person_user-1"
     plugin.values[storage_key("control", conversation_id)] = b'{"location":"daemon","daemon_id":"daemon-1"}'
     plugin.values[storage_key("selected", conversation_id)] = b'{"session_id":"ses_current"}'
     plugin.values[storage_key("list", conversation_id)] = (
         b'[{"session_id":"ses_current","title":"Current","updated_at":"2026-01-02T00:00:00Z"},'
-        b'{"session_id":"ses_second","title":"Second","updated_at":"2026-01-01T00:00:00Z"}]'
+        b'{"session_id":"ses_second","title":"Second","updated_at":"2026-01-01T00:00:00Z"},'
+        b'{"session_id":"ses_third","title":"Third","updated_at":"2025-12-31T00:00:00Z"}]'
     )
     control = AsyncMock()
     monkeypatch.setattr("components.commands.session_commands.run_daemon_control", control)
@@ -368,7 +398,7 @@ async def test_delete_by_number_removes_non_current_session(monkeypatch):
     context = types.SimpleNamespace(
         session=types.SimpleNamespace(launcher_type=types.SimpleNamespace(value="person"), launcher_id="user-1"),
         privilege=1,
-        crt_params=["2"],
+        crt_params=[reference],
         create_new_conversation=AsyncMock(),
     )
     subcommand = command.registered_subcommands["*"].subcommand
@@ -382,9 +412,73 @@ async def test_delete_by_number_removes_non_current_session(monkeypatch):
         session_id="ses_second",
     )
     context.create_new_conversation.assert_not_awaited()
-    stored = await plugin.get_plugin_storage(storage_key("list", conversation_id))
-    assert b"ses_current" in stored and b"ses_second" not in stored
-    assert "ses_second" in results[0].text
+    assert storage_key("list", conversation_id) not in plugin.values
+    assert plugin.values[storage_key("selected", conversation_id)] == b'{"session_id":"ses_current"}'
+    assert "Second (ses_second)" in results[0].text
+    assert ("Run !list again" if language == "en_US" else "请重新 !list") in results[0].text
+    context.crt_params = ["2"]
+    repeated = [item async for item in command._execute(context)]
+    assert ("Run !list first" if language == "en_US" else "请先使用 !list") in repeated[0].text
+    assert control.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("language,usage", [("en_US", "!delete [number]"), ("zh_Hans", "!delete [序号]")])
+async def test_list_first_use_handles_wrapped_missing_storage_and_shows_delete_usage(monkeypatch, language, usage):
+    from langbot_plugin.entities.io.errors import ActionCallError
+
+    plugin = FakeCommandPlugin()
+    plugin.get_config = lambda: {"language": language}
+    plugin.values[storage_key("control", "person_user-1")] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    original_get = plugin.get_plugin_storage
+
+    async def get_storage(key):
+        if key not in plugin.values:
+            raise ActionCallError(f"ActionCallError: ActionCallError: Storage with key {key} not found")
+        return await original_get(key)
+
+    plugin.get_plugin_storage = get_storage
+    monkeypatch.setattr(
+        "components.commands.session_commands.run_daemon_control",
+        AsyncMock(return_value={"sessions": [{"sessionId": "ses_first", "title": "First"}]}),
+    )
+    command = ListSessions()
+    command.plugin = plugin
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type="person", launcher_id="user-1"),
+    )
+    results = await _command_results(command, context)
+    assert "First" in results[0].text
+    assert usage in results[0].text
+
+
+@pytest.mark.asyncio
+async def test_failed_delete_preserves_list_and_current_binding(monkeypatch):
+    plugin = FakeCommandPlugin()
+    conversation_id = "person_user-1"
+    plugin.values[storage_key("control", conversation_id)] = b'{"location":"daemon","daemon_id":"daemon-1"}'
+    plugin.values[storage_key("selected", conversation_id)] = b'{"session_id":"ses_current"}'
+    plugin.values[storage_key("list", conversation_id)] = (
+        b'[{"session_id":"ses_current","title":"Current"},{"session_id":"ses_other","title":"Other"}]'
+    )
+    previous = dict(plugin.values)
+    monkeypatch.setattr(
+        "components.commands.session_commands.run_daemon_control",
+        AsyncMock(side_effect=RuntimeError("ACP delete unavailable")),
+    )
+    command = DeleteSession()
+    command.plugin = plugin
+    await command.initialize()
+    context = types.SimpleNamespace(
+        session=types.SimpleNamespace(launcher_type="person", launcher_id="user-1"),
+        privilege=1,
+        crt_params=["2"],
+        create_new_conversation=AsyncMock(),
+    )
+    results = [item async for item in command._execute(context)]
+    assert "Delete failed" in results[0].text
+    assert plugin.values == previous
+    context.create_new_conversation.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -418,7 +512,7 @@ async def test_delete_without_argument_removes_current_session(monkeypatch):
     )
     context.create_new_conversation.assert_awaited_once()
     assert len(plugin.deleted) == 3
-    assert "ses_current" in results[0].text
+    assert "Current (ses_current)" in results[0].text
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,9 @@ import hashlib
 import json
 import typing
 
+from langbot_plugin.api.entities.builtin.runner.errors import AgentAPIException
+from langbot_plugin.entities.io.errors import ActionCallError
+
 from pkg.daemon_relay import (
     agent_runtime_daemon_config_from_plugin_config,
     get_agent_runtime_daemon_hub,
@@ -16,6 +19,8 @@ STORAGE_PREFIX = "acp-session:v1"
 
 
 def _storage_key_missing(exc: Exception) -> bool:
+    if isinstance(exc, AgentAPIException) and isinstance(exc.__cause__, ActionCallError):
+        exc = exc.__cause__
     code = str(getattr(exc, "code", "") or getattr(exc, "error_code", "")).lower()
     message = str(exc)
     explicit_action_error = (
