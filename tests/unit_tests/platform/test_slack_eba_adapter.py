@@ -215,8 +215,26 @@ async def test_inbound_thread_quote(thread_ts):
         assert quotes[0].id == thread_ts
         assert quotes[0].group_id == quotes[0].target_id == 'C-1'
         assert list(quotes[0].origin) == []
+        assert event.message_chain[-1] is quotes[0]
     else:
         assert quotes == []
+
+
+@pytest.mark.asyncio
+async def test_thread_command_prefix_survives_removing_bot_mention():
+    native = slack_event('channel', text='!help')
+    native['event']['thread_ts'] = '1.0'
+    chain = await SlackMessageConverter.target2yiri(native)
+    assert [type(part) for part in chain] == [
+        platform_message.Source,
+        platform_message.At,
+        platform_message.Plain,
+        platform_message.Quote,
+    ]
+    without_mention = platform_message.MessageChain(
+        [part for part in chain if not isinstance(part, platform_message.At)]
+    )
+    assert str(without_mention).strip().startswith('!help')
 
 
 def slack_event(channel_type: str = 'im', **overrides) -> SlackEvent:

@@ -55,17 +55,6 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         if event.type == 'channel' and (raw.get('type') == 'app_mention' or raw.get('mentioned')):
             components.append(platform_message.At(target='SlackBot'))
 
-        thread_ts = raw.get('thread_ts')
-        if event.type == 'channel' and thread_ts and thread_ts != raw.get('ts'):
-            components.append(
-                platform_message.Quote(
-                    id=thread_ts,
-                    group_id=event.channel_id,
-                    target_id=event.channel_id,
-                    origin=platform_message.MessageChain([]),
-                )
-            )
-
         for file in event.get('event', {}).get('files', []):
             url = file.get('url_private_download') or file.get('url_private')
             if not url:
@@ -90,6 +79,17 @@ class SlackMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
 
         if len(components) == 1 or (len(components) == 2 and isinstance(components[1], platform_message.At)):
             components.append(platform_message.Unknown(text=f'[unsupported slack event: {event.type or "unknown"}]'))
+
+        thread_ts = raw.get('thread_ts')
+        if event.type == 'channel' and thread_ts and thread_ts != raw.get('ts'):
+            components.append(
+                platform_message.Quote(
+                    id=thread_ts,
+                    group_id=event.channel_id,
+                    target_id=event.channel_id,
+                    origin=platform_message.MessageChain([]),
+                )
+            )
 
         return platform_message.MessageChain(components)
 
