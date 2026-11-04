@@ -494,7 +494,7 @@
       "runtime": {
         "rss_bytes": 67108864,
         "open_fds": 8,
-        "threads": 8,
+        "threads": 13,
         "processes": 0
       },
       "box": {
