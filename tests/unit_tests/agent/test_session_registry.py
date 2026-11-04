@@ -418,6 +418,12 @@ class TestSessionRegistryBasic:
         assert len(first) == 1
         delivery_id = first[0]['delivery_id']
         assert await registry.pull_steering('run_steering_claim', claim=True) == []
+        acknowledged, unknown = await registry.ack_steering(
+            'run_steering_claim', [delivery_id, 'missing']
+        )
+        assert acknowledged == [delivery_id]
+        assert unknown == ['missing']
+        assert await registry.pull_steering('run_steering_claim', claim=True) == []
 
     @pytest.mark.asyncio
     async def test_restore_steering_rehydrates_after_session_restart(self):
@@ -444,13 +450,6 @@ class TestSessionRegistryBasic:
 
         claimed = await registry.pull_steering('run_steering_restarted', claim=True)
         assert claimed[0]['event']['event_id'] == 'event_recovered'
-
-        acknowledged, unknown = await registry.ack_steering(
-            'run_steering_claim', [delivery_id, 'missing']
-        )
-        assert acknowledged == [delivery_id]
-        assert unknown == ['missing']
-        assert await registry.pull_steering('run_steering_claim', claim=True) == []
 
     @pytest.mark.asyncio
     async def test_enqueue_steering_rejects_when_queue_is_full(self):
