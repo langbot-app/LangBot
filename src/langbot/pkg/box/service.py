@@ -1262,14 +1262,25 @@ class BoxService:
             entries = json.loads(result.stdout)
             if not isinstance(entries, list) or len(entries) > max_files:
                 raise ValueError('Invalid file list')
+            requested_paths = {}
+            for path in paths or []:
+                # E2B rewrites logical workspace paths in the executed reader script.
+                exported_path = path
+                if result.backend_name == 'e2b' and path.startswith('/workspace/'):
+                    exported_path = '/home/user/workspace/' + path[len('/workspace/') :]
+                if exported_path in requested_paths:
+                    raise ValueError('Duplicate exported path')
+                requested_paths[exported_path] = path
             total_bytes = 0
             for entry in entries:
                 if not isinstance(entry, dict) or not isinstance(entry.get('name'), str):
                     raise ValueError('Invalid file entry')
                 if paths is None and entry['name'].startswith('/'):
                     raise ValueError('Expected a relative outbox path')
-                if paths is not None and entry['name'] not in paths:
-                    raise ValueError('Unexpected exported path')
+                if paths is not None:
+                    if entry['name'] not in requested_paths:
+                        raise ValueError('Unexpected exported path')
+                    entry['name'] = requested_paths[entry['name']]
                 for component in entry['name'].lstrip('/').split('/'):
                     secure_fs._component(component)
                 encoded = entry.get('b64')
