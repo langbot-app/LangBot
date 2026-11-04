@@ -1,6 +1,7 @@
 """The permission migration supports both upgraded and fresh schemas."""
 
 import importlib
+import json
 
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
@@ -24,7 +25,12 @@ def test_plugin_permission_columns_preserve_existing_installs(fresh_schema):
             migration.upgrade()
         existing = {column['name'] for column in sa.inspect(connection).get_columns('plugin_settings')}
         assert set(names) <= existing
-        assert (
-            connection.execute(sa.text('SELECT permission_grants FROM plugin_settings WHERE id = 1')).scalar() is None
-        )
+        row = connection.execute(
+            sa.text(
+                'SELECT permission_declaration, permission_grants, permission_snapshot FROM plugin_settings WHERE id = 1'
+            )
+        ).one()
+        expected = {'workspace_operations': [], 'capabilities': migration.LEGACY_CAPABILITIES}
+        assert row.permission_declaration is None
+        assert json.loads(row.permission_grants) == json.loads(row.permission_snapshot) == expected
     engine.dispose()

@@ -265,6 +265,49 @@ class PublishedPluginsTests(unittest.TestCase):
             plugins.install_plugins(call, directory, manifest)
         self.assertEqual(len(calls), 2)
 
+    def test_confirmed_install_waits_for_worker_initialization(self):
+        directory = self.root / 'latest'
+        manifest = plugins.prepare_published_plugins(directory)
+        manifest['plugins'] = manifest['plugins'][:1]
+        installed = {'author': 'langbot-team', 'name': 'LocalAgent', 'version': '1.2.3', 'enabled': True}
+        responses = iter(
+            [
+                {'plugins': []},
+                {'plugins': [{**installed, 'status': 'initializing'}]},
+                {'plugins': [{**installed, 'status': 'initialized'}]},
+            ]
+        )
+        with patch.object(plugins.time, 'sleep') as sleep:
+            plugins.install_plugins(
+                lambda args: next(responses), directory, manifest, install=lambda entry: None, readiness_timeout=10
+            )
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(manifest['plugins'][0]['installed'][0]['status'], 'initialized')
+
+    def test_confirmed_install_pending_permissions_times_out(self):
+        directory = self.root / 'latest'
+        manifest = plugins.prepare_published_plugins(directory)
+        pending = {
+            'author': 'langbot-team',
+            'name': 'LocalAgent',
+            'version': '1.2.3',
+            'enabled': False,
+            'status': 'pending_confirmation',
+        }
+        with (
+            patch.object(plugins.time, 'monotonic', side_effect=[0, 0, 11]),
+            patch.object(plugins.time, 'sleep') as sleep,
+            self.assertRaisesRegex(RuntimeError, 'pending_confirmation'),
+        ):
+            plugins.install_plugins(
+                lambda args: {'plugins': [pending]},
+                directory,
+                manifest,
+                install=lambda entry: None,
+                readiness_timeout=10,
+            )
+        self.assertEqual(sleep.call_count, 1)
+
 
 if __name__ == '__main__':
     unittest.main()

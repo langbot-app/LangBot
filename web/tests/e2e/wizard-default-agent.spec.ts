@@ -58,6 +58,7 @@ for (const failsFirst of [false, true]) {
         plugin_author: 'langbot-team',
         plugin_name: 'LocalAgent',
         plugin_version: '0.1.7',
+        auto_confirm_permissions: true,
       });
       order.push('install');
       await route.fulfill({

@@ -358,7 +358,13 @@ def run(args):
                 time.sleep(0.2)
             raise TimeoutError(f'Plugin installation/confirmation timed out: {entry["id"]}')
 
-        install_plugins(suite.call, root / 'plugins', packages, install=install_confirmed_plugin)
+        install_plugins(
+            suite.call,
+            root / 'plugins',
+            packages,
+            install=install_confirmed_plugin,
+            readiness_timeout=suite.timeout(180),
+        )
         restart_result = None
         restart_elapsed = 0
         if args.restart_services:

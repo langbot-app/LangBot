@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -236,7 +237,7 @@ def package_marketplace(directory, manifest):
         thread.join()
 
 
-def install_plugins(call, directory, manifest, *, install=None):
+def install_plugins(call, directory, manifest, *, install=None, readiness_timeout=0):
     """Install recorded packages and require exact, initialized CLI readback."""
     directory = Path(directory)
     for entry in manifest['plugins']:
@@ -250,17 +251,23 @@ def install_plugins(call, directory, manifest, *, install=None):
                 install(entry)
         except RuntimeError as exc:
             raise RuntimeError(f'Plugin install failed: {entry["id"]}@{entry["version"]}: {exc}') from exc
-        response = call(['plugin', 'list'])
-        plugins = response.get('plugins') if isinstance(response, dict) else None
-        if not isinstance(plugins, list) or any(not isinstance(item, dict) for item in plugins):
-            raise RuntimeError('Plugin readback did not return a plugin list')
-        matches = [item for item in plugins if f'{item.get("author")}/{item.get("name")}' == entry['id']]
+        deadline = time.monotonic() + readiness_timeout
+        while True:
+            response = call(['plugin', 'list'])
+            plugins = response.get('plugins') if isinstance(response, dict) else None
+            if not isinstance(plugins, list) or any(not isinstance(item, dict) for item in plugins):
+                raise RuntimeError('Plugin readback did not return a plugin list')
+            matches = [item for item in plugins if f'{item.get("author")}/{item.get("name")}' == entry['id']]
+            ready = (
+                len(matches) == 1
+                and matches[0].get('version') == entry['version']
+                and matches[0].get('enabled') is True
+                and matches[0].get('status') == 'initialized'
+            )
+            if ready or time.monotonic() >= deadline:
+                break
+            time.sleep(0.2)
         entry['installed'] = [{key: item.get(key) for key in ('version', 'enabled', 'status')} for item in matches]
         write_manifest(directory, manifest)
-        if (
-            len(matches) != 1
-            or matches[0].get('version') != entry['version']
-            or matches[0].get('enabled') is not True
-            or matches[0].get('status') != 'initialized'
-        ):
+        if not ready:
             raise RuntimeError(f'Plugin is not ready at the selected version: {entry["id"]}: {entry["installed"]}')

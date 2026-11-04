@@ -125,13 +125,13 @@ async def stored_pipeline(engine):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('transport', ['http', 'application', 'service'])
-@pytest.mark.parametrize('invalid', ['partial', 'runtime', 'null'])
+@pytest.mark.parametrize('invalid', ['non_object_section', 'runtime', 'null'])
 async def test_invalid_pipeline_preserves_database_and_runtime(writes, transport, invalid):
     api, ap, engine, client, config = writes
     original = await stored_pipeline(engine)
     runtime = ap.pipeline_mgr.pipelines[0]
-    if invalid == 'partial':
-        config = {'ai': config['ai']}
+    if invalid == 'non_object_section':
+        config = {'ai': []}
     elif invalid == 'runtime':
         config['safety'] = {}
     else:
@@ -153,6 +153,26 @@ async def test_invalid_pipeline_preserves_database_and_runtime(writes, transport
                 await ap.pipeline_service.update_pipeline(context(), 'pipeline-a', payload)
     assert await stored_pipeline(engine) == original
     assert ap.pipeline_mgr.pipelines == [runtime]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('transport', ['http', 'application', 'service'])
+async def test_partial_pipeline_update_preserves_omitted_sections(writes, transport):
+    api, ap, engine, client, config = writes
+    payload = {'config': {'ai': {}}}
+    if transport == 'http':
+        response = await client.put(
+            '/api/v1/pipelines/pipeline-a', json=payload, headers={'Authorization': 'Bearer test-token'}
+        )
+        assert response.status_code == 200, await response.get_json()
+    elif transport == 'application':
+        await api.execute('pipeline.update', context(), {'pipeline_uuid': 'pipeline-a', 'pipeline_data': payload})
+    else:
+        async with ap.persistence_mgr.tenant_scope('workspace-a'):
+            await ap.pipeline_service.update_pipeline(context(), 'pipeline-a', payload)
+    stored = await stored_pipeline(engine)
+    assert stored['config'] == {**config, 'ai': {}}
+    assert ap.pipeline_mgr.pipelines[0].pipeline_entity.config == stored['config']
 
 
 @pytest.mark.asyncio
@@ -280,7 +300,7 @@ async def test_live_http_rejects_invalid_writes_without_dirty_rows(writes):
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
             for method, path, payload in (
-                ('PUT', '/api/v1/pipelines/pipeline-a', {'name': 'Unsaved', 'config': {'ai': {}}}),
+                ('PUT', '/api/v1/pipelines/pipeline-a', {'name': 'Unsaved', 'config': {'ai': []}}),
                 ('POST', '/api/v1/platform/bots', {'name': 'Invalid bot', 'adapter': 'aiocqhttp'}),
             ):
                 async with session.request(
