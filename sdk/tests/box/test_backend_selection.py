@@ -11,6 +11,7 @@ import pytest
 from langbot_plugin.box.backend import BaseSandboxBackend
 from langbot_plugin.box.models import BoxSessionInfo, BoxSpec
 from langbot_plugin.box.runtime import BoxRuntime
+from langbot_plugin.box.errors import BoxSessionNotFoundError
 
 
 @pytest.fixture
@@ -284,7 +285,7 @@ async def test_init_config_reselects_backend_before_sessions(logger):
 
 
 @pytest.mark.anyio
-async def test_create_session_recreates_disappeared_backend_session(logger):
+async def test_create_session_reports_lost_state_before_reacquisition(logger):
     """A stale in-memory session is dropped if its backend session vanished."""
     backend = MockBackend(logger, "docker", available=True)
     runtime = BoxRuntime(logger, backends=[backend])
@@ -295,6 +296,8 @@ async def test_create_session_recreates_disappeared_backend_session(logger):
     with mock.patch("os.getenv", return_value=None):
         first = await runtime.create_session(spec)
         backend._alive = False
+        with pytest.raises(BoxSessionNotFoundError, match="state was lost"):
+            await runtime.create_session(spec)
         second = await runtime.create_session(spec)
 
     assert first["backend_session_id"] == "docker-1"

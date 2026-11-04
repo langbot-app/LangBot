@@ -6,7 +6,6 @@ to verify parameter mapping, session lifecycle, and availability detection.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from types import SimpleNamespace
@@ -97,25 +96,6 @@ def test_adapt_path_other_paths_unchanged():
     assert _adapt_path_for_e2b("/home/user") == "/home/user"
     assert _adapt_path_for_e2b("/tmp") == "/tmp"
     assert _adapt_path_for_e2b("/code") == "/code"
-
-
-def test_extra_mount_projections_are_excluded_from_workspace_sync(backend):
-    spec = BoxSpec(
-        session_id="overlay",
-        extra_mounts=[
-            BoxMountSpec(
-                host_path="/tmp/revision",
-                mount_path="/workspace/.skills/demo",
-                mode=BoxHostMountMode.READ_ONLY,
-            )
-        ],
-    )
-
-    shadowed = backend._main_mount_shadow_paths(spec)
-
-    assert shadowed == {".skills/demo"}
-    assert backend._path_is_shadowed(".skills/demo/run.py", shadowed) is True
-    assert backend._path_is_shadowed("notes.txt", shadowed) is False
 
 
 def test_rewrite_command_paths_for_e2b_respects_path_boundaries():
@@ -307,55 +287,6 @@ async def test_start_session_custom_mount_path(backend, mock_e2b_module):
 
 
 @pytest.mark.anyio
-async def test_start_session_host_mount_rw(backend, mock_e2b_module):
-    """host_path with rw mode generates correct metadata."""
-    backend._api_key = "test-api-key"
-    spec = BoxSpec(
-        session_id="sess-hp-rw",
-        cmd="ls",
-        host_path="/data/project",
-        host_path_mode=BoxHostMountMode.READ_WRITE,
-        mount_path="/workspace",
-    )
-
-    await backend.start_session(spec)
-
-    call_kwargs = mock_e2b_module.create.call_args.kwargs
-    metadata = call_kwargs.get("metadata", {})
-
-    assert "host-mount" in metadata
-    host_mount = json.loads(metadata["host-mount"])
-    assert len(host_mount) == 1
-    assert host_mount[0]["hostPath"] == "/data/project"
-    # mountPath should be adapted
-    assert host_mount[0]["mountPath"] == "/home/user/workspace"
-    assert host_mount[0]["readOnly"] is False
-
-
-@pytest.mark.anyio
-async def test_start_session_host_mount_ro(backend, mock_e2b_module):
-    """host_path with ro mode generates readOnly=True in metadata."""
-    backend._api_key = "test-api-key"
-    spec = BoxSpec(
-        session_id="sess-hp-ro",
-        cmd="cat file.txt",
-        host_path="/data/source",
-        host_path_mode=BoxHostMountMode.READ_ONLY,
-        mount_path="/src",  # Non-workspace path stays unchanged
-    )
-
-    await backend.start_session(spec)
-
-    call_kwargs = mock_e2b_module.create.call_args.kwargs
-    metadata = call_kwargs.get("metadata", {})
-
-    host_mount = json.loads(metadata["host-mount"])
-    assert host_mount[0]["readOnly"] is True
-    # Non-workspace path stays unchanged
-    assert host_mount[0]["mountPath"] == "/src"
-
-
-@pytest.mark.anyio
 async def test_start_session_no_host_mount_when_none(backend, mock_e2b_module):
     """host_path_mode=none skips host-mount metadata."""
     backend._api_key = "test-api-key"
@@ -426,126 +357,6 @@ async def test_exec_success(backend, mock_e2b_module):
 
 
 @pytest.mark.anyio
-@pytest.mark.parametrize(
-    "mount_kind", ["read_only_primary", "read_write_primary", "read_only_extra"]
-)
-async def test_exec_syncs_mounts_before_running_command(
-    backend, mock_e2b_module, tmp_path, mount_kind
-):
-    """Exercise the real sync dispatch, including immutable materialization."""
-    (tmp_path / "input.txt").write_text("input", encoding="utf-8")
-    spec = BoxSpec(session_id="exec-mount", cmd="cat /workspace/input.txt")
-    if mount_kind == "read_only_extra":
-        spec.extra_mounts = [
-            BoxMountSpec(
-                host_path=str(tmp_path),
-                mount_path="/workspace",
-                mode=BoxHostMountMode.READ_ONLY,
-            )
-        ]
-    else:
-        spec.host_path = str(tmp_path)
-        spec.host_path_mode = (
-            BoxHostMountMode.READ_ONLY
-            if mount_kind == "read_only_primary"
-            else BoxHostMountMode.READ_WRITE
-        )
-    mock_e2b_module.files = SimpleNamespace(
-        write=mock.AsyncMock(), list=mock.AsyncMock(return_value=[])
-    )
-    session = await backend.start_session(spec)
-
-    result = await backend.exec(session, spec)
-
-    assert result.status == BoxExecutionStatus.COMPLETED
-    assert result.exit_code == 0
-    commands = mock_e2b_module.commands.run.await_args_list
-    assert commands[-1].kwargs["cmd"].endswith("cat /home/user/workspace/input.txt")
-    writes = mock_e2b_module.files.write.await_args_list
-    assert writes[0].args[1] == b"input"
-    if mount_kind == "read_write_primary":
-        assert writes[0].args[0] == "/home/user/workspace/input.txt"
-        assert len(writes) == 1
-        mock_e2b_module.files.list.assert_awaited_once_with(
-            "/home/user/workspace", depth=16
-        )
-    else:
-        assert writes[0].args[0].endswith("/package/input.txt")
-        assert (
-            len(writes) == 2
-        )  # package file and manifest; root writes the ready marker
-        setup_commands = "\n".join(call.args[0] for call in commands[:-1])
-        assert setup_commands.index("python3 -c") < setup_commands.index("ln -s")
-        mock_e2b_module.files.list.assert_not_awaited()
-
-
-@pytest.mark.anyio
-async def test_exec_writable_primary_excludes_shadowed_extra_mounts(
-    backend, mock_e2b_module, tmp_path
-):
-    workspace = tmp_path / "workspace"
-    shadowed = workspace / ".skills" / "demo"
-    shadowed.mkdir(parents=True)
-    (shadowed / "stale.txt").write_text("shadowed", encoding="utf-8")
-    (workspace / ".skills" / "demo.txt").write_text("sibling", encoding="utf-8")
-    (workspace / "notes.txt").write_text("notes", encoding="utf-8")
-    revision = tmp_path / "revision"
-    revision.mkdir()
-    (revision / "run.py").write_text("print('ok')", encoding="utf-8")
-    spec = BoxSpec(
-        session_id="exec-overlay",
-        cmd="python /workspace/.skills/demo/run.py",
-        host_path=str(workspace),
-        host_path_mode=BoxHostMountMode.READ_WRITE,
-        extra_mounts=[
-            BoxMountSpec(
-                host_path=str(revision),
-                mount_path="/workspace/.skills/demo",
-                mode=BoxHostMountMode.READ_ONLY,
-            )
-        ],
-    )
-    mock_e2b_module.files = SimpleNamespace(
-        write=mock.AsyncMock(),
-        write_files=mock.AsyncMock(),
-        list=mock.AsyncMock(
-            return_value=[
-                SimpleNamespace(
-                    path="/home/user/workspace/.skills/demo/run.py",
-                    size=11,
-                    type=SimpleNamespace(value="file"),
-                )
-            ]
-        ),
-        read=mock.AsyncMock(),
-    )
-    session = await backend.start_session(spec)
-
-    result = await backend.exec(session, spec)
-
-    assert result.status == BoxExecutionStatus.COMPLETED
-    assert result.exit_code == 0
-    writes = mock_e2b_module.files.write.await_args_list
-    uploaded_paths = [call.args[0] for call in writes]
-    uploaded_paths.extend(
-        entry["path"]
-        for call in mock_e2b_module.files.write_files.await_args_list
-        for entry in call.args[0]
-    )
-    assert "/home/user/workspace/notes.txt" in uploaded_paths
-    assert "/home/user/workspace/.skills/demo.txt" in uploaded_paths
-    assert not any(path.endswith("/stale.txt") for path in uploaded_paths)
-    assert any(path.endswith("/package/run.py") for path in uploaded_paths)
-    assert (
-        mock_e2b_module.commands.run.await_args_list[-1]
-        .kwargs["cmd"]
-        .endswith("python /home/user/workspace/.skills/demo/run.py")
-    )
-    mock_e2b_module.files.read.assert_not_awaited()
-    assert not (shadowed / "run.py").exists()
-
-
-@pytest.mark.anyio
 async def test_exec_timeout(backend, mock_e2b_module):
     """exec handles timeout correctly."""
     backend._api_key = "test-api-key"
@@ -605,334 +416,6 @@ async def test_exec_truncates_large_output(backend, mock_e2b_module):
     assert "clipped" in result.stdout
 
 
-@pytest.mark.anyio
-async def test_writable_upload_batches_are_bounded(backend, tmp_path, monkeypatch):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_E2B_UPLOAD_BATCH_FILES", 2)
-    monkeypatch.setattr(module, "_E2B_UPLOAD_BATCH_BYTES", 6)
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_FILES", 5)
-    for i in range(7):
-        (tmp_path / f"{i}.txt").write_bytes(b"data")
-    files = SimpleNamespace(write=mock.AsyncMock(), write_files=mock.AsyncMock())
-    sandbox = SimpleNamespace(
-        files=files, commands=SimpleNamespace(run=mock.AsyncMock())
-    )
-
-    await backend._sync_host_tree_to_e2b(
-        sandbox, host_root=str(tmp_path), remote_root="/remote"
-    )
-
-    entries = [
-        {"path": c.args[0], "data": c.args[1]} for c in files.write.await_args_list
-    ]
-    for call in files.write_files.await_args_list:
-        assert len(call.args[0]) <= 2
-        assert sum(len(e["data"]) for e in call.args[0]) <= 6
-        entries.extend(call.args[0])
-    assert len(entries) == 5
-    assert all(e["data"] == b"data" for e in entries)
-
-
-@pytest.mark.anyio
-async def test_writable_upload_batches_and_recovers_independent_files(
-    backend, tmp_path
-):
-    for i in range(70):
-        (tmp_path / f"{i}.txt").write_bytes(b"data")
-    files = SimpleNamespace(write=mock.AsyncMock(), write_files=mock.AsyncMock())
-    sandbox = SimpleNamespace(
-        files=files, commands=SimpleNamespace(run=mock.AsyncMock())
-    )
-    await backend._sync_host_tree_to_e2b(
-        sandbox, host_root=str(tmp_path), remote_root="/remote"
-    )
-    batches = [c.args[0] for c in files.write_files.await_args_list]
-    assert [len(batch) for batch in batches] == [32, 32, 6]
-    files.write.assert_not_awaited()
-    assert {e["path"] for batch in batches for e in batch} == {
-        f"/remote/{i}.txt" for i in range(70)
-    }
-
-    uploaded = {}
-
-    async def write(path, data):
-        if path == "/remote/0.txt":
-            raise OSError("one file rejected")
-        uploaded[path] = data
-
-    files.write.side_effect = write
-    files.write_files.side_effect = OSError("batch rejected")
-    await backend._sync_host_tree_to_e2b(
-        sandbox, host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert files.write.await_count == 70
-    assert uploaded == {f"/remote/{i}.txt": b"data" for i in range(1, 70)}
-
-
-@pytest.mark.anyio
-async def test_remote_download_concurrency_and_independent_failure(backend, tmp_path):
-    active = 0
-    peak = 0
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{i}.txt", size=4, type=SimpleNamespace(value="file")
-                )
-                for i in range(20)
-            ]
-
-        async def read(self, path, **kwargs):
-            nonlocal active, peak
-            active += 1
-            peak = max(peak, active)
-
-            async def chunks():
-                nonlocal active
-                try:
-                    await asyncio.sleep(0.001)
-                    if path == "/remote/0.txt":
-                        raise OSError("one download failed")
-                    yield b"data"
-                finally:
-                    active -= 1
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert 1 < peak <= 8
-    assert active == 0
-    assert not (tmp_path / "0.txt").exists()
-    assert all((tmp_path / f"{i}.txt").read_bytes() == b"data" for i in range(1, 20))
-
-
-@pytest.mark.anyio
-async def test_concurrent_downloads_share_total_byte_budget(
-    backend, tmp_path, monkeypatch
-):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_TOTAL_BYTES", 6)
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{i}.txt", size=0, type=SimpleNamespace(value="file")
-                )
-                for i in range(10)
-            ]
-
-        async def read(self, path, **kwargs):
-            async def chunks():
-                await asyncio.sleep(0.001)
-                yield b"1234"
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert len(list(tmp_path.iterdir())) == 1
-    assert sum(p.stat().st_size for p in tmp_path.iterdir()) <= 6
-
-
-@pytest.mark.anyio
-async def test_concurrent_downloads_keep_path_and_file_count_limits(
-    backend, tmp_path, monkeypatch
-):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_FILES", 2)
-    paths = [
-        "/remote/../../outside.txt",
-        "/other/x",
-        "/remote/a",
-        "/remote/b",
-        "/remote/c",
-    ]
-
-    async def read(path, **kwargs):
-        async def chunks():
-            yield path.encode()
-
-        return chunks()
-
-    files = SimpleNamespace(
-        list=mock.AsyncMock(
-            return_value=[
-                SimpleNamespace(path=p, size=0, type=SimpleNamespace(value="file"))
-                for p in paths
-            ]
-        ),
-        read=mock.AsyncMock(side_effect=read),
-    )
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=files), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert {call.args[0] for call in files.read.await_args_list} == {
-        "/remote/a",
-        "/remote/b",
-    }
-    assert {p.name for p in tmp_path.iterdir()} == {"a", "b"}
-
-
-@pytest.mark.anyio
-async def test_download_aliases_keep_sequential_write_order(backend, tmp_path):
-    for name in ("a", "b"):
-        (tmp_path / name).symlink_to("target")
-    active = 0
-    peak = 0
-    completed = []
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{name}", size=1, type=SimpleNamespace(value="file")
-                )
-                for name in ("a", "b")
-            ]
-
-        async def read(self, path, **kwargs):
-            async def chunks():
-                nonlocal active, peak
-                active += 1
-                peak = max(peak, active)
-                try:
-                    await asyncio.sleep(0.01 if path.endswith("/a") else 0.001)
-                    yield path[-1:].encode()
-                    completed.append(path[-1:])
-                finally:
-                    active -= 1
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert peak == 2
-    assert completed == ["b", "a"]
-    assert (tmp_path / "target").read_bytes() == b"b"
-
-
-@pytest.mark.anyio
-@pytest.mark.parametrize("failure", ["stream", "write"])
-async def test_failed_download_does_not_consume_successful_byte_budget(
-    backend, tmp_path, monkeypatch, failure
-):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_TOTAL_BYTES", 6)
-    original_write = module._write_e2b_host_file
-
-    def write(path, data):
-        if failure == "write" and path.endswith("/a"):
-            raise OSError("disk write rejected")
-        original_write(path, data)
-
-    monkeypatch.setattr(module, "_write_e2b_host_file", write)
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{name}", size=0, type=SimpleNamespace(value="file")
-                )
-                for name in ("a", "b")
-            ]
-
-        async def read(self, path, **kwargs):
-            async def chunks():
-                yield b"bad!" if path.endswith("/a") else b"good"
-                if path.endswith("/a"):
-                    await asyncio.sleep(0.01)
-                    if failure == "stream":
-                        raise OSError("stream interrupted after a chunk")
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert not (tmp_path / "a").exists()
-    assert (tmp_path / "b").read_bytes() == b"good"
-
-
-@pytest.mark.anyio
-async def test_byte_limit_keeps_listing_order_not_download_completion_order(
-    backend, tmp_path, monkeypatch
-):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_TOTAL_BYTES", 6)
-    bodies = {"a": b"aaaa", "b": b"bbbb", "c": b"cc"}
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{name}", size=0, type=SimpleNamespace(value="file")
-                )
-                for name in bodies
-            ]
-
-        async def read(self, path, **kwargs):
-            async def chunks():
-                if path.endswith("/a"):
-                    await asyncio.sleep(0.01)
-                yield bodies[path.rsplit("/", 1)[-1]]
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == {
-        "a": b"aaaa",
-        "c": b"cc",
-    }
-
-
-@pytest.mark.anyio
-async def test_failed_download_does_not_use_file_count_slot(
-    backend, tmp_path, monkeypatch
-):
-    import langbot_plugin.box.e2b_backend as module
-
-    monkeypatch.setattr(module, "_MAX_E2B_SYNC_FILES", 2)
-
-    class Files:
-        async def list(self, root, depth):
-            return [
-                SimpleNamespace(
-                    path=f"{root}/{name}", size=1, type=SimpleNamespace(value="file")
-                )
-                for name in ("a", "b", "c")
-            ]
-
-        async def read(self, path, **kwargs):
-            if path.endswith("/a"):
-                raise OSError("file unavailable")
-
-            async def chunks():
-                yield path[-1:].encode()
-
-            return chunks()
-
-    await backend._sync_e2b_tree_to_host(
-        SimpleNamespace(files=Files()), host_root=str(tmp_path), remote_root="/remote"
-    )
-    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == {
-        "b": b"b",
-        "c": b"c",
-    }
-
-
 # ── stop_session ──────────────────────────────────────────────────────
 
 
@@ -976,43 +459,6 @@ async def test_stop_session_handles_error(backend, mock_e2b_module):
 
     # Should not raise
     await backend.stop_session(session)
-
-
-@pytest.mark.anyio
-async def test_remote_sync_stream_is_bounded(backend, tmp_path, monkeypatch):
-    import langbot_plugin.box.e2b_backend as e2b_backend
-
-    monkeypatch.setattr(e2b_backend, "_MAX_E2B_SYNC_FILE_BYTES", 4)
-
-    class Files:
-        async def list(self, _root, depth):
-            assert depth == 16
-            return [
-                SimpleNamespace(
-                    path="/remote/large.bin",
-                    size=0,
-                    type=SimpleNamespace(value="file"),
-                )
-            ]
-
-        async def read(self, _path, *, format, request_timeout):
-            assert format == "stream"
-            assert request_timeout == 30
-
-            async def chunks():
-                yield b"123"
-                yield b"45"
-
-            return chunks()
-
-    sandbox = SimpleNamespace(files=Files())
-    await backend._sync_e2b_tree_to_host(
-        sandbox,
-        remote_root="/remote",
-        host_root=str(tmp_path),
-    )
-
-    assert not (tmp_path / "large.bin").exists()
 
 
 @pytest.mark.anyio
@@ -1244,3 +690,78 @@ async def test_cancelled_upload_cleans_staging_without_publication(backend, tmp_
     assert "rm -rf" in calls[-1]
     assert ".sealed" in calls[-1]
     assert not any("ln -s" in command or "mv " in command for command in calls)
+
+
+@pytest.mark.anyio
+async def test_exec_does_not_upload_or_download_writable_workspace(
+    backend, mock_e2b_module, tmp_path
+):
+    (tmp_path / "identity.txt").write_bytes(b"HOST_COPY")
+    spec = BoxSpec(
+        session_id="private-box",
+        cmd="rm /workspace/identity.txt",
+        host_path=str(tmp_path),
+    )
+    sandbox = mock_e2b_module
+    sandbox.files = SimpleNamespace(
+        write=mock.AsyncMock(), write_files=mock.AsyncMock(), list=mock.AsyncMock()
+    )
+    session = await backend.start_session(spec)
+    await backend.exec(session, spec)
+    assert "host-mount" not in sandbox.create.call_args.kwargs.get("metadata", {})
+    sandbox.files.write.assert_not_awaited()
+    sandbox.files.write_files.assert_not_awaited()
+    sandbox.files.list.assert_not_awaited()
+    assert (tmp_path / "identity.txt").read_bytes() == b"HOST_COPY"
+
+
+@pytest.mark.anyio
+async def test_read_only_mount_is_prepared_before_exec(
+    backend, mock_e2b_module, tmp_path
+):
+    (tmp_path / "resource.txt").write_bytes(b"RESOURCE")
+    spec = BoxSpec(
+        session_id="private-box",
+        cmd="true",
+        extra_mounts=[
+            BoxMountSpec(
+                host_path=str(tmp_path),
+                mount_path="/opt/resources",
+                mode=BoxHostMountMode.READ_ONLY,
+            )
+        ],
+    )
+    backend._materialize_immutable_mount = mock.AsyncMock()
+    session = await backend.start_session(spec)
+    await backend.exec(session, spec)
+    backend._materialize_immutable_mount.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_writable_extra_mount_requires_explicit_import(backend, mock_e2b_module):
+    spec = BoxSpec(
+        session_id="private-box",
+        cmd="true",
+        extra_mounts=[
+            BoxMountSpec(
+                host_path="/tmp/host-data",
+                mount_path="/data",
+                mode=BoxHostMountMode.READ_WRITE,
+            )
+        ],
+    )
+    session = await backend.start_session(spec)
+    with pytest.raises(BoxError, match="explicitly import"):
+        await backend.exec(session, spec)
+    mock_e2b_module.commands.run.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_remote_workspace_quota_failure_blocks_command(backend, mock_e2b_module):
+    spec = BoxSpec(session_id="private-box", cmd="do-not-run", workspace_quota_mb=1)
+    mock_e2b_module.commands.run.return_value.exit_code = 1
+    mock_e2b_module.commands.run.return_value.stderr = "workspace quota exceeded"
+    session = await backend.start_session(spec)
+    with pytest.raises(BoxError, match="workspace quota"):
+        await backend.exec(session, spec)
+    assert len(mock_e2b_module.commands.run.await_args_list) == 1

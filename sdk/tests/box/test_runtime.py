@@ -599,13 +599,15 @@ async def test_create_session_reuses_existing(logger):
 
 
 @pytest.mark.anyio
-async def test_reuse_recreates_when_backend_session_dead(logger):
-    """If backend reports the session is dead, it is dropped and recreated."""
+async def test_reuse_reports_lost_backend_before_explicit_reacquire(logger):
+    """Lost state is reported before a caller can explicitly acquire a new Box."""
     backend = FakeBackend(logger)
     with mock.patch("os.getenv", return_value=""):
         runtime = BoxRuntime(logger, backends=[backend])
         first = await runtime.create_session(_make_spec("gamma"))
         backend._alive = False
+        with pytest.raises(BoxSessionNotFoundError, match="state was lost"):
+            await runtime.create_session(_make_spec("gamma"))
         second = await runtime.create_session(_make_spec("gamma"))
 
     assert first["backend_session_id"] == "fake-1"

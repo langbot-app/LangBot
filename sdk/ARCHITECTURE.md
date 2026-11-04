@@ -426,8 +426,21 @@ clients are incompatible with this selected-path contract.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
-remains subject to Runtime idle expiry. Persistent workspace files survive expiry,
-but processes and container-local state do not.
+remains subject to Runtime idle expiry. Docker uses a private host directory per
+Box under `tenants/<namespace>/boxes/<session-hash>`; different reuse keys no
+longer share writable files. Its host directory can survive container expiry.
+E2B keeps writable files only in that sandbox, without a writable Host mirror or
+pre/post-exec directory synchronization. Losing the sandbox loses those working
+files; an active run fails instead of silently restoring stale Host copies.
+Explicitly acquire a new Box to start again. Existing tenant-root files are not
+automatically moved or deleted on upgrade.
+
+Attachments are explicitly copied into the bound Box. File delivery exports only
+selected paths; it is not a workspace backup. Published Skills are immutable,
+read-only resources. To edit one, copy it into a Box-local draft and explicitly
+call `register_skill` with `base_revision` to publish an update. Core snapshots
+only that directory into private, tenant-scoped import staging and cleans it up
+after publication; local edits never update other Boxes or the published Skill.
 
 `lbp box` enters `box/server.py::main()` and serves `BoxRuntime` through action RPC.
 
@@ -504,7 +517,7 @@ Run-bound tool calls propagate scoped cancellation through Plugin Runtime to Box
 EXEC. Cancellation cleanup uses the original request scope and remains bounded
 when cancellation repeats or the invocation is revoked.
 Cancelling an active execution retires its sandbox, as a command timeout
-does; persistent workspace files survive, but container-local files and managed
+does; Docker host files can survive, but E2B working files and managed
 processes do not. Cancelling a queued execution leaves the active sandbox alone.
 Failed cleanup keeps the session fenced until a later acquire/delete retries it.
 

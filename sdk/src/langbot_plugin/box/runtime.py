@@ -670,7 +670,10 @@ done
                 error_count += 1
                 continue
             included_sessions += 1
-            workspace_is_host_mounted = runtime_session.info.host_path is not None
+            workspace_is_host_mounted = (
+                runtime_session.info.host_path is not None
+                and runtime_session.info.backend_name != "e2b"
+            )
             has_managed_process = bool(runtime_session.managed_processes)
             for key in keys:
                 if key == "session_workspaces" and workspace_is_host_mounted:
@@ -1904,7 +1907,7 @@ done
                         if current is existing:
                             self.logger.warning(
                                 "LangBot Box session backend disappeared, "
-                                f"recreating: session_id={spec.session_id}"
+                                f"state lost: session_id={spec.session_id}"
                             )
                             cleanup_task = self._drop_session_locked(spec.session_id)
                         else:
@@ -1915,7 +1918,9 @@ done
                         await self._wait_for_session_cleanup(
                             spec.session_id, cleanup_task
                         )
-                    continue
+                    raise BoxSessionNotFoundError(
+                        "Box backend state was lost; explicitly acquire a new Box before continuing"
+                    )
 
                 async with self._lock:
                     if (
