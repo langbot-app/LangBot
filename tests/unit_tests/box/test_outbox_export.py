@@ -432,3 +432,42 @@ async def test_directory_export_still_rejects_absolute_response_paths(env, monke
     with pytest.raises(BoxExportError) as caught:
         await box.collect_outbound_attachments(query)
     assert caught.value.error.code == 'box.export.invalid_response'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('backend', ['e2b', 'docker'])
+async def test_selected_export_restores_only_e2b_workspace_mapping(env, backend):
+    box, query, _ = env
+    paths = ['/workspace/outbox/answer.txt', '/tmp/other.txt', '/home/user/workspace/direct.txt']
+    names = ['/home/user/workspace/outbox/answer.txt', *paths[1:]] if backend == 'e2b' else paths
+    reply = result(json.dumps([{'name': name, 'b64': 'YQ=='} for name in names]))
+    reply.backend_name = backend
+    box.client.execute = AsyncMock(return_value=reply)
+    items = await box.collect_selected_files(query, paths)
+    assert [item['_outbox_path'] for item in items] == paths
+    assert [base64.b64decode(item['base64']) for item in items] == [b'a'] * 3
+    await box.clear_selected_files(query, items)
+    cleanup = box.client.execute.await_args.args[0].cmd
+    assert all(path in cleanup for path in paths)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'backend,paths,names',
+    [
+        ('docker', ['/workspace/a.txt'], ['/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt'], ['/other/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt'], ['/home/user/workspace-other/a.txt']),
+        ('e2b', ['/workspace-other/a.txt'], ['/home/user/workspace-other/a.txt']),
+        ('e2b', ['/workspace/a.txt', '/workspace/b.txt'], ['/home/user/workspace/a.txt'] * 2),
+        ('e2b', ['/workspace/a.txt', '/workspace/b.txt'], ['/home/user/workspace/a.txt']),
+        ('e2b', ['/workspace/a.txt', '/home/user/workspace/a.txt'], ['/home/user/workspace/a.txt'] * 2),
+    ],
+)
+async def test_selected_export_rejects_unmapped_missing_duplicate_or_aliased_paths(env, backend, paths, names):
+    box, query, _ = env
+    reply = result(json.dumps([{'name': name, 'b64': 'YQ=='} for name in names]))
+    reply.backend_name = backend
+    box.client.execute = AsyncMock(return_value=reply)
+    with pytest.raises(BoxValidationError):
+        await box.collect_selected_files(query, paths)
