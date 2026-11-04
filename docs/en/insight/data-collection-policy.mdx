@@ -18,10 +18,13 @@ After a business route matches, unavailable targets, execution failures, timeout
 | Identity and environment | `instance_id`, `workspace_uuid`, `event_id`, version, edition, timestamp, debug flag and sampling information |
 | Execution nodes | Operation identifiers, processing mode, outcome, start/end times, parent/child relationships and sequence, routing target and Runner run identity for platform events, routing, Pipeline, Runner, platform API and tool calls |
 | Chain closure | Overall outcome, closure reason, duration, node count, nodes omitted by sampling, origin, model name, adapter, Runner and pipeline plugins |
+| Feature usage | Per-execution integer counters in `features`: tool calls by source, sandbox executions and errors, knowledge-base retrieval attempts, skill activations and LLM attempts (including retries). Zero counters are omitted; each counter is capped at 65,535. No tool arguments, outputs or skill names are added by these counters |
 | Bound resources | Identifiers or names of plugins, MCP servers, knowledge bases, tools and their sources, skills, models and platform APIs granted to a Pipeline or Agent, plus selector fields, capabilities and permission flags; fields depend on the execution path |
 | Errors | Short error text with length limits and whitespace normalization, potentially including an exception class and message prefix |
 
 Bound resources describe what an execution was configured or authorized to use. **They do not establish that those resources were actually called, searched or consumed.** Routing targets use `type:uuid`, not user-defined rule names.
+
+`model_name` identifies the first LLM invoked in an execution, across Pipeline, Agent and event-processor paths, truncated to 128 UTF-8 bytes. Feature counters are included only in the existing chain closure; disabling telemetry or leaving `space.url` empty disables counting as well as upload.
 
 Execution records do not intentionally collect message bodies, prompts, model replies, platform user/group IDs, tool/API arguments or results, credentials or complete exception tracebacks. **Truncating error text is not reliable redaction: exception prefixes and user-defined model, skill or resource names may still contain sensitive information.** Instance and Workspace identifiers may be associated with deployments or accounts; these records are neither anonymous nor guaranteed to contain no user content.
 

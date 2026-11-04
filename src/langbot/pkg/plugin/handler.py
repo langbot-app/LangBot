@@ -44,6 +44,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from ..api.http.context import ExecutionContext
+from ..telemetry import features as telemetry_features
 from ..entity.persistence import plugin as persistence_plugin
 from ..entity.persistence import bstorage as persistence_bstorage
 from ..provider.modelmgr import requester as model_requester
@@ -2555,6 +2556,7 @@ class RuntimeConnectionHandler(handler.Handler):
                 )
 
             try:
+                telemetry_features.increment(self.ap, 'kb', 'retrievals', execution_id=run_id or '')
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,
@@ -2675,6 +2677,7 @@ class RuntimeConnectionHandler(handler.Handler):
                             'sender_id': str(query.sender_id),
                         }
                     )
+                telemetry_features.increment(self.ap, 'kb', 'retrievals', query=query, execution_id=run_id or '')
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,

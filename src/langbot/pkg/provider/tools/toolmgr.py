@@ -13,6 +13,7 @@ from . import loader as tool_loader
 from .errors import ToolNotFoundError
 from ...pipeline.pool import get_query_execution_context
 from ...api.http.service.tenant import TenantContext
+from ...telemetry import features as telemetry_features
 
 if TYPE_CHECKING:
     from ...core import app
@@ -463,6 +464,7 @@ class ToolManager:
         invoke: typing.Callable[[], typing.Awaitable[typing.Any]],
     ) -> typing.Any:
         start_time = time.perf_counter()
+        telemetry_features.increment(self.ap, 'tool_calls', source, query=query)
         try:
             result = await invoke()
         except asyncio.CancelledError:
