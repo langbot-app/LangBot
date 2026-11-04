@@ -71,6 +71,12 @@ def register(h):
                     subject = item.get('subject') if isinstance(item, dict) else None
                     if not isinstance(event, dict):
                         continue
+                    await store.update_steering_status(
+                        str(event.get('event_id')),
+                        status='claimed' if claim else 'injected',
+                        delivery_id=item.get('delivery_id') if isinstance(item, dict) else None,
+                        lease_expires_at=item.get('lease_expires_at') if isinstance(item, dict) else None,
+                    )
                     await store.append_event(
                         event_id=None,
                         event_type='steering.injected',
@@ -133,6 +139,18 @@ def register(h):
 
         session_registry = get_session_registry()
         acknowledged, unknown = await session_registry.ack_steering(run_id, delivery_ids)
+        if acknowledged:
+            try:
+                from ..agent.runner.event_log_store import EventLogStore
+
+                await EventLogStore(h.ap.persistence_mgr.get_db_engine()).acknowledge_steering_deliveries(
+                    acknowledged
+                )
+            except Exception as exc:
+                h.ap.logger.warning(
+                    f'Failed to persist steering acknowledgement for run {run_id}: {exc}',
+                    exc_info=True,
+                )
         if acknowledged:
             try:
                 from ..agent.runner.event_log_store import EventLogStore
