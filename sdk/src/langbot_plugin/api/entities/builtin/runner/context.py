@@ -361,6 +361,40 @@ class RunnerContext(pydantic.BaseModel):
         """Request cancellation for one Host-owned run."""
         return await self.api.run_cancel(run_id=run_id, reason=reason)
 
+    async def run_cancel_ack(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> AgentRun:
+        """Acknowledge completed cancellation cleanup."""
+        return await self.api.run_cancel_ack(
+            run_id=run_id,
+            reason=reason,
+            cleanup_confirmed=cleanup_confirmed,
+        )
+
+    async def run_retry(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run for another execution attempt."""
+        return await self.api.run_retry(run_id=run_id, reason=reason)
+
+    async def run_resume(
+        self,
+        run_id: str | None = None,
+        from_sequence: int | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run with an optional resume cursor."""
+        return await self.api.run_resume(
+            run_id=run_id,
+            from_sequence=from_sequence,
+            reason=reason,
+        )
+
     async def run_append_result(self, result: RunnerResult) -> AgentRunEvent:
         """Append one result event to a Host-owned run ledger."""
         return await self.api.run_append_result(result=result)

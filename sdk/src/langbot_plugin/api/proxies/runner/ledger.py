@@ -127,6 +127,67 @@ class AgentRunLedgerAPIMixin:
         )
         return AgentRun.model_validate(resp)
 
+    async def run_cancel_ack(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> AgentRun:
+        """Acknowledge that cancellation cleanup has completed."""
+        self._require_context_api("run_cancel_ack")
+        timeout = self._bounded_timeout(default=15.0)
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_CANCEL_ACK,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "reason": reason,
+                "cleanup_confirmed": cleanup_confirmed,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_retry(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run for another execution attempt."""
+        self._require_context_api("run_retry")
+        timeout = self._bounded_timeout(default=15.0)
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_RETRY,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "reason": reason,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_resume(
+        self,
+        run_id: str | None = None,
+        from_sequence: int | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run with an optional result resume cursor."""
+        self._require_context_api("run_resume")
+        timeout = self._bounded_timeout(default=15.0)
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_RESUME,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "from_sequence": from_sequence,
+                "reason": reason,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
     async def run_append_result(
         self,
         result: RunnerResult,

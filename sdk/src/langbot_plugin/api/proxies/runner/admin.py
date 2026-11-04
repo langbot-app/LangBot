@@ -344,6 +344,55 @@ class RunnerAdminAPIProxy:
         )
         return AgentRun.model_validate(resp)
 
+    async def run_retry(
+        self,
+        run_id: str,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run for another execution attempt."""
+        resp = await self._call_action(
+            PluginToRuntimeAction.RUN_RETRY,
+            {"target_run_id": run_id, "reason": reason},
+            15.0,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_resume(
+        self,
+        run_id: str,
+        from_sequence: int | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Re-queue a terminal run with an optional resume cursor."""
+        resp = await self._call_action(
+            PluginToRuntimeAction.RUN_RESUME,
+            {
+                "target_run_id": run_id,
+                "from_sequence": from_sequence,
+                "reason": reason,
+            },
+            15.0,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_cancel_ack(
+        self,
+        run_id: str,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> AgentRun:
+        """Record cancellation cleanup completion for a run."""
+        resp = await self._call_action(
+            PluginToRuntimeAction.RUN_CANCEL_ACK,
+            {
+                "target_run_id": run_id,
+                "reason": reason,
+                "cleanup_confirmed": cleanup_confirmed,
+            },
+            15.0,
+        )
+        return AgentRun.model_validate(resp)
+
     async def run_stats(
         self,
         start_time: int | None = None,

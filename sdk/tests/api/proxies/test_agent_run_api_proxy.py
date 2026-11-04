@@ -1503,6 +1503,38 @@ class TestRunnerAPIProxyRunLedgerAPI:
         assert data["cost"] == {"amount": 0.1}
         assert data["metadata"] == {"source": "runner"}
 
+    @pytest.mark.anyio
+    async def test_run_retry_resume_and_cancel_ack_forward_lifecycle_fields(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "run_id": "run_target",
+            "status": "queued",
+            "metadata": {},
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(
+                run_retry=True,
+                run_resume=True,
+                run_cancel_ack=True,
+            )
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+
+        await proxy.run_retry("run_target", reason="retry")
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_RETRY
+        assert data["target_run_id"] == "run_target"
+
+        await proxy.run_resume("run_target", from_sequence=4, reason="resume")
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_RESUME
+        assert data["from_sequence"] == 4
+
+        await proxy.run_cancel_ack("run_target", cleanup_confirmed=True)
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_CANCEL_ACK
+        assert data["cleanup_confirmed"] is True
+
 
 class TestRunnerAdminAPIProxy:
     """Tests for Host-authorized admin proxy methods."""
