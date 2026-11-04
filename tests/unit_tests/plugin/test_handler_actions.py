@@ -16,6 +16,10 @@ from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
 
+from tests.utils.plugin_installations import install_legacy_plugin
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
 
 TEST_EXECUTION_CONTEXT = ExecutionContext(
     instance_uuid='instance-a',
@@ -73,6 +77,10 @@ def make_handler(app, workspace_context: ActionContext | None = None):
         plugin_name=plugin_name,
     )
     runtime_handler._current_action_context.set(installation_binding)
+    install_legacy_plugin(app, installation_binding, plugin_author, plugin_name)
+    if getattr(app, 'plugin_connector', None) is None:
+        app.plugin_connector = SimpleNamespace()
+    app.plugin_connector._runtime_handler = lambda: runtime_handler
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and isinstance(
         getattr(query_pool, 'cached_queries', None),
@@ -868,6 +876,13 @@ class TestAgentRunProxyActions:
         mock_app.model_mgr.get_rerank_model_by_uuid = AsyncMock()
         mock_app.tool_mgr = Mock()
         mock_app.tool_mgr.execute_func_call = AsyncMock(return_value={'ok': True})
+        mock_app.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+            return_value=[
+                {'name': 'test/search', 'source': 'mcp', 'source_id': 'bound-mcp'},
+                {'name': 'langbot_mcp_read_resource', 'source': 'mcp', 'source_id': None},
+                {'name': 'exec', 'source': 'builtin', 'source_id': None},
+            ]
+        )
         mock_app.tool_mgr.get_tool_detail = AsyncMock(
             return_value={
                 'name': 'test/search',
@@ -903,6 +918,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=900,
@@ -939,6 +955,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=901,
@@ -1017,6 +1034,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=905,
@@ -1060,6 +1078,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1116,6 +1135,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1162,6 +1182,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=902,
@@ -1226,6 +1247,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1283,6 +1305,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=906,
@@ -1329,6 +1352,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=903,
@@ -1376,6 +1400,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1461,7 +1486,7 @@ class TestAgentRunProxyActions:
             ),
         ],
     )
-    async def test_tool_actions_reject_malformed_frozen_source_identity(
+    async def test_tool_actions_resolve_source_from_catalog_not_legacy_selection(
         self,
         app,
         action,
@@ -1469,13 +1494,14 @@ class TestAgentRunProxyActions:
         manager_method,
         tool_resource,
     ):
-        """Run-scoped tool actions never fall back from a malformed authorization snapshot."""
+        """Installation grants use the trusted catalog rather than legacy tool preferences."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
         run_id = f'run_proxy_malformed_source_{action.value}'
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1496,9 +1522,10 @@ class TestAgentRunProxyActions:
         finally:
             await registry.unregister(run_id)
 
-        assert response.code != 0
-        assert response.message == 'Tool test/search has an invalid frozen source identity for this agent run'
-        getattr(app.tool_mgr, manager_method).assert_not_awaited()
+        assert response.code == 0
+        method = getattr(app.tool_mgr, manager_method)
+        method.assert_awaited_once()
+        assert method.await_args.kwargs['source_ref'] == {'source': 'mcp', 'source_id': 'bound-mcp'}
 
     @pytest.mark.asyncio
     async def test_call_tool_returns_error_when_host_denies_execution(self, app):
@@ -1515,6 +1542,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=907,
@@ -1557,6 +1585,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1633,6 +1662,9 @@ class TestAgentRunProxyActions:
         tool_mgr.plugin_tool_loader = Mock()
         tool_mgr.mcp_tool_loader = Mock()
         tool_mgr.skill_tool_loader = Mock()
+        tool_mgr.plugin_tool_loader.get_tool_catalog = AsyncMock(return_value=[])
+        tool_mgr.mcp_tool_loader.get_tool_catalog = AsyncMock(return_value=[])
+        tool_mgr.skill_tool_loader.get_tools = AsyncMock(return_value=[])
         app.tool_mgr = tool_mgr
 
         run_id = 'run_pure_event_native_exec'
@@ -1642,6 +1674,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=None,
@@ -1681,6 +1714,7 @@ class TestAgentRunProxyActions:
         registry = get_session_registry()
         await registry.unregister(run_id)
         await registry.register(
+            workspace_id='workspace-a',
             run_id=run_id,
             runner_id='plugin:test/runner/default',
             query_id=904,
@@ -1780,6 +1814,7 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
         ]
     )
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test/runner/default',
         query_id=None,
@@ -1815,6 +1850,7 @@ async def test_reply_stream_authorization_is_run_and_workspace_scoped(case):
 async def test_public_platform_api_preserves_runner_authorization_and_mock(mode):
     app = Mock()
     app.logger = Mock()
+    app.persistence_mgr.execute_async = AsyncMock(return_value=make_result(SimpleNamespace(uuid='bot')))
     from langbot.pkg.agent.runner.session_registry import get_session_registry
     from langbot.pkg.agent.runner.platform_tools import freeze_platform_context, build_platform_tool_resources
     from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
@@ -1836,6 +1872,7 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
     registry = get_session_registry()
     run_id = 'public-platform-' + mode
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1848,6 +1885,7 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
     app.platform_mgr.get_bot_by_uuid = AsyncMock(side_effect=AssertionError('Mock must not send'))
     data = {
         'run_id': run_id,
+        'context_tool': 'event_reply',
         'bot_uuid': 'bot',
         'action': 'send_message',
         'params': {
@@ -1857,7 +1895,14 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
         },
     }
     action = PluginToRuntimeAction.CALL_PLATFORM_API
+    if mode not in {'wrong-target', 'raw-send'}:
+        data['params'].pop('target_type')
+        data['params'].pop('target_id')
     if mode == 'raw-send':
+        send_message = AsyncMock(return_value={'message_id': 'sent'})
+        app.platform_mgr.get_bot_by_uuid = AsyncMock(
+            return_value=SimpleNamespace(adapter=SimpleNamespace(send_message=send_message))
+        )
         action = PluginToRuntimeAction.SEND_MESSAGE
         data = {
             'run_id': run_id,
@@ -1872,12 +1917,19 @@ async def test_public_platform_api_preserves_runner_authorization_and_mock(mode)
         result = await runtime_handler.actions[action.value](data)
     finally:
         await registry.unregister(run_id)
-    if mode in ('allowed', 'raw-send'):
+    if mode == 'raw-send':
+        assert result.code == 0, result.message
+        assert result.data['result'] == {'message_id': 'sent'}
+        send_message.assert_awaited_once()
+        assert send_message.await_args.args[:2] == ('group', 'group')
+        app.platform_mgr.get_bot_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'bot')
+    elif mode == 'allowed':
         assert result.code == 0, result.message
         assert result.data['result']['mock'] is True
     else:
         assert result.code != 0
-    app.platform_mgr.get_bot_by_uuid.assert_not_awaited()
+    if mode != 'raw-send':
+        app.platform_mgr.get_bot_by_uuid.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1891,6 +1943,7 @@ async def test_embedding_api_rejects_model_outside_runner_grants():
     registry = get_session_registry()
     run_id = 'embedding-ungranted'
     await registry.register(
+        workspace_id='workspace-a',
         run_id=run_id,
         runner_id='plugin:test-author/test-plugin/runner',
         query_id=None,
@@ -1987,11 +2040,13 @@ async def test_knowledge_actions_enforce_run_grants_before_resource_access(knowl
             == {
                 'unselected': 'knowledge_base kb-unselected is not authorized for operation retrieve for this agent run',
                 'operation': 'knowledge_base kb-a is not authorized for operation retrieve for this agent run',
-                'expired': 'Run session expired not found or expired',
-                'plugin': 'Plugin identity mismatch: caller test-author/test-plugin is not authorized for run_id run-a',
+                'expired': 'Run does not belong to this installation Workspace',
+                'plugin': 'Run does not belong to this installation Workspace',
             }[denial]
         )
-        assert not response.data
+        assert response.data == {
+            'code': 'permission_denied' if denial in {'expired', 'plugin'} else 'application_error'
+        }
         host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
         host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
 
@@ -2014,9 +2069,9 @@ async def test_knowledge_actions_keep_foreign_runs_in_trusted_workspace(knowledg
         {'run_id': 'run-b', 'kb_id': 'kb-b', 'query_text': 'hello', 'workspace_uuid': 'workspace-b'}
     )
     assert response.code != 0
-    assert response.message == 'Knowledge base kb-b not found'
-    assert not response.data
-    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_awaited_once_with(TEST_EXECUTION_CONTEXT, 'kb-b')
+    assert response.message == 'Run does not belong to this installation Workspace'
+    assert response.data == {'code': 'permission_denied'}
+    host.app.rag_mgr.get_knowledge_base_by_uuid.assert_not_awaited()
     host.app.plugin_connector.call_rag_retrieve.assert_not_awaited()
 
 

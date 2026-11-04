@@ -218,6 +218,7 @@ async def test_run_failure_timeout_and_missing_pipeline(service):  # noqa: F811
 
 async def test_extension_discovery_preserves_empty_bindings_and_redacts_plugins():
     ap = SimpleNamespace(
+        persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=[])),
         plugin_connector=SimpleNamespace(
             is_enable_plugin=True,
             require_workspace_context=AsyncMock(),

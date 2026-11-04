@@ -17,6 +17,8 @@ from langbot_plugin.runtime.io import handler as sdk_handler
 from langbot.pkg.plugin.connector import PluginRuntimeConnector
 from tests.unit_tests.plugin.test_handler_tenancy import RecordingConnection, make_handler, workspace_context
 
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
 
 class ReplyingConnection(RecordingConnection):
     """Replace only the transport, retaining serialization and response routing."""

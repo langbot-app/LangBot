@@ -1,3 +1,3 @@
 """Repository-wide test execution policy."""
 
-pytest_plugins = ['tests.utils.required_suites']
+pytest_plugins = ['tests.utils.required_suites', 'tests.utils.plugin_installations']

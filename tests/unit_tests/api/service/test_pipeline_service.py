@@ -617,6 +617,7 @@ class TestPipelineServiceCopyPipeline:
         """Creates a copy with (Copy) suffix."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}
@@ -680,6 +681,7 @@ class TestPipelineServiceCopyPipeline:
         """Copy is never set as default."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}

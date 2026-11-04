@@ -38,6 +38,8 @@ def operations_by_id(all_application_operations: list[Operation]) -> dict[str, O
 def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
     in_scope = set()
     for op_id in operations_by_id:
+        if op_id in {'plugin.permissions.get', 'plugin.permissions.update'}:
+            continue
         if op_id.startswith('monitoring.export.'):
             continue
         if (
@@ -82,7 +84,7 @@ def test_out_of_scope_operations_are_none(
     in_scope_operation_ids: set[str], all_application_operations: list[Operation]
 ):
     out_of_scope_ops = [op for op in all_application_operations if op.operation_id not in in_scope_operation_ids]
-    assert len(out_of_scope_ops) == 72
+    assert len(out_of_scope_ops) == 74
 
     for op in out_of_scope_ops:
         doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)
@@ -221,11 +223,17 @@ def test_parameter_descriptions_in_service_contracts(operations_by_id: dict[str,
     assert 'bot.list' in preview_schema['properties']['bot_uuid']['description']
 
 
+def test_permission_management_operations_are_not_exposed(operations_by_id: dict[str, Operation]):
+    for operation_id in ('plugin.permissions.get', 'plugin.permissions.update'):
+        operation = operations_by_id[operation_id]
+        assert get_operation_doc(operation_id, side_effect=operation.side_effect).exposure == 'none'
+
+
 def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 234
+    assert len(catalog_op_ids) == 236
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []

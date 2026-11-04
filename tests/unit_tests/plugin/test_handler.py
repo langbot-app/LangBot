@@ -10,6 +10,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
+from tests.utils.plugin_installations import install_legacy_plugin
+
 from langbot_plugin.entities.io.actions.enums import LangBotToRuntimeAction, PluginToRuntimeAction
 from langbot_plugin.entities.io.context import (
     ActionContext,
@@ -17,6 +19,8 @@ from langbot_plugin.entities.io.context import (
     PluginExecutionMode,
     PluginInstallationDesiredState,
 )
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
 
 
 @pytest.mark.asyncio
@@ -86,6 +90,7 @@ def make_handler(app):
         plugin_name='test-plugin',
     )
     runtime_handler._current_action_context.set(installation_binding)
+    install_legacy_plugin(app, installation_binding, 'test-author', 'test-plugin')
     query_pool = getattr(app, 'query_pool', None)
     if query_pool is not None and hasattr(query_pool, 'cached_queries'):
 

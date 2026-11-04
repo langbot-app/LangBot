@@ -92,19 +92,19 @@ async def test_plugin_list_sorting_debug_first():
         mock_rows = []
 
         # plugin1: oldest, plugin2: middle, plugin3: newest
-        mock_row1 = MagicMock()
+        mock_row1 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row1.plugin_author = 'author1'
         mock_row1.plugin_name = 'plugin1'
         mock_row1.created_at = now - timedelta(days=2)
         mock_rows.append(mock_row1)
 
-        mock_row2 = MagicMock()
+        mock_row2 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row2.plugin_author = 'author2'
         mock_row2.plugin_name = 'plugin2'
         mock_row2.created_at = now - timedelta(days=1)
         mock_rows.append(mock_row2)
 
-        mock_row3 = MagicMock()
+        mock_row3 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row3.plugin_author = 'author3'
         mock_row3.plugin_name = 'plugin3'
         mock_row3.created_at = now
@@ -190,19 +190,19 @@ async def test_plugin_list_sorting_by_installation_time():
         mock_rows = []
 
         # oldest_plugin: oldest, middle_plugin: middle, newest_plugin: newest
-        mock_row1 = MagicMock()
+        mock_row1 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row1.plugin_author = 'author1'
         mock_row1.plugin_name = 'oldest_plugin'
         mock_row1.created_at = now - timedelta(days=10)
         mock_rows.append(mock_row1)
 
-        mock_row2 = MagicMock()
+        mock_row2 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row2.plugin_author = 'author2'
         mock_row2.plugin_name = 'middle_plugin'
         mock_row2.created_at = now - timedelta(days=5)
         mock_rows.append(mock_row2)
 
-        mock_row3 = MagicMock()
+        mock_row3 = MagicMock(permission_declaration=None, permission_grants=None, permission_snapshot=None)
         mock_row3.plugin_author = 'author3'
         mock_row3.plugin_name = 'newest_plugin'
         mock_row3.created_at = now
@@ -239,6 +239,7 @@ async def test_plugin_list_empty():
 
     # Mock empty plugin list
     connector.handler.list_plugins = AsyncMock(return_value=[])
+    connector._load_workspace_settings = AsyncMock(return_value=[])
 
     # Call list_plugins
     result = await connector.list_plugins()
