@@ -104,6 +104,7 @@ spec:
       - pipeline.update
       - stats.basic
     capabilities:
+      - langbot.info
       - models.invoke
       - models.read
       - bot.read

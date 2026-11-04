@@ -45,3 +45,8 @@ def test_manifest_and_project_versions_match():
     project = tomllib.loads((PLUGIN_ROOT / "pyproject.toml").read_text())
     manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text())
     assert project["project"]["version"] == manifest["metadata"]["version"]
+
+
+def test_manifest_declares_sdk_version_discovery():
+    manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text())
+    assert "langbot.info" in manifest["spec"]["permissions"]["capabilities"]
