@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import datetime
 from dataclasses import asdict
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from pydantic import BaseModel
 
 from langbot.pkg.api.application.api import ApplicationAPI
 from langbot.pkg.api.application.contracts import Input, Operation
@@ -29,6 +31,33 @@ class DummyPayload(Input):
 class DummySecretInput(Input):
     resource_uuid: str
     include_secret: bool = False
+
+
+@pytest.mark.asyncio
+async def test_typed_results_are_json_serializable_and_redacted(mock_host):
+    class Record(BaseModel):
+        created_at: datetime.datetime
+        token: str
+
+    class Result(BaseModel):
+        items: list[Record]
+
+    result = Result(
+        items=[Record(created_at=datetime.datetime(2026, 11, 4, tzinfo=datetime.timezone.utc), token='test-secret')]
+    )
+
+    async def handler(ap, ctx, payload):
+        return result
+
+    mock_host.application_api = ApplicationAPI(
+        mock_host, operations=[Operation('bot.get', Permission.RESOURCE_VIEW, handler, Input, Result)]
+    )
+    context = make_account_context(frozenset({Permission.RESOURCE_VIEW.value}))
+    response = await call(mock_host, context, 'bot.get', {}, consumer='assistant')
+    assert response['ok'] is True
+    assert response['result'] == {'items': [{'created_at': '2026-11-04T00:00:00Z', 'token': '***'}]}
+    assert 'test-secret' not in json.dumps(response)
+    assert result.items[0].token == 'test-secret'
 
 
 @pytest.fixture

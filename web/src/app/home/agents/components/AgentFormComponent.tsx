@@ -598,7 +598,9 @@ function AgentFormComponent(
           const declared = (option as any).workspace_operations as string[];
           const validOpIds = new Set(workspaceOperations.map((op) => op.id));
           const defaultOps = declared.filter((opId) => validOpIds.has(opId));
-          form.setValue('allowed_workspace_operations', defaultOps, { shouldDirty: true });
+          form.setValue('allowed_workspace_operations', defaultOps, {
+            shouldDirty: true,
+          });
         }
       }
       return;
@@ -733,29 +735,41 @@ function AgentFormComponent(
 
   const confirmAndSave = useCallback(
     (values: FormValues): Promise<boolean> => {
-      const ungrantableOps = values.allowed_workspace_operations.filter((opId) => {
-        const op = workspaceOperations.find((item) => item.id === opId);
-        return op && op.grantable === false;
-      });
+      const ungrantableOps = values.allowed_workspace_operations.filter(
+        (opId) => {
+          const op = workspaceOperations.find((item) => item.id === opId);
+          return op && op.grantable === false;
+        },
+      );
 
       let effectiveValues = values;
       if (ungrantableOps.length > 0) {
-        const filteredOps = values.allowed_workspace_operations.filter((opId) => {
-          const op = workspaceOperations.find((item) => item.id === opId);
-          return !op || op.grantable !== false;
-        });
-        toast.warning(t('workspaceOperations.ungrantableRemoved', { count: ungrantableOps.length }));
+        const filteredOps = values.allowed_workspace_operations.filter(
+          (opId) => {
+            const op = workspaceOperations.find((item) => item.id === opId);
+            return !op || op.grantable !== false;
+          },
+        );
+        toast.warning(
+          t('workspaceOperations.ungrantableRemoved', {
+            count: ungrantableOps.length,
+          }),
+        );
         effectiveValues = {
           ...values,
           allowed_workspace_operations: filteredOps,
         };
-        form.setValue('allowed_workspace_operations', filteredOps, { shouldDirty: true });
+        form.setValue('allowed_workspace_operations', filteredOps, {
+          shouldDirty: true,
+        });
       }
 
-      const hasDangerous = effectiveValues.allowed_workspace_operations.some((opId) => {
-        const op = workspaceOperations.find((item) => item.id === opId);
-        return op?.risk === 'dangerous';
-      });
+      const hasDangerous = effectiveValues.allowed_workspace_operations.some(
+        (opId) => {
+          const op = workspaceOperations.find((item) => item.id === opId);
+          return op?.risk === 'dangerous';
+        },
+      );
       if (hasDangerous) {
         return new Promise<boolean>((resolve) => {
           pendingSaveValuesRef.current = effectiveValues;
@@ -966,40 +980,38 @@ function AgentFormComponent(
                               }
                               hostCatalogAvailable={hostToolCatalogAvailable}
                               scopes={OTHER_TOOL_SCOPES}
-                            />
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </section>
-                    <section className="space-y-3 border-t pt-6">
-                      <div className="space-y-1">
-                        <h3 className="text-sm font-medium">
-                          {t('workspaceOperations.title')}
-                        </h3>
-                        <p className="text-xs text-muted-foreground">
-                          {t('workspaceOperations.description')}
-                        </p>
-                      </div>
-                      <FormField
-                        control={form.control}
-                        name="allowed_workspace_operations"
-                        render={({ field }) => (
-                          <FormItem>
-                            <WorkspaceOperationsPicker
-                              operations={workspaceOperations}
-                              domains={domains}
-                              value={field.value}
-                              onChange={(next) =>
-                                form.setValue(
+                              workspaceTools={{
+                                count: workspaceOperations.length,
+                                selectedCount: form.watch(
                                   'allowed_workspace_operations',
-                                  next,
-                                  {
-                                    shouldDirty: true,
-                                    shouldValidate: true,
-                                  },
-                                )
-                              }
+                                ).length,
+                                content: (
+                                  <FormField
+                                    control={form.control}
+                                    name="allowed_workspace_operations"
+                                    render={({ field }) => (
+                                      <FormItem>
+                                        <WorkspaceOperationsPicker
+                                          operations={workspaceOperations}
+                                          domains={domains}
+                                          value={field.value}
+                                          onChange={(next) =>
+                                            form.setValue(
+                                              'allowed_workspace_operations',
+                                              next,
+                                              {
+                                                shouldDirty: true,
+                                                shouldValidate: true,
+                                              },
+                                            )
+                                          }
+                                        />
+                                        <FormMessage />
+                                      </FormItem>
+                                    )}
+                                  />
+                                ),
+                              }}
                             />
                             <FormMessage />
                           </FormItem>

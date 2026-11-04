@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AgentPlatformTool, PluginTool } from '@/app/infra/entities/api';
@@ -17,9 +17,15 @@ interface AgentApiToolPickerProps {
   platformCatalogAvailable?: boolean;
   hostCatalogAvailable?: boolean;
   scopes?: readonly ToolScope[];
+  workspaceTools?: {
+    count: number;
+    selectedCount: number;
+    content: ReactNode;
+  };
 }
 
-type ToolScope = 'event' | 'platform' | 'builtin' | 'mcp' | 'plugin' | 'skill';
+type ToolScope =
+  'event' | 'platform' | 'builtin' | 'mcp' | 'plugin' | 'skill' | 'workspace';
 
 type ToolEntry = {
   key: string;
@@ -50,6 +56,7 @@ const SCOPE_ORDER: ToolScope[] = [
   'mcp',
   'plugin',
   'skill',
+  'workspace',
 ];
 
 function normalizeHostScope(tool: PluginTool): ToolScope {
@@ -68,6 +75,7 @@ export default function AgentApiToolPicker({
   platformCatalogAvailable = true,
   hostCatalogAvailable = true,
   scopes = SCOPE_ORDER,
+  workspaceTools,
 }: AgentApiToolPickerProps) {
   const { t, i18n } = useTranslation();
   const [query, setQuery] = useState('');
@@ -116,14 +124,17 @@ export default function AgentApiToolPicker({
       Object.fromEntries(
         SCOPE_ORDER.map((scope) => [
           scope,
-          entries.filter((tool) => tool.scope === scope).length,
+          scope === 'workspace'
+            ? (workspaceTools?.count ?? 0)
+            : entries.filter((tool) => tool.scope === scope).length,
         ]),
       ) as Record<ToolScope, number>,
-    [entries],
+    [entries, workspaceTools?.count],
   );
-  const visibleScopes = SCOPE_ORDER.filter(
-    (scope) =>
-      scopes.includes(scope) && (scope !== 'skill' || scopeCounts.skill > 0),
+  const visibleScopes = SCOPE_ORDER.filter((scope) =>
+    scope === 'workspace'
+      ? Boolean(workspaceTools)
+      : scopes.includes(scope) && (scope !== 'skill' || scopeCounts.skill > 0),
   );
   useEffect(() => {
     if (!visibleScopes.includes(activeScope) && visibleScopes[0]) {
@@ -152,13 +163,14 @@ export default function AgentApiToolPicker({
     }
     return Array.from(groups.entries());
   }, [filteredEntries]);
-  const selectedCount = entries.filter(
-    (tool) =>
-      scopes.includes(tool.scope) &&
-      (tool.kind === 'platform'
-        ? selectedPlatform.has(tool.name)
-        : selectedHost.has(tool.name)),
-  ).length;
+  const selectedCount =
+    entries.filter(
+      (tool) =>
+        scopes.includes(tool.scope) &&
+        (tool.kind === 'platform'
+          ? selectedPlatform.has(tool.name)
+          : selectedHost.has(tool.name)),
+    ).length + (workspaceTools?.selectedCount ?? 0);
 
   const scopeLabel = (scope: ToolScope) => {
     const keys: Record<ToolScope, string> = {
@@ -168,6 +180,7 @@ export default function AgentApiToolPicker({
       mcp: 'agents.mcpTools',
       plugin: 'agents.pluginTools',
       skill: 'agents.skillTools',
+      workspace: 'workspaceOperations.title',
     };
     return t(keys[scope]);
   };
@@ -265,149 +278,161 @@ export default function AgentApiToolPicker({
         </span>
       </div>
 
-      <div className="relative max-w-sm">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={t('agents.apiToolsSearch')}
-          className="pl-9"
-        />
-      </div>
+      {activeScope === 'workspace' ? (
+        workspaceTools?.content
+      ) : (
+        <>
+          <div className="relative max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder={t('agents.apiToolsSearch')}
+              className="pl-9"
+            />
+          </div>
 
-      {!catalogAvailable && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          {activeScope === 'event' || activeScope === 'platform'
-            ? t('agents.apiToolsCatalogUnavailable')
-            : t('agents.hostToolsCatalogUnavailable')}
-        </div>
-      )}
-      {catalogAvailable && !filteredEntries.length && (
-        <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
-          {t('agents.apiToolsNoResults')}
-        </div>
-      )}
-      {catalogAvailable && filteredEntries.length > 0 && (
-        <div className="overflow-hidden rounded-lg border bg-background">
-          {groupedEntries.map(([group, groupTools], groupIndex) => (
-            <section key={group} className={cn(groupIndex > 0 && 'border-t')}>
-              <div className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
-                <span>{groupLabel(group)}</span>
-                <label className="flex cursor-pointer items-center gap-2">
-                  <Checkbox
-                    checked={
-                      groupTools.every(isSelected)
-                        ? true
-                        : groupTools.some(isSelected)
-                          ? 'indeterminate'
-                          : false
-                    }
-                    onCheckedChange={(checked) =>
-                      setGroup(groupTools, checked === true)
-                    }
-                    aria-label={`${groupLabel(group)} · ${t('agents.apiToolsSelectAll')}`}
-                  />
-                  {t('agents.apiToolsSelectAll')}
-                </label>
-              </div>
-              <div className="divide-y">
-                {groupTools.map((tool) => {
-                  const checked =
-                    tool.kind === 'platform'
-                      ? selectedPlatform.has(tool.name)
-                      : selectedHost.has(tool.name);
-                  const expanded = expandedTool === tool.key;
-                  const parameterNames = Object.keys(
-                    (tool.parameters.properties as
-                      Record<string, unknown> | undefined) ?? {},
-                  );
-                  return (
-                    <div key={tool.key} className="bg-background px-3 py-2.5">
-                      <label
-                        className={cn(
-                          'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5',
-                          'cursor-pointer',
-                        )}
-                      >
-                        <Checkbox
-                          checked={checked}
-                          onCheckedChange={(next) =>
-                            setTool(tool, next === true)
-                          }
-                          aria-label={tool.label}
-                          className="mt-0.5"
-                        />
-                        <span className="min-w-0">
-                          <span className="block text-sm font-medium leading-5">
-                            {tool.label}
-                          </span>
-                          <span className="block truncate text-xs leading-5 text-muted-foreground">
-                            {tool.description}
-                          </span>
-                        </span>
-                        <span
-                          className={cn(
-                            'min-w-12 pt-0.5 text-right text-xs text-muted-foreground',
-                            tool.risk === 'dangerous' &&
-                              'text-amber-700 dark:text-amber-400',
-                          )}
-                        >
-                          {tool.risk
-                            ? t(`agents.apiToolRisk.${tool.risk}`)
-                            : scopeLabel(tool.scope)}
-                        </span>
-                      </label>
-                      <button
-                        type="button"
-                        aria-expanded={expanded}
-                        onClick={() =>
-                          setExpandedTool(expanded ? null : tool.key)
+          {!catalogAvailable && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+              {activeScope === 'event' || activeScope === 'platform'
+                ? t('agents.apiToolsCatalogUnavailable')
+                : t('agents.hostToolsCatalogUnavailable')}
+            </div>
+          )}
+          {catalogAvailable && !filteredEntries.length && (
+            <div className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">
+              {t('agents.apiToolsNoResults')}
+            </div>
+          )}
+          {catalogAvailable && filteredEntries.length > 0 && (
+            <div className="overflow-hidden rounded-lg border bg-background">
+              {groupedEntries.map(([group, groupTools], groupIndex) => (
+                <section
+                  key={group}
+                  className={cn(groupIndex > 0 && 'border-t')}
+                >
+                  <div className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
+                    <span>{groupLabel(group)}</span>
+                    <label className="flex cursor-pointer items-center gap-2">
+                      <Checkbox
+                        checked={
+                          groupTools.every(isSelected)
+                            ? true
+                            : groupTools.some(isSelected)
+                              ? 'indeterminate'
+                              : false
                         }
-                        className="ml-7 mt-0.5 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground active:scale-[0.98]"
-                      >
-                        {expanded
-                          ? t('agents.apiToolHideDetails')
-                          : t('agents.apiToolDetails')}
-                        <ChevronDown
-                          className={cn(
-                            'size-3 transition-transform',
-                            expanded && 'rotate-180',
-                          )}
-                        />
-                      </button>
-                      {expanded && (
-                        <div className="ml-8 mt-1.5 space-y-1 border-l pl-3 text-xs text-muted-foreground">
-                          <div className="font-mono text-foreground/75">
-                            {tool.name}
-                          </div>
-                          {tool.api && <div>API: {tool.api}</div>}
-                          {tool.kind === 'host' && (
-                            <div>
-                              {t('agents.apiToolSource')}:{' '}
-                              {groupLabel(tool.group)}
+                        onCheckedChange={(checked) =>
+                          setGroup(groupTools, checked === true)
+                        }
+                        aria-label={`${groupLabel(group)} · ${t('agents.apiToolsSelectAll')}`}
+                      />
+                      {t('agents.apiToolsSelectAll')}
+                    </label>
+                  </div>
+                  <div className="divide-y">
+                    {groupTools.map((tool) => {
+                      const checked =
+                        tool.kind === 'platform'
+                          ? selectedPlatform.has(tool.name)
+                          : selectedHost.has(tool.name);
+                      const expanded = expandedTool === tool.key;
+                      const parameterNames = Object.keys(
+                        (tool.parameters.properties as
+                          Record<string, unknown> | undefined) ?? {},
+                      );
+                      return (
+                        <div
+                          key={tool.key}
+                          className="bg-background px-3 py-2.5"
+                        >
+                          <label
+                            className={cn(
+                              'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5',
+                              'cursor-pointer',
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(next) =>
+                                setTool(tool, next === true)
+                              }
+                              aria-label={tool.label}
+                              className="mt-0.5"
+                            />
+                            <span className="min-w-0">
+                              <span className="block text-sm font-medium leading-5">
+                                {tool.label}
+                              </span>
+                              <span className="block truncate text-xs leading-5 text-muted-foreground">
+                                {tool.description}
+                              </span>
+                            </span>
+                            <span
+                              className={cn(
+                                'min-w-12 pt-0.5 text-right text-xs text-muted-foreground',
+                                tool.risk === 'dangerous' &&
+                                  'text-amber-700 dark:text-amber-400',
+                              )}
+                            >
+                              {tool.risk
+                                ? t(`agents.apiToolRisk.${tool.risk}`)
+                                : scopeLabel(tool.scope)}
+                            </span>
+                          </label>
+                          <button
+                            type="button"
+                            aria-expanded={expanded}
+                            onClick={() =>
+                              setExpandedTool(expanded ? null : tool.key)
+                            }
+                            className="ml-7 mt-0.5 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground active:scale-[0.98]"
+                          >
+                            {expanded
+                              ? t('agents.apiToolHideDetails')
+                              : t('agents.apiToolDetails')}
+                            <ChevronDown
+                              className={cn(
+                                'size-3 transition-transform',
+                                expanded && 'rotate-180',
+                              )}
+                            />
+                          </button>
+                          {expanded && (
+                            <div className="ml-8 mt-1.5 space-y-1 border-l pl-3 text-xs text-muted-foreground">
+                              <div className="font-mono text-foreground/75">
+                                {tool.name}
+                              </div>
+                              {tool.api && <div>API: {tool.api}</div>}
+                              {tool.kind === 'host' && (
+                                <div>
+                                  {t('agents.apiToolSource')}:{' '}
+                                  {groupLabel(tool.group)}
+                                </div>
+                              )}
+                              {tool.eventPatterns && (
+                                <div>
+                                  {t('agents.apiToolEvents')}:{' '}
+                                  {tool.eventPatterns.join(', ')}
+                                </div>
+                              )}
+                              <div>
+                                {t('agents.apiToolParameters')}:{' '}
+                                {parameterNames.length
+                                  ? parameterNames.join(', ')
+                                  : t('agents.apiToolNoParameters')}
+                              </div>
                             </div>
                           )}
-                          {tool.eventPatterns && (
-                            <div>
-                              {t('agents.apiToolEvents')}:{' '}
-                              {tool.eventPatterns.join(', ')}
-                            </div>
-                          )}
-                          <div>
-                            {t('agents.apiToolParameters')}:{' '}
-                            {parameterNames.length
-                              ? parameterNames.join(', ')
-                              : t('agents.apiToolNoParameters')}
-                          </div>
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

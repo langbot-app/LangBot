@@ -17,6 +17,33 @@ sys.modules.setdefault('langbot.pkg.core.app', core_app_module)
 pytestmark = pytest.mark.asyncio
 
 
+async def test_pipeline_extensions_returns_workspace_catalog_and_saved_grants():
+    pipeline_service = SimpleNamespace(
+        get_pipeline=AsyncMock(
+            return_value={
+                'extensions_preferences': {'workspace_operations': ['stats.basic']},
+            }
+        ),
+    )
+    client = await _create_test_client(
+        pipeline_service,
+        plugin_connector=SimpleNamespace(list_plugins=AsyncMock(return_value=[])),
+        mcp_service=SimpleNamespace(get_mcp_servers=AsyncMock(return_value=[])),
+        skill_service=SimpleNamespace(list_skills=AsyncMock(side_effect=RuntimeError('unavailable'))),
+    )
+    response = await client.get(
+        '/api/v1/pipelines/pipeline-1/extensions',
+        headers={'Authorization': 'Bearer test-token'},
+    )
+    assert response.status_code == 200
+    data = (await response.get_json())['data']
+    assert data['workspace_operations'] == ['stats.basic']
+    stats = next(op for op in data['available_workspace_operations'] if op['id'] == 'stats.basic')
+    assert stats['grantable'] is True
+    assert any(domain['domain'] == stats['domain'] for domain in data['domains'])
+    assert data['available_skills'] == []
+
+
 async def _create_test_client(pipeline_service: SimpleNamespace, **extra_ap):
     app = quart.Quart(__name__)
     account = SimpleNamespace(uuid='account-test', user='test@example.com')
@@ -210,9 +237,7 @@ async def test_pipeline_extensions_get_normalizes_malformed_enable_all_flags(inv
 @pytest.mark.parametrize('invalid_preferences', [None, [], 'all', 0, False])
 async def test_pipeline_extensions_get_malformed_root_is_fail_closed(invalid_preferences):
     pipeline_service = SimpleNamespace(
-        get_pipeline=AsyncMock(
-            return_value={'extensions_preferences': invalid_preferences}
-        ),
+        get_pipeline=AsyncMock(return_value={'extensions_preferences': invalid_preferences}),
     )
     client = await _create_test_client(
         pipeline_service,

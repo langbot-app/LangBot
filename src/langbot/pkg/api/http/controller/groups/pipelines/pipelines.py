@@ -3,6 +3,7 @@ from __future__ import annotations
 import quart
 
 from .....application.contracts import ApplicationAPIException
+from .....application.tool_grants import get_workspace_operations_catalog
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
@@ -159,6 +160,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                 self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
                 available_skills = []
             extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
+            catalog = get_workspace_operations_catalog(self.ap, request_context)
             return self.success(
                 data={
                     'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
@@ -172,6 +174,9 @@ class PipelinesRouterGroup(group.RouterGroup):
                     'mcp_resource_agent_read_enabled': extensions_prefs.get('mcp_resource_agent_read_enabled', True),
                     'bound_skills': extensions_prefs.get('skills', []),
                     'available_skills': available_skills,
+                    'workspace_operations': extensions_prefs.get('workspace_operations', []),
+                    'available_workspace_operations': catalog['workspace_operations'],
+                    'domains': catalog['domains'],
                 }
             )
 

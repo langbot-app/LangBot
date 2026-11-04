@@ -1576,7 +1576,7 @@ const enUS = {
     eventToolUnavailable: 'Unavailable',
     eventApiToolsDescription:
       'Targets are frozen from the current event. The Agent only supplies action parameters.',
-    platformApiTools: 'Platform tools',
+    platformApiTools: 'Bot tools',
     platformApiToolsDescription:
       'The Agent may choose user, group, or message IDs. Grant only what the workflow needs.',
     apiToolEvents: 'Events',

@@ -1590,7 +1590,7 @@ const ruRU = {
     eventToolUnavailable: 'Недоступно',
     eventApiToolsDescription:
       'Цели фиксируются по текущему событию. Agent передаёт только параметры действия.',
-    platformApiTools: 'Инструменты платформы',
+    platformApiTools: 'Инструменты бота',
     platformApiToolsDescription:
       'Agent может выбирать ID пользователей, групп и сообщений. Предоставляйте только необходимые права.',
     apiToolEvents: 'События',

@@ -1475,7 +1475,7 @@ const zhHant = {
     eventToolUnavailable: '不適用',
     eventApiToolsDescription:
       '目標從當前事件凍結，Agent 只能提供動作參數，適合回覆、審核請求和處理相關成員。',
-    platformApiTools: '平臺工具',
+    platformApiTools: '機器人工具',
     platformApiToolsDescription:
       'Agent 可以指定使用者、羣組或訊息標識。請只按實際業務需要授權。',
     apiToolEvents: '適用事件',

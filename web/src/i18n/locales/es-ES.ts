@@ -1592,7 +1592,7 @@ const esES = {
     eventToolUnavailable: 'No disponible',
     eventApiToolsDescription:
       'Los destinos se fijan a partir del evento actual. El Agent solo proporciona los parámetros de acción.',
-    platformApiTools: 'Herramientas de plataforma',
+    platformApiTools: 'Herramientas del bot',
     platformApiToolsDescription:
       'El Agent puede elegir los ID de usuario, grupo o mensaje. Concede solo lo necesario.',
     apiToolEvents: 'Eventos',

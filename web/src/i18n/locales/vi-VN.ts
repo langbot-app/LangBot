@@ -1561,7 +1561,7 @@ const viVN = {
     eventToolUnavailable: 'Không khả dụng',
     eventApiToolsDescription:
       'Đích được cố định theo sự kiện hiện tại. Agent chỉ cung cấp tham số hành động.',
-    platformApiTools: 'Công cụ nền tảng',
+    platformApiTools: 'Công cụ bot',
     platformApiToolsDescription:
       'Agent có thể chọn ID người dùng, nhóm hoặc tin nhắn. Chỉ cấp quyền cần thiết.',
     apiToolEvents: 'Sự kiện',

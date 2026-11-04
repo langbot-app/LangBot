@@ -1484,7 +1484,7 @@ const zhHans = {
     eventToolUnavailable: '不适用',
     eventApiToolsDescription:
       '目标从当前事件冻结，Agent 只能提供动作参数，适合回复、审核请求和处理相关成员。',
-    platformApiTools: '平台工具',
+    platformApiTools: '机器人工具',
     platformApiToolsDescription:
       'Agent 可以指定用户、群组或消息标识。请只按实际业务需要授权。',
     apiToolEvents: '适用事件',

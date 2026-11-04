@@ -307,9 +307,10 @@ async def call(
 
     try:
         raw_result = await app_api.execute(operation_id, context, clean_arguments)
+        result = TypeAdapter(spec.output_type).dump_python(raw_result, mode='json')
         return {
             'ok': True,
-            'result': redact_secrets(raw_result),
+            'result': redact_secrets(result),
             'operation': {
                 'id': operation_id,
                 'risk': doc.risk,

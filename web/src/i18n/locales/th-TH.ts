@@ -1536,7 +1536,7 @@ const thTH = {
     eventToolUnavailable: 'ไม่พร้อมใช้งาน',
     eventApiToolsDescription:
       'ปลายทางกำหนดจากเหตุการณ์ปัจจุบัน Agent ส่งเฉพาะพารามิเตอร์การกระทำ',
-    platformApiTools: 'เครื่องมือแพลตฟอร์ม',
+    platformApiTools: 'เครื่องมือบอต',
     platformApiToolsDescription:
       'Agent เลือก ID ผู้ใช้ กลุ่ม หรือข้อความได้ ให้สิทธิ์เท่าที่จำเป็น',
     apiToolEvents: 'เหตุการณ์',

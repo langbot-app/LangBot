@@ -1578,7 +1578,7 @@ const jaJP = {
     eventToolUnavailable: '利用不可',
     eventApiToolsDescription:
       '操作対象は現在のイベントから決まります。Agent はアクションのパラメーターのみを指定します。',
-    platformApiTools: 'プラットフォームツール',
+    platformApiTools: 'ボットツール',
     platformApiToolsDescription:
       'Agent はユーザー、グループ、メッセージの ID を選べます。必要な権限だけを付与してください。',
     apiToolEvents: 'イベント',
