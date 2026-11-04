@@ -79,11 +79,13 @@ Slack でアプリの **Messages** タブを開き、DM を送信します。ボ
 
 ## イベント、インタラクション、既存アプリの更新
 
-クイック設定は以下の購読とインタラクションの受信設定を行います。インストール時にメッセージ、チャンネル、ユーザー、ファイル、リアクションの権限を要求し、リアクションには `reactions:read` を使用します。チャンネルの通常返信には引き続き @メンションが必要です。編集・削除やチャンネル変更のためのメッセージ購読によって、すべての会話に返信することはありません。
+クイック設定は以下の購読とインタラクションの受信設定を行います。インストール時にメッセージ、チャンネル、ユーザー、ファイル、リアクションの権限を要求し、リアクションには `reactions:read` を使用します。このボットが開始したスレッドへの返信は @メンションなしで受信できます。他のチャンネルメッセージには引き続き @メンションが必要です。スレッド返信の受信には `message.channels` と `channels:history`、プライベートチャンネルにはさらに `message.groups` と `groups:history` が必要です。権限を追加したら Slack アプリを再インストールしてください。
+
+スレッド返信の配信はボットへのメンションを意味しません。メンションのない返信もプラグインで処理できますが、デフォルトのパイプラインのメンションに基づくグループ応答条件は満たしません。
 
 | Slack イベント | LangBot イベント |
 | --- | --- |
-| DM、`app_mention` | `message.received` |
+| DM、`app_mention`、このボットが開始したスレッドへの返信 | `message.received` |
 | `message_changed` / `message_deleted` サブタイプ | `message.edited` / `message.deleted` |
 | `reaction_added` / `reaction_removed` | `message.reaction`、`is_add` で区別 |
 | `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
@@ -104,6 +106,14 @@ Slack でアプリの **Messages** タブを開き、DM を送信します。ボ
 4. Slack の設定を保存し、LangBot のイベントルートを設定します。再インストールで Bot Token が変わった場合は更新してボットを保存してください。
 
 各フィールドは [Slack App Manifest リファレンス](https://docs.slack.dev/reference/app-manifest/)を参照してください。
+
+## 標準メッセージ API でスレッドを操作する
+
+`send_message`、`reply_message` と標準メッセージコンポーネントを使用します。
+
+- `send_message` が返す `MessageResult.message_id` は、最初に送信したメッセージの Slack `ts` です。テキストの後にファイルを送信する場合も同様です。この ID を保存して、そのメッセージの下にスレッドを作成できます。
+- 送信チェーンに `Quote(id=message_id, origin=MessageChain([]))` を含めると、テキストとファイルをそのスレッドへ送信します。空でない ID を持つ最初の Quote が優先され、`reply_message` の元のスレッドや `quote_origin` の指定よりも優先します。origin の内容は送信しません。明示的な Quote ID がなければ、既存の送信・返信動作を維持します。
+- 受信したチャンネルのスレッド返信には `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))` が含まれます。現在のメッセージ ID は `Source.id` に残ります。スレッドの親メッセージとスレッド外のメッセージにはこの Quote は付きません。プラグインは別のコンテキスト照会なしで親メッセージ ID を取得できます。
 
 ## 手動設定（Webhook）
 

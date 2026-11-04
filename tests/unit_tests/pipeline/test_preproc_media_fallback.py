@@ -103,3 +103,57 @@ async def test_preprocessor_keeps_image_placeholder_for_text_only_local_agent(mo
     assert content[0].type == 'text'
     assert content[0].text == '[Image]'
     assert result.new_query.variables['user_message_text'] == '[Image]'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('combine_quote', [False, True])
+async def test_preprocessor_accepts_slack_thread_quote_with_empty_origin(mock_app, sample_query, combine_quote):
+    from importlib import import_module
+
+    from langbot.libs.slack_api.slackevent import SlackEvent
+    from langbot.pkg.platform.adapters.slack.message_converter import SlackMessageConverter
+
+    model = Mock()
+    model.model_entity.uuid = 'text-only-model'
+    model.model_entity.abilities = []
+    mock_app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+    _attach_runner_descriptor(mock_app)
+    mock_app.sess_mgr.get_session = AsyncMock(
+        return_value=provider_session.Session(
+            launcher_type=sample_query.launcher_type,
+            launcher_id=sample_query.launcher_id,
+            sender_id=sample_query.sender_id,
+            bot_uuid=sample_query.bot_uuid,
+        )
+    )
+    mock_app.sess_mgr.get_conversation = AsyncMock(return_value=_conversation())
+    mock_app.plugin_connector.emit_event = AsyncMock(return_value=_prompt_preprocessing_context())
+    sample_query.pipeline_config = _pipeline_config({'primary': 'text-only-model', 'fallbacks': []})
+    sample_query.pipeline_config['trigger']['misc']['combine-quote-message'] = combine_quote
+    sample_query.message_chain = await SlackMessageConverter.target2yiri(
+        SlackEvent(
+            {
+                'event': {
+                    'type': 'message',
+                    'channel_type': 'channel',
+                    'channel': 'C-1',
+                    'ts': '2.2',
+                    'thread_ts': '1.1',
+                    'text': 'reply',
+                }
+            }
+        )
+    )
+    quotes = [part for part in sample_query.message_chain if isinstance(part, platform_message.Quote)]
+    assert len(quotes) == 1
+    assert list(quotes[0].origin) == []
+    sample_query.messages = []
+    sample_query.variables = {}
+    import_module('langbot.pkg.pipeline.pipelinemgr')
+    preproc_module = import_module('langbot.pkg.pipeline.preproc.preproc')
+    result = await preproc_module.PreProcessor(mock_app).process(sample_query, 'PreProcessor')
+    content = result.new_query.user_message.content
+    assert len(content) == 1
+    assert content[0].type == 'text'
+    assert content[0].text == 'reply'
+    assert result.new_query.variables['user_message_text'] == 'reply'
