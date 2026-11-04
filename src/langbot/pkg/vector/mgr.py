@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 import uuid
 
 import sqlalchemy
@@ -10,7 +11,7 @@ from ..core import app
 from ..entity.persistence import rag as persistence_rag
 from ..entity.persistence import workspace as persistence_workspace
 from ..workspace.errors import WorkspaceNotFoundError
-from .vdb import VectorDatabase, SearchType
+from .vdb import VectorDatabase
 
 
 class VectorDBManager:
@@ -19,8 +20,21 @@ class VectorDBManager:
 
     def __init__(self, ap: app.Application):
         self.ap = ap
+        self.vector_db = None
+        self._closed = False
 
     async def initialize(self):
+        self._get_backend()
+
+    def _get_backend(self) -> VectorDatabase:
+        if self._closed:
+            raise RuntimeError('Vector database manager is closed')
+        if self.vector_db is None:
+            # Constructors do not await, so concurrent requests on this loop share one backend.
+            self._initialize_backend()
+        return self.vector_db
+
+    def _initialize_backend(self):
         kb_config = self.ap.instance_config.data.get('vdb')
         if kb_config:
             vdb_type = kb_config.get('use')
@@ -116,6 +130,7 @@ class VectorDBManager:
     async def shutdown(self) -> None:
         """Release the active vector backend deterministically."""
 
+        self._closed = True
         vector_db = self.vector_db
         self.vector_db = None
         if vector_db is not None:
@@ -123,9 +138,7 @@ class VectorDBManager:
 
     def get_supported_search_types(self) -> list[str]:
         """Return the search types supported by the current VDB backend."""
-        if self.vector_db is None:
-            return [SearchType.VECTOR.value]
-        return [st.value for st in self.vector_db.supported_search_types()]
+        return [st.value for st in self._get_backend().supported_search_types()]
 
     @staticmethod
     def physical_collection_name(
@@ -227,9 +240,11 @@ class VectorDBManager:
         return self.physical_collection_name(execution_context, knowledge_base_uuid)
 
     def _pgvector_database(self):
-        from .vdbs.pgvector_db import PgVectorDatabase
-
-        return self.vector_db if isinstance(self.vector_db, PgVectorDatabase) else None
+        backend = self._get_backend()
+        pgvector_module = sys.modules.get(f'{__package__}.vdbs.pgvector_db')
+        if pgvector_module is None:
+            return None
+        return backend if isinstance(backend, pgvector_module.PgVectorDatabase) else None
 
     async def _resolve_pgvector_scope(
         self,
