@@ -378,7 +378,7 @@ class AgentRunJournal:
             source_event_id = event.get('event_id')
             delivery_id = item.get('_steering_delivery_id') or item.get('delivery_id')
             requeued = bool(delivery_id)
-            if source_event_id:
+            if source_event_id and requeued:
                 await store.update_steering_status(
                     str(source_event_id),
                     status='queued' if requeued else 'dropped',

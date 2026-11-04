@@ -226,9 +226,20 @@ class EventLogStore:
             else:
                 query = query.where(EventLog.thread_id == thread_id)
             result = await session.execute(query)
+            dropped_result = await session.execute(
+                sqlalchemy.select(EventLog).where(EventLog.event_type == 'steering.dropped')
+            )
+            dropped_event_ids = {
+                (json.loads(row.metadata_json) if row.metadata_json else {})
+                .get('steering', {})
+                .get('original_event_id')
+                for row in dropped_result.scalars().all()
+            }
             pending: list[dict[str, typing.Any]] = []
             for row in result.scalars().all():
                 item = self._row_to_dict(row)
+                if item.get('event_id') in dropped_event_ids:
+                    continue
                 steering = item.get('metadata', {}).get('steering', {})
                 if steering.get('status') not in {'queued', 'claimed'}:
                     continue
