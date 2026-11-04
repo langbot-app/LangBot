@@ -332,10 +332,27 @@ def test_external_box_runtime_rejects_invalid_configured_control_token(monkeypat
         connector.get_control_headers()
 
 
+@pytest.mark.parametrize(
+    ('core_id', 'configured_id', 'environment_id', 'expected_id'),
+    [
+        ('instance-a', None, None, 'instance-a'),
+        ('instance_12345678-abcd', None, None, 'instance_12345678-abcd'),
+        ('instance-a', None, 'env-id', 'env-id'),
+        ('instance-a', 'config-id', 'env-id', 'config-id'),
+    ],
+)
 async def test_local_stdio_injects_generated_token_and_trusted_instance(
     monkeypatch: pytest.MonkeyPatch,
+    core_id,
+    configured_id,
+    environment_id,
+    expected_id,
 ):
     monkeypatch.delenv(BOX_CONTROL_TOKEN_ENV, raising=False)
+    if environment_id:
+        monkeypatch.setenv('LANGBOT_BOX_INSTANCE_ID', environment_id)
+    else:
+        monkeypatch.delenv('LANGBOT_BOX_INSTANCE_ID', raising=False)
     captured = {}
 
     class FakeStdioClientController:
@@ -350,7 +367,11 @@ async def test_local_stdio_injects_generated_token_and_trusted_instance(
         'langbot_plugin.runtime.io.controllers.stdio.client.StdioClientController',
         FakeStdioClientController,
     )
-    connector = BoxRuntimeConnector(make_app(Mock()))
+    app = make_app(Mock())
+    app.workspace_service.instance_uuid = core_id
+    if configured_id:
+        app.instance_config.data['box']['instance_id'] = configured_id
+    connector = BoxRuntimeConnector(app)
 
     def fake_callback(_transport_name, connected, _connect_error, _generation):
         async def callback(_connection):
@@ -363,7 +384,22 @@ async def test_local_stdio_injects_generated_token_and_trusted_instance(
     await connector._start_local_stdio()
 
     assert len(captured['env'][BOX_CONTROL_TOKEN_ENV]) >= 32
-    assert captured['env'][BOX_TRUSTED_INSTANCE_ENV] == 'instance-a'
+    assert captured['env'][BOX_TRUSTED_INSTANCE_ENV] == core_id
+    assert captured['env']['LANGBOT_BOX_INSTANCE_ID'] == expected_id
+
+
+async def test_windows_subprocess_receives_stable_identity(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv('LANGBOT_BOX_INSTANCE_ID', raising=False)
+    process = Mock(wait=AsyncMock(return_value=0))
+    spawn = AsyncMock(return_value=process)
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', spawn)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+    monkeypatch.setattr(connector, '_connect_ws', AsyncMock())
+
+    await connector._start_subprocess_then_ws()
+    await connector.runtime_subprocess_task
+
+    assert spawn.await_args.kwargs['env']['LANGBOT_BOX_INSTANCE_ID'] == 'instance-a'
 
 
 async def test_websocket_controller_receives_control_headers(monkeypatch: pytest.MonkeyPatch):

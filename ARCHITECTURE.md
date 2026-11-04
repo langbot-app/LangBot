@@ -204,6 +204,16 @@ In this repo:
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
 - [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
+- Core-launched Box subprocesses receive a stable `LANGBOT_BOX_INSTANCE_ID`:
+  explicit `box.instance_id`, then the environment override, then Core's instance
+  UUID. Standalone Box identity is fixed before RPC initialization; configure it
+  at launch with `--instance-id` or `LANGBOT_BOX_INSTANCE_ID`, or persist its
+  generated identity with `LANGBOT_BOX_DATA_DIR`. Compose and Kubernetes keep
+  this directory under the shared Box root. Each deployment needs its own root
+  and identity. The runtime holds an identity lock, so Kubernetes uses Recreate
+  rather than overlapping two owners during rollout. INIT cannot reassign Box
+  ownership. The SDK implementation requires the instance-scoped cleanup change;
+  the pinned SDK version is unchanged here.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
