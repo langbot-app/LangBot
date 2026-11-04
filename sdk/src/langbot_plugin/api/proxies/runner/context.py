@@ -17,6 +17,7 @@ from langbot_plugin.api.entities.builtin.runner.page_results import (
 )
 from langbot_plugin.api.entities.builtin.runner.input import InputAttachmentData
 from langbot_plugin.api.entities.builtin.runner.steering import (
+    SteeringAckResult,
     SteeringPullResult,
 )
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
@@ -133,7 +134,7 @@ class RunnerContextAPIMixin:
         )
         return HistorySearchResult.model_validate(resp)
 
-    # ================= Event APIs (run-scoped) =================
+    # ================= Event APIs (run-scoped) ==========
 
     async def event_get(self, event_id: str) -> AgentEventRecord:
         """Get a single event record by ID.
@@ -195,12 +196,13 @@ class RunnerContextAPIMixin:
         )
         return EventPage.model_validate(resp)
 
-    # ================= Run Ledger APIs (run-scoped) =================
+    # ================= Run Ledger APIs (run-scoped) ==========
 
     async def steering_pull(
         self,
         mode: str = "all",
         limit: int | None = None,
+        claim: bool = True,
     ) -> SteeringPullResult:
         """Pull pending run-scoped steering/follow-up input.
 
@@ -226,6 +228,7 @@ class RunnerContextAPIMixin:
                 "run_id": self.run_id,
                 "mode": mode,
                 "limit": limit,
+                "claim": claim,
             },
             timeout,
         )
@@ -275,3 +278,14 @@ class RunnerContextAPIMixin:
             mime_type=resp.get("mime_type"),
             data=data,
         )
+
+    async def steering_ack(self, delivery_ids: list[str]) -> SteeringAckResult:
+        """Acknowledge claimed steering inputs after applying them."""
+        self._require_context_api("steering_ack")
+        timeout = self._bounded_timeout(default=10.0)
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.STEERING_ACK,
+            {"run_id": self.run_id, "delivery_ids": delivery_ids},
+            timeout,
+        )
+        return SteeringAckResult.model_validate(resp)

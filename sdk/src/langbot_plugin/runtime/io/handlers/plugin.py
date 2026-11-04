@@ -958,6 +958,12 @@ class PluginConnectionHandler(handler.Handler):
                 PluginToRuntimeAction.STEERING_PULL, data, 15
             )
 
+        @self.action(PluginToRuntimeAction.STEERING_ACK)
+        async def steering_ack(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.STEERING_ACK, data, 15
+            )
+
         @self.action(PluginToRuntimeAction.STATE_GET)
         async def state_get(data: dict[str, Any]) -> handler.ActionResponse:
             return await forward_agent_action(PluginToRuntimeAction.STATE_GET, data, 15)

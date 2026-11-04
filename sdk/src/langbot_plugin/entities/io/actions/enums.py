@@ -103,6 +103,7 @@ class PluginToRuntimeAction(ActionType):
     EVENT_GET = "event_get"
     EVENT_PAGE = "event_page"
     STEERING_PULL = "steering_pull"
+    STEERING_ACK = "steering_ack"
 
     """Agent Run Ledger APIs (run-scoped, requires run_id authorization)"""
     RUN_GET = "run_get"

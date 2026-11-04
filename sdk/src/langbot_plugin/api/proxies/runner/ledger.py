@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from langbot_plugin.api.entities.builtin.runner.run_ledger import (
     AgentRun,
     AgentRunEvent,
@@ -152,6 +154,9 @@ class AgentRunLedgerAPIMixin:
         run_id: str | None = None,
         status: str | None = None,
         reason: str | None = None,
+        usage: dict[str, Any] | None = None,
+        cost: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentRun:
         """Finalize one Host-owned run ledger record.
 
@@ -162,14 +167,21 @@ class AgentRunLedgerAPIMixin:
         """
         self._require_context_api("run_finalize")
         timeout = self._bounded_timeout(default=15.0)
+        payload = {
+            "run_id": self.run_id,
+            "target_run_id": run_id or self.run_id,
+            "status": status,
+            "reason": reason,
+        }
+        if usage is not None:
+            payload["usage"] = usage
+        if cost is not None:
+            payload["cost"] = cost
+        if metadata is not None:
+            payload["metadata"] = metadata
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_FINALIZE,
-            {
-                "run_id": self.run_id,
-                "target_run_id": run_id or self.run_id,
-                "status": status,
-                "reason": reason,
-            },
+            payload,
             timeout,
         )
         return AgentRun.model_validate(resp)

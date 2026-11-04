@@ -67,6 +67,9 @@ class ContextAPICapabilities(pydantic.BaseModel):
     steering_pull: bool = False
     """Whether run-scoped steering/follow-up pull API is available."""
 
+    steering_ack: bool = False
+    """Whether claimed steering inputs can be acknowledged."""
+
     run_get: bool = False
     """Whether run.get API is available."""
 
