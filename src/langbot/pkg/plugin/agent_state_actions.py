@@ -143,9 +143,7 @@ def register(h):
             try:
                 from ..agent.runner.event_log_store import EventLogStore
 
-                await EventLogStore(h.ap.persistence_mgr.get_db_engine()).acknowledge_steering_deliveries(
-                    acknowledged
-                )
+                await EventLogStore(h.ap.persistence_mgr.get_db_engine()).acknowledge_steering_deliveries(acknowledged)
             except Exception as exc:
                 h.ap.logger.warning(
                     f'Failed to persist steering acknowledgement for run {run_id}: {exc}',

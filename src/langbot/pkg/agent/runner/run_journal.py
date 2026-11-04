@@ -404,7 +404,9 @@ class AgentRunJournal:
                 actor_name=actor.get('actor_name'),
                 subject_type=subject.get('subject_type'),
                 subject_id=subject.get('subject_id'),
-                input_summary='Unacknowledged steering input requeued' if requeued else 'Unconsumed steering input dropped',
+                input_summary='Unacknowledged steering input requeued'
+                if requeued
+                else 'Unconsumed steering input dropped',
                 run_id=run_id,
                 runner_id=runner_id,
                 event_time=event_time,

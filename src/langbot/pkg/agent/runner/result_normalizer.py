@@ -23,6 +23,7 @@ try:
         RunCancelledPayload,
     )
 except ImportError:
+
     class RunProgressPayload(pydantic.BaseModel):
         progress: float | None = pydantic.Field(default=None, ge=0, le=100)
         stage: str | None = pydantic.Field(default=None, max_length=256)
@@ -32,6 +33,8 @@ except ImportError:
     class RunCancelledPayload(pydantic.BaseModel):
         reason: str | None = pydantic.Field(default=None, max_length=4096)
         cleanup_confirmed: bool = False
+
+
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 from ...core import app
@@ -171,9 +174,7 @@ class AgentResultNormalizer:
             )
 
         elif result_type == 'run.progress':
-            self.ap.logger.debug(
-                f'Runner {descriptor.id} progress: {data.get("progress")} stage={data.get("stage")}'
-            )
+            self.ap.logger.debug(f'Runner {descriptor.id} progress: {data.get("progress")} stage={data.get("stage")}')
             return None
 
         elif result_type == 'run.cancelled':
@@ -235,9 +236,7 @@ class AgentResultNormalizer:
             result_json = json.dumps(result_dict)
             if len(result_json) <= MAX_RESULT_SIZE_BYTES:
                 return
-            self.ap.logger.warning(
-                f'Runner {descriptor.id} result too large ({len(result_json)} bytes), truncating'
-            )
+            self.ap.logger.warning(f'Runner {descriptor.id} result too large ({len(result_json)} bytes), truncating')
             data = result_dict.get('data', {})
             if isinstance(data, dict):
                 chunk = data.get('chunk') if isinstance(data.get('chunk'), dict) else None
