@@ -80,6 +80,7 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
                 'extensions_preferences',
                 {
                     'enable_all_plugins': False,
+                    'workspace_operations': [],
                     'plugins': [dict(zip(('author', 'name'), plugin.split('/'))) for plugin in PLUGIN_IDS],
                 },
             )

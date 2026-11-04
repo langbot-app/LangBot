@@ -14,6 +14,17 @@ from tools.entrypoints.regression_ci import SUITE_BUDGETS, suite_profile
 from tools.entrypoints.regression_suite import validate
 
 
+class PipelinePermissionProfileTests(unittest.TestCase):
+    def test_smoke_explicitly_preserves_empty_workspace_operation_grants(self):
+        profile, _ = suite_profile('smoke', 'permissions-test')
+        pipelines = [resource for resource in profile['resources'] if resource['kind'] == 'pipeline']
+        self.assertTrue(pipelines)
+        for pipeline in pipelines:
+            preferences = pipeline['body']['extensions_preferences']
+            self.assertEqual(preferences['workspace_operations'], [])
+            self.assertFalse(preferences['enable_all_plugins'])
+
+
 class CIProfileTest(unittest.TestCase):
     def test_local_groups_are_explicit_and_smoke_rejects_them(self):
         profile, _ = suite_profile('daily', 'test-run', ['resources'])
