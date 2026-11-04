@@ -77,9 +77,7 @@ class AsyncDifyClient:
         max_stream_bytes: int = MAX_STREAM_BYTES,
     ):
         if not isinstance(max_stream_bytes, int) or not 0 < max_stream_bytes <= MAX_STREAM_BUDGET_BYTES:
-            raise ValueError(
-                f"max_stream_bytes must be between 1 byte and {MAX_STREAM_BUDGET_BYTES} bytes"
-            )
+            raise ValueError(f"max_stream_bytes must be between 1 byte and {MAX_STREAM_BUDGET_BYTES} bytes")
         self.api_key = api_key
         self.base_url = endpoint(base_url).rstrip("/")
         self.timeout = timeout
