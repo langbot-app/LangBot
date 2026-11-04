@@ -518,6 +518,78 @@ class RunLedgerStore:
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
+    async def retry_run(
+        self,
+        *,
+        run_id: str,
+        status_reason: str | None = None,
+        resume_from_sequence: int | None = None,
+    ) -> dict[str, typing.Any] | None:
+        """Re-queue a terminal run for another execution attempt.
+
+        The existing run id and event history are retained. Retry metadata is
+        stored on the run so dispatchers can make the next attempt observable
+        and idempotent.
+        """
+        now = _utc_now()
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            if run is None:
+                return None
+            if run.status not in TERMINAL_STATUSES:
+                raise ValueError(f'Run {run_id} is not terminal and cannot be retried')
+            metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
+            if not isinstance(metadata, dict):
+                metadata = {}
+            retry_count = int(metadata.get('retry_count') or 0) + 1
+            metadata['retry_count'] = retry_count
+            metadata['retry_requested_at'] = _datetime_to_epoch(now)
+            metadata['retry_reason'] = status_reason
+            if resume_from_sequence is not None:
+                metadata['resume_from_sequence'] = max(int(resume_from_sequence), 0)
+            else:
+                metadata.pop('resume_from_sequence', None)
+            run.status = 'queued'
+            run.status_reason = status_reason or 'retry requested'
+            run.finished_at = None
+            run.started_at = None
+            run.cancel_requested_at = None
+            run.claimed_by_runtime_id = None
+            run.claim_token = None
+            run.claim_lease_expires_at = None
+            run.metadata_json = _json_dumps(metadata)
+            run.updated_at = as_naive_utc(now)
+            await session.commit()
+            inflight_hub.notify(run.workspace_id)
+            return self._run_to_dict(run)
+
+    async def acknowledge_cancel(
+        self,
+        *,
+        run_id: str,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> dict[str, typing.Any] | None:
+        """Persist an explicit cancellation cleanup acknowledgement."""
+        now = _utc_now()
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            if run is None:
+                return None
+            metadata = MediaCache.redact_inline_images(_json_loads(run.metadata_json, {}))
+            if not isinstance(metadata, dict):
+                metadata = {}
+            metadata['cancel_ack'] = {
+                'acknowledged_at': _datetime_to_epoch(now),
+                'cleanup_confirmed': bool(cleanup_confirmed),
+                'reason': reason,
+            }
+            run.metadata_json = _json_dumps(metadata)
+            run.updated_at = as_naive_utc(now)
+            await session.commit()
+            inflight_hub.notify(run.workspace_id)
+            return self._run_to_dict(run)
+
     async def get_run(self, run_id: str) -> dict[str, typing.Any] | None:
         """Get one run by run_id."""
         async with self._session_factory() as session:
