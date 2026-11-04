@@ -35,8 +35,8 @@ from pkg.dify_client import (
     extract_workflow_outputs,
     process_thinking_content,
 )
-from pkg.scoped_identity import scoped_identity
 from pkg.http_limits import MAX_STREAM_BUDGET_MB
+from pkg.scoped_identity import scoped_identity
 
 logger = logging.getLogger(__name__)
 
