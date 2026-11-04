@@ -1,6 +1,8 @@
 """Prepare source or published regression plugins and verify installed artifacts."""
 
 from datetime import datetime, timezone
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import io
 import json
@@ -10,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 import zipfile
@@ -199,7 +202,41 @@ def prepare_source_plugins(directory, source, extra_plugins=()):
     return manifest
 
 
-def install_plugins(call, directory, manifest):
+@contextmanager
+def package_marketplace(directory, manifest):
+    packages = {
+        f'/api/v1/marketplace/plugins/download/{entry["id"]}/{entry["version"]}': Path(directory) / entry['archive']
+        for entry in manifest['plugins']
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            package = packages.get(self.path)
+            if package is None:
+                self.send_error(404)
+                return
+            content = package.read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Length', str(len(content)))
+            self.end_headers()
+            self.wfile.write(content)
+
+        def log_message(self, format, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = threading.Thread(target=server.serve_forever)
+    thread.start()
+    try:
+        yield f'http://127.0.0.1:{server.server_port}'
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+
+def install_plugins(call, directory, manifest, *, install=None):
     """Install recorded packages and require exact, initialized CLI readback."""
     directory = Path(directory)
     for entry in manifest['plugins']:
@@ -207,7 +244,10 @@ def install_plugins(call, directory, manifest):
         if hashlib.sha256(archive.read_bytes()).hexdigest() != entry['sha256']:
             raise ValueError(f'Plugin archive changed before installation: {entry["id"]}')
         try:
-            call(['plugin', 'install', 'local', '--file', str(archive), '--wait'])
+            if install is None:
+                call(['plugin', 'install', 'local', '--file', str(archive), '--wait'])
+            else:
+                install(entry)
         except RuntimeError as exc:
             raise RuntimeError(f'Plugin install failed: {entry["id"]}@{entry["version"]}: {exc}') from exc
         response = call(['plugin', 'list'])

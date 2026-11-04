@@ -486,7 +486,7 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
-            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config replaces the complete configuration and requires trigger, safety, ai, and output objects. Invalid config is rejected before writing.'
+            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config merges top-level sections, preserving omitted sections and replacing each supplied section in full. Supplied sections must be objects. Invalid config is rejected before writing.'
         )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)

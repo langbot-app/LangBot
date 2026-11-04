@@ -3914,6 +3914,8 @@ const esES = {
         'Usa un ejecutor instalado o inténtalo más tarde.',
       browseRunners: 'Explorar extensiones de ejecutores',
       installAndContinue: 'Instalar y continuar',
+      autoConfirmPermissions:
+        'Los permisos declarados se concederán automáticamente. Puedes ajustarlos en la configuración del plugin.',
       installing: 'Instalando...',
       useInstalled: 'Usar este ejecutor',
       installedUnavailable: 'Instalado, ejecutor no disponible',

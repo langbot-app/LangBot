@@ -17,6 +17,8 @@ export default {
   downloaded: 'ダウンロード済み {{size}}',
   processed: '{{completed}} / {{total}} 件のパイプラインを処理済み',
   installErrors: {
+    plugin_permission_confirmation_required:
+      'プラグイン権限を確認できませんでした。必要な権限を持つメンバーが確認してから再試行してください。',
     plugin_version_unavailable:
       '必要なバージョンはまだマーケットにありません。公開後に再試行するかデータのみ移行してください。',
     plugin_download_timeout:

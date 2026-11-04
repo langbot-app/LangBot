@@ -73,6 +73,7 @@ from langbot.pkg.api.http.service.monitoring import MonitoringService
 from langbot.pkg.api.http.service.user import UserService
 from langbot.pkg.api.mcp.context import get_request_context as get_mcp_request_context
 from langbot.pkg.api.mcp.mount import MCPMount
+from langbot.pkg.api.mcp.server import LangBotMCPServer
 from langbot.pkg.entity.persistence.apikey import ApiKey
 from langbot.pkg.entity.persistence import bot as persistence_bot
 from langbot.pkg.entity.persistence import mcp as persistence_mcp
@@ -2283,13 +2284,11 @@ class TestPostgreSQLTenantRuntime:
                 'values': [workspace_a],
             }
 
-            # The parallel MCP ASGI entrypoint authenticates the same key and
-            # retains only a trusted Workspace scope for the full tool request.
-            # Each DB call gets its own short RLS transaction.
             mcp_observation: dict[str, typing.Any] = {}
+            mcp_server = LangBotMCPServer(runtime_application)
 
-            async def fake_mcp_asgi(scope, receive, send):
-                del scope, receive
+            @mcp_server.tool(name='probe_tenant_scope')
+            async def probe_tenant_scope():
                 context = get_mcp_request_context()
                 assert cloud_manager.current_session() is None
                 values = (await cloud_manager.execute_async(sa.select(WorkspaceMetadata.value))).scalars().all()
@@ -2305,6 +2304,11 @@ class TestPostgreSQLTenantRuntime:
                     workspace_uuid=context.workspace_uuid,
                     values=values,
                 )
+
+            async def fake_mcp_asgi(scope, receive, send):
+                del scope, receive
+                await asyncio.create_task(probe_tenant_scope())
+                assert cloud_manager.current_session() is None
                 await send({'type': 'http.response.start', 'status': 200, 'headers': []})
                 await send({'type': 'http.response.body', 'body': b'{}'})
 

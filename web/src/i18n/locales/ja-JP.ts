@@ -3860,6 +3860,8 @@ const jaJP = {
         'インストール済みのランナーを使うか、後でもう一度お試しください。',
       browseRunners: 'Runner 拡張機能を見る',
       installAndContinue: 'インストールして続行',
+      autoConfirmPermissions:
+        'プラグインが宣言した権限を自動的に付与します。プラグイン設定で変更できます。',
       installing: 'インストール中...',
       useInstalled: 'この Runner を使用',
       installedUnavailable: 'インストール済み、Runner は利用不可',

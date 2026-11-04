@@ -14,6 +14,8 @@ export default {
   downloaded: '已下载 {{size}}',
   processed: '已处理 {{completed}} / {{total}} 条流水线',
   installErrors: {
+    plugin_permission_confirmation_required:
+      '无法确认插件权限。请有相应权限的成员在插件设置中确认后重试。',
     plugin_version_unavailable:
       '扩展市场尚未提供所需插件版本，请等待上架后重试，或选择仅迁移数据。',
     plugin_download_timeout: '下载插件超时，请检查网络后重试。',

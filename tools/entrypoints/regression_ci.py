@@ -2,6 +2,7 @@
 """Prepare a disposable Linux CI stack from this checkout, then run a regression suite."""
 
 import argparse
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,7 @@ from tools.entrypoints.regression_coverage import write_report
 from tools.regression.regression_plugins import (
     PLUGIN_IDS,
     install_plugins,
+    package_marketplace,
     prepare_published_plugins,
     prepare_source_plugins,
 )
@@ -124,6 +126,7 @@ def run(args):
     private = root / '.private'
     private.mkdir(mode=0o700)
     processes, logs = [], []
+    services = ExitStack()
     owned_services = {}
     key, runtime_token, box_token = (secrets.token_urlsafe(32) for _ in range(3))
     env = dict(
@@ -205,6 +208,7 @@ def run(args):
         config_path = create_minimal_config(private, port=15301)
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
+        config.setdefault('space', {})['url'] = services.enter_context(package_marketplace(root / 'plugins', packages))
         config['api'].update(global_api_key=key, host='127.0.0.1')
         config['plugin'].update(enable=True, runtime_ws_url='ws://127.0.0.1:15340/control/ws')
         config['box'].update(enabled=True, backend='local', runtime={'endpoint': 'ws://127.0.0.1:15310/control/ws'})
@@ -314,7 +318,7 @@ def run(args):
         cli_data = yaml.safe_load(cli_config.read_text())
         cli_data['contexts']['smoke']['expected_workspace_uuid'] = identity['workspace_uuid']
         cli_config.write_text(yaml.safe_dump(cli_data))
-        if {'resources', 'api'} & set(groups) or args.restart_services:
+        if packages['plugins'] or {'resources', 'api'} & set(groups) or args.restart_services:
             # Account creation is restricted to this runner's newly created private database.
             credentials = {'user': 'regression@langbot.test', 'password': secrets.token_urlsafe(32)}
             suite.secrets.append(credentials['password'])
@@ -325,7 +329,36 @@ def run(args):
             env['LANGBOT_QA_USER_TOKEN'] = response['data']['token']
             suite.env['LANGBOT_QA_USER_TOKEN'] = env['LANGBOT_QA_USER_TOKEN']
             suite.secrets.append(env['LANGBOT_QA_USER_TOKEN'])
-        install_plugins(suite.call, root / 'plugins', packages)
+
+        def install_confirmed_plugin(entry):
+            author, name = entry['id'].split('/')
+            headers = {'Authorization': 'Bearer ' + env['LANGBOT_QA_USER_TOKEN']}
+            status, response = api(
+                suite,
+                'POST',
+                '/api/v1/plugins/install/marketplace',
+                {
+                    'plugin_author': author,
+                    'plugin_name': name,
+                    'plugin_version': entry['version'],
+                    'auto_confirm_permissions': True,
+                },
+                headers=headers,
+            )
+            require(status == 200 and response.get('code') == 0, 'Wizard plugin installation was rejected')
+            task_id = response['data']['task_id']
+            deadline = time.monotonic() + suite.timeout(180)
+            while time.monotonic() < deadline:
+                status, response = api(suite, 'GET', f'/api/v1/system/tasks/{task_id}', headers=headers)
+                require(status == 200 and response.get('code') == 0, 'Plugin installation task unavailable')
+                task = response['data']
+                if task['runtime']['done']:
+                    require(not task['runtime']['exception'], f'Plugin installation/confirmation failed: {entry["id"]}')
+                    return
+                time.sleep(0.2)
+            raise TimeoutError(f'Plugin installation/confirmation timed out: {entry["id"]}')
+
+        install_plugins(suite.call, root / 'plugins', packages, install=install_confirmed_plugin)
         restart_result = None
         restart_elapsed = 0
         if args.restart_services:
@@ -381,6 +414,7 @@ def run(args):
         (root / 'gate/gate.json').write_text(json.dumps(result, indent=2) + '\n')
         return result
     finally:
+        services.close()
         for process in reversed(processes):
             if process.poll() is None:
                 os.killpg(process.pid, signal.SIGTERM)

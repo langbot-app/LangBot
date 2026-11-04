@@ -123,6 +123,102 @@ class TestSQLiteMigrationUpgrade:
     """Tests for upgrade to head workflow."""
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('enabled', [True, False])
+    @pytest.mark.parametrize('json_null', [True, False])
+    async def test_plugin_permission_backfill_preserves_enabled(self, sqlite_engine, enabled, json_null):
+        from types import SimpleNamespace
+
+        from langbot.pkg.api.application.plugin_capabilities import LEGACY_CAPABILITIES
+        from langbot.pkg.api.application.plugin_permissions import permission_status
+
+        metadata = sqlalchemy.MetaData()
+        settings = sqlalchemy.Table(
+            'plugin_settings',
+            metadata,
+            sqlalchemy.Column('uuid', sqlalchemy.String, primary_key=True),
+            sqlalchemy.Column('enabled', sqlalchemy.Boolean),
+            *(
+                sqlalchemy.Column(name, sqlalchemy.JSON)
+                for name in ('permission_declaration', 'permission_grants', 'permission_snapshot')
+            ),
+        )
+        empty = None if json_null else sqlalchemy.null()
+        async with sqlite_engine.begin() as conn:
+            await conn.run_sync(metadata.create_all)
+            await conn.execute(
+                settings.insert().values(
+                    uuid='legacy',
+                    enabled=enabled,
+                    permission_declaration=empty,
+                    permission_grants=empty,
+                    permission_snapshot=empty,
+                )
+            )
+            await conn.execute(
+                settings.insert().values(
+                    uuid='pending',
+                    enabled=False,
+                    permission_declaration=empty,
+                    permission_grants={},
+                    permission_snapshot=empty,
+                )
+            )
+        await run_alembic_stamp(sqlite_engine, '0043_speech_models')
+        await run_alembic_upgrade(sqlite_engine)
+        async with sqlite_engine.connect() as conn:
+            row = (await conn.execute(settings.select().where(settings.c.uuid == 'legacy'))).mappings().one()
+            pending = (await conn.execute(settings.select().where(settings.c.uuid == 'pending'))).mappings().one()
+        expected = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+        assert row['permission_grants'] == row['permission_snapshot'] == expected
+        assert row['enabled'] is enabled
+        assert not permission_status(None, SimpleNamespace(**row))['pending_confirmation']
+        assert pending['permission_grants'] == {} and pending['permission_snapshot'] is None
+        await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+        await run_alembic_upgrade(sqlite_engine)
+        async with sqlite_engine.connect() as conn:
+            row = (await conn.execute(settings.select().where(settings.c.uuid == 'legacy'))).mappings().one()
+        assert row['permission_grants'] == row['permission_snapshot'] == expected
+        assert row['enabled'] is enabled
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('existing_columns', [None, [], ['permission_grants']])
+    async def test_plugin_permission_schema_round_trip(self, sqlite_engine, existing_columns):
+        permission_columns = {'permission_declaration', 'permission_grants', 'permission_snapshot'}
+        if existing_columns is not None:
+            metadata = sqlalchemy.MetaData()
+            sqlalchemy.Table(
+                'plugin_settings',
+                metadata,
+                sqlalchemy.Column('uuid', sqlalchemy.String, primary_key=True),
+                *(sqlalchemy.Column(name, sqlalchemy.JSON) for name in existing_columns),
+            )
+            async with sqlite_engine.begin() as conn:
+                await conn.run_sync(metadata.create_all)
+        await run_alembic_stamp(sqlite_engine, '0044_plugin_permissions')
+        await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+        for _ in range(2):
+            await run_alembic_upgrade(sqlite_engine)
+            async with sqlite_engine.connect() as conn:
+                exists = await conn.run_sync(lambda sync: sqlalchemy.inspect(sync).has_table('plugin_settings'))
+                assert exists == (existing_columns is not None)
+                if exists:
+                    columns = await conn.run_sync(
+                        lambda sync: {
+                            column['name'] for column in sqlalchemy.inspect(sync).get_columns('plugin_settings')
+                        }
+                    )
+                    assert permission_columns <= columns
+            await run_alembic_downgrade(sqlite_engine, '0043_speech_models')
+            if existing_columns is not None:
+                async with sqlite_engine.connect() as conn:
+                    columns = await conn.run_sync(
+                        lambda sync: {
+                            column['name'] for column in sqlalchemy.inspect(sync).get_columns('plugin_settings')
+                        }
+                    )
+                    assert columns == {'uuid'}
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize('with_model_parents', [False, True])
     async def test_speech_upgrade_preserves_pipeline_and_model_constraints(self, sqlite_engine, with_model_parents):
         metadata = sqlalchemy.MetaData()

@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from typing import get_args
 from unittest.mock import AsyncMock
+from dataclasses import replace
 
 import pytest
 from langbot_plugin.api.entities.permissions import Capability
@@ -25,6 +26,8 @@ from langbot.pkg.api.application.plugin_permissions import (
 from langbot.pkg.api.application.tool_grants import validate_grant_change
 from langbot.pkg.api.authz import Permission, permissions_for_role
 from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+from langbot.pkg.api.application.plugin_operations import install_marketplace_task
+from langbot.pkg.core.taskmgr import TaskContext
 
 
 def context(role='developer', principal=PrincipalType.ACCOUNT):
@@ -64,6 +67,78 @@ def installation(declaration=None, grants=None, snapshot=None, enabled=True):
         permission_snapshot=snapshot,
         enabled=enabled,
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('auto_confirm', [False, True])
+async def test_marketplace_install_confirmation_is_explicit(app, auto_confirm):
+    declaration = {'workspace_operations': ['stats.basic'], 'capabilities': ['models.invoke']}
+    setting = installation(declaration, {}, enabled=False)
+    app.plugin_connector.install_plugin = AsyncMock()
+    app.plugin_connector._setting_for_plugin = AsyncMock(return_value=(None, setting))
+    await install_marketplace_task(
+        app,
+        context(),
+        {
+            'plugin_author': 'test',
+            'plugin_name': 'Runner',
+            'auto_confirm_permissions': auto_confirm,
+        },
+        TaskContext.new(),
+    )
+    assert setting.enabled is auto_confirm
+    assert describe_permissions(app, context(), setting)['pending_confirmation'] is not auto_confirm
+    assert setting.permission_grants == (declaration if auto_confirm else {})
+    assert 'auto_confirm_permissions' not in app.plugin_connector.install_plugin.await_args.args[1]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('principal', [PrincipalType.API_KEY, PrincipalType.PLUGIN])
+async def test_marketplace_install_cannot_auto_confirm_nonmember(app, principal):
+    setting = installation({'capabilities': ['models.invoke']}, {}, enabled=False)
+    app.plugin_connector.install_plugin = AsyncMock()
+    app.plugin_connector._setting_for_plugin = AsyncMock(return_value=(None, setting))
+    task = TaskContext.new()
+    with pytest.raises(ApplicationAPIException) as error:
+        await install_marketplace_task(
+            app,
+            context(principal=principal),
+            {
+                'plugin_author': 'test',
+                'plugin_name': 'Runner',
+                'auto_confirm_permissions': True,
+            },
+            task,
+        )
+    assert error.value.error.code == 'permission_denied'
+    assert task.metadata['permission_confirmation_error']['code'] == 'permission_denied'
+    assert not setting.enabled and setting.permission_grants == {} and setting.permission_snapshot is None
+    app.plugin_connector.activate_permission_installation.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_marketplace_auto_confirmation_respects_member_ceiling(app):
+    setting = installation({'capabilities': ['models.invoke']}, {}, enabled=False)
+    app.plugin_connector.install_plugin = AsyncMock()
+    app.plugin_connector._setting_for_plugin = AsyncMock(return_value=(None, setting))
+    ctx = context()
+    ctx = replace(ctx, workspace=replace(ctx.workspace, permissions=frozenset({Permission.RESOURCE_MANAGE})))
+    task = TaskContext.new()
+    with pytest.raises(ApplicationAPIException) as error:
+        await install_marketplace_task(
+            app,
+            ctx,
+            {
+                'plugin_author': 'test',
+                'plugin_name': 'Runner',
+                'auto_confirm_permissions': True,
+            },
+            task,
+        )
+    assert error.value.error.details['denied_capabilities'] == ['models.invoke']
+    assert task.metadata['permission_confirmation_error']['details']['denied_capabilities'] == ['models.invoke']
+    assert not setting.enabled and setting.permission_grants == {} and setting.permission_snapshot is None
+    app.plugin_connector.activate_permission_installation.assert_not_awaited()
 
 
 def test_capability_and_action_catalogs_are_complete():

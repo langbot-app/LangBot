@@ -12,6 +12,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from langbot.pkg.api.application import ApplicationAPI
 from langbot.pkg.api.http.authz import PermissionDeniedError, permissions_for_role
 from langbot.pkg.api.http.context import RequestContext, PrincipalContext, PrincipalType, WorkspaceContext
 from langbot.pkg.entity.persistence.base import Base
@@ -159,8 +160,9 @@ async def env(tmp_path, monkeypatch):
                 ]
             )
         ),
-        plugin_connector=NS(require_workspace_context=AsyncMock()),
+        plugin_connector=NS(require_workspace_context=AsyncMock(), activate_permission_installation=AsyncMock()),
     )
+    ap.application_api = ApplicationAPI(ap)
     ap.task_mgr = AsyncTaskManager(ap)
     svc = m.PipelineMigrationService(ap)
     yield NS(m=m, ap=ap, svc=svc, engine=engine, pm=pm, access=access)
@@ -785,7 +787,12 @@ async def test_all_mode_installs_missing_plugin_once_then_migrates_both(env):
         async with env.engine.begin() as conn:
             await conn.execute(
                 sa.insert(PluginSetting).values(
-                    workspace_uuid=WS, plugin_author='langbot-team', plugin_name='TestAgent', enabled=True
+                    workspace_uuid=WS,
+                    plugin_author='langbot-team',
+                    plugin_name='TestAgent',
+                    enabled=False,
+                    permission_declaration={'workspace_operations': [], 'capabilities': ['models.invoke']},
+                    permission_grants={},
                 )
             )
 
@@ -793,6 +800,55 @@ async def test_all_mode_installs_missing_plugin_once_then_migrates_both(env):
     _, metadata = await execute_all(env)
     assert [r['state'] for r in metadata['results']] == ['migrated', 'migrated']
     env.ap.plugin_connector.install_plugin.assert_awaited_once()
+    env.ap.plugin_connector.activate_permission_installation.assert_awaited_once()
+    async with env.engine.connect() as conn:
+        setting = (await conn.execute(sa.select(PluginSetting))).mappings().one()
+    assert setting['enabled'] is True
+    assert (
+        setting['permission_grants']
+        == setting['permission_snapshot']
+        == {
+            'workspace_operations': [],
+            'capabilities': ['models.invoke'],
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_all_mode_confirms_pending_plugin_without_reinstalling(env):
+    async with env.engine.begin() as conn:
+        await conn.execute(
+            sa.update(PluginSetting).values(
+                enabled=False,
+                permission_declaration={'workspace_operations': [], 'capabilities': ['models.invoke']},
+                permission_grants={},
+                permission_snapshot=None,
+            )
+        )
+    env.ap.plugin_connector.install_plugin = AsyncMock()
+    _, metadata = await execute_all(env)
+    assert [result['state'] for result in metadata['results']] == ['migrated', 'migrated']
+    env.ap.plugin_connector.install_plugin.assert_not_awaited()
+    env.ap.plugin_connector.activate_permission_installation.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_all_mode_returns_confirmation_error_without_migrating(env, monkeypatch):
+    from langbot.pkg.api.application.contracts import ApplicationAPIError, ApplicationAPIException
+
+    monkeypatch.setattr(
+        env.m,
+        'auto_confirm_declared',
+        AsyncMock(
+            side_effect=ApplicationAPIException(ApplicationAPIError('permission_denied', 'Missing permission', 403))
+        ),
+    )
+    env.ap.plugin_connector.install_plugin = AsyncMock()
+    _, metadata = await execute_all(env)
+    assert all(result['code'] == 'plugin_permission_confirmation_required' for result in metadata['results'])
+    env.ap.plugin_connector.install_plugin.assert_not_awaited()
+    configs, backups = await rows(env)
+    assert configs['one'] == configs['two'] == SOURCE and not backups
 
 
 @pytest.mark.asyncio
@@ -965,7 +1021,8 @@ async def test_missing_marketplace_release_has_specific_migration_result(env):
 
 
 @pytest.mark.parametrize(
-    'kind', ['connect', 'connect_timeout', 'read_timeout', 'write_timeout', 'pool_timeout', 'truncated', 'http', 'other']
+    'kind',
+    ['connect', 'connect_timeout', 'read_timeout', 'write_timeout', 'pool_timeout', 'truncated', 'http', 'other'],
 )
 def test_network_diagnostic_is_allowlisted_and_credential_free(kind):
     import httpx

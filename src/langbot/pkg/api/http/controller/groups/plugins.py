@@ -1011,14 +1011,12 @@ class PluginsRouterGroup(group.RouterGroup):
             ctx = taskmgr.TaskContext.new()
             ctx.metadata['plugin_name'] = f'{plugin_author}/{plugin_name}'
             ctx.metadata['install_source'] = 'marketplace'
+            from .....api.application.plugin_operations import install_marketplace_task
+
             wrapper = self.ap.task_mgr.create_user_task(
                 self._run_fenced_plugin_operation(
                     execution_context,
-                    lambda: self.ap.plugin_connector.install_plugin(
-                        PluginInstallSource.MARKETPLACE,
-                        data,
-                        task_context=ctx,
-                    ),
+                    lambda: install_marketplace_task(self.ap, request_context, data, ctx),
                 ),
                 kind='plugin-operation',
                 name='plugin-install-marketplace',

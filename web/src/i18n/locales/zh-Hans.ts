@@ -3634,6 +3634,8 @@ const zhHans = {
       noMarketplaceRunnersDescription: '可以使用已安装的运行器，或稍后重试。',
       browseRunners: '浏览运行器扩展',
       installAndContinue: '安装并继续',
+      autoConfirmPermissions:
+        '将自动授予该插件声明的权限，可在插件设置中调整。',
       installing: '正在安装...',
       useInstalled: '使用此运行器',
       installedUnavailable: '已安装，运行器不可用',

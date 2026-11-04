@@ -94,9 +94,14 @@ Pipeline extensions include a separate Bot-tool selection.
 
 ## Compatibility mode
 
-Existing enabled installations without declarations continue running while
-awaiting confirmation. They can use the fixed snapshot of the 16 legacy
-capabilities above, but **no Application API workspace operation**.
+When upgrading LangBot from versions before installation permissions, existing
+installations receive the fixed snapshot of the 16 legacy capabilities and a
+matching confirmation snapshot. Their enabled state is preserved, with **no
+Application API workspace operations** granted.
+
+Upgrading a compatibility-mode plugin itself still disables that installation
+until a member confirms its legacy access again. This applies to plugins without
+`spec.permissions`, including updates that remove a previous declaration.
 
 New compatibility installations stay disabled until confirmation. Confirmation
 requires all three of `resource.view`, `resource.manage`, and `runtime.operate`;
@@ -119,6 +124,14 @@ Domain methods are generated from Core's eligible operation catalog with
 `scripts/generate_plugin_workspace_api.py`; `--check` detects catalog drift.
 
 HTTP management endpoints:
+
+- `POST /api/v1/plugins/install/marketplace` accepts optional
+  `auto_confirm_permissions` (default `false`). The setup wizard uses this option;
+  pipeline migration also confirms required plugins when installation is enabled.
+  Both paths use the same member-only confirmation and permission-ceiling checks.
+  A rejected confirmation leaves the installation pending. Existing pending
+  plugins are confirmed before migration without reinstalling them. API keys
+  cannot opt out of member confirmation by setting this option.
 
 - `GET /api/v1/plugins/{author}/{plugin_name}/permissions` returns grants,
   compatibility status, pending confirmation, `can_manage`, `can_confirm`, and item ceilings.

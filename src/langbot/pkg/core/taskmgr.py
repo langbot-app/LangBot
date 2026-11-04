@@ -217,6 +217,13 @@ class TaskWrapper:
             if exception is not None:
                 status = 'failed'
                 error = {'type': 'task_failed', 'message': t('Task execution failed')}
+                from ..api.application.contracts import ApplicationAPIException
+                from ..api.authz import PermissionDeniedError
+
+                if isinstance(exception, ApplicationAPIException):
+                    error['code'] = exception.error.code
+                elif isinstance(exception, PermissionDeniedError):
+                    error['code'] = exception.error_code
                 result = None
             else:
                 status = 'succeeded'

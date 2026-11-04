@@ -258,11 +258,12 @@ class PipelineService:
         if 'config' in pipeline_data:
             config = pipeline_data['config']
             if not isinstance(config, dict):
-                raise ValueError('config must be an object containing trigger, safety, ai, and output')
-            for section in ('trigger', 'safety', 'ai', 'output'):
-                if not isinstance(config.get(section), dict):
-                    raise ValueError(f'config.{section} must be an object; config replaces the complete configuration')
+                raise ValueError('config must be an object')
+            for section, value in config.items():
+                if not isinstance(value, dict):
+                    raise ValueError(f'config.{section} must be an object')
             current_config = current_pipeline.get('config', {})
+            pipeline_data['config'] = {**(current_config or {}), **config}
             old_ai = current_config.get('ai', {}) if isinstance(current_config, dict) else {}
             old_runner = old_ai.get('runner') if isinstance(old_ai, dict) else None
             legacy_binding = (

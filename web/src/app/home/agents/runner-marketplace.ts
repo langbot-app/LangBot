@@ -48,10 +48,12 @@ export interface PendingRunnerInstall {
   pluginLabel: string;
   scope: string;
   startedAt: number;
+  autoConfirmPermissions?: boolean;
 }
 
 interface InstallRunnerOptions {
   scope: string;
+  autoConfirmPermissions?: boolean;
   onTaskCreated?: (taskId: number) => void;
   onProgress?: (task: AsyncTask) => void;
 }
@@ -246,6 +248,7 @@ async function startRunnerInstall(
     plugin.author,
     plugin.name,
     plugin.latest_version,
+    options.autoConfirmPermissions,
   );
   const pending: PendingRunnerInstall = {
     taskId,
@@ -255,6 +258,7 @@ async function startRunnerInstall(
     pluginLabel: extractPluginLabel(plugin),
     scope: options.scope,
     startedAt: Date.now(),
+    autoConfirmPermissions: options.autoConfirmPermissions,
   };
   writePendingRunnerInstall(pending);
   options.onTaskCreated?.(taskId);

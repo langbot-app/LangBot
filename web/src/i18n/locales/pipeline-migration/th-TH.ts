@@ -15,6 +15,8 @@ export default {
   downloaded: 'ดาวน์โหลดแล้ว {{size}}',
   processed: 'ดำเนินการแล้ว {{completed}} / {{total}} ไปป์ไลน์',
   installErrors: {
+    plugin_permission_confirmation_required:
+      'ยืนยันสิทธิ์ปลั๊กอินไม่สำเร็จ โปรดให้สมาชิกที่มีสิทธิ์ที่จำเป็นตรวจสอบแล้วลองใหม่',
     plugin_version_unavailable:
       'เวอร์ชันที่ต้องการยังไม่มีในตลาด กรุณาลองใหม่หลังเผยแพร่หรือย้ายเฉพาะข้อมูล',
     plugin_download_timeout:

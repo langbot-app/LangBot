@@ -3851,6 +3851,8 @@ const enUS = {
         'Use an installed Runner or try again later.',
       browseRunners: 'Browse Runner Extensions',
       installAndContinue: 'Install & Continue',
+      autoConfirmPermissions:
+        'Declared plugin permissions will be granted automatically. You can adjust them in plugin settings.',
       installing: 'Installing...',
       useInstalled: 'Use This Runner',
       installedUnavailable: 'Installed, Runner Unavailable',

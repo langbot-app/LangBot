@@ -30,6 +30,22 @@ def archive(plugin_id, version='1.2.3'):
 
 
 class SourcePluginsTests(unittest.TestCase):
+    def test_package_marketplace_serves_only_selected_archives(self):
+        import urllib.error
+        import urllib.request
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            content = archive('test/Runner')
+            (root / 'runner.lbpkg').write_bytes(content)
+            manifest = {'plugins': [{'id': 'test/Runner', 'version': '1.2.3', 'archive': 'runner.lbpkg'}]}
+            with plugins.package_marketplace(root, manifest) as url:
+                with urllib.request.urlopen(url + '/api/v1/marketplace/plugins/download/test/Runner/1.2.3') as response:
+                    self.assertEqual(response.read(), content)
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(url + '/runner.lbpkg')
+                self.assertEqual(error.exception.code, 404)
+
     def test_selected_sources_build_in_isolation_and_record_actual_artifacts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

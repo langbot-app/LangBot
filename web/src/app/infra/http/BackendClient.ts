@@ -1400,11 +1400,13 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     version: string,
+    autoConfirmPermissions = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/marketplace', {
       plugin_author: author,
       plugin_name: name,
       plugin_version: version,
+      ...(autoConfirmPermissions ? { auto_confirm_permissions: true } : {}),
     });
   }
 

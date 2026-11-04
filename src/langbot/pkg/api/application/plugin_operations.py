@@ -161,6 +161,7 @@ class MarketplaceInput(Input):
     plugin_author: str = Field(min_length=1)
     plugin_name: str = Field(min_length=1)
     plugin_version: str | None = None
+    auto_confirm_permissions: bool = False
 
 
 class FileInput(Input):
@@ -441,8 +442,37 @@ async def _install(ap, context, source, data, identity, label):
         f'plugin-install-{source.value}',
         label,
         task,
-        lambda: ap.plugin_connector.install_plugin(source, data, task_context=task),
+        lambda: install_marketplace_task(ap, context, data, task)
+        if source == PluginInstallSource.MARKETPLACE
+        else ap.plugin_connector.install_plugin(source, data, task_context=task),
     )
+
+
+async def install_marketplace_task(ap, context, data, task):
+    from ..authz import PermissionDeniedError
+    from .contracts import ApplicationAPIException
+    from .plugin_permissions import auto_confirm_declared
+
+    payload = MarketplaceInput.model_validate(data)
+    result = await ap.plugin_connector.install_plugin(
+        PluginInstallSource.MARKETPLACE,
+        payload.model_dump(exclude={'auto_confirm_permissions'}, exclude_none=True),
+        task_context=task,
+    )
+    if payload.auto_confirm_permissions:
+        _, setting = await ap.plugin_connector._setting_for_plugin(payload.plugin_author, payload.plugin_name)
+        try:
+            await auto_confirm_declared(ap, context, setting)
+        except ApplicationAPIException as exc:
+            task.metadata['permission_confirmation_error'] = {'code': exc.error.code, 'details': exc.error.details}
+            raise
+        except PermissionDeniedError as exc:
+            task.metadata['permission_confirmation_error'] = {
+                'code': exc.error_code,
+                'details': {'permission': exc.permission},
+            }
+            raise
+    return result
 
 
 async def install_github(ap, context, payload):

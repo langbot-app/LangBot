@@ -308,3 +308,16 @@ async def change_permissions(ap, context, setting, *, workspace_operations, capa
     if confirm:
         await ap.plugin_connector.activate_permission_installation(context, setting)
     return describe_permissions(ap, context, setting)
+
+
+async def auto_confirm_declared(ap, context, setting) -> dict:
+    declaration = expand_declaration(ap, setting.permission_declaration)
+    validate_grant_change(
+        ap,
+        context,
+        [],
+        declaration['workspace_operations'],
+        new_capabilities=declaration['capabilities'],
+        principal_type=PrincipalType.PLUGIN,
+    )
+    return await change_permissions(ap, context, setting, **declaration, confirm=True)

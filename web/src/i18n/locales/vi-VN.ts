@@ -3826,6 +3826,8 @@ const viVN = {
         'Dùng trình chạy đã cài hoặc thử lại sau.',
       browseRunners: 'Duyệt tiện ích trình chạy',
       installAndContinue: 'Cài đặt và tiếp tục',
+      autoConfirmPermissions:
+        'Các quyền plugin khai báo sẽ được cấp tự động. Bạn có thể điều chỉnh trong cài đặt plugin.',
       installing: 'Đang cài đặt...',
       useInstalled: 'Dùng trình chạy này',
       installedUnavailable: 'Đã cài, trình chạy không khả dụng',

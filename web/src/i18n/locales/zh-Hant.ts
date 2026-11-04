@@ -3627,6 +3627,8 @@ const zhHant = {
       noMarketplaceRunnersDescription: '可以使用已安裝的運行器，或稍後重試。',
       browseRunners: '瀏覽運行器擴展',
       installAndContinue: '安裝並繼續',
+      autoConfirmPermissions:
+        '將自動授予該外掛宣告的權限，可在外掛設定中調整。',
       installing: '正在安裝...',
       useInstalled: '使用此運行器',
       installedUnavailable: '已安裝，運行器不可用',

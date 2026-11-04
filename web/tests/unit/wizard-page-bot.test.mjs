@@ -36,6 +36,7 @@ test('wizard Runner recovery waits for the matching plugin registration without 
     pluginName: 'runner',
     pluginLabel: 'QA Runner',
     startedAt: -1000000,
+    autoConfirmPermissions: true,
   };
   const storage = new Map([
     [`langbot-runner-install:alpha:${scope}`, JSON.stringify(pending)],
@@ -117,4 +118,54 @@ test('wizard Runner recovery waits for the matching plugin registration without 
     ['metadata'],
   ]);
   assert.equal(storage.size, 0);
+});
+
+test('wizard installation opts into backend confirmation while ordinary installation does not', async () => {
+  for (const autoConfirmPermissions of [undefined, true]) {
+    const requests = [];
+    const intents = [];
+    const runner = { name: 'plugin:qa/runner/default' };
+    const configTab = {
+      name: 'ai',
+      stages: [{ name: 'runner', config: [{ name: 'id', options: [runner] }] }],
+    };
+    const api = load(
+      'app/home/agents/runner-marketplace.ts',
+      {
+        '@/app/infra/http/HttpClient': {
+          httpClient: {
+            installPluginFromMarketplace: async (...args) => {
+              requests.push(args);
+              return { task_id: 12 };
+            },
+            getAsyncTask: async () => ({ runtime: { done: true } }),
+            getGeneralPipelineMetadata: async () => ({ configs: [configTab] }),
+          },
+        },
+        '@/app/infra/http': {},
+        '@/app/infra/http/workspaceContext': {
+          getActiveWorkspaceUuid: () => 'workspace',
+        },
+        '@/app/infra/entities/plugin': {},
+      },
+      {
+        window: new EventTarget(),
+        CustomEvent,
+        sessionStorage: {
+          setItem: (_key, value) => intents.push(JSON.parse(value)),
+          getItem: () => JSON.stringify(intents.at(-1)),
+          removeItem: () => {},
+        },
+      },
+    );
+    const installed = await api.installMarketplaceRunner(
+      { author: 'qa', name: 'runner', latest_version: '1.0' },
+      { scope: 'wizard', autoConfirmPermissions },
+    );
+    assert.equal(installed.runner, runner);
+    assert.deepEqual(requests, [
+      ['qa', 'runner', '1.0', autoConfirmPermissions],
+    ]);
+    assert.equal(intents[0].autoConfirmPermissions, autoConfirmPermissions);
+  }
 });

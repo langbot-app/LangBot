@@ -301,6 +301,7 @@ async function ensureLocalRunner({ backendUrl, token }) {
         plugin_author: author,
         plugin_name: name,
         plugin_version: version,
+        auto_confirm_permissions: true,
       },
     },
   );
