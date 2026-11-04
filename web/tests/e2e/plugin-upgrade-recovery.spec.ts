@@ -29,6 +29,10 @@ for (const entry of ['list', 'sidebar'] as const) {
       },
     });
     const plugin = {
+      permission_status: {
+        compatibility_mode: false,
+        pending_confirmation: false,
+      },
       install_source: 'marketplace',
       install_info: {},
       debug: false,
@@ -47,6 +51,9 @@ for (const entry of ['list', 'sidebar'] as const) {
     };
     await page.route('**/api/v1/plugins', (route) =>
       route.fulfill({ json: { code: 0, data: { plugins: [plugin] } } }),
+    );
+    await page.route('**/api/v1/plugins/qa/upgradable', (route) =>
+      route.fulfill({ json: { code: 0, data: { plugin } } }),
     );
     await page.route('**/api/v1/extensions', (route) =>
       route.fulfill({

@@ -1,0 +1,135 @@
+---
+title: Plugin installation permissions
+description: Declare plugin capabilities and confirm installation grants in a Workspace.
+---
+
+## Declare at plugin level
+
+Put permissions in the `kind: Plugin` manifest, not a Runner component. The
+installation is the authorization boundary for commands, listeners, tools,
+providers, parsers, and runners alike.
+
+```yaml
+spec:
+  permissions:
+    workspace_operations:
+      - stats.basic
+      - bot.*
+    capabilities:
+      - models.invoke
+      - storage.plugin
+```
+
+An empty `permissions: {}` declares strict mode with no global access. Omitting
+the field declares compatibility mode. New installations remain disabled until
+a member confirms their permissions. Declaring a permission does not grant it.
+
+`workspace_operations` uses IDs from the Application API catalog. A domain
+wildcard is expanded into concrete IDs when confirmed. Later additions to that
+domain require another confirmation. Streaming operations, unknown IDs, entries
+not exposed to all consumers, and operations that exclude plugin principals
+cannot be granted. The confirmed IDs are stored on the installation.
+
+## Capability ceilings
+
+The confirming member needs `resource.manage` and every permission in the
+corresponding row. Workspace operations instead use their catalog `permission`.
+
+| Capability | Required Workspace permissions | Risk |
+| --- | --- | --- |
+| `langbot.info` | `resource.view` | Read |
+| `bot.read` | `resource.view` | Read |
+| `bot.message.send` | `runtime.operate` | Sends messages |
+| `bot.platform_api` | `runtime.operate`, `resource.manage` | Dangerous |
+| `models.read` | `resource.view` | Read |
+| `models.invoke` | `runtime.operate` | Consumes provider quota |
+| `storage.plugin` | `resource.manage` | Plugin-private writes |
+| `storage.workspace` | `resource.manage` | Shared writes |
+| `knowledge.read` | `resource.view` | Read |
+| `knowledge.vector` | `resource.manage` | Vector writes |
+| `knowledge.parser` | `runtime.operate` | Executes parsers |
+| `config.read` | `resource.view` | Read |
+| `plugin_tools` | `runtime.operate` | Executes other plugins |
+| `mcp` | `runtime.operate` | Dangerous |
+| `sandbox` | `runtime.operate` | Dangerous |
+| `plugin.read` | `resource.view` | Read |
+
+The Core source of truth is `api/application/plugin_capabilities.py`. Developer
+members have all three permissions in this table and can grant every capability.
+This does not grant administrative workspace operations: member management,
+audit access, API-key management, and Workspace settings still have their own
+ceilings. Model invocation does not expose provider secrets and does not require
+`provider_secret.manage`.
+
+Strict-mode confirmation may select a subset. A request containing even one item
+above the member's ceiling fails as a whole with `permission_denied` and
+`denied_operations` / `denied_capabilities`; the server does not silently discard
+items. Existing grants can be retained without rechecking their original ceiling.
+Revocation requires `resource.manage` but not the grant ceiling.
+
+Only account and support-admin principals may confirm additions. API-key and
+`lbctl` installations require a subsequent WebUI confirmation by a member. API
+keys, processors, plugins, public bots, and system principals cannot add grants.
+The UI's administrator means a member with plugin-management permissions, not
+necessarily the owner or admin role.
+
+## Runtime behavior and upgrades
+
+Grants belong to the installation and survive the granting member's later role
+change. Workspace API calls do not require a `run_id`. Core checks grants on
+every request, including old SDK methods; omitting a field from the UI is not an
+authorization boundary. Bot targets must belong to the same Workspace.
+
+Run/event-scoped actions retain their trusted run/event checks and need no
+global capability declaration. Calling another plugin's tool requires
+`plugin_tools`; the callee then executes with its own installation grants.
+MCP and sandbox tools require their corresponding capabilities.
+
+An upgrade preserves existing strict grants. Newly requested capabilities and
+operation IDs remain ungranted until confirmed. Removing a declaration removes
+the corresponding effective access. Tool selection in Agent and Pipeline
+configuration is only a model preference, intersected with installation grants.
+LocalAgent exposes only selected workspace tools; empty selection means none.
+Pipeline extensions include a separate Bot-tool selection.
+
+## Compatibility mode
+
+Existing enabled installations without declarations continue running while
+awaiting confirmation. They can use the fixed snapshot of the 16 legacy
+capabilities above, but **no Application API workspace operation**.
+
+New compatibility installations stay disabled until confirmation. Confirmation
+requires all three of `resource.view`, `resource.manage`, and `runtime.operate`;
+it grants the entire legacy snapshot or fails. Partial initial confirmation is
+not supported because there is no declaration from which to infer safe partial
+operation. Individual capabilities can be revoked afterward. Future capabilities
+are not automatically included in an already confirmed snapshot.
+
+## SDK and management APIs
+
+Existing SDK methods retain their signatures. Typed workspace domains use the
+same envelope and authorization as dynamic calls:
+
+```python
+result = await self.workspace.stats.basic()
+result = await self.workspace.call("stats.basic", {})
+```
+
+Domain methods are generated from Core's eligible operation catalog with
+`scripts/generate_plugin_workspace_api.py`; `--check` detects catalog drift.
+
+HTTP management endpoints:
+
+- `GET /api/v1/plugins/{author}/{plugin_name}/permissions` returns grants,
+  compatibility status, pending confirmation, `can_manage`, `can_confirm`, and item ceilings.
+- `PUT /api/v1/plugins/{author}/{plugin_name}/permissions` accepts
+  `workspace_operations`, `capabilities`, and `confirm`. With `confirm: false`,
+  the requested lists must be a subset of existing grants. With `confirm: true`,
+  the full grant checks and member-principal requirement apply.
+- Plugin list/detail responses expose `permission_status`.
+- Pipeline extensions GET/PUT expose `allowed_platform_tools`; GET also returns
+  `available_platform_tools` and installation-aware workspace operation choices.
+
+The corresponding Application operations are `plugin.permissions.get` and
+`plugin.permissions.update`. MCP exposes `get_plugin_permissions` and
+`revoke_plugin_permissions`; API-key MCP clients cannot confirm additions.

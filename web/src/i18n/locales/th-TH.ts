@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/th-TH';
+import pluginPermissions from './plugin-permissions/th-TH';
 const thTH = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'วันที่สมัคร: {{date}}',
     latestQuota: 'โควตาล่าสุดของแผนนี้',

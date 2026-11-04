@@ -330,6 +330,7 @@ export interface DomainMeta {
 }
 
 export interface GetAgentMetadataResponseData {
+  workspace_operation_grants?: Record<string, string[]>;
   event_processors?: RunnerDescriptor[];
   runner_config?: PipelineConfigTab;
   platform_tools: AgentPlatformTool[];

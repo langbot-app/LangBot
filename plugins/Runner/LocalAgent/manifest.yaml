@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: LocalAgent
-  version: 0.2.5
+  version: 0.2.6
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent
   label:
     en_US: Local Agent
@@ -25,6 +25,95 @@ metadata:
     ru_RU: Встроенный агент с резервными моделями, инструментами и поиском по базе знаний.
   icon: assets/icon.svg
 spec:
+  permissions:
+    workspace_operations:
+      - agent.create
+      - agent.debug
+      - agent.delete
+      - agent.get
+      - agent.list
+      - agent.metadata
+      - agent.runs.events
+      - agent.runs.list
+      - agent.update
+      - bot.admins.list
+      - bot.create
+      - bot.delete
+      - bot.get
+      - bot.group_filter.apply
+      - bot.group_filter.preview
+      - bot.list
+      - bot.logs
+      - bot.message.send
+      - bot.message.test
+      - bot.routes.preview
+      - bot.routes.status
+      - bot.runtime.get
+      - bot.update
+      - knowledge.base.create
+      - knowledge.base.delete
+      - knowledge.base.get
+      - knowledge.base.list
+      - knowledge.base.retrieve
+      - knowledge.base.update
+      - knowledge.engine.creation_schema
+      - knowledge.engine.list
+      - knowledge.engine.retrieval_schema
+      - knowledge.file.delete
+      - knowledge.file.list
+      - knowledge.file.store
+      - knowledge.parser.list
+      - model.embedding.create
+      - model.embedding.delete
+      - model.embedding.get
+      - model.embedding.list
+      - model.embedding.list_by_provider
+      - model.embedding.test
+      - model.embedding.update
+      - model.llm.create
+      - model.llm.default.get
+      - model.llm.delete
+      - model.llm.get
+      - model.llm.list
+      - model.llm.list_by_provider
+      - model.llm.starred.get
+      - model.llm.starred.set
+      - model.llm.test
+      - model.llm.update
+      - model.rerank.create
+      - model.rerank.delete
+      - model.rerank.get
+      - model.rerank.list
+      - model.rerank.list_by_provider
+      - model.rerank.test
+      - model.rerank.update
+      - pipeline.chat.broadcast
+      - pipeline.chat.connections
+      - pipeline.chat.history
+      - pipeline.chat.reset
+      - pipeline.copy
+      - pipeline.create
+      - pipeline.defaults
+      - pipeline.delete
+      - pipeline.extensions.get
+      - pipeline.extensions.update
+      - pipeline.get
+      - pipeline.list
+      - pipeline.metadata
+      - pipeline.run
+      - pipeline.update
+      - stats.basic
+    capabilities:
+      - models.invoke
+      - models.read
+      - bot.read
+      - bot.message.send
+      - bot.platform_api
+      - knowledge.read
+      - storage.plugin
+      - plugin_tools
+      - mcp
+      - sandbox
   config: []
   components:
     Runner:

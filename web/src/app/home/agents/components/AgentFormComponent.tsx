@@ -63,6 +63,7 @@ import GuidedTour, {
 } from '@/app/home/components/guided-tour/GuidedTour';
 import AgentApiToolPicker from './AgentApiToolPicker';
 import WorkspaceOperationsPicker from '@/app/home/components/workspace-operations/WorkspaceOperationsPicker';
+import { operationsForRunner } from '@/app/home/components/workspace-operations/runner-operation-grants';
 
 const OTHER_TOOL_SCOPES = [
   'platform',
@@ -164,6 +165,9 @@ function AgentFormComponent(
     WorkspaceOperationItem[]
   >([]);
   const [domains, setDomains] = useState<DomainMeta[]>([]);
+  const [operationGrants, setOperationGrants] = useState<
+    Record<string, string[]>
+  >({});
   const [dangerousModalOpen, setDangerousModalOpen] = useState(false);
   const pendingSaveValuesRef = useRef<FormValues | null>(null);
   const pendingResolveRef = useRef<((value: boolean) => void) | null>(null);
@@ -260,6 +264,7 @@ function AgentFormComponent(
         setHostToolCatalogAvailable(hasHostToolCatalog);
         setHostTools(availableHostTools);
         setWorkspaceOperations(metadata.workspace_operations || []);
+        setOperationGrants(metadata.workspace_operation_grants || {});
         setDomains(metadata.domains || []);
         const agent = resp.agent;
         const config = (agent.config ?? {}) as Record<string, any>;
@@ -390,6 +395,11 @@ function AgentFormComponent(
   }, [runnerConfigSchema]);
   const selectedRunnerOption = runnerOptions.find(
     (option) => option.name === currentRunner,
+  );
+  const selectableWorkspaceOperations = operationsForRunner(
+    workspaceOperations,
+    currentRunner,
+    operationGrants,
   );
   const runnerSelectorStage = runnerConfigSchema?.stages.find(
     (stage) => stage.name === 'runner',
@@ -591,18 +601,6 @@ function AgentFormComponent(
     if (formName === 'runner') {
       form.setValue('runner', values, { shouldDirty: true });
       updateSnapshotIfInitial(`runner.${stageName}`, wasDirty);
-      const runnerId = (values as Record<string, unknown>)?.id;
-      if (typeof runnerId === 'string' && runnerId.startsWith('plugin:')) {
-        const option = runnerOptions.find((opt) => opt.name === runnerId);
-        if (option && Array.isArray((option as any).workspace_operations)) {
-          const declared = (option as any).workspace_operations as string[];
-          const validOpIds = new Set(workspaceOperations.map((op) => op.id));
-          const defaultOps = declared.filter((opId) => validOpIds.has(opId));
-          form.setValue('allowed_workspace_operations', defaultOps, {
-            shouldDirty: true,
-          });
-        }
-      }
       return;
     }
 
@@ -737,7 +735,9 @@ function AgentFormComponent(
     (values: FormValues): Promise<boolean> => {
       const ungrantableOps = values.allowed_workspace_operations.filter(
         (opId) => {
-          const op = workspaceOperations.find((item) => item.id === opId);
+          const op = selectableWorkspaceOperations.find(
+            (item) => item.id === opId,
+          );
           return op && op.grantable === false;
         },
       );
@@ -746,7 +746,9 @@ function AgentFormComponent(
       if (ungrantableOps.length > 0) {
         const filteredOps = values.allowed_workspace_operations.filter(
           (opId) => {
-            const op = workspaceOperations.find((item) => item.id === opId);
+            const op = selectableWorkspaceOperations.find(
+              (item) => item.id === opId,
+            );
             return !op || op.grantable !== false;
           },
         );
@@ -779,7 +781,7 @@ function AgentFormComponent(
       }
       return saveValues(effectiveValues);
     },
-    [form, saveValues, t, workspaceOperations],
+    [form, saveValues, t, workspaceOperations, selectableWorkspaceOperations],
   );
 
   function handleSubmit(values: FormValues) {
@@ -992,7 +994,9 @@ function AgentFormComponent(
                                     render={({ field }) => (
                                       <FormItem>
                                         <WorkspaceOperationsPicker
-                                          operations={workspaceOperations}
+                                          operations={
+                                            selectableWorkspaceOperations
+                                          }
                                           domains={domains}
                                           value={field.value}
                                           onChange={(next) =>

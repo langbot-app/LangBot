@@ -10,6 +10,14 @@ programmatically. It mirrors a curated subset of the HTTP service API.
 
 ## Endpoint
 
+Plugin authorization management uses `get_plugin_permissions(author, plugin_name)`
+and `revoke_plugin_permissions(author, plugin_name, workspace_operations,
+capabilities)`. Revocation replaces grants with a subset; it requires
+`resource.manage`. API-key MCP clients cannot confirm/add grants. After installing
+or upgrading a plugin, direct a member to WebUI to review pending permissions.
+Pipeline extensions accept `allowed_platform_tools` as model preferences, not
+installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
+
 ```
 http://<langbot-host>:5300/mcp
 ```

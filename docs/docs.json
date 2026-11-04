@@ -687,6 +687,7 @@
                 "pages": [
                   "en/plugin/dev/tutor",
                   "en/plugin/dev/basic-info",
+                  "en/plugin/dev/permissions",
                   "en/plugin/dev/directory-structure",
                   {
                     "group": "Component Development",

@@ -246,41 +246,12 @@ class WorkspaceToolsManager:
         api: Any,
         ctx: Any,
     ) -> WorkspaceToolsManager:
-        """Discover authorized workspace operations and build the manager.
-
-        Rule 1:
-        优先读取本次运行资源中的 workspace_operations，没有时调用 api.workspace.list()。
-        列表为空、或者 SDK / Core 不支持时，不注册任何相关工具，原有行为保持不变。
-        """
-        raw_ops: Any = None
+        """Expose only operations selected for this run to the model."""
         resources = getattr(ctx, "resources", None)
-        if resources is not None:
-            raw_ops = getattr(resources, "workspace_operations", None)
-
-        domains: list[dict[str, Any]] = []
-        normalized_ops: list[NormalizedOperation] = []
-
-        if raw_ops:
-            normalized_ops = [normalize_operation(op) for op in raw_ops if op]
-            normalized_ops = [op for op in normalized_ops if op.id]
-            domains = build_domains_from_operations(normalized_ops)
-        else:
-            # Fallback to api.workspace.list()
-            workspace_proxy = getattr(api, "workspace", None)
-            if workspace_proxy is not None and callable(getattr(workspace_proxy, "list", None)):
-                try:
-                    res = await workspace_proxy.list()
-                    if isinstance(res, dict):
-                        ops_list = res.get("operations") or []
-                        normalized_ops = [normalize_operation(op) for op in ops_list if op]
-                        normalized_ops = [op for op in normalized_ops if op.id]
-                        domains = res.get("domains") or []
-                        if not domains and normalized_ops:
-                            domains = build_domains_from_operations(normalized_ops)
-                except Exception as e:
-                    logger.warning("Failed to list workspace operations via api.workspace.list(): %s", e)
-                    normalized_ops = []
-                    domains = []
+        raw_ops = getattr(resources, "workspace_operations", None) or []
+        normalized_ops = [normalize_operation(operation) for operation in raw_ops if operation]
+        normalized_ops = [operation for operation in normalized_ops if operation.id]
+        domains = build_domains_from_operations(normalized_ops)
 
         if not normalized_ops:
             return cls(operations=[], domains=[], mode=None, tools=[])

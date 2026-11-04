@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
+import pluginPermissions from './plugin-permissions/zh-Hans';
 const zhHans = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: '订阅日期：{{date}}',
     latestQuota: '该计划最新配额',

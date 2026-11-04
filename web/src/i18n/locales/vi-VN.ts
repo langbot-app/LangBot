@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
+import pluginPermissions from './plugin-permissions/vi-VN';
 const viVN = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Ngày đăng ký: {{date}}',
     latestQuota: 'Hạn mức mới nhất của gói này',

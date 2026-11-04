@@ -88,6 +88,16 @@ def _make_ctx(
     return ctx
 
 
+@pytest.mark.asyncio
+async def test_empty_selection_never_discovers_all_installation_grants():
+    api = Mock()
+    api.workspace.list = AsyncMock(return_value={"ok": True, "operations": [_make_op("bot.delete")]})
+    manager = await WorkspaceToolsManager.discover(api, _make_ctx(workspace_ops=[]))
+    assert manager.tools == []
+    assert manager.operations == []
+    api.workspace.list.assert_not_awaited()
+
+
 # ==============================================================================
 # 1. 授权列表为空时，不注册工具
 # ==============================================================================

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { backendClient } from '@/app/infra/http';
 import { Button } from '@/components/ui/button';
@@ -46,10 +46,12 @@ import {
   Skill,
   WorkspaceOperationItem,
   DomainMeta,
+  AgentPlatformTool,
 } from '@/app/infra/entities/api';
 import PluginComponentList from '@/app/home/plugins/components/plugin-installed/PluginComponentList';
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import WorkspaceOperationsPicker from '@/app/home/components/workspace-operations/WorkspaceOperationsPicker';
+import AgentApiToolPicker from '@/app/home/agents/components/AgentApiToolPicker';
 
 function PluginThumbnail({ author, name }: { author: string; name: string }) {
   const iconURL = useInstalledPluginIcon(author, name);
@@ -117,6 +119,11 @@ export default function PipelineExtension({
     [],
   );
   const [workspaceOperations, setWorkspaceOperations] = useState<string[]>([]);
+  const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
+  const [allowedPlatformTools, setAllowedPlatformTools] = useState<string[]>(
+    [],
+  );
+  const savedPlatformToolsRef = useRef<string[]>([]);
   const savedWorkspaceOperationsRef = useRef<string[]>([]);
   const [availableWorkspaceOperations, setAvailableWorkspaceOperations] =
     useState<WorkspaceOperationItem[]>([]);
@@ -125,14 +132,21 @@ export default function PipelineExtension({
   const [dangerousModalOpen, setDangerousModalOpen] = useState(false);
   const pendingOperationsRef = useRef<string[] | null>(null);
 
-  const isOperationsDirty = useMemo(() => {
+  const isOperationsDirty = (() => {
+    const savedTools = new Set(savedPlatformToolsRef.current);
+    if (
+      allowedPlatformTools.length !== savedTools.size ||
+      allowedPlatformTools.some((tool) => !savedTools.has(tool))
+    )
+      return true;
     const saved = new Set(savedWorkspaceOperationsRef.current);
     if (workspaceOperations.length !== saved.size) return true;
     return workspaceOperations.some((op) => !saved.has(op));
-  }, [workspaceOperations]);
+  })();
 
   const handleResetWorkspaceOperations = () => {
     setWorkspaceOperations([...savedWorkspaceOperationsRef.current]);
+    setAllowedPlatformTools([...savedPlatformToolsRef.current]);
   };
 
   useEffect(() => {
@@ -185,6 +199,9 @@ export default function PipelineExtension({
 
       // Load Workspace Operations
       const loadedOps = data.workspace_operations || [];
+      setPlatformTools(data.available_platform_tools || []);
+      setAllowedPlatformTools(data.allowed_platform_tools || []);
+      savedPlatformToolsRef.current = data.allowed_platform_tools || [];
       setWorkspaceOperations(loadedOps);
       savedWorkspaceOperationsRef.current = loadedOps;
       setAvailableWorkspaceOperations(
@@ -229,7 +246,8 @@ export default function PipelineExtension({
         newEnableAllSkills ?? enableAllSkills,
         undefined,
         undefined,
-        workspaceOperations,
+        savedWorkspaceOperationsRef.current,
+        savedPlatformToolsRef.current,
       );
       toast.success(t('pipelines.extensions.saveSuccess'));
     } catch (error) {
@@ -266,8 +284,10 @@ export default function PipelineExtension({
         undefined,
         undefined,
         opsToSave,
+        allowedPlatformTools,
       );
       savedWorkspaceOperationsRef.current = opsToSave;
+      savedPlatformToolsRef.current = allowedPlatformTools;
       setWorkspaceOperations(opsToSave);
       toast.success(t('workspaceOperations.saveSuccess'));
     } catch (error) {
@@ -285,10 +305,18 @@ export default function PipelineExtension({
   };
 
   const handleSaveWorkspaceOperations = async (opsToSave: string[]) => {
-    const hasDangerous = opsToSave.some((opId) => {
-      const op = availableWorkspaceOperations.find((item) => item.id === opId);
-      return op?.risk === 'dangerous';
-    });
+    const hasDangerous =
+      opsToSave.some((opId) => {
+        const op = availableWorkspaceOperations.find(
+          (item) => item.id === opId,
+        );
+        return op?.risk === 'dangerous';
+      }) ||
+      platformTools.some(
+        (tool) =>
+          allowedPlatformTools.includes(tool.name) &&
+          (tool.risk === 'dangerous' || tool.api === 'bot.message.send'),
+      );
     if (hasDangerous) {
       pendingOperationsRef.current = opsToSave;
       setDangerousModalOpen(true);
@@ -745,6 +773,15 @@ export default function PipelineExtension({
 
       {/* Workspace Operations Section */}
       <div className="space-y-3 border-t pt-6">
+        <AgentApiToolPicker
+          platformTools={platformTools}
+          platformValue={allowedPlatformTools}
+          onPlatformChange={setAllowedPlatformTools}
+          hostTools={[]}
+          hostValue={[]}
+          onHostChange={() => {}}
+          scopes={['event', 'platform']}
+        />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-0.5">
             <h3 className="text-sm font-semibold text-foreground">

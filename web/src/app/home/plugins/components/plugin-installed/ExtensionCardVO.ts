@@ -1,6 +1,10 @@
 export type ExtensionType = 'plugin' | 'mcp' | 'skill';
 
 export interface IExtensionCardVO {
+  permission_status?: {
+    compatibility_mode: boolean;
+    pending_confirmation: boolean;
+  };
   id: string;
   author: string;
   label: string;
@@ -21,6 +25,10 @@ export interface IExtensionCardVO {
 }
 
 export class ExtensionCardVO implements IExtensionCardVO {
+  permission_status?: {
+    compatibility_mode: boolean;
+    pending_confirmation: boolean;
+  };
   id: string;
   author: string;
   label: string;
@@ -40,6 +48,7 @@ export class ExtensionCardVO implements IExtensionCardVO {
   mode?: 'stdio' | 'sse' | 'http' | 'remote';
 
   constructor(prop: IExtensionCardVO) {
+    this.permission_status = prop.permission_status;
     this.id = prop.id;
     this.author = prop.author;
     this.label = prop.label;

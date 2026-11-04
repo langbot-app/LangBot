@@ -130,38 +130,7 @@ export default function AgentCreateContent({
     );
     const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
 
-    let defaultWorkspaceOps: string[] | undefined = undefined;
-    if (runner.startsWith('plugin:')) {
-      let declared: string[] = [];
-      if (kind === 'event_processor') {
-        const processorDescriptor = metadata?.event_processors?.find(
-          (p) => p.id === runner,
-        );
-        declared = processorDescriptor?.permissions?.workspace_operations ?? [];
-      } else {
-        const option = runnerOptions.find((opt) => opt.name === runner);
-        declared = (option as any)?.workspace_operations ?? [];
-      }
-      const catalogOps = metadata?.workspace_operations ?? [];
-      const validOpIds = new Set(catalogOps.map((op) => op.id));
-      const filteredDefaults = declared.filter((opId) => validOpIds.has(opId));
-
-      const ungrantable = filteredDefaults.filter((opId) => {
-        const op = catalogOps.find((candidate) => candidate.id === opId);
-        return op && op.grantable === false;
-      });
-      if (ungrantable.length > 0) {
-        toast.warning(
-          t('workspaceOperations.ungrantableRemoved', {
-            count: ungrantable.length,
-          }),
-        );
-      }
-      defaultWorkspaceOps = filteredDefaults.filter((opId) => {
-        const op = catalogOps.find((candidate) => candidate.id === opId);
-        return !op || op.grantable !== false;
-      });
-    }
+    const defaultWorkspaceOps = runner.startsWith('plugin:') ? [] : undefined;
 
     const config: Record<string, unknown> = {
       runner: { id: runner },
@@ -190,7 +159,9 @@ export default function AgentCreateContent({
           component_ref: runner,
           ...(kind === 'event_processor'
             ? defaultWorkspaceOps !== undefined
-              ? { config: { allowed_workspace_operations: defaultWorkspaceOps } }
+              ? {
+                  config: { allowed_workspace_operations: defaultWorkspaceOps },
+                }
               : {}
             : { config }),
         });

@@ -6,6 +6,10 @@ title: "Completing Plugin Configuration Information"
 
 The `manifest.yaml` file in the plugin directory declares the basic information about the plugin, which will be displayed in the LangBot UI or plugin marketplace interfaces.
 
+Declare global API access in plugin-level `spec.permissions` and obtain member
+confirmation after installation. See [Plugin installation permissions](/en/plugin/dev/permissions)
+for strict mode, compatibility mode, capability ceilings, and upgrade behavior.
+
 ```yaml
 apiVersion: v1  # Do not modify
 kind: Plugin  # Do not modify

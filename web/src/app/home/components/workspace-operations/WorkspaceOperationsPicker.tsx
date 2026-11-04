@@ -401,9 +401,7 @@ export default function WorkspaceOperationsPicker({
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent side="left">
-                                {t('workspaceOperations.requiresPermission', {
-                                  permission: op.permission,
-                                })}
+                                {t('pluginPermissions.grantInPlugin')}
                               </TooltipContent>
                             </Tooltip>
                           )}
@@ -417,9 +415,7 @@ export default function WorkspaceOperationsPicker({
                               <div>{content}</div>
                             </TooltipTrigger>
                             <TooltipContent side="top">
-                              {t('workspaceOperations.requiresPermission', {
-                                permission: op.permission,
-                              })}
+                              {t('pluginPermissions.grantInPlugin')}
                             </TooltipContent>
                           </Tooltip>
                         );

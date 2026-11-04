@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import ExtensionCardComponent from './ExtensionCardComponent';
 import PluginSpaceUploadDialog from './PluginSpaceUploadDialog';
+import PluginPermissions from '../PluginPermissions';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -172,6 +173,7 @@ const PluginInstalledComponent = forwardRef<
               ),
               version: meta.version ?? '',
               enabled: plugin.enabled,
+              permission_status: plugin.permission_status,
               type: marketplacePlugin?.type || 'plugin',
               // Icon is resolved by ExtensionCardComponent through the shared
               // installed-plugin hook (authenticated fetch in multi-Workspace
@@ -384,6 +386,35 @@ const PluginInstalledComponent = forwardRef<
 
   return (
     <>
+      {extensionList.some(
+        (extension) => extension.permission_status?.pending_confirmation,
+      ) && (
+        <section
+          aria-label={t('pluginPermissions.pending')}
+          className="mx-3 mb-4 space-y-3 rounded-md border border-amber-500 p-4"
+        >
+          <h2 className="font-semibold">{t('pluginPermissions.pending')}</h2>
+          {extensionList
+            .filter(
+              (extension) => extension.permission_status?.pending_confirmation,
+            )
+            .map((extension) => (
+              <details key={extension.id}>
+                <summary className="cursor-pointer">
+                  {extension.label} — {t('pluginPermissions.review')}
+                </summary>
+                <PluginPermissions
+                  author={extension.author}
+                  name={extension.name}
+                  onChange={() => {
+                    getExtensionList(true);
+                    refreshPlugins();
+                  }}
+                />
+              </details>
+            ))}
+        </section>
+      )}
       <Dialog
         open={showOperationModal}
         onOpenChange={(open) => {

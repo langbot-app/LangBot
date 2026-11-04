@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
+import pluginPermissions from './plugin-permissions/en-US';
 const enUS = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Subscribed on {{date}}',
     latestQuota: 'Latest quotas for this plan',

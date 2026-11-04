@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
+import pluginPermissions from './plugin-permissions/ja-JP';
 const jaJP = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: '契約日：{{date}}',
     latestQuota: 'このプランの最新の利用枠',
