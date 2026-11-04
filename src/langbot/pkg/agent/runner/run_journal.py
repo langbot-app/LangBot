@@ -177,6 +177,9 @@ class AgentRunJournal:
         usage = result_dict.get('usage')
         if hasattr(usage, 'model_dump'):
             usage = usage.model_dump(mode='json')
+        result_metadata = result_dict.get('metadata')
+        if isinstance(result_metadata, dict):
+            metadata = {**result_metadata, **(metadata or {})}
         data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
         if MediaCache.has_inline_images(data):
             data = await self.ap.storage_mgr.media_cache.externalize_chain_dump(data)
