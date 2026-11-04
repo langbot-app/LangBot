@@ -332,9 +332,7 @@ class AgentRunOrchestrator:
             if recovered_steering:
                 restored = await self._session_registry.restore_steering(run_id, recovered_steering)
                 if restored:
-                    self.ap.logger.info(
-                        f'Restored {restored} unacknowledged steering input(s) for run {run_id}'
-                    )
+                    self.ap.logger.info(f'Restored {restored} unacknowledged steering input(s) for run {run_id}')
 
             event_log_id = await self.journal.write_event_log(
                 event=event,

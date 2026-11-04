@@ -283,9 +283,7 @@ class EventLogStore:
         if not requested:
             return 0
         async with self._session_factory() as session:
-            result = await session.execute(
-                sqlalchemy.select(EventLog).where(EventLog.event_type == 'message.received')
-            )
+            result = await session.execute(sqlalchemy.select(EventLog).where(EventLog.event_type == 'message.received'))
             updated = 0
             for row in result.scalars().all():
                 metadata = json.loads(row.metadata_json) if row.metadata_json else {}
