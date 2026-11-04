@@ -13,7 +13,7 @@ import typing
 import httpx
 from pkg.deadline import deadline
 from pkg.endpoint import endpoint
-from pkg.http_limits import limited_body, limited_bytes, limited_lines, limited_post
+from pkg.http_limits import MAX_STREAM_BYTES, limited_body, limited_bytes, limited_lines, limited_post
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,8 @@ class DifyConfigError(Exception):
         super().__init__(message)
 
 
-async def _iter_sse_json(response):
-    async for line in limited_lines(response, DifyAPIError):
+async def _iter_sse_json(response, max_stream_bytes: int = MAX_STREAM_BYTES):
+    async for line in limited_lines(response, DifyAPIError, max_stream_bytes):
         line = line.strip()
         if not line.startswith("data:"):
             continue
@@ -67,10 +67,12 @@ class AsyncDifyClient:
         api_key: str,
         base_url: str = "https://api.dify.ai/v1",
         timeout: float = 30.0,
+        max_stream_bytes: int = MAX_STREAM_BYTES,
     ):
         self.api_key = api_key
         self.base_url = endpoint(base_url).rstrip("/")
         self.timeout = timeout
+        self.max_stream_bytes = max_stream_bytes
 
     @deadline
     async def chat_messages(
@@ -119,7 +121,7 @@ class AsyncDifyClient:
                             code="dify.http_error",
                         )
 
-                    async for event in _iter_sse_json(response):
+                    async for event in _iter_sse_json(response, self.max_stream_bytes):
                         yield event
             except httpx.TimeoutException:
                 raise DifyAPIError(
@@ -175,7 +177,7 @@ class AsyncDifyClient:
                             code="dify.http_error",
                         )
 
-                    async for event in _iter_sse_json(response):
+                    async for event in _iter_sse_json(response, self.max_stream_bytes):
                         yield event
             except httpx.TimeoutException:
                 raise DifyAPIError(
@@ -223,7 +225,7 @@ class AsyncDifyClient:
 
                     content_type = response.headers.get("content-type", "").lower()
                     if content_type.split(";", 1)[0].strip() == "text/event-stream":
-                        async for event in _iter_sse_json(response):
+                        async for event in _iter_sse_json(response, self.max_stream_bytes):
                             yield event
                         return
                     await limited_body(response, DifyAPIError)
@@ -241,7 +243,7 @@ class AsyncDifyClient:
                             f"{body.decode('utf-8', errors='replace')[:200]}",
                             code="dify.http_error",
                         )
-                    async for event in _iter_sse_json(event_response):
+                    async for event in _iter_sse_json(event_response, self.max_stream_bytes):
                         yield event
         except httpx.TimeoutException:
             raise DifyAPIError(

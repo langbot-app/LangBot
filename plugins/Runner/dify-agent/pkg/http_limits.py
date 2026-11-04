@@ -11,19 +11,19 @@ MAX_LINE_CHARS = 1024 * 1024
 MAX_STREAM_BYTES = 16 * 1024 * 1024
 
 
-async def limited_bytes(response, error):
+async def limited_bytes(response, error, max_stream_bytes: int = MAX_STREAM_BYTES):
     total = 0
     async for chunk in response.aiter_bytes():
         total += len(chunk)
-        if total > MAX_STREAM_BYTES:
-            raise error("Provider stream exceeds the runtime limit")
+        if total > max_stream_bytes:
+            raise error(f"Provider stream budget exceeded: {total} bytes received, limit is {max_stream_bytes} bytes")
         yield chunk
 
 
-async def limited_lines(response, error):
+async def limited_lines(response, error, max_stream_bytes: int = MAX_STREAM_BYTES):
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
     buffer = ""
-    async for chunk in limited_bytes(response, error):
+    async for chunk in limited_bytes(response, error, max_stream_bytes):
         buffer += decoder.decode(chunk)
         while "\n" in buffer:
             line, buffer = buffer.split("\n", 1)
