@@ -172,6 +172,53 @@ async def test_staff_reply_uses_plain_components_and_acknowledges(mention):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("mention", [False, True])
+@pytest.mark.parametrize("encoded,expected", [
+    (
+        "价格 &lt; 100 &amp; 包邮，详见 <https://example.com>",
+        "价格 < 100 & 包邮，详见 https://example.com",
+    ),
+    (
+        "<https://example.com?a=1&amp;b=2|购买 &amp; 详情>",
+        "购买 & 详情 https://example.com?a=1&b=2",
+    ),
+    (
+        "<mailto:help@example.com|客服邮箱> <mailto:help@example.com>",
+        "客服邮箱 help@example.com",
+    ),
+    (
+        "<@U123> <@U456|Alice> <#C123|support> <#C456>",
+        "@U123 @Alice #support #C456",
+    ),
+    ("<!here> <!channel> <!everyone>", "@here @channel @everyone"),
+    ("&amp;lt; &amp;gt; &amp;amp; &lt; &gt; &amp;", "&lt; &gt; &amp; < > &"),
+    ("&lt;@U123&gt; &lt;https://example.com&gt;", "<@U123> <https://example.com>"),
+    ("&lt;!close&gt;", "<!close>"),
+    ("&amp;!close&amp;", "&!close&"),
+    ("!close &amp;", "!close &"),
+    ("&amp; !close", "& !close"),
+    ("<!close>", "<!close>"),
+    ("<mailto:help@example.com|!close>", "!close"),
+])
+async def test_staff_reply_normalizes_slack_without_interpreting_commands(mention, encoded, expected):
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        await receive(handlers, context())
+        reply = context(
+            f"<@B123> {encoded}" if mention else encoded,
+            bot="slack-1", thread="1234.000001", mention=mention,
+        )
+        await receive(handlers, reply, group=True)
+    assert len(host.sent) == 3
+    assert host.sent[1]["target_type"] == "person"
+    assert text(host.sent[1]) == expected
+    assert text(host.sent[2]) == "✅ 已发送 / Sent"
+    assert thread_id(host.sent[2]) == "1234.000001"
+    assert len(host.storage) == 2
+    reply.prevent_default.assert_called_once()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("code,reason", [(45015, "48-hour"), (45047, "limit"), (43004, "following"), (48001, "permission"), (99999, "rejected")])
 async def test_provider_errcode_is_readable_without_raw_secrets(code, reason):
     _plugin, host, handlers = await graph()
@@ -209,11 +256,15 @@ async def test_unrelated_events_are_ignored(bot, channel, thread, group):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("command", ["/close", "!close"])
-async def test_close_releases_takeover(command):
+@pytest.mark.parametrize("mention", [False, True])
+async def test_close_releases_takeover(command, mention):
     _plugin, host, handlers = await graph()
     with bind_invocation(host, config=CONFIG, binding=binding()):
         await receive(handlers, context())
-        await receive(handlers, context(command, bot="slack-1", thread="1234.000001"), group=True)
+        await receive(handlers, context(
+            f"<@B123> {command}" if mention else command,
+            bot="slack-1", thread="1234.000001", mention=mention,
+        ), group=True)
         followup = context("ordinary text")
         await receive(handlers, followup)
     assert host.storage == {}

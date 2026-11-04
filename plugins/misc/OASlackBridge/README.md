@@ -26,7 +26,7 @@ Forward WeChat Official Account messages containing configured keywords to a Sla
 ## Staff workflow
 
 1. A user sends a keyword. The channel receives a root message containing a shortened openid, the keyword, UTC time, and original text.
-2. Reply **inside that thread**. An @mention is optional. Only `Plain` text is sent to WeChat; the reply context and @bot prefix are removed. The thread receives `✅` after a successful send, or a bilingual error category and WeChat `errcode` after rejection.
+2. Reply **inside that thread**. An @mention is optional. Only `Plain` text is sent to WeChat; the reply context and @bot prefix are removed. Slack links, mentions, channel references, and escaped `&`, `<`, `>` are converted to readable plain text. The thread receives `✅` after a successful send, or a bilingual error category and WeChat `errcode` after rejection.
 3. Send **`!close`** in the thread to release takeover. `@bot /close` is also supported. A bare `/close` may be interpreted by Slack as a native slash command instead of a message.
 4. Once closed or expired, ordinary user messages follow the normal AI pipeline. A new keyword starts a new thread. Expiration is checked on the next event, without a background timer. Staff replies do not extend takeover; user messages do.
 
@@ -48,6 +48,8 @@ Unknown error codes remain visible with a generic rejection reason. Raw exceptio
 ## Storage and runtime
 
 Each session is stored separately by installation, Official Account bot UUID, and full openid, with a separate Slack bot/channel/root-ts lookup row. Worker restarts preserve routing. `/close`, `!close`, and observed expiration delete both rows; inactive expired rows are removed when that conversation is next accessed. Message history is not copied into plugin storage. Staff can still see customer text in Slack: apply your organization's channel retention and access policy.
+
+Storage reads enumerate the plugin's keys. Expired conversations that are never accessed again remain stored and increase that listing; there is no periodic cleanup.
 
 The plugin supports `shared-runtime-v1` / `stateless-v1`; details are in [SHARED_RUNTIME.md](SHARED_RUNTIME.md). It uses only standard `send_message` calls for platform messaging and requires no plugin-specific credentials.
 

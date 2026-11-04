@@ -20,6 +20,23 @@ def slack_text(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def from_slack(text: str) -> str:
+    def replace_reference(match: re.Match[str]) -> str:
+        target, _, label = match.group(1).partition("|")
+        if target.startswith(("http://", "https://")):
+            return f"{label} {target}" if label else target
+        if target.startswith("mailto:"):
+            return label or target.removeprefix("mailto:")
+        if target.startswith(("@", "#")):
+            return target[0] + (label or target[1:])
+        if target in ("!here", "!channel", "!everyone"):
+            return "@" + target[1:]
+        return match.group(0)
+
+    text = re.sub(r"<([^<>]+)>", replace_reference, text)
+    return text.replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&")
+
+
 def send_error(error: Exception) -> str:
     match = re.search(r"errcode=(\d+)", str(error))
     if not match:
@@ -187,7 +204,7 @@ class OASlackBridge(BasePlugin):
             try:
                 await self.send_message(
                     bot_uuid=session["oa_bot"], target_type="person", target_id=session["openid"],
-                    message_chain=message.MessageChain([message.Plain(text=text)]),
+                    message_chain=message.MessageChain([message.Plain(text=from_slack(text))]),
                 )
             except Exception as error:
                 await self.to_slack(config, send_error(error), thread)
