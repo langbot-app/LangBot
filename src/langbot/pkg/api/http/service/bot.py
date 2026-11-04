@@ -800,6 +800,10 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
         update_data.pop('workspace_uuid', None)
+        if update_data.get('enable'):
+            from .scenario import ScenarioPackService
+
+            await ScenarioPackService(self.ap).check_enable(context, bot_uuid)
         if 'adapter' in update_data or update_data.get('enable'):
             current = await self.get_bot(context, bot_uuid, include_secret=True)
             await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))

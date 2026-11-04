@@ -1,4 +1,5 @@
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
+import type { ScenarioPackage, ScenarioReport } from '../entities/api/scenario';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
 import type {
   PipelineMigrationPreview,
@@ -125,6 +126,44 @@ import type {
  * 负责与后端 API 的所有交互
  */
 export class BackendClient extends BaseHttpClient {
+  public exportScenario(
+    botId: string,
+    metadata?: Partial<ScenarioPackage['metadata']>,
+    selection?: Record<string, string[]>,
+  ): Promise<ScenarioPackage> {
+    return this.post(
+      `/api/v1/scenarios/export/${botId}`,
+      selection ? { metadata, selection } : metadata || {},
+    );
+  }
+
+  public previewScenario(document: unknown): Promise<{
+    package: ScenarioPackage;
+    dependencies: ScenarioReport['dependencies'];
+  }> {
+    if (!document || typeof document !== 'object')
+      return Promise.reject(new Error('Invalid scenario document'));
+    return this.post('/api/v1/scenarios/preview', document);
+  }
+
+  public importScenario(
+    document: ScenarioPackage,
+    requestId: string,
+  ): Promise<ScenarioReport> {
+    return this.post(
+      '/api/v1/scenarios/import',
+      {
+        package: document,
+        request_id: requestId,
+      },
+      { timeout: 0 },
+    );
+  }
+
+  public listScenarioImports(): Promise<{ imports: ScenarioReport[] }> {
+    return this.get('/api/v1/scenarios');
+  }
+
   public getWorkspaceLanguage(): Promise<{
     language: string;
     supported_languages: string[];

@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "Hoàn thành danh sách cấu hình kịch bản trước khi bật bot này.",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "Cài đặt các thành phần phụ thuộc Runner tương thích của kịch bản trước khi bật bot này.",
   "Request failed.": "Yêu cầu thất bại.",
   "Too many requests. Please try again later.": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",
   "Your message contains inappropriate content. Please revise it.": "Tin nhắn chứa nội dung không phù hợp. Vui lòng chỉnh sửa.",

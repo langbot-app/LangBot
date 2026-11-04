@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "โปรดทำรายการตั้งค่าสถานการณ์ให้ครบก่อนเปิดใช้งานบอตนี้",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "โปรดติดตั้งส่วนประกอบ Runner ของสถานการณ์ที่เข้ากันได้ก่อนเปิดใช้งานบอตนี้",
   "Request failed.": "คำขอล้มเหลว",
   "Too many requests. Please try again later.": "มีคำขอมากเกินไป โปรดลองอีกครั้งภายหลัง",
   "Your message contains inappropriate content. Please revise it.": "ข้อความมีเนื้อหาไม่เหมาะสม โปรดแก้ไข",

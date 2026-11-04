@@ -12,7 +12,7 @@ export default function BotConfigPage() {
   }
 
   return (
-    <div className="flex h-full items-center justify-center text-muted-foreground">
+    <div className="space-y-4 p-4">
       <p>{t('bots.selectFromSidebar')}</p>
     </div>
   );

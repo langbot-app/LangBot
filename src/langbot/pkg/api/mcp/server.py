@@ -81,6 +81,36 @@ class LangBotMCPServer:
         ap = self.ap
         mcp = self
 
+        from ..http.service.scenario import ScenarioPackService
+
+        scenarios = ScenarioPackService(ap)
+
+        @mcp.tool(
+            description='Export a bot scenario template without credentials or knowledge-base contents. Review before sharing.'
+        )
+        async def export_scenario(bot_uuid: str, metadata: dict | None = None, selection: dict | None = None) -> str:
+            return _dump(await scenarios.export(_authorized(Permission.RESOURCE_MANAGE), bot_uuid, metadata, selection))
+
+        @mcp.tool(description='Validate a scenario package and inspect its dependencies before importing.')
+        async def preview_scenario(package: dict) -> str:
+            return _dump(await scenarios.preview(_authorized(Permission.RESOURCE_MANAGE), package))
+
+        @mcp.tool(
+            description='Automatically install missing Marketplace plugins and import scenario configuration as disabled resources and empty knowledge bases. Supply a unique UUID request_id for retry deduplication. Return the setup checklist to the user.'
+        )
+        async def import_scenario(package: dict, request_id: str) -> str:
+            return _dump(await scenarios.import_package(_authorized(Permission.RESOURCE_MANAGE), package, request_id))
+
+        @mcp.tool(
+            description='List imported scenarios with current missing configuration and dependency checks. Never contains credential values.'
+        )
+        async def list_scenario_imports() -> str:
+            return _dump(await scenarios.list_imports(_authorized(Permission.RESOURCE_MANAGE)))
+
+        @mcp.tool(description='Recheck setup requirements for an imported scenario after editing its resources.')
+        async def get_scenario_import(import_id: str) -> str:
+            return _dump(await scenarios.status(_authorized(Permission.RESOURCE_MANAGE), import_id))
+
         @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
         async def get_workspace_message_language() -> str:
             context = _authorized(Permission.WORKSPACE_VIEW)

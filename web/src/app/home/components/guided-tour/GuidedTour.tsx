@@ -55,6 +55,7 @@ export default function GuidedTour({
   const [targetRect, setTargetRect] = useState<TargetRect | null>(null);
   const [popoverPosition, setPopoverPosition] =
     useState<PopoverPosition | null>(null);
+  const [suspended, setSuspended] = useState(false);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   const previousStorageKeyRef = useRef(storageKey);
   const enteredStepRef = useRef<string | null>(null);
@@ -100,7 +101,10 @@ export default function GuidedTour({
   }, [activeStep, enabled, finished, storageKey]);
 
   const measure = useCallback(() => {
-    if (!activeStep) return;
+    const isSuspended =
+      document.querySelector('[data-suspend-guided-tours]') !== null;
+    setSuspended(isSuspended);
+    if (isSuspended || !activeStep) return;
     const target = document.querySelector<HTMLElement>(activeStep.target);
     if (!target) {
       setTargetRect(null);
@@ -178,6 +182,7 @@ export default function GuidedTour({
 
   if (
     !enabled ||
+    suspended ||
     !activeStep ||
     !targetRect ||
     !popoverPosition ||

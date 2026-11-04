@@ -1,4 +1,6 @@
 {
+  "Complete the scenario setup checklist before enabling this bot.": "Завершите настройку сценария перед включением бота.",
+  "Install compatible scenario Runner dependencies before enabling this bot.": "Установите совместимые зависимости Runner сценария перед включением бота.",
   "Request failed.": "Запрос не выполнен.",
   "Too many requests. Please try again later.": "Слишком много запросов. Повторите позже.",
   "Your message contains inappropriate content. Please revise it.": "Сообщение содержит недопустимый контент. Измените его.",
