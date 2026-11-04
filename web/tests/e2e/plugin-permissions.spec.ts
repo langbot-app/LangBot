@@ -163,15 +163,19 @@ test('strict installation supports partial grants and a second confirmation', as
     name: 'Permission confirmation required',
   });
   await expect(review).toBeVisible();
-  await review.locator('summary').click();
-  await expect(review.getByText('Dangerous', { exact: true })).toBeVisible();
   await expect(
-    review.getByText('Sends bot messages', { exact: true }),
+    review.getByText('qa/permissions', { exact: true }),
   ).toBeVisible();
   await review
-    .getByRole('checkbox', { name: 'sandbox', exact: true })
-    .uncheck();
-  await review
+    .getByRole('button', { name: 'Review permissions', exact: true })
+    .click();
+  await expect(page).toHaveURL(/id=qa%2Fpermissions/);
+  await expect(page.getByText('Dangerous', { exact: true })).toBeVisible();
+  await expect(
+    page.getByText('Sends bot messages', { exact: true }),
+  ).toBeVisible();
+  await page.getByRole('checkbox', { name: /\(sandbox\)/ }).uncheck();
+  await page
     .getByRole('button', { name: 'Review permissions', exact: true })
     .click();
   expect(writes).toHaveLength(0);
@@ -196,6 +200,7 @@ test('strict installation supports partial grants and a second confirmation', as
         capabilities: ['bot.message.send'],
       },
     ]);
+  await page.goto('/home/extensions');
   await expect(review).toHaveCount(0);
 });
 
@@ -219,9 +224,7 @@ test('compatibility confirmation grants all 16 capabilities and keeps its warnin
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].capabilities).toHaveLength(16);
   expect(writes[0].workspace_operations).toEqual([]);
-  const row = page
-    .locator('div.rounded-md.border.p-2')
-    .filter({ has: page.getByText('bot.message.send', { exact: true }) });
+  const row = page.locator('li[data-permission-id="bot.message.send"]');
   await row.getByRole('button', { name: 'Revoke', exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].confirm).toBe(false);
@@ -252,7 +255,7 @@ test('upgrade preserves existing grants and confirms newly declared permissions'
     page.getByText('Permission confirmation required', { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole('checkbox', { name: 'stats.basic', exact: true }),
+    page.getByRole('checkbox', { name: /\(stats\.basic\)/ }),
   ).toBeChecked();
   await page
     .getByRole('button', { name: 'Review permissions', exact: true })
@@ -314,7 +317,7 @@ test('ungrantable strict permissions are disabled; compatibility cannot partiall
   await mockPermissions(page, { blocked: true });
   await page.goto('/home/extensions?id=qa%2Fpermissions');
   await expect(
-    page.getByRole('checkbox', { name: 'sandbox', exact: true }),
+    page.getByRole('checkbox', { name: /\(sandbox\)/ }),
   ).toBeDisabled();
   await expect(
     page.getByRole('button', { name: 'Review permissions', exact: true }),

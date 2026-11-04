@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ExtensionCardVO, ExtensionType } from './ExtensionCardVO';
 import ExtensionCardComponent from './ExtensionCardComponent';
 import PluginSpaceUploadDialog from './PluginSpaceUploadDialog';
-import PluginPermissions from '../PluginPermissions';
+import { Badge } from '@/components/ui/badge';
 import styles from '@/app/home/plugins/plugins.module.css';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { getCloudServiceClientSync } from '@/app/infra/http';
@@ -23,7 +23,14 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
-import { Loader2, Puzzle, Search, Server, Sparkles } from 'lucide-react';
+import {
+  Loader2,
+  Puzzle,
+  Search,
+  Server,
+  ShieldAlert,
+  Sparkles,
+} from 'lucide-react';
 import {
   pluginTaskKey,
   usePluginInstallTasks,
@@ -384,35 +391,61 @@ const PluginInstalledComponent = forwardRef<
     });
   };
 
+  const pendingPermissionExtensions = extensionList.filter(
+    (extension) => extension.permission_status?.pending_confirmation,
+  );
+
   return (
     <>
-      {extensionList.some(
-        (extension) => extension.permission_status?.pending_confirmation,
-      ) && (
+      {pendingPermissionExtensions.length > 0 && (
         <section
           aria-label={t('pluginPermissions.pending')}
-          className="mx-3 mb-4 space-y-3 rounded-md border border-amber-500 p-4"
+          className="mx-3 mb-4 rounded-lg border border-amber-500/50 bg-amber-500/5"
         >
-          <h2 className="font-semibold">{t('pluginPermissions.pending')}</h2>
-          {extensionList
-            .filter(
-              (extension) => extension.permission_status?.pending_confirmation,
-            )
-            .map((extension) => (
-              <details key={extension.id}>
-                <summary className="cursor-pointer">
-                  {extension.label} — {t('pluginPermissions.review')}
-                </summary>
-                <PluginPermissions
-                  author={extension.author}
-                  name={extension.name}
-                  onChange={() => {
-                    getExtensionList(true);
-                    refreshPlugins();
-                  }}
-                />
-              </details>
+          <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+            <ShieldAlert className="size-4 text-amber-600" />
+            <h2 className="text-sm font-semibold">
+              {t('pluginPermissions.pending')}
+            </h2>
+            <span className="text-xs text-muted-foreground">
+              {t('pluginPermissions.pendingCount', {
+                count: pendingPermissionExtensions.length,
+              })}
+            </span>
+          </div>
+          <ul className="divide-y divide-amber-500/20 border-t border-amber-500/20">
+            {pendingPermissionExtensions.map((extension) => (
+              <li
+                key={extension.id}
+                className="flex items-center justify-between gap-3 px-4 py-2"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="truncate text-sm font-medium">
+                    {extension.label}
+                  </span>
+                  <span className="truncate font-mono text-xs text-muted-foreground">
+                    {extension.author}/{extension.name}
+                  </span>
+                  {extension.permission_status?.compatibility_mode && (
+                    <Badge
+                      variant="outline"
+                      className="h-5 shrink-0 border-amber-500/60 px-1.5 text-[11px] text-amber-700 dark:text-amber-400"
+                    >
+                      {t('pluginPermissions.undeclared')}
+                    </Badge>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() => handleExtensionClick(extension)}
+                >
+                  {t('pluginPermissions.review')}
+                </Button>
+              </li>
             ))}
+          </ul>
         </section>
       )}
       <Dialog

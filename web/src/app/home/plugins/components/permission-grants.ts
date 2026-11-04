@@ -3,6 +3,7 @@ export type PermissionCategory = 'workspace_operations' | 'capabilities';
 export type PluginPermissionItem = {
   id: string;
   category: PermissionCategory;
+  label?: Record<string, string> | null;
   required_permissions: string[];
   risk: 'read' | 'write' | 'dangerous';
   granted: boolean;

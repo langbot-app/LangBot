@@ -118,13 +118,19 @@ test('all eight permission dictionaries expose matching translation keys', () =>
     }).outputText;
     const module = { exports: {} };
     new Function('module', 'exports', compiledLocale)(module, module.exports);
-    const values = module.exports.default;
-    const keys = Object.keys(values).sort();
+    const flatten = (value, prefix = '') =>
+      Object.entries(value).flatMap(([key, item]) =>
+        item && typeof item === 'object'
+          ? flatten(item, `${prefix}${key}.`)
+          : [[`${prefix}${key}`, item]],
+      );
+    const entries = flatten(module.exports.default);
+    const keys = entries.map(([key]) => key).sort();
     expected ??= keys;
     assert.deepEqual(keys, expected, locale);
     assert.ok(
-      Object.values(values).every(
-        (value) => typeof value === 'string' && value.length > 0,
+      entries.every(
+        ([, value]) => typeof value === 'string' && value.length > 0,
       ),
       locale,
     );

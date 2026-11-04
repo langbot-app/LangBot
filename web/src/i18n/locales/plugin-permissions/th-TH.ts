@@ -18,4 +18,72 @@ export default {
   confirmDescription:
     'ให้สิทธิ์ที่เลือกแก่ปลั๊กอินนี้ โดยเน้นสิทธิ์อันตรายและการส่งข้อความบอตแยกไว้',
   grantInPlugin: 'ให้สิทธิ์การดำเนินการนี้ในการตั้งค่าสิทธิ์ปลั๊กอินก่อน',
+  workspaceOperations: 'การดำเนินการในพื้นที่ทำงาน',
+  capabilities: 'ความสามารถของปลั๊กอิน',
+  granted: 'อนุญาตแล้ว',
+  grantedCount: 'อนุญาตแล้ว {{granted}} จาก {{total}}',
+  empty: 'ปลั๊กอินนี้ไม่ได้ขอสิทธิ์ใด ๆ',
+  pendingCount: 'มี {{count}} ปลั๊กอินรอยืนยันสิทธิ์',
+  highlighted: 'ต้องระวัง',
+  grantSummary: 'จะอนุญาต {{count}} สิทธิ์',
+  capability: {
+    langbot_info: {
+      label: 'เวอร์ชัน LangBot',
+      description: 'อ่านเวอร์ชัน LangBot',
+    },
+    bot_read: { label: 'อ่านบอท', description: 'แสดงรายการบอทและรายละเอียด' },
+    bot_message_send: {
+      label: 'ส่งข้อความบอท',
+      description: 'ส่งข้อความผ่านบอทในพื้นที่ทำงาน',
+    },
+    bot_platform_api: {
+      label: 'API แพลตฟอร์ม',
+      description: 'เรียก API ดั้งเดิมของแพลตฟอร์ม IM ผ่านบอท',
+    },
+    models_read: {
+      label: 'อ่านโมเดล',
+      description: 'แสดงรายการโมเดลที่ตั้งค่าไว้',
+    },
+    models_invoke: {
+      label: 'เรียกใช้โมเดล',
+      description: 'เรียกโมเดล LLM, embedding และ rerank',
+    },
+    storage_plugin: {
+      label: 'ที่เก็บข้อมูลปลั๊กอิน',
+      description: 'อ่านและเขียนที่เก็บข้อมูลของปลั๊กอินเอง',
+    },
+    storage_workspace: {
+      label: 'ที่เก็บข้อมูลพื้นที่ทำงาน',
+      description: 'อ่านและเขียนที่เก็บข้อมูลที่ใช้ร่วมกัน',
+    },
+    knowledge_read: {
+      label: 'อ่านฐานความรู้',
+      description: 'แสดงรายการและค้นคืนฐานความรู้',
+    },
+    knowledge_vector: {
+      label: 'ที่เก็บเวกเตอร์',
+      description: 'เขียน ค้นหา และลบเวกเตอร์',
+    },
+    knowledge_parser: {
+      label: 'ตัวแยกวิเคราะห์เอกสาร',
+      description: 'แสดงรายการและเรียกใช้ตัวแยกวิเคราะห์',
+    },
+    config_read: {
+      label: 'อ่านไฟล์การตั้งค่า',
+      description: 'อ่านไฟล์การตั้งค่าที่อัปโหลด',
+    },
+    plugin_tools: {
+      label: 'เครื่องมือปลั๊กอิน',
+      description: 'แสดงรายการและเรียกเครื่องมือของปลั๊กอินอื่น',
+    },
+    mcp: { label: 'MCP', description: 'เรียกเครื่องมือและอ่านทรัพยากร MCP' },
+    sandbox: {
+      label: 'แซนด์บ็อกซ์',
+      description: 'ขอแซนด์บ็อกซ์ Box และรันโค้ด',
+    },
+    plugin_read: {
+      label: 'อ่านปลั๊กอิน',
+      description: 'แสดงรายการปลั๊กอินและคำสั่งที่ติดตั้ง',
+    },
+  },
 };

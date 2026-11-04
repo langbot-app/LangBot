@@ -18,4 +18,48 @@ export default {
   confirmDescription:
     '向此外掛安裝授予所選權限。危險權限和機器人傳訊能力已單獨標示。',
   grantInPlugin: '請先在外掛權限中授予此操作',
+  workspaceOperations: '工作區操作',
+  capabilities: '外掛能力',
+  granted: '已授予',
+  grantedCount: '已授予 {{granted}} / {{total}} 項',
+  empty: '此外掛未申請任何權限。',
+  pendingCount: '{{count}} 個外掛等待確認權限',
+  highlighted: '需留意',
+  grantSummary: '將授予 {{count}} 項權限',
+  capability: {
+    langbot_info: { label: 'LangBot 版本', description: '讀取 LangBot 版本' },
+    bot_read: { label: '讀取機器人', description: '列出機器人並讀取詳情' },
+    bot_message_send: {
+      label: '傳送機器人訊息',
+      description: '透過工作區機器人傳送訊息',
+    },
+    bot_platform_api: {
+      label: '平台 API',
+      description: '透過機器人呼叫 IM 平台原生 API',
+    },
+    models_read: { label: '讀取模型', description: '列出已設定的模型' },
+    models_invoke: {
+      label: '呼叫模型',
+      description: '呼叫對話、嵌入和重排序模型',
+    },
+    storage_plugin: { label: '外掛儲存', description: '讀寫外掛自身的儲存' },
+    storage_workspace: {
+      label: '工作區儲存',
+      description: '讀寫工作區內共享的儲存',
+    },
+    knowledge_read: { label: '讀取知識庫', description: '列出並檢索知識庫' },
+    knowledge_vector: { label: '向量庫', description: '寫入、搜尋和刪除向量' },
+    knowledge_parser: {
+      label: '文件解析器',
+      description: '列出並呼叫文件解析器',
+    },
+    config_read: { label: '讀取設定檔', description: '讀取上傳的外掛設定檔' },
+    plugin_tools: {
+      label: '外掛工具',
+      description: '列出並呼叫其他外掛的工具',
+    },
+    mcp: { label: 'MCP', description: '呼叫 MCP 工具、讀取 MCP 資源' },
+    sandbox: { label: '沙盒', description: '申請 Box 沙盒並執行程式碼' },
+    plugin_read: { label: '讀取外掛', description: '列出已安裝的外掛和指令' },
+  },
 };

@@ -226,8 +226,11 @@ def describe_permissions(ap, context, setting) -> dict:
             if category == 'workspace_operations':
                 spec = ap.application_api._operations[name]
                 required = frozenset({spec.permission})
-                risk = get_operation_doc(name, side_effect=spec.side_effect).risk
+                doc = get_operation_doc(name, side_effect=spec.side_effect)
+                risk = doc.risk
+                label = doc.label
             else:
+                label = None
                 required = CAPABILITY_PERMISSIONS[name]
                 risk = (
                     'dangerous' if name in DANGEROUS_CAPABILITIES else 'write' if name == 'bot.message.send' else 'read'
@@ -236,6 +239,7 @@ def describe_permissions(ap, context, setting) -> dict:
                 {
                     'id': name,
                     'category': category,
+                    'label': label,
                     'required_permissions': sorted(required),
                     'risk': risk,
                     'granted': name in grants[category],
