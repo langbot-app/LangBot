@@ -248,7 +248,7 @@ async def test_native_tool_loader_rechecks_admission_at_the_final_invoke_boundar
         query_uuid=None,
     )
 
-    query._box_binding = RunBoxBinding('run', 'box', {}, 'run')
+    query._box_binding = RunBoxBinding('run', 'box', {}, 'run', host_filesystem_accessible=True)
     with pytest.raises(RuntimeError, match='entitlement expired'):
         await loader.invoke_tool('read', {'path': '/workspace/private.txt'}, query)
 
@@ -265,7 +265,7 @@ def _make_loader_with_workspace(tmpdir: str) -> tuple[NativeToolLoader, Mock]:
     box_service = SimpleNamespace(
         available=True,
         default_workspace=tmpdir,
-        _tenant_workspace=Mock(return_value=tmpdir),
+        _box_workspace=Mock(return_value=tmpdir),
     )
     ap = SimpleNamespace(box_service=box_service, logger=logger)
     return NativeToolLoader(ap), logger
@@ -273,7 +273,7 @@ def _make_loader_with_workspace(tmpdir: str) -> tuple[NativeToolLoader, Mock]:
 
 def _make_query() -> SimpleNamespace:
     return SimpleNamespace(
-        _box_binding=RunBoxBinding('run', 'box', {}, 'run'),
+        _box_binding=RunBoxBinding('run', 'box', {}, 'run', host_filesystem_accessible=True),
         query_id='test-query-1',
         query_uuid='test-query-1',
         instance_uuid=_CONTEXT.instance_uuid,
@@ -546,7 +546,7 @@ async def test_host_workspace_operations_do_not_follow_a_swapped_ancestor(
         box_service = SimpleNamespace(
             available=True,
             default_workspace=tmpdir,
-            _tenant_workspace=Mock(return_value=tenant_a),
+            _box_workspace=Mock(return_value=tenant_a),
         )
         loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=Mock()))
         original_open_host_root = native_loader._open_host_root
@@ -579,7 +579,7 @@ async def test_host_file_api_falls_back_to_tenant_box_when_openat_is_unavailable
         box_service = SimpleNamespace(
             available=True,
             default_workspace=tmpdir,
-            _tenant_workspace=Mock(return_value=tmpdir),
+            _box_workspace=Mock(return_value=tmpdir),
             execute_tool=AsyncMock(
                 return_value={
                     'ok': True,
@@ -609,7 +609,7 @@ async def test_box_workspace_edit_script_bounds_file_read_and_replacement(monkey
         box_service = SimpleNamespace(
             available=True,
             default_workspace=tmpdir,
-            _tenant_workspace=Mock(return_value=tmpdir),
+            _box_workspace=Mock(return_value=tmpdir),
             execute_tool=AsyncMock(
                 return_value={
                     'ok': True,
@@ -886,7 +886,7 @@ async def test_workspace_file_script_resolves_the_sandbox_interpreter():
         pipeline_uuid=None,
         query_uuid=None,
     )
-    query._box_binding = RunBoxBinding('run', 'box', {}, 'run')
+    query._box_binding = RunBoxBinding('run', 'box', {}, 'run', host_filesystem_accessible=True)
 
     result = await loader._run_workspace_file_script('print("x")', query)
 

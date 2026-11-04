@@ -1057,7 +1057,7 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
 
     staged_file = shared_workspace / '.mcp' / 'u1' / 'workspace' / 'server.py'
     assert staged_file.read_text(encoding='utf-8') == 'print("hello")\n'
-    ap.box_service.workspace_host_path.assert_called_with(session.execution_context)
+    ap.box_service.workspace_host_path.assert_called_with(session.execution_context, session._build_box_session_id())
 
     assert ap.box_service.start_managed_process.await_args.args[0] == session.execution_context
     process_payload = ap.box_service.start_managed_process.await_args.args[2]

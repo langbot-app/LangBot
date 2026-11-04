@@ -27,6 +27,8 @@ class RunBoxBinding:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     read_only_mounts: list[dict] = field(default_factory=list)
     exported_fingerprints: dict = field(default_factory=dict)
+    host_filesystem_accessible: bool = False
+    backend_session_id: str = ''
 
 
 def prepare_input_files(query, agent_input):
@@ -198,7 +200,16 @@ class RunnerBoxService:
         from ..provider.tools.loaders.skill import build_execution_mounts
 
         binding = RunBoxBinding(
-            run_id, box_id, spec, run_id, read_only_mounts=build_execution_mounts(self.box.ap, query)
+            run_id,
+            box_id,
+            spec,
+            run_id,
+            read_only_mounts=build_execution_mounts(self.box.ap, query),
+            backend_session_id=str(item.get('backend_session_id') or ''),
+            host_filesystem_accessible=(
+                item.get('backend_name') in {'docker', 'nsjail', 'host'}
+                and getattr(self.box, 'shares_filesystem_with_box', False)
+            ),
         )
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)

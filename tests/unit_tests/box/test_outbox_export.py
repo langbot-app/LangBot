@@ -24,7 +24,7 @@ def env(tmp_path):
     box = BoxService(app, client=Mock(spec=BoxRuntimeClient))
     box._available = True
     box.default_workspace = str(tmp_path / 'box' / 'default')
-    workspace = Path(box._tenant_workspace(_CONTEXT))
+    workspace = Path(box._box_workspace(_CONTEXT, 'person_test_user'))
     query = make_query()
     outbox = workspace / 'outbox' / query.query_uuid
     outbox.mkdir(parents=True)
