@@ -2062,3 +2062,55 @@ async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent
             )
         ]
     assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('stage', ['append_run_result', 'finalize_run'])
+@pytest.mark.parametrize('failure_write_also_fails', [False, True])
+async def test_persistence_failure_after_deadline_keeps_original_cause(
+    clean_agent_state, stage, failure_write_also_fails
+):
+    from sqlalchemy.exc import OperationalError
+
+    connector = FakePluginConnector(results=[{'type': 'run.completed', 'data': {}}])
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    original = OperationalError('write', {}, RuntimeError('database is locked'))
+    finalize = orchestrator.journal.finalize_run
+
+    async def fail(**kwargs):
+        connector.contexts[0]['runtime']['deadline_at'] = 0
+        raise original
+
+    if stage == 'finalize_run':
+        recovery = OperationalError('write failure status', {}, RuntimeError('still locked'))
+        calls = 0
+
+        async def finalize_with_failure(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return await fail(**kwargs)
+            if failure_write_also_fails:
+                raise recovery
+            return await finalize(**kwargs)
+
+        orchestrator.journal.finalize_run = AsyncMock(side_effect=finalize_with_failure)
+    else:
+        orchestrator.journal.append_run_result = AsyncMock(side_effect=fail)
+        orchestrator.journal.finalize_run = AsyncMock(
+            side_effect=RuntimeError('still locked') if failure_write_also_fails else finalize
+        )
+
+    with pytest.raises(OperationalError) as exc:
+        [message async for message in orchestrator.run_from_query(make_query())]
+    assert exc.value is original
+    recovery_call = orchestrator.journal.finalize_run.call_args.kwargs
+    assert recovery_call['status'] == 'failed'
+    expected = 'event_write' if stage == 'append_run_result' else 'finalize'
+    assert f'persistence.{expected}_failed' in recovery_call['status_reason']
+    assert 'database is locked' in recovery_call['status_reason']
+
+    if not failure_write_also_fails:
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == 'failed'
+        assert run['status_reason'] == recovery_call['status_reason']

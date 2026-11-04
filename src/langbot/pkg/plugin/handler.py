@@ -10,6 +10,7 @@ import base64
 import contextlib
 import contextvars
 import traceback
+import time
 import uuid
 from dataclasses import dataclass
 
@@ -52,6 +53,7 @@ from ..entity.persistence import model as persistence_model
 
 from ..core import app
 from ..utils import constants
+from ..agent.runner.stream_receipts import current_runner_receipts, receiving_runner_frame
 from ..agent.runner.session_registry import get_session_registry
 from ..provider.modelmgr.reasoning import model_with_reasoning_level
 from ..agent.runner.config_resolver import RunnerConfigResolver
@@ -499,6 +501,41 @@ class RuntimeConnectionHandler(handler.Handler):
     """Runtime connection handler"""
 
     ap: app.Application
+
+    async def _send_message(self, payload, **kwargs):
+        """Bind the Host receipt ledger to the SDK-assigned request ID."""
+        receipts = current_runner_receipts.get()
+        if receipts is not None and getattr(payload, 'action', None) == LangBotToRuntimeAction.RUN_RUNNER.value:
+            if not hasattr(self, '_runner_receipts'):
+                self._runner_receipts = {}
+            receipts.seq_id = payload.seq_id
+            self._runner_receipts[payload.seq_id] = receipts
+        return await super()._send_message(payload, **kwargs)
+
+    async def _route_response(self, seq_id, req_data, **kwargs):
+        receipts = getattr(self, '_runner_receipts', {}).get(seq_id) if seq_id in self.resp_queues else None
+        if receipts is not None:
+            receipts.receiving_at = time.monotonic()
+        token = receiving_runner_frame.set((receipts, receipts.receiving_at) if receipts is not None else None)
+        try:
+            return await super()._route_response(seq_id, req_data, **kwargs)
+        finally:
+            receiving_runner_frame.reset(token)
+            if receipts is not None:
+                receipts.receiving_at = None
+
+    async def _validate_message_model(self, model_type, payload, **kwargs):
+        """Record validated frame ingress without trusting or modifying plugin data."""
+        response = await super()._validate_message_model(model_type, payload, **kwargs)
+        received = receiving_runner_frame.get()
+        if (
+            received is not None
+            and model_type is handler.ActionResponse
+            and response.code == 0
+            and response.chunk_status in (handler.ChunkStatus.CONTINUE, handler.ChunkStatus.END)
+        ):
+            received[0].arrivals.append(received[1])
+        return response
 
     def validate_inbound_action_context(
         self,
@@ -3078,9 +3115,14 @@ class RuntimeConnectionHandler(handler.Handler):
             timeout=None,
         )
 
-        async with contextlib.aclosing(gen):
-            async for ret in gen:
-                yield ret
+        receipts = current_runner_receipts.get()
+        try:
+            async with contextlib.aclosing(gen):
+                async for ret in gen:
+                    yield ret
+        finally:
+            if receipts is not None:
+                getattr(self, '_runner_receipts', {}).pop(receipts.seq_id, None)
 
     async def get_plugin_icon(self, plugin_author: str, plugin_name: str) -> dict[str, Any]:
         """Get plugin icon"""

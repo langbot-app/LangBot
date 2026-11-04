@@ -13,6 +13,10 @@ from ...core import app
 from .context_builder import RunnerContextPayload
 from .descriptor import RunnerDescriptor
 from .errors import RunnerExecutionError
+from .stream_receipts import RunnerStreamReceipts, current_runner_receipts
+
+
+_BUFFERED_READ_TIMEOUT = 5.0
 
 
 class RunnerInvoker:
@@ -48,10 +52,11 @@ class RunnerInvoker:
                 context=context,
             )
 
+            receipts = RunnerStreamReceipts(context)
             try:
                 while True:
                     try:
-                        result_dict = await self._next_with_deadline(gen, descriptor, context)
+                        result_dict = await self._next_with_deadline(gen, descriptor, context, receipts)
                     except StopAsyncIteration:
                         break
                     yield result_dict
@@ -87,29 +92,56 @@ class RunnerInvoker:
         gen: typing.AsyncGenerator[dict[str, typing.Any], None],
         descriptor: RunnerDescriptor,
         context: RunnerContextPayload,
+        receipts: RunnerStreamReceipts | None = None,
     ) -> dict[str, typing.Any]:
         """Read the next runner result while enforcing the run deadline."""
-        remaining = self._remaining_deadline_seconds(context)
-        if remaining is not None and remaining <= 0:
+        remaining = receipts.remaining() if receipts is not None else self._remaining_deadline_seconds(context)
+        buffered = receipts is not None and receipts.has_pending()
+        if remaining is not None and remaining <= 0 and not buffered:
             await self._close_generator(gen, descriptor)
             raise asyncio.TimeoutError
 
-        next_result = asyncio.create_task(anext(gen))
+        token = current_runner_receipts.set(receipts)
+        try:
+            next_result = asyncio.create_task(anext(gen))
+        finally:
+            current_runner_receipts.reset(token)
         try:
             while True:
-                if remaining is None:
-                    return await next_result
                 try:
-                    return await asyncio.wait_for(asyncio.shield(next_result), timeout=remaining)
+                    if remaining is None:
+                        result = await next_result
+                    else:
+                        # Buffered frames may require transport ACKs before the next yield.
+                        result = await asyncio.wait_for(
+                            asyncio.shield(next_result),
+                            timeout=max(remaining, _BUFFERED_READ_TIMEOUT) if buffered else remaining,
+                        )
                 except asyncio.TimeoutError:
-                    # The Host can extend the deadline while a blocking interaction
-                    # is active. Keep the same pending read when that happens.
-                    renewed = self._remaining_deadline_seconds(context)
-                    if renewed is None or renewed <= 0:
-                        raise
-                    remaining = renewed
+                    renewed = (
+                        receipts.remaining() if receipts is not None else self._remaining_deadline_seconds(context)
+                    )
+                    if receipts is not None and receipts.has_pending() and not buffered:
+                        buffered = True
+                        remaining = 0
+                        continue
+                    if renewed is None:
+                        remaining = None
+                        continue
+                    if renewed > 0:
+                        remaining = renewed
+                        continue
+                    if buffered and receipts.has_pending():
+                        raise RunnerExecutionError(
+                            descriptor.id, 'host.consume_timeout', error_code='host.consume_timeout'
+                        )
+                    raise
+                self._check_receipt(receipts)
+                return result
         except StopAsyncIteration:
-            if self._is_deadline_exhausted(context):
+            if receipts is not None and receipts.arrivals:
+                self._check_receipt(receipts)
+            elif self._is_deadline_exhausted(context):
                 raise asyncio.TimeoutError
             raise
         except asyncio.TimeoutError:
@@ -121,6 +153,19 @@ class RunnerInvoker:
             if not next_result.done():
                 next_result.cancel()
                 await asyncio.gather(next_result, return_exceptions=True)
+
+    def _check_receipt(self, receipts):
+        if receipts is None or not receipts.arrivals:
+            return
+        received_at = receipts.arrivals.popleft()
+        receipts.remaining()
+        if receipts.deadline is not None and received_at > receipts.deadline:
+            raise asyncio.TimeoutError
+        delay_ms = (time.monotonic() - received_at) * 1000
+        if delay_ms >= 100:
+            self.ap.logger.debug(
+                f'Slow runner result consumption run={receipts.context.get("run_id")} delay_ms={delay_ms:.1f}'
+            )
 
     def _remaining_deadline_seconds(
         self,

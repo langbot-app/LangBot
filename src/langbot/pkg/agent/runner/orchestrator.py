@@ -34,6 +34,7 @@ from .execution_context import (
 )
 from .host_models import AgentBinding, AgentEventEnvelope
 from .invoker import RunnerInvoker
+from .errors import RunnerExecutionError
 from .interaction_manager import InteractionManager
 from .query_bridge import QueryRunBridge
 from .registry import RunnerRegistry
@@ -255,6 +256,7 @@ class AgentRunOrchestrator:
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
+        persistence_stage = None
         auto_reply_enabled = (
             binding.processor_type == 'agent'
             and binding.delivery_policy.enable_reply
@@ -420,11 +422,13 @@ class AgentRunOrchestrator:
                             )
 
                         journal_started = time.monotonic()
+                        persistence_stage = 'persistence.event_write_failed'
                         await self.journal.append_run_result(
                             result_dict=result_dict,
                             run_id=run_id,
                             sequence=sequence_int,
                         )
+                        persistence_stage = None
                         journal_ms = (time.monotonic() - journal_started) * 1000
 
                         # Trusted Host observers receive validated events before message-only normalization.
@@ -588,12 +592,14 @@ class AgentRunOrchestrator:
                             if result_observer is not None:
                                 await result_observer(cancelled_result)
                             await self.result_normalizer.normalize(cancelled_result, descriptor)
+            persistence_stage = 'persistence.finalize_failed'
             await self.journal.finalize_run(
                 run_id=run_id,
                 status=terminal_status or 'completed',
                 status_reason=terminal_reason,
                 usage=terminal_usage,
             )
+            persistence_stage = None
             execution_outcome = {'completed': 'success', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
                 terminal_status or '', 'unknown'
             )
@@ -613,18 +619,25 @@ class AgentRunOrchestrator:
                 'cancelled'
                 if terminal_status == 'cancelled'
                 else 'timeout'
-                if self._is_deadline_exhausted(context)
+                if isinstance(exc, RunnerExecutionError) and exc.error_code == 'runner.timeout'
                 else 'failed'
             )
             # A chain that broke must always carry a reason, even for a bare exception.
             execution_error = str(exc) or type(exc).__name__
-            failed_usage = terminal_usage
-            await self.journal.finalize_run(
-                run_id=run_id,
-                status=execution_outcome,
-                status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
-                usage=failed_usage,
-            )
+            if persistence_stage:
+                execution_outcome = 'failed'
+                execution_error = f'{persistence_stage}: {type(exc).__name__}: {execution_error}'
+            try:
+                await self.journal.finalize_run(
+                    run_id=run_id,
+                    status=execution_outcome,
+                    status_reason=terminal_reason if execution_outcome == 'cancelled' else execution_error,
+                    usage=terminal_usage,
+                )
+            except Exception as finalize_exc:
+                self.ap.logger.error(
+                    f'Failed to persist failure for run {run_id}: {finalize_exc!r}; original={execution_error}'
+                )
             raise
         finally:
             record_execution(
