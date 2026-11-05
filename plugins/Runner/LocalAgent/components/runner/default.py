@@ -31,7 +31,7 @@ from pkg.agent_core import (
 )
 from pkg.box import LocalAgentBox
 from pkg.config import get_run_timeout_seconds, model_reasoning_levels
-from pkg.run_assembly import AgentRunAssembler, AgentRunAssembly, NoAuthorizedModelError
+from pkg.run_assembly import NO_AUTHORIZED_MODEL_MESSAGE, AgentRunAssembler, AgentRunAssembly, NoAuthorizedModelError
 
 logger = logging.getLogger(__name__)
 
@@ -255,10 +255,10 @@ class DefaultRunner(Runner):
             if needs_box:
                 box.install_tool(assembly)
                 assembly.tool_executor.api = box
-        except NoAuthorizedModelError:
+        except NoAuthorizedModelError as exc:
             yield RunnerResult.run_failed(
                 ctx.run_id,
-                error="No authorized model for local-agent",
+                error=str(exc) or NO_AUTHORIZED_MODEL_MESSAGE,
                 code="runner.no_model",
             )
             return

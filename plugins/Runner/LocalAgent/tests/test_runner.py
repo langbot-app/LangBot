@@ -301,6 +301,13 @@ class TestParseModelConfig:
         result = parse_model_config(None, {"model-1"})
         assert result == []
 
+    def test_bare_model_uuid_string(self):
+        """A bare model UUID, accepted by the Host selector, resolves too."""
+        assert parse_model_config("model-1", {"model-1"}) == ["model-1"]
+        assert parse_model_config("  model-1 ", {"model-1"}) == ["model-1"]
+        assert parse_model_config("model-9", {"model-1"}) == []
+        assert parse_model_config("", {"model-1"}) == []
+
     def test_invalid_format(self):
         """Invalid format returns empty list."""
         result = parse_model_config(123, {"model-1"})
@@ -1714,6 +1721,7 @@ class TestDefaultRunner:
         assert len(results) == 1
         assert results[0].type == RunnerResultType.RUN_FAILED
         assert results[0].data.get("code") == "runner.no_model"
+        assert "Check the model selection" in results[0].data.get("error", "")
 
     @pytest.mark.asyncio
     async def test_assembly_exception_returns_failed_result(self, runner, monkeypatch):

@@ -23,6 +23,11 @@ from pkg.context_pipeline import ContextAssembler, ContextBudget, HostContextTok
 from pkg.model_calling import build_llm_tools
 from pkg.workspace_tools import WorkspaceToolsManager
 
+NO_AUTHORIZED_MODEL_MESSAGE = (
+    "No available model for local-agent: the configured model is missing, deleted or temporarily "
+    "unavailable. Check the model selection in this pipeline's Agent settings."
+)
+
 
 class NoAuthorizedModelError(Exception):
     """Raised when no configured model is available for this run."""
@@ -53,7 +58,7 @@ class AgentRunAssembler:
     async def assemble(self) -> AgentRunAssembly:
         model_ids = self._resolve_model_ids()
         if not model_ids:
-            raise NoAuthorizedModelError("No authorized model for local-agent")
+            raise NoAuthorizedModelError(NO_AUTHORIZED_MODEL_MESSAGE)
 
         allowed_tools = self._allowed_tool_names()
 

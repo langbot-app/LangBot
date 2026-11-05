@@ -36,6 +36,13 @@ def parse_model_config(
     if model_config is None:
         return candidates
 
+    # Host-side selection also accepts a bare model UUID (pre-fallback shape).
+    if isinstance(model_config, str):
+        model_id = _normalize_model_id(model_config)
+        if model_id and model_id in allowed_model_ids:
+            candidates.append(model_id)
+        return candidates
+
     if isinstance(model_config, dict):
         # Primary model
         primary = model_config.get("primary")
