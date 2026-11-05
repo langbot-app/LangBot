@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.agent.runner import event_log_store, run_ledger_store, transcript_store
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
 from langbot.pkg.entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.event_log import EventLog
@@ -130,7 +131,7 @@ async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
     deadline = NOW + dt.timedelta(minutes=5)
     journal = AgentRunJournal(SimpleNamespace(persistence_mgr=SimpleNamespace(get_db_engine=lambda: pg_engine)))
     created = await journal.create_run(
-        event=SimpleNamespace(
+        event=AgentEventEnvelope(
             event_id='event',
             conversation_id='conversation',
             thread_id=None,
@@ -139,7 +140,8 @@ async def test_run_lifecycle_deadline_events_and_stats(pg_engine):
             event_type='message.received',
             source='debug',
             data={},
-            delivery=SimpleNamespace(model_dump=lambda **kwargs: {}),
+            input={'text': 'test'},
+            delivery={'surface': 'debug'},
         ),
         binding=SimpleNamespace(binding_id='binding', agent_id='agent', processor_id='agent', processor_type='agent'),
         descriptor=SimpleNamespace(id='runner'),
