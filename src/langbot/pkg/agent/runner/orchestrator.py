@@ -6,6 +6,8 @@ import time
 import asyncio
 import contextlib
 import copy
+import dataclasses
+import uuid
 import typing
 
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
@@ -93,6 +95,49 @@ class AgentRunOrchestrator:
         bound_plugins: list[str] | None = None,
         adapter_context: dict[str, typing.Any] | None = None,
     ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
+        context = (adapter_context or {}).get('_execution_context')
+        query = (adapter_context or {}).get('_query')
+        if context is None and query is not None:
+            context = get_query_execution_context(query)
+        if not isinstance(context, ExecutionContext):
+            raise ValueError('Agent run requires a trusted ExecutionContext')
+        if not context.query_uuid:
+            context = dataclasses.replace(context, query_uuid=getattr(query, 'query_uuid', None) or str(uuid.uuid4()))
+            if query is not None:
+                object.__setattr__(query, 'query_uuid', context.query_uuid)
+        selection = await self.ap.box_service.resolve_workspace_selection(context)
+        backend = selection['backend']
+        adapter_context = {
+            **(adapter_context or {}),
+            '_execution_context': context,
+            '_sandbox_backend': backend,
+            '_sandbox_e2b_config': selection['e2b'],
+        }
+        mcp_loader = getattr(getattr(self.ap, 'tool_mgr', None), 'mcp_tool_loader', None)
+        async with contextlib.AsyncExitStack() as stack:
+            if mcp_loader is not None:
+                tool_names = (
+                    None
+                    if binding.resource_policy.allow_all_tools or binding.runner_config.get('mcp-resources')
+                    else (binding.resource_policy.allowed_tool_names or [])
+                )
+                adapter_context['_sandbox_mcp_sessions'] = await stack.enter_async_context(
+                    mcp_loader.task_sandbox_scope(context, backend, tool_names=tool_names)
+                )
+            stream = self._run(event, binding, bound_plugins, adapter_context)
+            try:
+                async for item in stream:
+                    yield item
+            finally:
+                await stream.aclose()
+
+    async def _run(
+        self,
+        event: AgentEventEnvelope,
+        binding: AgentBinding,
+        bound_plugins: list[str] | None = None,
+        adapter_context: dict[str, typing.Any] | None = None,
+    ) -> typing.AsyncGenerator[provider_message.Message | provider_message.MessageChunk, None]:
         """Run an Runner from an event-first envelope."""
         runner_id = binding.runner_id
         execution_query = adapter_context.get('_query') if adapter_context else None
@@ -128,6 +173,9 @@ class AgentRunOrchestrator:
                 object.__setattr__(execution_query, field_name, getattr(execution_context, field_name))
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
+        object.__setattr__(execution_query, '_sandbox_backend', adapter_context.get('_sandbox_backend'))
+        object.__setattr__(execution_query, '_sandbox_e2b_config', adapter_context.get('_sandbox_e2b_config', {}))
+        object.__setattr__(execution_query, '_sandbox_mcp_sessions', adapter_context.get('_sandbox_mcp_sessions'))
 
         if event.event_type == 'interaction.submitted' and binding.runner_config.get('user-id-source') in (
             'legacy-session',

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import os
+import re
 import typing
 
 import quart
@@ -252,8 +253,24 @@ class HTTPController:
             elif path.endswith('.txt'):
                 mimetype = 'text/plain'
 
-            response = await quart.send_from_directory(frontend_path, path, mimetype=mimetype)
-            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response.headers['Pragma'] = 'no-cache'
-            response.headers['Expires'] = '0'
+            compressible = mimetype in ('application/javascript', 'text/css')
+            use_gzip = (
+                compressible
+                and quart.request.accept_encodings.quality('gzip') > 0
+                and os.path.isfile(os.path.join(frontend_path, path + '.gz'))
+            )
+            response = await quart.send_from_directory(
+                frontend_path, path + '.gz' if use_gzip else path, mimetype=mimetype
+            )
+            if compressible:
+                response.vary.add('Accept-Encoding')
+            if use_gzip:
+                response.headers['Content-Encoding'] = 'gzip'
+            if path.startswith('assets/') and re.search(r'-[A-Za-z0-9_-]{8,}\.[^.]+$', path):
+                response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+                response.headers.pop('Expires', None)
+            else:
+                response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response.headers['Pragma'] = 'no-cache'
+                response.headers['Expires'] = '0'
             return response

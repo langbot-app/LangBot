@@ -58,6 +58,10 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 }
 ```
 
+## Workspace execution environment
+
+Use `get_workspace_sandbox(refresh=true)` to detect selectable Docker, E2B, and nsjail environments on the Box Runtime host. `set_workspace_sandbox(backend)` requires `workspace.update` and only accepts an available, platform-permitted backend. The setting applies to new tasks; running tasks keep their bound Box. For workspace E2B settings, pass `e2b` with `api_url`, `sandbox_url`, `template`, and a new `api_key` when needed. Template options come from the E2B service. Use `check_workspace_sandbox(e2b)` to list templates and create, execute in, and delete a temporary sandbox for the selected template without saving, then call `set_workspace_sandbox(backend, e2b)` only after the user confirms the settings. Stored keys are never returned; an omitted or blank key preserves the existing key only when endpoints are unchanged. Docker/nsjail host setup remains deployment-owned.
+
 ## Tool surface
 
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
