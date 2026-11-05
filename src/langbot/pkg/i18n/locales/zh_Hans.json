@@ -118,5 +118,7 @@
   "The plugin marketplace is disabled on this instance": "此实例已禁用插件市场",
   "The plugin marketplace returned an invalid response": "插件市场返回了无效的响应",
   "Only a member can confirm plugin permissions": "只有成员可以确认插件权限",
-  "The plugin is already installed; a member must upgrade or reinstall it": "该插件已安装，需由成员升级或重新安装"
+  "The plugin is already installed; a member must upgrade or reinstall it": "该插件已安装，需由成员升级或重新安装",
+  "Insufficient balance or quota for this model. Please top up and try again.": "该模型的余额或额度不足，请充值后重试。",
+  "No API key is configured for this model provider": "该模型供应商未配置 API Key"
 }

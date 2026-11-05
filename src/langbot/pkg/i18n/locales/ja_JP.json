@@ -118,5 +118,7 @@
   "The plugin marketplace is disabled on this instance": "このインスタンスではプラグインマーケットプレイスが無効です",
   "The plugin marketplace returned an invalid response": "プラグインマーケットプレイスから無効な応答が返されました",
   "Only a member can confirm plugin permissions": "プラグインの権限を確認できるのはメンバーのみです",
-  "The plugin is already installed; a member must upgrade or reinstall it": "このプラグインはすでにインストールされています。アップグレードや再インストールはメンバーが行う必要があります"
+  "The plugin is already installed; a member must upgrade or reinstall it": "このプラグインはすでにインストールされています。アップグレードや再インストールはメンバーが行う必要があります",
+  "Insufficient balance or quota for this model. Please top up and try again.": "このモデルの残高またはクォータが不足しています。チャージしてから再試行してください。",
+  "No API key is configured for this model provider": "このモデルプロバイダーには API キーが設定されていません"
 }

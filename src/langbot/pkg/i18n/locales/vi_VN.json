@@ -118,5 +118,7 @@
   "The plugin marketplace is disabled on this instance": "Chợ plugin đã bị tắt trên phiên bản này",
   "The plugin marketplace returned an invalid response": "Chợ plugin trả về phản hồi không hợp lệ",
   "Only a member can confirm plugin permissions": "Chỉ thành viên mới có thể xác nhận quyền của plugin",
-  "The plugin is already installed; a member must upgrade or reinstall it": "Plugin đã được cài đặt; thành viên phải nâng cấp hoặc cài đặt lại"
+  "The plugin is already installed; a member must upgrade or reinstall it": "Plugin đã được cài đặt; thành viên phải nâng cấp hoặc cài đặt lại",
+  "Insufficient balance or quota for this model. Please top up and try again.": "Số dư hoặc hạn mức cho mô hình này không đủ. Vui lòng nạp thêm và thử lại.",
+  "No API key is configured for this model provider": "Chưa cấu hình khóa API cho nhà cung cấp mô hình này"
 }

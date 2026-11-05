@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import traceback
 from typing import TypeVar
 
@@ -23,6 +24,24 @@ from . import requester, token
 
 
 _CacheKey = tuple[str, str, int, str]
+
+# Every attribute that makes up the swappable runtime cache state.
+_RUNTIME_STATE_ATTRS = (
+    'provider_dict',
+    'llm_model_dict',
+    'embedding_model_dict',
+    'rerank_model_dict',
+    'asr_model_dict',
+    'tts_model_dict',
+    '_scope_generations',
+    '_provider_keys_by_scope',
+    '_llm_keys_by_scope',
+    '_embedding_keys_by_scope',
+    '_rerank_keys_by_scope',
+    '_asr_keys_by_scope',
+    '_tts_keys_by_scope',
+)
+_MODEL_CACHE_ATTRS = ('llm_model_dict', 'embedding_model_dict', 'rerank_model_dict', 'asr_model_dict', 'tts_model_dict')
 _ModelEntity = TypeVar(
     '_ModelEntity',
     persistence_model.LLMModel,
@@ -63,6 +82,22 @@ class ModelManager:
         self._rerank_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._asr_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
         self._tts_keys_by_scope: dict[tuple[str, str], set[_CacheKey]] = {}
+        # Cache keys written or removed while a full reload is staging a new
+        # cache; they are invalidated after the swap and lazily reloaded.
+        self._reload_dirty: set[tuple[str, _CacheKey]] | None = None
+        self._reload_lock = asyncio.Lock()
+        # Runtime providers a staging reload may adopt instead of rebuilding.
+        self._reusable_providers: dict[_CacheKey, requester.RuntimeProvider] = {}
+
+    def _cache_name(self, cache: dict) -> str:
+        for name in ('provider_dict', *_MODEL_CACHE_ATTRS):
+            if cache is getattr(self, name):
+                return name
+        raise ValueError('Unknown model runtime cache')
+
+    def _mark_reload_dirty(self, cache: dict, key: _CacheKey) -> None:
+        if self._reload_dirty is not None:
+            self._reload_dirty.add((self._cache_name(cache), key))
 
     def _cache_index(self, cache: dict) -> dict[tuple[str, str], set[_CacheKey]]:
         if cache is self.provider_dict:
@@ -80,10 +115,12 @@ class ModelManager:
         raise ValueError('Unknown model runtime cache')
 
     def _cache_set(self, cache: dict, key: _CacheKey, value: object) -> None:
+        self._mark_reload_dirty(cache, key)
         cache[key] = value
         self._cache_index(cache).setdefault(key[:2], set()).add(key)
 
     def _cache_pop(self, cache: dict, key: _CacheKey) -> object | None:
+        self._mark_reload_dirty(cache, key)
         removed = cache.pop(key, None)
         scope = key[:2]
         index = self._cache_index(cache)
@@ -348,24 +385,80 @@ class ModelManager:
             self.ap.logger.warning(f'  - Error: {exc}')
 
     async def load_models_from_db(self) -> None:
-        """Load every active projected Workspace into isolated runtime caches."""
+        """Reload every active projected Workspace without an empty-cache window.
 
-        self.ap.logger.info('Loading models from db...')
-        await self._close_runtime_providers(list(self.provider_dict.values()))
-        self.provider_dict = {}
-        self.llm_model_dict = {}
-        self.embedding_model_dict = {}
-        self.rerank_model_dict = {}
-        self.asr_model_dict = {}
-        self.tts_model_dict = {}
-        self._scope_generations = {}
-        self._provider_keys_by_scope = {}
-        self._llm_keys_by_scope = {}
-        self._embedding_keys_by_scope = {}
-        self._rerank_keys_by_scope = {}
-        self._asr_keys_by_scope = {}
-        self._tts_keys_by_scope = {}
+        The new cache is staged in a separate manager and swapped in at once, so
+        concurrent lookups keep resolving the previous runtime objects for the
+        whole reload instead of failing with "model not found". Providers whose
+        configuration is unchanged are adopted rather than rebuilt.
+        """
 
+        async with self._reload_lock:
+            self.ap.logger.info('Loading models from db...')
+            staging = ModelManager(self.ap)
+            staging.requester_components = self.requester_components
+            staging.requester_dict = self.requester_dict
+            staging._reusable_providers = dict(self.provider_dict)
+            self._reload_dirty = set()
+            try:
+                await staging._populate_from_db()
+            except BaseException:
+                adopted = {id(provider) for provider in self.provider_dict.values()}
+                await self._close_runtime_providers([p for p in staging.provider_dict.values() if id(p) not in adopted])
+                raise
+            finally:
+                dirty, self._reload_dirty = self._reload_dirty, None
+            await self._adopt_runtime_state(staging, dirty or set())
+
+    async def _adopt_runtime_state(self, staging: ModelManager, dirty: set[tuple[str, _CacheKey]]) -> None:
+        previous_providers = list(self.provider_dict.values())
+        for name in _RUNTIME_STATE_ATTRS:
+            setattr(self, name, getattr(staging, name))
+
+        # Writes that raced with the staging read may be newer than the staged
+        # rows. Drop those keys; the next lookup reloads them from the database.
+        dropped_providers: list[requester.RuntimeProvider] = []
+        for name, key in sorted(dirty, key=lambda item: item[0] != 'provider_dict'):
+            if name == 'provider_dict':
+                removed = self._cache_pop(self.provider_dict, key)
+                if removed is not None:
+                    dropped_providers.append(removed)
+                scope, provider_uuid = key[:2], key[3]
+                for model_name in _MODEL_CACHE_ATTRS:
+                    cache = getattr(self, model_name)
+                    for model_key in tuple(self._cache_index(cache).get(scope, ())):
+                        model = cache.get(model_key)
+                        if model is not None and model.provider.provider_entity.uuid == provider_uuid:
+                            self._cache_pop(cache, model_key)
+            else:
+                self._cache_pop(getattr(self, name), key)
+
+        live = {id(provider) for provider in self.provider_dict.values()}
+        await self._close_runtime_providers([p for p in [*previous_providers, *dropped_providers] if id(p) not in live])
+
+    @staticmethod
+    def _provider_fingerprint(entity: object) -> tuple:
+        return (
+            getattr(entity, 'workspace_uuid', None),
+            getattr(entity, 'requester', None),
+            getattr(entity, 'base_url', None),
+            tuple(getattr(entity, 'api_keys', None) or ()),
+        )
+
+    async def _build_or_reuse_provider(
+        self,
+        context: ExecutionContext,
+        provider_entity: persistence_model.ModelProvider,
+    ) -> requester.RuntimeProvider:
+        reusable = self._reusable_providers.get(self._cache_key(context, provider_entity.uuid))
+        if reusable is not None and self._provider_fingerprint(reusable.provider_entity) == self._provider_fingerprint(
+            provider_entity
+        ):
+            reusable.provider_entity = self._coerce_provider(provider_entity, context)
+            return reusable
+        return await self._build_provider(context, provider_entity)
+
+    async def _populate_from_db(self) -> None:
         list_bindings = getattr(self.ap.workspace_service, 'list_active_execution_bindings', None)
         tenant_uow = getattr(self.ap.persistence_mgr, 'tenant_uow', None)
         cloud_runtime = getattr(getattr(self.ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
@@ -377,8 +470,15 @@ class ModelManager:
                     binding,
                     trigger_principal=PrincipalContext(principal_type=PrincipalType.SYSTEM),
                 )
-                async with tenant_uow(binding.workspace_uuid):
-                    await self._load_workspace_models(context)
+                try:
+                    async with tenant_uow(binding.workspace_uuid):
+                        await self._load_workspace_models(context)
+                except Exception as exc:
+                    # One broken tenant must not leave every later Workspace
+                    # without models; its lookups fall back to lazy loading.
+                    self.ap.logger.error(
+                        f'Failed to load models for Workspace {binding.workspace_uuid} ({type(exc).__name__})'
+                    )
             return
 
         # Compatibility path for isolated manager tests and older embedders.
@@ -405,7 +505,7 @@ class ModelManager:
         for provider_entity in providers_result.all():
             try:
                 context = await context_for(provider_entity.workspace_uuid)
-                runtime_provider = await self._build_provider(context, provider_entity)
+                runtime_provider = await self._build_or_reuse_provider(context, provider_entity)
                 self._cache_set(
                     self.provider_dict,
                     self._cache_key(context, provider_entity.uuid),
@@ -485,7 +585,7 @@ class ModelManager:
             await self._observe_and_close_execution_context(context)
         for provider_entity in provider_entities:
             try:
-                runtime_provider = await self._build_provider(context, provider_entity)
+                runtime_provider = await self._build_or_reuse_provider(context, provider_entity)
                 self._cache_set(
                     self.provider_dict,
                     self._cache_key(context, provider_entity.uuid),
@@ -1182,6 +1282,10 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         model = self.llm_model_dict.get(self._cache_key(execution_context, model_uuid))
         if model is None:
+            model = await self._load_model_on_miss(
+                execution_context, model_uuid, 'llm_model_dict', persistence_model.LLMModel, self._build_llm_model
+            )
+        if model is None:
             raise ValueError(f'LLM model {model_uuid} not found')
         self._ensure_same_scope(execution_context, model.execution_context, resource='LLM model')
         return model
@@ -1193,6 +1297,14 @@ class ModelManager:
     ) -> requester.RuntimeEmbeddingModel:
         execution_context = await self.resolve_execution_context(context)
         model = self.embedding_model_dict.get(self._cache_key(execution_context, model_uuid))
+        if model is None:
+            model = await self._load_model_on_miss(
+                execution_context,
+                model_uuid,
+                'embedding_model_dict',
+                persistence_model.EmbeddingModel,
+                self._build_embedding_model,
+            )
         if model is None:
             raise ValueError(f'Embedding model {model_uuid} not found')
         self._ensure_same_scope(execution_context, model.execution_context, resource='Embedding model')
@@ -1206,6 +1318,14 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         model = self.rerank_model_dict.get(self._cache_key(execution_context, model_uuid))
         if model is None:
+            model = await self._load_model_on_miss(
+                execution_context,
+                model_uuid,
+                'rerank_model_dict',
+                persistence_model.RerankModel,
+                self._build_rerank_model,
+            )
+        if model is None:
             raise ValueError(f'Rerank model {model_uuid} not found')
         self._ensure_same_scope(execution_context, model.execution_context, resource='Rerank model')
         return model
@@ -1217,6 +1337,10 @@ class ModelManager:
     ) -> requester.RuntimeASRModel:
         execution_context = await self.resolve_execution_context(context)
         model = self.asr_model_dict.get(self._cache_key(execution_context, model_uuid))
+        if model is None:
+            model = await self._load_model_on_miss(
+                execution_context, model_uuid, 'asr_model_dict', persistence_model.ASRModel, self._build_asr_model
+            )
         if model is None:
             raise ValueError(f'ASR model {model_uuid} not found')
         self._ensure_same_scope(execution_context, model.execution_context, resource='ASR model')
@@ -1230,9 +1354,82 @@ class ModelManager:
         execution_context = await self.resolve_execution_context(context)
         model = self.tts_model_dict.get(self._cache_key(execution_context, model_uuid))
         if model is None:
+            model = await self._load_model_on_miss(
+                execution_context, model_uuid, 'tts_model_dict', persistence_model.TTSModel, self._build_tts_model
+            )
+        if model is None:
             raise ValueError(f'TTS model {model_uuid} not found')
         self._ensure_same_scope(execution_context, model.execution_context, resource='TTS model')
         return model
+
+    def _workspace_read_scope(self, workspace_uuid: str):
+        tenant_scope = getattr(self.ap.persistence_mgr, 'tenant_scope', None)
+        if callable(tenant_scope):
+            return tenant_scope(workspace_uuid)
+        return contextlib.nullcontext()
+
+    async def _load_model_on_miss(
+        self,
+        context: ExecutionContext,
+        model_uuid: str,
+        cache_name: str,
+        entity_type: type,
+        builder,
+    ):
+        """Load one persisted model whose runtime object is missing from the cache.
+
+        The cache is an optimization, not the source of truth: a model can be
+        missing because it was written on another replica, because a reload
+        invalidated it, or because its Workspace failed to load at startup.
+        """
+
+        if not isinstance(model_uuid, str) or not model_uuid:
+            return None
+        try:
+            async with self._workspace_read_scope(context.workspace_uuid):
+                result = await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(entity_type).where(
+                        entity_type.workspace_uuid == context.workspace_uuid,
+                        entity_type.uuid == model_uuid,
+                    )
+                )
+                model_entity = result.first()
+                if model_entity is None:
+                    return None
+                provider_key = self._cache_key(context, model_entity.provider_uuid)
+                provider = self.provider_dict.get(provider_key)
+                if provider is None:
+                    provider_result = await self.ap.persistence_mgr.execute_async(
+                        sqlalchemy.select(persistence_model.ModelProvider).where(
+                            persistence_model.ModelProvider.workspace_uuid == context.workspace_uuid,
+                            persistence_model.ModelProvider.uuid == model_entity.provider_uuid,
+                        )
+                    )
+                    provider_entity = provider_result.first()
+                    if provider_entity is None:
+                        return None
+                    built = await self._build_provider(context, provider_entity)
+                    provider = self.provider_dict.get(provider_key)
+                    if provider is None:
+                        self._observe_execution_context(context)
+                        self._cache_set(self.provider_dict, provider_key, built)
+                        provider = built
+                    else:
+                        await self._close_runtime_providers([built])
+            runtime_model = builder(context, model_entity, provider)
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to lazily load model {model_uuid} ({type(exc).__name__}: {exc})')
+            return None
+
+        cache = getattr(self, cache_name)
+        key = self._cache_key(context, model_uuid)
+        existing = cache.get(key)
+        if existing is not None:
+            return existing
+        self._observe_execution_context(context)
+        self._cache_set(cache, key, runtime_model)
+        self.ap.logger.info(f'Lazily loaded model {model_uuid} for Workspace {context.workspace_uuid}')
+        return runtime_model
 
     async def remove_llm_model(self, context: TenantContext, model_uuid: str) -> None:
         execution_context = await self.resolve_execution_context(context)

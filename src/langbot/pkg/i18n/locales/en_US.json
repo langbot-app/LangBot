@@ -118,5 +118,7 @@
   "The plugin marketplace is disabled on this instance": "The plugin marketplace is disabled on this instance",
   "The plugin marketplace returned an invalid response": "The plugin marketplace returned an invalid response",
   "Only a member can confirm plugin permissions": "Only a member can confirm plugin permissions",
-  "The plugin is already installed; a member must upgrade or reinstall it": "The plugin is already installed; a member must upgrade or reinstall it"
+  "The plugin is already installed; a member must upgrade or reinstall it": "The plugin is already installed; a member must upgrade or reinstall it",
+  "Insufficient balance or quota for this model. Please top up and try again.": "Insufficient balance or quota for this model. Please top up and try again.",
+  "No API key is configured for this model provider": "No API key is configured for this model provider"
 }
