@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from langbot_plugin.api.definition.plugin import BasePlugin
 from langbot_plugin.api.entities.builtin.platform import message
+from langbot_plugin.api.proxies.runner import PermissionDeniedError
 
 
 def plain_text(chain) -> str:
@@ -38,6 +39,8 @@ def from_slack(text: str) -> str:
 
 
 def send_error(error: Exception) -> str:
+    if permission_denied(error):
+        return permission_notice("bot.message.send")
     match = re.search(r"errcode=(\d+)", str(error))
     if not match:
         return "❌ 发送失败 / Send failed. 请检查 Bot 配置与连接 / Check bot configuration and connection."
@@ -49,6 +52,19 @@ def send_error(error: Exception) -> str:
         "48001": "接口无权限，请检查公众号认证 / API permission denied; check account verification",
     }.get(code, "微信拒绝发送 / WeChat rejected the message")
     return f"❌ {reason} (errcode={code})"
+
+
+def permission_denied(error: Exception) -> bool:
+    return (
+        isinstance(error, PermissionDeniedError)
+        or getattr(getattr(error, "error", error), "code", None) == "permission_denied"
+        or getattr(error, "data", {}).get("error", {}).get("code") == "permission_denied"
+        or "permission_denied" in str(error)
+    )
+
+
+def permission_notice(capability: str) -> str:
+    return f"❌ 缺少权限 / Permission denied: {capability}. 请成员确认插件权限 / Ask a member to confirm plugin permissions."
 
 
 class OASlackBridge(BasePlugin):
@@ -132,8 +148,6 @@ class OASlackBridge(BasePlugin):
             )
             if not session and not matched:
                 return
-            event_context.prevent_default()
-            event_context.prevent_postorder()
             new_session = session is None
             if new_session:
                 timestamp = datetime.fromtimestamp(now, UTC).isoformat()
@@ -161,52 +175,5 @@ class OASlackBridge(BasePlugin):
             await self.save(self.thread_key(session), {"session_key": key})
             if not new_session and config.get("forward_followups", True):
                 await self.to_slack(config, slack_text(text) or "[非文本消息 / Non-text message]", session["thread"])
-
-    async def handle_group(self, event_context):
-        config = self.get_config()
-        bot = await event_context.get_bot_uuid()
-        event = event_context.event
-        if not bot or bot != config.get("slack_bot") or str(event.launcher_id) != config.get("slack_channel_id"):
-            return
-        thread = next((part.id for part in event.message_chain if isinstance(part, message.Quote)), "")
-        if not thread:
-            return
-        scope = self.scope()
-        async with self._locks.setdefault(scope, asyncio.Lock()):
-            mapping = await self.load(self.key("thread", bot, str(event.launcher_id), thread))
-            if not mapping:
-                return
-            key = mapping["session_key"]
-            session = await self.load(key)
-            if not session or session["thread"] != thread or session["oa_bot"] != config.get("oa_bot"):
-                return
             event_context.prevent_default()
             event_context.prevent_postorder()
-            text = plain_text(event.message_chain)
-            if any(isinstance(part, message.At) for part in event.message_chain):
-                text = re.sub(r"^<@[^>]+>\s*", "", text).strip()
-            now = time.time()
-            if text in ("/close", "!close"):
-                await self.close(key, session)
-                await self.to_slack(config, "✅ 接管已结束，恢复 AI 回复 / Takeover closed; AI replies resumed.", thread)
-                return
-            if now - session["last_user_at"] >= 48 * 3600:
-                await self.close(key, session)
-                await self.to_slack(config, "❌ 48 小时回复窗口已过 / 48-hour reply window expired", thread)
-                return
-            if session["expires_at"] <= now:
-                await self.close(key, session)
-                await self.to_slack(config, "❌ 接管已到期，恢复 AI 回复 / Takeover expired; AI replies resumed.", thread)
-                return
-            if not text:
-                await self.to_slack(config, "❌ 仅支持文本回复 / Only text replies are supported.", thread)
-                return
-            try:
-                await self.send_message(
-                    bot_uuid=session["oa_bot"], target_type="person", target_id=session["openid"],
-                    message_chain=message.MessageChain([message.Plain(text=from_slack(text))]),
-                )
-            except Exception as error:
-                await self.to_slack(config, send_error(error), thread)
-            else:
-                await self.to_slack(config, "✅ 已发送 / Sent", thread)

@@ -1491,6 +1491,16 @@ class RuntimeConnectionHandler(handler.Handler):
             """Call a platform adapter API"""
             if data.get('run_id') is not None and (data.get('context_tool') or data.get('file_ids') is not None):
                 return await call_run_platform_api(data)
+            if data.get('action') == 'send_message' and data.get('bot_uuid'):
+                params = data.get('params') or {}
+                return await send_message(
+                    {
+                        **data,
+                        'target_type': params['target_type'],
+                        'target_id': params['target_id'],
+                        'message_chain': params['message'],
+                    }
+                )
             action_context, _ = await self._require_plugin_action_context()
             bot_uuid = data.get('bot_uuid')
             if not bot_uuid and data.get('run_id'):

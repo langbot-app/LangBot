@@ -4,16 +4,21 @@ import asyncio
 import base64
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+import yaml
 from langbot_plugin.api.entities import events
+from langbot_plugin.api.definition.components.runner import RunnerContext
 from langbot_plugin.api.entities.builtin.platform import message
 from langbot_plugin.api.proxies.invocation import bind_invocation
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction as Action
 from langbot_plugin.entities.io.context import InstallationBinding
+from langbot_plugin.entities.io.errors import ActionCallError
+from langbot_plugin.api.proxies.runner import PermissionDeniedError
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -26,7 +31,9 @@ def load_module(path, name):
 
 
 bridge = load_module(ROOT / "main.py", "oa_slack_bridge")
+sys.modules["main"] = bridge
 listener_module = load_module(ROOT / "components/event_listener/bridge.py", "oa_slack_listener")
+runner_module = load_module(ROOT / "components/runner/slack_reply.py", "oa_slack_runner")
 CONFIG = {
     "oa_bot": "oa-1", "slack_bot": "slack-1", "slack_channel_id": "C-1",
     "keywords": ["help", "人工"], "case_sensitive": False,
@@ -43,6 +50,15 @@ class Host:
         self.root_result = {"message_id": "1234.000001"}
 
     async def call_action(self, action, data, *args, **kwargs):
+        if action == getattr(self, "denied_action", None):
+            raise self.denial
+        if action == Action.CALL_TOOL:
+            return {"result": await self.reply(data["tool_name"], data["parameters"])}
+        if action == Action.CALL_PLATFORM_API:
+            assert data["action"] == "send_message"
+            data = {"bot_uuid": data["bot_uuid"], "target_type": data["params"]["target_type"],
+                    "target_id": data["params"]["target_id"], "message_chain": data["params"]["message"]}
+            action = Action.SEND_MESSAGE
         if action == Action.GET_PLUGIN_STORAGE_KEYS:
             return {"keys": list(self.storage)}
         if action == Action.GET_PLUGIN_STORAGE:
@@ -88,12 +104,48 @@ async def graph(host=None):
     listener = listener_module.BridgeListener()
     listener.plugin = plugin
     await listener.initialize()
-    return plugin, host, listener.registered_handlers
+    assert events.GroupMessageReceived not in listener.registered_handlers
+    runner = runner_module.SlackReplyProcessor()
+    runner.plugin = plugin
+    runner.bind_runtime(plugin_runtime_handler=host)
+    await runner.initialize()
+    return plugin, host, (listener.registered_handlers, runner, host)
 
 
 async def receive(handlers, ctx, *, group=False):
-    kind = events.GroupMessageReceived if group else events.PersonMessageReceived
-    await handlers[kind][0](ctx)
+    listeners, runner, host = handlers
+    if not group:
+        await listeners[events.PersonMessageReceived][0](ctx)
+        return
+    bot = await ctx.get_bot_uuid()
+    data = {
+        "type": "message.received", "bot_uuid": bot, "chat_id": ctx.event.launcher_id,
+        "message_chain": ctx.event.message_chain.model_dump(mode="json"),
+    }
+    run_ctx = RunnerContext.model_validate({
+        "run_id": "test", "trigger": {"type": "message.received"},
+        "event": {"event_id": "test", "event_type": "message.received", "source": "test", "data": data},
+        "input": {}, "delivery": {"surface": "test"},
+        "resources": {"storage": {"plugin_storage": True},
+                      "tools": [{"tool_name": "event_reply", "tool_type": "platform", "operations": ["call"]}]},
+        "runtime": {}, "config": {"oa_bot": "ignored-processor-setting"},
+    })
+
+    async def call_tool(name, parameters):
+        assert name == "event_reply"
+        if getattr(host, "reply_failure", None):
+            raise host.reply_failure
+        chain = message.MessageChain([
+            *(part for part in ctx.event.message_chain if isinstance(part, message.Quote)),
+            message.Plain(text=parameters["text"]),
+        ])
+        host.sent.append({"bot_uuid": bot, "target_type": "group", "target_id": ctx.event.launcher_id,
+                          "message_chain": chain.model_dump(mode="json")})
+        return {"ok": True}
+
+    host.reply = AsyncMock(side_effect=call_tool)
+    ctx.results = [result async for result in runner.invoke(run_ctx)]
+    ctx.reply_api = host.reply
 
 
 def contents(payload):
@@ -168,7 +220,7 @@ async def test_staff_reply_uses_plain_components_and_acknowledges(mention):
     assert text(host.sent[1]) == "Answer"
     assert thread_id(host.sent[2]) == "1234.000001"
     assert "✅" in text(host.sent[2])
-    reply.prevent_default.assert_called_once()
+    reply.prevent_default.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -215,7 +267,7 @@ async def test_staff_reply_normalizes_slack_without_interpreting_commands(mentio
     assert text(host.sent[2]) == "✅ 已发送 / Sent"
     assert thread_id(host.sent[2]) == "1234.000001"
     assert len(host.storage) == 2
-    reply.prevent_default.assert_called_once()
+    reply.prevent_default.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -287,7 +339,7 @@ async def test_timeout_releases_takeover(monkeypatch, from_staff):
     assert host.storage == {}
     if from_staff:
         assert "expired" in text(host.sent[-1])
-        ctx.prevent_default.assert_called_once()
+        ctx.prevent_default.assert_not_called()
         assert all(payload["target_type"] == "group" for payload in host.sent)
     else:
         ctx.prevent_default.assert_not_called()
@@ -411,3 +463,126 @@ async def test_channel_change_creates_new_thread():
     assert len(host.storage) == 2
     assert host.sent[-1]["target_id"] == "C-2"
     assert not thread_id(host.sent[-1])
+
+
+def denied():
+    return ActionCallError("Host rejected the operation", {
+        "error": {"code": "permission_denied", "message": "Host rejected the operation"},
+    })
+
+
+@pytest.mark.asyncio
+async def test_version_010_rows_work_without_rewriting_keys(monkeypatch):
+    monkeypatch.setattr(bridge.time, "time", lambda: 2000)
+    _plugin, host, handlers = await graph()
+    key = "oasb:instance-1%3Aworkspace-1%3Afirst:session:oa-1:openid-sensitive-123456789"
+    mapping_key = "oasb:instance-1%3Aworkspace-1%3Afirst:thread:slack-1:C-1:1234.000001"
+    session = {"oa_bot": "oa-1", "openid": "openid-sensitive-123456789", "slack_bot": "slack-1",
+               "channel": "C-1", "thread": "1234.000001", "last_user_at": 1000, "expires_at": 4600}
+    host.storage = {key: json.dumps(session).encode(), mapping_key: json.dumps({"session_key": key}).encode()}
+    previous = dict(host.storage)
+    with bind_invocation(host, config=CONFIG, binding=binding(revision=2)):
+        reply = context("old session reply", bot="slack-1", thread="1234.000001")
+        await receive(handlers, reply, group=True)
+    assert host.storage == previous
+    assert text(host.sent[0]) == "old session reply"
+    assert host.sent[0]["target_id"] == session["openid"]
+    reply.reply_api.assert_awaited_once_with("event_reply", {"text": "✅ 已发送 / Sent"})
+    assert reply.results[-1].type == "run.completed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_session", [False, True])
+async def test_unmapped_threads_log_without_reply(missing_session):
+    plugin, host, handlers = await graph()
+    with bind_invocation(host, config=CONFIG):
+        if missing_session:
+            await plugin.save(plugin.key("thread", "slack-1", "C-1", "1234.000001"), {"session_key": "missing"})
+        reply = context("answer", bot="slack-1", thread="1234.000001")
+        await receive(handlers, reply, group=True)
+    assert not host.sent
+    reply.reply_api.assert_not_called()
+    assert any("Ignoring Slack" in result.data.get("text", "") for result in reply.results)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,command,capability", [
+    (Action.GET_PLUGIN_STORAGE_KEYS, "answer", "storage.plugin"),
+    (Action.GET_PLUGIN_STORAGE, "answer", "storage.plugin"),
+    (Action.DELETE_PLUGIN_STORAGE, "!close", "storage.plugin"),
+    (Action.CALL_PLATFORM_API, "answer", "bot.message.send"),
+])
+async def test_runner_permission_denial_logs_and_acknowledges(action, command, capability):
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=CONFIG):
+        await receive(handlers, context())
+        host.denied_action, host.denial = action, denied()
+        reply = context(command, bot="slack-1", thread="1234.000001")
+        await receive(handlers, reply, group=True)
+    assert len(host.sent) == 2
+    assert capability in text(host.sent[-1])
+    assert any(capability in result.data.get("text", "") for result in reply.results)
+    assert reply.results[-1].type == "run.completed"
+
+
+@pytest.mark.asyncio
+async def test_denied_receipt_does_not_retry_customer_send():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=CONFIG):
+        await receive(handlers, context())
+        host.reply_failure = denied()
+        reply = context("answer", bot="slack-1", thread="1234.000001")
+        await receive(handlers, reply, group=True)
+    assert len(host.sent) == 2
+    assert host.sent[-1]["target_type"] == "person"
+    assert any("event_reply" in result.data.get("text", "") for result in reply.results)
+    assert reply.results[-1].type == "run.completed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("action,existing,incoming_text", [
+    (action, existing, incoming_text)
+    for action, existing, texts in [
+        (Action.GET_PLUGIN_STORAGE_KEYS, False, ["help", "你好，请问营业时间？"]),
+        (Action.GET_PLUGIN_STORAGE, True, ["help", "你好，请问营业时间？"]),
+        (Action.SET_PLUGIN_STORAGE, False, ["help"]),
+        (Action.SET_PLUGIN_STORAGE, True, ["help", "你好，请问营业时间？"]),
+        (Action.SEND_MESSAGE, False, ["help"]),
+        (Action.SEND_MESSAGE, True, ["help", "你好，请问营业时间？"]),
+    ]
+    for incoming_text in texts
+])
+async def test_listener_permission_denial_leaves_pipeline_open(action, existing, incoming_text, caplog):
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=CONFIG):
+        if existing:
+            await receive(handlers, context())
+        host.denied_action, host.denial = action, denied()
+        incoming = context(incoming_text)
+        await receive(handlers, incoming)
+    incoming.prevent_default.assert_not_called()
+    incoming.prevent_postorder.assert_not_called()
+    assert "Permission denied" in caplog.text
+    assert "Host rejected" not in caplog.text
+
+
+def test_sdk_local_permission_denial_is_recognized():
+    assert bridge.permission_denied(PermissionDeniedError("Plugin storage is not authorized."))
+    assert not bridge.permission_denied(RuntimeError("network failed"))
+
+
+def test_component_and_permission_manifest():
+    plugin = yaml.safe_load((ROOT / "manifest.yaml").read_text())
+    runner = yaml.safe_load((ROOT / "components/runner/slack_reply.yaml").read_text())
+    assert plugin["metadata"]["version"] == "0.2.0"
+    assert plugin["spec"]["permissions"] == {
+        "capabilities": ["bot.message.send", "storage.plugin"], "workspace_operations": [],
+    }
+    assert runner["spec"]["usages"] == ["event"]
+    assert runner["spec"]["events"] == ["message.received"]
+    assert runner["spec"]["permissions"] == {"tools": ["call"], "storage": ["plugin"]}
+    assert runner["spec"]["config"] == []
+    locales = {"en_US", "zh_Hans", "zh_Hant", "ja_JP", "es_ES", "ru_RU", "th_TH", "vi_VN"}
+    for manifest in (plugin, runner):
+        for field in ("label", "description"):
+            assert set(manifest["metadata"][field]) == locales

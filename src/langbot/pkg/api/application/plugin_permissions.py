@@ -184,6 +184,8 @@ async def authorize_action(ap, binding, action: str, data: dict) -> None:
         if definition is not None and definition.scope == 'event':
             return
     capability = ACTION_CAPABILITIES.get(action)
+    if action == PluginToRuntimeAction.CALL_PLATFORM_API.value and data.get('action') == 'send_message':
+        capability = 'bot.message.send'
     if action == PluginToRuntimeAction.LIST_TOOLS.value:
         if not set(effective_grants(ap, setting)['capabilities']) & {'plugin_tools', 'mcp', 'sandbox'}:
             fail('permission_denied', 'No tool capabilities have been granted')

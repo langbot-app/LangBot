@@ -280,6 +280,29 @@ async def test_protocol_capabilities_and_cross_workspace_bot_are_enforced(app, m
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('granted', [True, False])
+@pytest.mark.parametrize('action', ['send_message', 'delete_message', 'call_platform_api'])
+async def test_standard_send_uses_message_capability_without_generic_platform_access(app, monkeypatch, granted, action):
+    from langbot.pkg.api.application import plugin_permissions
+
+    capabilities = ['bot.message.send'] if granted else []
+    declaration = {'workspace_operations': [], 'capabilities': capabilities}
+    monkeypatch.setattr(
+        plugin_permissions, 'load_installation', AsyncMock(return_value=installation(declaration, declaration))
+    )
+    app.persistence_mgr.execute_async.return_value = SimpleNamespace(first=lambda: ('bot',))
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    data = {'run_id': 'run', 'bot_uuid': 'bot', 'action': action}
+    if action == 'send_message' and granted:
+        await plugin_permissions.authorize_action(app, binding, PluginToRuntimeAction.CALL_PLATFORM_API.value, data)
+    else:
+        with pytest.raises(ApplicationAPIException) as error:
+            await plugin_permissions.authorize_action(app, binding, PluginToRuntimeAction.CALL_PLATFORM_API.value, data)
+        expected = 'bot.message.send' if action == 'send_message' else 'bot.platform_api'
+        assert error.value.error.details['denied_capabilities'] == [expected]
+
+
+@pytest.mark.asyncio
 async def test_platform_tool_fallback_does_not_bypass_installation_grants(app, monkeypatch):
     from langbot.pkg.api.application import plugin_permissions
     from langbot.pkg.agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME

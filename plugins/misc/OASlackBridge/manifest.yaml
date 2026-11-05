@@ -4,15 +4,30 @@ metadata:
   author: langbot-team
   name: OASlackBridge
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/OASlackBridge
-  version: 0.1.0
+  version: 0.2.0
   description:
     en_US: Forward Official Account keyword messages to Slack and reply from threads.
     zh_Hans: 公众号关键词消息转发 Slack，员工在 thread 内回复用户。
+    zh_Hant: 公眾號關鍵字訊息轉發至 Slack，員工在討論串內回覆使用者。
+    ja_JP: 公式アカウントのキーワードメッセージを Slack に転送し、スレッドから返信します。
+    es_ES: Reenvía mensajes con palabras clave de cuentas oficiales a Slack y responde desde hilos.
+    ru_RU: Пересылает сообщения официального аккаунта по ключевым словам в Slack с ответами из веток.
+    th_TH: ส่งต่อข้อความที่มีคำสำคัญจากบัญชีทางการไปยัง Slack และตอบกลับจากเธรด
+    vi_VN: Chuyển tiếp tin nhắn có từ khóa từ tài khoản chính thức đến Slack và trả lời từ luồng.
   label:
     en_US: Official Account Slack Bridge
     zh_Hans: 公众号 Slack 桥接
+    zh_Hant: 公眾號 Slack 橋接
+    ja_JP: 公式アカウント Slack ブリッジ
+    es_ES: Puente de cuentas oficiales a Slack
+    ru_RU: Мост между официальным аккаунтом и Slack
+    th_TH: สะพานเชื่อมบัญชีทางการกับ Slack
+    vi_VN: Cầu nối tài khoản chính thức với Slack
   icon: assets/icon.svg
 spec:
+  permissions:
+    capabilities: [bot.message.send, storage.plugin]
+    workspace_operations: []
   config:
     - name: oa_bot
       type: bot-selector
@@ -57,6 +72,9 @@ spec:
         en_US: Forward follow-up messages
         zh_Hans: 转发接管期间的后续消息
   components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
     EventListener:
       fromDirs:
         - path: components/event_listener/

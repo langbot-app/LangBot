@@ -1,0 +1,5 @@
+langbot-plugin @ git+https://github.com/langbot-app/langbot-plugin-sdk@7cc07a18081fe153a42431b28dd9118d08ffa4d6
+pytest
+pytest-asyncio
+PyYAML
+ruff
