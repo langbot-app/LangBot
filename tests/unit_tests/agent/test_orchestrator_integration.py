@@ -1092,7 +1092,7 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         event
         for event in event_logs
         if event['event_type'] == 'message.received'
-        and event.get('metadata', {}).get('steering', {}).get('status') == 'queued'
+        and event.get('metadata', {}).get('steering', {}).get('status') == 'dropped'
     )
 
     assert dropped['input_summary'] == 'Unconsumed steering input dropped'

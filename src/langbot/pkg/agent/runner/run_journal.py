@@ -133,7 +133,7 @@ class AgentRunJournal:
             workspace_id=event.workspace_id,
             bot_id=event.bot_id,
             deadline_at=runtime.get('deadline_at') if isinstance(runtime, dict) else None,
-            authorization=authorization,
+            authorization={**authorization, 'recovery_event': self._sanitize_event_data(event.model_dump(mode='json'))},
             metadata={
                 'event_type': event.event_type,
                 'ingress_event_id': trace_state.event_id if trace_state else event.event_id,
@@ -378,13 +378,17 @@ class AgentRunJournal:
             source_event_id = event.get('event_id')
             delivery_id = item.get('_steering_delivery_id') or item.get('delivery_id')
             requeued = bool(delivery_id)
-            if source_event_id and requeued:
-                await store.update_steering_status(
+            if source_event_id:
+                released = await store.update_steering_status(
                     str(source_event_id),
                     status='queued' if requeued else 'dropped',
                     delivery_id='' if requeued else delivery_id,
                     lease_expires_at=0 if requeued else None,
+                    expected_delivery_id=delivery_id,
+                    owner_run_id=run_id,
                 )
+                if not released:
+                    continue
             conversation = item.get('conversation') if isinstance(item.get('conversation'), dict) else {}
             actor = item.get('actor') if isinstance(item.get('actor'), dict) else {}
             subject = item.get('subject') if isinstance(item.get('subject'), dict) else {}

@@ -436,11 +436,22 @@ def register(h):
                     resume_from_sequence = max(int(resume_from_sequence), 0)
                 except (TypeError, ValueError):
                     return handler.ActionResponse.error(message='from_sequence must be a non-negative integer')
-            updated = await store.retry_run(
-                run_id=str(target_run_id),
-                status_reason=data.get('reason') or data.get('status_reason'),
-                resume_from_sequence=resume_from_sequence,
-            )
+            if run.get('queue_name') is not None:
+                updated = await store.retry_run(
+                    run_id=str(target_run_id),
+                    status_reason=data.get('reason') or data.get('status_reason'),
+                    resume_from_sequence=resume_from_sequence,
+                )
+            else:
+                from ..agent.runner.run_recovery import dispatch_recovery
+
+                updated = await dispatch_recovery(
+                    h.ap,
+                    run,
+                    resume=resume,
+                    from_sequence=resume_from_sequence,
+                    reason=data.get('reason') or data.get('status_reason'),
+                )
             if not updated:
                 return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
             if is_admin:

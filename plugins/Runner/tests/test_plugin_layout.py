@@ -220,7 +220,7 @@ def test_acp_claude_sessions_only_load_explicit_mcp_servers() -> None:
             await runner._create_or_resume_session(
                 client,
                 {"agentCapabilities": capabilities},
-                object(),
+                _native_ctx({}),
                 base_config,
                 mcp_servers,
                 stored_session_id,

@@ -481,7 +481,7 @@ class RunnerContextBuilder:
         run_cancel_enabled = True
         run_cancel_ack_enabled = True
         run_retry_enabled = True
-        run_resume_enabled = True
+        run_resume_enabled = descriptor.raw_manifest.get('metadata', {}).get('supports_resume') is True
         run_append_result_enabled = False
         run_finalize_enabled = False
         run_claim_enabled = False

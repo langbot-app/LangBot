@@ -1,0 +1,469 @@
+"""Durable steering and Host retry/resume acceptance tests."""
+
+import time
+import sys
+from pathlib import Path
+import asyncio
+from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+
+from langbot.pkg.agent.runner.event_log_store import EventLogStore
+from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+from langbot.pkg.agent.runner.run_journal import AgentRunJournal
+from langbot.pkg.agent.runner.session_registry import get_session_registry
+from langbot.pkg.plugin import agent_state_actions
+from tests.unit_tests.agent.conftest import make_resources
+from tests.unit_tests.agent.test_orchestrator_integration import (
+    FakeApplication,
+    FakePluginConnector,
+    FakeRegistry,
+    make_descriptor,
+    make_query,
+)
+from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
+from langbot.pkg.agent.runner.host_models import AgentEventEnvelope
+from langbot.pkg.core.taskmgr import AsyncTaskManager
+
+
+@pytest.fixture
+async def clean_agent_state():
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from langbot.pkg.entity.persistence.base import Base
+    from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
+
+    registry = get_session_registry()
+    reset_persistent_state_store()
+    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    try:
+        yield engine
+    finally:
+        for session in await registry.list_active_runs():
+            await registry.unregister(session['run_id'])
+        reset_persistent_state_store()
+        await engine.dispose()
+
+
+class ActionHost:
+    def __init__(self, engine):
+        self.actions = {}
+        self.ap = SimpleNamespace(
+            logger=Mock(),
+            persistence_mgr=SimpleNamespace(get_db_engine=lambda: engine),
+        )
+        agent_state_actions.register(self)
+
+    def action(self, name):
+        def register(fn):
+            self.actions[name.value] = fn
+            return fn
+
+        return register
+
+
+async def setup_steering(engine, run_id='run'):
+    registry = get_session_registry()
+    await registry.register(
+        run_id=run_id,
+        runner_id='plugin:test/runner/default',
+        query_id=1,
+        plugin_identity='test/runner',
+        resources=make_resources(),
+        available_apis={'steering_pull': True, 'steering_ack': True},
+        conversation_id='conv',
+        bot_id='bot',
+        workspace_id='ws',
+    )
+    item = {
+        'claimed_run_id': run_id,
+        'runner_id': 'plugin:test/runner/default',
+        'event': {'event_id': 'followup', 'event_type': 'message.received', 'source': 'platform'},
+        'input': {'text': 'apply this follow-up once'},
+        'conversation': {'conversation_id': 'conv', 'bot_id': 'bot', 'workspace_id': 'ws'},
+    }
+    await registry.enqueue_steering(run_id, item)
+    store = EventLogStore(engine)
+    await store.append_event(
+        event_id='followup',
+        event_type='message.received',
+        source='platform',
+        conversation_id='conv',
+        bot_id='bot',
+        workspace_id='ws',
+        run_id=run_id,
+        runner_id='plugin:test/runner/default',
+        input_json=item['input'],
+        metadata={'steering': {'status': 'queued'}},
+    )
+    return registry, store, ActionHost(engine)
+
+
+def pending_args():
+    return dict(conversation_id='conv', runner_id='plugin:test/runner/default', bot_id='bot', workspace_id='ws')
+
+
+@pytest.mark.asyncio
+async def test_old_client_pull_is_not_replayed_after_success(clean_agent_state):
+    registry, store, h = await setup_steering(clean_agent_state)
+    # Actual old SDK/plugin request: no claim flag and no acknowledgement API.
+    response = await h.actions['steering_pull']({'run_id': 'run', 'caller_plugin_identity': 'test/runner'})
+    assert response.code == 0 and len(response.data['items']) == 1
+    session = await registry.unregister('run')
+    await AgentRunJournal(h.ap).write_steering_dropped_audits(
+        session['steering_queue'], 'run', 'plugin:test/runner/default'
+    )
+    pending = await store.list_pending_steering(**pending_args())
+    assert pending == [], 'Successful old-client input is queued again for the next run'
+
+
+@pytest.mark.asyncio
+async def test_recovery_finds_pending_after_200_completed_inputs(clean_agent_state):
+    store = EventLogStore(clean_agent_state)
+    for n in range(201):
+        await store.append_event(
+            event_id=f'event-{n}',
+            event_type='message.received',
+            source='platform',
+            conversation_id='conv',
+            bot_id='bot',
+            workspace_id='ws',
+            runner_id='plugin:test/runner/default',
+            metadata={'steering': {'status': 'acknowledged' if n < 200 else 'queued'}},
+        )
+    pending = await store.list_pending_steering(**pending_args())
+    assert [row['event_id'] for row in pending] == ['event-200']
+
+
+@pytest.mark.asyncio
+async def test_ack_is_durable_before_success_and_can_be_retried(clean_agent_state, monkeypatch):
+    registry, store, h = await setup_steering(clean_agent_state)
+    args = {'run_id': 'run', 'caller_plugin_identity': 'test/runner'}
+    response = await h.actions['steering_pull']({**args, 'claim': True})
+    delivery_id = response.data['items'][0]['delivery_id']
+    original = EventLogStore.acknowledge_steering_deliveries
+
+    async def database_unavailable(*a, **kw):
+        raise RuntimeError('injected database write failure')
+
+    monkeypatch.setattr(EventLogStore, 'acknowledge_steering_deliveries', database_unavailable)
+    first = await h.actions['steering_ack']({**args, 'delivery_ids': [delivery_id]})
+    assert first.code != 0
+    monkeypatch.setattr(EventLogStore, 'acknowledge_steering_deliveries', original)
+    second = await h.actions['steering_ack']({**args, 'delivery_ids': [delivery_id]})
+    pending = await store.list_pending_steering(**pending_args())
+    assert pending == [], (
+        f'ACK responses first={first.model_dump()} second={second.model_dump()}, '
+        f'but durable pending={[r["event_id"] for r in pending]}'
+    )
+
+
+@pytest.mark.asyncio
+async def test_repeated_ack_does_not_requeue_durably_acknowledged_input(clean_agent_state):
+    registry, store, h = await setup_steering(clean_agent_state)
+    args = {'run_id': 'run', 'caller_plugin_identity': 'test/runner'}
+    response = await h.actions['steering_pull']({**args, 'claim': True})
+    delivery_id = response.data['items'][0]['delivery_id']
+    await h.actions['steering_ack']({**args, 'delivery_ids': [delivery_id]})
+    second = await h.actions['steering_ack']({**args, 'delivery_ids': [delivery_id]})
+    assert second.code == 0
+    assert await store.list_pending_steering(**pending_args()) == []
+
+
+@pytest.mark.asyncio
+async def test_cancelled_result_retains_cleanup_ack_in_history(clean_agent_state):
+    connector = FakePluginConnector(
+        results=[{'type': 'run.cancelled', 'data': {'reason': 'stop', 'cleanup_confirmed': True}}]
+    )
+    ap = FakeApplication(connector, clean_agent_state)
+    runner = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    assert [message async for message in runner.run_from_query(make_query())] == []
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'cancelled'
+    events, *_ = await RunLedgerStore(clean_agent_state).page_run_events(run_id=run['run_id'])
+    assert events[0]['data']['cleanup_confirmed'] is True
+
+
+@pytest.mark.asyncio
+async def test_external_queue_retry_clears_expired_deadline(clean_agent_state):
+    store = RunLedgerStore(clean_agent_state)
+    expired = int(time.time()) - 60
+    await store.create_run(
+        run_id='expired', event_id='event', binding_id='binding', runner_id='runner', deadline_at=expired
+    )
+    await store.finalize_run(run_id='expired', status='timeout')
+    retried = await store.retry_run(run_id='expired')
+    assert retried['status'] == 'queued'
+    assert retried['deadline_at'] is None
+
+
+@pytest.mark.asyncio
+async def test_usage_survives_disconnect(clean_agent_state):
+    connector = FakePluginConnector()
+
+    async def run_runner(**kwargs):
+        connector.contexts.append(kwargs['context'])
+        yield {
+            'type': 'run.progress',
+            'data': {'progress': 50},
+            'usage': {'prompt_tokens': 7, 'completion_tokens': 3, 'total_tokens': 10},
+        }
+        raise ConnectionError('injected transport disconnect')
+
+    connector.run_runner = run_runner
+    ap = FakeApplication(connector, clean_agent_state)
+    runner = AgentRunOrchestrator(ap, FakeRegistry(make_descriptor()))
+    with pytest.raises(Exception):
+        async for _ in runner.run_from_query(make_query()):
+            pass
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    assert run['usage']['total_tokens'] == 10
+
+
+@pytest.mark.asyncio
+async def test_recovery_does_not_deliver_same_input_to_two_active_runs(clean_agent_state):
+    registry, store, h = await setup_steering(clean_agent_state, run_id='dead-source')
+    await registry.unregister('dead-source')
+    descriptor = make_descriptor()
+    descriptor.capabilities.steering = True
+    # Recovery queries exactly the descriptor's runner id.
+    descriptor.id = 'plugin:test/runner/default'
+    event = AgentEventEnvelope(
+        event_id='new-event',
+        event_type='message.received',
+        source='platform',
+        conversation_id='conv',
+        bot_id='bot',
+        workspace_id='ws',
+        input={'text': 'new request'},
+        delivery={'surface': 'test'},
+    )
+    orchestrator = AgentRunOrchestrator(h.ap, FakeRegistry(descriptor))
+    for run_id in ['new-A', 'new-B']:
+        await registry.register(
+            run_id=run_id,
+            runner_id=descriptor.id,
+            query_id=1,
+            plugin_identity='test/runner',
+            resources=make_resources(),
+        )
+        recovered = await orchestrator._load_recoverable_steering(event=event, descriptor=descriptor, run_id=run_id)
+        await registry.restore_steering(run_id, recovered)
+    first = await registry.pull_steering('new-A', claim=True)
+    second = await registry.pull_steering('new-B', claim=True)
+    assert len(first) + len(second) == 1, [item['event']['event_id'] for item in first + second]
+
+
+@pytest.mark.asyncio
+async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_agent_state):
+    from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+    from langbot_plugin.api.proxies.runner import RunnerAPIProxy
+
+    localagent = Path(__file__).resolve().parents[3] / 'plugins/Runner/LocalAgent'
+    sys.path.insert(0, str(localagent))
+    from pkg.agent_core.langbot import LangBotSteeringPuller
+
+    registry, store, h = await setup_steering(clean_agent_state)
+
+    class CoreActionBridge:
+        async def call_action(self, action, data, timeout=15, **kwargs):
+            response = await h.actions[action.value]({**data, 'caller_plugin_identity': 'test/runner'})
+            assert response.code == 0, response.message
+            return response.data
+
+    ctx = RunnerContext.model_validate(
+        {
+            'run_id': 'run',
+            'trigger': {'type': 'message.received'},
+            'event': {'event_id': 'trigger', 'event_type': 'message.received', 'source': 'platform'},
+            'input': {'text': 'hi'},
+            'delivery': {'surface': 'test'},
+            'runtime': {},
+            'context': {'available_apis': {'steering_pull': True, 'steering_ack': True}},
+            'resources': make_resources(),
+        }
+    )
+    proxy = RunnerAPIProxy(ctx, CoreActionBridge())
+    puller = LangBotSteeringPuller(proxy)
+    messages = await puller.pull_messages()
+    assert len(messages) == 1 and messages[0].content == 'apply this follow-up once'
+    session = await registry.unregister('run')
+    await AgentRunJournal(h.ap).write_steering_dropped_audits(
+        session['steering_queue'], 'run', 'plugin:test/runner/default'
+    )
+    pending = await store.list_pending_steering(**pending_args())
+    assert pending == [], 'Actual LocalAgent + new SDK leaves the consumed message queued again'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('resume', [False, True])
+async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_agent_state, resume):
+    from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
+    from langbot_plugin.api.proxies.runner import RunnerAPIProxy
+    from langbot.pkg.plugin import runner_actions
+
+    descriptor = make_descriptor()
+    descriptor.raw_manifest = {'metadata': {'supports_resume': True}}
+    connector = FakePluginConnector(
+        results=[
+            {'type': 'tool.call.started', 'data': {'tool_call_id': 'done', 'tool_name': 'fixture', 'parameters': {}}},
+            {
+                'type': 'tool.call.completed',
+                'data': {'tool_call_id': 'done', 'tool_name': 'fixture', 'result': {'done': True}},
+            },
+            {'type': 'run.failed', 'data': {'error': 'interrupted', 'retryable': True}},
+        ]
+    )
+    ap = FakeApplication(connector, clean_agent_state)
+    ap.logger = Mock()
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+    ap.agent_run_orchestrator = orchestrator
+    with pytest.raises(Exception, match='interrupted'):
+        async for _ in orchestrator.run_from_query(make_query()):
+            pass
+    source_context = connector.contexts[0]
+    source_id = source_context['run_id']
+    await RunLedgerStore(clean_agent_state).finalize_run(
+        run_id=source_id,
+        status='failed',
+        metadata={
+            'processor_id': 'untrusted-processor',
+            'processor_type': 'event_processor',
+            'replay_event': {'input': {'text': 'untrusted replacement'}},
+        },
+    )
+    ap.workspace_service = SimpleNamespace(
+        get_execution_binding=AsyncMock(
+            return_value=SimpleNamespace(
+                instance_uuid='instance-test', workspace_uuid='workspace-test', placement_generation=1
+            )
+        )
+    )
+    ap.pipeline_service = SimpleNamespace(
+        get_pipeline=AsyncMock(
+            return_value={
+                'config': make_query().pipeline_config,
+                'extensions_preferences': {
+                    'enable_all_skills': False,
+                    'skills': ['demo'],
+                    'enable_all_plugins': False,
+                    'plugins': [{'author': 'langbot-team', 'name': 'LocalAgent'}],
+                },
+            }
+        )
+    )
+    ap.tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
+    adapter = SimpleNamespace(
+        is_stream_output_supported=AsyncMock(return_value=False), send_message=AsyncMock(), reply_message=AsyncMock()
+    )
+    ap.bot_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    from langbot.pkg.pipeline.pipelinemgr import RuntimePipeline, StageInstContainer
+    from langbot.pkg.pipeline.entities import StageProcessResult, ResultType
+    from tests.unit_tests.agent.test_orchestrator_integration import TEST_CONTEXT
+
+    class OutputPolicy:
+        async def process(self, query, stage_name):
+            assert query.variables['_pipeline_bound_plugins'] == ['langbot-team/LocalAgent']
+            text = 'policy:' + query.resp_messages[-1].content
+            await query.adapter.reply_message(message_source=query.message_event, message=text, quote_origin=False)
+            return StageProcessResult(result_type=ResultType.CONTINUE, new_query=query)
+
+    pipeline_runtime = RuntimePipeline(
+        ap,
+        SimpleNamespace(
+            uuid='pipeline_001',
+            workspace_uuid='workspace-test',
+            config=make_query().pipeline_config,
+            extensions_preferences={},
+        ),
+        [StageInstContainer('MessageProcessor', None), StageInstContainer('OutputPolicy', OutputPolicy())],
+        TEST_CONTEXT,
+    )
+    ap.pipeline_mgr = SimpleNamespace(load_pipeline=AsyncMock(return_value=pipeline_runtime))
+    ap.event_loop = asyncio.get_running_loop()
+    ap.instance_config = SimpleNamespace(data={})
+    ap.task_mgr = AsyncTaskManager(ap)
+    h = ActionHost(clean_agent_state)
+    h.ap = ap
+    runner_actions.register(h)
+
+    class Bridge:
+        async def call_action(self, action, data, timeout=15, **kwargs):
+            response = await h.actions[action.value]({**data, 'caller_plugin_identity': 'langbot-team/LocalAgent'})
+            assert response.code == 0, response.message
+            return response.data
+
+    ctx = RunnerContext.model_validate(source_context)
+    ctx.runtime.deadline_at = time.time() - 1
+    api = RunnerAPIProxy(ctx, Bridge())
+    connector.results = [
+        {'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'recovered'}}},
+        {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+    ]
+    connector.delay = 0.2
+    if resume:
+        child = await api.run_resume(from_sequence=3)
+        repeated = await api.run_resume(from_sequence=3)
+    else:
+        child = await api.run_retry()
+        repeated = await api.run_retry()
+    assert child.run_id != source_id
+    assert repeated.run_id == child.run_id
+    assert len(ap.task_mgr.tasks) == 1
+    await asyncio.wait_for(ap.task_mgr.tasks[0].task, 3)
+    store = RunLedgerStore(clean_agent_state)
+    assert (await store.get_run(source_id))['status'] == 'failed'
+    recovered = await store.get_run(child.run_id)
+    assert recovered['status'] == 'completed'
+    assert recovered['deadline_at'] > time.time()
+    request = connector.contexts[-1]['runtime']['metadata']['recovery']
+    assert request['source_run_id'] == source_id
+    assert request['mode'] == ('resume' if resume else 'retry')
+    assert len(request['events']) == (3 if resume else 0)
+    assert connector.contexts[-1]['input']['text'] == source_context['input']['text']
+    assert ap.pipeline_service.get_pipeline.call_args.args[1] == 'pipeline_001'
+    assert adapter.send_message.await_count + adapter.reply_message.await_count == 1
+    assert adapter.reply_message.call_args.kwargs['message'] == 'policy:recovered'
+    events, *_ = await store.page_run_events(run_id=source_id)
+    assert [e['type'] for e in events] == ['tool.call.started', 'tool.call.completed', 'run.failed']
+
+
+@pytest.mark.asyncio
+async def test_resume_keeps_ancestor_checkpoints_and_rejects_stale_cursor(clean_agent_state):
+    from langbot.pkg.agent.runner.run_recovery import _resume_events
+
+    store = RunLedgerStore(clean_agent_state)
+    inherited = [
+        {'type': 'tool.call.started', 'data': {'tool_call_id': 'committed'}},
+        {'type': 'tool.call.completed', 'data': {'tool_call_id': 'committed', 'result': {'ok': True}}},
+    ]
+    await store.create_run(
+        run_id='second',
+        event_id='event',
+        binding_id='binding',
+        runner_id='runner',
+        authorization={'recovery_checkpoint': inherited},
+    )
+    await store.append_event(run_id='second', sequence=1, event_type='run.failed', data={'error': 'disconnect'})
+    events, sequence = await _resume_events(store, 'second', 1)
+    assert sequence == 1
+    assert events[:2] == inherited
+    with pytest.raises(ValueError, match='latest committed'):
+        await _resume_events(store, 'second', 0)
+
+
+@pytest.mark.asyncio
+async def test_resume_refuses_tool_with_unknown_effects(clean_agent_state):
+    from langbot.pkg.agent.runner.run_recovery import _resume_events
+
+    store = RunLedgerStore(clean_agent_state)
+    await store.create_run(run_id='unfinished', event_id='event', binding_id='binding', runner_id='runner')
+    await store.append_event(
+        run_id='unfinished', sequence=1, event_type='tool.call.started', data={'tool_call_id': 'unknown'}
+    )
+    with pytest.raises(ValueError, match='no committed completion'):
+        await _resume_events(store, 'unfinished', 1)

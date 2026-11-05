@@ -462,7 +462,7 @@ class AgentRunSessionRegistry:
             selected_indexes: list[int] = []
             for index, item in enumerate(queue):
                 lease_expires_at = item.get('_steering_lease_expires_at')
-                if claim and isinstance(lease_expires_at, int):
+                if isinstance(lease_expires_at, int):
                     if lease_expires_at > now:
                         continue
                     item.pop('_steering_delivery_id', None)

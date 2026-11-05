@@ -9,6 +9,7 @@ metadata:
     en_US: Built-in agent with model fallback, tools, and knowledge retrieval.
     zh_Hans: 内置 Agent，支持模型 fallback、工具调用和知识库检索。
 spec:
+  resume: true
   usages: [agent]
   config:
     - name: model

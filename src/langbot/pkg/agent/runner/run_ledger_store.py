@@ -528,6 +528,7 @@ class RunLedgerStore:
             run.finished_at = None
             run.started_at = None
             run.cancel_requested_at = None
+            run.deadline_at = None
             run.claimed_by_runtime_id = None
             run.claim_token = None
             run.claim_lease_expires_at = None
@@ -536,6 +537,74 @@ class RunLedgerStore:
             await session.commit()
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
+
+    async def create_recovery_run(
+        self, *, source_run_id: str, run_id: str, event_id: str, metadata: dict[str, typing.Any]
+    ) -> tuple[dict[str, typing.Any], bool]:
+        """Create one fresh Host execution without overwriting the source attempt."""
+        now = as_naive_utc(_utc_now())
+        async with self._session_factory() as session:
+            source = await self._get_run_row(session, source_run_id)
+            if source is None or source.status not in TERMINAL_STATUSES:
+                raise ValueError('Only terminal runs can be retried or resumed')
+            original = source.authorization_json
+            source_authorization = _json_loads(original, {})
+            previous_id = source_authorization.get('recovery_run_id')
+            previous = await self._get_run_row(session, previous_id) if previous_id else None
+            if previous is not None and previous.status not in TERMINAL_STATUSES:
+                return self._run_to_dict(previous), False
+            source_authorization['recovery_run_id'] = run_id
+            updated = await session.execute(
+                sqlalchemy.update(AgentRun)
+                .where(
+                    AgentRun.run_id == source_run_id,
+                    AgentRun.authorization_json == original,
+                    AgentRun.status.in_(TERMINAL_STATUSES),
+                )
+                .values(authorization_json=_json_dumps(source_authorization))
+                .execution_options(synchronize_session=False)
+            )
+            if updated.rowcount != 1:
+                raise ValueError('Concurrent recovery request; retry the request')
+            child = AgentRun(
+                run_id=run_id,
+                event_id=event_id,
+                binding_id=source.binding_id,
+                agent_id=source.agent_id,
+                runner_id=source.runner_id,
+                conversation_id=source.conversation_id,
+                thread_id=source.thread_id,
+                workspace_id=source.workspace_id,
+                bot_id=source.bot_id,
+                status='running',
+                created_at=now,
+                started_at=now,
+                updated_at=now,
+                metadata_json=_json_dumps(metadata),
+                **host_execution_lease(),
+            )
+            session.add(child)
+            await session.commit()
+            inflight_hub.notify(child.workspace_id)
+            return self._run_to_dict(child), True
+
+    async def get_run_authorization(self, run_id: str) -> dict[str, typing.Any]:
+        """Read Host-only recovery provenance, never plugin-supplied metadata."""
+        async with self._session_factory() as session:
+            run = await self._get_run_row(session, run_id)
+            return _json_loads(run.authorization_json, {}) if run is not None else {}
+
+    async def authorize_recovery_run(self, run_id: str, *, authorization: dict, deadline_at: float | None) -> None:
+        """Replace inherited authority with grants rebuilt from the current configuration."""
+        async with self._session_factory() as session:
+            updated = await session.execute(
+                sqlalchemy.update(AgentRun)
+                .where(AgentRun.run_id == run_id, AgentRun.status == 'running')
+                .values(authorization_json=_json_dumps(authorization), deadline_at=_epoch_to_datetime(deadline_at))
+            )
+            if updated.rowcount != 1:
+                raise ValueError('Recovery run is no longer active')
+            await session.commit()
 
     async def acknowledge_cancel(
         self,

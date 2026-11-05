@@ -171,12 +171,15 @@ class TestEventLogStore:
                 delivery_id='delivery_1',
                 lease_expires_at=1,
             )
-            assert await store.acknowledge_steering_deliveries(['delivery_1']) == 1
-            assert await store.list_pending_steering(
-                conversation_id='conv_1',
-                runner_id='plugin:test/plugin/runner',
-                bot_id='bot_1',
-            ) == []
+            assert await store.acknowledge_steering_deliveries(['delivery_1']) == ['delivery_1']
+            assert (
+                await store.list_pending_steering(
+                    conversation_id='conv_1',
+                    runner_id='plugin:test/plugin/runner',
+                    bot_id='bot_1',
+                )
+                == []
+            )
         finally:
             await engine.dispose()
 
