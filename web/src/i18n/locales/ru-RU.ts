@@ -2932,11 +2932,17 @@ const ruRU = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_dedicated_member_requiredTitle: "Вы не участник этого экземпляра",
+    space_dedicated_member_required:
+      "Ваш аккаунт LangBot не приглашён в этот экземпляр. Попросите владельца пригласить вас на странице Cloud в LangBot Space, примите приглашение и повторите попытку.",
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
+    dedicatedSpaceMembersHint:
+      "Участников, входящих через аккаунт LangBot, приглашают на странице Cloud в LangBot Space. Приглашение ниже создаёт отдельный аккаунт с паролем в этом экземпляре.",
+    manageOnSpace: "Управлять в LangBot Space",
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',

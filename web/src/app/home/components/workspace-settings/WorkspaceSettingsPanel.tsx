@@ -355,6 +355,25 @@ export default function WorkspaceSettingsPanel({
                 </Button>
               </div>
             )}
+            {systemInfo?.edition === 'cloud' &&
+              !isCloudProjection &&
+              systemInfo.cloud_service_url && (
+                <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-muted-foreground">
+                    {t('workspace.dedicatedSpaceMembersHint')}
+                  </p>
+                  <Button size="sm" variant="outline" asChild>
+                    <a
+                      href={`${systemInfo.cloud_service_url.replace(/\/+$/, '')}/cloud`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {t('workspace.manageOnSpace')}
+                      <ArrowRight className="size-3.5" />
+                    </a>
+                  </Button>
+                </div>
+              )}
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="email"
