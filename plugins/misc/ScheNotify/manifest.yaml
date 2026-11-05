@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: ScheNotify
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/ScheNotify
-  version: 0.2.6
+  version: 0.2.7
   description:
     en_US: Schedule notifications with natural language. LLM can help you set 
       reminders at specific times.
@@ -47,6 +47,19 @@ spec:
         en_US: Chinese (Simplified)
         zh_Hans: 简体中文
       name: zh_Hans
+  - name: timezone
+    type: string
+    label:
+      en_US: Timezone
+      zh_Hans: 时区
+    description:
+      en_US: 'Timezone used by every tool and command: an IANA name such as 
+        Asia/Shanghai or America/New_York, UTC, or an offset such as UTC+8. 
+        Leave empty to use the server''s local timezone.'
+      zh_Hans: 所有工具和命令使用的时区：IANA 时区名（如 Asia/Shanghai、America/New_York）、UTC，或
+        UTC+8 这样的偏移量。留空则使用服务器本地时区。
+    required: false
+    default: ''
   components:
     Command:
       fromDirs:

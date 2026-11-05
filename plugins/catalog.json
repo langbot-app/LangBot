@@ -253,7 +253,7 @@
   },
   {
     "id": "langbot-team/ScheNotify",
-    "version": "0.2.6",
+    "version": "0.2.7",
     "category": "misc",
     "path": "misc/ScheNotify",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/ScheNotify"

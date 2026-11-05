@@ -23,6 +23,14 @@ ScheNotify 是一个 LangBot 插件，允许用户通过自然语言与 LLM 交�
 - `zh_Hans` (简体中文) - 默认
 - `en_US` (英语)
 
+### 时区设置
+
+通过 `timezone` 设置你所在的时区，对所有工具和命令生效：`get_current_time_str` 返回该时区的当前时间，`schedule_notify` 收到的时间按该时区解释，`!sche` / `!dsche` 也按该时区显示提醒时间。
+
+- IANA 时区名，如 `Asia/Shanghai`、`America/New_York`、`Europe/London`
+- `UTC`，或 `UTC+8`、`UTC-05:30` 这样的固定偏移
+- 留空（默认）：使用服务器本地时区
+
 ## 使用方法
 
 ### 1. 通过 LLM 设置提醒

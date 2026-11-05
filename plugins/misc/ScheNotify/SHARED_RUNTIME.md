@@ -12,9 +12,11 @@ lightweight contexts; they do not create another object graph.
 
 ## Per invocation
 
-- The `language` config is read through `self.plugin.get_config()` inside the
-  command and Tool components that use it. No config value is stored on the shared
-  object or in a scheduled event.
+- The `language` and `timezone` configs are read through `self.plugin.get_config()`
+  inside the command and Tool components that use them. No config value is stored
+  on the shared object or in a scheduled event: a reminder stores a
+  timezone-aware instant, so the detached scheduler compares it with the current
+  UTC time without reading any installation's config.
 - `get_installation_binding()` is read per invocation and never retained past the
   call; it decides which installation's schedule `add_scheduled_event`,
   `get_scheduled_events` and `delete_scheduled_event` read and write.
@@ -46,7 +48,10 @@ lightweight contexts; they do not create another object graph.
 ## The detached scheduler
 
 Each installation's scheduler is a detached task, registered per installation and
-stopped by revocation. It carries its installation scope as an explicit argument
+stopped by revocation. The task starts from an empty `contextvars.Context()`
+rather than a copy of the scheduling invocation's context: that copy would carry
+the SDK's per-action audit correlation, which the SDK closes when the action
+returns, so every later send failed with `Plugin audit invocation has ended`. It carries its installation scope as an explicit argument
 and re-enters the invocation it was started from: the handler, config and binding
 captured at scheduling time are passed back into `bind_invocation(...)` for the
 whole life of the loop, so every `SEND_MESSAGE` a firing reminder makes is

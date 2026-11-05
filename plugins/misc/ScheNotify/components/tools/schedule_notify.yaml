@@ -14,7 +14,7 @@ spec:
     properties:
       time_str:
         type: string
-        description: 'Time string in format "%Y-%m-%d %H:%M:%S", e.g. "2024-12-25 18:30:00". MUST call get_current_time_str first to get the current time before scheduling.'
+        description: 'Time string in format "%Y-%m-%d %H:%M:%S", e.g. "2024-12-25 18:30:00", in the timezone reported by get_current_time_str (do not convert it to another timezone). MUST call get_current_time_str first to get the current time before scheduling.'
       message:
         type: string
         description: 'The notification message content to remind the user'
