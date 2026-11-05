@@ -261,7 +261,8 @@ async def test_matched_target_failure_is_retained_even_after_root_success(mode):
     records = await flushed_records(counters, manager)
     (chain,) = execution_chains(records)
     assert chain['outcome'] == 'failed'
-    assert chain['error'] == 'processor_not_found'
+    # The failure code leads; the human reason follows for debugging.
+    assert chain['error'].startswith('processor_not_found')
     if mode == 'failures':
         assert execution_nodes(records) == []
     await counters.shutdown()
@@ -338,7 +339,12 @@ async def test_matching_subscription_admits_chain_regardless_of_primary_order(pr
     assert all(node['outcome'] == 'success' for node in nodes)
     (root,) = [node for node in nodes if node['root']]
     assert root['family'] == 'platform_event'
-    assert all(node['parent_node_id'] == root['node_id'] for node in nodes if not node['root'])
+    # The route step opens before delivery, so the run it delivered to nests under it.
+    (route,) = [node for node in nodes if node['family'] == 'event_route']
+    (runner,) = [node for node in nodes if node['family'] == 'runner']
+    assert route['parent_node_id'] == root['node_id']
+    assert runner['parent_node_id'] == route['node_id']
+    assert root['seq'] < route['seq'] < runner['seq']
     assert all(node['event_id'] == chain['event_id'] for node in nodes)
     await counters.shutdown()
 

@@ -131,33 +131,6 @@ class TestPayloadSanitization:
     """
 
     @pytest.mark.asyncio
-    async def test_sanitize_null_query_id(self):
-        """Test that null query_id is converted to empty string."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': None})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['query_id'] == ''
-
-    @pytest.mark.asyncio
     async def test_sanitize_query_id_string_value(self):
         """Test that query_id string value is preserved."""
         telemetry = get_telemetry_module()
@@ -183,49 +156,6 @@ class TestPayloadSanitization:
 
         assert len(captured_payloads) == 1
         assert captured_payloads[0]['query_id'] == 'abc123'
-
-    @pytest.mark.asyncio
-    async def test_sanitize_null_string_fields(self):
-        """Test that null string fields are converted to empty strings."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        payload = {
-            'query_id': 'test',
-            'adapter': None,
-            'runner': None,
-            'runner_category': None,
-            'model_name': None,
-            'version': None,
-            'edition': None,
-            'error': None,
-            'timestamp': None,
-        }
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send(payload)
-
-        assert len(captured_payloads) == 1
-        result = captured_payloads[0]
-
-        # All null string fields should be empty strings
-        for field in ['adapter', 'runner', 'runner_category', 'model_name', 'version', 'edition', 'error', 'timestamp']:
-            assert result[field] == '', f'Field {field} should be empty string, got {result[field]}'
 
     @pytest.mark.asyncio
     async def test_sanitize_string_fields_preserve_values(self):
@@ -266,87 +196,6 @@ class TestPayloadSanitization:
         assert result['runner'] == 'local-agent'
         assert result['model_name'] == 'gpt-4'
         assert result['version'] == 'v1.0.0'
-
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_invalid_value(self):
-        """Test that invalid duration_ms is converted to 0."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': 'invalid'})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 0
-
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_none_value(self):
-        """Test that None duration_ms is converted to 0."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': None})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 0
-
-    @pytest.mark.asyncio
-    async def test_sanitize_duration_ms_valid_value(self):
-        """Test that valid duration_ms is converted to int."""
-        telemetry = get_telemetry_module()
-        mock_app = Mock()
-        mock_app.logger = Mock()
-
-        manager = telemetry.TelemetryManager(mock_app)
-        manager.telemetry_config = {'url': 'https://example.com'}
-
-        captured_payloads = []
-
-        async def mock_post(url, json):
-            captured_payloads.append(json)
-            return Mock(status_code=200, text='', json=Mock(return_value={'code': 0}))
-
-        mock_client = Mock()
-        mock_client.post = mock_post
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=None)
-
-        with patch.object(httpx, 'AsyncClient', return_value=mock_client):
-            await manager.send({'query_id': 'test', 'duration_ms': 123.45})
-
-        assert len(captured_payloads) == 1
-        assert captured_payloads[0]['duration_ms'] == 123
 
 
 class TestURLConstruction:

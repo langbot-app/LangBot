@@ -618,7 +618,9 @@ class AgentRunOrchestrator:
                 else 'failed'
             )
             # A chain that broke must always carry a reason, even for a bare exception.
-            execution_error = str(exc) or type(exc).__name__
+            from ...telemetry.execution import describe_exception
+
+            execution_error = describe_exception(exc)
             failed_usage = terminal_usage
             await self.journal.finalize_run(
                 run_id=run_id,
@@ -640,9 +642,10 @@ class AgentRunOrchestrator:
                 error=execution_error,
                 node=node,
             )
+            self._note_runner_on_trace(descriptor.id, binding)
             trace_mod.reset_run(run_token)
             if trace_binding is not None and trace_mod.unbind_root(trace_binding):
-                close_execution_trace(self.ap, trace_binding.state, 'runner_done')
+                close_execution_trace(self.ap, trace_binding.state, 'completed')
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
                 object.__delattr__(execution_query, '_box_binding')
@@ -686,6 +689,24 @@ class AgentRunOrchestrator:
         ) as results:
             async for result in results:
                 yield result
+
+    @staticmethod
+    def _note_runner_on_trace(runner_id: str, binding) -> None:
+        """Attach the Runner identity to the execution chain this run belongs to."""
+        try:
+            from ...telemetry import trace as trace_mod
+            from ...utils import runner as runner_utils
+
+            state = trace_mod.current()
+            if state is None or state.closed:
+                return
+            state.runner = state.runner or (runner_id or '')
+            if not state.runner_category:
+                state.runner_category = runner_utils.get_telemetry_runner_category(
+                    runner_id, getattr(binding, 'runner_config', None)
+                )
+        except Exception:
+            pass
 
     def resolve_runner_id_for_telemetry(self, query: pipeline_query.Query) -> str | None:
         """Resolve runner ID for telemetry/logging without full execution."""

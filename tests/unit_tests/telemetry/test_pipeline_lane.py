@@ -52,7 +52,7 @@ def test_lane_failure_marks_the_owned_chain_without_any_prior_stage():
     pipeline = build_pipeline(pipelinemgr, ap)
     query = types.SimpleNamespace(pipeline_config={})
 
-    with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-7'):
+    with execution.ingress(ap, 'completed', CONTEXT, execution_id='query-7'):
         pipeline._record_lane_failure(query, 'sandbox exited 127')
 
     rows = [record for record in counters.records if record['event_type'] == 'execution_node']
@@ -76,7 +76,7 @@ def test_lane_failure_does_not_duplicate_the_runner_node_the_orchestrator_record
     pipeline = build_pipeline(pipelinemgr, ap)
     query = types.SimpleNamespace(pipeline_config={})
 
-    with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-8'):
+    with execution.ingress(ap, 'completed', CONTEXT, execution_id='query-8'):
         execution.record(
             ap,
             CONTEXT,
@@ -375,7 +375,7 @@ async def test_lane_node_nests_under_the_platform_route_that_called_it():
 
     async def scenario():
         # A platform event owns the chain; the route step wraps the Pipeline lane.
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-routed'):
+        with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-routed'):
             with trace.stage_scope() as event_node:
                 execution.record(
                     ap,
@@ -440,7 +440,7 @@ async def test_broken_lane_records_a_failed_step_with_its_reason():
     assert (family, operation) == ('pipeline', 'run')
     assert shapes[0] == ('platform_event', 'message.received', parent, '')
     assert row['outcome'] == 'failed'
-    assert row['error'] == 'lane exploded'
+    assert row['error'].startswith('RuntimeError: lane exploded')
 
 
 async def test_lane_reported_failure_marks_the_step_failed():

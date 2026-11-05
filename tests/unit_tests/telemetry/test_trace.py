@@ -213,7 +213,7 @@ class TestTraceRecording:
         try:
             counters.record(CONTEXT, **STAGE)
             counters.record(CONTEXT, **{**STAGE, 'family': 'runner', 'operation': 'execute', 'mode': 'pipeline'})
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         rows = nodes(counters)
@@ -425,7 +425,7 @@ class TestTraceNodeScope:
         binding = trace.bind('exec-legacy')
         try:
             counters.record(CONTEXT, **STAGE)
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
 
@@ -447,8 +447,8 @@ class TestTraceDelivery:
             counters.record(
                 CONTEXT, **{**STAGE, 'family': 'runner', 'operation': 'execute', 'mode': 'agent', 'runner': 'runner-1'}
             )
-            counters.close_trace(binding.state, 'event_done')
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
 
@@ -462,7 +462,7 @@ class TestTraceDelivery:
         assert record['event_id'] == 'exec-1'
         assert record['instance_id'] == 'instance-1'
         assert record['workspace_uuid'] == 'workspace-1'
-        assert record['closed_by'] == 'event_done'
+        assert record['closed_by'] == 'completed'
         assert record['outcome'] == 'success'
         assert record['stage_count'] == 2
         assert isinstance(record['duration_ms'], int) and record['duration_ms'] >= 0
@@ -480,14 +480,14 @@ class TestTraceDelivery:
         counters.record(CONTEXT, **STAGE)
         assert excluded.state.emit_nodes is False
         assert counters._chain_emitted(excluded.state) is False
-        counters.close_trace(excluded.state, 'event_done')
+        counters.close_trace(excluded.state, 'completed')
         trace.unbind_root(excluded)
         assert counters.records == []
 
         included = trace.bind(in_id)
         counters.record(CONTEXT, **STAGE)
         assert included.state.emit_nodes is True
-        counters.close_trace(included.state, 'event_done')
+        counters.close_trace(included.state, 'completed')
         trace.unbind_root(included)
         assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']
 
@@ -495,7 +495,7 @@ class TestTraceDelivery:
         broken = trace.bind(out_id)
         counters.record(CONTEXT, **{**STAGE, 'outcome': 'timeout'})
         assert counters._chain_emitted(broken.state) is True
-        counters.close_trace(broken.state, 'event_done')
+        counters.close_trace(broken.state, 'completed')
         trace.unbind_root(broken)
         assert [record['event_type'] for record in counters.records] == ['execution_chain']
         assert counters.records[0]['outcome'] == 'timeout'
@@ -506,18 +506,18 @@ class TestTraceDelivery:
 
         failed = trace.bind('exec-failed')
         counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
-        counters.close_trace(failed.state, 'event_done')
+        counters.close_trace(failed.state, 'completed')
         trace.unbind_root(failed)
 
         debug = trace.bind('exec-debug')
         counters.configure(debug.state, debug=True)
         counters.record(CONTEXT, **STAGE)
-        counters.close_trace(debug.state, 'event_done')
+        counters.close_trace(debug.state, 'completed')
         trace.unbind_root(debug)
 
         sampled_out = trace.bind('exec-sampled')
         counters.record(CONTEXT, **STAGE)
-        counters.close_trace(sampled_out.state, 'event_done')
+        counters.close_trace(sampled_out.state, 'completed')
         trace.unbind_root(sampled_out)
 
         assert [record['event_id'] for record in chains(counters)] == ['exec-failed', 'exec-debug']
@@ -533,7 +533,7 @@ class TestTraceDelivery:
         binding = trace.bind()
         try:
             counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         assert manager.sent == []
@@ -545,7 +545,7 @@ class TestTraceDelivery:
         binding = trace.bind()
         try:
             disabled.record(CONTEXT, **STAGE)
-            disabled.close_trace(binding.state, 'event_done')
+            disabled.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         assert disabled_manager.sent == []
@@ -573,14 +573,14 @@ class TestTraceDelivery:
         manager, counters = make_counters(trace_config())
         ap = make_ap(counters)
         for index in range(2):
-            with execution.ingress(ap, 'event_done', CONTEXT, execution_id=f'exec-{index}'):
+            with execution.ingress(ap, 'completed', CONTEXT, execution_id=f'exec-{index}'):
                 counters.record(CONTEXT, **STAGE)
         assert len(counters.records) == 4
 
         await counters.flush()
         assert len(manager.sent) == 1
         payload = manager.sent[0]
-        assert set(payload) == {'records'}
+        assert set(payload) == {'records', 'workspace_uuid'}
         assert [record['event_type'] for record in payload['records']] == [
             'execution_node',
             'execution_chain',
@@ -594,7 +594,7 @@ class TestTraceDelivery:
         _, execution = get_modules()
         manager, counters = make_counters(trace_config(telemetry_flush_seconds=1))
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-timed'):
+        with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-timed'):
             counters.record(CONTEXT, **STAGE)
         assert counters.flush_seconds() == 1
         assert manager.sent == []
@@ -635,25 +635,25 @@ class TestIngress:
         _, execution = get_modules()
         manager, counters = make_counters(trace_config())
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', execution_id='exec-outer'):
-            with execution.ingress(ap, 'pipeline_done', execution_id='exec-inner'):
+        with execution.ingress(ap, 'completed', execution_id='exec-outer'):
+            with execution.ingress(ap, 'completed', execution_id='exec-inner'):
                 counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'})
         assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']
         assert all(record['event_id'] == 'exec-outer' for record in counters.records)
-        assert chains(counters)[0]['closed_by'] == 'event_done'
+        assert chains(counters)[0]['closed_by'] == 'completed'
         assert manager.sent == []
 
     def test_ingress_without_telemetry_is_a_no_op(self):
         _, execution = get_modules()
-        with execution.ingress(types.SimpleNamespace(), 'event_done', execution_id='exec-x'):
+        with execution.ingress(types.SimpleNamespace(), 'completed', execution_id='exec-x'):
             pass
 
     def test_ingress_registers_every_execution_alias(self):
         _, execution = get_modules()
         _, counters = make_counters(trace_config())
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', execution_id='event-1') as outer:
-            with execution.ingress(ap, 'pipeline_done', execution_id='query-1') as inner:
+        with execution.ingress(ap, 'completed', execution_id='event-1') as outer:
+            with execution.ingress(ap, 'completed', execution_id='query-1') as inner:
                 assert inner.state is outer.state
         assert counters.registry == {}
         # Closing the owning trace unregisters every alias it held.
@@ -678,15 +678,15 @@ class TestCrossTaskAttribution:
         assert len(rows) == 1
         assert rows[0]['operation'] == 'send_message' and rows[0]['event_id'] == 'run-1'
 
-        counters.close_trace(binding.state, 'event_done')
+        counters.close_trace(binding.state, 'completed')
         assert chains(counters)[0]['event_id'] == 'run-1'
 
     def test_registry_aliases_a_nested_execution(self):
         _, execution = get_modules()
         _, counters = make_counters(trace_config())
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='event-1'):
-            with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='query-1'):
+        with execution.ingress(ap, 'completed', CONTEXT, execution_id='event-1'):
+            with execution.ingress(ap, 'completed', CONTEXT, execution_id='query-1'):
                 pass
             assert set(counters.registry) == {'event-1', 'query-1'}
             counters.record(CONTEXT, **STAGE, execution_id='query-1')
@@ -725,7 +725,7 @@ class TestTraceDispatch:
         manager = AsyncSendManager(trace_config())
         counters = execution.ExecutionCounters(manager)
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-async'):
+        with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-async'):
             counters.record(CONTEXT, **STAGE)
         await counters.flush()
         sent = records_sent(manager)
@@ -749,7 +749,7 @@ class TestTraceFailureDetail:
         binding = trace.bind('exec-fail')
         try:
             counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'}, error='boom: sandbox exited 127')
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         assert nodes(counters)[0]['error'] == 'boom: sandbox exited 127'
@@ -762,24 +762,54 @@ class TestTraceFailureDetail:
         binding = trace.bind('exec-ok')
         try:
             counters.record(CONTEXT, **STAGE)
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         assert nodes(counters)[0]['error'] == ''
         assert chains(counters)[0]['error'] == ''
 
-    def test_error_detail_is_bounded_and_single_line(self):
-        trace, _ = get_modules()
+    def test_error_detail_keeps_lines_and_both_ends_within_the_bound(self):
+        trace, execution = get_modules()
         _, counters = make_counters(trace_config())
         binding = trace.bind('exec-noisy')
         try:
-            counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'}, error='x' * 1000 + '\n\tboom')
-            counters.close_trace(binding.state, 'event_done')
+            noisy = 'Head: start\n' + 'x' * 9000 + '\n\tinnermost frame'
+            counters.record(CONTEXT, **{**STAGE, 'outcome': 'failed'}, error=noisy)
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         detail = chains(counters)[0]['error']
-        assert len(detail) <= 200
-        assert '\n' not in detail and '\t' not in detail
+        assert len(detail) <= execution.ERROR_LIMIT
+        assert detail.startswith('Head: start')
+        assert detail.endswith('innermost frame')
+        assert '\t' not in detail
+
+    def test_error_detail_redacts_credentials(self):
+        _, execution = get_modules()
+        detail = execution._bounded_error(
+            'AuthError: bad key sk-abcdefghijklmnop api_key=supersecret123 '
+            'GET https://x.test/v1?token=abc123&q=1 Authorization: Bearer abcdefghijkl user a.b@example.com'
+        )
+        for secret in ('sk-abcdefghijklmnop', 'supersecret123', 'abc123', 'abcdefghijkl', 'a.b@example.com'):
+            assert secret not in detail
+        assert detail.startswith('AuthError: bad key')
+
+    def test_describe_exception_keeps_class_cause_and_traceback(self):
+        _, execution = get_modules()
+
+        def inner():
+            raise ValueError('provider returned 500')
+
+        try:
+            try:
+                inner()
+            except ValueError as exc:
+                raise RuntimeError('runner failed') from exc
+        except RuntimeError as exc:
+            detail = execution.describe_exception(exc)
+        assert detail.splitlines()[0] == 'RuntimeError: runner failed'
+        assert 'Caused by: ValueError: provider returned 500' in detail
+        assert 'Traceback (most recent call last):' in detail
 
 
 class TestIngressFailureDetail:
@@ -789,7 +819,7 @@ class TestIngressFailureDetail:
         ap = make_ap(counters)
         raised = False
         try:
-            with execution.ingress(ap, 'event_done', execution_id='exec-boom'):
+            with execution.ingress(ap, 'completed', execution_id='exec-boom'):
                 counters.record(CONTEXT, **STAGE)
                 raise RuntimeError('dispatch exploded')
         except RuntimeError:
@@ -798,13 +828,13 @@ class TestIngressFailureDetail:
         chain = chains(counters)[0]
         assert chain['error'].startswith('RuntimeError: dispatch exploded')
         assert chain['outcome'] == 'failed'
-        assert chain['closed_by'] == 'event_done'
+        assert chain['closed_by'] == 'completed'
 
     def test_successful_ingress_still_reports_success(self):
         _, execution = get_modules()
         _, counters = make_counters(trace_config())
         ap = make_ap(counters)
-        with execution.ingress(ap, 'event_done', execution_id='exec-fine'):
+        with execution.ingress(ap, 'completed', execution_id='exec-fine'):
             counters.record(CONTEXT, **STAGE)
         chain = chains(counters)[0]
         assert chain['error'] == ''
@@ -818,7 +848,7 @@ class TestFailureOnlyTrace:
         _, counters = make_counters({'url': 'https://space.example.test', 'execution_trace': 'failures'})
         ap = make_ap(counters)
         try:
-            with execution.ingress(ap, 'pipeline_done', CONTEXT, execution_id='exec-empty'):
+            with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-empty'):
                 raise RuntimeError('pipeline exploded before any stage')
         except RuntimeError:
             pass
@@ -860,7 +890,7 @@ class TestLegacyRecordFields:
             counters.record(
                 CONTEXT, **{**STAGE, 'family': 'runner', 'operation': 'execute', 'mode': 'agent', 'runner': 'runner-1'}
             )
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         record = chains(counters)[0]
@@ -877,7 +907,7 @@ class TestLegacyRecordFields:
         binding = trace.bind('exec-blank')
         try:
             counters.record(CONTEXT, **STAGE)
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         record = chains(counters)[0]
@@ -900,7 +930,7 @@ class TestNoTraceTtl:
             # chain are still emitted.
             binding.state.started_at = (datetime.now(timezone.utc) - timedelta(seconds=200)).isoformat()
             counters.record(CONTEXT, **{**STAGE, 'operation': 'still.alive'})
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         rows = nodes(counters)
@@ -979,7 +1009,7 @@ class TestSiblingTaskIsolation:
                 counters.record(CONTEXT, **{**STAGE, 'operation': name, 'node': node})
 
         async def scenario():
-            with execution.ingress(ap, 'event_done', CONTEXT, execution_id='exec-siblings'):
+            with execution.ingress(ap, 'completed', CONTEXT, execution_id='exec-siblings'):
                 await asyncio.gather(work('alpha'), work('beta'))
             snapshot = list(counters.records)
             await counters.shutdown()
@@ -1007,7 +1037,7 @@ class TestSamplingShape:
         binding = trace.bind('platform:bot-1:message-1')
         try:
             counters.record(CONTEXT, **STAGE)
-            counters.close_trace(binding.state, 'event_done')
+            counters.close_trace(binding.state, 'completed')
         finally:
             trace.unbind_root(binding)
         assert [record['event_type'] for record in counters.records] == ['execution_node', 'execution_chain']

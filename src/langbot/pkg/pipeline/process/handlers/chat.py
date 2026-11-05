@@ -298,9 +298,13 @@ class ChatMessageHandler(handler.MessageHandler):
                         runner_name = self.ap.agent_run_orchestrator.resolve_runner_id_for_telemetry(query)
                         state.adapter = state.adapter or adapter_name
                         state.runner = state.runner or (runner_name or '')
-                        state.runner_category = state.runner_category or runner_utils.get_runner_category_from_runner(
-                            runner_name, None, query.pipeline_config
-                        )
+                        if not state.runner_category:
+                            from ....agent.runner.config_resolver import RunnerConfigResolver
+
+                            config = query.pipeline_config or {}
+                            state.runner_category = runner_utils.get_telemetry_runner_category(
+                                runner_name, RunnerConfigResolver.resolve_runner_config(config, runner_name or '')
+                            )
                         if state.pipeline_plugins is None:
                             state.pipeline_plugins = query.variables.get('_pipeline_bound_plugins', None)
                 except Exception as ex:

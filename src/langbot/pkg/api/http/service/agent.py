@@ -367,7 +367,7 @@ class AgentService:
         origin = 'api' if principal_type == 'api_key' else 'webui'
         with execution_ingress(
             self.ap,
-            'event_done',
+            'completed',
             execution_context,
             event_id,
             debug=True,

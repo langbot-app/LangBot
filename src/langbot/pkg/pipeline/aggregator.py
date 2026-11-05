@@ -162,15 +162,18 @@ class MessageAggregator:
         if variables:
             enabled = False
 
-        # Preserve ingress identity across the queue and detached debounce task.
-        from ..telemetry import trace
+        # Hand the in-flight execution chain to the queued query: the Pipeline
+        # lane resumes the same chain, so one inbound event stays one chain
+        # across the queue and the detached debounce task.
+        from ..telemetry import execution as telemetry_execution
 
-        ingress_trace = trace.current()
-        if ingress_trace is not None:
-            variables = {**(variables or {}), '_ingress_event_id': ingress_trace.event_id}
+        handoff = telemetry_execution.handoff(self.ap)
+        if handoff:
+            variables = {**(variables or {}), **handoff}
 
         if not enabled:
-            await self.ap.query_pool.add_query(
+            await self._enqueue_or_release(
+                handoff,
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
@@ -249,7 +252,8 @@ class MessageAggregator:
                     )
 
         if bypass_aggregation:
-            await self.ap.query_pool.add_query(
+            await self._enqueue_or_release(
+                handoff,
                 bot_uuid=bot_uuid,
                 launcher_type=launcher_type,
                 launcher_id=launcher_id,
@@ -313,14 +317,28 @@ class MessageAggregator:
         if not buffer.messages:
             return
 
-        message = buffer.messages[0] if len(buffer.messages) == 1 else self._merge_messages(buffer.messages)
-        binding = await self.ap.workspace_service.get_execution_binding(
-            execution_context.workspace_uuid,
-            expected_generation=execution_context.placement_generation,
-        )
-        if binding.instance_uuid != execution_context.instance_uuid:
-            raise WorkspaceInvariantError('Aggregation buffer instance does not match the active Workspace binding')
-        await self.ap.query_pool.add_query(
+        from ..telemetry import execution as telemetry_execution
+
+        try:
+            message = buffer.messages[0] if len(buffer.messages) == 1 else self._merge_messages(buffer.messages)
+            binding = await self.ap.workspace_service.get_execution_binding(
+                execution_context.workspace_uuid,
+                expected_generation=execution_context.placement_generation,
+            )
+            if binding.instance_uuid != execution_context.instance_uuid:
+                raise WorkspaceInvariantError('Aggregation buffer instance does not match the active Workspace binding')
+        except BaseException as exc:
+            for pending in buffer.messages:
+                telemetry_execution.release_handoff(
+                    self.ap, pending.variables, error=telemetry_execution.describe_exception(exc)
+                )
+            raise
+        # Events folded into the first message's query close as merged into it.
+        merged_into = str((message.variables or {}).get(telemetry_execution.HANDOFF_EVENT_KEY) or '')
+        for pending in buffer.messages[1:]:
+            telemetry_execution.release_handoff(self.ap, pending.variables, merged_into=merged_into)
+        await self._enqueue_or_release(
+            message.variables,
             bot_uuid=message.bot_uuid,
             launcher_type=message.launcher_type,
             launcher_id=message.launcher_id,
@@ -333,6 +351,16 @@ class MessageAggregator:
             execution_context=message.execution_context,
             variables=message.variables,
         )
+
+    async def _enqueue_or_release(self, handoff, **query) -> None:
+        """Enqueue a query; release its telemetry handoff if it never queues."""
+        try:
+            await self.ap.query_pool.add_query(**query)
+        except BaseException as exc:
+            from ..telemetry import execution as telemetry_execution
+
+            telemetry_execution.release_handoff(self.ap, handoff, error=telemetry_execution.describe_exception(exc))
+            raise
 
     def _merge_messages(self, messages: list[PendingMessage]) -> PendingMessage:
         """Merge message chains after proving all messages share one scope."""
