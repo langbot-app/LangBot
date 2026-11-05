@@ -78,10 +78,6 @@ async function setup(
               available: e2bAvailable,
               reason,
               template_validated: request.method() === 'POST' && e2bAvailable,
-              templates: [
-                { id: 'base', name: 'base', aliases: [] },
-                { id: 'python', name: 'python', aliases: [] },
-              ],
             },
             {
               name: 'nsjail',
@@ -114,8 +110,7 @@ test('selection and E2B drafts require explicit confirmation; failed checks do n
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
   expect(state.writes).toHaveLength(0);
   expect(state.backend()).toBe('docker');
-  await page.getByRole('combobox', { name: 'Template', exact: true }).click();
-  await page.getByRole('option', { name: 'python', exact: true }).click();
+  await page.getByLabel('Template', { exact: true }).fill('python');
   const save = page.getByRole('button', {
     name: 'Confirm and save',
     exact: true,
@@ -133,9 +128,9 @@ test('selection and E2B drafts require explicit confirmation; failed checks do n
   await page.reload();
   await page.goto('/home?action=showWorkspaceSettings');
   await expect(select).toHaveText('E2B');
-  await expect(
-    page.getByRole('combobox', { name: 'Template', exact: true }),
-  ).toHaveText('python');
+  await expect(page.getByLabel('Template', { exact: true })).toHaveValue(
+    'python',
+  );
   await expect(page.getByLabel('API Key', { exact: true })).toHaveValue('');
   await page.getByLabel('API Key', { exact: true }).fill('invalid');
   await page.getByRole('button', { name: 'Check again', exact: true }).click();
