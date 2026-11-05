@@ -118,5 +118,7 @@
   "The plugin marketplace is disabled on this instance": "此實例已停用外掛市場",
   "The plugin marketplace returned an invalid response": "外掛市場回傳了無效的回應",
   "Only a member can confirm plugin permissions": "只有成員可以確認外掛權限",
-  "The plugin is already installed; a member must upgrade or reinstall it": "該外掛已安裝，需由成員升級或重新安裝"
+  "The plugin is already installed; a member must upgrade or reinstall it": "該外掛已安裝，需由成員升級或重新安裝",
+  "Insufficient balance or quota for this model. Please top up and try again.": "該模型的餘額或額度不足，請儲值後重試。",
+  "No API key is configured for this model provider": "該模型供應商未設定 API Key"
 }

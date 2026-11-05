@@ -7,7 +7,9 @@ from ....i18n import t
 import typing
 import copy
 import time
+import json
 import os
+import re
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 from openai import AsyncOpenAI
@@ -45,11 +47,14 @@ class _LeasedHTTPHandler(AsyncHTTPHandler):
             kwargs['content'] = kwargs.pop('data')
         request = self.client.build_request('POST', url, timeout=timeout or self.timeout, **kwargs)
         response = await self.client.send(request, stream=stream)
-        try:
+        if response.is_error:
+            # Buffer the error body before releasing the stream so LiteLLM can
+            # still map the HTTP status and upstream error code.
+            try:
+                await response.aread()
+            finally:
+                await response.aclose()
             response.raise_for_status()
-        except BaseException:
-            await response.aclose()
-            raise
         return response
 
     async def close(self):
@@ -287,8 +292,15 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 return
             # A fresh lightweight SDK wrapper keeps rotating keys, organization
             # and deadlines request-local; only its HTTP transport is reused.
+            api_key = args.get('api_key') or litellm.api_key or litellm.openai_key or get_secret('OPENAI_API_KEY')
+            if not api_key:
+                raise errors.RequesterError(
+                    t('No API key is configured for this model provider'),
+                    code='authentication',
+                    retryable=False,
+                )
             sdk = AsyncOpenAI(
-                api_key=args.get('api_key') or litellm.api_key or litellm.openai_key or get_secret('OPENAI_API_KEY'),
+                api_key=api_key,
                 base_url=(
                     args.get('api_base')
                     or litellm.api_base
@@ -1249,11 +1261,97 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 args['api_version'] = self.requester_cfg['api_version']
         return args
 
+    _QUOTA_ERROR_CODES = frozenset(
+        {
+            'insufficient_quota',
+            'quota_exceeded',
+            'billing_hard_limit_reached',
+            # New API / One API (LangBot Models gateway)
+            'insufficient_user_quota',
+            'pre_consume_token_quota_failed',
+            'token_quota_exhausted',
+            # Other OpenAI-compatible gateways
+            'insufficient_balance',
+            'insufficient_credits',
+            'payment_required',
+        }
+    )
+    _QUOTA_MESSAGE_PATTERN = re.compile(
+        r'额度不足|余额不足|额度已用尽|额度用尽|欠费|'
+        r'insufficient[ _-]?(?:user[ _-]?)?(?:balance|quota|credits?|funds)|'
+        r'quota (?:is )?(?:not enough|exceeded|exhausted)|'
+        r'credit balance is too low|exceeded your current quota|out of credits',
+        re.IGNORECASE,
+    )
+    _SAFE_ERROR_CODE = re.compile(r'^[A-Za-z0-9_.-]{1,64}$')
+
+    @staticmethod
+    def _upstream_error_details(e: Exception) -> tuple[str | None, str]:
+        """Return the upstream machine code and diagnostic text of a provider error.
+
+        LiteLLM does not always keep the response body, so the exception chain
+        and the rendered message are inspected as well. The text is only used
+        for classification and is never shown to users.
+        """
+
+        code: str | None = None
+        texts: list[str] = []
+        seen: set[int] = set()
+        current: BaseException | None = e
+        while current is not None and id(current) not in seen and len(seen) < 5:
+            seen.add(id(current))
+            body = getattr(current, 'body', None)
+            if not isinstance(body, dict):
+                body = LiteLLMRequester._response_json(getattr(current, 'response', None))
+            if isinstance(body, dict):
+                upstream = body.get('error', body)
+                if isinstance(upstream, dict):
+                    if code is None and isinstance(upstream.get('code'), str) and upstream['code']:
+                        code = upstream['code']
+                    if code is None and upstream.get('type') in LiteLLMRequester._QUOTA_ERROR_CODES:
+                        code = upstream['type']
+                    if isinstance(upstream.get('message'), str):
+                        texts.append(upstream['message'])
+            attr_code = getattr(current, 'code', None)
+            if code is None and isinstance(attr_code, str) and attr_code:
+                code = attr_code
+            message = getattr(current, 'message', None)
+            texts.append(message if isinstance(message, str) else str(current))
+            current = current.__cause__ or current.__context__
+        return code, ' '.join(texts)
+
+    @staticmethod
+    def _response_json(response) -> dict | None:
+        if not isinstance(response, httpx.Response):
+            return None
+        try:
+            payload = json.loads(response.content[:65536] or b'null')
+        except (httpx.ResponseNotRead, httpx.StreamError, ValueError, TypeError):
+            return None
+        return payload if isinstance(payload, dict) else None
+
+    @classmethod
+    def _is_quota_error(cls, status: int | None, code: str | None, text: str) -> bool:
+        if code and code.lower() in cls._QUOTA_ERROR_CODES:
+            return True
+        if status == 402:
+            return True
+        return bool(cls._QUOTA_MESSAGE_PATTERN.search(text or ''))
+
     def _handle_litellm_error(self, e: Exception) -> None:
         """Convert LiteLLM exceptions to RequesterError. Never returns, always raises."""
         if isinstance(e, errors.RequesterError):
             raise e
         metadata = error_metadata(e)
+        status = metadata['status_code']
+        upstream_code, upstream_text = self._upstream_error_details(e)
+        if self._is_quota_error(status, upstream_code, upstream_text):
+            raise errors.RequesterError(
+                t('Insufficient balance or quota for this model. Please top up and try again.'),
+                code='quota_exceeded',
+                retryable=False,
+                **metadata,
+            ) from e
         mappings = (
             (litellm.ContextWindowExceededError, 'context_length', t('Context length exceeded'), False),
             (litellm.AuthenticationError, 'authentication', t('Invalid API key'), False),
@@ -1269,14 +1367,7 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         )
         for exception_type, code, message, retryable in mappings:
             if isinstance(e, exception_type):
-                body = getattr(e, 'body', None)
-                body = body if isinstance(body, dict) else {}
-                upstream_error = body.get('error', body)
-                upstream_code = upstream_error.get('code') if isinstance(upstream_error, dict) else None
-                if upstream_code in ('insufficient_quota', 'quota_exceeded', 'billing_hard_limit_reached'):
-                    code, retryable = 'quota_exceeded', False
                 raise errors.RequesterError(message, code=code, retryable=retryable, **metadata) from e
-        status = metadata['status_code']
         code = 'upstream_error'
         if status in (500, 502, 503):
             message = t('Internal server error')
@@ -1305,6 +1396,10 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             message = t('API error')
         else:
             message = t('Unknown error')
+        if code == 'upstream_error' and upstream_code and self._SAFE_ERROR_CODE.match(upstream_code):
+            # Machine-readable upstream codes are stable English identifiers and
+            # make otherwise generic failures diagnosable without leaking bodies.
+            message = f'{message} [{upstream_code}]'
 
         raise errors.RequesterError(
             message,
