@@ -7,20 +7,7 @@ description: Build, refactor, and test LangBot platform adapters for the Event-B
 
 Use this skill when implementing or reviewing a LangBot platform adapter under the Event-Based Agents architecture.
 
-## Controlling a running instance via MCP
-
-Beyond writing code, you can **drive a live LangBot instance over MCP** — no raw
-HTTP needed. Two MCP servers exist (both reuse existing API keys; see `AGENTS.md`):
-
-- **LangBot instance** — `http://<host>:5300/mcp` (auth: web-UI `lbk_` key or the
-  `api.global_api_key` from `config.yaml`). Manage bots, pipelines, models,
-  knowledge bases, and skills. See the **`langbot-mcp-ops`** skill.
-- **LangBot Space marketplace** — `https://space.langbot.app/mcp` (auth: Personal
-  Access Token). Search plugins / MCP servers / skills. See the
-  **`langbot-space-ops`** skill.
-
-> Any change to an agent-accessible HTTP API endpoint must keep the matching MCP
-> tool and these skills in sync.
+Drive a live instance through the `langbot-mcp-ops` skill. Repository-wide adapter rules: "Platform Adapters" in the root `AGENTS.md`.
 
 ## Core Rule
 
@@ -31,9 +18,18 @@ Do not let platform-native event or message shapes leak into LangBot's common pa
 - Users/groups/members: `langbot_plugin.api.entities.builtin.platform.entities`
 - Raw platform objects may remain only in `source_platform_object` for debugging or platform-specific escape hatches.
 
+## Align With the Standard Definitions
+
+Standard events: `dev-docs/event-based-agents/01-event-system.md`. Standard entities and APIs: `02-platform-api.md`. Both include the per-platform support matrix.
+
+1. For each native event or operation, find the standard event/API with the same semantics first, even when the platform's naming or payload differs. Map to it; use `PlatformSpecificEvent` / `call_platform_api` only when no standard equivalent exists.
+2. Prefer extending an existing standard message or API (for example, Slack threads use the standard message APIs) over adding new actions.
+3. A new standard event/API is justified only for a capability common across platforms. Change it as one unit: SDK entity/event, the matrices in `01`/`02`, all affected adapters, `docs/*/plugin/dev/apis/platform.mdx`, and the ExecutionAPI/Workspace API consumers that expose it.
+4. Keep `manifest.yaml` (`supported_events`, `supported_apis.required` / `optional`, `platform_specific_apis`) identical to what is implemented and tested.
+
 ## Start Here
 
-1. Read the EBA design docs in `LangBot/dev-docs/event-based-agents/`.
+1. Read the EBA design docs in `LangBot/dev-docs/event-based-agents/`, at least `01-event-system.md` and `02-platform-api.md`.
 2. Read the architecture-level acceptance checklist before writing or validating code:
    - `LangBot/dev-docs/event-based-agents/adapters/acceptance-checklist.md`
 3. Read the current reference adapter before writing code. Prefer Telegram first:
@@ -72,7 +68,7 @@ package-data = { "langbot" = ["templates/**", "pkg/platform/sources/*", "pkg/pla
 
 ## Implementation Checklist
 
-- `manifest.yaml` declares `metadata.name`, config schema, supported events, common APIs, and platform-specific APIs.
+- `manifest.yaml` declares `metadata.name`, config schema, `supported_events`, `supported_apis` (`required` / `optional`), and `platform_specific_apis`.
 - `adapter.py` creates the platform client, subscribes to native events, filters self/bot loops where appropriate, calls `event_converter.target2yiri(...)`, then dispatches the EBA event.
 - `event_converter.py` maps native events to EBA event classes such as `MessageReceivedEvent`, `MessageEditedEvent`, `MessageDeletedEvent`, `MessageReactionEvent`, `MemberJoinedEvent`, `BotInvitedToGroupEvent`, and `PlatformSpecificEvent`.
 - `message_converter.py` maps native messages to `MessageChain`, and maps `MessageChain` back to the platform send format.

@@ -6,20 +6,12 @@ description: Operate a LangBot instance through its built-in MCP (Model Context 
 # LangBot MCP Operations
 
 LangBot exposes an **MCP server** so AI agents can manage an instance
-programmatically. It mirrors a curated subset of the HTTP service API.
+programmatically. It mirrors a curated subset of the HTTP service API. Workspace
+capabilities are being unified under the Application API catalog
+(`pkg/api/application/`; see Unified API in the root `AGENTS.md`); MCP tool names
+are not necessarily the catalog operation IDs.
 
 ## Endpoint
-
-Plugin authorization management uses `get_plugin_permissions(author, plugin_name)`
-and `revoke_plugin_permissions(author, plugin_name, workspace_operations,
-capabilities)`. Revocation replaces grants with a subset; it requires
-`resource.manage`. API-key MCP clients cannot confirm/add grants. After installing
-or upgrading a plugin, direct a member to WebUI to review pending permissions.
-The marketplace HTTP install option `auto_confirm_permissions` is used by the
-setup wizard and remains member-only; setting it with an API key cannot grant
-permissions. Migration with plugin installation enabled uses the same checks.
-Pipeline extensions accept `allowed_platform_tools` as model preferences, not
-installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
 ```
 http://<langbot-host>:5300/mcp
@@ -68,6 +60,19 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
   }
 }
 ```
+
+## Plugin permissions
+
+Plugin authorization management uses `get_plugin_permissions(author, plugin_name)`
+and `revoke_plugin_permissions(author, plugin_name, workspace_operations,
+capabilities)`. Revocation replaces grants with a subset; it requires
+`resource.manage`. API-key MCP clients cannot confirm/add grants. After installing
+or upgrading a plugin, direct a member to WebUI to review pending permissions.
+The marketplace HTTP install option `auto_confirm_permissions` is used by the
+setup wizard and remains member-only; setting it with an API key cannot grant
+permissions. Migration with plugin installation enabled uses the same checks.
+Pipeline extensions accept `allowed_platform_tools` as model preferences, not
+installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
 ## Tool surface
 
