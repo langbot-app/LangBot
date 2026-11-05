@@ -503,6 +503,17 @@ spec:
 
 > 注：此表为初步评估，具体以各平台 SDK/API 文档为准。
 
+微信公众号（`officialaccount-omni`）与上表的「微信」单独记录：
+
+| API | 微信公众号 | 条件 |
+| --- | --- | --- |
+| `send_message` | Y（optional） | 仅 `Mode=auto`，通过客服消息接口发送非空 `Plain` 文本；受权限、48 小时回复窗口、额度和关注状态限制。其他模式抛 `NotSupportedError`。 |
+| `reply_message` | Y（required） | 按 `drop` / `passive` / `auto` 模式处理入站消息回复。 |
+| `get_message` / `get_user_info` / `get_friend_list` | Y（optional） | 依赖已接收消息的缓存。 |
+| `call_platform_api` | Y（optional） | 仅开放 manifest 声明的 action。 |
+
+其他未实现的 optional API 抛 `NotSupportedError`。客服发送的错误码和返回值见 [OfficialAccount 适配器记录](adapters/officialaccount.md#customer-service-sends)。
+
 ## 6. MessageChain 扩展
 
 ### 6.1 保留的通用组件

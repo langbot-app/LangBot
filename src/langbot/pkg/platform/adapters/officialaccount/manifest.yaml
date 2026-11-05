@@ -8,9 +8,9 @@ metadata:
     zh_Hans: 微信公众号
     zh_Hant: 微信公眾號
   description:
-    en_US: WeChat Official Account adapter with event-driven orchestration support
-    zh_Hans: 微信公众号适配器，支持事件驱动编排，通过统一 Webhook 接收公众号消息
-    zh_Hant: 微信公眾號適配器，支援事件驅動編排，透過統一 Webhook 接收公眾號訊息
+    en_US: "WeChat Official Account adapter with event-driven orchestration support. send_message is available only with Mode=auto; other modes raise NotSupportedError."
+    zh_Hans: "微信公众号适配器，支持事件驱动编排，通过统一 Webhook 接收公众号消息。send_message 仅在 Mode=auto 时可用，其他模式抛出 NotSupportedError。"
+    zh_Hant: "微信公眾號適配器，支援事件驅動編排，透過統一 Webhook 接收公眾號訊息。send_message 僅在 Mode=auto 時可用，其他模式拋出 NotSupportedError。"
   icon: officialaccount.png
 
 spec:
@@ -139,6 +139,7 @@ spec:
       - get_user_info
       - get_friend_list
       - call_platform_api
+      - send_message
 
   platform_specific_apis:
     - action: get_mode

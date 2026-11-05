@@ -4,6 +4,36 @@ title: "プラットフォーム API"
 
 ボット UUID を指定してプラットフォームアダプターの API を呼び出します。メッセージチェーンの送信は `self.plugin.send_message()`、グループやユーザーの取得などは以下を使用します。
 
+## メッセージ送信、返信、スレッド
+
+標準の `send_message` API は `MessageResult` を返します。プラットフォームがメッセージ ID を提供する場合、`message_id` は送信したメッセージを識別します。`self.plugin.send_message()` はシリアライズされた辞書を返すため、オブジェクト属性ではなく `result["message_id"]` を参照します。プラットフォームが ID を返さない場合、この値は `None` または空文字列になります。
+
+メッセージチェーン内の返信やスレッド参照には、標準の `Quote` コンポーネントを使います。`Quote.id` は参照先メッセージまたはスレッドのルートメッセージの ID、`origin` は引用元のメッセージチェーンで、空でも構いません。対応状況と返信／スレッドの動作はアダプターによって異なります。たとえば Slack はメッセージの `ts` を `message_id` として返し、`Quote(id=ts)` を含むチェーンをそのスレッドに送信します。受信したチャンネルのスレッド返信には、末尾に `Quote(id=thread_ts)` が追加されます。これは Slack 固有のアクションではなく、標準メッセージ API を使います。
+
+```python
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain, Quote
+
+result = await self.plugin.send_message(
+    bot_uuid=bot_uuid,
+    target_type="group",
+    target_id=group_id,
+    message_chain=MessageChain([Plain(text="Support request")]),
+)
+message_id = result.get("message_id") if result else None
+if message_id is not None and message_id != "":
+    await self.plugin.send_message(
+        bot_uuid=bot_uuid,
+        target_type="group",
+        target_id=group_id,
+        message_chain=MessageChain([
+            Plain(text="Follow-up"),
+            Quote(id=message_id, origin=MessageChain([])),
+        ]),
+    )
+```
+
+同じボット、同じ会話のメッセージ ID を使ってください。`Quote` はシリアライズ時に参照メタデータを保持しますが、`str(message_chain)` にはテキストを追加しないため、コマンドやキーワードの照合に影響しません。
+
 ## プラットフォーム API の呼び出し
 
 ```python
