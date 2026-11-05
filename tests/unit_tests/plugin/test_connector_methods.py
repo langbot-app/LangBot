@@ -297,6 +297,36 @@ class TestPluginDiagnostics:
         assert returned._emitted_plugins == ['first']
 
     @pytest.mark.asyncio
+    async def test_query_events_opt_in_to_origin_attribution(self):
+        """New Hosts accept origin_query_uuid; the flag tells the SDK it may send it."""
+        from langbot_plugin.api.entities.events import PersonMessageReceived
+
+        connector = create_mock_connector()
+        query = text_query('hello')
+        event = PersonMessageReceived(
+            query=query,
+            launcher_type=query.launcher_type.value,
+            launcher_id=query.launcher_id,
+            sender_id=query.sender_id,
+            message_event=query.message_event,
+            message_chain=query.message_chain,
+        )
+        connector._operation_bindings = AsyncMock(return_value=[TEST_INSTALLATION_BINDING])
+        sent: list[dict] = []
+
+        async def capture(event_context, include_plugins=None):
+            sent.append(dict(event_context))
+            return {'event_context': event_context, 'emitted_plugins': []}
+
+        runtime_handler = configure_handler(connector, Mock())
+        runtime_handler.emit_event = AsyncMock(side_effect=capture)
+
+        returned = await connector.emit_event(event)
+
+        assert sent[0]['origin_attribution'] is True
+        assert returned.event.query is query
+
+    @pytest.mark.asyncio
     async def test_emit_event_preserves_response_sources(self):
         connector = create_mock_connector()
         query = text_query('hello')

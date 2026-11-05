@@ -219,6 +219,48 @@ class TestSQLiteMigrationUpgrade:
                     assert columns == {'uuid'}
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize('has_table', [False, True])
+    async def test_monitoring_handled_by_round_trip(self, sqlite_engine, has_table):
+        """0045 is idempotent and keeps existing monitoring rows (LANG-320)."""
+        metadata = sqlalchemy.MetaData()
+        messages = sqlalchemy.Table(
+            'monitoring_messages',
+            metadata,
+            sqlalchemy.Column('id', sqlalchemy.String(255), primary_key=True),
+            sqlalchemy.Column('runner_name', sqlalchemy.String(255)),
+        )
+        if has_table:
+            async with sqlite_engine.begin() as conn:
+                await conn.run_sync(metadata.create_all)
+                await conn.execute(messages.insert().values(id='legacy', runner_name='runner'))
+
+        def inspect(sync):
+            inspector = sqlalchemy.inspect(sync)
+            if not inspector.has_table('monitoring_messages'):
+                return None, None
+            return (
+                {column['name'] for column in inspector.get_columns('monitoring_messages')},
+                {index['name'] for index in inspector.get_indexes('monitoring_messages')},
+            )
+
+        await run_alembic_stamp(sqlite_engine, '0044_plugin_permissions')
+        for _ in range(2):
+            await run_alembic_upgrade(sqlite_engine, '0045_monitoring_handled_by')
+            async with sqlite_engine.connect() as conn:
+                columns, indexes = await conn.run_sync(inspect)
+                if has_table:
+                    assert 'handled_by' in columns
+                    assert 'ix_monitoring_messages_handled_by' in indexes
+                    row = (await conn.execute(text('SELECT runner_name, handled_by FROM monitoring_messages'))).one()
+                    assert tuple(row) == ('runner', None)
+                else:
+                    assert columns is None
+            await run_alembic_downgrade(sqlite_engine, '0044_plugin_permissions')
+            async with sqlite_engine.connect() as conn:
+                columns, _ = await conn.run_sync(inspect)
+                assert columns is None or 'handled_by' not in columns
+
+    @pytest.mark.asyncio
     @pytest.mark.parametrize('with_model_parents', [False, True])
     async def test_speech_upgrade_preserves_pipeline_and_model_constraints(self, sqlite_engine, with_model_parents):
         metadata = sqlalchemy.MetaData()
@@ -314,7 +356,8 @@ class TestSQLiteMigrationUpgrade:
         expected = {
             name: columns
             for name, columns in original.items()
-            if name not in {index_name, 'ix_monitoring_messages_summary_event'}
+            # Indexes owned by later migrations disappear on downgrade to 0039.
+            if name not in {index_name, 'ix_monitoring_messages_summary_event', 'ix_monitoring_messages_handled_by'}
         }
         expected['ix_monitoring_messages_workspace_timestamp'] = ['workspace_uuid', 'timestamp']
         assert remaining == expected

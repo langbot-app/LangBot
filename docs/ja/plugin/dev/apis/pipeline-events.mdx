@@ -269,3 +269,13 @@ class PromptPreProcessing(BaseEventModel):
 </Info>
 
 `event_context.prevent_postorder()` を呼び出すと、後続プラグインによる現在のイベント処理を停止できます。
+
+#### モニタリングでの表示
+
+プラグインがメッセージ系イベントで `prevent_default()` を呼び出してメッセージを引き受けると、LangBot のモニタリングではそのメッセージが「プラグインが処理 · 作者/プラグイン名」と表示され、パイプラインに設定された Runner は処理者として表示されなくなります。イベント処理中にプラグインが送った内容も記録されます。
+
+- `event_context.reply()` で送った返信は、そのメッセージへの返信として記録されます。送信に失敗すると `PluginReplyError` エラーが記録されます。
+- `self.plugin.send_message()` で送ったメッセージは、プラグインが送信したメッセージとして記録されます。送信に失敗すると `PluginSendError` エラーが記録されます。
+- `self.plugin.invoke_llm()` / `invoke_llm_stream()` の呼び出しは LLM 呼び出しとして記録されます。
+
+プラグインのメッセージや LLM 呼び出しをきっかけのメッセージに関連付けるには、イベント起点の関連付けに対応した Plugin Runtime（`langbot-plugin`）が必要です。古い Runtime でも記録はされますが、関連付けはされません。ハンドラーが戻った後に動くバックグラウンド処理は、元のメッセージに関連付けられません。

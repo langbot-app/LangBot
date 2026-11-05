@@ -280,3 +280,13 @@ class PromptPreProcessing(BaseEventModel):
 </Info>
 
 调用 `event_context.prevent_postorder()` 可阻止后续插件继续处理当前事件。
+
+#### 在监控中的显示
+
+插件对消息类事件调用 `prevent_default()` 接管消息后，LangBot 的监控页会把这条消息标记为「插件处理 · 作者/插件名」，流水线配置的 Runner 不会再显示为处理者。插件在处理事件时发出的内容也会记入监控：
+
+- `event_context.reply()` 发出的回复，记为这条消息的回复；发送失败会记一条 `PluginReplyError` 错误。
+- `self.plugin.send_message()` 发出的消息，记为插件发送的消息；发送失败会记一条 `PluginSendError` 错误。
+- `self.plugin.invoke_llm()` / `invoke_llm_stream()` 的调用，记入 LLM 调用记录。
+
+需要插件运行时（`langbot-plugin`）支持事件来源归因，才能把插件发出的消息和 LLM 调用关联到触发它的那条消息；较旧的运行时仍会记录这些内容，但不会关联。在处理函数返回后才执行的后台任务不会关联到原消息。

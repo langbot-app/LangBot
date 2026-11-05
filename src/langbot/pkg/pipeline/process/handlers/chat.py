@@ -10,6 +10,7 @@ import traceback
 from .. import handler
 from ..stream_results import coalesce_stream_results
 from ... import entities
+from ... import monitoring_helper
 from ... import plugin_diagnostics
 
 import langbot_plugin.api.entities.events as events
@@ -88,6 +89,7 @@ class ChatMessageHandler(handler.MessageHandler):
         is_create_card = False  # Track if streaming card was created
 
         if event_ctx.is_prevented_default():
+            monitoring_helper.mark_plugin_handled(query, event_ctx)
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
                 plugin_diagnostics.record_pending_plugin_response_source(
@@ -118,6 +120,9 @@ class ChatMessageHandler(handler.MessageHandler):
 
             text_length = 0
             runner = None
+            runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config) if query.pipeline_config else None
+            if runner_id:
+                monitoring_helper.mark_handled_by(query, monitoring_helper.runner_handler(runner_id))
             try:
                 try_claim_steering = getattr(
                     self.ap.agent_run_orchestrator,
@@ -299,8 +304,6 @@ class ChatMessageHandler(handler.MessageHandler):
                         state.adapter = state.adapter or adapter_name
                         state.runner = state.runner or (runner_name or '')
                         if not state.runner_category:
-                            from ....agent.runner.config_resolver import RunnerConfigResolver
-
                             config = query.pipeline_config or {}
                             state.runner_category = runner_utils.get_telemetry_runner_category(
                                 runner_name, RunnerConfigResolver.resolve_runner_config(config, runner_name or '')

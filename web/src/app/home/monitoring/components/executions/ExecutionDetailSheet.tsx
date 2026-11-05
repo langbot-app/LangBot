@@ -29,6 +29,7 @@ import {
   ExecutionKindBadge,
   executionProcessorLabel,
   executionStatusLabel,
+  PluginHandledBadge,
 } from './ExecutionTable';
 
 export type ExecutionSelection = Pick<ExecutionRow, 'id'> & {
@@ -274,6 +275,11 @@ export default function ExecutionDetailSheet({
               )}
             </Badge>
           )}
+          <PluginHandledBadge
+            handledBy={
+              typeof item.handled_by === 'string' ? item.handled_by : null
+            }
+          />
         </div>
         {content ? (
           <>
@@ -468,6 +474,7 @@ export default function ExecutionDetailSheet({
                     {executionStatusLabel(record, t)}
                   </Badge>
                   <ExecutionKindBadge row={record} />
+                  <PluginHandledBadge handledBy={record.handled_by} />
                   {record.debug && (
                     <Badge status="debug">
                       {t('monitoring.execution.debug')}

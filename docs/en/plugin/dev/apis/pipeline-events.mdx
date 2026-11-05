@@ -269,3 +269,13 @@ Only the following events can prevent default behavior:
 </Info>
 
 Call `event_context.prevent_postorder()` to stop later plugins from handling the current event.
+
+#### How it shows up in monitoring
+
+When a plugin calls `prevent_default()` on a message event to take the message over, LangBot's monitoring marks the message as "Handled by plugin author/name", and the pipeline's Runner is no longer shown as its handler. What the plugin sends while handling the event is recorded too:
+
+- Replies sent with `event_context.reply()` are recorded as replies to the message. A failed send records a `PluginReplyError` error.
+- Messages sent with `self.plugin.send_message()` are recorded as plugin-sent messages. A failed send records a `PluginSendError` error.
+- Calls to `self.plugin.invoke_llm()` / `invoke_llm_stream()` are recorded as LLM calls.
+
+Linking the plugin's messages and LLM calls to the triggering message needs a Plugin Runtime (`langbot-plugin`) that supports event origin attribution. Older Runtimes still get these records, without the link. Background work that runs after the handler returns is not linked to the message.

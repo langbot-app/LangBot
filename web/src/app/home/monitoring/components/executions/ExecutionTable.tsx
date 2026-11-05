@@ -104,6 +104,35 @@ export function executionProcessorLabel(row: ExecutionRow): string {
   return row.target_name || row.runner_id || row.target_id || '—';
 }
 
+// `plugin:<author>/<name>` when a plugin took the message over from the
+// pipeline (prevent_default) and replied itself; null otherwise.
+export function pluginHandlerName(
+  handledBy: string | null | undefined,
+): string | null {
+  if (!handledBy || !handledBy.startsWith('plugin:')) return null;
+  return handledBy.slice('plugin:'.length);
+}
+
+export function PluginHandledBadge({
+  handledBy,
+}: {
+  handledBy: string | null | undefined;
+}) {
+  const { t } = useTranslation();
+  const plugin = pluginHandlerName(handledBy);
+  if (plugin === null) return null;
+  return (
+    <Badge
+      variant="outline"
+      className="whitespace-nowrap border-violet-200/70 bg-violet-50/70 text-violet-700 dark:border-violet-800/50 dark:bg-violet-950/30 dark:text-violet-300"
+    >
+      {plugin === 'unknown'
+        ? t('monitoring.execution.handledByUnknownPlugin')
+        : t('monitoring.execution.handledByPlugin', { plugin })}
+    </Badge>
+  );
+}
+
 export default function ExecutionTable({
   rows,
   selectedId,
@@ -194,6 +223,7 @@ export default function ExecutionTable({
                         {t('monitoring.execution.debug')}
                       </Badge>
                     )}
+                    <PluginHandledBadge handledBy={row.handled_by} />
                   </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">

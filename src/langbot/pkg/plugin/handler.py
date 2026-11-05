@@ -445,6 +445,14 @@ def _build_plugin_action_query(
     return query
 
 
+def _plugin_handler_ref(plugin_identity: _PluginInstallationIdentity | None) -> str:
+    from ..pipeline.monitoring_helper import UNKNOWN_PLUGIN_HANDLER, plugin_handler
+
+    if plugin_identity is None:
+        return UNKNOWN_PLUGIN_HANDLER
+    return plugin_handler(plugin_identity.plugin_author, plugin_identity.plugin_name)
+
+
 def _plugin_monitoring_variables(
     plugin_identity: _PluginInstallationIdentity | None,
 ) -> dict[str, Any]:
@@ -965,6 +973,72 @@ class RuntimeConnectionHandler(handler.Handler):
         ):
             raise ValueError('Plugin installation binding does not match the active setting')
 
+    async def _resolve_origin_query(
+        self,
+        data: dict[str, Any],
+        action_context: ActionContext,
+    ):
+        """Resolve the Query whose event handler issued this plugin action.
+
+        ``origin_query_uuid`` comes from the plugin SDK and is used for
+        monitoring attribution only, never to authorize the action. It must
+        name a live Query in the caller's own Workspace generation.
+        """
+        origin_query_uuid = data.get('origin_query_uuid')
+        if not isinstance(origin_query_uuid, str) or not origin_query_uuid:
+            return None
+        try:
+            return await self._resolve_query({'query_uuid': origin_query_uuid}, action_context)
+        except Exception:
+            return None
+
+    async def _attribute_plugin_query_to_origin(
+        self,
+        query: Any,
+        data: dict[str, Any],
+        action_context: ActionContext,
+    ) -> None:
+        origin = await self._resolve_origin_query(data, action_context)
+        if origin is None:
+            return
+        from ..pipeline.monitoring_helper import attribute_to_origin
+
+        attribute_to_origin(query, origin)
+
+    async def _record_plugin_send(
+        self,
+        execution_context: ExecutionContext,
+        plugin_identity: _PluginInstallationIdentity,
+        bot: Any,
+        target_type: str,
+        target_id: Any,
+        message_chain: platform_message.MessageChain,
+        origin: Any | None,
+        error: BaseException | None = None,
+    ) -> None:
+        """Record a plugin-initiated ``send_message`` in monitoring."""
+        from ..pipeline.monitoring_helper import MonitoringHelper
+
+        origin_variables = (getattr(origin, 'variables', None) or {}) if origin is not None else {}
+        target_type_value = getattr(target_type, 'value', target_type)
+        bot_entity = getattr(bot, 'bot_entity', None)
+        await MonitoringHelper.record_plugin_message(
+            self.ap,
+            execution_context,
+            plugin=_plugin_handler_ref(plugin_identity),
+            message_chain=message_chain,
+            bot_id=str(getattr(bot_entity, 'uuid', None) or ''),
+            bot_name=str(getattr(bot_entity, 'name', None) or ''),
+            pipeline_id=str(getattr(origin, 'pipeline_uuid', None) or ''),
+            pipeline_name=str(origin_variables.get('_monitoring_pipeline_name') or ''),
+            session_id=f'{target_type_value}_{target_id}',
+            platform=str(target_type_value),
+            user_id=str(target_id) if target_type_value == 'person' else None,
+            parent_message_id=origin_variables.get('_monitoring_message_id'),
+            error=error,
+            error_type='PluginSendError',
+        )
+
     async def _resolve_query(
         self,
         data: dict[str, Any],
@@ -1223,7 +1297,7 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.REPLY_MESSAGE)
         async def reply_message(data: dict[str, Any]) -> handler.ActionResponse:
             """Reply message"""
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             query_id = data['query_id']
             message_chain = data['message_chain']
             quote_origin = data['quote_origin']
@@ -1238,11 +1312,19 @@ class RuntimeConnectionHandler(handler.Handler):
 
             self.ap.logger.debug(f'Reply message: {message_chain_obj.model_dump(serialize_as_any=False)}')
 
-            await query.adapter.reply_message(
-                query.message_event,
-                message_chain_obj,
-                quote_origin,
-            )
+            from ..pipeline.monitoring_helper import MonitoringHelper
+
+            plugin = _plugin_handler_ref(plugin_identity)
+            try:
+                await query.adapter.reply_message(
+                    query.message_event,
+                    message_chain_obj,
+                    quote_origin,
+                )
+            except Exception as exc:
+                await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj, error=exc)
+                raise
+            await MonitoringHelper.record_plugin_reply(self.ap, query, plugin, message_chain_obj)
 
             return handler.ActionResponse.success(
                 data={},
@@ -1464,7 +1546,7 @@ class RuntimeConnectionHandler(handler.Handler):
         @self.action(PluginToRuntimeAction.SEND_MESSAGE)
         async def send_message(data: dict[str, Any]) -> handler.ActionResponse:
             """Send message"""
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
             target_type = data['target_type']
@@ -1493,10 +1575,20 @@ class RuntimeConnectionHandler(handler.Handler):
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
 
-            result = await bot.adapter.send_message(
-                target_type,
-                target_id,
-                message_chain_obj,
+            origin = await self._resolve_origin_query(data, action_context)
+            try:
+                result = await bot.adapter.send_message(
+                    target_type,
+                    target_id,
+                    message_chain_obj,
+                )
+            except Exception as exc:
+                await self._record_plugin_send(
+                    execution_context, plugin_identity, bot, target_type, target_id, message_chain_obj, origin, exc
+                )
+                raise
+            await self._record_plugin_send(
+                execution_context, plugin_identity, bot, target_type, target_id, message_chain_obj, origin
             )
 
             return handler.ActionResponse.success(
@@ -1770,6 +1862,7 @@ class RuntimeConnectionHandler(handler.Handler):
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
                 query = _build_plugin_action_query(action_context, plugin_identity)
+                await self._attribute_plugin_query_to_origin(query, data, action_context)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
@@ -1868,6 +1961,7 @@ class RuntimeConnectionHandler(handler.Handler):
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
                 query = _build_plugin_action_query(action_context, plugin_identity)
+                await self._attribute_plugin_query_to_origin(query, data, action_context)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []

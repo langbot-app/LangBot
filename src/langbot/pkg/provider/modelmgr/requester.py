@@ -127,12 +127,13 @@ class RuntimeProvider:
         try:
             from ...pipeline import monitoring_helper
 
+            plugin = query.variables.get(monitoring_helper.PLUGIN_ATTRIBUTION_VAR)
             await monitoring_helper.MonitoringHelper.record_llm_call(
                 ap=self.requester.ap,
                 query=query,
-                bot_id=query.bot_uuid or 'unknown',
+                bot_id=monitoring_helper.monitoring_bot_id(query),
                 bot_name=query.variables.get('_monitoring_bot_name', 'Unknown'),
-                pipeline_id=query.pipeline_uuid or 'unknown',
+                pipeline_id=monitoring_helper.monitoring_pipeline_id(query),
                 pipeline_name=query.variables.get('_monitoring_pipeline_name', 'Unknown'),
                 model_name=model.model_entity.name,
                 input_tokens=(usage or {}).get('prompt_tokens', 0) or 0,
@@ -141,7 +142,7 @@ class RuntimeProvider:
                 status=status,
                 error_message=error.get('message') if error else None,
                 message_id=query.variables.get('_monitoring_message_id'),
-                details=details,
+                details={**details, 'plugin': plugin} if plugin else details,
             )
         except Exception as exc:
             self.requester.ap.logger.error(f'[Monitoring] Failed to record LLM call: {exc}')
