@@ -11,7 +11,6 @@ import re
 import shlex
 import uuid
 
-import httpx
 
 from ..artifact import build_tree_manifest, load_tree_manifest
 from .backend import BaseSandboxBackend, _MAX_RAW_OUTPUT_BYTES
@@ -221,55 +220,22 @@ class E2BSandboxBackend(BaseSandboxBackend):
         await _AsyncSandbox.list(limit=1, **self._connection_kwargs()).next_items()
         return True
 
-    async def inspect_template(self, *, validate: bool = False) -> dict:
+    async def inspect_template(self) -> dict:
         result = {
             "name": "e2b",
             "available": False,
             "reason": None,
             "managed_processes": False,
-            "templates": [],
             "template_validated": False,
         }
         if not await self.is_available():
             result["reason"] = self.unavailable_reason()
             return result
-        from e2b.connection_config import ConnectionConfig
-
         options = self._connection_kwargs()
-        connection = ConnectionConfig(**options)
-        stage = "template_list_failed"
+        stage = "template_creation_failed"
         sandbox = None
         try:
-            async with httpx.AsyncClient(timeout=8) as client:
-                response = await client.get(
-                    connection.api_url.rstrip("/") + "/templates",
-                    headers={"X-API-Key": self._api_key},
-                )
-                response.raise_for_status()
-                items = response.json()
-            for item in items:
-                if item.get("buildStatus") != "ready":
-                    continue
-                template_id = item["templateID"]
-                aliases = item.get("aliases") or []
-                result["templates"].append(
-                    {
-                        "id": template_id,
-                        "name": next(iter(aliases), template_id),
-                        "aliases": aliases,
-                    }
-                )
-            if not validate:
-                result["available"] = True
-                return result
             selected = self._template or "base"
-            if not any(
-                selected == item["id"] or selected in item["aliases"]
-                for item in result["templates"]
-            ):
-                result["reason"] = "template_not_found"
-                return result
-            stage = "template_creation_failed"
             sandbox = await _AsyncSandbox.create(
                 template=selected, timeout=60, request_timeout=15, **options
             )
@@ -284,8 +250,6 @@ class E2BSandboxBackend(BaseSandboxBackend):
             result.update(available=True, template_validated=True)
         except Exception as exc:
             status = getattr(exc, "status_code", None)
-            if isinstance(exc, httpx.HTTPStatusError):
-                status = exc.response.status_code
             result["reason"] = (
                 "authentication_failed" if status in (401, 403) else stage
             )

@@ -689,14 +689,8 @@ class BoxServerHandler(Handler):
             from .models import E2BConnectionConfig
 
             options = {}
-            if (
-                data.get("e2b_templates") is True
-                or data.get("validate_e2b_template") is True
-            ):
-                options.update(
-                    e2b_templates=True,
-                    validate_e2b_template=data.get("validate_e2b_template") is True,
-                )
+            if data.get("validate_e2b_template") is True:
+                options["validate_e2b_template"] = True
             if data.get("e2b_config") is not None:
                 try:
                     options["e2b_config"] = E2BConnectionConfig.model_validate(

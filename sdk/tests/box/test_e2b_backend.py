@@ -1320,78 +1320,44 @@ async def test_workspace_connections_ignore_deployment_env_and_hide_provider_key
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "failure,reason",
-    [
-        (None, None),
-        ("execute", "template_execution_failed"),
-        ("cleanup", "template_cleanup_failed"),
-        ("missing", "template_not_found"),
-        ("cancel", None),
-    ],
-)
-async def test_template_check_lists_ready_templates_and_always_cleans_up(
-    logger, mock_e2b_module, failure, reason
+@pytest.mark.parametrize("failure", [None, "create", "execute", "cleanup", "cancel"])
+async def test_template_check_uses_supplied_template_and_cleans_up(
+    logger, mock_e2b_module, failure
 ):
-    import httpx
+    import asyncio
     from langbot_plugin.box.models import E2BConnectionConfig
 
     config = E2BConnectionConfig(
         api_url="http://api.test",
         sandbox_url="http://proxy.test",
         api_key="private-key",
-        template="missing" if failure == "missing" else "base",
+        template="user-template",
     )
     backend = E2BSandboxBackend(logger, connection_config=config)
     await backend.initialize()
 
     async def run(command, **kwargs):
         if failure == "cancel":
-            import asyncio
-
             raise asyncio.CancelledError()
         if failure == "execute":
-            raise RuntimeError("private-key provider body")
+            raise RuntimeError("private-key")
         return SimpleNamespace(exit_code=0, stdout=command.removeprefix("printf "))
 
     mock_e2b_module.commands.run.side_effect = run
+    if failure == "create":
+        mock_e2b_module.create.side_effect = RuntimeError("private-key")
     if failure == "cleanup":
-        mock_e2b_module.kill.side_effect = RuntimeError("private-key provider body")
-
-    def respond(request):
-        assert request.url.path == "/templates"
-        assert request.headers["X-API-Key"] == "private-key"
-        return httpx.Response(
-            200,
-            json=[
-                {"templateID": "base-id", "aliases": ["base"], "buildStatus": "ready"},
-                {"templateID": "pending", "buildStatus": "building"},
-            ],
-        )
-
-    real_client = httpx.AsyncClient
-    with mock.patch(
-        "langbot_plugin.box.e2b_backend.httpx.AsyncClient",
-        side_effect=lambda **kw: real_client(
-            transport=httpx.MockTransport(respond), **kw
-        ),
-    ):
-        if failure == "cancel":
-            import asyncio
-
-            with pytest.raises(asyncio.CancelledError):
-                await backend.inspect_template(validate=True)
-            mock_e2b_module.kill.assert_awaited_once()
-            return
-        result = await backend.inspect_template(validate=True)
-    assert result["templates"] == [
-        {"id": "base-id", "name": "base", "aliases": ["base"]}
-    ]
-    assert result["reason"] == reason
-    assert result["template_validated"] == (failure is None)
-    assert "private-key" not in json.dumps(result)
-    if failure == "missing":
-        mock_e2b_module.create.assert_not_called()
+        mock_e2b_module.kill.side_effect = RuntimeError("private-key")
+    if failure == "cancel":
+        with pytest.raises(asyncio.CancelledError):
+            await backend.inspect_template()
+    else:
+        result = await backend.inspect_template()
+        assert result["template_validated"] == (failure is None)
+        assert "private-key" not in json.dumps(result)
+    assert mock_e2b_module.create.await_args.kwargs["template"] == "user-template"
+    if failure == "create":
+        mock_e2b_module.kill.assert_not_called()
     else:
         mock_e2b_module.kill.assert_awaited_once()
 

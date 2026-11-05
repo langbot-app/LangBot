@@ -1764,23 +1764,21 @@ done
         *,
         refresh: bool = False,
         e2b_config: E2BConnectionConfig | None = None,
-        e2b_templates: bool = False,
         validate_e2b_template: bool = False,
     ) -> list[dict]:
         """Probe on the execution host; draft E2B config never changes live backends."""
-        if e2b_templates or validate_e2b_template:
+        if validate_e2b_template:
             items = await self.get_backends(refresh=refresh)
             if self.admission_required:
                 return items
             try:
                 backend = await self._get_backend("e2b", e2b_config)
-                e2b = await backend.inspect_template(validate=validate_e2b_template)
+                e2b = await backend.inspect_template()
             except Exception:
                 e2b = {
                     "name": "e2b",
                     "available": False,
                     "reason": "environment_unavailable",
-                    "templates": [],
                 }
             return [e2b if item["name"] == "e2b" else item for item in items]
         if e2b_config is not None:

@@ -53,7 +53,6 @@ class BoxRuntimeClient(abc.ABC):
         *,
         refresh: bool = False,
         e2b_config: E2BConnectionConfig | None = None,
-        e2b_templates: bool = False,
         validate_e2b_template: bool = False,
     ) -> list[dict]:
         raise NotImplementedError(
@@ -258,14 +257,11 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         *,
         refresh: bool = False,
         e2b_config: E2BConnectionConfig | None = None,
-        e2b_templates: bool = False,
         validate_e2b_template: bool = False,
     ) -> list[dict]:
         payload = {"refresh": refresh}
-        if e2b_templates or validate_e2b_template:
-            payload.update(
-                e2b_templates=True, validate_e2b_template=validate_e2b_template
-            )
+        if validate_e2b_template:
+            payload.update(validate_e2b_template=True)
         if e2b_config is not None:
             payload["e2b_config"] = e2b_config.model_dump()
         return (
