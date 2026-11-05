@@ -3083,6 +3083,8 @@ const enUS = {
       empty: 'No executions in this range',
       loading: 'Loading executions...',
       triggeredBy: 'Triggered by {{trigger}}',
+      handledByPlugin: 'Handled by plugin {{plugin}}',
+      handledByUnknownPlugin: 'Handled by an unidentified plugin',
       cards: {
         latencyHint:
           'P50/P95: about 50%/95% of runs finish within this time. Based on recent completed Agent runs, excluding queue time.',

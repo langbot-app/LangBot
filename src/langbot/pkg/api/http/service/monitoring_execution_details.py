@@ -81,6 +81,7 @@ def message_item(row):
         'status': row.status,
         'event_id': row.event_id,
         'run_id': row.run_id,
+        'handled_by': getattr(row, 'handled_by', None),
         'origin': 'delivery' if row.role == 'assistant' else 'input',
         'delivery': parsed(row.variables, {}) if row.role == 'assistant' else None,
     }

@@ -3020,6 +3020,8 @@ const thTH = {
       empty: 'ไม่มีการทำงานในช่วงเวลานี้',
       loading: 'กำลังโหลดการทำงาน...',
       triggeredBy: 'เรียกใช้โดย {{trigger}}',
+      handledByPlugin: 'จัดการโดยปลั๊กอิน {{plugin}}',
+      handledByUnknownPlugin: 'จัดการโดยปลั๊กอินที่ระบุไม่ได้',
       cards: {
         latencyHint:
           'P50/P95: ประมาณ 50%/95% ทำงานเสร็จภายในเวลานี้ ใช้เฉพาะ Agent ที่เสร็จล่าสุด ไม่รวมเวลารอคิว',

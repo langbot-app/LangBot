@@ -5,6 +5,7 @@ import sqlalchemy
 
 from .. import handler
 from ... import entities
+from ... import monitoring_helper
 from ... import plugin_diagnostics
 from ....entity.persistence.bot import BotAdmin
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
@@ -60,6 +61,7 @@ class CommandHandler(handler.MessageHandler):
         event_ctx = await self.ap.plugin_connector.emit_event(event, bound_plugins)
 
         if event_ctx.is_prevented_default():
+            monitoring_helper.mark_plugin_handled(query, event_ctx)
             if event_ctx.event.reply_message_chain is not None:
                 mc = event_ctx.event.reply_message_chain
                 plugin_diagnostics.record_pending_plugin_response_source(

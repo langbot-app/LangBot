@@ -3137,6 +3137,8 @@ const esES = {
       empty: 'No hay ejecuciones en este intervalo',
       loading: 'Cargando ejecuciones...',
       triggeredBy: 'Activada por {{trigger}}',
+      handledByPlugin: 'Gestionado por el plugin {{plugin}}',
+      handledByUnknownPlugin: 'Gestionado por un plugin no identificado',
       cards: {
         latencyHint:
           'P50/P95: cerca del 50%/95% termina dentro de este tiempo. Solo ejecuciones recientes de Agent completadas, sin espera en cola.',

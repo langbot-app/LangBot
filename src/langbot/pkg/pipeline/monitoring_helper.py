@@ -32,13 +32,90 @@ def monitoring_platform(query: typing.Any) -> str | None:
     return launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
 
 
+# Who handled a monitored message: ``runner:<runner_id>`` or ``plugin:<author>/<name>``.
+HANDLED_BY_VAR = '_monitoring_handled_by'
+# Monitoring identity of the pipeline Query that caused a plugin action.
+ORIGIN_VAR = '_monitoring_origin'
+UNKNOWN_PLUGIN_HANDLER = 'plugin:unknown'
+
+
+def runner_handler(runner_id: str) -> str:
+    return f'runner:{runner_id}'
+
+
+def plugin_handler(author: str, name: str) -> str:
+    return f'plugin:{author}/{name}'
+
+
+def is_plugin_handler(handled_by: str | None) -> bool:
+    return bool(handled_by) and handled_by.startswith('plugin:')
+
+
+def mark_handled_by(query: typing.Any, handled_by: str | None) -> None:
+    """Remember who handled this Query; written when the message is finished."""
+    if not handled_by:
+        return
+    if getattr(query, 'variables', None) is None:
+        query.variables = {}
+    query.variables[HANDLED_BY_VAR] = handled_by
+
+
+def mark_plugin_handled(query: typing.Any, event_ctx: typing.Any) -> None:
+    """Attribute a Query whose default processing a plugin prevented."""
+    from . import plugin_diagnostics
+
+    plugin_ref = plugin_diagnostics.get_prevent_default_plugin(event_ctx)
+    mark_handled_by(
+        query,
+        plugin_handler(plugin_ref['author'], plugin_ref['name']) if plugin_ref else UNKNOWN_PLUGIN_HANDLER,
+    )
+
+
+def get_handled_by(query: typing.Any) -> str | None:
+    return (getattr(query, 'variables', None) or {}).get(HANDLED_BY_VAR)
+
+
+def _origin(query: typing.Any) -> dict:
+    origin = (getattr(query, 'variables', None) or {}).get(ORIGIN_VAR)
+    return origin if isinstance(origin, dict) else {}
+
+
 def monitoring_session_id(query: typing.Any) -> str:
     """Return the monitoring session id for pipeline and plugin-owned Queries."""
     platform = monitoring_platform(query)
     if platform is not None:
         return f'{platform}_{getattr(query, "launcher_id", None)}'
+    if _origin(query).get('session_id'):
+        return _origin(query)['session_id']
     plugin = (getattr(query, 'variables', None) or {}).get(PLUGIN_ATTRIBUTION_VAR)
     return f'plugin:{plugin}' if plugin else 'unknown'
+
+
+def monitoring_bot_id(query: typing.Any) -> str:
+    return getattr(query, 'bot_uuid', None) or _origin(query).get('bot_id') or 'unknown'
+
+
+def monitoring_pipeline_id(query: typing.Any) -> str:
+    return getattr(query, 'pipeline_uuid', None) or _origin(query).get('pipeline_id') or 'unknown'
+
+
+def attribute_to_origin(query: typing.Any, origin: typing.Any) -> None:
+    """Attribute a plugin-owned Query's monitoring records to the triggering Query.
+
+    Attribution only: the plugin Query keeps its own (plugin) authority and
+    never inherits the origin's pipeline configuration or resources.
+    """
+    origin_variables = getattr(origin, 'variables', None) or {}
+    if getattr(query, 'variables', None) is None:
+        query.variables = {}
+    query.variables[ORIGIN_VAR] = {
+        'bot_id': getattr(origin, 'bot_uuid', None),
+        'pipeline_id': getattr(origin, 'pipeline_uuid', None),
+        'session_id': monitoring_session_id(origin),
+    }
+    for key in ('_monitoring_message_id', '_monitoring_bot_name', '_monitoring_pipeline_name'):
+        if origin_variables.get(key):
+            query.variables[key] = origin_variables[key]
 
 
 async def resolve_processor_name(
@@ -146,6 +223,11 @@ class MonitoringHelper:
         """Bound terminal writes and retry transient failures without blocking cleanup."""
         if not message_id:
             return
+        handled_by = get_handled_by(query)
+        attribution = {}
+        if handled_by:
+            # A plugin that took the message over means the runner never ran.
+            attribution = {'handled_by': handled_by, 'clear_runner_name': is_plugin_handler(handled_by)}
         for attempt in range(3):
             try:
                 async with asyncio.timeout(2):
@@ -154,6 +236,7 @@ class MonitoringHelper:
                         message_id=message_id,
                         status=status,
                         level='error' if status == 'error' else 'info',
+                        **attribution,
                     )
                 return
             except Exception as exc:
@@ -256,6 +339,7 @@ class MonitoringHelper:
     ):
         """Record bot response message to monitoring"""
         try:
+            handled_by = get_handled_by(query)
             session_id = monitoring_session_id(query)
 
             # Get sender name from message event
@@ -301,9 +385,10 @@ class MonitoringHelper:
                 platform=monitoring_platform(query),
                 user_id=getattr(query, 'sender_id', None),
                 user_name=sender_name,
-                runner_name=runner_name,
+                runner_name=None if is_plugin_handler(handled_by) else runner_name,
                 role='assistant',
                 parent_message_id=(query.variables or {}).get('_monitoring_message_id'),
+                **({'handled_by': handled_by} if handled_by else {}),
             )
         except Exception as e:
             ap.logger.error(f'Failed to record query response: {e}')
@@ -371,6 +456,97 @@ class MonitoringHelper:
         except Exception as e:
             ap.logger.error(f'Failed to record query error: {e}')
             return ''
+
+    @staticmethod
+    async def record_plugin_message(
+        ap: app.Application,
+        context: typing.Any,
+        *,
+        plugin: str,
+        message_chain: typing.Any,
+        bot_id: str,
+        bot_name: str,
+        pipeline_id: str,
+        pipeline_name: str,
+        session_id: str,
+        platform: str | None,
+        user_id: str | None = None,
+        user_name: str | None = None,
+        parent_message_id: str | None = None,
+        error: BaseException | None = None,
+        error_type: str = 'PluginDeliveryError',
+    ) -> str:
+        """Record a message a plugin delivered itself (``ctx.reply``/``send_message``).
+
+        Monitoring must never change delivery behaviour, so failures here are
+        logged and swallowed.
+        """
+        try:
+            content = message_chain.model_dump() if hasattr(message_chain, 'model_dump') else str(message_chain)
+            message_id = await ap.monitoring_service.record_message(
+                context,
+                bot_id=bot_id,
+                bot_name=bot_name,
+                pipeline_id=pipeline_id,
+                pipeline_name=pipeline_name,
+                message_content=content,
+                session_id=session_id,
+                status='error' if error is not None else 'success',
+                level='error' if error is not None else 'info',
+                platform=platform,
+                user_id=user_id,
+                user_name=user_name,
+                runner_name=None,
+                role='assistant',
+                parent_message_id=parent_message_id,
+                handled_by=plugin,
+            )
+            if error is not None:
+                await ap.monitoring_service.record_error(
+                    context,
+                    bot_id=bot_id,
+                    bot_name=bot_name,
+                    pipeline_id=pipeline_id,
+                    pipeline_name=pipeline_name,
+                    error_type=error_type,
+                    error_message=f'{plugin}: {type(error).__name__}: {error}',
+                    session_id=session_id,
+                    stack_trace=''.join(traceback.format_exception(error)),
+                    message_id=message_id,
+                )
+            return message_id
+        except Exception as exc:
+            ap.logger.error(f'Failed to record plugin message: {exc}')
+            return ''
+
+    @staticmethod
+    async def record_plugin_reply(
+        ap: app.Application,
+        query: typing.Any,
+        plugin: str,
+        message_chain: typing.Any,
+        error: BaseException | None = None,
+    ) -> str:
+        """Record a ``ctx.reply`` from a plugin as a reply to the triggering message."""
+        variables = getattr(query, 'variables', None) or {}
+        sender = getattr(getattr(query, 'message_event', None), 'sender', None)
+        return await MonitoringHelper.record_plugin_message(
+            ap,
+            get_query_execution_context(query),
+            plugin=plugin,
+            message_chain=message_chain,
+            bot_id=monitoring_bot_id(query),
+            bot_name=variables.get('_monitoring_bot_name', 'Unknown'),
+            pipeline_id=monitoring_pipeline_id(query),
+            pipeline_name=variables.get('_monitoring_pipeline_name', 'Unknown'),
+            session_id=monitoring_session_id(query),
+            platform=monitoring_platform(query),
+            user_id=getattr(query, 'sender_id', None),
+            user_name=getattr(sender, 'nickname', None) or getattr(sender, 'member_name', None),
+            parent_message_id=variables.get('_monitoring_message_id'),
+            error=error,
+            error_type='PluginReplyError',
+        )
 
     @staticmethod
     async def record_llm_call(

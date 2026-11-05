@@ -3096,6 +3096,8 @@ const jaJP = {
       empty: 'この期間の実行履歴はありません',
       loading: '実行履歴を読み込み中...',
       triggeredBy: '{{trigger}} により開始',
+      handledByPlugin: 'プラグインが処理 · {{plugin}}',
+      handledByUnknownPlugin: 'プラグインが処理（特定不可）',
       cards: {
         latencyHint:
           'P50/P95：実行の約 50%/95% がこの時間内に完了します。最近の完了済み Agent 実行が対象で、キュー待ちは除きます。',

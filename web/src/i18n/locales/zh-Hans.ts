@@ -2895,6 +2895,8 @@ const zhHans = {
       empty: '该时间范围内暂无执行记录',
       loading: '加载执行记录中...',
       triggeredBy: '触发：{{trigger}}',
+      handledByPlugin: '插件处理 · {{plugin}}',
+      handledByUnknownPlugin: '插件处理（未识别插件）',
       cards: {
         latencyHint:
           'P50/P95：约 50%/95% 的执行能在此时间内完成。仅统计最近已完成的 Agent 执行，不含排队时间。',

@@ -2645,9 +2645,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         )
         batch_args = {'installation_bindings': batch} if batch is not None else {}
         for binding in bindings:
+            event_payload = event_ctx.model_dump(serialize_as_any=False)
+            if query is not None:
+                # Opt in to ``origin_query_uuid`` on plugin actions issued while
+                # handling this event (monitoring attribution only). Older
+                # Runtimes drop the unknown flag and relay nothing.
+                event_payload['origin_attribution'] = True
             with runtime_handler.installation_scope(binding):
                 result = await runtime_handler.emit_event(
-                    event_ctx.model_dump(serialize_as_any=False),
+                    event_payload,
                     include_plugins=bound_plugins,
                     **batch_args,
                 )

@@ -2894,6 +2894,8 @@ const zhHant = {
       debug: '偵錯',
       empty: '此時間範圍內暫無執行記錄',
       triggeredBy: '觸發：{{trigger}}',
+      handledByPlugin: '外掛處理 · {{plugin}}',
+      handledByUnknownPlugin: '外掛處理（未識別外掛）',
       loading: '載入執行記錄中...',
       cards: {
         latencyHint:

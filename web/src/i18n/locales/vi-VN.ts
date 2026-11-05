@@ -3064,6 +3064,8 @@ const viVN = {
       empty: 'Không có lượt thực thi trong khoảng này',
       loading: 'Đang tải lượt thực thi...',
       triggeredBy: 'Được kích hoạt bởi {{trigger}}',
+      handledByPlugin: 'Được plugin {{plugin}} xử lý',
+      handledByUnknownPlugin: 'Được một plugin không xác định xử lý',
       cards: {
         latencyHint:
           'P50/P95: khoảng 50%/95% lượt chạy hoàn tất trong thời gian này. Chỉ tính Agent đã hoàn tất gần đây, không gồm thời gian xếp hàng.',

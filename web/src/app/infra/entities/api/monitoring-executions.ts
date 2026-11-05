@@ -33,6 +33,8 @@ export interface ExecutionRow {
   pipeline_id: string | null;
   pipeline_name: string | null;
   runner_id: string | null;
+  /** `runner:<id>` or `plugin:<author>/<name>`; null for legacy rows. */
+  handled_by?: string | null;
   conversation_id: string | null;
   session_id: string | null;
   created_at_ms: number | null;
@@ -104,6 +106,7 @@ export interface PipelineMessageRow {
   user_id?: string | null;
   user_name?: string | null;
   runner_name?: string | null;
+  handled_by?: string | null;
   role?: string | null;
 }
 

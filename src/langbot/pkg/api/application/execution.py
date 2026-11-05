@@ -94,6 +94,8 @@ ModelCall = _input(
     timeout=(float | int | None, None),
     model_reasoning_overrides=(Object | None, None),
     reasoning_config_override=(Object | None, None),
+    # Monitoring attribution only; see EventContext.origin_attribution.
+    origin_query_uuid=(Text | None, None),
 )
 Retrieval = _input(
     'ExecutionRetrievalInput',
@@ -209,6 +211,7 @@ EXECUTION_OPERATIONS = (
             target_type=(Literal['person', 'group'], ...),
             target_id=(Text, ...),
             message_chain=(list[Object], ...),
+            origin_query_uuid=(Text | None, None),
         ),
         ResultOutput,
         'plugin_or_run',

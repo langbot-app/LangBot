@@ -666,6 +666,9 @@ class RuntimePipeline:
                 self.ap.logger.debug(
                     f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
                 )
+                from .monitoring_helper import mark_plugin_handled
+
+                mark_plugin_handled(query, event_ctx)
                 return
 
             # The Runtime returns a deserialized event, not the original Query.

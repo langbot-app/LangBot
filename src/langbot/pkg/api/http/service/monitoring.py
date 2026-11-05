@@ -629,6 +629,7 @@ class MonitoringService(ExecutionDetailsMixin):
         event_id: str | None = None,
         run_id: str | None = None,
         parent_message_id: str | None = None,
+        handled_by: str | None = None,
     ) -> str:
         """Record a message"""
         workspace_uuid = self._require_write_context(context)
@@ -663,6 +664,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'event_id': event_id,
             'run_id': run_id,
             'parent_message_id': parent_message_id,
+            'handled_by': handled_by,
         }
 
         async with self._summary_write_session(workspace_uuid) as session:
@@ -872,14 +874,20 @@ class MonitoringService(ExecutionDetailsMixin):
         status: str,
         level: str | None = None,
         variables: str | None = None,
+        handled_by: str | None = None,
+        clear_runner_name: bool = False,
     ) -> None:
-        """Update message status and optionally variables"""
+        """Update message status and optionally variables and handler attribution"""
         workspace_uuid = self._require_write_context(context)
         update_values = {'status': status}
         if level is not None:
             update_values['level'] = level
         if variables is not None:
             update_values['variables'] = self._sanitize_message_content(variables)
+        if handled_by is not None:
+            update_values['handled_by'] = handled_by
+        if clear_runner_name:
+            update_values['runner_name'] = None
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_monitoring.MonitoringMessage)
@@ -1302,6 +1310,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'pipeline_id': row.pipeline_id,
             'pipeline_name': row.pipeline_name,
             'runner_id': row.runner_name,
+            'handled_by': getattr(row, 'handled_by', None),
             'conversation_id': None,
             'session_id': row.session_id,
             'created_at_ms': created_at_ms,
