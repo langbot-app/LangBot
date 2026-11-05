@@ -77,9 +77,10 @@
     {
       "directory": "langbot-plugin-dev",
       "name": "langbot-plugin-dev",
-      "description": "Develop, debug, and test LangBot plugins. Use when creating new LangBot plugins, fixing plugin bugs, setting up a LangBot test environment, or testing plugins via WebSocket. Covers plugin component architecture (EventListener, Command, Tool), the plugin SDK API (invoke_llm, get_llm_models, send_message, plugin storage), common pitfalls, and automated WebSocket-based testing. Triggers on \"langbot plugin\", \"lbp\", \"GroupChatSummary\", \"plugin debug\", \"langbot test\".",
+      "description": "Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on \"langbot plugin\", \"lbp\", \"plugin permissions\", \"workspace api\", \"call_platform_api\", \"plugin debug\".",
       "references": [
-        "references/test-env-setup.md"
+        "references/sdk-pitfalls.md",
+        "references/testing.md"
       ],
       "cases": [],
       "case_summaries": [],

@@ -13,7 +13,7 @@ and LangBot's own Local Agent) working with the LangBot ecosystem.
 | Skill | What it covers |
 | --- | --- |
 | [`langbot-dev`](skills/langbot-dev) | Core backend + web frontend development (Quart, Vite, API, migrations, MCP server) |
-| [`langbot-plugin-dev`](skills/langbot-plugin-dev) | Plugin SDK / component development, debugging, WebSocket testing |
+| [`langbot-plugin-dev`](skills/langbot-plugin-dev) | Plugin components, Workspace/platform API catalogs, permissions, debugging, publishing |
 | [`langbot-deploy`](skills/langbot-deploy) | Docker / Compose / Kubernetes deployment, config.yaml, Box runtime, global API key |
 | [`langbot-testing`](skills/langbot-testing) | WebUI / e2e QA harness, cases, fixtures, troubleshooting (the `bin/lbs` CLI) |
 | [`langbot-env-setup`](skills/langbot-env-setup) | Local dev/test environment, browser access, OAuth, proxy, startup |
@@ -53,7 +53,6 @@ bin/lbs suite plan langbot-debug-chat-load-gate
 
 ## Maintenance rule
 
-When the LangBot / LangBot Space **API or MCP server changes**, the
-corresponding skill here MUST be updated in the same change. The MCP tool
-surface, the API, and these skills are kept in lockstep — see each repo's
-`AGENTS.md`.
+When a LangBot / LangBot Space **API, Application API operation or MCP tool
+changes**, the corresponding skill here MUST be updated in the same change. See
+the Unified API rules in the repository root `AGENTS.md`.
