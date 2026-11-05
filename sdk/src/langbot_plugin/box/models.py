@@ -304,7 +304,38 @@ class BoxMountSpec(pydantic.BaseModel):
         return self
 
 
+class E2BConnectionConfig(pydantic.BaseModel):
+    api_url: str = pydantic.Field(min_length=1, max_length=2048)
+    sandbox_url: str = pydantic.Field(min_length=1, max_length=2048)
+    api_key: str = pydantic.Field(min_length=1, max_length=8192, repr=False)
+    template: str = pydantic.Field(default="base", max_length=255)
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+    @pydantic.field_validator("api_url", "sandbox_url")
+    @classmethod
+    def validate_endpoint(cls, value: str) -> str:
+        from urllib.parse import urlsplit
+
+        value = value.strip().rstrip("/")
+        parts = urlsplit(value)
+        _ = parts.port
+        if (
+            parts.scheme not in ("http", "https")
+            or not parts.hostname
+            or parts.username
+            or parts.password
+            or parts.query
+            or parts.fragment
+        ):
+            raise ValueError(
+                "E2B endpoints must be HTTP(S) URLs without credentials, query or fragment"
+            )
+        return value
+
+
 class BoxSpec(pydantic.BaseModel):
+    e2b_config: E2BConnectionConfig | None = pydantic.Field(default=None, repr=False)
+    backend: Literal["docker", "nsjail", "e2b", "host", "podman"] | None = None
     cmd: str = ""
     workdir: str = DEFAULT_BOX_MOUNT_PATH
     timeout_sec: int = 30
@@ -430,6 +461,14 @@ class BoxSpec(pydantic.BaseModel):
             raise ValueError(
                 "workdir must stay under mount_path when host_path is provided"
             )
+        return self
+
+    @pydantic.model_validator(mode="after")
+    def validate_e2b_backend(self):
+        if self.e2b_config is not None and self.backend != "e2b":
+            raise ValueError("E2B configuration requires the E2B backend")
+        if self.e2b_config is not None:
+            self.image = self.e2b_config.template or "base"
         return self
 
 

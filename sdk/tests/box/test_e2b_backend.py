@@ -1244,3 +1244,173 @@ async def test_cancelled_upload_cleans_staging_without_publication(backend, tmp_
     assert "rm -rf" in calls[-1]
     assert ".sealed" in calls[-1]
     assert not any("ln -s" in command or "mv " in command for command in calls)
+
+
+@pytest.mark.asyncio
+async def test_workspace_connections_ignore_deployment_env_and_hide_provider_key_errors(
+    logger, monkeypatch, caplog
+):
+    from langbot_plugin.box import e2b_backend as module
+    from langbot_plugin.box.models import E2BConnectionConfig
+    from langbot_plugin.box.runtime import BoxRuntime
+
+    monkeypatch.setenv("E2B_API_KEY", "deployment-key")
+    monkeypatch.setenv("E2B_API_URL", "http://deployment-api.test")
+    monkeypatch.setenv("E2B_SANDBOX_URL", "http://deployment-sandbox.test")
+    a = E2BConnectionConfig(
+        api_url="http://a-api.test",
+        sandbox_url="http://a-sandbox.test",
+        api_key="private-a",
+        template="base",
+    )
+    b = E2BConnectionConfig(
+        api_url="http://b-api.test",
+        sandbox_url="http://b-sandbox.test",
+        api_key="private-b",
+        template="base",
+    )
+    assert a.api_key not in repr(a)
+    sandboxes = [
+        SimpleNamespace(sandbox_id="sandbox-a"),
+        SimpleNamespace(sandbox_id="sandbox-b"),
+    ]
+    api = SimpleNamespace(
+        create=mock.AsyncMock(side_effect=sandboxes), kill=mock.AsyncMock()
+    )
+    monkeypatch.setattr(module, "_check_e2b_available", lambda: True)
+    monkeypatch.setattr(module, "_AsyncSandbox", api)
+    runtime = BoxRuntime(logger, backends=[], session_ttl_sec=0)
+    try:
+        await runtime.create_session(
+            BoxSpec(session_id="a", backend="e2b", e2b_config=a)
+        )
+        await runtime.create_session(
+            BoxSpec(session_id="b", backend="e2b", e2b_config=b)
+        )
+        calls = api.create.await_args_list
+        assert (
+            calls[0].kwargs["api_key"] == "private-a"
+            and calls[0].kwargs["api_url"] == a.api_url
+        )
+        assert calls[0].kwargs["sandbox_url"] == a.sandbox_url
+        assert (
+            calls[1].kwargs["api_key"] == "private-b"
+            and calls[1].kwargs["api_url"] == b.api_url
+        )
+        from langbot_plugin.box.errors import BoxSessionConflictError
+
+        with pytest.raises(BoxSessionConflictError):
+            await runtime.create_session(
+                BoxSpec(session_id="a", backend="e2b", e2b_config=b)
+            )
+        await runtime.delete_session("a")
+        assert api.kill.await_args.kwargs["api_key"] == "private-a"
+        assert api.kill.await_args.kwargs["api_url"] == a.api_url
+        api.create.side_effect = RuntimeError("upstream leaked private-a")
+        with pytest.raises(BoxError) as caught:
+            await runtime.create_session(
+                BoxSpec(session_id="failed", backend="e2b", e2b_config=a)
+            )
+        import traceback
+
+        assert "private-a" not in "".join(traceback.format_exception(caught.value))
+        assert "private-a" not in caplog.text
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "failure,reason",
+    [
+        (None, None),
+        ("execute", "template_execution_failed"),
+        ("cleanup", "template_cleanup_failed"),
+        ("missing", "template_not_found"),
+        ("cancel", None),
+    ],
+)
+async def test_template_check_lists_ready_templates_and_always_cleans_up(
+    logger, mock_e2b_module, failure, reason
+):
+    import httpx
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="http://api.test",
+        sandbox_url="http://proxy.test",
+        api_key="private-key",
+        template="missing" if failure == "missing" else "base",
+    )
+    backend = E2BSandboxBackend(logger, connection_config=config)
+    await backend.initialize()
+
+    async def run(command, **kwargs):
+        if failure == "cancel":
+            import asyncio
+
+            raise asyncio.CancelledError()
+        if failure == "execute":
+            raise RuntimeError("private-key provider body")
+        return SimpleNamespace(exit_code=0, stdout=command.removeprefix("printf "))
+
+    mock_e2b_module.commands.run.side_effect = run
+    if failure == "cleanup":
+        mock_e2b_module.kill.side_effect = RuntimeError("private-key provider body")
+
+    def respond(request):
+        assert request.url.path == "/templates"
+        assert request.headers["X-API-Key"] == "private-key"
+        return httpx.Response(
+            200,
+            json=[
+                {"templateID": "base-id", "aliases": ["base"], "buildStatus": "ready"},
+                {"templateID": "pending", "buildStatus": "building"},
+            ],
+        )
+
+    real_client = httpx.AsyncClient
+    with mock.patch(
+        "langbot_plugin.box.e2b_backend.httpx.AsyncClient",
+        side_effect=lambda **kw: real_client(
+            transport=httpx.MockTransport(respond), **kw
+        ),
+    ):
+        if failure == "cancel":
+            import asyncio
+
+            with pytest.raises(asyncio.CancelledError):
+                await backend.inspect_template(validate=True)
+            mock_e2b_module.kill.assert_awaited_once()
+            return
+        result = await backend.inspect_template(validate=True)
+    assert result["templates"] == [
+        {"id": "base-id", "name": "base", "aliases": ["base"]}
+    ]
+    assert result["reason"] == reason
+    assert result["template_validated"] == (failure is None)
+    assert "private-key" not in json.dumps(result)
+    if failure == "missing":
+        mock_e2b_module.create.assert_not_called()
+    else:
+        mock_e2b_module.kill.assert_awaited_once()
+
+
+def test_workspace_template_overrides_task_image():
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="http://api.test",
+        sandbox_url="http://proxy.test",
+        api_key="private",
+        template="chosen-template",
+    )
+    assert (
+        BoxSpec(
+            session_id="configured-template",
+            backend="e2b",
+            e2b_config=config,
+            image="docker-image",
+        ).image
+        == "chosen-template"
+    )

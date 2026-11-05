@@ -373,6 +373,7 @@ class BoxServerHandler(Handler):
             CommonAction.FILE_CHUNK.value,
             LangBotToBoxAction.HEALTH.value,
             LangBotToBoxAction.GET_BACKEND_INFO.value,
+            LangBotToBoxAction.GET_BACKENDS.value,
             LangBotToBoxAction.INIT.value,
             LangBotToBoxAction.UPSERT_SANDBOX_ADMISSION_GRANT.value,
             LangBotToBoxAction.REVOKE_SANDBOX_ADMISSION_GRANT.value,
@@ -592,6 +593,10 @@ class BoxServerHandler(Handler):
                         action_context=context,
                     )
             except (pydantic.ValidationError, ValueError) as exc:
+                if data.get("e2b_config") is not None:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
                 return ActionResponse.error(f"BoxValidationError: {exc}")
             return ActionResponse.success(
                 self._logical_session_data(_result_to_dict(result))
@@ -615,6 +620,10 @@ class BoxServerHandler(Handler):
                         action_context=context,
                     )
             except (pydantic.ValidationError, ValueError) as exc:
+                if data.get("e2b_config") is not None:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
                 return ActionResponse.error(f"BoxValidationError: {exc}")
             return ActionResponse.success(self._logical_session_data(info))
 
@@ -672,6 +681,37 @@ class BoxServerHandler(Handler):
             )
             return ActionResponse.success(
                 {"stopped": data.get("process_id", "default")}
+            )
+
+        @self.action(LangBotToBoxAction.GET_BACKENDS)
+        async def get_backends(data: dict[str, Any]) -> ActionResponse:
+            self._require_host_control()
+            from .models import E2BConnectionConfig
+
+            options = {}
+            if (
+                data.get("e2b_templates") is True
+                or data.get("validate_e2b_template") is True
+            ):
+                options.update(
+                    e2b_templates=True,
+                    validate_e2b_template=data.get("validate_e2b_template") is True,
+                )
+            if data.get("e2b_config") is not None:
+                try:
+                    options["e2b_config"] = E2BConnectionConfig.model_validate(
+                        data["e2b_config"]
+                    )
+                except pydantic.ValidationError:
+                    return ActionResponse.error(
+                        "BoxValidationError: Invalid E2B connection configuration"
+                    )
+            return ActionResponse.success(
+                {
+                    "backends": await self._runtime.get_backends(
+                        refresh=data.get("refresh") is True, **options
+                    )
+                }
             )
 
         @self.action(LangBotToBoxAction.GET_BACKEND_INFO)

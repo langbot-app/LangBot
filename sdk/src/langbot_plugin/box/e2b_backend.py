@@ -11,6 +11,8 @@ import re
 import shlex
 import uuid
 
+import httpx
+
 from ..artifact import build_tree_manifest, load_tree_manifest
 from .backend import BaseSandboxBackend, _MAX_RAW_OUTPUT_BYTES
 from .errors import BoxError
@@ -21,6 +23,7 @@ from .models import (
     BoxHostMountMode,
     BoxSessionInfo,
     BoxSpec,
+    E2BConnectionConfig,
 )
 from .security import validate_sandbox_security
 
@@ -131,8 +134,13 @@ class E2BSandboxBackend(BaseSandboxBackend):
     content_addressed_mounts = True
     name = "e2b"
 
-    def __init__(self, logger: logging.Logger):
+    def __init__(
+        self,
+        logger: logging.Logger,
+        connection_config: E2BConnectionConfig | None = None,
+    ):
         super().__init__(logger)
+        self.connection_config = connection_config
         self._api_key: str | None = None
         self._api_url: str | None = None
         self._template: str | None = None
@@ -147,8 +155,40 @@ class E2BSandboxBackend(BaseSandboxBackend):
         # Reset cache to force re-check if e2b package was installed later
         _reset_e2b_cache()
 
+    def _safe_error(self, error: Exception) -> str:
+        if self.connection_config is not None:
+            # Custom services can echo request credentials in error bodies.
+            status = getattr(error, "status_code", None)
+            return type(error).__name__ + (
+                f" (HTTP {status})" if isinstance(status, int) else ""
+            )
+        text = str(error)
+        return text.replace(self._api_key, "***") if self._api_key else text
+
+    def _connection_kwargs(self) -> dict:
+        if self.connection_config is not None:
+            return self.connection_config.model_dump(exclude={"template"})
+        options = {}
+        if self._api_key:
+            options["api_key"] = self._api_key
+        if self._api_url:
+            options["domain"] = self._api_url
+        return options
+
+    def unavailable_reason(self) -> str:
+        if not _check_e2b_available():
+            return "sdk_missing"
+        if not self._api_key:
+            return "missing_credentials"
+        return "connection_failed"
+
     async def initialize(self):
         """Load configuration from environment variables (priority) or config.yaml."""
+        if self.connection_config is not None:
+            self._api_key = self.connection_config.api_key
+            self._api_url = self.connection_config.api_url
+            self._template = self.connection_config.template
+            return
         # Environment variables take precedence
         self._api_key = os.getenv("E2B_API_KEY") or self._config_from_langbot.get(
             "api_key"
@@ -174,6 +214,96 @@ class E2BSandboxBackend(BaseSandboxBackend):
             return False
 
         return True
+
+    async def probe_available(self) -> bool:
+        if not await self.is_available():
+            return False
+        await _AsyncSandbox.list(limit=1, **self._connection_kwargs()).next_items()
+        return True
+
+    async def inspect_template(self, *, validate: bool = False) -> dict:
+        result = {
+            "name": "e2b",
+            "available": False,
+            "reason": None,
+            "managed_processes": False,
+            "templates": [],
+            "template_validated": False,
+        }
+        if not await self.is_available():
+            result["reason"] = self.unavailable_reason()
+            return result
+        from e2b.connection_config import ConnectionConfig
+
+        options = self._connection_kwargs()
+        connection = ConnectionConfig(**options)
+        stage = "template_list_failed"
+        sandbox = None
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                response = await client.get(
+                    connection.api_url.rstrip("/") + "/templates",
+                    headers={"X-API-Key": self._api_key},
+                )
+                response.raise_for_status()
+                items = response.json()
+            for item in items:
+                if item.get("buildStatus") != "ready":
+                    continue
+                template_id = item["templateID"]
+                aliases = item.get("aliases") or []
+                result["templates"].append(
+                    {
+                        "id": template_id,
+                        "name": next(iter(aliases), template_id),
+                        "aliases": aliases,
+                    }
+                )
+            if not validate:
+                result["available"] = True
+                return result
+            selected = self._template or "base"
+            if not any(
+                selected == item["id"] or selected in item["aliases"]
+                for item in result["templates"]
+            ):
+                result["reason"] = "template_not_found"
+                return result
+            stage = "template_creation_failed"
+            sandbox = await _AsyncSandbox.create(
+                template=selected, timeout=60, request_timeout=15, **options
+            )
+            stage = "template_execution_failed"
+            marker = "langbot-template-" + uuid.uuid4().hex
+            output = await sandbox.commands.run(
+                "printf " + marker, timeout=5, request_timeout=8
+            )
+            if output.exit_code != 0 or output.stdout != marker:
+                result["reason"] = stage
+                return result
+            result.update(available=True, template_validated=True)
+        except Exception as exc:
+            status = getattr(exc, "status_code", None)
+            if isinstance(exc, httpx.HTTPStatusError):
+                status = exc.response.status_code
+            result["reason"] = (
+                "authentication_failed" if status in (401, 403) else stage
+            )
+        finally:
+            if sandbox is not None:
+                try:
+                    await asyncio.shield(
+                        _AsyncSandbox.kill(
+                            sandbox.sandbox_id, request_timeout=10, **options
+                        )
+                    )
+                except Exception:
+                    result.update(
+                        available=False,
+                        template_validated=False,
+                        reason="template_cleanup_failed",
+                    )
+        return result
 
     async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
         """Create a new E2B sandbox session.
@@ -208,11 +338,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
             create_kwargs["envs"] = spec.env
 
         # API key and domain (for CubeSandbox self-deployment)
-        if self._api_key:
-            create_kwargs["api_key"] = self._api_key
-        if self._api_url:
-            # E2B SDK uses 'domain' for self-hosted API URL
-            create_kwargs["domain"] = self._api_url
+        create_kwargs.update(self._connection_kwargs())
 
         # Build metadata for CubeSandbox host-mount
         metadata = {}
@@ -245,7 +371,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
         try:
             sandbox = await _AsyncSandbox.create(**create_kwargs)
         except Exception as exc:
-            raise BoxError(f"Failed to create E2B sandbox: {exc}")
+            raise BoxError(
+                f"Failed to create E2B sandbox: {self._safe_error(exc)}"
+            ) from None
 
         return BoxSessionInfo(
             session_id=spec.session_id,
@@ -281,11 +409,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
         start = dt.datetime.now(dt.timezone.utc)
 
         # Connect kwargs
-        connect_kwargs = {}
-        if self._api_key:
-            connect_kwargs["api_key"] = self._api_key
-        if self._api_url:
-            connect_kwargs["domain"] = self._api_url
+        connect_kwargs = self._connection_kwargs()
 
         # Adapt workdir and logical /workspace command paths for E2B.
         workdir = _adapt_path_for_e2b(spec.workdir)
@@ -306,7 +430,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 sandbox_id=session.backend_session_id, **connect_kwargs
             )
         except Exception as exc:
-            raise BoxError(f"Failed to connect to E2B sandbox: {exc}")
+            raise BoxError(
+                f"Failed to connect to E2B sandbox: {self._safe_error(exc)}"
+            ) from None
 
         await self._sync_mounts_to_e2b(sandbox, spec)
 
@@ -338,7 +464,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                     stderr=f"Command timed out after {spec.timeout_sec} seconds.",
                     duration_ms=duration_ms,
                 )
-            raise BoxError(f"E2B command execution failed: {exc}")
+            raise BoxError(
+                f"E2B command execution failed: {self._safe_error(exc)}"
+            ) from None
 
         await self._sync_mounts_from_e2b(sandbox, spec)
 
@@ -525,7 +653,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
         except BaseException as exc:
             if not isinstance(exc, Exception) or isinstance(exc, BoxError):
                 raise
-            raise BoxError(f"Failed to materialize immutable E2B mount: {exc}") from exc
+            raise BoxError(
+                f"Failed to materialize immutable E2B mount: {self._safe_error(exc)}"
+            ) from None
         finally:
             try:
                 await sandbox.commands.run(
@@ -648,8 +778,8 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             user=user,
         )
 
-    @staticmethod
     async def _run_e2b_checked(
+        self,
         sandbox,
         command: str,
         *,
@@ -662,7 +792,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                 kwargs["user"] = user
             result = await sandbox.commands.run(command, **kwargs)
         except Exception as exc:
-            raise BoxError(f"Failed to {subject}: {exc}") from exc
+            raise BoxError(f"Failed to {subject}: {self._safe_error(exc)}") from None
         if getattr(result, "exit_code", 1) != 0:
             stderr = str(getattr(result, "stderr", "") or "").strip()
             raise BoxError(f"Failed to {subject}: {stderr or 'remote command failed'}")
@@ -756,7 +886,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                     f"mkdir -p {shlex.quote(remote_dir)}", timeout=10
                 )
             except Exception as exc:
-                self.logger.debug(f"Failed to create E2B sync dir {remote_dir}: {exc}")
+                self.logger.debug(
+                    f"Failed to create E2B sync dir {remote_dir}: {self._safe_error(exc)}"
+                )
                 continue
 
             for filename in files:
@@ -787,7 +919,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                         await flush()
                 except Exception as exc:
                     self.logger.debug(
-                        f"Failed to sync host file to E2B {host_file}: {exc}"
+                        f"Failed to sync host file to E2B {host_file}: {self._safe_error(exc)}"
                     )
         await flush()
 
@@ -804,7 +936,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         try:
             entries = await sandbox.files.list(remote_root, depth=16)
         except Exception as exc:
-            self.logger.debug(f"Failed to list E2B mount for sync {remote_root}: {exc}")
+            self.logger.debug(
+                f"Failed to list E2B mount for sync {remote_root}: {self._safe_error(exc)}"
+            )
             return
 
         synced_files = 0
@@ -893,7 +1027,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                         await flush_downloads()
             except Exception as exc:
                 self.logger.debug(
-                    f"Failed to sync E2B file to host {remote_path}: {exc}"
+                    f"Failed to sync E2B file to host {remote_path}: {self._safe_error(exc)}"
                 )
         if pending:
             await flush_downloads()
@@ -931,21 +1065,16 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         try:
             await _AsyncSandbox.kill(
                 sandbox_id=session.backend_session_id,
-                api_key=self._api_key,
-                domain=self._api_url,
+                **self._connection_kwargs(),
             )
         except Exception as exc:
-            self.logger.warning(f"Failed to kill E2B sandbox: {exc}")
+            self.logger.warning(f"Failed to kill E2B sandbox: {self._safe_error(exc)}")
 
     async def is_session_alive(self, session: BoxSessionInfo) -> bool:
         """Probe the remote sandbox rather than trusting stale local metadata."""
         if not _check_e2b_available():
             return False
-        kwargs = {}
-        if self._api_key:
-            kwargs["api_key"] = self._api_key
-        if self._api_url:
-            kwargs["domain"] = self._api_url
+        kwargs = self._connection_kwargs()
         try:
             await _AsyncSandbox.connect(sandbox_id=session.backend_session_id, **kwargs)
             return True
@@ -953,7 +1082,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             self.logger.info(
                 "E2B sandbox liveness probe failed for %s: %s",
                 session.backend_session_id,
-                exc,
+                self._safe_error(exc),
             )
             return False
 

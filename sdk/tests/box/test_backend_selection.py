@@ -329,3 +329,84 @@ async def test_custom_backends_with_box_backend_config(logger):
         selected = await runtime._select_backend()
 
     assert selected.name == "b"
+
+
+@pytest.mark.asyncio
+async def test_sessions_keep_backend_during_concurrent_switch(logger):
+    import asyncio
+    from langbot_plugin.box.errors import BoxSessionConflictError
+    from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
+
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class RecordingBackend(MockBackend):
+        async def exec(self, session, spec):
+            if spec.cmd == "wait":
+                entered.set()
+                await release.wait()
+            return BoxExecutionResult(
+                session_id=session.session_id,
+                backend_name=self.name,
+                status=BoxExecutionStatus.COMPLETED,
+                exit_code=0,
+                stdout=self.name,
+                duration_ms=0,
+            )
+
+    docker, e2b = RecordingBackend(logger, "docker"), RecordingBackend(logger, "e2b")
+    runtime = BoxRuntime(logger, backends=[docker, e2b], session_ttl_sec=0)
+    runtime._box_config = {"backend": "docker"}
+    await runtime.initialize()
+    try:
+        old_spec = BoxSpec(session_id="old", backend="docker", cmd="wait")
+        old_task = asyncio.create_task(runtime.execute(old_spec))
+        await asyncio.wait_for(entered.wait(), 2)
+        runtime._box_config["backend"] = "e2b"
+        new = await runtime.execute(BoxSpec(session_id="new", backend="e2b", cmd="now"))
+        assert new.stdout == "e2b"
+        assert not old_task.done()
+        with pytest.raises(BoxSessionConflictError):
+            await runtime.create_session(BoxSpec(session_id="old", backend="e2b"))
+        release.set()
+        assert (await old_task).stdout == "docker"
+        assert (
+            await runtime.execute(old_spec.model_copy(update={"cmd": "again"}))
+        ).stdout == "docker"
+        await runtime.delete_session("new")
+        assert e2b.stopped_sessions == 1 and docker.stopped_sessions == 0
+        await runtime.delete_session("old")
+        assert docker.stopped_sessions == 1
+    finally:
+        release.set()
+        await runtime.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_backend_detection_refresh_and_no_fallback(logger):
+    from langbot_plugin.box.errors import BoxBackendUnavailableError
+
+    docker = MockBackend(logger, "docker", available=False)
+    e2b = MockBackend(logger, "e2b", available=True)
+    runtime = BoxRuntime(logger, backends=[docker, e2b], session_ttl_sec=0)
+    first = {item["name"]: item for item in await runtime.get_backends()}
+    assert first["docker"]["available"] is False
+    assert first["e2b"]["available"] is True
+    assert first["nsjail"]["available"] is False
+    docker._available = True
+    assert (
+        next(item for item in await runtime.get_backends() if item["name"] == "docker")[
+            "available"
+        ]
+        is False
+    )
+    assert (
+        next(
+            item
+            for item in await runtime.get_backends(refresh=True)
+            if item["name"] == "docker"
+        )["available"]
+        is True
+    )
+    with pytest.raises(BoxBackendUnavailableError):
+        await runtime.create_session(BoxSpec(session_id="missing", backend="nsjail"))
+    assert e2b.started_sessions == 0

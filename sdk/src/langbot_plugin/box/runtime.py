@@ -48,6 +48,7 @@ from .models import (
     BoxMountSpec,
     BoxSessionInfo,
     BoxSpec,
+    E2BConnectionConfig,
     BoxHostMountMode,
     BoxNetworkMode,
     SandboxAdmissionGrant,
@@ -133,6 +134,7 @@ class _ManagedProcess:
 class _RuntimeSession:
     info: BoxSessionInfo
     lock: asyncio.Lock
+    backend: BaseSandboxBackend | None = None
     workspace_key: tuple[str, str] | None = None
     managed_processes: dict[str, _ManagedProcess] = dataclasses.field(
         default_factory=dict
@@ -262,6 +264,10 @@ class BoxRuntime:
         )
         self._backend: BaseSandboxBackend | None = None
         self._backend_lock = asyncio.Lock()
+        self._backends_cache: tuple[float, list[dict]] | None = None
+        self._backends_probe_lock = asyncio.Lock()
+        self._initialized_backends: set[str] = set()
+        self._can_cleanup_orphans = False
         self._sessions: dict[str, _RuntimeSession] = {}
         self._expirable_session_ids: set[str] = set()
         self._managed_process_session_ids: set[str] = set()
@@ -321,9 +327,10 @@ class BoxRuntime:
             self._ensure_default_workspace()
 
         self._backend = await self._select_backend()
-        can_cleanup = self._identity.acquire()
+        self._can_cleanup_orphans = self._identity.acquire()
         if self._backend is not None:
-            if can_cleanup:
+            self._initialized_backends.add(self._backend.name)
+            if self._can_cleanup_orphans:
                 try:
                     await self._backend.cleanup_orphaned_containers(self.instance_id)
                 except Exception as exc:
@@ -410,6 +417,7 @@ class BoxRuntime:
                 "restarting the Box Runtime"
             )
         self._readiness_cache = None
+        self._backends_cache = None
         self._ensure_default_workspace()
         if not self._sessions:
             self._backend = None
@@ -629,7 +637,7 @@ done
                 raise BoxSessionNotFoundError(
                     f"session {runtime_session.info.session_id} is being deleted"
                 )
-            result = await (await self._get_backend()).exec(runtime_session.info, spec)
+            result = await runtime_session.backend.exec(runtime_session.info, spec)
         if not result.ok:
             raise BoxError(result.stderr or "Sandbox storage probe failed")
 
@@ -919,6 +927,11 @@ done
         spec: BoxSpec,
         action_context: ActionContext,
     ) -> BoxSpec:
+        if (
+            spec.backend is not None
+            and spec.backend != self.admission_policy.required_backend
+        ):
+            raise BoxAdmissionError("Backend is restricted by managed sandbox policy")
         context = ActionContext.model_validate(action_context).without_installation()
         policy = self._admission_policy
         if spec.network != BoxNetworkMode.OFF:
@@ -1286,9 +1299,8 @@ done
                     f"workdir={spec.workdir} "
                     f"timeout_sec={spec.timeout_sec}"
                 )
-                backend = await self._get_backend()
                 try:
-                    result = await backend.exec(session.info, spec)
+                    result = await session.backend.exec(session.info, spec)
                 except asyncio.CancelledError:
                     execution_cancelled = True
                     session.closing = True
@@ -1499,7 +1511,7 @@ done
                         runtime_session,
                     )
 
-                backend = await self._get_backend()
+                backend = runtime_session.backend
                 process = await backend.start_managed_process(
                     runtime_session.info, spec
                 )
@@ -1705,6 +1717,89 @@ done
             f"Managed sandbox isolation is not ready (failed checks: {detail})"
         )
 
+    async def _probe_backend(
+        self, name: str, e2b_config: E2BConnectionConfig | None = None
+    ) -> dict:
+        if self.admission_required and name != self.admission_policy.required_backend:
+            return {"name": name, "available": False, "reason": "policy_restricted"}
+        backend = next(
+            (b for b in self.backends if b is not None and b.name == name), None
+        )
+        try:
+
+            async def check():
+                nonlocal backend
+                backend = await self._get_backend(name, e2b_config)
+                available = (
+                    bool((await self.get_readiness()).get("ready"))
+                    if self.admission_required
+                    else await backend.probe_available()
+                )
+                return available
+
+            available = await asyncio.wait_for(check(), timeout=8)
+            return {
+                "name": name,
+                "available": available,
+                "reason": None if available else backend.unavailable_reason(),
+                "managed_processes": type(backend).start_managed_process
+                is not BaseSandboxBackend.start_managed_process,
+            }
+        except asyncio.TimeoutError:
+            reason = "probe_timeout"
+        except Exception as exc:
+            if (
+                getattr(exc, "status_code", None) in (401, 403)
+                or type(exc).__name__ == "AuthenticationException"
+            ):
+                reason = "authentication_failed"
+            elif backend is not None:
+                reason = backend.unavailable_reason()
+            else:
+                reason = "sdk_missing" if name == "e2b" else "environment_unavailable"
+        return {"name": name, "available": False, "reason": reason}
+
+    async def get_backends(
+        self,
+        *,
+        refresh: bool = False,
+        e2b_config: E2BConnectionConfig | None = None,
+        e2b_templates: bool = False,
+        validate_e2b_template: bool = False,
+    ) -> list[dict]:
+        """Probe on the execution host; draft E2B config never changes live backends."""
+        if e2b_templates or validate_e2b_template:
+            items = await self.get_backends(refresh=refresh)
+            if self.admission_required:
+                return items
+            try:
+                backend = await self._get_backend("e2b", e2b_config)
+                e2b = await backend.inspect_template(validate=validate_e2b_template)
+            except Exception:
+                e2b = {
+                    "name": "e2b",
+                    "available": False,
+                    "reason": "environment_unavailable",
+                    "templates": [],
+                }
+            return [e2b if item["name"] == "e2b" else item for item in items]
+        if e2b_config is not None:
+            items = await self.get_backends(refresh=refresh)
+            e2b = await self._probe_backend("e2b", e2b_config)
+            return [e2b if item["name"] == "e2b" else item for item in items]
+        async with self._backends_probe_lock:
+            if (
+                not refresh
+                and self._backends_cache is not None
+                and time.monotonic() - self._backends_cache[0] < 15
+            ):
+                return [dict(item) for item in self._backends_cache[1]]
+            results = await asyncio.gather(
+                *(self._probe_backend(name) for name in ("docker", "e2b", "nsjail"))
+            )
+            self._backends_cache = (time.monotonic(), results)
+            return [dict(item) for item in results]
+
     async def get_backend_info(self) -> dict:
         if self.admission_required:
             readiness = await self.get_readiness()
@@ -1804,7 +1899,22 @@ done
         track_active_exec: bool = False,
         action_context: ActionContext | None = None,
     ) -> _RuntimeSession:
-        backend = await self._get_backend()
+        existing_session = self._sessions.get(spec.session_id)
+        if existing_session is not None:
+            backend = existing_session.backend
+            if (
+                spec.e2b_config is not None
+                and getattr(backend, "connection_config", None) != spec.e2b_config
+            ):
+                raise BoxSessionConflictError(
+                    "E2B configuration cannot change after Box creation"
+                )
+            if spec.backend is not None and spec.backend != backend.name:
+                raise BoxSessionConflictError(
+                    "Box backend cannot change after creation"
+                )
+        else:
+            backend = await self._get_backend(spec.backend, spec.e2b_config)
         signature_spec = spec
         if backend.content_addressed_mounts:
             signature_spec = spec.model_copy(
@@ -1855,6 +1965,22 @@ done
                         if existing is not None and existing.closing:
                             cleanup_task = self._drop_session_locked(spec.session_id)
                         elif existing is not None:
+                            if (
+                                spec.backend is not None
+                                and existing.info.backend_name != spec.backend
+                            ):
+                                raise BoxSessionConflictError(
+                                    "Box backend cannot change after creation"
+                                )
+                            if (
+                                spec.e2b_config is not None
+                                and getattr(existing.backend, "connection_config", None)
+                                != spec.e2b_config
+                            ):
+                                raise BoxSessionConflictError(
+                                    "E2B configuration cannot change after Box creation"
+                                )
+                            backend = existing.backend
                             self._assert_session_compatible(existing.info, spec)
                             if (
                                 not backend.execution_scoped_mounts
@@ -1871,7 +1997,6 @@ done
                     await self._wait_for_session_cleanup(spec.session_id, cleanup_task)
                     continue
 
-                backend = await self._get_backend()
                 if existing is not None:
                     try:
                         try:
@@ -1945,6 +2070,7 @@ done
                         )
                     runtime_session = _RuntimeSession(
                         info=info,
+                        backend=backend,
                         lock=asyncio.Lock(),
                         workspace_key=workspace_key,
                         extra_mounts_key=new_extra_mounts_key,
@@ -1994,7 +2120,44 @@ done
                 self._session_operation_locks[session_id] = lock
             return lock
 
-    async def _get_backend(self) -> BaseSandboxBackend:
+    async def _get_backend(
+        self, name: str | None = None, e2b_config: E2BConnectionConfig | None = None
+    ) -> BaseSandboxBackend:
+        if name is not None:
+            if (
+                self.admission_required
+                and name != self.admission_policy.required_backend
+            ):
+                raise BoxAdmissionError(
+                    "Backend is restricted by managed sandbox policy"
+                )
+            if name == "e2b" and e2b_config is not None:
+                from .e2b_backend import E2BSandboxBackend
+
+                backend = E2BSandboxBackend(self.logger, connection_config=e2b_config)
+                backend.instance_id = self.instance_id
+                await backend.initialize()
+                return backend
+            async with self._backend_lock:
+                backend = next(
+                    (b for b in self.backends if b is not None and b.name == name), None
+                )
+                if backend is None:
+                    raise BoxBackendUnavailableError(
+                        f"Backend {name} is not registered"
+                    )
+                if name not in self._initialized_backends:
+                    await backend.initialize()
+                    backend.instance_id = self.instance_id
+                    if self._can_cleanup_orphans:
+                        try:
+                            await backend.cleanup_orphaned_containers(self.instance_id)
+                        except Exception as exc:
+                            self.logger.warning(
+                                "Box orphan cleanup failed for %s: %s", name, exc
+                            )
+                    self._initialized_backends.add(name)
+            return backend
         if self._backend is None:
             async with self._backend_lock:
                 if self._backend is None:
@@ -2183,7 +2346,7 @@ done
                             None,
                         )
         self._active_exec_counts.pop(session_id, None)
-        backend = self._backend
+        backend = runtime_session.backend if runtime_session is not None else None
         if runtime_session is None or backend is None:
             return None
 
