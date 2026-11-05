@@ -1,0 +1,100 @@
+apiVersion: langbot/v1
+kind: Runner
+metadata:
+  name: default
+  label:
+    en_US: Multica Agent
+    zh_Hans: Multica 智能体
+  description:
+    en_US: Forward each conversation to a Multica agent chat session and reply with the agent's answer.
+    zh_Hans: 将每个会话转发到 Multica 智能体的聊天会话，并以智能体的回答回复。
+spec:
+  usages: [agent]
+  config:
+    - name: server-url
+      label:
+        en_US: Multica API URL
+        zh_Hans: Multica API 地址
+      description:
+        en_US: Multica server API base URL. Use https://api.multica.ai for Multica Cloud, or your self-hosted server URL.
+        zh_Hans: Multica 服务端 API 地址。Multica Cloud 使用 https://api.multica.ai，自托管填写你的服务端地址。
+      type: string
+      required: true
+      default: 'https://api.multica.ai'
+    - name: api-token
+      label:
+        en_US: Personal Access Token
+        zh_Hans: 个人访问令牌
+      description:
+        en_US: A Multica personal access token (mul_...). Chats are created as the token's owner, who must be able to use the selected agent.
+        zh_Hans: Multica 个人访问令牌（mul_...）。聊天以令牌所属用户身份创建，该用户需有权使用所选智能体。
+      type: secret
+      required: true
+      default: ''
+    - name: workspace-id
+      label:
+        en_US: Workspace ID
+        zh_Hans: 工作区 ID
+      description:
+        en_US: The Multica workspace UUID that owns the agent.
+        zh_Hans: 智能体所在的 Multica 工作区 UUID。
+      type: string
+      required: true
+      default: ''
+    - name: agent-id
+      label:
+        en_US: Default Agent ID
+        zh_Hans: 默认智能体 ID
+      description:
+        en_US: Multica agent UUID used by default. Users can switch with the chat command when agent switching is enabled.
+        zh_Hans: 默认使用的 Multica 智能体 UUID。启用切换后，用户可在聊天中用命令切换。
+      type: string
+      required: false
+      default: ''
+    - name: allow-agent-switch
+      label:
+        en_US: Allow Switching Agents in Chat
+        zh_Hans: 允许在聊天中切换智能体
+      description:
+        en_US: Let users list agents and pick one per conversation with "<prefix> agents" and "<prefix> use <name or id>".
+        zh_Hans: 允许用户通过 “<前缀> agents” 和 “<前缀> use <名称或 ID>” 按会话选择智能体。
+      type: boolean
+      required: false
+      default: true
+    - name: command-prefix
+      label:
+        en_US: Command Prefix
+        zh_Hans: 命令前缀
+      description:
+        en_US: Messages starting with this prefix are handled by the runner instead of being sent to the agent.
+        zh_Hans: 以该前缀开头的消息由运行器处理，不会发给智能体。
+      type: string
+      required: false
+      default: '/multica'
+    - name: timeout
+      label:
+        en_US: Reply Timeout (seconds)
+        zh_Hans: 回复超时（秒）
+      description:
+        en_US: How long to wait for the agent's reply. Agent runs can take minutes.
+        zh_Hans: 等待智能体回复的时长。智能体运行可能需要数分钟。
+      type: integer
+      required: false
+      default: 600
+    - name: poll-interval
+      label:
+        en_US: Poll Interval (seconds)
+        zh_Hans: 轮询间隔（秒）
+      type: number
+      required: false
+      default: 2
+  capabilities:
+    streaming: false
+    tool_calling: false
+    knowledge_retrieval: false
+    multimodal_input: false
+    interrupt: false
+execution:
+  python:
+    path: default.py
+    attr: DefaultRunner

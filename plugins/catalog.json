@@ -105,6 +105,13 @@
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/langflow-agent"
   },
   {
+    "id": "langbot-team/MulticaAgent",
+    "version": "0.1.0",
+    "category": "Runner",
+    "path": "Runner/multica-agent",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent"
+  },
+  {
     "id": "langbot-team/N8nAgent",
     "version": "0.2.2",
     "category": "Runner",

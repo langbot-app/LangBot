@@ -50,6 +50,7 @@ only-include = [
     "dify-agent",
     "docs",
     "langflow-agent",
+    "multica-agent",
     "n8n-agent",
     "tbox-agent",
     "weknora-agent",

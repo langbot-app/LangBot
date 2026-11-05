@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: MulticaAgent
+  version: 0.1.0
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent
+  label:
+    en_US: Multica Agent
+    zh_Hans: Multica 智能体
+    zh_Hant: Multica 智能體
+    ja_JP: Multica エージェント
+    th_TH: เอเจนต์ Multica
+    vi_VN: Tác nhân Multica
+    es_ES: Agente de Multica
+    ru_RU: Агент Multica
+  description:
+    en_US: Chat with a selected Multica agent directly from LangBot.
+    zh_Hans: 在 LangBot 中直接与选定的 Multica 智能体对话。
+    zh_Hant: 在 LangBot 中直接與選定的 Multica 智能體對話。
+    ja_JP: LangBot から選択した Multica エージェントと直接チャットします。
+    th_TH: แชทกับเอเจนต์ Multica ที่เลือกได้โดยตรงจาก LangBot
+    vi_VN: Trò chuyện trực tiếp với tác nhân Multica đã chọn ngay trong LangBot.
+    es_ES: Chatea con un agente de Multica seleccionado directamente desde LangBot.
+    ru_RU: Общайтесь с выбранным агентом Multica прямо из LangBot.
+  icon: assets/icon.svg
+spec:
+  config: []
+  components:
+    Runner:
+      fromDirs:
+        - path: components/runner/
+  pages: []
+execution:
+  python:
+    path: main.py
+    attr: MulticaAgentPlugin
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
