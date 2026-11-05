@@ -19,7 +19,7 @@ Workspace management capabilities:
 | Models and providers | LLM/embedding/rerank CRUD and tests, defaults, discovery, provider credential authorization |
 | Bots and platforms | CRUD, routes and dry runs, messages, administrators, adapter metadata and credential setup sessions |
 | Knowledge | Bases, ingestion tasks, files, retrieval, engine schemas and parser discovery |
-| Extensions | Plugin installation/configuration/assets/logs, MCP servers/resources, skills and files, tools |
+| Extensions | Plugin marketplace search, installation/configuration/assets/logs, MCP servers/resources, skills and files, tools |
 | Workspace | Current workspace, language, membership, invitations, API keys and webhooks |
 | Operations | Monitoring and exports, governance and audit, task status, Box visibility, setup wizard and storage statistics |
 | Conversations | Management-assistant conversations/runs and Pipeline chat history, reset, connections and broadcast |
@@ -116,3 +116,16 @@ Consumer adoption should verify the same operation through each selected
 transport, including denied access, missing resources, invalid inputs,
 cancellation and secret handling. The existing Core smoke exercises current
 consumers; it does not by itself prove a new consumer integration.
+
+## Agent-initiated plugin installation
+
+`plugin.marketplace.search`, `plugin.install.marketplace` and `task.get` are exposed to plugins and processors
+(`exposure='all'`). Installing is `dangerous`, so processor tool pickers show the sensitive-tool warning and it is
+never part of a default tool set. `plugin.*` and `plugin.install.*` remain invalid wildcards because GitHub and local
+installs stay assistant-only or unexposed.
+
+For `PLUGIN` and `PROCESSOR` principals, `install_marketplace` additionally rejects `auto_confirm_permissions`, refuses
+targets that already have an installation in the Workspace (upgrades and reinstalls stay with members), and honours
+`plugin.enable_marketplace`. A new installation is persisted disabled until a member confirms its permissions.
+`task.get` returns the stable public projection, including `pending_permission_confirmation`, to every principal except
+accounts, support administrators and Core.

@@ -397,7 +397,10 @@ async def task_get(ap, context, payload):
     task = ap.task_mgr.get_task_by_id(payload.task_id, **_task_scope(context))
     if task is None:
         raise FileNotFoundError('Task not found')
-    return task.to_public_dict() if context.principal.principal_type == PrincipalType.API_KEY else task.to_dict()
+    # Internal logs and tracebacks stay with members and Core; keys, plugins and Agents get the stable projection.
+    if context.principal.principal_type in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN, PrincipalType.SYSTEM}:
+        return task.to_dict()
+    return task.to_public_dict()
 
 
 async def _upload(ap, context, payload, *, image):

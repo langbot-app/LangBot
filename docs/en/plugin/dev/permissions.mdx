@@ -65,7 +65,7 @@ Some operations can never be granted to plugins: streaming operations, operation
 These wildcards are valid today:
 
 - Whole domains: `adapter.*`, `extension.*`, `knowledge.*`, `model.*`, `requester.*`, `stats.*`, `tool.*`
-- Narrower prefixes: `agent.runs.*`, `bot.group_filter.*`, `bot.message.*`, `bot.routes.*`, `bot.runtime.*`, `mcp.resource.*`, `monitoring.execution.*`, `monitoring.feedback.*`, `monitoring.message.*`, `monitoring.session.*`, `pipeline.chat.*`, `pipeline.extensions.*`, `plugin.github.*`, `provider.models.*`, `skill.file.*`, and every prefix under `knowledge.` and `model.`
+- Narrower prefixes: `agent.runs.*`, `bot.group_filter.*`, `bot.message.*`, `bot.routes.*`, `bot.runtime.*`, `mcp.resource.*`, `monitoring.execution.*`, `monitoring.feedback.*`, `monitoring.message.*`, `monitoring.session.*`, `pipeline.chat.*`, `pipeline.extensions.*`, `plugin.github.*`, `plugin.marketplace.*`, `provider.models.*`, `skill.file.*`, and every prefix under `knowledge.` and `model.`
 
 The [Workspace API reference](/en/plugin/dev/apis/workspace#operation-reference) lists every operation a plugin can request.
 
@@ -113,6 +113,17 @@ Grants belong to the installation, not to the member. They stay in place if the 
 ### Installing with automatic confirmation
 
 The setup wizard and Pipeline migration install official plugins and confirm their declared permissions in one step. They go through the same checks as a manual confirmation: the caller must be a member and must hold every required permission. If any check fails, the plugin is still installed but stays pending. Over HTTP this corresponds to `auto_confirm_permissions: true` on `POST /api/v1/plugins/install/marketplace`; the default is `false`, and API keys cannot use it to bypass member confirmation.
+
+### Installs requested by plugins and Agents
+
+A plugin, or an Agent or Pipeline through its workspace tools, can find plugins with `plugin.marketplace.search` and install them with `plugin.install.marketplace` once a member has granted those operations. Installing is marked **High risk**, so selecting it for an Agent or Pipeline shows the sensitive-tool warning. These callers can only add new installations from the marketplace:
+
+- `auto_confirm_permissions: true` is rejected with `permission_denied`. The new plugin stays disabled until a member confirms its permissions on the plugin's detail page.
+- Installing a plugin that is already installed fails with `plugin_already_installed`; upgrading or reinstalling stays with members.
+- When the instance disables the marketplace, both operations fail with `marketplace_disabled`.
+- Installing from GitHub or a local file is not available to them.
+
+The install call returns a `task_id`. Poll `task.get` until `status` is `succeeded` or `failed`; `pending_permission_confirmation: true` means the plugin is waiting for a member.
 
 ## Revoking and upgrading
 

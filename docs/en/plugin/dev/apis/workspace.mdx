@@ -237,8 +237,10 @@ This reference covers every operation a plugin can request in the current LangBo
 | Get Plugin<br/>Get detailed metadata and manifest for an installed plugin. | `plugin.get`<br/>`workspace.plugin.get()` | Read | `resource.view` |
 | Plugin GitHub Assets<br/>List downloadable asset files for a GitHub release. | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | Read | `resource.view` |
 | Plugin GitHub Releases<br/>List releases of a plugin repository hosted on GitHub. | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | Read | `resource.view` |
+| Install Plugin from Marketplace<br/>Install a certified plugin from the official marketplace. | `plugin.install.marketplace`<br/>`workspace.plugin.install.marketplace()` | High risk | `resource.manage` |
 | List Plugins<br/>List all installed plugins and their running status. | `plugin.list`<br/>`workspace.plugin.list()` | Read | `resource.view` |
 | Plugin Logs<br/>Fetch runtime logs and error messages from a plugin. | `plugin.logs`<br/>`workspace.plugin.logs()` | Read | `audit.view` |
+| Search Plugin Marketplace<br/>Search the LangBot Plugin Marketplace for installable plugins. | `plugin.marketplace.search`<br/>`workspace.plugin.marketplace.search()` | Read | `resource.view` |
 | Plugin Readme<br/>Get documentation and usage instructions for a plugin. | `plugin.readme`<br/>`workspace.plugin.readme()` | Read | `resource.view` |
 
 ### Model Provider (`provider`)
@@ -280,6 +282,12 @@ This reference covers every operation a plugin can request in the current LangBo
 | Operation | ID and method | Risk | Granting member needs |
 | --- | --- | --- | --- |
 | Basic Statistics<br/>Get workspace overview counters for bots, models, and pipelines. | `stats.basic`<br/>`workspace.stats.basic()` | Read | `resource.view` |
+
+### Task (`task`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Task<br/>Get the status of a background task such as a plugin installation. | `task.get`<br/>`workspace.task.get()` | Read | `resource.view` |
 
 ### Tool (`tool`)
 

@@ -234,7 +234,7 @@ class TaskWrapper:
                 except (TypeError, ValueError):
                     result = None
 
-        return {
+        projection = {
             'id': self.id,
             'task_type': self.task_type,
             'kind': self.kind,
@@ -243,6 +243,9 @@ class TaskWrapper:
             'result': result,
             'created_at': self.created_at,
         }
+        if self.task_context.metadata.get('pending_permission_confirmation'):
+            projection['pending_permission_confirmation'] = True
+        return projection
 
     def cancel(self):
         self.task.cancel()

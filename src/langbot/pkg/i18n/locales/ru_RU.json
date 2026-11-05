@@ -114,5 +114,9 @@
   "Session reset successfully": "Сессия сброшена",
   "Voice transcription failed.": "Не удалось распознать голосовое сообщение.",
   "Voice message exceeds maximum duration.": "Длительность голосового сообщения превышает максимум.",
-  "Voice synthesis failed.": "Сбой синтеза речи."
+  "Voice synthesis failed.": "Сбой синтеза речи.",
+  "The plugin marketplace is disabled on this instance": "Магазин плагинов отключён в этом экземпляре",
+  "The plugin marketplace returned an invalid response": "Магазин плагинов вернул недопустимый ответ",
+  "Only a member can confirm plugin permissions": "Подтвердить разрешения плагина может только участник",
+  "The plugin is already installed; a member must upgrade or reinstall it": "Плагин уже установлен; обновить или переустановить его должен участник"
 }

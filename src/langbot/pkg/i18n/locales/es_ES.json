@@ -114,5 +114,9 @@
   "Session reset successfully": "Sesión restablecida",
   "Voice transcription failed.": "Error en la transcripción de voz.",
   "Voice message exceeds maximum duration.": "El mensaje de voz excede la duración máxima.",
-  "Voice synthesis failed.": "Error en la síntesis de voz."
+  "Voice synthesis failed.": "Error en la síntesis de voz.",
+  "The plugin marketplace is disabled on this instance": "El mercado de plugins está desactivado en esta instancia",
+  "The plugin marketplace returned an invalid response": "El mercado de plugins devolvió una respuesta no válida",
+  "Only a member can confirm plugin permissions": "Solo un miembro puede confirmar los permisos del plugin",
+  "The plugin is already installed; a member must upgrade or reinstall it": "El plugin ya está instalado; un miembro debe actualizarlo o reinstalarlo"
 }
