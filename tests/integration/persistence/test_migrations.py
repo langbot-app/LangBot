@@ -356,7 +356,8 @@ class TestSQLiteMigrationUpgrade:
         expected = {
             name: columns
             for name, columns in original.items()
-            if name not in {index_name, 'ix_monitoring_messages_summary_event'}
+            # Indexes owned by later migrations disappear on downgrade to 0039.
+            if name not in {index_name, 'ix_monitoring_messages_summary_event', 'ix_monitoring_messages_handled_by'}
         }
         expected['ix_monitoring_messages_workspace_timestamp'] = ['workspace_uuid', 'timestamp']
         assert remaining == expected
