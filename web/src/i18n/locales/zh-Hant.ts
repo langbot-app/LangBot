@@ -185,6 +185,9 @@ const zhHant = {
       get_pipeline: '查看 流水線',
       get_knowledge_schema: '查看知識引擎設定',
       list_operation_logs: '查詢操作日誌',
+      workspace_search: '搜尋操作能力',
+      workspace_describe: '查看操作定義',
+      workspace_call: '執行工作區操作',
     },
     resources: {
       models: '查詢聊天模型',
@@ -203,6 +206,9 @@ const zhHant = {
     build: '幫我建立一個知識庫問答應用。',
     toolResult: '操作結果',
     review: '請檢查具體操作及參數，確認後執行',
+    dangerousWarning:
+      '敏感操作提示：此操作風險較高，執行後可能無法復原，請核對參數後再確認。',
+    parameters: '參數：',
     confirm: '確認執行',
     decline: '拒絕',
     working: '正在處理…',

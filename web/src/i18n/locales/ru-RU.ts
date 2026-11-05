@@ -196,6 +196,9 @@ const ruRU = {
       get_pipeline: 'Посмотреть Pipeline',
       get_knowledge_schema: 'Посмотреть схему движка знаний',
       list_operation_logs: 'Просмотр журнала операций',
+      workspace_search: 'Поиск возможностей рабочего пространства',
+      workspace_describe: 'Посмотреть описание операции',
+      workspace_call: 'Выполнить операцию рабочего пространства',
     },
     resources: {
       models: 'Найти чат-модели',
@@ -214,6 +217,9 @@ const ruRU = {
     build: 'Помогите создать приложение для ответов на вопросы по базе знаний.',
     toolResult: 'Результат операции',
     review: 'Проверьте точные операции перед выполнением',
+    dangerousWarning:
+      'Чувствительная операция: она связана с высоким риском и может быть необратимой. Внимательно проверьте аргументы перед подтверждением.',
+    parameters: 'Параметры:',
     confirm: 'Подтвердить и выполнить',
     decline: 'Отклонить',
     working: 'Обработка…',
@@ -4029,6 +4035,37 @@ const ruRU = {
     list: 'В том числе: {{items}}',
     listMore: 'В том числе: {{items}} и другие (всего {{count}})',
     listSeparator: ', ',
+  },
+  workspaceOperations: {
+    title: 'Операции рабочего пространства',
+    description:
+      'Настройте операции единого API рабочего пространства, которые может вызывать этот обработчик. Отметка означает разрешение.',
+    scopeHint:
+      'Разрешить этому обработчику вызывать операции единого API рабочего пространства LangBot от своего имени.',
+    searchPlaceholder: 'Поиск по названию, ID или описанию...',
+    selectAll: 'Выбрать все',
+    deselectAll: 'Снять выбор',
+    selectedCount: 'Выбрано: {{count}}',
+    totalCount: 'Всего: {{count}}',
+    noOperations: 'Нет доступных операций рабочего пространства',
+    noSearchResults: 'Подходящие операции не найдены',
+    riskRead: 'Чтение',
+    riskWrite: 'Запись',
+    riskDangerous: 'Опасная',
+    requiresPermission: 'Требуется разрешение: {{permission}}',
+    dangerousConfirmTitle: 'Есть опасные операции рабочего пространства',
+    dangerousConfirmDescription:
+      'Этот обработчик доступен пользователям мессенджеров: любой, кто может писать боту, может запустить эти операции. Сохранить?',
+    dangerousConfirmAction: 'Сохранить',
+    dangerousConfirmCancel: 'Отмена',
+    saveWorkspaceOperations: 'Сохранить операции',
+    saveSuccess: 'Операции рабочего пространства сохранены',
+    saveFailed: 'Не удалось сохранить операции рабочего пространства',
+    configuredCount: 'Настроено операций: {{count}}',
+    expandDomain: 'Развернуть',
+    collapseDomain: 'Свернуть',
+    ungrantableRemoved:
+      'Некоторые операции не выбраны или удалены из-за недостатка прав.',
   },
 };
 export default ruRU;

@@ -195,6 +195,9 @@ const viVN = {
       get_pipeline: 'Xem Pipeline',
       get_knowledge_schema: 'Xem lược đồ knowledge engine',
       list_operation_logs: 'Truy vấn nhật ký thao tác',
+      workspace_search: 'Tìm khả năng của không gian làm việc',
+      workspace_describe: 'Xem định nghĩa thao tác',
+      workspace_call: 'Thực hiện thao tác không gian làm việc',
     },
     resources: {
       models: 'Tìm mô hình trò chuyện',
@@ -213,6 +216,9 @@ const viVN = {
     build: 'Giúp tôi tạo ứng dụng hỏi đáp dựa trên cơ sở tri thức.',
     toolResult: 'Kết quả thao tác',
     review: 'Kiểm tra thao tác và tham số cụ thể trước khi xác nhận',
+    dangerousWarning:
+      'Thao tác nhạy cảm: thao tác này có rủi ro cao và có thể không hoàn tác được. Hãy kiểm tra kỹ tham số trước khi xác nhận.',
+    parameters: 'Tham số:',
     confirm: 'Xác nhận và thực thi',
     decline: 'Từ chối',
     working: 'Đang xử lý…',
@@ -3986,6 +3992,37 @@ const viVN = {
     list: 'Bao gồm: {{items}}',
     listMore: 'Bao gồm: {{items}} và các mục khác ({{count}} mục)',
     listSeparator: ', ',
+  },
+  workspaceOperations: {
+    title: 'Thao tác không gian làm việc',
+    description:
+      'Cấu hình các thao tác API hợp nhất của không gian làm việc mà bộ xử lý này được gọi. Đánh dấu nghĩa là cấp quyền.',
+    scopeHint:
+      'Cho phép bộ xử lý này gọi các thao tác API hợp nhất của không gian làm việc LangBot bằng danh tính của chính nó.',
+    searchPlaceholder: 'Tìm theo tên, ID hoặc mô tả...',
+    selectAll: 'Chọn tất cả',
+    deselectAll: 'Bỏ chọn tất cả',
+    selectedCount: 'Đã chọn {{count}}',
+    totalCount: 'Tổng {{count}}',
+    noOperations: 'Không có thao tác không gian làm việc khả dụng',
+    noSearchResults: 'Không tìm thấy thao tác phù hợp',
+    riskRead: 'Đọc',
+    riskWrite: 'Ghi',
+    riskDangerous: 'Nguy hiểm',
+    requiresPermission: 'Cần quyền: {{permission}}',
+    dangerousConfirmTitle: 'Có thao tác không gian làm việc nguy hiểm',
+    dangerousConfirmDescription:
+      'Bộ xử lý này phục vụ người dùng nhắn tin; bất kỳ ai trò chuyện được với bot đều có thể kích hoạt các thao tác này. Bạn có chắc muốn lưu?',
+    dangerousConfirmAction: 'Xác nhận lưu',
+    dangerousConfirmCancel: 'Hủy',
+    saveWorkspaceOperations: 'Lưu thao tác',
+    saveSuccess: 'Đã lưu thao tác không gian làm việc',
+    saveFailed: 'Lưu thao tác không gian làm việc thất bại',
+    configuredCount: 'Đã cấu hình {{count}} thao tác',
+    expandDomain: 'Mở rộng',
+    collapseDomain: 'Thu gọn',
+    ungrantableRemoved:
+      'Một số thao tác không được chọn hoặc đã bị gỡ do thiếu quyền.',
   },
 };
 export default viVN;

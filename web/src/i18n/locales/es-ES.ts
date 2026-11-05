@@ -196,6 +196,9 @@ const esES = {
       get_pipeline: 'Consultar Pipeline',
       get_knowledge_schema: 'Consultar el esquema del motor de conocimiento',
       list_operation_logs: 'Consultar el registro de operaciones',
+      workspace_search: 'Buscar capacidades del espacio de trabajo',
+      workspace_describe: 'Consultar definición de la operación',
+      workspace_call: 'Ejecutar operación del espacio de trabajo',
     },
     resources: {
       models: 'Buscar modelos de chat',
@@ -216,6 +219,9 @@ const esES = {
       'Ayúdame a crear una aplicación de preguntas y respuestas con base de conocimiento.',
     toolResult: 'Resultado de la operación',
     review: 'Revisa las operaciones exactas antes de ejecutarlas',
+    dangerousWarning:
+      'Operación sensible: esta operación es de alto riesgo y puede ser irreversible. Revisa los argumentos con cuidado antes de confirmar.',
+    parameters: 'Parámetros:',
     confirm: 'Confirmar y ejecutar',
     decline: 'Rechazar',
     working: 'Procesando…',
@@ -4077,6 +4083,38 @@ const esES = {
     list: 'Incluye: {{items}}',
     listMore: 'Incluye: {{items}} y más ({{count}} en total)',
     listSeparator: ', ',
+  },
+  workspaceOperations: {
+    title: 'Operaciones del espacio de trabajo',
+    description:
+      'Configura las operaciones de la API unificada del espacio de trabajo que este procesador puede invocar. Marcar una operación la autoriza.',
+    scopeHint:
+      'Permite que este procesador invoque operaciones de la API unificada del espacio de trabajo de LangBot con su propia identidad.',
+    searchPlaceholder: 'Buscar por nombre, ID o descripción...',
+    selectAll: 'Seleccionar todo',
+    deselectAll: 'Deseleccionar todo',
+    selectedCount: '{{count}} seleccionadas',
+    totalCount: '{{count}} en total',
+    noOperations: 'No hay operaciones del espacio de trabajo disponibles',
+    noSearchResults: 'No se encontraron operaciones',
+    riskRead: 'Lectura',
+    riskWrite: 'Escritura',
+    riskDangerous: 'Peligrosa',
+    requiresPermission: 'Requiere permiso: {{permission}}',
+    dangerousConfirmTitle:
+      'Incluye operaciones peligrosas del espacio de trabajo',
+    dangerousConfirmDescription:
+      'Este procesador atiende a usuarios de mensajería; cualquiera que pueda chatear con el bot podría activar estas operaciones. ¿Seguro que quieres guardar?',
+    dangerousConfirmAction: 'Confirmar y guardar',
+    dangerousConfirmCancel: 'Cancelar',
+    saveWorkspaceOperations: 'Guardar operaciones',
+    saveSuccess: 'Operaciones del espacio de trabajo guardadas',
+    saveFailed: 'No se pudieron guardar las operaciones del espacio de trabajo',
+    configuredCount: '{{count}} operaciones configuradas',
+    expandDomain: 'Expandir',
+    collapseDomain: 'Contraer',
+    ungrantableRemoved:
+      'Algunas operaciones no se seleccionaron o se quitaron por falta de permisos.',
   },
 };
 export default esES;

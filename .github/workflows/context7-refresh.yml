@@ -47,6 +47,12 @@ jobs:
             -H "Authorization: Bearer ${CONTEXT7_API_KEY}" \
             -d "$body")
           cat "$RUNNER_TEMP/refresh.json"
+          # Context7 rate-limits refreshes per library; the next docs push after
+          # the window refreshes again, so a too-early reply is not a failure.
+          if [ "$code" = "400" ] && grep -q '"too-early"' "$RUNNER_TEMP/refresh.json"; then
+            echo "::warning::Context7 refresh skipped: the library was refreshed recently."
+            exit 0
+          fi
           if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
             echo "Context7 refresh failed with HTTP $code" >&2
             exit 1
