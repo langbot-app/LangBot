@@ -1324,6 +1324,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-agent-discord-telegram-slack" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/articles/dify-langbot-github-release-briefing</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/articles/dify-langbot-github-release-briefing</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-github-release-briefing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-github-release-briefing" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/articles/dify-langbot-rag-knowledge-base</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-rag-knowledge-base" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-rag-knowledge-base" />
@@ -1343,6 +1364,48 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-rag-knowledge-base" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-rag-knowledge-base" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-rag-knowledge-base" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/articles/dify-langbot-support-triage</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/articles/dify-langbot-support-triage</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/articles/dify-langbot-support-triage</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-support-triage" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-support-triage" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/articles/dify-langbot-writing-assistant</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/articles/dify-langbot-writing-assistant</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/articles/dify-langbot-writing-assistant</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/dify-langbot-writing-assistant" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/dify-langbot-writing-assistant" />
   </url>
   <url>
     <loc>https://langbot.app/docs/en/articles/langbot-cloud-multi-user-workspaces</loc>
@@ -1406,6 +1469,27 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/langbot-v4100-sandbox-skills" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/langbot-v4100-sandbox-skills" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/langbot-v4100-sandbox-skills" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/articles/langbot-v411-event-driven-agents</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/articles/langbot-v411-event-driven-agents</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/articles/langbot-v411-event-driven-agents" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/langbot-v411-event-driven-agents" />
   </url>
   <url>
     <loc>https://langbot.app/docs/en/articles/langbot-v490-rag-plugin-architecture</loc>
@@ -2185,6 +2269,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/tech-details" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/plugin/dev/apis/workspace</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/plugin/dev/apis/workspace</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/plugin/dev/apis/workspace</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/apis/workspace" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/apis/workspace" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/plugin/dev/basic-info</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/basic-info" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/basic-info" />
@@ -2435,6 +2540,27 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/migration" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/migration" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/migration" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/plugin/dev/permissions</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/permissions" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/plugin/dev/permissions</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/permissions" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/plugin/dev/permissions</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/plugin/dev/permissions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/plugin/dev/permissions" />
   </url>
   <url>
     <loc>https://langbot.app/docs/en/plugin/dev/publish/github</loc>

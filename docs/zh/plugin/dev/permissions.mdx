@@ -1,0 +1,156 @@
+---
+title: 插件权限
+description: 声明插件需要的权限，并了解工作区成员如何授予和撤销这些权限。
+---
+
+插件能做的远不止回复消息：它可以调用模型、读取知识库、通过任意机器人发消息，还能通过[工作区 API](/zh/plugin/dev/apis/workspace) 管理 Agent 和流水线。每个插件安装都运行在某一个工作区里，所以 LangBot 要求插件事先说明自己需要哪些能力，再由工作区成员确认授予。
+
+整个流程分三步：
+
+1. **声明**：插件在 `manifest.yaml` 里列出需要的权限。
+2. **确认**：安装后，成员在插件详情页查看所申请的权限，授予全部或其中一部分。确认之前，插件安装保持停用状态。
+3. **校验**：插件每次调用时，LangBot 都会检查该安装已获得的授权。超出授权范围的调用会返回 `permission_denied`。
+
+声明权限并不等于获得权限，只有成员确认之后才会生效。
+
+## 声明权限
+
+权限属于整个插件，所以写在 `manifest.yaml` 插件级的 `spec` 下，而不是某个组件里。同一份授权适用于插件的所有组件：命令、事件监听器、工具、知识引擎、解析器和运行器。
+
+```yaml
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: acme
+  name: WeeklyReport
+  version: 1.0.0
+spec:
+  permissions:
+    capabilities:
+      - models.invoke      # 调用大模型
+      - bot.message.send   # 把周报发到群里
+      - storage.plugin     # 记录上次发送时间
+    workspace_operations:
+      - stats.basic        # 读取工作区统计数据
+      - knowledge.*        # 所有知识库操作
+  config: []
+  components: {}
+```
+
+两个列表对应两类不同的访问：
+
+- **`capabilities`（插件能力）**：解锁 `self.plugin` 上的常规 SDK 方法，例如 `invoke_llm`、`send_message`、`set_plugin_storage`。全部 16 项见[下表](#插件能力)。
+- **`workspace_operations`（工作区操作）**：解锁[工作区 API](/zh/plugin/dev/apis/workspace) 中的操作。这些操作与 LangBot 的 HTTP API、MCP 服务和工作区助手所用的完全相同，每一项都是一个操作 ID，例如 `pipeline.list`。
+
+只声明插件真正用到的权限。清单越短、越合理，成员越愿意授予；授权范围越小，插件一旦被滥用，造成的影响也越小。
+
+### 严格模式与兼容模式
+
+声明方式决定了插件安装以哪种模式运行：
+
+| manifest 写法 | 模式 | 行为 |
+| --- | --- | --- |
+| `permissions:` 下写了一个或两个列表 | 严格模式 | 成员可以授予全部，也可以只授予一部分。 |
+| `permissions: {}` | 严格模式 | 插件不需要任何全局访问权限。 |
+| 没有 `permissions` 字段 | 兼容模式 | 按旧版插件处理，见[兼容模式](#兼容模式)。 |
+
+新插件都应该声明权限，哪怕是空集合。
+
+### 通配符
+
+工作区操作可以用 `.*` 结尾，一次申请某个前缀下的全部操作，例如 `knowledge.*` 或 `model.llm.*`。成员确认时，LangBot 会把通配符展开为具体的操作 ID 并保存下来。如果以后的 LangBot 版本在这个前缀下新增了操作，新操作不会自动授予，安装会重新进入待确认状态。
+
+有些操作永远不能授予插件：流式操作、只允许其他调用方使用的操作（例如只有登录成员才能调用的操作），以及完全不通过 API 开放的操作。声明这类操作或未知的 ID 会让权限声明无效。通配符同理：只要前缀下包含这类操作，整个通配符就会被拒绝，所以 `bot.*`、`agent.*`、`pipeline.*`、`plugin.*` 和 `monitoring.*` 都不能用，需要逐个列出，或者改用更窄的前缀。
+
+目前可用的通配符：
+
+- 整个领域：`adapter.*`、`extension.*`、`knowledge.*`、`model.*`、`requester.*`、`stats.*`、`tool.*`
+- 更窄的前缀：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`provider.models.*`、`skill.file.*`，以及 `knowledge.` 和 `model.` 下的所有前缀
+
+插件可以申请的全部操作见[工作区 API 操作列表](/zh/plugin/dev/apis/workspace#操作列表)。
+
+## 插件能力
+
+每项能力解锁一组 SDK 方法。确认这项能力的成员需要具备第三列的工作区权限；最后一列说明成员实际批准的是什么。
+
+| 能力 | 解锁的 SDK 方法 | 授予者需要 | 含义 |
+| --- | --- | --- | --- |
+| `langbot.info` | `get_langbot_version` | `resource.view` | 只读 |
+| `bot.read` | `get_bots`、`get_bot_info` | `resource.view` | 只读 |
+| `bot.message.send` | `send_message` | `runtime.operate` | 可以给用户和群组发消息 |
+| `bot.platform_api` | `call_platform_api` | `runtime.operate`、`resource.manage` | **危险**：直接调用 IM 平台原生接口 |
+| `models.read` | `get_llm_models` | `resource.view` | 只读 |
+| `models.invoke` | `invoke_llm`、`invoke_llm_with_usage`、`invoke_llm_stream`、`invoke_llm_stream_events`、`invoke_embedding`、`invoke_rerank` | `runtime.operate` | 消耗模型供应商额度 |
+| `storage.plugin` | `get/set/delete_plugin_storage`、`get_plugin_storage_keys` | `resource.manage` | 读写插件自己的存储 |
+| `storage.workspace` | `get/set/delete_workspace_storage`、`get_workspace_storage_keys` | `resource.manage` | 读写所有插件共享的存储 |
+| `knowledge.read` | `list_knowledge_bases`、`retrieve_knowledge`、`get_knowledge_file_stream` | `resource.view` | 读取知识库 |
+| `knowledge.vector` | `vector_upsert`、`vector_search`、`vector_delete`、`vector_list` | `resource.manage` | 写入向量库 |
+| `knowledge.parser` | `list_parsers`、`invoke_parser` | `runtime.operate` | 运行文档解析器 |
+| `config.read` | `get_config_file` | `resource.view` | 读取上传的配置文件 |
+| `plugin_tools` | 对插件工具调用 `list_tools`、`get_tool_detail`、`call_tool` | `runtime.operate` | 运行其他插件的工具 |
+| `mcp` | 对 MCP 工具调用 `call_tool` | `runtime.operate` | **危险**：运行 MCP 工具 |
+| `sandbox` | `get_box_status`、`list_boxes`、`acquire_box`，以及对沙盒工具调用 `call_tool` | `runtime.operate` | **危险**：在沙盒中执行代码 |
+| `plugin.read` | `list_plugins_manifest`、`list_commands` | `resource.view` | 列出已安装的插件 |
+
+关于工具有两点需要注意。插件调用其他插件的工具时，那个工具按**它自己**安装的授权运行，而不是按你的授权。另外，能力是按工具来源分别检查的：只有 `plugin_tools` 并不能调用 MCP 工具或沙盒工具。
+
+只作用于插件当前正在处理的事件或运行的调用，不需要任何能力。回复触发事件的会话、读取当前请求的变量、使用 LangBot 提供给运行器的工具，这些都由事件或运行本身授权，与安装授权无关。详见 [Agent 运行 API](/zh/plugin/dev/apis/agent-run) 和[流水线事件 API](/zh/plugin/dev/apis/pipeline-events)。
+
+## 确认插件安装
+
+新安装或升级后需要确认的插件，会在插件列表和详情页上显示 **待授权**，并保持停用。成员打开详情页的 **插件权限**，查看所申请的权限，取消勾选不想授予的项，再点 **授权**。确认对话框会单独标出危险能力和发消息能力。
+
+谁可以确认：
+
+- 只有登录 WebUI 的成员（以及支持管理员）可以新增授权。API Key、`lbctl`、处理器、插件和公开机器人都不行。通过 API Key 或 `lbctl` 安装的插件，需要成员之后在 WebUI 中确认。
+- 成员需要 `resource.manage`，以及每项授权各自要求的权限：插件能力看上表，工作区操作看该操作自身的 `permission`。开发者角色拥有 `resource.view`、`resource.manage` 和 `runtime.operate`，因此可以授予所有插件能力；但这并不意味着他们能授予超出自身角色的操作，例如成员管理或 API Key 管理。
+- 只要请求中有一项超出成员的权限上限，整个请求都会以 `permission_denied` 失败，响应中的 `denied_operations` 和 `denied_capabilities` 会列出具体是哪些项。LangBot 不会悄悄丢掉其中一部分。
+
+严格模式下，成员可以只授予插件所声明权限中的任意子集，所以插件应当在缺少某项可选权限时平稳降级。
+
+授权属于插件安装，而不属于某个成员。批准授权的成员之后即使换了角色或离开工作区，授权也依然有效。
+
+### 安装时自动确认
+
+初始化向导和流水线迁移在安装官方插件时，会一并确认它们声明的权限。这一步走的是与手动确认完全相同的检查：调用方必须是成员，并具备所有需要的权限。任何一项检查不通过，插件仍会安装，但保持待授权状态。在 HTTP 接口中，这对应 `POST /api/v1/plugins/install/marketplace` 的 `auto_confirm_permissions: true`；默认值为 `false`，API Key 也无法借此跳过成员确认。
+
+## 撤销与升级
+
+具备 `resource.manage` 的成员可以随时撤销授权：取消勾选后保存即可。撤销不需要确认，也不受权限上限限制。API Key 可以撤销，但永远不能新增。
+
+插件升级时：
+
+- 新版本仍然声明的权限，原有授权保留。
+- 新版本新增的权限保持未授予，直到成员确认；安装会再次显示 **待授权**。
+- 新版本不再声明的权限立即失效。
+
+## 授权与 Agent、流水线设置的关系
+
+在 Agent 或流水线里选择工具，并不会授予任何权限，只是缩小模型能看到的范围。像 LocalAgent 这样的运行器，提供给模型的是两者的交集：Agent（或流水线 **扩展集成** 页面）中选中的工具，与运行器插件安装已获得的操作授权。如果什么都没选，模型就拿不到任何工作区工具。
+
+因此，能编辑 Agent 的成员可以选中一个自己无权授予的工作区操作：除非有足够权限的成员已经把这个操作授予了运行器插件，否则这个选择不会产生任何效果。
+
+## 兼容模式
+
+在插件权限机制出现之前编写的插件没有 `spec.permissions`，LangBot 以兼容模式运行它们：
+
+- 它们获得固定的**全部 16 项旧版插件能力**，**不包含任何工作区操作**。
+- 成员必须一次性确认整组能力，不能只确认其中一部分，因为 manifest 里没有信息能说明哪个子集是安全的。确认之后，成员可以逐项撤销。
+- 确认需要同时具备 `resource.view`、`resource.manage` 和 `runtime.operate`。
+- 以后 LangBot 新增的能力，不会自动加入已经确认过的这组授权。
+
+升级 LangBot 之前就已存在的安装，会在迁移时直接带上这组已确认的授权，并保持原来的启用状态。重新安装兼容模式插件，或者升级这类插件（包括升级到删除了原有权限声明的版本），都会让它停用，直到成员再次确认。
+
+## 处理被拒绝的调用
+
+常规 SDK 方法会抛出错误，错误数据中带有 `code: permission_denied`，必要时还有 `denied_capabilities`。工作区 API 的调用不会抛出异常，而是返回 `{"ok": false, "error": {...}}`，错误码相同。无论哪种情况，都应把权限不足当作正常结果来处理：记录日志、告诉用户缺少哪项权限，然后在没有这项功能的情况下继续运行。
+
+## 通过接口管理权限
+
+WebUI 使用以下接口，你也可以用成员令牌调用：
+
+- `GET /api/v1/plugins/{author}/{plugin_name}/permissions`：返回每一项已声明的权限及其 `granted`、`grantable` 状态，安装是否处于兼容模式或待确认，以及调用者的 `can_manage`、`can_confirm`。工作区操作带有所属的 `domain`，响应中的 `domains` 列出各领域的名称。
+- `PUT /api/v1/plugins/{author}/{plugin_name}/permissions`：接收 `workspace_operations`、`capabilities` 和 `confirm`。`confirm: false` 时，列表必须是当前授权的子集，因此这种形式只能用来撤销；`confirm: true` 时适用上文的完整确认规则。
+- 插件列表和详情接口的返回中包含 `permission_status`，其中有 `compatibility_mode` 和 `pending_confirmation`。
+
+对应的 Application API 操作是 `plugin.permissions.get` 和 `plugin.permissions.update`。LangBot 的 MCP 服务提供 `get_plugin_permissions` 和 `revoke_plugin_permissions`；使用 API Key 认证的 MCP 客户端不能确认新的授权。

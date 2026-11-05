@@ -6,6 +6,8 @@ title: "プラグイン設定情報の完成"
 
 プラグインディレクトリ内の`manifest.yaml`ファイルは、プラグインの基本情報を宣言します。これはLangBot UIまたはプラグインマーケットプレイスのインターフェースに表示されます。
 
+プラグインレベルの `spec.permissions` には、プラグインに必要な機能とワークスペース操作を記載します。インストール後にワークスペースのメンバーが確認します。詳しくは[プラグインの権限](/ja/plugin/dev/permissions)を参照してください。
+
 ```yaml
 apiVersion: v1  # 変更しないでください
 kind: Plugin  # 変更しないでください
@@ -22,6 +24,9 @@ metadata:
     zh_Hans: HelloPlugin
   icon: assets/icon.svg  # プラグインアイコン、デフォルトはassets/icon.svg、さまざまな画像形式に置き換え可能
 spec:
+  permissions:  # プラグインに必要な機能とワークスペース操作。「プラグインの権限」を参照
+    capabilities: []
+    workspace_operations: []
   config: []  # プラグイン設定項目フォーマット
   components: {}  # プラグインコンポーネントリスト、手動で変更する必要はありません
 execution:

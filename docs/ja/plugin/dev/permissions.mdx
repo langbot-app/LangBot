@@ -1,0 +1,156 @@
+---
+title: プラグインの権限
+description: プラグインに必要な権限を宣言し、ワークスペースのメンバーがそれを許可・取り消しする仕組みを理解します。
+---
+
+プラグインはメッセージへの返信だけでなく、モデルの呼び出し、ナレッジベースの読み取り、任意のボットからのメッセージ送信、さらに[ワークスペース API](/ja/plugin/dev/apis/workspace) を通じた Agent やパイプラインの管理まで行えます。プラグインのインストールはそれぞれ 1 つのワークスペースの中で動くため、LangBot はプラグインに必要な機能を事前に宣言させ、ワークスペースのメンバーに承認してもらう仕組みになっています。
+
+流れは次の 3 段階です。
+
+1. **宣言**：プラグインが必要な権限を `manifest.yaml` に記載します。
+2. **確認**：インストール後、メンバーがプラグインの詳細ページで申請内容を確認し、すべて、または一部を許可します。確認されるまで、インストールは無効のままです。
+3. **検証**：プラグインが呼び出しを行うたびに、LangBot はそのインストールに許可された権限を確認します。許可範囲外の呼び出しは `permission_denied` になります。
+
+権限を宣言しただけでは許可されません。メンバーが確認して初めて有効になります。
+
+## 権限を宣言する
+
+権限はプラグイン全体に属するため、コンポーネントの中ではなく `manifest.yaml` のプラグインレベルの `spec` に記載します。同じ許可がコマンド、イベントリスナー、ツール、ナレッジエンジン、パーサー、Runner など、プラグインのすべてのコンポーネントに適用されます。
+
+```yaml
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: acme
+  name: WeeklyReport
+  version: 1.0.0
+spec:
+  permissions:
+    capabilities:
+      - models.invoke      # LLM を呼び出す
+      - bot.message.send   # レポートをグループに送信する
+      - storage.plugin     # 前回の送信日時を記録する
+    workspace_operations:
+      - stats.basic        # ワークスペースの統計を読み取る
+      - knowledge.*        # ナレッジベースのすべての操作
+  config: []
+  components: {}
+```
+
+2 つのリストはそれぞれ異なる種類のアクセスを表します。
+
+- **`capabilities`（機能）**：`self.plugin` にある従来の SDK メソッド（`invoke_llm`、`send_message`、`set_plugin_storage` など）を利用可能にします。全 16 項目は[下の表](#機能)を参照してください。
+- **`workspace_operations`（ワークスペース操作）**：[ワークスペース API](/ja/plugin/dev/apis/workspace) の操作を利用可能にします。LangBot の HTTP API、MCP サーバー、ワークスペースアシスタントが使うものと同じ操作で、各項目は `pipeline.list` のような操作 ID です。
+
+実際に使う権限だけを宣言してください。短く妥当なリストほどメンバーに承認されやすく、許可範囲が小さいほど万一プラグインが悪用されたときの影響も小さくなります。
+
+### 厳格モードと互換モード
+
+宣言の仕方によって、インストールがどのモードで動くかが決まります。
+
+| マニフェストの書き方 | モード | 動作 |
+| --- | --- | --- |
+| `permissions:` に一方または両方のリストを記載 | 厳格モード | メンバーはすべて、または一部だけを許可できます。 |
+| `permissions: {}` | 厳格モード | グローバルなアクセスを一切必要としません。 |
+| `permissions` フィールドなし | 互換モード | 旧来のプラグインとして扱われます。[互換モード](#互換モード)を参照してください。 |
+
+新しいプラグインでは、空であっても必ず権限を宣言してください。
+
+### ワイルドカード
+
+ワークスペース操作は `.*` で終えることで、あるプレフィックス配下の操作をまとめて申請できます（例：`knowledge.*`、`model.llm.*`）。メンバーが確認すると、LangBot はワイルドカードを具体的な操作 ID に展開して保存します。後の LangBot バージョンでそのプレフィックスに操作が追加されても自動では許可されず、インストールは再び確認待ちになります。
+
+プラグインには決して許可できない操作もあります。ストリーミング操作、他の呼び出し元専用の操作（ログインしたメンバーだけが呼び出せる操作など）、そもそも API として公開されていない操作です。これらや未知の ID を宣言すると、権限の宣言は無効になります。ワイルドカードも同様で、プレフィックス配下にこうした操作が含まれていると全体が拒否されます。そのため `bot.*`、`agent.*`、`pipeline.*`、`plugin.*`、`monitoring.*` は使えません。個別に列挙するか、より狭いプレフィックスを使ってください。
+
+現在使えるワイルドカード：
+
+- ドメイン全体：`adapter.*`、`extension.*`、`knowledge.*`、`model.*`、`requester.*`、`stats.*`、`tool.*`
+- より狭いプレフィックス：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`provider.models.*`、`skill.file.*`、および `knowledge.` と `model.` 配下のすべてのプレフィックス
+
+プラグインが申請できるすべての操作は[ワークスペース API の操作一覧](/ja/plugin/dev/apis/workspace#操作一覧)にあります。
+
+## 機能
+
+各機能は一連の SDK メソッドを利用可能にします。その機能を確認するメンバーには 3 列目のワークスペース権限が必要です。最後の列は、メンバーが何を承認することになるかを示しています。
+
+| 機能 | 利用可能になる SDK メソッド | 付与するメンバーに必要な権限 | 意味 |
+| --- | --- | --- | --- |
+| `langbot.info` | `get_langbot_version` | `resource.view` | 読み取りのみ |
+| `bot.read` | `get_bots`、`get_bot_info` | `resource.view` | 読み取りのみ |
+| `bot.message.send` | `send_message` | `runtime.operate` | ユーザーやグループにメッセージを送信 |
+| `bot.platform_api` | `call_platform_api` | `runtime.operate`、`resource.manage` | **危険**：IM プラットフォームのネイティブ API を直接呼び出し |
+| `models.read` | `get_llm_models` | `resource.view` | 読み取りのみ |
+| `models.invoke` | `invoke_llm`、`invoke_llm_with_usage`、`invoke_llm_stream`、`invoke_llm_stream_events`、`invoke_embedding`、`invoke_rerank` | `runtime.operate` | モデルプロバイダーの利用枠を消費 |
+| `storage.plugin` | `get/set/delete_plugin_storage`、`get_plugin_storage_keys` | `resource.manage` | プラグイン専用ストレージの読み書き |
+| `storage.workspace` | `get/set/delete_workspace_storage`、`get_workspace_storage_keys` | `resource.manage` | 全プラグイン共有ストレージの読み書き |
+| `knowledge.read` | `list_knowledge_bases`、`retrieve_knowledge`、`get_knowledge_file_stream` | `resource.view` | ナレッジベースの読み取り |
+| `knowledge.vector` | `vector_upsert`、`vector_search`、`vector_delete`、`vector_list` | `resource.manage` | ベクトルストアへの書き込み |
+| `knowledge.parser` | `list_parsers`、`invoke_parser` | `runtime.operate` | ドキュメントパーサーの実行 |
+| `config.read` | `get_config_file` | `resource.view` | アップロードされた設定ファイルの読み取り |
+| `plugin_tools` | プラグインのツールに対する `list_tools`、`get_tool_detail`、`call_tool` | `runtime.operate` | 他のプラグインのツールを実行 |
+| `mcp` | MCP ツールに対する `call_tool` | `runtime.operate` | **危険**：MCP ツールを実行 |
+| `sandbox` | `get_box_status`、`list_boxes`、`acquire_box`、およびサンドボックスツールに対する `call_tool` | `runtime.operate` | **危険**：サンドボックスでコードを実行 |
+| `plugin.read` | `list_plugins_manifest`、`list_commands` | `resource.view` | インストール済みプラグインの一覧 |
+
+ツールについて 2 点注意があります。プラグインが他のプラグインのツールを呼び出すと、そのツールはあなたの許可ではなく、**呼び出された側**のインストールの許可で実行されます。また、機能はツールの提供元ごとに確認されるため、`plugin_tools` だけでは MCP ツールやサンドボックスツールは呼び出せません。
+
+プラグインが現在処理しているイベントや実行だけに作用する呼び出しには、機能は必要ありません。発生元の会話への返信、現在のクエリ変数の読み取り、LangBot が Runner に提供するツールの利用は、インストールの許可ではなく、そのイベントや実行自体によって認可されます。詳しくは [Agent 実行 API](/ja/plugin/dev/apis/agent-run) と[パイプラインイベント API](/ja/plugin/dev/apis/pipeline-events) を参照してください。
+
+## インストールを確認する
+
+新しくインストールされたプラグインや、アップグレード後に確認が必要なプラグインは、プラグイン一覧と詳細ページに **承認待ち** と表示され、無効のままになります。メンバーは詳細ページの **プラグイン権限** を開き、申請内容を確認して、許可したくない項目のチェックを外してから **許可** を選択します。確認ダイアログでは、危険な機能とメッセージ送信機能が強調表示されます。
+
+確認できる人：
+
+- 新たに許可を追加できるのは、WebUI にログインしたメンバー（およびサポート管理者）だけです。API キー、`lbctl`、プロセッサー、プラグイン、公開ボットはできません。API キーや `lbctl` でインストールしたプラグインは、あとでメンバーが WebUI で確認する必要があります。
+- メンバーには `resource.manage` と、各許可が要求する権限が必要です。機能は上の表、ワークスペース操作はその操作の `permission` を見てください。開発者ロールは `resource.view`、`resource.manage`、`runtime.operate` を持つため、すべての機能を許可できます。ただし、メンバー管理や API キー管理など、自分のロールを超える操作を許可できるわけではありません。
+- 申請の中に 1 つでもメンバーの権限を超える項目があると、リクエスト全体が `permission_denied` で失敗し、レスポンスの `denied_operations` と `denied_capabilities` に該当項目が示されます。LangBot が一部だけを黙って捨てることはありません。
+
+厳格モードでは、メンバーは宣言された権限の任意の一部だけを許可できます。任意の権限が欠けていても、プラグインが穏やかに機能を縮退できるようにしてください。
+
+許可はメンバーではなくインストールに属します。承認したメンバーが後でロールを変えたりワークスペースを離れたりしても、許可は有効なままです。
+
+### インストール時の自動確認
+
+セットアップウィザードとパイプラインの移行では、公式プラグインのインストールと同時に、宣言された権限も確認されます。この処理は手動の確認とまったく同じチェックを通ります。呼び出し元はメンバーであり、必要な権限をすべて持っている必要があります。いずれかのチェックに失敗した場合、プラグインはインストールされますが承認待ちのままです。HTTP では `POST /api/v1/plugins/install/marketplace` の `auto_confirm_permissions: true` に相当します。既定値は `false` で、API キーがこれを使ってメンバーの確認を回避することはできません。
+
+## 取り消しとアップグレード
+
+`resource.manage` を持つメンバーは、チェックを外して保存するだけでいつでも許可を取り消せます。取り消しには確認も権限の上限も必要ありません。API キーは取り消しはできますが、追加はできません。
+
+プラグインをアップグレードすると：
+
+- 新しいバージョンでも宣言されている権限は、既存の許可がそのまま残ります。
+- 新しいバージョンで追加された権限は、メンバーが確認するまで許可されず、インストールは再び **承認待ち** になります。
+- 新しいバージョンで宣言されなくなった権限は、すぐに無効になります。
+
+## Agent やパイプラインの設定との関係
+
+Agent やパイプラインでツールを選んでも、何かが許可されるわけではありません。モデルに見せる範囲を絞るだけです。LocalAgent のような Runner がモデルに提供するのは、Agent（またはパイプラインの **プラグイン統合** ページ）で選択されたツールと、Runner プラグインのインストールに許可された操作の共通部分です。何も選択していなければ、モデルにはワークスペースのツールが一切提供されません。
+
+そのため、Agent を編集できるメンバーは、自分では許可できないワークスペース操作を選択することもできます。十分な権限を持つメンバーがその操作を Runner プラグインに許可していない限り、その選択は何の効果も持ちません。
+
+## 互換モード
+
+プラグインの権限の仕組みができる前に作られたプラグインには `spec.permissions` がありません。LangBot はこれらを互換モードで実行します。
+
+- **従来の 16 項目すべての機能**が固定のセットとして与えられ、**ワークスペース操作は含まれません**。
+- メンバーはセット全体を一度に確認する必要があり、一部だけの確認はできません。マニフェストからはどの部分が安全かを判断できないためです。確認後は、個々の機能を取り消せます。
+- 確認には `resource.view`、`resource.manage`、`runtime.operate` のすべてが必要です。
+- 将来の LangBot で追加される機能は、すでに確認されたセットには自動では加わりません。
+
+LangBot のアップグレード前から存在していたインストールは、このセットが確認済みの状態で移行され、有効・無効の状態もそのまま保たれます。互換モードのプラグインを新しくインストールしたり、アップグレードしたり（以前の宣言を削除したバージョンへのアップグレードを含む）すると、メンバーが再び確認するまで無効になります。
+
+## 拒否された呼び出しへの対応
+
+従来の SDK メソッドはエラーを送出し、そのデータには `code: permission_denied` と、必要に応じて `denied_capabilities` が含まれます。ワークスペース API の呼び出しは例外を送出せず、同じエラーコードで `{"ok": false, "error": {...}}` を返します。どちらの場合も、権限不足は通常の結果として扱ってください。ログに記録し、どの権限が足りないかをユーザーに伝え、その機能なしで処理を続けます。
+
+## API で権限を管理する
+
+WebUI は次のエンドポイントを使っており、メンバーのトークンで呼び出すこともできます。
+
+- `GET /api/v1/plugins/{author}/{plugin_name}/permissions`：宣言された各項目の `granted` と `grantable`、インストールが互換モードか承認待ちか、そして呼び出し元の `can_manage` と `can_confirm` を返します。ワークスペース操作には所属する `domain` が付き、レスポンスの `domains` に各ドメインの名前が含まれます。
+- `PUT /api/v1/plugins/{author}/{plugin_name}/permissions`：`workspace_operations`、`capabilities`、`confirm` を受け取ります。`confirm: false` のときはリストが現在の許可の部分集合である必要があるため、この形式では取り消ししかできません。`confirm: true` のときは上で説明した確認のルールがすべて適用されます。
+- プラグインの一覧・詳細のレスポンスには、`compatibility_mode` と `pending_confirmation` を含む `permission_status` があります。
+
+対応する Application API の操作は `plugin.permissions.get` と `plugin.permissions.update` です。LangBot の MCP サーバーは `get_plugin_permissions` と `revoke_plugin_permissions` を提供しています。API キーで認証された MCP クライアントは新しい許可を確認できません。

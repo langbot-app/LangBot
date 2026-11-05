@@ -1,0 +1,290 @@
+---
+title: Workspace API
+description: Read and manage Agents, Pipelines, bots, models, knowledge bases and more from a plugin.
+---
+
+The Workspace API lets a plugin work with the Workspace it is installed in: list and edit Agents and Pipelines, look up bots, manage models and knowledge bases, read monitoring data, and so on. It exposes the same operations as LangBot's HTTP API, MCP server and Workspace assistant, so a plugin can automate anything a member could do through those interfaces, within the limits the member grants.
+
+Every operation has a stable ID, such as `pipeline.list` or `knowledge.base.retrieve`. A plugin can only call operations it [declares in its manifest](/en/plugin/dev/permissions#declare-permissions) and a member has granted to its installation.
+
+## Calling an operation
+
+From any component, use `self.plugin.workspace`. Each operation has a typed method named after its ID:
+
+```python
+from langbot_plugin.api.definition.components.tool.tool import Tool
+
+
+class WorkspaceSummary(Tool):
+    async def call(self, params, session, query_id):
+        result = await self.plugin.workspace.pipeline.list()
+        if not result["ok"]:
+            return f"Could not list pipelines: {result['error']['message']}"
+
+        names = [pipeline["name"] for pipeline in result["result"]]
+        return "Pipelines: " + ", ".join(names)
+```
+
+Methods take keyword arguments that match the operation's input schema, and editors show their types and documentation. A few names are adjusted to be valid Python: a segment that is a Python keyword gets a trailing underscore (for example `import_`), and other invalid characters become underscores. The arguments are still sent under their original names.
+
+If you prefer to choose the operation at runtime, call it by ID. Both forms behave identically:
+
+```python
+result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_uuid, query="refund policy")
+```
+
+`await self.plugin.workspace.list()` returns the operations granted to the installation, with their input schemas, grouped into `domains`. It is useful for building a dynamic tool list or checking a grant before offering a feature.
+
+### Inside a Runner
+
+A Runner receives a run-bound proxy as `ctx.api.workspace`. It offers the same methods and is authorized by the same installation grants; the difference is that LangBot records each call against the current run.
+
+The Agent or Pipeline that started the run may restrict which workspace operations the model should see. That selection is delivered in `ctx.resources.workspace_operations`. A Runner that exposes workspace operations to a model as tools should offer only those, and offer none when the list is empty. LangBot's built-in LocalAgent does exactly this.
+
+## Results and errors
+
+Workspace calls never raise for business errors. They always return a dictionary:
+
+```python
+# Success
+{"ok": True, "result": ..., "operation": {"id": "pipeline.list", ...}}
+
+# Failure
+{"ok": False, "error": {"code": "permission_denied", "message": "...", "details": {...}}}
+```
+
+Check `ok` before reading `result`. Common error codes:
+
+| Code | Meaning |
+| --- | --- |
+| `permission_denied` | The operation is not granted to this installation, or the installation is disabled. `details.denied_operations` lists the missing IDs. |
+| `invalid_input` | The arguments do not match the operation's input schema. |
+| `not_found` | The referenced resource does not exist in this Workspace. |
+| `application_error` | The operation ran and failed; `message` explains why. |
+
+A denied operation is an expected outcome, because members may grant only part of what a plugin declares. Handle it by explaining what is missing rather than failing the whole command or run.
+
+## Choosing operations to declare
+
+Operations carry a risk level that the member sees when confirming:
+
+- **Read** operations only return data, such as `pipeline.list` or `stats.basic`.
+- **Write** operations change Workspace configuration, such as `pipeline.update` or `knowledge.file.store`.
+- **High-risk** operations delete resources, reach outside LangBot, or consume significant resources, such as `bot.delete` or `pipeline.chat.broadcast`. The confirmation dialog highlights them.
+
+The member who grants an operation must hold its permission themselves (the last column below). Ask only for what your plugin needs; a request for many high-risk operations is likely to be declined or trimmed.
+
+Wildcards such as `knowledge.*` request every operation under a prefix. Not every prefix can be used this way; see [Wildcards](/en/plugin/dev/permissions#wildcards).
+
+## Operation reference
+
+This reference covers every operation a plugin can request in the current LangBot version, grouped by domain. Methods are shown on `workspace`, which is `self.plugin.workspace` in components and `ctx.api.workspace` in a Runner. The SDK's typed methods are generated from this catalog, so every operation listed here is available as a method.
+
+### Adapter (`adapter`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Adapter<br/>Get configuration schema and requirements for an adapter. | `adapter.get`<br/>`workspace.adapter.get()` | Read | `resource.view` |
+| List Adapters<br/>List available chat platform adapters in the workspace. | `adapter.list`<br/>`workspace.adapter.list()` | Read | `resource.view` |
+
+### Agent (`agent`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Create Agent<br/>Create a new autonomous AI agent in the workspace. | `agent.create`<br/>`workspace.agent.create()` | Write | `resource.manage` |
+| Debug Agent<br/>Execute a test turn on an agent for debugging purposes. | `agent.debug`<br/>`workspace.agent.debug()` | Write | `runtime.operate` |
+| Delete Agent<br/>Delete an autonomous AI agent from the workspace. | `agent.delete`<br/>`workspace.agent.delete()` | High risk | `resource.manage` |
+| Get Agent<br/>Get full configuration and parameters for an AI agent. | `agent.get`<br/>`workspace.agent.get()` | Read | `resource.view` |
+| List Agents<br/>List all autonomous AI agents configured in the workspace. | `agent.list`<br/>`workspace.agent.list()` | Read | `resource.view` |
+| Agent Metadata<br/>Get supported agent capabilities, model types, and schemas. | `agent.metadata`<br/>`workspace.agent.metadata()` | Read | `resource.view` |
+| Get Run Events<br/>Fetch step-by-step trace events for an agent execution run. | `agent.runs.events`<br/>`workspace.agent.runs.events()` | Read | `resource.view` |
+| List Agent Runs<br/>List historical execution runs for an agent or processor. | `agent.runs.list`<br/>`workspace.agent.runs.list()` | Read | `resource.view` |
+| Update Agent<br/>Update configuration, model, or prompts of an agent. | `agent.update`<br/>`workspace.agent.update()` | Write | `resource.manage` |
+
+### Bot (`bot`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| List Bot Admins<br/>List platform users configured as administrators for a bot. | `bot.admins.list`<br/>`workspace.bot.admins.list()` | Read | `resource.view` |
+| Create Bot<br/>Create a new chat bot connected to an IM adapter. | `bot.create`<br/>`workspace.bot.create()` | Write | `resource.manage` |
+| Delete Bot<br/>Delete a chat bot and remove its adapter connection. | `bot.delete`<br/>`workspace.bot.delete()` | High risk | `resource.manage` |
+| Get Bot<br/>Get detailed configuration and status for a specific bot. | `bot.get`<br/>`workspace.bot.get()` | Read | `resource.view` |
+| Apply Group Filter<br/>Apply group filtering rules to enable or disable pipelines. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | Write | `resource.manage` |
+| Preview Group Filter<br/>Preview chat group filtering rules for a bot. | `bot.group_filter.preview`<br/>`workspace.bot.group_filter.preview()` | Read | `resource.manage` |
+| List Bots<br/>List all configured chat bots in the workspace. | `bot.list`<br/>`workspace.bot.list()` | Read | `resource.view` |
+| Bot Logs<br/>Fetch runtime connection logs and events for a bot. | `bot.logs`<br/>`workspace.bot.logs()` | Read | `resource.view` |
+| Send Bot Message<br/>Send an outbound message to a chat user or group via a bot. | `bot.message.send`<br/>`workspace.bot.message.send()` | High risk | `runtime.operate` |
+| Test Bot Message<br/>Test bot messaging capability by sending a test message. | `bot.message.test`<br/>`workspace.bot.message.test()` | Write | `resource.manage` |
+| Preview Routes<br/>Preview message routing decisions for a simulated event. | `bot.routes.preview`<br/>`workspace.bot.routes.preview()` | Read | `resource.manage` |
+| Routing Status<br/>Get active message routing bindings and rules for a bot. | `bot.routes.status`<br/>`workspace.bot.routes.status()` | Read | `resource.view` |
+| Bot Runtime Status<br/>Inspect live connection state and health of a bot. | `bot.runtime.get`<br/>`workspace.bot.runtime.get()` | Read | `resource.view` |
+| Update Bot<br/>Update settings or pipeline bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | Write | `resource.manage` |
+
+### Extension (`extension`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| List All Extensions<br/>List all available plugins, MCP servers, and skills combined. | `extension.list`<br/>`workspace.extension.list()` | Read | `resource.view` |
+
+### Knowledge Base (`knowledge`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Create Knowledge Base<br/>Create a new knowledge base with storage and vector engine. | `knowledge.base.create`<br/>`workspace.knowledge.base.create()` | Write | `resource.manage` |
+| Delete Knowledge Base<br/>Permanently delete a knowledge base and indexed documents. | `knowledge.base.delete`<br/>`workspace.knowledge.base.delete()` | High risk | `resource.manage` |
+| Get Knowledge Base<br/>Get configuration and indexing status of a knowledge base. | `knowledge.base.get`<br/>`workspace.knowledge.base.get()` | Read | `resource.view` |
+| List Knowledge Bases<br/>List all knowledge bases configured in the workspace. | `knowledge.base.list`<br/>`workspace.knowledge.base.list()` | Read | `resource.view` |
+| Retrieve Knowledge Chunks<br/>Search and retrieve relevant text chunks from knowledge base. | `knowledge.base.retrieve`<br/>`workspace.knowledge.base.retrieve()` | Read | `resource.view` |
+| Update Knowledge Base<br/>Update configuration or description of a knowledge base. | `knowledge.base.update`<br/>`workspace.knowledge.base.update()` | Write | `resource.manage` |
+| Engine Creation Schema<br/>Get configuration schema required to create an engine. | `knowledge.engine.creation_schema`<br/>`workspace.knowledge.engine.creation_schema()` | Read | `resource.view` |
+| List Knowledge Engines<br/>List available storage and vector retrieval engine types. | `knowledge.engine.list`<br/>`workspace.knowledge.engine.list()` | Read | `resource.view` |
+| Engine Retrieval Schema<br/>Get parameter schema for retrieving from an engine. | `knowledge.engine.retrieval_schema`<br/>`workspace.knowledge.engine.retrieval_schema()` | Read | `resource.view` |
+| Delete Knowledge File<br/>Delete an indexed document from a knowledge base. | `knowledge.file.delete`<br/>`workspace.knowledge.file.delete()` | High risk | `resource.manage` |
+| List Knowledge Files<br/>List all documents indexed within a knowledge base. | `knowledge.file.list`<br/>`workspace.knowledge.file.list()` | Read | `resource.view` |
+| Store Knowledge File<br/>Index and store a document into a knowledge base. | `knowledge.file.store`<br/>`workspace.knowledge.file.store()` | Write | `resource.manage` |
+| List Document Parsers<br/>List supported document parser formats and capabilities. | `knowledge.parser.list`<br/>`workspace.knowledge.parser.list()` | Read | `resource.view` |
+
+### MCP (`mcp`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| List MCP Resources<br/>List all resources exposed by connected MCP servers. | `mcp.resource.list`<br/>`workspace.mcp.resource.list()` | Read | `resource.view` |
+| Read MCP Resource<br/>Read contents of a specific resource from an MCP server. | `mcp.resource.read`<br/>`workspace.mcp.resource.read()` | Read | `resource.view` |
+| List MCP Resource Templates<br/>List parameterized resource URI templates from MCP servers. | `mcp.resource.templates`<br/>`workspace.mcp.resource.templates()` | Read | `resource.view` |
+| Delete MCP Server<br/>Disconnect and delete an MCP server from the workspace. | `mcp.server.delete`<br/>`workspace.mcp.server.delete()` | High risk | `resource.manage` |
+| Get MCP Server<br/>Get configuration and parameters of a specific MCP server. | `mcp.server.get`<br/>`workspace.mcp.server.get()` | Read | `resource.view` |
+| List MCP Servers<br/>List configured Model Context Protocol (MCP) servers. | `mcp.server.list`<br/>`workspace.mcp.server.list()` | Read | `resource.view` |
+| MCP Server Logs<br/>Retrieve communication and error logs for an MCP server. | `mcp.server.logs`<br/>`workspace.mcp.server.logs()` | Read | `audit.view` |
+| MCP Server Runtime<br/>Inspect live health and session state of an MCP server. | `mcp.server.runtime`<br/>`workspace.mcp.server.runtime()` | Read | `resource.view` |
+| Test MCP Server Connection<br/>Test connectivity and ping an MCP server configuration. | `mcp.server.test`<br/>`workspace.mcp.server.test()` | Write | `resource.manage` |
+
+### Model (`model`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Create Embedding Model<br/>Configure and add a new embedding model to the workspace. | `model.embedding.create`<br/>`workspace.model.embedding.create()` | Write | `provider_secret.manage` |
+| Delete Embedding Model<br/>Delete an embedding model configuration from the workspace. | `model.embedding.delete`<br/>`workspace.model.embedding.delete()` | High risk | `resource.manage` |
+| Get Embedding Model<br/>Get configuration and parameters of an embedding model. | `model.embedding.get`<br/>`workspace.model.embedding.get()` | Read | `resource.view` |
+| List Embedding Models<br/>List all text embedding models configured in the workspace. | `model.embedding.list`<br/>`workspace.model.embedding.list()` | Read | `resource.view` |
+| List Embeddings by Provider<br/>List embedding models configured under a specific provider. | `model.embedding.list_by_provider`<br/>`workspace.model.embedding.list_by_provider()` | Read | `resource.view` |
+| Test Embedding Model<br/>Test vector generation and connectivity for embedding model. | `model.embedding.test`<br/>`workspace.model.embedding.test()` | Write | `provider_secret.manage` |
+| Update Embedding Model<br/>Update configuration and parameters of an embedding model. | `model.embedding.update`<br/>`workspace.model.embedding.update()` | Write | `provider_secret.manage` |
+| Create LLM Model<br/>Configure and add a new LLM model to the workspace. | `model.llm.create`<br/>`workspace.model.llm.create()` | Write | `provider_secret.manage` |
+| Get Default LLM Model<br/>Get workspace default large language model configuration. | `model.llm.default.get`<br/>`workspace.model.llm.default.get()` | Read | `resource.manage` |
+| Delete LLM Model<br/>Delete an LLM model configuration from the workspace. | `model.llm.delete`<br/>`workspace.model.llm.delete()` | High risk | `resource.manage` |
+| Get LLM Model<br/>Get configuration and parameters of a specific LLM model. | `model.llm.get`<br/>`workspace.model.llm.get()` | Read | `resource.view` |
+| List LLM Models<br/>List all configured large language models in the workspace. | `model.llm.list`<br/>`workspace.model.llm.list()` | Read | `resource.view` |
+| List LLMs by Provider<br/>List LLM models configured under a specific model provider. | `model.llm.list_by_provider`<br/>`workspace.model.llm.list_by_provider()` | Read | `resource.view` |
+| Get Starred LLM Model<br/>Get the starred favorite LLM model of the workspace. | `model.llm.starred.get`<br/>`workspace.model.llm.starred.get()` | Read | `resource.view` |
+| Set Starred LLM Model<br/>Designate a specific LLM model as the starred favorite. | `model.llm.starred.set`<br/>`workspace.model.llm.starred.set()` | Write | `provider_secret.manage` |
+| Test LLM Model<br/>Test connectivity and response generation for an LLM model. | `model.llm.test`<br/>`workspace.model.llm.test()` | Write | `provider_secret.manage` |
+| Update LLM Model<br/>Update configuration and parameters of an LLM model. | `model.llm.update`<br/>`workspace.model.llm.update()` | Write | `provider_secret.manage` |
+| Create Rerank Model<br/>Configure and add a new rerank model to the workspace. | `model.rerank.create`<br/>`workspace.model.rerank.create()` | Write | `provider_secret.manage` |
+| Delete Rerank Model<br/>Delete a rerank model configuration from the workspace. | `model.rerank.delete`<br/>`workspace.model.rerank.delete()` | High risk | `resource.manage` |
+| Get Rerank Model<br/>Get configuration and parameters of a rerank model. | `model.rerank.get`<br/>`workspace.model.rerank.get()` | Read | `resource.view` |
+| List Rerank Models<br/>List all document reranking models in the workspace. | `model.rerank.list`<br/>`workspace.model.rerank.list()` | Read | `resource.view` |
+| List Reranks by Provider<br/>List rerank models configured under a specific provider. | `model.rerank.list_by_provider`<br/>`workspace.model.rerank.list_by_provider()` | Read | `resource.view` |
+| Test Rerank Model<br/>Test connectivity and scoring capability of a rerank model. | `model.rerank.test`<br/>`workspace.model.rerank.test()` | Write | `provider_secret.manage` |
+| Update Rerank Model<br/>Update configuration and parameters of a rerank model. | `model.rerank.update`<br/>`workspace.model.rerank.update()` | Write | `provider_secret.manage` |
+
+### Monitoring (`monitoring`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Embedding Call Metrics<br/>Query embedding generation metrics and latency statistics. | `monitoring.embedding_calls`<br/>`workspace.monitoring.embedding_calls()` | Read | `resource.view` |
+| Error Logs<br/>Query runtime errors and failures across bots and pipelines. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | Read | `resource.view` |
+| Execution Details<br/>Get detailed traces and step execution events for a specific execution. | `monitoring.execution.detail`<br/>`workspace.monitoring.execution.detail()` | Read | `resource.view` |
+| List Executions<br/>Query execution history records across bots, pipelines, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | Read | `resource.view` |
+| List User Feedback<br/>List user ratings and feedback records on bot responses. | `monitoring.feedback.list`<br/>`workspace.monitoring.feedback.list()` | Read | `resource.view` |
+| Feedback Statistics<br/>Get aggregated positive and negative user feedback metrics. | `monitoring.feedback.stats`<br/>`workspace.monitoring.feedback.stats()` | Read | `resource.view` |
+| In-Flight Executions<br/>Inspect currently active in-flight requests and pipeline runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | Read | `resource.view` |
+| LLM Call Metrics<br/>Query model invocation counts, latencies, and token stats. | `monitoring.llm_calls`<br/>`workspace.monitoring.llm_calls()` | Read | `resource.view` |
+| Message Details<br/>Retrieve full metadata and trace details for a single message. | `monitoring.message.detail`<br/>`workspace.monitoring.message.detail()` | Read | `resource.view` |
+| Query Messages<br/>Query processed chat messages across bot sessions. | `monitoring.messages`<br/>`workspace.monitoring.messages()` | Read | `resource.view` |
+| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and pipelines. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | Read | `resource.view` |
+| Session Analysis<br/>Analyze session metrics, duration, and token usage for a session. | `monitoring.session.analysis`<br/>`workspace.monitoring.session.analysis()` | Read | `resource.view` |
+| Reset Session<br/>Reset a chat session and clear its context window. | `monitoring.session.reset`<br/>`workspace.monitoring.session.reset()` | High risk | `resource.manage` |
+| List Sessions<br/>List active and historical chat sessions across bots. | `monitoring.sessions`<br/>`workspace.monitoring.sessions()` | Read | `resource.view` |
+| Token Usage Statistics<br/>Query token consumption metrics aggregated by time buckets. | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | Read | `resource.view` |
+| Tool Call Metrics<br/>Query tool invocation history and execution performance. | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | Read | `resource.view` |
+
+### Pipeline (`pipeline`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Broadcast Chat Message<br/>Broadcast a message to all active pipeline chat clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | High risk | `runtime.operate` |
+| Pipeline Connections<br/>Inspect live websocket connection status for pipeline chat. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | Read | `runtime.operate` |
+| Pipeline Chat History<br/>Retrieve debug chat message history for a pipeline session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | Read | `runtime.operate` |
+| Reset Chat Session<br/>Clear memory and chat history for a pipeline debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | High risk | `runtime.operate` |
+| Copy Pipeline<br/>Duplicate an existing pipeline to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | Write | `resource.manage` |
+| Create Pipeline<br/>Create a new processing pipeline in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | Write | `resource.manage` |
+| Pipeline Defaults<br/>Get template defaults and initial values for new pipelines. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | Read | `resource.view` |
+| Delete Pipeline<br/>Permanently delete a pipeline from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | High risk | `resource.manage` |
+| Get Pipeline Extensions<br/>Get bound plugins, MCP servers, and tools for a pipeline. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | Read | `resource.view` |
+| Update Pipeline Extensions<br/>Update bound plugins, MCP servers, and tools on a pipeline. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | Write | `resource.manage` |
+| Get Pipeline<br/>Get complete definition and node graph of a pipeline. | `pipeline.get`<br/>`workspace.pipeline.get()` | Read | `resource.view` |
+| List Pipelines<br/>List all message processing pipelines in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | Read | `resource.view` |
+| Pipeline Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | Read | `resource.view` |
+| Run Pipeline<br/>Execute a pipeline run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | Write | `runtime.operate` |
+| Update Pipeline<br/>Update topology, nodes, or settings of a pipeline. | `pipeline.update`<br/>`workspace.pipeline.update()` | Write | `resource.manage` |
+
+### Plugin (`plugin`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Plugin Config<br/>Get configured parameters and settings for a plugin. | `plugin.config.get`<br/>`workspace.plugin.config.get()` | Read | `resource.view` |
+| Plugin Debug Info<br/>Inspect internal plugin runtime process state and memory. | `plugin.debug_info`<br/>`workspace.plugin.debug_info()` | Read | `resource.manage` |
+| Get Plugin<br/>Get detailed metadata and manifest for an installed plugin. | `plugin.get`<br/>`workspace.plugin.get()` | Read | `resource.view` |
+| Plugin GitHub Assets<br/>List downloadable asset files for a GitHub release. | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | Read | `resource.view` |
+| Plugin GitHub Releases<br/>List releases of a plugin repository hosted on GitHub. | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | Read | `resource.view` |
+| List Plugins<br/>List all installed plugins and their running status. | `plugin.list`<br/>`workspace.plugin.list()` | Read | `resource.view` |
+| Plugin Logs<br/>Fetch runtime logs and error messages from a plugin. | `plugin.logs`<br/>`workspace.plugin.logs()` | Read | `audit.view` |
+| Plugin Readme<br/>Get documentation and usage instructions for a plugin. | `plugin.readme`<br/>`workspace.plugin.readme()` | Read | `resource.view` |
+
+### Model Provider (`provider`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Create Provider<br/>Add a new model provider and credentials to the workspace. | `provider.create`<br/>`workspace.provider.create()` | Write | `provider_secret.manage` |
+| Delete Provider<br/>Delete a model provider and its associated models. | `provider.delete`<br/>`workspace.provider.delete()` | High risk | `resource.manage` |
+| Get Provider<br/>Get configuration and credentials of a model provider. | `provider.get`<br/>`workspace.provider.get()` | Read | `resource.view` |
+| List Providers<br/>List all configured model providers in the workspace. | `provider.list`<br/>`workspace.provider.list()` | Read | `resource.view` |
+| Provider Models Count<br/>Count models configured under a specific model provider. | `provider.models.count`<br/>`workspace.provider.models.count()` | Read | `resource.view` |
+| Scan Provider Models<br/>Scan remote provider endpoint for available models. | `provider.models.scan`<br/>`workspace.provider.models.scan()` | Write | `provider_secret.manage` |
+| Update Provider<br/>Update credentials or base URL of a model provider. | `provider.update`<br/>`workspace.provider.update()` | Write | `provider_secret.manage` |
+
+### Requester (`requester`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Requester<br/>Get configuration and capabilities of an HTTP requester. | `requester.get`<br/>`workspace.requester.get()` | Read | `resource.view` |
+| List Requesters<br/>List HTTP request client adapters used for model calls. | `requester.list`<br/>`workspace.requester.list()` | Read | `resource.view` |
+
+### Skill (`skill`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Create Skill<br/>Create and register a new custom skill package. | `skill.create`<br/>`workspace.skill.create()` | Write | `resource.manage` |
+| Delete Skill<br/>Delete a custom skill and remove its code files. | `skill.delete`<br/>`workspace.skill.delete()` | High risk | `resource.manage` |
+| List Skill Files<br/>List files and directories within a skill package. | `skill.file.list`<br/>`workspace.skill.file.list()` | Read | `resource.view` |
+| Read Skill File<br/>Read the source code or content of a file in a skill. | `skill.file.read`<br/>`workspace.skill.file.read()` | Read | `resource.view` |
+| Write Skill File<br/>Write or update a code file inside a skill package. | `skill.file.write`<br/>`workspace.skill.file.write()` | Write | `resource.manage` |
+| Get Skill<br/>Get full manifest and metadata for a specific skill. | `skill.get`<br/>`workspace.skill.get()` | Read | `resource.view` |
+| Preview GitHub Skill<br/>Preview a skill package from a GitHub repository. | `skill.github.preview`<br/>`workspace.skill.github.preview()` | Read | `resource.manage` |
+| List Skills<br/>List all custom skills installed in the workspace. | `skill.list`<br/>`workspace.skill.list()` | Read | `resource.view` |
+| Reload Skills<br/>Reload all skill packages and refresh runtime registries. | `skill.reload`<br/>`workspace.skill.reload()` | Write | `resource.manage` |
+| Update Skill<br/>Update metadata or configuration of an existing skill. | `skill.update`<br/>`workspace.skill.update()` | Write | `resource.manage` |
+
+### Statistics (`stats`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Basic Statistics<br/>Get workspace overview counters for bots, models, and pipelines. | `stats.basic`<br/>`workspace.stats.basic()` | Read | `resource.view` |
+
+### Tool (`tool`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Tool<br/>Get parameter schema and description for a specific tool. | `tool.get`<br/>`workspace.tool.get()` | Read | `resource.view` |
+| List Tools<br/>List all registered function tools available for execution. | `tool.list`<br/>`workspace.tool.list()` | Read | `resource.view` |
+
