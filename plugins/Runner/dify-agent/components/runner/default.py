@@ -9,6 +9,8 @@ import base64
 import hashlib
 import json
 import logging
+import mimetypes
+import os
 import re
 import time
 import typing
@@ -508,6 +510,9 @@ class DefaultRunner(Runner):
                     or downloaded_type
                     or "application/octet-stream"
                 )
+                if not os.path.splitext(file_name)[1]:
+                    # Dify derives the image format from the file extension and rejects an empty one.
+                    file_name += mimetypes.guess_extension(content_type) or ""
 
                 # Determine Dify file type from content type
                 if content_type.startswith("image/"):
