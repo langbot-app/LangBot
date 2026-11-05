@@ -30,6 +30,22 @@ def archive(plugin_id, version='1.2.3'):
 
 
 class SourcePluginsTests(unittest.TestCase):
+    def test_package_marketplace_serves_only_selected_archives(self):
+        import urllib.error
+        import urllib.request
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            content = archive('test/Runner')
+            (root / 'runner.lbpkg').write_bytes(content)
+            manifest = {'plugins': [{'id': 'test/Runner', 'version': '1.2.3', 'archive': 'runner.lbpkg'}]}
+            with plugins.package_marketplace(root, manifest) as url:
+                with urllib.request.urlopen(url + '/api/v1/marketplace/plugins/download/test/Runner/1.2.3') as response:
+                    self.assertEqual(response.read(), content)
+                with self.assertRaises(urllib.error.HTTPError) as error:
+                    urllib.request.urlopen(url + '/runner.lbpkg')
+                self.assertEqual(error.exception.code, 404)
+
     def test_selected_sources_build_in_isolation_and_record_actual_artifacts(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -248,6 +264,49 @@ class PublishedPluginsTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'changed before installation'):
             plugins.install_plugins(call, directory, manifest)
         self.assertEqual(len(calls), 2)
+
+    def test_confirmed_install_waits_for_worker_initialization(self):
+        directory = self.root / 'latest'
+        manifest = plugins.prepare_published_plugins(directory)
+        manifest['plugins'] = manifest['plugins'][:1]
+        installed = {'author': 'langbot-team', 'name': 'LocalAgent', 'version': '1.2.3', 'enabled': True}
+        responses = iter(
+            [
+                {'plugins': []},
+                {'plugins': [{**installed, 'status': 'initializing'}]},
+                {'plugins': [{**installed, 'status': 'initialized'}]},
+            ]
+        )
+        with patch.object(plugins.time, 'sleep') as sleep:
+            plugins.install_plugins(
+                lambda args: next(responses), directory, manifest, install=lambda entry: None, readiness_timeout=10
+            )
+        self.assertEqual(sleep.call_count, 2)
+        self.assertEqual(manifest['plugins'][0]['installed'][0]['status'], 'initialized')
+
+    def test_confirmed_install_pending_permissions_times_out(self):
+        directory = self.root / 'latest'
+        manifest = plugins.prepare_published_plugins(directory)
+        pending = {
+            'author': 'langbot-team',
+            'name': 'LocalAgent',
+            'version': '1.2.3',
+            'enabled': False,
+            'status': 'pending_confirmation',
+        }
+        with (
+            patch.object(plugins.time, 'monotonic', side_effect=[0, 0, 11]),
+            patch.object(plugins.time, 'sleep') as sleep,
+            self.assertRaisesRegex(RuntimeError, 'pending_confirmation'),
+        ):
+            plugins.install_plugins(
+                lambda args: {'plugins': [pending]},
+                directory,
+                manifest,
+                install=lambda entry: None,
+                readiness_timeout=10,
+            )
+        self.assertEqual(sleep.call_count, 1)
 
 
 if __name__ == '__main__':

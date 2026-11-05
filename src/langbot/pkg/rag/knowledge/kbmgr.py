@@ -336,7 +336,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         execution_context: ExecutionContext,
         file_id: str,
         parser_plugin_id: str | None = None,
-    ) -> str:
+    ) -> int:
         await self._assert_execution_context(execution_context)
         self._require_upload_object_key(execution_context, file_id)
         # pre checking
@@ -412,7 +412,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         execution_context: ExecutionContext,
         zip_file_id: str,
         parser_plugin_id: str | None = None,
-    ) -> str:
+    ) -> int:
         """Handle ZIP file by extracting each document and storing them separately."""
         await self._assert_execution_context(execution_context)
         self._require_upload_object_key(execution_context, zip_file_id)
@@ -516,7 +516,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             self.ap.logger.info(
                 f'Successfully processed ZIP file {zip_file_id}, extracted {len(stored_file_tasks)} files'
             )
-            return stored_file_tasks[0] if stored_file_tasks else ''
+            return stored_file_tasks[0]
         finally:
             try:
                 await self._assert_execution_context(execution_context)

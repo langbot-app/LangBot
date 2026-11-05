@@ -31,7 +31,7 @@ from .host_models import (
 )
 from .config_resolver import RunnerConfigResolver
 from .resource_policy import ResourcePolicyProjector
-from .platform_tools import PRESENT_INTERACTIVE_CARD_TOOL, resolve_agent_platform_tool_names
+from .platform_tools import resolve_agent_platform_tool_names
 from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
@@ -48,7 +48,7 @@ class QueryEntryAdapter:
 
     INTERNAL_PREFIX = '_'
     SENSITIVE_PATTERNS = ('secret', 'token', 'key', 'password', 'credential', 'api_key', 'apikey')
-    PERMISSION_VARS = ('_pipeline_bound_plugins', '_authorized', '_permission')
+    PERMISSION_VARS = ('_pipeline_bound_plugins', '_pipeline_workspace_operations', '_authorized', '_permission')
     EVENT_DATA_MAX_STRING_BYTES = 512
 
     @classmethod
@@ -132,11 +132,10 @@ class QueryEntryAdapter:
         pipeline_config = query.pipeline_config or {}
         runner_config = RunnerConfigResolver.resolve_runner_config(pipeline_config, runner_id)
         agent_id = getattr(query, 'pipeline_uuid', None)
-        platform_tool_names = [
-            name
-            for name in resolve_agent_platform_tool_names({}, runner_events.MESSAGE_RECEIVED)
-            if name == PRESENT_INTERACTIVE_CARD_TOOL
-        ]
+        platform_tool_names = resolve_agent_platform_tool_names(
+            {'allowed_platform_tools': (query.variables or {}).get('_pipeline_allowed_platform_tools', [])},
+            runner_events.MESSAGE_RECEIVED,
+        )
 
         resource_policy = ResourcePolicyProjector.from_runner_config(
             runner_config,
@@ -145,6 +144,7 @@ class QueryEntryAdapter:
             resolved_tool_sources=cls._extract_allowed_tool_sources(query),
             resolved_kb_uuids=cls._extract_allowed_kbs(query),
             resolved_skill_names=cls._extract_allowed_skills(query),
+            allowed_workspace_operations=cls._extract_allowed_workspace_operations(query),
             allowed_platform_tool_names=platform_tool_names,
         )
 
@@ -729,3 +729,14 @@ class QueryEntryAdapter:
         if not isinstance(bound_skills, list):
             return []
         return [str(skill_name) for skill_name in bound_skills if skill_name]
+
+    @classmethod
+    def _extract_allowed_workspace_operations(
+        cls,
+        query: pipeline_query.Query,
+    ) -> list[str] | None:
+        """Extract pipeline-visible workspace operation IDs from query."""
+        variables = getattr(query, 'variables', None)
+        if not variables or '_pipeline_workspace_operations' not in variables:
+            return None
+        return ResourcePolicyProjector.normalize_names(variables.get('_pipeline_workspace_operations'))

@@ -16,6 +16,8 @@ export default {
   downloaded: 'Downloaded {{size}}',
   processed: 'Processed {{completed}} / {{total}} pipelines',
   installErrors: {
+    plugin_permission_confirmation_required:
+      'Plugin permissions could not be confirmed. Ask a member with the required permissions to review the plugin and retry.',
     plugin_version_unavailable:
       'The required plugin version is not available in the marketplace. Retry after it is published, or migrate data only.',
     plugin_download_timeout:

@@ -1,0 +1,112 @@
+export default {
+  managerRequired:
+    'การจัดการสิทธิ์ต้องมี resource.manage เฉพาะบัญชีเท่านั้นที่ยืนยันการให้สิทธิ์ได้ คีย์ API ทำได้เพียงเพิกถอนสิทธิ์ที่มีอยู่',
+  title: 'สิทธิ์ปลั๊กอิน',
+  compatibilityNote:
+    'ปลั๊กอินนี้ไม่ได้ประกาศสิทธิ์ที่ต้องใช้ เพื่อความเข้ากันได้ย้อนหลังจะได้รับความสามารถแบบเดิมด้านล่าง และปิดทีละรายการได้ภายหลัง',
+  statusPending: 'รอการอนุมัติ',
+  statusNone: 'ไม่ต้องใช้สิทธิ์',
+  grant: 'อนุญาต',
+  pendingHint: 'ปลั๊กอินจะยังปิดอยู่จนกว่าจะอนุญาตสิทธิ์',
+  confirmTitle: 'อนุญาตสิทธิ์ปลั๊กอิน',
+  highlightedList: 'โปรดระวัง: {{items}}',
+  listSeparator: ', ',
+  grantCount: 'อนุญาต {{count}} รายการ',
+  undeclared: 'ไม่ได้ประกาศสิทธิ์',
+  pending: 'ต้องยืนยันสิทธิ์',
+  saved: 'บันทึกสิทธิ์แล้ว',
+  failed: 'ไม่สามารถอัปเดตสิทธิ์ได้',
+  retry: 'ลองอีกครั้ง',
+  revoke: 'เพิกถอน',
+  dangerous: 'อันตราย',
+  sendsMessages: 'ส่งข้อความบอต',
+  requires: 'ต้องมี {{permissions}}',
+  review: 'ตรวจสอบสิทธิ์',
+  confirmDescription:
+    'ให้สิทธิ์ที่เลือกแก่ปลั๊กอินนี้ โดยเน้นสิทธิ์อันตรายและการส่งข้อความบอตแยกไว้',
+  grantInPlugin: 'ให้สิทธิ์การดำเนินการนี้ในการตั้งค่าสิทธิ์ปลั๊กอินก่อน',
+  workspaceOperations: 'การดำเนินการในพื้นที่ทำงาน',
+  capabilities: 'ความสามารถของปลั๊กอิน',
+  granted: 'อนุญาตแล้ว',
+  grantedCount: 'อนุญาตแล้ว {{granted}} จาก {{total}}',
+  empty: 'ปลั๊กอินนี้ไม่ได้ขอสิทธิ์ใด ๆ',
+  pendingCount: 'มี {{count}} ปลั๊กอินรอยืนยันสิทธิ์',
+  searchPlaceholder: 'ค้นหาตามชื่อหรือ ID…',
+  selectAll: 'เลือกทั้งหมด',
+  noResults: 'ไม่พบสิทธิ์ที่ตรงกัน',
+  willGrant: 'จะอนุญาต',
+  willRevoke: 'จะเพิกถอน',
+  selectedCount: 'เลือก {{count}} รายการ',
+  pendingChanges: 'เพิ่ม {{added}} เพิกถอน {{removed}}',
+  newGrants: 'จะอนุญาต {{count}} สิทธิ์',
+  alsoRevoking: 'และเพิกถอน {{count}} รายการ',
+  capabilityGroup: {
+    bot: 'บอท',
+    models: 'โมเดล',
+    knowledge: 'ความรู้',
+    storage: 'พื้นที่จัดเก็บ',
+    extensions: 'ปลั๊กอินและ MCP',
+    runtime: 'สภาพแวดล้อม',
+    other: 'อื่น ๆ',
+  },
+  capability: {
+    langbot_info: {
+      label: 'เวอร์ชัน LangBot',
+      description: 'อ่านเวอร์ชัน LangBot',
+    },
+    bot_read: { label: 'อ่านบอท', description: 'แสดงรายการบอทและรายละเอียด' },
+    bot_message_send: {
+      label: 'ส่งข้อความบอท',
+      description: 'ส่งข้อความผ่านบอทในพื้นที่ทำงาน',
+    },
+    bot_platform_api: {
+      label: 'API แพลตฟอร์ม',
+      description: 'เรียก API ดั้งเดิมของแพลตฟอร์ม IM ผ่านบอท',
+    },
+    models_read: {
+      label: 'อ่านโมเดล',
+      description: 'แสดงรายการโมเดลที่ตั้งค่าไว้',
+    },
+    models_invoke: {
+      label: 'เรียกใช้โมเดล',
+      description: 'เรียกโมเดล LLM, embedding และ rerank',
+    },
+    storage_plugin: {
+      label: 'ที่เก็บข้อมูลปลั๊กอิน',
+      description: 'อ่านและเขียนที่เก็บข้อมูลของปลั๊กอินเอง',
+    },
+    storage_workspace: {
+      label: 'ที่เก็บข้อมูลพื้นที่ทำงาน',
+      description: 'อ่านและเขียนที่เก็บข้อมูลที่ใช้ร่วมกัน',
+    },
+    knowledge_read: {
+      label: 'อ่านฐานความรู้',
+      description: 'แสดงรายการและค้นคืนฐานความรู้',
+    },
+    knowledge_vector: {
+      label: 'ที่เก็บเวกเตอร์',
+      description: 'เขียน ค้นหา และลบเวกเตอร์',
+    },
+    knowledge_parser: {
+      label: 'ตัวแยกวิเคราะห์เอกสาร',
+      description: 'แสดงรายการและเรียกใช้ตัวแยกวิเคราะห์',
+    },
+    config_read: {
+      label: 'อ่านไฟล์การตั้งค่า',
+      description: 'อ่านไฟล์การตั้งค่าที่อัปโหลด',
+    },
+    plugin_tools: {
+      label: 'เครื่องมือปลั๊กอิน',
+      description: 'แสดงรายการและเรียกเครื่องมือของปลั๊กอินอื่น',
+    },
+    mcp: { label: 'MCP', description: 'เรียกเครื่องมือและอ่านทรัพยากร MCP' },
+    sandbox: {
+      label: 'แซนด์บ็อกซ์',
+      description: 'ขอแซนด์บ็อกซ์ Box และรันโค้ด',
+    },
+    plugin_read: {
+      label: 'อ่านปลั๊กอิน',
+      description: 'แสดงรายการปลั๊กอินและคำสั่งที่ติดตั้ง',
+    },
+  },
+};

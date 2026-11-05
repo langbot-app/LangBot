@@ -6,6 +6,10 @@ title: "LangBot API"
 
 重试、超时、数字思考预算、prompt caching、请求头和流式取消见 [LLM 请求配置](/zh/plugin/dev/apis/llm-requests)。
 
+<Info>
+本页大多数方法都需要相应的插件能力：插件在 `manifest.yaml` 中声明，工作区成员在安装后授予。例如 `invoke_llm` 需要 `models.invoke`，`send_message` 需要 `bot.message.send`。未获授权的调用会返回 `permission_denied`。每个方法需要哪项能力，见[插件权限](/zh/plugin/dev/permissions#插件能力)。如需管理 Agent、流水线、机器人等工作区资源，请使用[工作区 API](/zh/plugin/dev/apis/workspace)。
+</Info>
+
 ## LangBot API
 
 这些 API 可在所有组件中通过 `self.plugin` 调用。访问方式如下：

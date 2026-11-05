@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -102,6 +103,64 @@ def test_platform_action_tools_add_run_scoped_safety_guidance() -> None:
     assert "event_reply" in message.content
     assert "targets frozen by LangBot" in message.content
     assert "never claim an action succeeded" in message.content
+
+
+@pytest.mark.parametrize("automatic_reply", [False, True])
+@pytest.mark.parametrize(
+    "tool_name, tool_type",
+    [("event_reply", "platform"), ("event_get_actor", "platform"), ("event_reply", "plugin"), (None, None)],
+)
+def test_explicit_reply_guidance_requires_manual_delivery_and_authorized_platform_tool(
+    automatic_reply, tool_name, tool_type
+):
+    tools = [ToolResource(tool_name=tool_name, tool_type=tool_type)] if tool_name else []
+    ctx = make_context(resources=AgentResources(tools=tools))
+    ctx.delivery.automatic_reply = automatic_reply
+
+    message = build_platform_tools_system_message(ctx)
+
+    content = message.content if message else ""
+    expected = not automatic_reply and tool_name == "event_reply" and tool_type == "platform"
+    assert ("Your final output text will not be sent to the user in this run." in content) is expected
+    assert ("To reply to the user, you must call `event_reply` with the reply text." in content) is expected
+    assert ("You may omit `event_reply` only when no reply is needed" in content) is expected
+    assert ("the event requires no response" in content) is expected
+    assert ("replying is outside this processor's responsibilities" in content) is expected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("automatic_reply", [False, True])
+@pytest.mark.parametrize("workspace_mode", [None, "direct", "progressive"])
+async def test_assembler_includes_delivery_guidance_in_model_system_prompt(automatic_reply, workspace_mode):
+    tools = [ToolResource(tool_name="event_reply", tool_type="platform")]
+    api = FakeRunnerAPIProxy(models=[ModelResource(model_id="primary")], tools=tools)
+    ctx = make_context(
+        config={
+            "model": {"primary": "primary"},
+            "prompt": [{"role": "system", "content": "Be helpful."}],
+            "workspace-direct-threshold": 0 if workspace_mode == "progressive" else 10,
+        },
+        resources=AgentResources(models=api.get_allowed_models(), tools=tools),
+        input_text="hello",
+    )
+    # Workspace tools come from the operations LangBot selected for this run.
+    ctx.resources = SimpleNamespace(
+        **{name: getattr(ctx.resources, name) for name in ("models", "tools", "knowledge_bases", "skills")},
+        workspace_operations=[{"id": "bot.list"}] if workspace_mode else [],
+    )
+    ctx.delivery.automatic_reply = automatic_reply
+
+    assembly = await AgentRunAssembler(api, ctx).assemble()
+
+    assert assembly.messages[0].role == "system"
+    assert "Be helpful." in assembly.messages[0].content
+    assert ("you must call `event_reply`" in assembly.messages[0].content) is not automatic_reply
+    assert assembly.messages[-1].content == "hello"
+    tool_names = {tool.name for tool in assembly.tools}
+    assert "event_reply" in tool_names
+    assert ("ws_bot__list" in tool_names) is (workspace_mode == "direct")
+    assert ("workspace_call" in tool_names) is (workspace_mode == "progressive")
+    assert ("follow progressive disclosure" in assembly.messages[0].content) is (workspace_mode == "progressive")
 
 
 @pytest.mark.asyncio

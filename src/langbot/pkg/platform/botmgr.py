@@ -896,6 +896,7 @@ class RuntimeBot:
                 allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
                 allowed_host_tool_names=config.get('allowed_tools'),
                 override_runner_tools='allowed_tools' in config,
+                allowed_workspace_operations=config.get('allowed_workspace_operations'),
             ),
             state_policy=StatePolicy(state_scopes=['conversation', 'actor', 'subject', 'runner']),
             delivery_policy=DeliveryPolicy(

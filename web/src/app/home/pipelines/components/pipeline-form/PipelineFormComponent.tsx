@@ -117,6 +117,7 @@ interface PipelineFormComponentProps {
   onDirtyChange?: (dirty: boolean) => void;
   onSavingChange?: (saving: boolean) => void;
   onLegacyPipeline?: (pipeline: Pipeline) => void;
+  onSensitiveToolsChange?: (tools: string[]) => void;
   guideEnabled?: boolean;
   debugGuideEnabled?: boolean;
   monitoringGuideEnabled?: boolean;
@@ -149,6 +150,7 @@ const PipelineFormComponent = forwardRef<
     onDirtyChange,
     onSavingChange,
     onLegacyPipeline,
+    onSensitiveToolsChange,
   },
   ref,
 ) {
@@ -1152,7 +1154,10 @@ const PipelineFormComponent = forwardRef<
                     )}
 
                     {activeSection === 'extensions' && pipelineId && (
-                      <PipelineExtension pipelineId={pipelineId} />
+                      <PipelineExtension
+                        pipelineId={pipelineId}
+                        onSensitiveToolsChange={onSensitiveToolsChange}
+                      />
                     )}
                   </>
                 )}

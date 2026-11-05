@@ -10,6 +10,17 @@ programmatically. It mirrors a curated subset of the HTTP service API.
 
 ## Endpoint
 
+Plugin authorization management uses `get_plugin_permissions(author, plugin_name)`
+and `revoke_plugin_permissions(author, plugin_name, workspace_operations,
+capabilities)`. Revocation replaces grants with a subset; it requires
+`resource.manage`. API-key MCP clients cannot confirm/add grants. After installing
+or upgrading a plugin, direct a member to WebUI to review pending permissions.
+The marketplace HTTP install option `auto_confirm_permissions` is used by the
+setup wizard and remains member-only; setting it with an API key cannot grant
+permissions. Migration with plugin installation enabled uses the same checks.
+Pipeline extensions accept `allowed_platform_tools` as model preferences, not
+installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
+
 ```
 http://<langbot-host>:5300/mcp
 ```
@@ -59,6 +70,13 @@ To inspect key identity and permissions, call `GET /api/v1/system/context` with 
 ```
 
 ## Tool surface
+
+`create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,
+and `bot_data.adapter_config` as an object with the adapter's settings.
+For `update_pipeline`, fetch the current pipeline before editing: `config`
+preserves omitted top-level sections and replaces each supplied section in full,
+without deep merging. Supplied sections must be objects. The merged configuration
+is validated before persistence; secret placeholders retain existing values.
 
 Slack quick setup: create a disabled `slack-omni` bot draft first, then use
 `start_slack_setup` with the user's App Configuration access/refresh tokens.

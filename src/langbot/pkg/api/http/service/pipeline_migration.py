@@ -22,7 +22,9 @@ from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
 import httpx
 import sqlalchemy as sa
 
-from ..authz import Permission, permissions_for_role, require_permission
+from ..authz import Permission, PermissionDeniedError, permissions_for_role, require_permission
+from ...application.contracts import ApplicationAPIException
+from ...application.plugin_permissions import auto_confirm_declared, load_installation, permission_status
 from ..context import ExecutionContext, PrincipalType, RequestContext
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
@@ -264,6 +266,17 @@ class PipelineMigrationService:
             )
         ).first()
         return dict(row._mapping) if row else None
+
+    async def _confirm_plugin(self, ctx, facts):
+        if facts is None:
+            raise MigrationError('plugin_permission_confirmation_required')
+        try:
+            setting = await load_installation(self.ap, ctx.workspace_uuid, facts['installation_uuid'])
+            if not permission_status(self.ap, setting)['pending_confirmation']:
+                return
+            await auto_confirm_declared(self.ap, ctx, setting)
+        except (ApplicationAPIException, PermissionDeniedError) as exc:
+            raise MigrationError('plugin_permission_confirmation_required') from exc
 
     def _native_interactions(self, ctx, pipeline_uuid):
         """Inspect the old in-process cache without importing/pruning it.
@@ -537,6 +550,9 @@ class PipelineMigrationService:
                             continue
                         key = (target['author'], target['name'], target['version'])
                         if key not in installed:
+                            if facts:
+                                await self._confirm_plugin(ctx, facts)
+                                facts = await self._plugin(ctx, plan)
                             runners = await self.ap.runner_registry.list_runners(
                                 execution, use_cache=False, usage='agent'
                             )
@@ -572,7 +588,10 @@ class PipelineMigrationService:
                                         await self.ap.plugin_connector.install_plugin(
                                             PluginInstallSource.MARKETPLACE, spec, task_context=install_context
                                         )
+                                    await self._confirm_plugin(ctx, await self._plugin(ctx, plan))
                                     install_code = None
+                                except MigrationError as exc:
+                                    install_code = exc.code
                                 except PluginRuntimeNotConnectedError:
                                     install_code = 'plugin_runtime_unavailable'
                                 except MarketplacePluginVersionNotFoundError:
@@ -816,7 +835,10 @@ class PipelineMigrationService:
         if tool_grant:
             if not config_schema.uses_host_tools(descriptor) or 'call' not in getattr(permissions, 'tools', []):
                 raise MigrationError('runner_resource_unavailable')
-            policy = ResourcePolicyProjector.from_runner_config(runner_config)
+            policy = ResourcePolicyProjector.from_runner_config(
+                runner_config,
+                allowed_workspace_operations=[],
+            )
             tools = await AgentResourceBuilder(self.ap)._build_tools_from_binding(
                 execution,
                 permissions,

@@ -57,9 +57,16 @@ async def test_mcp_mount_keeps_request_context_but_no_session_during_stream_wait
         async def fake_mcp_asgi(scope, receive, send):
             del scope, receive
             context = get_request_context()
-            assert manager.current_scope().kind is PersistenceScopeKind.WORKSPACE
+            assert manager.current_scope() is None
             assert manager.current_session() is None
-            await manager.execute_async(sa.select(table.c.id))
+
+            async def query_in_tool_task():
+                assert manager.current_scope() is None
+                async with manager.tenant_scope(get_request_context().workspace_uuid):
+                    assert manager.current_scope().kind is PersistenceScopeKind.WORKSPACE
+                    await manager.execute_async(sa.select(table.c.id))
+
+            await asyncio.create_task(query_in_tool_task())
             assert manager.current_session() is None
             observations.append((context.request_id, context.workspace_uuid, manager.current_session() is None))
             stream_waiting.set()
@@ -72,7 +79,7 @@ async def test_mcp_mount_keeps_request_context_but_no_session_during_stream_wait
                     manager.current_session() is None,
                 )
             )
-            await manager.execute_async(sa.select(table.c.id))
+            await asyncio.create_task(query_in_tool_task())
             assert manager.current_session() is None
             await send({'type': 'http.response.start', 'status': 200, 'headers': []})
             await send({'type': 'http.response.body', 'body': b'{}'})

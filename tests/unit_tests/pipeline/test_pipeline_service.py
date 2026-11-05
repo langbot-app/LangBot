@@ -11,14 +11,14 @@ WORKSPACE_UUID = 'workspace-a'
 @pytest.mark.asyncio
 async def test_update_pipeline_filters_protected_fields_without_mutating_input(mock_app):
     service = PipelineService(mock_app)
-    loaded_pipeline = Mock()
+    loaded_pipeline = {'uuid': 'pipeline-uuid'}
     service.get_pipeline = AsyncMock(return_value=loaded_pipeline)
 
     bot = Mock(uuid='bot-uuid')
     bot_result = Mock(all=Mock(return_value=[bot]))
     mock_app.persistence_mgr.execute_async = AsyncMock(side_effect=[None, bot_result])
     mock_app.bot_service = Mock(update_bot=AsyncMock())
-    mock_app.pipeline_mgr = Mock(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock())
+    mock_app.pipeline_mgr = Mock(prepare_pipeline=AsyncMock(), publish_pipeline=Mock())
     mock_app.sess_mgr.session_list = []
 
     pipeline_data = {
@@ -39,5 +39,7 @@ async def test_update_pipeline_filters_protected_fields_without_mutating_input(m
     assert updated_fields == {'name'}
 
     mock_app.bot_service.update_bot.assert_not_awaited()
-    mock_app.pipeline_mgr.remove_pipeline.assert_awaited_once_with('workspace-a', 'pipeline-uuid')
-    mock_app.pipeline_mgr.load_pipeline.assert_awaited_once_with('workspace-a', loaded_pipeline)
+    mock_app.pipeline_mgr.prepare_pipeline.assert_awaited_once_with(
+        'workspace-a', {'uuid': 'pipeline-uuid', 'name': 'Updated pipeline'}
+    )
+    mock_app.pipeline_mgr.publish_pipeline.assert_called_once_with(mock_app.pipeline_mgr.prepare_pipeline.return_value)

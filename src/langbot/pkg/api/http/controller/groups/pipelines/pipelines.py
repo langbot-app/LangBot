@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import quart
 
+from .....application.contracts import ApplicationAPIException
 from ....authz import Permission, has_permission
 from ....context import RequestContext
 from ......operation_trace import service as settings_service
-from ....service.secrets import redact_secrets
 from ....service.pipeline_run import run_pipeline
 from ... import group
 from ......pipeline.extension_preferences import (
@@ -53,6 +53,8 @@ class PipelinesRouterGroup(group.RouterGroup):
                     pipeline_data,
                     default=create_as_default,
                 )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data={'uuid': pipeline_uuid})
@@ -102,6 +104,8 @@ class PipelinesRouterGroup(group.RouterGroup):
                         pipeline_uuid,
                         json_data,
                     )
+                except ApplicationAPIException as exc:
+                    return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
                 changes = settings_service.changed_fields(
@@ -127,6 +131,8 @@ class PipelinesRouterGroup(group.RouterGroup):
             try:
                 new_uuid = await self.ap.pipeline_service.copy_pipeline(request_context, pipeline_uuid)
                 return self.success(data={'uuid': new_uuid})
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as e:
                 return self.http_status(400, -1, str(e))
 
@@ -137,35 +143,8 @@ class PipelinesRouterGroup(group.RouterGroup):
             permission=Permission.RESOURCE_VIEW,
         )
         async def _(pipeline_uuid: str, request_context: RequestContext) -> str:
-            pipeline = await self.ap.pipeline_service.get_pipeline(request_context, pipeline_uuid)
-            if pipeline is None:
-                return self.http_status(404, -1, 'pipeline not found')
-
-            pipeline_component_kinds = ['Command', 'EventListener', 'Tool']
-            if self.ap.plugin_connector.is_enable_plugin:
-                await self.ap.plugin_connector.require_workspace_context(request_context)
-            plugins = await self.ap.plugin_connector.list_plugins(component_kinds=pipeline_component_kinds)
-            mcp_servers = await self.ap.mcp_service.get_mcp_servers(request_context, contain_runtime_info=True)
-            try:
-                available_skills = await self.ap.skill_service.list_skills(request_context)
-            except Exception as exc:
-                self.ap.logger.warning('Unable to list skills for pipeline extensions: %s', exc)
-                available_skills = []
-            extensions_prefs = normalize_extension_preferences(pipeline.get('extensions_preferences'))
             return self.success(
-                data={
-                    'enable_all_plugins': extensions_prefs.get('enable_all_plugins', True),
-                    'enable_all_mcp_servers': extensions_prefs.get('enable_all_mcp_servers', True),
-                    'enable_all_skills': extensions_prefs.get('enable_all_skills', True),
-                    'bound_plugins': extensions_prefs.get('plugins', []),
-                    'available_plugins': redact_secrets(plugins),
-                    'bound_mcp_servers': extensions_prefs.get('mcp_servers', []),
-                    'available_mcp_servers': mcp_servers,
-                    'bound_mcp_resources': extensions_prefs.get('mcp_resources', []),
-                    'mcp_resource_agent_read_enabled': extensions_prefs.get('mcp_resource_agent_read_enabled', True),
-                    'bound_skills': extensions_prefs.get('skills', []),
-                    'available_skills': available_skills,
-                }
+                data=await self.ap.pipeline_service.get_pipeline_extensions(request_context, pipeline_uuid)
             )
 
         @self.route(
@@ -223,6 +202,7 @@ class PipelinesRouterGroup(group.RouterGroup):
                             'enable_all_mcp_servers': 'enable_all_mcp_servers',
                             'enable_all_skills': 'enable_all_skills',
                             'mcp_resource_agent_read_enabled': 'mcp_resource_agent_read_enabled',
+                            'workspace_operations': 'workspace_operations',
                         }.items()
                         if field in json_data
                     },
@@ -245,7 +225,11 @@ class PipelinesRouterGroup(group.RouterGroup):
                     enable_all_skills=json_data.get('enable_all_skills', True),
                     bound_mcp_resources=json_data.get('bound_mcp_resources'),
                     mcp_resource_agent_read_enabled=json_data.get('mcp_resource_agent_read_enabled'),
+                    workspace_operations=json_data.get('workspace_operations'),
+                    allowed_platform_tools=json_data.get('allowed_platform_tools'),
                 )
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success()

@@ -129,9 +129,15 @@ export default function AgentCreateContent({
       (stage) => stage.name === runner,
     );
     const parameters = runnerStage ? getDefaultValues(runnerStage.config) : {};
-    const config = {
+
+    const defaultWorkspaceOps = runner.startsWith('plugin:') ? [] : undefined;
+
+    const config: Record<string, unknown> = {
       runner: { id: runner },
       runner_config: { [runner]: parameters },
+      ...(defaultWorkspaceOps !== undefined
+        ? { allowed_workspace_operations: defaultWorkspaceOps }
+        : {}),
     };
     try {
       if (kind === 'pipeline') {
@@ -151,7 +157,13 @@ export default function AgentCreateContent({
           description: '',
           emoji: values.emoji,
           component_ref: runner,
-          ...(kind === 'event_processor' ? {} : { config }),
+          ...(kind === 'event_processor'
+            ? defaultWorkspaceOps !== undefined
+              ? {
+                  config: { allowed_workspace_operations: defaultWorkspaceOps },
+                }
+              : {}
+            : { config }),
         });
         toast.success(t('agents.createSuccess'));
         onCreated(response.uuid);

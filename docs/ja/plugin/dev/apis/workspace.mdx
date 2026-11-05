@@ -1,0 +1,290 @@
+---
+title: ワークスペース API
+description: プラグインから Agent、パイプライン、ボット、モデル、ナレッジベースなどのワークスペースリソースを参照・管理します。
+---
+
+ワークスペース API を使うと、プラグインは自分がインストールされているワークスペースを操作できます。Agent やパイプラインの一覧取得と編集、ボットの参照、モデルやナレッジベースの管理、モニタリングデータの読み取りなどです。公開されている操作は LangBot の HTTP API、MCP サーバー、ワークスペースアシスタントとまったく同じなので、メンバーがそれらで行えることは、メンバーが許可した範囲内でプラグインからも自動化できます。
+
+各操作には `pipeline.list` や `knowledge.base.retrieve` のような固定の ID があります。プラグインが呼び出せるのは、[マニフェストで宣言](/ja/plugin/dev/permissions#権限を宣言する)し、かつメンバーがそのインストールに許可した操作だけです。
+
+## 操作を呼び出す
+
+どのコンポーネントからも `self.plugin.workspace` を使います。各操作には ID に対応した型付きメソッドがあります。
+
+```python
+from langbot_plugin.api.definition.components.tool.tool import Tool
+
+
+class WorkspaceSummary(Tool):
+    async def call(self, params, session, query_id):
+        result = await self.plugin.workspace.pipeline.list()
+        if not result["ok"]:
+            return f"パイプラインを取得できませんでした: {result['error']['message']}"
+
+        names = [pipeline["name"] for pipeline in result["result"]]
+        return "パイプライン: " + "、".join(names)
+```
+
+メソッドは操作の入力スキーマに対応するキーワード引数を受け取り、エディターでは型と説明が表示されます。一部の名前は Python として有効になるよう調整されます。Python のキーワードと重なる部分には末尾にアンダースコアが付き（例：`import_`）、その他の無効な文字はアンダースコアに置き換えられます。送信時には元の引数名が使われます。
+
+呼び出す操作を実行時に決めたい場合は、ID を指定して呼び出せます。型付きメソッドとまったく同じように動作します。
+
+```python
+result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_uuid, query="返金ポリシー")
+```
+
+`await self.plugin.workspace.list()` は、インストールに許可された操作とその入力スキーマを `domains` ごとにまとめて返します。ツール一覧を動的に組み立てたり、機能を提供する前に許可の有無を確かめたりするのに便利です。
+
+### Runner の中で使う
+
+Runner では、実行に紐づいたプロキシを `ctx.api.workspace` として受け取ります。メソッドも、認可に使われるインストールの許可も同じです。違いは、LangBot が各呼び出しを現在の実行に記録する点です。
+
+実行を開始した Agent やパイプラインが、モデルに見せるワークスペース操作を絞り込んでいる場合があります。その選択は `ctx.resources.workspace_operations` で渡されます。ワークスペース操作をツールとしてモデルに提供する Runner は、この中の操作だけを提供し、リストが空なら何も提供しないでください。LangBot 組み込みの LocalAgent もそのように動作します。
+
+## 戻り値とエラー
+
+ワークスペースの呼び出しは、業務上のエラーで例外を送出しません。常に辞書を返します。
+
+```python
+# 成功
+{"ok": True, "result": ..., "operation": {"id": "pipeline.list", ...}}
+
+# 失敗
+{"ok": False, "error": {"code": "permission_denied", "message": "...", "details": {...}}}
+```
+
+`result` を読む前に `ok` を確認してください。主なエラーコード：
+
+| コード | 意味 |
+| --- | --- |
+| `permission_denied` | この操作がインストールに許可されていないか、インストールが無効です。`details.denied_operations` に不足している ID が入ります。 |
+| `invalid_input` | 引数が操作の入力スキーマに合っていません。 |
+| `not_found` | 参照したリソースが現在のワークスペースに存在しません。 |
+| `application_error` | 操作は実行されましたが失敗しました。理由は `message` にあります。 |
+
+メンバーは宣言された権限の一部だけを許可することもあるため、権限不足は想定内の結果です。コマンドや実行全体を失敗させるのではなく、何が足りないかを説明してください。
+
+## 宣言する操作の選び方
+
+各操作にはリスクレベルがあり、メンバーは確認時にそれを目にします。
+
+- **読み取り**：データを返すだけの操作。例：`pipeline.list`、`stats.basic`。
+- **書き込み**：ワークスペースの設定を変更する操作。例：`pipeline.update`、`knowledge.file.store`。
+- **高リスク**：リソースの削除、LangBot 外部への影響、大量のリソース消費を伴う操作。例：`bot.delete`、`pipeline.chat.broadcast`。確認ダイアログで強調表示されます。
+
+操作を許可するメンバーは、その操作が要求する権限（下の表の最後の列）を自分で持っている必要があります。必要な操作だけを申請してください。高リスクの操作を多数申請すると、拒否されたり削られたりする可能性が高くなります。
+
+`knowledge.*` のようなワイルドカードで、あるプレフィックス配下の操作をまとめて申請できますが、すべてのプレフィックスで使えるわけではありません。[ワイルドカード](/ja/plugin/dev/permissions#ワイルドカード)を参照してください。
+
+## 操作一覧
+
+現在の LangBot でプラグインが申請できるすべての操作を、ドメインごとに示します。メソッドは `workspace.…` と表記しています。コンポーネントでは `self.plugin.workspace`、Runner では `ctx.api.workspace` です。SDK の型付きメソッドはこのカタログから生成されているため、表のすべての操作がメソッドとして利用できます。
+
+### Adapter (`adapter`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Get Adapter<br/>Get configuration schema and requirements for an adapter. | `adapter.get`<br/>`workspace.adapter.get()` | 読み取り | `resource.view` |
+| List Adapters<br/>List available chat platform adapters in the workspace. | `adapter.list`<br/>`workspace.adapter.list()` | 読み取り | `resource.view` |
+
+### Agent (`agent`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Create Agent<br/>Create a new autonomous AI agent in the workspace. | `agent.create`<br/>`workspace.agent.create()` | 書き込み | `resource.manage` |
+| Debug Agent<br/>Execute a test turn on an agent for debugging purposes. | `agent.debug`<br/>`workspace.agent.debug()` | 書き込み | `runtime.operate` |
+| Delete Agent<br/>Delete an autonomous AI agent from the workspace. | `agent.delete`<br/>`workspace.agent.delete()` | 高リスク | `resource.manage` |
+| Get Agent<br/>Get full configuration and parameters for an AI agent. | `agent.get`<br/>`workspace.agent.get()` | 読み取り | `resource.view` |
+| List Agents<br/>List all autonomous AI agents configured in the workspace. | `agent.list`<br/>`workspace.agent.list()` | 読み取り | `resource.view` |
+| Agent Metadata<br/>Get supported agent capabilities, model types, and schemas. | `agent.metadata`<br/>`workspace.agent.metadata()` | 読み取り | `resource.view` |
+| Get Run Events<br/>Fetch step-by-step trace events for an agent execution run. | `agent.runs.events`<br/>`workspace.agent.runs.events()` | 読み取り | `resource.view` |
+| List Agent Runs<br/>List historical execution runs for an agent or processor. | `agent.runs.list`<br/>`workspace.agent.runs.list()` | 読み取り | `resource.view` |
+| Update Agent<br/>Update configuration, model, or prompts of an agent. | `agent.update`<br/>`workspace.agent.update()` | 書き込み | `resource.manage` |
+
+### Bot (`bot`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| List Bot Admins<br/>List platform users configured as administrators for a bot. | `bot.admins.list`<br/>`workspace.bot.admins.list()` | 読み取り | `resource.view` |
+| Create Bot<br/>Create a new chat bot connected to an IM adapter. | `bot.create`<br/>`workspace.bot.create()` | 書き込み | `resource.manage` |
+| Delete Bot<br/>Delete a chat bot and remove its adapter connection. | `bot.delete`<br/>`workspace.bot.delete()` | 高リスク | `resource.manage` |
+| Get Bot<br/>Get detailed configuration and status for a specific bot. | `bot.get`<br/>`workspace.bot.get()` | 読み取り | `resource.view` |
+| Apply Group Filter<br/>Apply group filtering rules to enable or disable pipelines. | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | 書き込み | `resource.manage` |
+| Preview Group Filter<br/>Preview chat group filtering rules for a bot. | `bot.group_filter.preview`<br/>`workspace.bot.group_filter.preview()` | 読み取り | `resource.manage` |
+| List Bots<br/>List all configured chat bots in the workspace. | `bot.list`<br/>`workspace.bot.list()` | 読み取り | `resource.view` |
+| Bot Logs<br/>Fetch runtime connection logs and events for a bot. | `bot.logs`<br/>`workspace.bot.logs()` | 読み取り | `resource.view` |
+| Send Bot Message<br/>Send an outbound message to a chat user or group via a bot. | `bot.message.send`<br/>`workspace.bot.message.send()` | 高リスク | `runtime.operate` |
+| Test Bot Message<br/>Test bot messaging capability by sending a test message. | `bot.message.test`<br/>`workspace.bot.message.test()` | 書き込み | `resource.manage` |
+| Preview Routes<br/>Preview message routing decisions for a simulated event. | `bot.routes.preview`<br/>`workspace.bot.routes.preview()` | 読み取り | `resource.manage` |
+| Routing Status<br/>Get active message routing bindings and rules for a bot. | `bot.routes.status`<br/>`workspace.bot.routes.status()` | 読み取り | `resource.view` |
+| Bot Runtime Status<br/>Inspect live connection state and health of a bot. | `bot.runtime.get`<br/>`workspace.bot.runtime.get()` | 読み取り | `resource.view` |
+| Update Bot<br/>Update settings or pipeline bindings for an existing bot. | `bot.update`<br/>`workspace.bot.update()` | 書き込み | `resource.manage` |
+
+### Extension (`extension`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| List All Extensions<br/>List all available plugins, MCP servers, and skills combined. | `extension.list`<br/>`workspace.extension.list()` | 読み取り | `resource.view` |
+
+### Knowledge Base (`knowledge`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Create Knowledge Base<br/>Create a new knowledge base with storage and vector engine. | `knowledge.base.create`<br/>`workspace.knowledge.base.create()` | 書き込み | `resource.manage` |
+| Delete Knowledge Base<br/>Permanently delete a knowledge base and indexed documents. | `knowledge.base.delete`<br/>`workspace.knowledge.base.delete()` | 高リスク | `resource.manage` |
+| Get Knowledge Base<br/>Get configuration and indexing status of a knowledge base. | `knowledge.base.get`<br/>`workspace.knowledge.base.get()` | 読み取り | `resource.view` |
+| List Knowledge Bases<br/>List all knowledge bases configured in the workspace. | `knowledge.base.list`<br/>`workspace.knowledge.base.list()` | 読み取り | `resource.view` |
+| Retrieve Knowledge Chunks<br/>Search and retrieve relevant text chunks from knowledge base. | `knowledge.base.retrieve`<br/>`workspace.knowledge.base.retrieve()` | 読み取り | `resource.view` |
+| Update Knowledge Base<br/>Update configuration or description of a knowledge base. | `knowledge.base.update`<br/>`workspace.knowledge.base.update()` | 書き込み | `resource.manage` |
+| Engine Creation Schema<br/>Get configuration schema required to create an engine. | `knowledge.engine.creation_schema`<br/>`workspace.knowledge.engine.creation_schema()` | 読み取り | `resource.view` |
+| List Knowledge Engines<br/>List available storage and vector retrieval engine types. | `knowledge.engine.list`<br/>`workspace.knowledge.engine.list()` | 読み取り | `resource.view` |
+| Engine Retrieval Schema<br/>Get parameter schema for retrieving from an engine. | `knowledge.engine.retrieval_schema`<br/>`workspace.knowledge.engine.retrieval_schema()` | 読み取り | `resource.view` |
+| Delete Knowledge File<br/>Delete an indexed document from a knowledge base. | `knowledge.file.delete`<br/>`workspace.knowledge.file.delete()` | 高リスク | `resource.manage` |
+| List Knowledge Files<br/>List all documents indexed within a knowledge base. | `knowledge.file.list`<br/>`workspace.knowledge.file.list()` | 読み取り | `resource.view` |
+| Store Knowledge File<br/>Index and store a document into a knowledge base. | `knowledge.file.store`<br/>`workspace.knowledge.file.store()` | 書き込み | `resource.manage` |
+| List Document Parsers<br/>List supported document parser formats and capabilities. | `knowledge.parser.list`<br/>`workspace.knowledge.parser.list()` | 読み取り | `resource.view` |
+
+### MCP (`mcp`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| List MCP Resources<br/>List all resources exposed by connected MCP servers. | `mcp.resource.list`<br/>`workspace.mcp.resource.list()` | 読み取り | `resource.view` |
+| Read MCP Resource<br/>Read contents of a specific resource from an MCP server. | `mcp.resource.read`<br/>`workspace.mcp.resource.read()` | 読み取り | `resource.view` |
+| List MCP Resource Templates<br/>List parameterized resource URI templates from MCP servers. | `mcp.resource.templates`<br/>`workspace.mcp.resource.templates()` | 読み取り | `resource.view` |
+| Delete MCP Server<br/>Disconnect and delete an MCP server from the workspace. | `mcp.server.delete`<br/>`workspace.mcp.server.delete()` | 高リスク | `resource.manage` |
+| Get MCP Server<br/>Get configuration and parameters of a specific MCP server. | `mcp.server.get`<br/>`workspace.mcp.server.get()` | 読み取り | `resource.view` |
+| List MCP Servers<br/>List configured Model Context Protocol (MCP) servers. | `mcp.server.list`<br/>`workspace.mcp.server.list()` | 読み取り | `resource.view` |
+| MCP Server Logs<br/>Retrieve communication and error logs for an MCP server. | `mcp.server.logs`<br/>`workspace.mcp.server.logs()` | 読み取り | `audit.view` |
+| MCP Server Runtime<br/>Inspect live health and session state of an MCP server. | `mcp.server.runtime`<br/>`workspace.mcp.server.runtime()` | 読み取り | `resource.view` |
+| Test MCP Server Connection<br/>Test connectivity and ping an MCP server configuration. | `mcp.server.test`<br/>`workspace.mcp.server.test()` | 書き込み | `resource.manage` |
+
+### Model (`model`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Create Embedding Model<br/>Configure and add a new embedding model to the workspace. | `model.embedding.create`<br/>`workspace.model.embedding.create()` | 書き込み | `provider_secret.manage` |
+| Delete Embedding Model<br/>Delete an embedding model configuration from the workspace. | `model.embedding.delete`<br/>`workspace.model.embedding.delete()` | 高リスク | `resource.manage` |
+| Get Embedding Model<br/>Get configuration and parameters of an embedding model. | `model.embedding.get`<br/>`workspace.model.embedding.get()` | 読み取り | `resource.view` |
+| List Embedding Models<br/>List all text embedding models configured in the workspace. | `model.embedding.list`<br/>`workspace.model.embedding.list()` | 読み取り | `resource.view` |
+| List Embeddings by Provider<br/>List embedding models configured under a specific provider. | `model.embedding.list_by_provider`<br/>`workspace.model.embedding.list_by_provider()` | 読み取り | `resource.view` |
+| Test Embedding Model<br/>Test vector generation and connectivity for embedding model. | `model.embedding.test`<br/>`workspace.model.embedding.test()` | 書き込み | `provider_secret.manage` |
+| Update Embedding Model<br/>Update configuration and parameters of an embedding model. | `model.embedding.update`<br/>`workspace.model.embedding.update()` | 書き込み | `provider_secret.manage` |
+| Create LLM Model<br/>Configure and add a new LLM model to the workspace. | `model.llm.create`<br/>`workspace.model.llm.create()` | 書き込み | `provider_secret.manage` |
+| Get Default LLM Model<br/>Get workspace default large language model configuration. | `model.llm.default.get`<br/>`workspace.model.llm.default.get()` | 読み取り | `resource.manage` |
+| Delete LLM Model<br/>Delete an LLM model configuration from the workspace. | `model.llm.delete`<br/>`workspace.model.llm.delete()` | 高リスク | `resource.manage` |
+| Get LLM Model<br/>Get configuration and parameters of a specific LLM model. | `model.llm.get`<br/>`workspace.model.llm.get()` | 読み取り | `resource.view` |
+| List LLM Models<br/>List all configured large language models in the workspace. | `model.llm.list`<br/>`workspace.model.llm.list()` | 読み取り | `resource.view` |
+| List LLMs by Provider<br/>List LLM models configured under a specific model provider. | `model.llm.list_by_provider`<br/>`workspace.model.llm.list_by_provider()` | 読み取り | `resource.view` |
+| Get Starred LLM Model<br/>Get the starred favorite LLM model of the workspace. | `model.llm.starred.get`<br/>`workspace.model.llm.starred.get()` | 読み取り | `resource.view` |
+| Set Starred LLM Model<br/>Designate a specific LLM model as the starred favorite. | `model.llm.starred.set`<br/>`workspace.model.llm.starred.set()` | 書き込み | `provider_secret.manage` |
+| Test LLM Model<br/>Test connectivity and response generation for an LLM model. | `model.llm.test`<br/>`workspace.model.llm.test()` | 書き込み | `provider_secret.manage` |
+| Update LLM Model<br/>Update configuration and parameters of an LLM model. | `model.llm.update`<br/>`workspace.model.llm.update()` | 書き込み | `provider_secret.manage` |
+| Create Rerank Model<br/>Configure and add a new rerank model to the workspace. | `model.rerank.create`<br/>`workspace.model.rerank.create()` | 書き込み | `provider_secret.manage` |
+| Delete Rerank Model<br/>Delete a rerank model configuration from the workspace. | `model.rerank.delete`<br/>`workspace.model.rerank.delete()` | 高リスク | `resource.manage` |
+| Get Rerank Model<br/>Get configuration and parameters of a rerank model. | `model.rerank.get`<br/>`workspace.model.rerank.get()` | 読み取り | `resource.view` |
+| List Rerank Models<br/>List all document reranking models in the workspace. | `model.rerank.list`<br/>`workspace.model.rerank.list()` | 読み取り | `resource.view` |
+| List Reranks by Provider<br/>List rerank models configured under a specific provider. | `model.rerank.list_by_provider`<br/>`workspace.model.rerank.list_by_provider()` | 読み取り | `resource.view` |
+| Test Rerank Model<br/>Test connectivity and scoring capability of a rerank model. | `model.rerank.test`<br/>`workspace.model.rerank.test()` | 書き込み | `provider_secret.manage` |
+| Update Rerank Model<br/>Update configuration and parameters of a rerank model. | `model.rerank.update`<br/>`workspace.model.rerank.update()` | 書き込み | `provider_secret.manage` |
+
+### Monitoring (`monitoring`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Embedding Call Metrics<br/>Query embedding generation metrics and latency statistics. | `monitoring.embedding_calls`<br/>`workspace.monitoring.embedding_calls()` | 読み取り | `resource.view` |
+| Error Logs<br/>Query runtime errors and failures across bots and pipelines. | `monitoring.errors`<br/>`workspace.monitoring.errors()` | 読み取り | `resource.view` |
+| Execution Details<br/>Get detailed traces and step execution events for a specific execution. | `monitoring.execution.detail`<br/>`workspace.monitoring.execution.detail()` | 読み取り | `resource.view` |
+| List Executions<br/>Query execution history records across bots, pipelines, and agents. | `monitoring.executions`<br/>`workspace.monitoring.executions()` | 読み取り | `resource.view` |
+| List User Feedback<br/>List user ratings and feedback records on bot responses. | `monitoring.feedback.list`<br/>`workspace.monitoring.feedback.list()` | 読み取り | `resource.view` |
+| Feedback Statistics<br/>Get aggregated positive and negative user feedback metrics. | `monitoring.feedback.stats`<br/>`workspace.monitoring.feedback.stats()` | 読み取り | `resource.view` |
+| In-Flight Executions<br/>Inspect currently active in-flight requests and pipeline runs. | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | 読み取り | `resource.view` |
+| LLM Call Metrics<br/>Query model invocation counts, latencies, and token stats. | `monitoring.llm_calls`<br/>`workspace.monitoring.llm_calls()` | 読み取り | `resource.view` |
+| Message Details<br/>Retrieve full metadata and trace details for a single message. | `monitoring.message.detail`<br/>`workspace.monitoring.message.detail()` | 読み取り | `resource.view` |
+| Query Messages<br/>Query processed chat messages across bot sessions. | `monitoring.messages`<br/>`workspace.monitoring.messages()` | 読み取り | `resource.view` |
+| Monitoring Overview<br/>Get aggregated monitoring overview statistics for bots and pipelines. | `monitoring.overview`<br/>`workspace.monitoring.overview()` | 読み取り | `resource.view` |
+| Session Analysis<br/>Analyze session metrics, duration, and token usage for a session. | `monitoring.session.analysis`<br/>`workspace.monitoring.session.analysis()` | 読み取り | `resource.view` |
+| Reset Session<br/>Reset a chat session and clear its context window. | `monitoring.session.reset`<br/>`workspace.monitoring.session.reset()` | 高リスク | `resource.manage` |
+| List Sessions<br/>List active and historical chat sessions across bots. | `monitoring.sessions`<br/>`workspace.monitoring.sessions()` | 読み取り | `resource.view` |
+| Token Usage Statistics<br/>Query token consumption metrics aggregated by time buckets. | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | 読み取り | `resource.view` |
+| Tool Call Metrics<br/>Query tool invocation history and execution performance. | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | 読み取り | `resource.view` |
+
+### Pipeline (`pipeline`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Broadcast Chat Message<br/>Broadcast a message to all active pipeline chat clients. | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | 高リスク | `runtime.operate` |
+| Pipeline Connections<br/>Inspect live websocket connection status for pipeline chat. | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 読み取り | `runtime.operate` |
+| Pipeline Chat History<br/>Retrieve debug chat message history for a pipeline session. | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 読み取り | `runtime.operate` |
+| Reset Chat Session<br/>Clear memory and chat history for a pipeline debug session. | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | 高リスク | `runtime.operate` |
+| Copy Pipeline<br/>Duplicate an existing pipeline to create a new copy. | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 書き込み | `resource.manage` |
+| Create Pipeline<br/>Create a new processing pipeline in the workspace. | `pipeline.create`<br/>`workspace.pipeline.create()` | 書き込み | `resource.manage` |
+| Pipeline Defaults<br/>Get template defaults and initial values for new pipelines. | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 読み取り | `resource.view` |
+| Delete Pipeline<br/>Permanently delete a pipeline from the workspace. | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高リスク | `resource.manage` |
+| Get Pipeline Extensions<br/>Get bound plugins, MCP servers, and tools for a pipeline. | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 読み取り | `resource.view` |
+| Update Pipeline Extensions<br/>Update bound plugins, MCP servers, and tools on a pipeline. | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 書き込み | `resource.manage` |
+| Get Pipeline<br/>Get complete definition and node graph of a pipeline. | `pipeline.get`<br/>`workspace.pipeline.get()` | 読み取り | `resource.view` |
+| List Pipelines<br/>List all message processing pipelines in the workspace. | `pipeline.list`<br/>`workspace.pipeline.list()` | 読み取り | `resource.view` |
+| Pipeline Metadata<br/>Get available component types and node specifications. | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 読み取り | `resource.view` |
+| Run Pipeline<br/>Execute a pipeline run with custom input data. | `pipeline.run`<br/>`workspace.pipeline.run()` | 書き込み | `runtime.operate` |
+| Update Pipeline<br/>Update topology, nodes, or settings of a pipeline. | `pipeline.update`<br/>`workspace.pipeline.update()` | 書き込み | `resource.manage` |
+
+### Plugin (`plugin`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Get Plugin Config<br/>Get configured parameters and settings for a plugin. | `plugin.config.get`<br/>`workspace.plugin.config.get()` | 読み取り | `resource.view` |
+| Plugin Debug Info<br/>Inspect internal plugin runtime process state and memory. | `plugin.debug_info`<br/>`workspace.plugin.debug_info()` | 読み取り | `resource.manage` |
+| Get Plugin<br/>Get detailed metadata and manifest for an installed plugin. | `plugin.get`<br/>`workspace.plugin.get()` | 読み取り | `resource.view` |
+| Plugin GitHub Assets<br/>List downloadable asset files for a GitHub release. | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | 読み取り | `resource.view` |
+| Plugin GitHub Releases<br/>List releases of a plugin repository hosted on GitHub. | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | 読み取り | `resource.view` |
+| List Plugins<br/>List all installed plugins and their running status. | `plugin.list`<br/>`workspace.plugin.list()` | 読み取り | `resource.view` |
+| Plugin Logs<br/>Fetch runtime logs and error messages from a plugin. | `plugin.logs`<br/>`workspace.plugin.logs()` | 読み取り | `audit.view` |
+| Plugin Readme<br/>Get documentation and usage instructions for a plugin. | `plugin.readme`<br/>`workspace.plugin.readme()` | 読み取り | `resource.view` |
+
+### Model Provider (`provider`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Create Provider<br/>Add a new model provider and credentials to the workspace. | `provider.create`<br/>`workspace.provider.create()` | 書き込み | `provider_secret.manage` |
+| Delete Provider<br/>Delete a model provider and its associated models. | `provider.delete`<br/>`workspace.provider.delete()` | 高リスク | `resource.manage` |
+| Get Provider<br/>Get configuration and credentials of a model provider. | `provider.get`<br/>`workspace.provider.get()` | 読み取り | `resource.view` |
+| List Providers<br/>List all configured model providers in the workspace. | `provider.list`<br/>`workspace.provider.list()` | 読み取り | `resource.view` |
+| Provider Models Count<br/>Count models configured under a specific model provider. | `provider.models.count`<br/>`workspace.provider.models.count()` | 読み取り | `resource.view` |
+| Scan Provider Models<br/>Scan remote provider endpoint for available models. | `provider.models.scan`<br/>`workspace.provider.models.scan()` | 書き込み | `provider_secret.manage` |
+| Update Provider<br/>Update credentials or base URL of a model provider. | `provider.update`<br/>`workspace.provider.update()` | 書き込み | `provider_secret.manage` |
+
+### Requester (`requester`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Get Requester<br/>Get configuration and capabilities of an HTTP requester. | `requester.get`<br/>`workspace.requester.get()` | 読み取り | `resource.view` |
+| List Requesters<br/>List HTTP request client adapters used for model calls. | `requester.list`<br/>`workspace.requester.list()` | 読み取り | `resource.view` |
+
+### Skill (`skill`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Create Skill<br/>Create and register a new custom skill package. | `skill.create`<br/>`workspace.skill.create()` | 書き込み | `resource.manage` |
+| Delete Skill<br/>Delete a custom skill and remove its code files. | `skill.delete`<br/>`workspace.skill.delete()` | 高リスク | `resource.manage` |
+| List Skill Files<br/>List files and directories within a skill package. | `skill.file.list`<br/>`workspace.skill.file.list()` | 読み取り | `resource.view` |
+| Read Skill File<br/>Read the source code or content of a file in a skill. | `skill.file.read`<br/>`workspace.skill.file.read()` | 読み取り | `resource.view` |
+| Write Skill File<br/>Write or update a code file inside a skill package. | `skill.file.write`<br/>`workspace.skill.file.write()` | 書き込み | `resource.manage` |
+| Get Skill<br/>Get full manifest and metadata for a specific skill. | `skill.get`<br/>`workspace.skill.get()` | 読み取り | `resource.view` |
+| Preview GitHub Skill<br/>Preview a skill package from a GitHub repository. | `skill.github.preview`<br/>`workspace.skill.github.preview()` | 読み取り | `resource.manage` |
+| List Skills<br/>List all custom skills installed in the workspace. | `skill.list`<br/>`workspace.skill.list()` | 読み取り | `resource.view` |
+| Reload Skills<br/>Reload all skill packages and refresh runtime registries. | `skill.reload`<br/>`workspace.skill.reload()` | 書き込み | `resource.manage` |
+| Update Skill<br/>Update metadata or configuration of an existing skill. | `skill.update`<br/>`workspace.skill.update()` | 書き込み | `resource.manage` |
+
+### Statistics (`stats`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Basic Statistics<br/>Get workspace overview counters for bots, models, and pipelines. | `stats.basic`<br/>`workspace.stats.basic()` | 読み取り | `resource.view` |
+
+### Tool (`tool`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Get Tool<br/>Get parameter schema and description for a specific tool. | `tool.get`<br/>`workspace.tool.get()` | 読み取り | `resource.view` |
+| List Tools<br/>List all registered function tools available for execution. | `tool.list`<br/>`workspace.tool.list()` | 読み取り | `resource.view` |
+

@@ -274,6 +274,17 @@ class TestQueryConfigToAgentConfig:
         with pytest.raises(AgentBindingResolutionError):
             AgentBindingResolver().resolve_one(event, [first, second])
 
+    def test_pipeline_bot_tools_are_passed_to_runner(self, mock_query):
+        from langbot.pkg.agent.runner.platform_tools import PLATFORM_TOOLS_BY_NAME
+
+        selected = next(tool.name for tool in PLATFORM_TOOLS_BY_NAME.values() if tool.scope == 'platform')
+        mock_query.variables['_pipeline_allowed_platform_tools'] = [selected]
+        config = QueryEntryAdapter.config_to_agent_config(mock_query, 'plugin:test/plugin/runner')
+        assert selected in config.resource_policy.allowed_platform_tool_names
+        mock_query.variables['_pipeline_allowed_platform_tools'] = []
+        config = QueryEntryAdapter.config_to_agent_config(mock_query, 'plugin:test/plugin/runner')
+        assert selected not in config.resource_policy.allowed_platform_tool_names
+
 
 class TestRunnerContextProtocolV1:
     """Test RunnerContext Protocol v1 behavior."""

@@ -21,6 +21,7 @@ from pkg.config import (
 )
 from pkg.context_pipeline import ContextAssembler, ContextBudget, HostContextTokenCounter, LLMContextSummarizer
 from pkg.model_calling import build_llm_tools
+from pkg.workspace_tools import WorkspaceToolsManager
 
 
 class NoAuthorizedModelError(Exception):
@@ -65,7 +66,14 @@ class AgentRunAssembler:
         summarizer = LLMContextSummarizer(
             self.api, model_ids[0], remove_think=remove_think, reasoning_level=reasoning_level
         )
+
+        workspace_manager = await WorkspaceToolsManager.discover(self.api, self.ctx)
+        workspace_manager.resolve_conflicts(allowed_tools)
+
         tools = await self._build_tools(allowed_tools)
+        tools.extend(workspace_manager.tools)
+        all_allowed_tools = allowed_tools | workspace_manager._tool_names
+
         token_counter = HostContextTokenCounter(self.api, model_ids[0], tools, reasoning_level=reasoning_level)
 
         context_assembly = await ContextAssembler(
@@ -74,6 +82,7 @@ class AgentRunAssembler:
             budget=context_budget,
             summarizer=summarizer,
             token_counter=token_counter,
+            workspace_manager=workspace_manager,
         ).assemble()
 
         return AgentRunAssembly(
@@ -82,8 +91,9 @@ class AgentRunAssembler:
             tools=tools,
             tool_executor=LangBotToolExecutor(
                 self.api,
-                allowed_tools,
+                all_allowed_tools,
                 max_result_chars=max_tool_result_chars,
+                workspace_manager=workspace_manager,
             ),
             hooks=LangBotContextHooks(
                 context_budget,

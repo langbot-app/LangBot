@@ -482,10 +482,32 @@ def _install_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> 
         task = task_payload['data']
         if task['runtime']['done']:
             assert task['runtime']['exception'] is None, task
-            assert task['task_context']['metadata']['progress_percent'] == 100
+            metadata = task['task_context']['metadata']
+            if metadata.get('pending_permission_confirmation'):
+                # A fresh installation stays disabled until an account confirms it.
+                _confirm_qa_plugin_permissions(client, token)
+                return
+            assert metadata['progress_percent'] == 100
             return
         time.sleep(1)
     raise AssertionError(f'Plugin installation task {task_id} did not complete')
+
+
+def _confirm_qa_plugin_permissions(client: httpx.Client, token: str) -> None:
+    """Grant every declared permission, as the WebUI grant dialog does."""
+    author, name = QA_RUNNER_ID.removeprefix('plugin:').split('/')[:2]
+    path = f'/api/v1/plugins/{author}/{name}/permissions'
+    headers = {'Authorization': f'Bearer {token}'}
+    response = client.get(path, headers=headers)
+    assert response.status_code == 200, response.text
+    state = response.json()['data']
+    grants = {
+        category: [item['id'] for item in state['permissions'] if item['category'] == category]
+        for category in ('workspace_operations', 'capabilities')
+    }
+    response = client.put(path, headers=headers, json={**grants, 'confirm': True})
+    assert response.status_code == 200, response.text
+    assert response.json()['code'] == 0, response.text
 
 
 def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60) -> set[str]:
@@ -515,6 +537,8 @@ def _ensure_qa_plugin(client: httpx.Client, token: str, package_path: Path) -> N
     if QA_RUNNER_ID in _wait_for_qa_runner(client, token, timeout=2):
         return
     _install_qa_plugin(client, token, package_path)
+    # Confirmed installations start asynchronously; callers need the Runner.
+    assert QA_RUNNER_ID in _wait_for_qa_runner(client, token)
 
 
 def test_plugin_runtime_discovers_runner(

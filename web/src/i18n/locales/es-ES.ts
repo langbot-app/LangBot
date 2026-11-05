@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/es-ES';
+import pluginPermissions from './plugin-permissions/es-ES';
 const esES = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Fecha de suscripción: {{date}}',
     latestQuota: 'Cuotas más recientes de este plan',
@@ -1592,7 +1594,7 @@ const esES = {
     eventToolUnavailable: 'No disponible',
     eventApiToolsDescription:
       'Los destinos se fijan a partir del evento actual. El Agent solo proporciona los parámetros de acción.',
-    platformApiTools: 'Herramientas de plataforma',
+    platformApiTools: 'Herramientas del bot',
     platformApiToolsDescription:
       'El Agent puede elegir los ID de usuario, grupo o mensaje. Concede solo lo necesario.',
     apiToolEvents: 'Eventos',
@@ -2507,6 +2509,9 @@ const esES = {
       enableAllPlugins: 'Activar todos los plugins',
       enableAllMCPServers: 'Activar todos los servidores MCP',
       enableAllSkills: 'Activar todas las skills',
+      toolsDescription:
+        'Elige qué herramientas de eventos, herramientas del bot y operaciones del espacio de trabajo puede llamar el agente. Las pipelines responden automáticamente con el texto del modelo, así que no hace falta una herramienta de respuesta.',
+      saveTools: 'Guardar acceso a herramientas',
       allPluginsEnabled: 'Todos los plugins activados',
       allMCPServersEnabled: 'Todos los servidores MCP activados',
       allSkillsEnabled: 'Todas las skills están activadas',
@@ -3912,6 +3917,8 @@ const esES = {
         'Usa un ejecutor instalado o inténtalo más tarde.',
       browseRunners: 'Explorar extensiones de ejecutores',
       installAndContinue: 'Instalar y continuar',
+      autoConfirmPermissions:
+        'Los permisos declarados se concederán automáticamente. Puedes ajustarlos en la configuración del plugin.',
       installing: 'Instalando...',
       useInstalled: 'Usar este ejecutor',
       installedUnavailable: 'Instalado, ejecutor no disponible',
@@ -4061,6 +4068,15 @@ const esES = {
     self_hosted_link: 'la versión de código abierto autoalojada',
     period: '.',
     dismiss: 'Cerrar',
+  },
+  sensitiveTools: {
+    badge: '{{count}} herramientas sensibles',
+    title: 'Herramientas sensibles o de alto riesgo activadas',
+    description:
+      'Si un bot vinculado atiende a usuarios no confiables, desactiva las herramientas correspondientes en la página «{{page}}».',
+    list: 'Incluye: {{items}}',
+    listMore: 'Incluye: {{items}} y más ({{count}} en total)',
+    listSeparator: ', ',
   },
 };
 export default esES;

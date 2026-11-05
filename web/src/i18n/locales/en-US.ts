@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/en-US';
 import pipelineMigration from './pipeline-migration/en-US';
+import pluginPermissions from './plugin-permissions/en-US';
 const enUS = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Subscribed on {{date}}',
     latestQuota: 'Latest quotas for this plan',
@@ -195,6 +197,9 @@ const enUS = {
       get_pipeline: 'Read Pipeline',
       get_knowledge_schema: 'Read knowledge engine schema',
       list_operation_logs: 'Read operation logs',
+      workspace_search: 'Search workspace capabilities',
+      workspace_describe: 'Inspect operation definition',
+      workspace_call: 'Execute workspace operation',
     },
     resources: {
       models: 'Find chat models',
@@ -213,6 +218,9 @@ const enUS = {
     build: 'Help me create a knowledge-base question-answering application.',
     toolResult: 'Operation result',
     review: 'Review the exact operations before executing',
+    dangerousWarning:
+      'Sensitive Operation: This operation carries high risk and may be irreversible. Please verify arguments carefully before confirming.',
+    parameters: 'Parameters:',
     confirm: 'Confirm and execute',
     decline: 'Decline',
     working: 'Working…',
@@ -1570,7 +1578,7 @@ const enUS = {
     eventToolUnavailable: 'Unavailable',
     eventApiToolsDescription:
       'Targets are frozen from the current event. The Agent only supplies action parameters.',
-    platformApiTools: 'Platform tools',
+    platformApiTools: 'Bot tools',
     platformApiToolsDescription:
       'The Agent may choose user, group, or message IDs. Grant only what the workflow needs.',
     apiToolEvents: 'Events',
@@ -2469,6 +2477,9 @@ const enUS = {
       enableAllPlugins: 'Enable All Plugins',
       enableAllMCPServers: 'Enable All MCP Servers',
       enableAllSkills: 'Enable All Skills',
+      toolsDescription:
+        'Choose which event tools, bot tools and workspace operations the agent may call. Pipelines reply with the model text output automatically, so no reply tool is needed.',
+      saveTools: 'Save tool access',
       allPluginsEnabled: 'All plugins enabled',
       allMCPServersEnabled: 'All MCP servers enabled',
       allSkillsEnabled: 'All skills enabled',
@@ -3843,6 +3854,8 @@ const enUS = {
         'Use an installed Runner or try again later.',
       browseRunners: 'Browse Runner Extensions',
       installAndContinue: 'Install & Continue',
+      autoConfirmPermissions:
+        'Declared plugin permissions will be granted automatically. You can adjust them in plugin settings.',
       installing: 'Installing...',
       useInstalled: 'Use This Runner',
       installedUnavailable: 'Installed, Runner Unavailable',
@@ -3989,6 +4002,46 @@ const enUS = {
     self_hosted_link: 'the self-hosted open-source version',
     period: '.',
     dismiss: 'Dismiss',
+  },
+  workspaceOperations: {
+    title: 'Workspace Operations',
+    description:
+      'Configure workspace unified API operations that this processor can invoke.',
+    scopeHint:
+      'Allow this processor to invoke LangBot workspace unified API operations under its own identity.',
+    searchPlaceholder: 'Search operation name, ID, or description...',
+    selectAll: 'Select All',
+    deselectAll: 'Deselect All',
+    selectedCount: '{{count}} selected',
+    totalCount: '{{count}} total',
+    noOperations: 'No workspace operations available',
+    noSearchResults: 'No matching operations found',
+    riskRead: 'Read',
+    riskWrite: 'Write',
+    riskDangerous: 'Dangerous',
+    requiresPermission: 'Requires permission: {{permission}}',
+    dangerousConfirmTitle: 'Contains Dangerous Workspace Operations',
+    dangerousConfirmDescription:
+      'This processor faces IM users; anyone who can chat with the Bot may trigger these operations. Are you sure you want to save?',
+    dangerousConfirmAction: 'Confirm Save',
+    dangerousConfirmCancel: 'Cancel',
+    saveWorkspaceOperations: 'Save Workspace Operations',
+    saveSuccess: 'Workspace operations saved successfully',
+    saveFailed: 'Failed to save workspace operations',
+    configuredCount: '{{count}} operations configured',
+    expandDomain: 'Expand',
+    collapseDomain: 'Collapse',
+    ungrantableRemoved:
+      'Some operations were unselected or removed due to insufficient permissions.',
+  },
+  sensitiveTools: {
+    badge: '{{count}} sensitive tools',
+    title: 'Sensitive or high-risk tools enabled',
+    description:
+      'If a bound bot serves untrusted users, turn the matching tools off on the "{{page}}" page.',
+    list: 'Includes: {{items}}',
+    listMore: 'Includes: {{items}} and more ({{count}} total)',
+    listSeparator: ', ',
   },
 };
 export default enUS;

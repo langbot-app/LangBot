@@ -369,7 +369,7 @@ class TestBotServiceCreateBot:
 
         # Execute & Verify
         with pytest.raises(ValueError, match='Maximum number of bots'):
-            await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot'})
+            await service.create_bot(WORKSPACE_UUID, {'name': 'New Bot', 'adapter': 'aiocqhttp', 'adapter_config': {}})
         assert all(not call.args[0].is_insert for call in ap.persistence_mgr.execute_async.await_args_list)
         ap.platform_mgr.load_bot.assert_not_awaited()
 

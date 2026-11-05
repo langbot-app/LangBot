@@ -158,6 +158,15 @@ def fake_pipeline_app():
     # Plugin connector (for extensions endpoint)
     app.plugin_connector.list_plugins = AsyncMock(return_value=[])
 
+    # The extensions endpoint delegates to the real service, which reads the
+    # pipeline through the mocked ``get_pipeline`` and finds no plugin grants.
+    from langbot.pkg.api.http.service.pipeline import PipelineService
+
+    app.persistence_mgr.execute_async = AsyncMock(return_value=[])
+    extensions_service = PipelineService(app)
+    extensions_service.get_pipeline = app.pipeline_service.get_pipeline
+    app.pipeline_service.get_pipeline_extensions = extensions_service.get_pipeline_extensions
+
     return app
 
 

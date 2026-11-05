@@ -6,6 +6,10 @@ title: "LangBot API"
 
 リトライ、タイムアウト、数値思考予算、prompt caching、ヘッダー、ストリーム終了は [LLM リクエスト設定](/ja/plugin/dev/apis/llm-requests)を参照してください。
 
+<Info>
+このページのほとんどのメソッドには、プラグインが `manifest.yaml` で宣言し、インストール後にワークスペースのメンバーが許可した機能が必要です。たとえば `invoke_llm` には `models.invoke`、`send_message` には `bot.message.send` が必要です。許可のない呼び出しは `permission_denied` になります。各メソッドに必要な機能は[プラグインの権限](/ja/plugin/dev/permissions#機能)を参照してください。Agent、パイプライン、ボットなどのワークスペースリソースを管理するには[ワークスペース API](/ja/plugin/dev/apis/workspace) を使います。
+</Info>
+
 ## LangBot API
 
 これらのAPIは、通常のプラグインコンポーネントで呼び出すことができます。アクセス方法:

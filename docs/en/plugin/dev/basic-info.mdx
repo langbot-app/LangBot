@@ -6,6 +6,8 @@ title: "Completing Plugin Configuration Information"
 
 The `manifest.yaml` file in the plugin directory declares the basic information about the plugin, which will be displayed in the LangBot UI or plugin marketplace interfaces.
 
+The plugin-level `spec.permissions` lists the capabilities and Workspace operations the plugin needs. A Workspace member confirms them after installation; see [Plugin permissions](/en/plugin/dev/permissions).
+
 ```yaml
 apiVersion: v1  # Do not modify
 kind: Plugin  # Do not modify
@@ -22,6 +24,9 @@ metadata:
     zh_Hans: HelloPlugin
   icon: assets/icon.svg  # Plugin icon, defaults to assets/icon.svg, can be replaced with various image formats
 spec:
+  permissions:  # Capabilities and Workspace operations the plugin needs; see Plugin permissions
+    capabilities: []
+    workspace_operations: []
   config: []  # Plugin configuration item format
   components: {}  # Plugin component list, no need to modify manually
 execution:

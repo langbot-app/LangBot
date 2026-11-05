@@ -15,7 +15,7 @@ from tests.integration.persistence.test_migration_branch_convergence import (
 )
 
 
-@pytest.fixture(params=['sqlite', 'postgresql'])
+@pytest.fixture(params=['sqlite', pytest.param('postgresql', marks=[pytest.mark.slow, pytest.mark.postgres])])
 async def convergence_engine(request, tmp_path):
     import os
     import uuid
@@ -46,6 +46,7 @@ async def convergence_engine(request, tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.contract('migration_history')
 async def test_release_41011_upgrade(convergence_engine, monkeypatch):
     from langbot.pkg.utils import constants
 

@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 from langbot_plugin.entities.io.actions.enums import CommonAction, LangBotToRuntimeAction, PluginToRuntimeAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding, PluginWorkerPolicy, RuntimeIdentity
@@ -94,17 +95,30 @@ async def protocol_stack(tmp_path, monkeypatch, profile='oss_dev', binding=LEGAC
         assert expected_generation == BINDING.placement_generation
         return BINDING
 
-    setting = SimpleNamespace(
+    setting = PluginSetting(
+        workspace_uuid=BINDING.workspace_uuid,
         plugin_author='tester',
         plugin_name='engine',
         installation_uuid=BINDING.installation_uuid,
         runtime_revision=BINDING.runtime_revision,
         artifact_digest=BINDING.artifact_digest,
+        enabled=True,
+        permission_declaration=None,
+        permission_grants=None,
+        permission_snapshot=None,
     )
+
+    class SettingRow(tuple):
+        # Callers read either the ORM entity (``row[0]``) or its columns.
+        def __getattr__(self, name):
+            return getattr(self[0], name)
+
     app = SimpleNamespace(
         deployment=SimpleNamespace(mode='oss' if profile == 'oss_dev' else 'cloud'),
         logger=logging.getLogger(__name__),
-        persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=SimpleNamespace(first=lambda: setting))),
+        persistence_mgr=SimpleNamespace(
+            execute_async=AsyncMock(return_value=SimpleNamespace(first=lambda: SettingRow((setting,))))
+        ),
         workspace_service=SimpleNamespace(get_execution_binding=get_execution_binding),
         rag_runtime_service=SimpleNamespace(get_file_stream=get_file_stream),
     )

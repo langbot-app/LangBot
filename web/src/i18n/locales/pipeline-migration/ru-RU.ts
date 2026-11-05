@@ -17,6 +17,8 @@ export default {
   downloaded: 'Загружено {{size}}',
   processed: 'Обработано {{completed}} / {{total}} конвейеров',
   installErrors: {
+    plugin_permission_confirmation_required:
+      'Не удалось подтвердить разрешения плагина. Попросите участника с нужными правами проверить их и повторите попытку.',
     plugin_version_unavailable:
       'Нужная версия ещё не опубликована в магазине. Повторите после публикации либо перенесите только данные.',
     plugin_download_timeout:

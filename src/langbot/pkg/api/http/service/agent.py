@@ -36,12 +36,15 @@ from ....agent.runner.host_models import (
 from ....agent.runner.resource_policy import ResourcePolicyProjector
 from ....agent.runner.platform_tools import (
     PLATFORM_TOOL_DEFINITIONS,
+    default_agent_platform_tools,
     platform_tool_catalog,
     resolve_agent_platform_tool_names,
     validate_debug_mock_options,
 )
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
+from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
+from ...application.plugin_permissions import workspace_operation_grants
 from ..context import ExecutionContext, RequestContext
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -79,19 +82,22 @@ class AgentService:
         event_processors = []
         registry = getattr(self.ap, 'runner_registry', None)
         if registry is not None:
-            event_processors = [
-                item.model_dump(mode='json')
-                for item in await registry.list_runners(
-                    context,
-                    usage='event',
-                    use_cache=False,
-                )
-            ]
+            for item in await registry.list_runners(
+                context,
+                usage='event',
+                use_cache=False,
+            ):
+                dumped = item.model_dump(mode='json')
+                event_processors.append(dumped)
+        ws_catalog = get_workspace_operations_catalog(self.ap, context)
         return {
             'event_processors': event_processors,
             'runner_config': ai_metadata,
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
+            'workspace_operations': ws_catalog['workspace_operations'],
+            'workspace_operation_grants': await workspace_operation_grants(self.ap, context),
+            'domains': ws_catalog['domains'],
             'kinds': [
                 {
                     'name': AGENT_KIND_AGENT,
@@ -295,6 +301,7 @@ class AgentService:
                 allowed_platform_tool_names=resolve_agent_platform_tool_names(config, event_type),
                 allowed_host_tool_names=config.get('allowed_tools'),
                 override_runner_tools='allowed_tools' in config,
+                allowed_workspace_operations=config.get('allowed_workspace_operations'),
             ),
             state_policy=StatePolicy(
                 state_scopes=['conversation', 'actor', 'subject', 'runner'],
@@ -457,6 +464,11 @@ class AgentService:
                     config['runner_config'][runner_id],
                 )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
+            if isinstance(config, dict) and 'allowed_platform_tools' not in config:
+                config['allowed_platform_tools'] = default_agent_platform_tools()
+        if isinstance(config, dict) and 'allowed_workspace_operations' in config:
+            new_ops = config['allowed_workspace_operations']
+            config['allowed_workspace_operations'] = validate_operation_preferences(self.ap, context, [], new_ops)
         new_uuid = str(uuid.uuid4())
         values = {
             'workspace_uuid': workspace_uuid,
@@ -481,6 +493,9 @@ class AgentService:
             await self.ap.pipeline_service.update_pipeline(context, agent_uuid, agent_data)
             return
 
+        old_config = existing_agent.config if isinstance(existing_agent.config, dict) else {}
+        old_ops = old_config.get('allowed_workspace_operations', [])
+
         update_data = {
             field: agent_data[field]
             for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
@@ -499,6 +514,17 @@ class AgentService:
         update_data['component_ref'] = runner_id
         if existing_agent.kind == AGENT_KIND_AGENT:
             await self._validate_runner_for_agent(context, runner_id)
+
+        if 'config' in update_data and isinstance(update_data['config'], dict):
+            new_config = update_data['config']
+            if 'allowed_workspace_operations' in new_config:
+                new_ops = new_config['allowed_workspace_operations']
+                new_config['allowed_workspace_operations'] = validate_operation_preferences(
+                    self.ap, context, old_ops, new_ops
+                )
+            else:
+                new_config['allowed_workspace_operations'] = old_ops
+
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)

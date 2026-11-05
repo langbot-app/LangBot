@@ -6,9 +6,11 @@ import json
 import logging
 import re
 import typing
+import uuid
 
 from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message, MessageChunk
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
+from langbot_plugin.api.entities.builtin.runner.result import RunnerResult
 from langbot_plugin.api.proxies.runner import PermissionDeniedError, RunnerAPIProxy
 
 from pkg.config import DEFAULT_MAX_TOOL_RESULT_CHARS
@@ -205,10 +207,12 @@ class LangBotToolExecutor:
         api: RunnerAPIProxy,
         allowed_tools: set[str],
         max_result_chars: int = DEFAULT_MAX_TOOL_RESULT_CHARS,
+        workspace_manager: typing.Any = None,
     ):
         self.api = api
         self.allowed_tools = allowed_tools
         self.max_result_chars = max_result_chars
+        self.workspace_manager = workspace_manager
         self.local_tools = {}
 
     def prepare(self, request: ToolCallRequest) -> PreparedToolCall:
@@ -244,10 +248,93 @@ class LangBotToolExecutor:
         if prepared.error is not None:
             return self.finalize(prepared, result=None, error=prepared.error)
 
+        results_queue = getattr(self.api, "_results", None)
+        raw_run_id = getattr(self.api, "_run_id", None)
+        run_id = raw_run_id if isinstance(raw_run_id, str) and raw_run_id else "local-run"
+        call_id = prepared.request.id or str(uuid.uuid4())
+        is_traced_queue = (
+            results_queue is not None
+            and hasattr(results_queue, "put")
+            and hasattr(results_queue, "get")
+            and type(results_queue).__name__ not in ("Mock", "AsyncMock", "MagicMock")
+        )
+
+        if self.workspace_manager is not None and self.workspace_manager.is_workspace_tool(prepared.request.name):
+            if is_traced_queue:
+                await results_queue.put(
+                    RunnerResult.tool_call_started(
+                        run_id,
+                        call_id,
+                        prepared.request.name,
+                        prepared.parameters,
+                    )
+                )
+            try:
+                result = await self.workspace_manager.execute(
+                    api=self.api,
+                    tool_name=prepared.request.name,
+                    parameters=prepared.parameters,
+                    max_result_chars=self.max_result_chars,
+                )
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_completed(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            result=result if isinstance(result, dict) else {"value": result},
+                        )
+                    )
+                return self.finalize(prepared, result=result, error=None)
+            except Exception as e:
+                if is_deadline_exceeded_error(e):
+                    raise
+                error_msg = f"Workspace tool execution failed: {e}"
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_completed(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            error=error_msg,
+                        )
+                    )
+                return self.finalize(prepared, result=None, error=error_msg)
+
         try:
             if prepared.request.name in self.local_tools:
-                result = await self.local_tools[prepared.request.name](**prepared.parameters)
-                return self.finalize(prepared, result=result, error=None)
+                if is_traced_queue:
+                    await results_queue.put(
+                        RunnerResult.tool_call_started(
+                            run_id,
+                            call_id,
+                            prepared.request.name,
+                            prepared.parameters,
+                        )
+                    )
+                try:
+                    result = await self.local_tools[prepared.request.name](**prepared.parameters)
+                    if is_traced_queue:
+                        await results_queue.put(
+                            RunnerResult.tool_call_completed(
+                                run_id,
+                                call_id,
+                                prepared.request.name,
+                                result=result if isinstance(result, dict) else {"value": result},
+                            )
+                        )
+                    return self.finalize(prepared, result=result, error=None)
+                except Exception as exc:
+                    if is_traced_queue:
+                        await results_queue.put(
+                            RunnerResult.tool_call_completed(
+                                run_id,
+                                call_id,
+                                prepared.request.name,
+                                error=str(exc),
+                            )
+                        )
+                    raise
             result = await self.api.call_tool(
                 tool_name=prepared.request.name,
                 parameters=prepared.parameters,

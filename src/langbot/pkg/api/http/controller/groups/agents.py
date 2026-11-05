@@ -9,6 +9,7 @@ from .....agent.runner.errors import (
     RunnerNotFoundError,
     RunnerProtocolError,
 )
+from ....application.contracts import ApplicationAPIException
 from ...authz import Permission, require_permission
 from ...context import RequestContext
 from .. import group
@@ -91,6 +92,8 @@ class AgentsRouterGroup(group.RouterGroup):
             require_permission(request_context, Permission.RESOURCE_MANAGE)
             try:
                 created = await self.ap.agent_service.create_agent(request_context, json_data)
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
             return self.success(data=created)
@@ -170,6 +173,8 @@ class AgentsRouterGroup(group.RouterGroup):
                 json_data = await quart.request.json
                 try:
                     await self.ap.agent_service.update_agent(request_context, agent_uuid, json_data)
+                except ApplicationAPIException as exc:
+                    return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
                 except ValueError as exc:
                     return self.http_status(400, -1, str(exc))
                 return self.success()

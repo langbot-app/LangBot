@@ -56,6 +56,8 @@ class RunAuthorizationSnapshot(typing.TypedDict):
     processor_id: str | None
     interactions_enabled: bool
     interactions_authorized: bool
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
 
 
 SteeringQueueItem = dict[str, typing.Any]
@@ -85,6 +87,11 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    processor_type: typing.NotRequired[str | None]
+    processor_id: typing.NotRequired[str | None]
+    trigger_actor: typing.NotRequired[str | None]
+    workspace_id: typing.NotRequired[str | None]
+    workspace_operations: typing.NotRequired[list[dict[str, typing.Any]]]
     runtime_context: dict[str, typing.Any] | None
     task: asyncio.Task[typing.Any] | None
 
@@ -132,6 +139,7 @@ class AgentRunSessionRegistry:
         interactions_enabled: bool = False,
         interactions_authorized: bool = False,
         runtime_context: dict[str, typing.Any] | None = None,
+        trigger_actor: str | None = None,
     ) -> None:
         """Register a new agent run session.
 
@@ -184,6 +192,8 @@ class AgentRunSessionRegistry:
             'processor_id': processor_id,
             'interactions_enabled': interactions_enabled,
             'interactions_authorized': interactions_authorized,
+            'trigger_actor': trigger_actor,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
         }
 
         session: AgentRunSession = {
@@ -199,6 +209,11 @@ class AgentRunSessionRegistry:
                 'last_activity_at': now,
             },
             'steering_queue': [],
+            'processor_type': processor_type,
+            'processor_id': processor_id,
+            'trigger_actor': trigger_actor,
+            'workspace_id': workspace_id,
+            'workspace_operations': copy.deepcopy(resources_snapshot.get('workspace_operations', [])),
             'runtime_context': runtime_context,
             'task': asyncio.current_task(),
         }

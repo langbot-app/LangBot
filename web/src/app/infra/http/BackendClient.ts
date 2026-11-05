@@ -46,6 +46,9 @@ import {
   GetPipelineResponseData,
   GetPipelineMetadataResponseData,
   GetAgentMetadataResponseData,
+  AgentPlatformTool,
+  WorkspaceOperationItem,
+  DomainMeta,
   AsyncTask,
   ApiRespWebChatMessages,
   ApiRespKnowledgeBases,
@@ -661,6 +664,8 @@ export class BackendClient extends BaseHttpClient {
   }
 
   public getPipelineExtensions(uuid: string): Promise<{
+    available_platform_tools?: AgentPlatformTool[];
+    allowed_platform_tools?: string[];
     enable_all_plugins: boolean;
     enable_all_mcp_servers: boolean;
     enable_all_skills: boolean;
@@ -680,6 +685,9 @@ export class BackendClient extends BaseHttpClient {
     }>;
     bound_skills: string[];
     available_skills: Skill[];
+    workspace_operations?: string[];
+    available_workspace_operations?: WorkspaceOperationItem[];
+    domains?: DomainMeta[];
   }> {
     return this.get(`/api/v1/pipelines/${uuid}/extensions`);
   }
@@ -702,6 +710,8 @@ export class BackendClient extends BaseHttpClient {
       max_tokens?: number;
     }>,
     mcp_resource_agent_read_enabled?: boolean,
+    workspace_operations?: string[],
+    allowed_platform_tools?: string[],
   ): Promise<object> {
     const payload: Record<string, unknown> = {
       bound_plugins,
@@ -716,6 +726,12 @@ export class BackendClient extends BaseHttpClient {
     }
     if (mcp_resource_agent_read_enabled !== undefined) {
       payload.mcp_resource_agent_read_enabled = mcp_resource_agent_read_enabled;
+    }
+    if (workspace_operations !== undefined) {
+      payload.workspace_operations = workspace_operations;
+    }
+    if (allowed_platform_tools !== undefined) {
+      payload.allowed_platform_tools = allowed_platform_tools;
     }
     return this.put(`/api/v1/pipelines/${uuid}/extensions`, payload);
   }
@@ -1384,11 +1400,13 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     version: string,
+    autoConfirmPermissions = false,
   ): Promise<AsyncTaskCreatedResp> {
     return this.post('/api/v1/plugins/install/marketplace', {
       plugin_author: author,
       plugin_name: name,
       plugin_version: version,
+      ...(autoConfirmPermissions ? { auto_confirm_permissions: true } : {}),
     });
   }
 

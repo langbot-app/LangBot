@@ -1127,6 +1127,7 @@ def dedupe_material(
     action: str,
     route: str | None,
     resource_id: str | None,
+    dedupe_actor: str | None = None,
 ) -> str:
     """Return the raw material the dedupe key hashes.
 
@@ -1134,9 +1135,10 @@ def dedupe_material(
     so enabling tracing never runs a hash on the request path.
     """
 
+    actor_key = dedupe_actor if dedupe_actor is not None else str(actor_account_uuid or '')
     return '|'.join(
         [
-            str(actor_account_uuid or ''),
+            actor_key,
             str(action or ''),
             str(route or ''),
             str(resource_id or ''),
@@ -1156,6 +1158,7 @@ def compute_dedupe_key(
     action: str,
     route: str | None,
     resource_id: str | None,
+    dedupe_actor: str | None = None,
 ) -> str:
     """Build the key that collapses repeated identical observations."""
 
@@ -1165,6 +1168,7 @@ def compute_dedupe_key(
             action=action,
             route=route,
             resource_id=resource_id,
+            dedupe_actor=dedupe_actor,
         )
     )
 
@@ -1215,7 +1219,7 @@ class WorkspaceSettingsService:
         # later read only has to verify the rows appended since. Without this the
         # panel re-hashed up to MAX_INTEGRITY_SCAN_ROWS rows on every open,
         # refresh and page turn, which is what made reading the log feel slow.
-        self._integrity_cache: dict[str, dict[str, typing.Any]] = {}
+        self._integrity_cache: dict[tuple, dict[str, typing.Any]] = {}
         self._dropped_count = 0
         # Failed persistence attempts, so a silently broken writer (a missing
         # tenant scope, an RLS rejection) is reported instead of only counted.
@@ -1578,6 +1582,7 @@ class WorkspaceSettingsService:
         client_ip: str | None = None,
         user_agent: str | None = None,
         duration_ms: int = 0,
+        dedupe_actor: str | None = None,
     ) -> bool:
         """Queue one operation for traceability. Returns whether it was queued.
 
@@ -1630,6 +1635,7 @@ class WorkspaceSettingsService:
             action=rule.action,
             route=record_fields['route'],
             resource_id=record_fields['resource_id'],
+            dedupe_actor=dedupe_actor,
         )
 
         return self._enqueue(record_fields)
@@ -2034,25 +2040,13 @@ class WorkspaceSettingsService:
             )
             rows = list(rows_result.all())
 
-            # Fetch one extra older row so the oldest visible record can still
-            # have its chain link verified instead of being reported as broken.
-            chain_rows: list[typing.Any] = list(rows)
-            if rows:
-                oldest_id = rows[-1].id
-                older_result = await self.ap.persistence_mgr.execute_async(
-                    sqlalchemy.select(model)
-                    .where(model.workspace_uuid == workspace_uuid, model.id < oldest_id)
-                    .order_by(model.id.desc())
-                    .limit(1)
-                )
-                chain_rows = list(rows) + list(older_result.all())
-
+            predecessors = await self._log_predecessors(model, rows)
             records = [
                 self._serialize_log(
                     row,
-                    previous_row=chain_rows[index + 1] if index + 1 < len(chain_rows) else None,
+                    previous_row=predecessors.get(row.id),
                 )
-                for index, row in enumerate(rows)
+                for row in rows
             ]
             integrity_summary = summary['summary']
         except Exception as exc:  # pragma: no cover - defensive
@@ -2087,6 +2081,27 @@ class WorkspaceSettingsService:
             'scanned': 0,
             'truncated': False,
         }
+
+    async def _log_predecessors(self, model: typing.Any, rows: list[typing.Any]) -> dict[int, typing.Any]:
+        """Fetch each row's immediate predecessor in its unfiltered Workspace history."""
+
+        if not rows:
+            return {}
+        previous = model.__table__.alias('previous_log')
+        previous_id = (
+            sqlalchemy.select(previous.c.id)
+            .where(previous.c.workspace_uuid == model.workspace_uuid, previous.c.id < model.id)
+            .order_by(previous.c.id.desc())
+            .limit(1)
+            .correlate(model)
+            .scalar_subquery()
+        )
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(model.id, previous.c.record_hash)
+            .join(previous, previous.c.id == previous_id)
+            .where(model.id.in_([row.id for row in rows]))
+        )
+        return {row.id: row for row in result.all()}
 
     def _invalidate_integrity_cache(self, workspace_uuid: str) -> None:
         """Drop every cached verification for one Workspace.
@@ -2138,13 +2153,14 @@ class WorkspaceSettingsService:
         A result computed within :data:`INTEGRITY_CACHE_TTL_SECONDS` is served
         from the cache, which is what keeps the panel responsive: opening,
         refreshing and paging all land inside that window and pay nothing. The
-        cache key is ``(Workspace, listing filters)`` -- an integrity drill-down
-        reuses the very result it is drilling into, and both "everything" and
+        cache key includes the Workspace, listing filters and bound values. An
+        integrity drill-down reuses its source result, and both "everything" and
         "mutations only" are cached independently -- so a cache miss is rare.
         A miss re-verifies the *whole* window from scratch: the scan projects
         only the hash columns and the verifier only computes two booleans, so
         the cost is bounded, and an edit to a row verified on a previous pass is
-        still caught.
+        still caught. Each link is checked against its immediate predecessor in
+        the unfiltered Workspace history, independently of the scan window.
         """
 
         workspace_uuid = None
@@ -2154,7 +2170,11 @@ class WorkspaceSettingsService:
             except AttributeError:
                 continue
             break
-        cache_key = (workspace_uuid, tuple(str(condition) for condition in filters))
+        compiled_filters = [condition.compile() for condition in filters]
+        cache_key = (
+            workspace_uuid,
+            tuple((str(condition), tuple(sorted(condition.params.items()))) for condition in compiled_filters),
+        )
         cacheable = workspace_uuid is not None
         now = time.monotonic()
 
@@ -2170,27 +2190,13 @@ class WorkspaceSettingsService:
             )
             rows = list(rows_result.all())
 
-            # Baseline for the oldest scanned row: its link points at a row that
-            # sits just outside the window. Reads are bounded by
-            # ``MAX_INTEGRITY_SCAN_ROWS``, so only a history larger than that
-            # window ever needs this extra row.
-            previous_row = None
-            oldest_id = rows[-1].id if rows else None
-            if oldest_id is not None:
-                older_result = await self.ap.persistence_mgr.execute_async(
-                    _integrity_scan_select(model, model.workspace_uuid == rows[0].workspace_uuid, model.id < oldest_id)
-                    .order_by(model.id.desc())
-                    .limit(1)
-                )
-                previous_row = older_result.first()
-
+            predecessors = await self._log_predecessors(model, rows)
             # Every pass re-verifies every scanned row. The map is deliberately
             # not merged with the previous cache: a row verified once is exactly
             # what an attacker would edit afterwards.
             new_verified: dict[int, tuple[bool, bool]] = {}
-            for index, row in enumerate(rows):
-                predecessor = rows[index + 1] if index + 1 < len(rows) else previous_row
-                new_verified[row.id] = self._verify_hash_and_chain(row, predecessor)
+            for row in rows:
+                new_verified[row.id] = self._verify_hash_and_chain(row, predecessors.get(row.id))
 
             tampered_ids, integrity_failed_ids, chain_failed_ids = self._verified_lists(new_verified)
             scanned = len(new_verified)

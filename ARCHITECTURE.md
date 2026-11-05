@@ -268,12 +268,17 @@ marked for removal in the next major version. Start LangBot with
 
 ## HTTP API, Web UI, and MCP Server
 
+The [Application API foundation](dev-docs/architecture/application-api.md) provides
+versioned Workspace and execution-context operations for future consumer adoption.
+Existing HTTP/MCP/assistant entrypoints retain their current service paths.
+
 `pkg/api/http/controller/main.py` builds a Quart app, registers route groups, serves the built SPA, and wraps the ASGI app with the MCP dispatcher.
 
 - HTTP route groups live under `pkg/api/http/controller/groups/`.
 - Service-layer logic lives under `pkg/api/http/service/`.
 - The built web UI is served from the frontend build path with SPA fallback.
 - The MCP server lives under `pkg/api/mcp/` and is mounted at `/mcp`.
+- The MCP mount binds authenticated request identity only. Each tool opens its own Workspace persistence scope in the session manager's execution task, before language lookup or service access; database scopes must not be inherited from the ASGI dispatcher.
 
 The MCP server intentionally exposes a curated subset of the API. Tools call service classes directly rather than making HTTP requests back into LangBot.
 

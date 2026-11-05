@@ -104,6 +104,8 @@ class Controller:
             query.pipeline_config = pipeline.pipeline_entity.config
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
+            query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
+            query.variables['_pipeline_allowed_platform_tools'] = getattr(pipeline, 'allowed_platform_tools', [])
             command = self._command_name(query)
             if command == 'stop':
                 await self._handle_stop_command(query, original_query)

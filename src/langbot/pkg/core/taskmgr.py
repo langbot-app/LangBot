@@ -8,10 +8,12 @@ import typing
 import datetime
 import time
 
-from . import app
 from . import entities as core_entities
 from .errors import TaskCapacityError
 from .task_boundary import create_detached_task
+
+if typing.TYPE_CHECKING:
+    from . import app
 
 
 class TaskContext:
@@ -215,6 +217,13 @@ class TaskWrapper:
             if exception is not None:
                 status = 'failed'
                 error = {'type': 'task_failed', 'message': t('Task execution failed')}
+                from ..api.application.contracts import ApplicationAPIException
+                from ..api.authz import PermissionDeniedError
+
+                if isinstance(exception, ApplicationAPIException):
+                    error['code'] = exception.error.code
+                elif isinstance(exception, PermissionDeniedError):
+                    error['code'] = exception.error_code
                 result = None
             else:
                 status = 'succeeded'

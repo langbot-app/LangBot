@@ -315,6 +315,7 @@ class AgentRunOrchestrator:
                 binding_id=binding.binding_id,
                 processor_type=binding.processor_type,
                 processor_id=binding.processor_id or binding.agent_id,
+                trigger_actor=event.actor.actor_id if event.actor else None,
                 interactions_enabled=binding.delivery_policy.enable_interactions,
                 interactions_authorized=(
                     bool(getattr(descriptor.capabilities, 'interactions', False))

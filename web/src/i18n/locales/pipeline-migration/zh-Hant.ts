@@ -14,6 +14,8 @@ export default {
   downloaded: '已下載 {{size}}',
   processed: '已處理 {{completed}} / {{total}} 條流水線',
   installErrors: {
+    plugin_permission_confirmation_required:
+      '無法確認外掛權限。請有相應權限的成員在外掛設定中確認後重試。',
     plugin_version_unavailable:
       '擴充市集尚未提供所需外掛版本，請等待上架後重試，或選擇僅遷移資料。',
     plugin_download_timeout: '下載外掛逾時，請檢查網路後重試。',

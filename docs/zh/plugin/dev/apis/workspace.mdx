@@ -1,0 +1,290 @@
+---
+title: 工作区 API
+description: 在插件中读取和管理 Agent、流水线、机器人、模型、知识库等工作区资源。
+---
+
+工作区 API 让插件可以操作它所安装的工作区：列出和修改 Agent 与流水线、查询机器人、管理模型和知识库、读取监控数据等。它开放的操作与 LangBot 的 HTTP API、MCP 服务和工作区助手完全相同，因此成员能通过这些途径完成的事，插件都可以在成员授权的范围内自动完成。
+
+每个操作都有一个稳定的 ID，例如 `pipeline.list` 或 `knowledge.base.retrieve`。插件只能调用自己[在 manifest 中声明](/zh/plugin/dev/permissions#声明权限)、并且已由成员授予该安装的操作。
+
+## 调用操作
+
+在任意组件中通过 `self.plugin.workspace` 调用。每个操作都有一个按 ID 命名、带类型标注的方法：
+
+```python
+from langbot_plugin.api.definition.components.tool.tool import Tool
+
+
+class WorkspaceSummary(Tool):
+    async def call(self, params, session, query_id):
+        result = await self.plugin.workspace.pipeline.list()
+        if not result["ok"]:
+            return f"无法获取流水线列表：{result['error']['message']}"
+
+        names = [pipeline["name"] for pipeline in result["result"]]
+        return "流水线：" + "、".join(names)
+```
+
+方法以关键字参数传参，参数与操作的输入结构一一对应，编辑器里能看到它们的类型和说明。少数名称会被调整为合法的 Python 标识符：如果某一段恰好是 Python 关键字，会在末尾加下划线（例如 `import_`），其他非法字符会替换为下划线。发送时仍使用原始参数名。
+
+如果需要在运行时决定调用哪个操作，可以直接按 ID 调用，效果与类型化方法完全相同：
+
+```python
+result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_uuid, query="退款政策")
+```
+
+`await self.plugin.workspace.list()` 返回该安装已获授权的操作及其输入结构，并按 `domains` 分组。可以用它动态生成工具列表，或在提供某项功能前先确认是否已获授权。
+
+### 在运行器中
+
+运行器通过 `ctx.api.workspace` 拿到与本次运行绑定的代理。它提供相同的方法，也由相同的安装授权控制；区别在于 LangBot 会把每次调用记录到当前运行下。
+
+发起本次运行的 Agent 或流水线，可能限定了模型应当看到哪些工作区操作，这个选择通过 `ctx.resources.workspace_operations` 传入。如果运行器要把工作区操作作为工具提供给模型，应当只提供这些操作；列表为空时，一个都不要提供。LangBot 内置的 LocalAgent 就是这样做的。
+
+## 返回结果与错误
+
+工作区调用不会因为业务错误抛出异常，而是始终返回一个字典：
+
+```python
+# 成功
+{"ok": True, "result": ..., "operation": {"id": "pipeline.list", ...}}
+
+# 失败
+{"ok": False, "error": {"code": "permission_denied", "message": "...", "details": {...}}}
+```
+
+读取 `result` 之前先检查 `ok`。常见错误码：
+
+| 错误码 | 含义 |
+| --- | --- |
+| `permission_denied` | 该安装没有获得这个操作的授权，或者安装已停用。`details.denied_operations` 列出缺少的操作 ID。 |
+| `invalid_input` | 参数不符合操作的输入结构。 |
+| `not_found` | 引用的资源在当前工作区中不存在。 |
+| `application_error` | 操作已执行但失败，`message` 中说明原因。 |
+
+权限不足是预料之中的情况，因为成员可能只授予插件所声明权限的一部分。遇到时应说明缺少什么，而不是让整个命令或运行失败。
+
+## 选择要声明的操作
+
+每个操作都有风险等级，成员确认时可以看到：
+
+- **读**：只返回数据，例如 `pipeline.list`、`stats.basic`。
+- **写**：修改工作区配置，例如 `pipeline.update`、`knowledge.file.store`。
+- **高危**：删除资源、影响 LangBot 之外的对象，或消耗大量资源，例如 `bot.delete`、`pipeline.chat.broadcast`。确认对话框会单独标出这类操作。
+
+授予某个操作的成员，自己必须具备该操作要求的权限（见下表最后一列）。只申请插件真正需要的操作；申请大量高危操作，很可能会被拒绝或被删减。
+
+`knowledge.*` 这类通配符会申请某个前缀下的所有操作，但并不是每个前缀都可以这样用，详见[通配符](/zh/plugin/dev/permissions#通配符)。
+
+## 操作列表
+
+下表按领域列出当前 LangBot 版本中插件可以申请的全部操作。方法写作 `workspace.…`：在组件中是 `self.plugin.workspace`，在运行器中是 `ctx.api.workspace`。SDK 的类型化方法就是根据这份目录生成的，因此表中的每个操作都有对应的方法。
+
+### 适配器 (`adapter`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 适配器详情 | `adapter.get`<br/>`workspace.adapter.get()` | 读 | `resource.view` |
+| 适配器列表 | `adapter.list`<br/>`workspace.adapter.list()` | 读 | `resource.view` |
+
+### 智能体 (`agent`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 创建智能体 | `agent.create`<br/>`workspace.agent.create()` | 写 | `resource.manage` |
+| 调试智能体 | `agent.debug`<br/>`workspace.agent.debug()` | 写 | `runtime.operate` |
+| 删除智能体 | `agent.delete`<br/>`workspace.agent.delete()` | 高危 | `resource.manage` |
+| 智能体详情 | `agent.get`<br/>`workspace.agent.get()` | 读 | `resource.view` |
+| 智能体列表 | `agent.list`<br/>`workspace.agent.list()` | 读 | `resource.view` |
+| 智能体元数据 | `agent.metadata`<br/>`workspace.agent.metadata()` | 读 | `resource.view` |
+| 运行事件流 | `agent.runs.events`<br/>`workspace.agent.runs.events()` | 读 | `resource.view` |
+| 智能体运行列表 | `agent.runs.list`<br/>`workspace.agent.runs.list()` | 读 | `resource.view` |
+| 更新智能体 | `agent.update`<br/>`workspace.agent.update()` | 写 | `resource.manage` |
+
+### 机器人 (`bot`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 机器人管理员列表 | `bot.admins.list`<br/>`workspace.bot.admins.list()` | 读 | `resource.view` |
+| 创建机器人 | `bot.create`<br/>`workspace.bot.create()` | 写 | `resource.manage` |
+| 删除机器人 | `bot.delete`<br/>`workspace.bot.delete()` | 高危 | `resource.manage` |
+| 机器人详情 | `bot.get`<br/>`workspace.bot.get()` | 读 | `resource.view` |
+| 应用群组过滤 | `bot.group_filter.apply`<br/>`workspace.bot.group_filter.apply()` | 写 | `resource.manage` |
+| 群组过滤预览 | `bot.group_filter.preview`<br/>`workspace.bot.group_filter.preview()` | 读 | `resource.manage` |
+| 机器人列表 | `bot.list`<br/>`workspace.bot.list()` | 读 | `resource.view` |
+| 机器人运行日志 | `bot.logs`<br/>`workspace.bot.logs()` | 读 | `resource.view` |
+| 发送机器人消息 | `bot.message.send`<br/>`workspace.bot.message.send()` | 高危 | `runtime.operate` |
+| 测试发送消息 | `bot.message.test`<br/>`workspace.bot.message.test()` | 写 | `resource.manage` |
+| 路由预览 | `bot.routes.preview`<br/>`workspace.bot.routes.preview()` | 读 | `resource.manage` |
+| 路由状态 | `bot.routes.status`<br/>`workspace.bot.routes.status()` | 读 | `resource.view` |
+| 机器人运行时状态 | `bot.runtime.get`<br/>`workspace.bot.runtime.get()` | 读 | `resource.view` |
+| 更新机器人 | `bot.update`<br/>`workspace.bot.update()` | 写 | `resource.manage` |
+
+### 扩展 (`extension`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 扩展全览列表 | `extension.list`<br/>`workspace.extension.list()` | 读 | `resource.view` |
+
+### 知识库 (`knowledge`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 创建知识库 | `knowledge.base.create`<br/>`workspace.knowledge.base.create()` | 写 | `resource.manage` |
+| 删除知识库 | `knowledge.base.delete`<br/>`workspace.knowledge.base.delete()` | 高危 | `resource.manage` |
+| 知识库详情 | `knowledge.base.get`<br/>`workspace.knowledge.base.get()` | 读 | `resource.view` |
+| 知识库列表 | `knowledge.base.list`<br/>`workspace.knowledge.base.list()` | 读 | `resource.view` |
+| 检索知识库 | `knowledge.base.retrieve`<br/>`workspace.knowledge.base.retrieve()` | 读 | `resource.view` |
+| 更新知识库 | `knowledge.base.update`<br/>`workspace.knowledge.base.update()` | 写 | `resource.manage` |
+| 引擎创建配置结构 | `knowledge.engine.creation_schema`<br/>`workspace.knowledge.engine.creation_schema()` | 读 | `resource.view` |
+| 知识引擎列表 | `knowledge.engine.list`<br/>`workspace.knowledge.engine.list()` | 读 | `resource.view` |
+| 引擎检索配置结构 | `knowledge.engine.retrieval_schema`<br/>`workspace.knowledge.engine.retrieval_schema()` | 读 | `resource.view` |
+| 删除知识库文件 | `knowledge.file.delete`<br/>`workspace.knowledge.file.delete()` | 高危 | `resource.manage` |
+| 知识库文件列表 | `knowledge.file.list`<br/>`workspace.knowledge.file.list()` | 读 | `resource.view` |
+| 导入知识库文件 | `knowledge.file.store`<br/>`workspace.knowledge.file.store()` | 写 | `resource.manage` |
+| 文档解析器列表 | `knowledge.parser.list`<br/>`workspace.knowledge.parser.list()` | 读 | `resource.view` |
+
+### MCP 服务 (`mcp`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| MCP资源列表 | `mcp.resource.list`<br/>`workspace.mcp.resource.list()` | 读 | `resource.view` |
+| 读取MCP资源 | `mcp.resource.read`<br/>`workspace.mcp.resource.read()` | 读 | `resource.view` |
+| MCP资源模板列表 | `mcp.resource.templates`<br/>`workspace.mcp.resource.templates()` | 读 | `resource.view` |
+| 删除MCP服务 | `mcp.server.delete`<br/>`workspace.mcp.server.delete()` | 高危 | `resource.manage` |
+| MCP服务详情 | `mcp.server.get`<br/>`workspace.mcp.server.get()` | 读 | `resource.view` |
+| MCP服务列表 | `mcp.server.list`<br/>`workspace.mcp.server.list()` | 读 | `resource.view` |
+| MCP服务日志 | `mcp.server.logs`<br/>`workspace.mcp.server.logs()` | 读 | `audit.view` |
+| MCP服务运行时状态 | `mcp.server.runtime`<br/>`workspace.mcp.server.runtime()` | 读 | `resource.view` |
+| 测试MCP服务连接 | `mcp.server.test`<br/>`workspace.mcp.server.test()` | 写 | `resource.manage` |
+
+### 模型 (`model`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 创建嵌入模型 | `model.embedding.create`<br/>`workspace.model.embedding.create()` | 写 | `provider_secret.manage` |
+| 删除嵌入模型 | `model.embedding.delete`<br/>`workspace.model.embedding.delete()` | 高危 | `resource.manage` |
+| 嵌入模型详情 | `model.embedding.get`<br/>`workspace.model.embedding.get()` | 读 | `resource.view` |
+| 嵌入模型列表 | `model.embedding.list`<br/>`workspace.model.embedding.list()` | 读 | `resource.view` |
+| 按供应商列出嵌入模型 | `model.embedding.list_by_provider`<br/>`workspace.model.embedding.list_by_provider()` | 读 | `resource.view` |
+| 测试嵌入模型 | `model.embedding.test`<br/>`workspace.model.embedding.test()` | 写 | `provider_secret.manage` |
+| 更新嵌入模型 | `model.embedding.update`<br/>`workspace.model.embedding.update()` | 写 | `provider_secret.manage` |
+| 创建大语言模型 | `model.llm.create`<br/>`workspace.model.llm.create()` | 写 | `provider_secret.manage` |
+| 获取默认LLM模型 | `model.llm.default.get`<br/>`workspace.model.llm.default.get()` | 读 | `resource.manage` |
+| 删除大语言模型 | `model.llm.delete`<br/>`workspace.model.llm.delete()` | 高危 | `resource.manage` |
+| 大语言模型详情 | `model.llm.get`<br/>`workspace.model.llm.get()` | 读 | `resource.view` |
+| 大语言模型列表 | `model.llm.list`<br/>`workspace.model.llm.list()` | 读 | `resource.view` |
+| 按供应商列出LLM模型 | `model.llm.list_by_provider`<br/>`workspace.model.llm.list_by_provider()` | 读 | `resource.view` |
+| 获取标星LLM模型 | `model.llm.starred.get`<br/>`workspace.model.llm.starred.get()` | 读 | `resource.view` |
+| 设置标星LLM模型 | `model.llm.starred.set`<br/>`workspace.model.llm.starred.set()` | 写 | `provider_secret.manage` |
+| 测试大语言模型 | `model.llm.test`<br/>`workspace.model.llm.test()` | 写 | `provider_secret.manage` |
+| 更新大语言模型 | `model.llm.update`<br/>`workspace.model.llm.update()` | 写 | `provider_secret.manage` |
+| 创建重排模型 | `model.rerank.create`<br/>`workspace.model.rerank.create()` | 写 | `provider_secret.manage` |
+| 删除重排模型 | `model.rerank.delete`<br/>`workspace.model.rerank.delete()` | 高危 | `resource.manage` |
+| 重排模型详情 | `model.rerank.get`<br/>`workspace.model.rerank.get()` | 读 | `resource.view` |
+| 重排模型列表 | `model.rerank.list`<br/>`workspace.model.rerank.list()` | 读 | `resource.view` |
+| 按供应商列出重排模型 | `model.rerank.list_by_provider`<br/>`workspace.model.rerank.list_by_provider()` | 读 | `resource.view` |
+| 测试重排模型 | `model.rerank.test`<br/>`workspace.model.rerank.test()` | 写 | `provider_secret.manage` |
+| 更新重排模型 | `model.rerank.update`<br/>`workspace.model.rerank.update()` | 写 | `provider_secret.manage` |
+
+### 监控审计 (`monitoring`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 嵌入模型调用统计 | `monitoring.embedding_calls`<br/>`workspace.monitoring.embedding_calls()` | 读 | `resource.view` |
+| 错误日志 | `monitoring.errors`<br/>`workspace.monitoring.errors()` | 读 | `resource.view` |
+| 执行详情 | `monitoring.execution.detail`<br/>`workspace.monitoring.execution.detail()` | 读 | `resource.view` |
+| 执行记录列表 | `monitoring.executions`<br/>`workspace.monitoring.executions()` | 读 | `resource.view` |
+| 用户反馈列表 | `monitoring.feedback.list`<br/>`workspace.monitoring.feedback.list()` | 读 | `resource.view` |
+| 用户反馈统计 | `monitoring.feedback.stats`<br/>`workspace.monitoring.feedback.stats()` | 读 | `resource.view` |
+| 进行中任务监控 | `monitoring.inflight`<br/>`workspace.monitoring.inflight()` | 读 | `resource.view` |
+| 大模型调用统计 | `monitoring.llm_calls`<br/>`workspace.monitoring.llm_calls()` | 读 | `resource.view` |
+| 消息详情 | `monitoring.message.detail`<br/>`workspace.monitoring.message.detail()` | 读 | `resource.view` |
+| 消息历史查询 | `monitoring.messages`<br/>`workspace.monitoring.messages()` | 读 | `resource.view` |
+| 监控总览 | `monitoring.overview`<br/>`workspace.monitoring.overview()` | 读 | `resource.view` |
+| 会话分析 | `monitoring.session.analysis`<br/>`workspace.monitoring.session.analysis()` | 读 | `resource.view` |
+| 重置会话 | `monitoring.session.reset`<br/>`workspace.monitoring.session.reset()` | 高危 | `resource.manage` |
+| 会话列表 | `monitoring.sessions`<br/>`workspace.monitoring.sessions()` | 读 | `resource.view` |
+| 代币消耗统计 | `monitoring.tokens`<br/>`workspace.monitoring.tokens()` | 读 | `resource.view` |
+| 工具调用统计 | `monitoring.tool_calls`<br/>`workspace.monitoring.tool_calls()` | 读 | `resource.view` |
+
+### 流水线 (`pipeline`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 广播聊天消息 | `pipeline.chat.broadcast`<br/>`workspace.pipeline.chat.broadcast()` | 高危 | `runtime.operate` |
+| 流水线连接状态 | `pipeline.chat.connections`<br/>`workspace.pipeline.chat.connections()` | 读 | `runtime.operate` |
+| 流水线聊天历史 | `pipeline.chat.history`<br/>`workspace.pipeline.chat.history()` | 读 | `runtime.operate` |
+| 重置聊天会话 | `pipeline.chat.reset`<br/>`workspace.pipeline.chat.reset()` | 高危 | `runtime.operate` |
+| 复制流水线 | `pipeline.copy`<br/>`workspace.pipeline.copy()` | 写 | `resource.manage` |
+| 创建流水线 | `pipeline.create`<br/>`workspace.pipeline.create()` | 写 | `resource.manage` |
+| 流水线默认配置 | `pipeline.defaults`<br/>`workspace.pipeline.defaults()` | 读 | `resource.view` |
+| 删除流水线 | `pipeline.delete`<br/>`workspace.pipeline.delete()` | 高危 | `resource.manage` |
+| 获取流水线扩展 | `pipeline.extensions.get`<br/>`workspace.pipeline.extensions.get()` | 读 | `resource.view` |
+| 更新流水线扩展 | `pipeline.extensions.update`<br/>`workspace.pipeline.extensions.update()` | 写 | `resource.manage` |
+| 流水线详情 | `pipeline.get`<br/>`workspace.pipeline.get()` | 读 | `resource.view` |
+| 流水线列表 | `pipeline.list`<br/>`workspace.pipeline.list()` | 读 | `resource.view` |
+| 流水线元数据 | `pipeline.metadata`<br/>`workspace.pipeline.metadata()` | 读 | `resource.view` |
+| 执行流水线 | `pipeline.run`<br/>`workspace.pipeline.run()` | 写 | `runtime.operate` |
+| 更新流水线 | `pipeline.update`<br/>`workspace.pipeline.update()` | 写 | `resource.manage` |
+
+### 插件 (`plugin`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 获取插件配置 | `plugin.config.get`<br/>`workspace.plugin.config.get()` | 读 | `resource.view` |
+| 插件调试信息 | `plugin.debug_info`<br/>`workspace.plugin.debug_info()` | 读 | `resource.manage` |
+| 插件详情 | `plugin.get`<br/>`workspace.plugin.get()` | 读 | `resource.view` |
+| GitHub发布包资源 | `plugin.github.assets`<br/>`workspace.plugin.github.assets()` | 读 | `resource.view` |
+| GitHub发布版本 | `plugin.github.releases`<br/>`workspace.plugin.github.releases()` | 读 | `resource.view` |
+| 插件列表 | `plugin.list`<br/>`workspace.plugin.list()` | 读 | `resource.view` |
+| 插件运行日志 | `plugin.logs`<br/>`workspace.plugin.logs()` | 读 | `audit.view` |
+| 插件说明文档 | `plugin.readme`<br/>`workspace.plugin.readme()` | 读 | `resource.view` |
+
+### 模型供应商 (`provider`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 创建供应商 | `provider.create`<br/>`workspace.provider.create()` | 写 | `provider_secret.manage` |
+| 删除供应商 | `provider.delete`<br/>`workspace.provider.delete()` | 高危 | `resource.manage` |
+| 供应商详情 | `provider.get`<br/>`workspace.provider.get()` | 读 | `resource.view` |
+| 供应商列表 | `provider.list`<br/>`workspace.provider.list()` | 读 | `resource.view` |
+| 供应商模型数量 | `provider.models.count`<br/>`workspace.provider.models.count()` | 读 | `resource.view` |
+| 扫描供应商可用模型 | `provider.models.scan`<br/>`workspace.provider.models.scan()` | 写 | `provider_secret.manage` |
+| 更新供应商 | `provider.update`<br/>`workspace.provider.update()` | 写 | `provider_secret.manage` |
+
+### 请求器 (`requester`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 请求器详情 | `requester.get`<br/>`workspace.requester.get()` | 读 | `resource.view` |
+| 请求器列表 | `requester.list`<br/>`workspace.requester.list()` | 读 | `resource.view` |
+
+### 技能 (`skill`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 创建技能 | `skill.create`<br/>`workspace.skill.create()` | 写 | `resource.manage` |
+| 删除技能 | `skill.delete`<br/>`workspace.skill.delete()` | 高危 | `resource.manage` |
+| 技能文件列表 | `skill.file.list`<br/>`workspace.skill.file.list()` | 读 | `resource.view` |
+| 读取技能文件 | `skill.file.read`<br/>`workspace.skill.file.read()` | 读 | `resource.view` |
+| 写入技能文件 | `skill.file.write`<br/>`workspace.skill.file.write()` | 写 | `resource.manage` |
+| 技能详情 | `skill.get`<br/>`workspace.skill.get()` | 读 | `resource.view` |
+| 预览GitHub技能 | `skill.github.preview`<br/>`workspace.skill.github.preview()` | 读 | `resource.manage` |
+| 技能列表 | `skill.list`<br/>`workspace.skill.list()` | 读 | `resource.view` |
+| 重新加载技能 | `skill.reload`<br/>`workspace.skill.reload()` | 写 | `resource.manage` |
+| 更新技能 | `skill.update`<br/>`workspace.skill.update()` | 写 | `resource.manage` |
+
+### 数据统计 (`stats`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 基础数据统计 | `stats.basic`<br/>`workspace.stats.basic()` | 读 | `resource.view` |
+
+### 工具 (`tool`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 工具详情 | `tool.get`<br/>`workspace.tool.get()` | 读 | `resource.view` |
+| 工具列表 | `tool.list`<br/>`workspace.tool.list()` | 读 | `resource.view` |
+

@@ -431,6 +431,24 @@ PLATFORM_TOOL_DEFINITIONS: tuple[PlatformToolDefinition, ...] = (
 
 PLATFORM_TOOLS_BY_NAME = {definition.name: definition for definition in PLATFORM_TOOL_DEFINITIONS}
 
+# Pipelines reply with the LLM's text output automatically, so explicit reply
+# tools would mislead the model into thinking it must call a tool to answer.
+PIPELINE_DEFAULT_EXCLUDED_PLATFORM_TOOLS = frozenset({'event_reply', 'platform_send_message'})
+
+
+def default_agent_platform_tools() -> list[str]:
+    """Bot tools enabled for a newly created Agent."""
+    return sorted(definition.name for definition in PLATFORM_TOOL_DEFINITIONS if definition.scope == 'platform')
+
+
+def default_pipeline_platform_tools() -> list[str]:
+    """Event and bot tools enabled for a newly created pipeline."""
+    return sorted(
+        definition.name
+        for definition in PLATFORM_TOOL_DEFINITIONS
+        if definition.name not in PIPELINE_DEFAULT_EXCLUDED_PLATFORM_TOOLS
+    )
+
 
 def resolve_agent_platform_tool_names(config: typing.Mapping[str, typing.Any], event_type: str) -> list[str]:
     """Resolve platform tools plus the event actions implied by this event."""

@@ -129,6 +129,9 @@ class ResourcePolicy(pydantic.BaseModel):
     allow_workspace_storage: bool = False
     """Whether workspace storage is allowed."""
 
+    allowed_workspace_operations: list[str] = pydantic.Field(default_factory=list)
+    """Workspace operations explicitly authorized for this processor."""
+
 
 class StatePolicy(pydantic.BaseModel):
     """State policy for agent binding.

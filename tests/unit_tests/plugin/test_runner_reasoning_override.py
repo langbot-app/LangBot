@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
@@ -15,6 +16,8 @@ from langbot.pkg.plugin import handler as handler_module
 from tests.unit_tests.agent.test_runner_model_reasoning import PRIMARY, FALLBACK, OTHER
 from tests.unit_tests.plugin.test_handler_actions import make_handler, make_result
 from tests.unit_tests.provider.test_reasoning_control import _requester, _runtime_model
+
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
 
 
 ACTIONS = [
@@ -54,6 +57,7 @@ class RecordingProvider:
 async def host(monkeypatch):
     registry = AgentRunSessionRegistry()
     monkeypatch.setattr(handler_module, 'get_session_registry', lambda: registry)
+    monkeypatch.setattr('langbot.pkg.agent.runner.session_registry._global_registry', registry)
     request = _requester('openai')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: True)
     monkeypatch.setattr(request, '_safe_model_info', lambda _: {})

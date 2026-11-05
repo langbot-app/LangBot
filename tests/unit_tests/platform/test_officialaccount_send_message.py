@@ -160,6 +160,7 @@ async def test_send_refreshes_rejected_token_once(monkeypatch, final_code):
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures('installed_legacy_plugin')
 @pytest.mark.parametrize('errcode', [0, 45015])
 async def test_plugin_send_message_action_reaches_adapter(errcode):
     adapter = make_adapter()
@@ -168,9 +169,12 @@ async def test_plugin_send_message_action_reaches_adapter(errcode):
     app.platform_mgr.get_bot_by_uuid = AsyncMock(return_value=SimpleNamespace(adapter=adapter))
     runtime_handler = make_handler(app)
     runtime_handler._resource_exists = AsyncMock(return_value=True)
+    # The bot belongs to the plugin installation's Workspace.
+    app.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(first=lambda: ('bot-1',)))
     data = {
         'bot_uuid': 'bot-1',
-        'target_type': 'private',
+        # Plugins address users with the SDK target type; the adapter accepts it.
+        'target_type': 'person',
         'target_id': 'openid-1',
         'message_chain': text_message('hello', ' world').model_dump(),
     }

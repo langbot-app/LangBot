@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/ja-JP';
 import pipelineMigration from './pipeline-migration/ja-JP';
+import pluginPermissions from './plugin-permissions/ja-JP';
 const jaJP = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: '契約日：{{date}}',
     latestQuota: 'このプランの最新の利用枠',
@@ -1578,7 +1580,7 @@ const jaJP = {
     eventToolUnavailable: '利用不可',
     eventApiToolsDescription:
       '操作対象は現在のイベントから決まります。Agent はアクションのパラメーターのみを指定します。',
-    platformApiTools: 'プラットフォームツール',
+    platformApiTools: 'ボットツール',
     platformApiToolsDescription:
       'Agent はユーザー、グループ、メッセージの ID を選べます。必要な権限だけを付与してください。',
     apiToolEvents: 'イベント',
@@ -2479,6 +2481,9 @@ const jaJP = {
       enableAllPlugins: 'すべてのプラグインを有効にする',
       enableAllMCPServers: 'すべてのMCPサーバーを有効にする',
       enableAllSkills: 'すべてのスキルを有効化',
+      toolsDescription:
+        'Agent が呼び出せるイベントツール、ボットツール、ワークスペース操作を選択します。パイプラインはモデルのテキスト出力を自動で返信するため、返信ツールは不要です。',
+      saveTools: 'ツール権限を保存',
       allPluginsEnabled: 'すべてのプラグインが有効になっています',
       allMCPServersEnabled: 'すべてのMCPサーバーが有効になっています',
       allSkillsEnabled: 'すべてのスキルが有効です',
@@ -3858,6 +3863,8 @@ const jaJP = {
         'インストール済みのランナーを使うか、後でもう一度お試しください。',
       browseRunners: 'Runner 拡張機能を見る',
       installAndContinue: 'インストールして続行',
+      autoConfirmPermissions:
+        'プラグインが宣言した権限を自動的に付与します。プラグイン設定で変更できます。',
       installing: 'インストール中...',
       useInstalled: 'この Runner を使用',
       installedUnavailable: 'インストール済み、Runner は利用不可',
@@ -4000,6 +4007,15 @@ const jaJP = {
     self_hosted_link: 'セルフホスト版',
     period: 'をご検討ください。',
     dismiss: '閉じる',
+  },
+  sensitiveTools: {
+    badge: '注意が必要なツール {{count}} 件',
+    title: '注意が必要な高リスクツールが有効です',
+    description:
+      '紐付けたボットを信頼できないユーザーに公開する場合は、「{{page}}」ページで該当するツールをオフにしてください。',
+    list: '対象：{{items}}',
+    listMore: '対象：{{items}} など計 {{count}} 件',
+    listSeparator: '、',
   },
 };
 export default jaJP;

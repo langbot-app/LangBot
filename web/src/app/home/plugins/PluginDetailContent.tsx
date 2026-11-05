@@ -1,4 +1,5 @@
 import EntityLoadState from '@/components/EntityLoadState';
+import PluginPermissions from './components/PluginPermissions';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import PluginForm from '@/app/home/plugins/components/plugin-installed/plugin-form/PluginForm';
@@ -228,6 +229,14 @@ export default function PluginDetailContent({ id }: { id: string }) {
               pluginAuthor={pluginAuthor}
               pluginName={pluginName}
               onFormSubmit={handleFormSubmit}
+            />
+            <PluginPermissions
+              author={pluginAuthor}
+              name={pluginName}
+              onChange={() => {
+                void refreshPlugins();
+                setLoadAttempt((attempt) => attempt + 1);
+              }}
             />
             {dangerZone}
           </div>

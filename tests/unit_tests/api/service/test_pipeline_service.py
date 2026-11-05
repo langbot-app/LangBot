@@ -21,6 +21,7 @@ import sqlalchemy
 import json
 
 from langbot.pkg.api.http.service.pipeline import PipelineService, default_stage_order
+from langbot.pkg.agent.runner.platform_tools import default_pipeline_platform_tools
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
@@ -386,7 +387,14 @@ class TestPipelineServiceCreatePipeline:
             'mcp_servers': [],
             'mcp_resources': [],
             'mcp_resource_agent_read_enabled': True,
+            'allowed_platform_tools': default_pipeline_platform_tools(),
         }
+        allowed = insert_params[0]['extensions_preferences']['allowed_platform_tools']
+        # Pipelines auto-reply with LLM text; explicit reply tools stay off by default.
+        assert 'event_reply' not in allowed
+        assert 'platform_send_message' not in allowed
+        assert 'event_get_actor' in allowed
+        assert 'platform_get_user_info' in allowed
 
 
 class _MockResultWithBots:
@@ -413,6 +421,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = None  # No bot_service when not updating name
@@ -446,6 +456,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
         ap.sess_mgr.session_list = []
         ap.bot_service = SimpleNamespace()
@@ -499,6 +511,8 @@ class TestPipelineServiceUpdatePipeline:
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
         ap.pipeline_mgr.load_pipeline = AsyncMock()
+        ap.pipeline_mgr.prepare_pipeline = AsyncMock()
+        ap.pipeline_mgr.publish_pipeline = Mock()
         ap.sess_mgr = SimpleNamespace()
 
         # Mock session with conversation using this pipeline
@@ -611,6 +625,7 @@ class TestPipelineServiceCopyPipeline:
         """Creates a copy with (Copy) suffix."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}
@@ -674,6 +689,7 @@ class TestPipelineServiceCopyPipeline:
         """Copy is never set as default."""
         # Setup
         ap = SimpleNamespace()
+        ap.application_api = SimpleNamespace(_operations={})
         ap.persistence_mgr = SimpleNamespace()
         ap.instance_config = SimpleNamespace()
         ap.instance_config.data = {'system': {'limitation': {'max_pipelines': -1}}}
@@ -967,7 +983,7 @@ class TestPipelineSecretRoundtrip:
         write_result = Mock(rowcount=1)
         ap = SimpleNamespace(
             persistence_mgr=SimpleNamespace(execute_async=AsyncMock(return_value=write_result)),
-            pipeline_mgr=SimpleNamespace(remove_pipeline=AsyncMock(), load_pipeline=AsyncMock()),
+            pipeline_mgr=SimpleNamespace(prepare_pipeline=AsyncMock(), publish_pipeline=Mock()),
             sess_mgr=SimpleNamespace(session_list=[]),
         )
         service = PipelineService(ap)
@@ -978,13 +994,16 @@ class TestPipelineSecretRoundtrip:
             'pipeline-secret',
             {
                 'config': {
+                    'trigger': {},
+                    'safety': {},
+                    'output': {},
                     'ai': {
                         'n8n': {
                             'webhook-url': '***',
                             'headers': {'Authorization': '***'},
                             'timeout': 60,
                         }
-                    }
+                    },
                 }
             },
         )
@@ -992,13 +1011,16 @@ class TestPipelineSecretRoundtrip:
         statement = ap.persistence_mgr.execute_async.await_args.args[0]
         stored_config = next(value.value for column, value in statement._values.items() if column.key == 'config')
         assert stored_config == {
+            'trigger': {},
+            'safety': {},
+            'output': {},
             'ai': {
                 'n8n': {
                     'webhook-url': 'https://hook.invalid/bearer-secret',
                     'headers': {'Authorization': 'Bearer secret'},
                     'timeout': 60,
                 }
-            }
+            },
         }
 
 

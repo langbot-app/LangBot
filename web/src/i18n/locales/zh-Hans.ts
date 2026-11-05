@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/zh-Hans';
 import pipelineMigration from './pipeline-migration/zh-Hans';
+import pluginPermissions from './plugin-permissions/zh-Hans';
 const zhHans = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: '订阅日期：{{date}}',
     latestQuota: '该计划最新配额',
@@ -184,6 +186,9 @@ const zhHans = {
       get_pipeline: '查看 流水线',
       get_knowledge_schema: '查看知识引擎配置',
       list_operation_logs: '查询操作日志',
+      workspace_search: '搜索操作能力',
+      workspace_describe: '查看操作定义',
+      workspace_call: '执行工作区操作',
     },
     resources: {
       models: '查询聊天模型',
@@ -202,6 +207,9 @@ const zhHans = {
     build: '帮我创建一个知识库问答应用。',
     toolResult: '操作结果',
     review: '请检查具体操作及参数，确认后执行',
+    dangerousWarning:
+      '敏感操作提示：该操作具有较高风险，执行后可能不可逆，请核对参数后确认。',
+    parameters: '参数：',
     confirm: '确认执行',
     decline: '拒绝',
     working: '正在处理…',
@@ -1478,7 +1486,7 @@ const zhHans = {
     eventToolUnavailable: '不适用',
     eventApiToolsDescription:
       '目标从当前事件冻结，Agent 只能提供动作参数，适合回复、审核请求和处理相关成员。',
-    platformApiTools: '平台工具',
+    platformApiTools: '机器人工具',
     platformApiToolsDescription:
       'Agent 可以指定用户、群组或消息标识。请只按实际业务需要授权。',
     apiToolEvents: '适用事件',
@@ -2326,6 +2334,9 @@ const zhHans = {
       enableAllPlugins: '启用所有插件',
       enableAllMCPServers: '启用所有 MCP 服务器',
       enableAllSkills: '启用所有技能',
+      toolsDescription:
+        '选择 Agent 可调用的事件工具、机器人工具和工作区操作。流水线会把模型输出的文字自动回复到当前会话，无需回复工具。',
+      saveTools: '保存工具权限',
       allPluginsEnabled: '已启用所有插件',
       allMCPServersEnabled: '已启用所有 MCP 服务器',
       allSkillsEnabled: '已启用所有技能',
@@ -3626,6 +3637,8 @@ const zhHans = {
       noMarketplaceRunnersDescription: '可以使用已安装的运行器，或稍后重试。',
       browseRunners: '浏览运行器扩展',
       installAndContinue: '安装并继续',
+      autoConfirmPermissions:
+        '将自动授予该插件声明的权限，可在插件设置中调整。',
       installing: '正在安装...',
       useInstalled: '使用此运行器',
       installedUnavailable: '已安装，运行器不可用',
@@ -3758,6 +3771,43 @@ const zhHans = {
     self_hosted_link: '自部署开源版本',
     period: '。',
     dismiss: '关闭横幅',
+  },
+  workspaceOperations: {
+    title: '工作区操作',
+    description: '配置处理器可以调用的工作区统一 API 操作。勾选即授权。',
+    scopeHint: '允许此处理器以自身身份调用 LangBot 工作区统一 API 操作。',
+    searchPlaceholder: '搜索操作名称、ID 或描述...',
+    selectAll: '全选',
+    deselectAll: '取消全选',
+    selectedCount: '已选 {{count}} 项',
+    totalCount: '共 {{count}} 项',
+    noOperations: '暂无可用工作区操作',
+    noSearchResults: '未找到匹配的操作',
+    riskRead: '读',
+    riskWrite: '写',
+    riskDangerous: '高危',
+    requiresPermission: '需要权限：{{permission}}',
+    dangerousConfirmTitle: '包含高危工作区操作',
+    dangerousConfirmDescription:
+      '该处理器面向 IM 用户，任何能和 Bot 对话的人都可能触发这些操作。确定要保存吗？',
+    dangerousConfirmAction: '确认保存',
+    dangerousConfirmCancel: '取消',
+    saveWorkspaceOperations: '保存工作区操作',
+    saveSuccess: '工作区操作保存成功',
+    saveFailed: '工作区操作保存失败',
+    configuredCount: '已配置 {{count}} 个操作',
+    expandDomain: '展开',
+    collapseDomain: '折叠',
+    ungrantableRemoved: '部分操作因权限不足未自动勾选/已移除',
+  },
+  sensitiveTools: {
+    badge: '{{count}} 个敏感/高危工具',
+    title: '已启用敏感或高危工具',
+    description:
+      '如果绑定的机器人要对外服务不受信任的用户，请到“{{page}}”页面关闭对应工具。',
+    list: '包括：{{items}}',
+    listMore: '包括：{{items}}等 {{count}} 项',
+    listSeparator: '、',
   },
 };
 export default zhHans;

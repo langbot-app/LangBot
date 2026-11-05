@@ -8,7 +8,7 @@ import { zhOnlyArticleRoutes } from "./article-routes.mjs";
 const root = path.resolve(import.meta.dirname, "..");
 const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
 // The fixed documentation baseline excludes synchronized Blog pages.
-const expectedDocuments = 299 + articleManifest.articles.length;
+const expectedDocuments = 305 + articleManifest.articles.length;
 
 const publicRoot = path.join(root, "dist/public");
 

@@ -169,6 +169,7 @@ export default function PipelineMigration({
         'plugin_download_failed',
         'dependency_prepare_failed',
         'plugin_launch_failed',
+        'plugin_permission_confirmation_required',
       ].includes(issue.code)
     )
       return <span>{t(`pipelineMigration.installErrors.${issue.code}`)}</span>;

@@ -1,0 +1,156 @@
+---
+title: Plugin permissions
+description: Declare what your plugin needs, and understand how Workspace members confirm and revoke that access.
+---
+
+A plugin can do far more than reply to messages: it can call models, read knowledge bases, send messages through any bot, or manage Agents and Pipelines through the [Workspace API](/en/plugin/dev/apis/workspace). Because every installation runs inside one Workspace, LangBot asks plugins to say up front which of these abilities they need, and asks a Workspace member to approve them.
+
+The flow has three steps:
+
+1. **Declare.** The plugin lists the permissions it needs in `manifest.yaml`.
+2. **Confirm.** After installation, a member reviews the list on the plugin's detail page and grants all or part of it. Until then the installation stays disabled.
+3. **Enforce.** LangBot checks the installation's grants on every call the plugin makes. A call outside the grants fails with `permission_denied`.
+
+Declaring a permission does not grant it. Only a member's confirmation does.
+
+## Declare permissions
+
+Permissions belong to the plugin as a whole, so they live under the plugin-level `spec` in `manifest.yaml`, not inside a component. The same grants apply to every component of the plugin: commands, event listeners, tools, knowledge engines, parsers and Runners.
+
+```yaml
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: acme
+  name: WeeklyReport
+  version: 1.0.0
+spec:
+  permissions:
+    capabilities:
+      - models.invoke      # call LLMs
+      - bot.message.send   # post the report to a group
+      - storage.plugin     # remember when the last report was sent
+    workspace_operations:
+      - stats.basic        # read Workspace statistics
+      - knowledge.*        # every knowledge base operation
+  config: []
+  components: {}
+```
+
+The two lists cover different kinds of access:
+
+- **`capabilities`** unlock the classic SDK methods on `self.plugin`, such as `invoke_llm`, `send_message` or `set_plugin_storage`. The [table below](#capabilities) lists all 16.
+- **`workspace_operations`** unlock operations of the [Workspace API](/en/plugin/dev/apis/workspace), the same operations the LangBot HTTP API, MCP server and Workspace assistant use. Each entry is an operation ID such as `pipeline.list`.
+
+Declare only what the plugin actually uses. Members are far more willing to approve a short, sensible list, and a smaller grant limits the damage if the plugin is ever misused.
+
+### Strict mode and compatibility mode
+
+How you declare permissions decides which mode the installation runs in:
+
+| Manifest | Mode | Behaviour |
+| --- | --- | --- |
+| `permissions:` with one or both lists | Strict | Members may grant the whole list or only part of it. |
+| `permissions: {}` | Strict | The plugin needs no global access at all. |
+| No `permissions` field | Compatibility | The plugin is treated as a legacy plugin; see [Compatibility mode](#compatibility-mode). |
+
+New plugins should always declare permissions, even an empty set.
+
+### Wildcards
+
+A workspace operation entry may end in `.*` to request every operation under a prefix, for example `knowledge.*` or `model.llm.*`. LangBot expands the wildcard into concrete operation IDs when a member confirms the installation, and stores those IDs. If a later LangBot version adds operations under that prefix, they are not granted automatically; the installation asks for confirmation again.
+
+Some operations can never be granted to plugins: streaming operations, operations reserved for other callers (for example ones only a signed-in member may call), and operations not exposed through the API at all. Declaring one of them, or an unknown ID, makes the declaration invalid. The same applies to a wildcard whose prefix contains such an operation, so `bot.*`, `agent.*`, `pipeline.*`, `plugin.*` and `monitoring.*` are rejected; list those operations individually or use a narrower prefix.
+
+These wildcards are valid today:
+
+- Whole domains: `adapter.*`, `extension.*`, `knowledge.*`, `model.*`, `requester.*`, `stats.*`, `tool.*`
+- Narrower prefixes: `agent.runs.*`, `bot.group_filter.*`, `bot.message.*`, `bot.routes.*`, `bot.runtime.*`, `mcp.resource.*`, `monitoring.execution.*`, `monitoring.feedback.*`, `monitoring.message.*`, `monitoring.session.*`, `pipeline.chat.*`, `pipeline.extensions.*`, `plugin.github.*`, `provider.models.*`, `skill.file.*`, and every prefix under `knowledge.` and `model.`
+
+The [Workspace API reference](/en/plugin/dev/apis/workspace#operation-reference) lists every operation a plugin can request.
+
+## Capabilities
+
+Each capability unlocks a group of SDK methods. The member confirming it needs the Workspace permissions in the third column; the last column tells them what they are approving.
+
+| Capability | SDK methods it unlocks | Member needs | What it means |
+| --- | --- | --- | --- |
+| `langbot.info` | `get_langbot_version` | `resource.view` | Read-only |
+| `bot.read` | `get_bots`, `get_bot_info` | `resource.view` | Read-only |
+| `bot.message.send` | `send_message` | `runtime.operate` | Sends messages to users and groups |
+| `bot.platform_api` | `call_platform_api` | `runtime.operate`, `resource.manage` | **Dangerous**: raw access to the IM platform |
+| `models.read` | `get_llm_models` | `resource.view` | Read-only |
+| `models.invoke` | `invoke_llm`, `invoke_llm_with_usage`, `invoke_llm_stream`, `invoke_llm_stream_events`, `invoke_embedding`, `invoke_rerank` | `runtime.operate` | Consumes model provider quota |
+| `storage.plugin` | `get/set/delete_plugin_storage`, `get_plugin_storage_keys` | `resource.manage` | Writes the plugin's own storage |
+| `storage.workspace` | `get/set/delete_workspace_storage`, `get_workspace_storage_keys` | `resource.manage` | Writes storage shared by all plugins |
+| `knowledge.read` | `list_knowledge_bases`, `retrieve_knowledge`, `get_knowledge_file_stream` | `resource.view` | Reads knowledge bases |
+| `knowledge.vector` | `vector_upsert`, `vector_search`, `vector_delete`, `vector_list` | `resource.manage` | Writes vector stores |
+| `knowledge.parser` | `list_parsers`, `invoke_parser` | `runtime.operate` | Runs document parsers |
+| `config.read` | `get_config_file` | `resource.view` | Reads uploaded config files |
+| `plugin_tools` | `list_tools`, `get_tool_detail`, `call_tool` on plugin tools | `runtime.operate` | Runs other plugins' tools |
+| `mcp` | `call_tool` on MCP tools | `runtime.operate` | **Dangerous**: runs MCP tools |
+| `sandbox` | `get_box_status`, `list_boxes`, `acquire_box`, and `call_tool` on sandbox tools | `runtime.operate` | **Dangerous**: runs code in the sandbox |
+| `plugin.read` | `list_plugins_manifest`, `list_commands` | `resource.view` | Lists installed plugins |
+
+Two notes on tools. When your plugin calls another plugin's tool, that tool runs with **its own** installation's grants, not yours. And a capability is checked per tool source: `plugin_tools` alone does not let you call an MCP or sandbox tool.
+
+Calls that act only on the event or run your plugin is currently handling need no capability. Replying to the triggering conversation, reading the current query's variables, or using the tools LangBot provides to a Runner are all authorized by that event or run, not by the installation. See [Agent run API](/en/plugin/dev/apis/agent-run) and [Pipeline event API](/en/plugin/dev/apis/pipeline-events).
+
+## Confirming an installation
+
+A newly installed or upgraded plugin that needs confirmation shows **Needs approval** in the plugin list and on its detail page, and stays disabled. A member opens **Plugin permissions** on the detail page, reviews the requested permissions, unchecks anything they do not want to grant, and selects **Grant**. Dangerous capabilities and the ability to send messages are highlighted in the confirmation dialog.
+
+Who may confirm:
+
+- Only members signed in to the WebUI (and support administrators) can add grants. API keys, `lbctl`, processors, plugins and public bots cannot. An installation made through an API key or `lbctl` waits for a member to confirm it in the WebUI.
+- The member needs `resource.manage`, plus the permissions each grant requires: the capability ceilings in the table above, and each operation's own `permission` for workspace operations. Members with the developer role hold `resource.view`, `resource.manage` and `runtime.operate`, so they can grant every capability. That still does not let them grant operations above their role, such as member or API-key management.
+- If even one requested item is above the member's ceiling, the whole request fails with `permission_denied`, and the response lists the offending items in `denied_operations` and `denied_capabilities`. LangBot never silently drops part of a request.
+
+In strict mode the member may grant any subset of what the plugin declared, so make your plugin degrade gracefully when an optional permission is missing.
+
+Grants belong to the installation, not to the member. They stay in place if the member who approved them later changes role or leaves the Workspace.
+
+### Installing with automatic confirmation
+
+The setup wizard and Pipeline migration install official plugins and confirm their declared permissions in one step. They go through the same checks as a manual confirmation: the caller must be a member and must hold every required permission. If any check fails, the plugin is still installed but stays pending. Over HTTP this corresponds to `auto_confirm_permissions: true` on `POST /api/v1/plugins/install/marketplace`; the default is `false`, and API keys cannot use it to bypass member confirmation.
+
+## Revoking and upgrading
+
+Any member with `resource.manage` can revoke a grant at any time by unchecking it and saving. Revoking needs no confirmation and no permission ceiling. API keys may revoke but never add.
+
+When a plugin is upgraded:
+
+- Grants that the new version still declares are kept.
+- Permissions the new version adds stay ungranted until a member confirms them, and the installation shows **Needs approval** again.
+- Permissions the new version no longer declares stop being effective immediately.
+
+## How grants combine with Agent and Pipeline settings
+
+Choosing tools for an Agent or a Pipeline does not grant anything. It only narrows what the model sees. A Runner such as LocalAgent offers the model the intersection of the tools selected in the Agent (or the Pipeline's **Extensions** page) and the operations granted to the Runner's installation. If nothing is selected, the model gets no workspace tools.
+
+This is why a member who can edit an Agent may select a workspace operation they could not grant themselves: the selection has no effect unless a member with enough permissions has already granted that operation to the Runner plugin.
+
+## Compatibility mode
+
+Plugins written before installation permissions existed have no `spec.permissions`. LangBot runs them in compatibility mode:
+
+- They receive a fixed set of **all 16 legacy capabilities** and **no workspace operations**.
+- A member must confirm the whole set at once; partial confirmation is not possible, because nothing in the manifest tells LangBot which subset would be safe. After confirming, the member may revoke individual capabilities.
+- Confirming requires `resource.view`, `resource.manage` and `runtime.operate`.
+- Capabilities added in future LangBot versions are not added to an already confirmed set.
+
+Installations that existed before you upgraded LangBot are migrated with this set already confirmed and keep their enabled state. Installing a compatibility-mode plugin afresh, or upgrading one (including to a version that drops its previous declaration), disables it until a member confirms again.
+
+## Handling a denied call
+
+Classic SDK methods raise an error whose data carries `code: permission_denied` and, where relevant, `denied_capabilities`. Workspace API calls do not raise; they return `{"ok": false, "error": {...}}` with the same code. Either way, treat a denial as a normal outcome: log it, tell the user which permission is missing, and continue without that feature.
+
+## Managing permissions programmatically
+
+The WebUI uses these endpoints, which you can also call with a member token:
+
+- `GET /api/v1/plugins/{author}/{plugin_name}/permissions` returns every declared item with `granted` and `grantable`, whether the installation is in compatibility mode or pending confirmation, and whether the caller `can_manage` and `can_confirm`. Workspace operations include their `domain`, and the response lists domain names in `domains`.
+- `PUT /api/v1/plugins/{author}/{plugin_name}/permissions` takes `workspace_operations`, `capabilities` and `confirm`. With `confirm: false` the lists must be a subset of the current grants, so this form can only revoke. With `confirm: true` the full confirmation rules above apply.
+- Plugin list and detail responses include `permission_status` with `compatibility_mode` and `pending_confirmation`.
+
+The matching Application API operations are `plugin.permissions.get` and `plugin.permissions.update`. LangBot's MCP server exposes `get_plugin_permissions` and `revoke_plugin_permissions`; MCP clients authenticated with an API key cannot confirm new grants.

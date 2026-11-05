@@ -8,6 +8,7 @@ DEFAULT_MAX_TOOL_ITERATIONS = 100
 DEFAULT_MAX_TOOL_RESULT_CHARS = 20000
 DEFAULT_RUN_TIMEOUT_SECONDS = 300
 DEFAULT_TOOL_EXECUTION_MODE = "parallel"
+DEFAULT_WORKSPACE_DIRECT_THRESHOLD = 8
 VALID_TOOL_EXECUTION_MODES = {"parallel", "serial"}
 
 
@@ -183,3 +184,13 @@ def _positive_int(value: typing.Any, *, default: int) -> int:
     if value < 1:
         return default
     return value
+
+
+def get_workspace_direct_threshold(config: dict[str, typing.Any] | None) -> int:
+    """Get the maximum number of workspace operations to expose in direct mode."""
+    if not isinstance(config, dict):
+        return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
+    val = config.get("workspace-direct-threshold")
+    if isinstance(val, bool) or not isinstance(val, int) or val < 0:
+        return DEFAULT_WORKSPACE_DIRECT_THRESHOLD
+    return val

@@ -229,6 +229,9 @@ unfixable = []
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
+[tool.uv.sources]
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "7cc07a18081fe153a42431b28dd9118d08ffa4d6" }
+
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
 quote-style = "single"

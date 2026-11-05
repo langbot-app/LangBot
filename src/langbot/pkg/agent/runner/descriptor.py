@@ -81,3 +81,16 @@ class RunnerDescriptor(pydantic.BaseModel):
     def supports_steering(self) -> bool:
         """Check if runner supports run steering/follow-up input."""
         return bool(getattr(self.capabilities, 'steering', False))
+
+
+def is_local_agent(descriptor: RunnerDescriptor | None) -> bool:
+    """Check if descriptor represents LocalAgent."""
+    if descriptor is None:
+        return False
+    runner_id = getattr(descriptor, 'id', '')
+    if runner_id == 'defaultrunner' or runner_id == 'plugin:langbot-team/LocalAgent/default':
+        return True
+    return (
+        getattr(descriptor, 'plugin_author', None) == 'langbot-team'
+        and getattr(descriptor, 'plugin_name', None) == 'LocalAgent'
+    )

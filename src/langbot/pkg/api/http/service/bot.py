@@ -759,6 +759,13 @@ class BotService:
     async def create_bot(self, context: TenantContext, bot_data: dict) -> str:
         """Create bot"""
         workspace_uuid = require_workspace_uuid(context)
+        if not isinstance(bot_data, dict):
+            raise ValueError('bot_data must be an object')
+        for field in ('name', 'adapter'):
+            if not isinstance(bot_data.get(field), str) or not bot_data[field].strip():
+                raise ValueError(f'bot_data.{field} is required and must be a non-empty string')
+        if not isinstance(bot_data.get('adapter_config'), dict):
+            raise ValueError('bot_data.adapter_config is required and must be an object')
         # Check limitation
         from .workspace_limits import workspace_limits
 
@@ -769,7 +776,6 @@ class BotService:
             if len(existing_bots) >= max_bots:
                 raise ValueError(f'Maximum number of bots ({max_bots}) reached')
 
-        # TODO: 检查配置信息格式
         bot_data = await self._prepare_bot_data(context, bot_data, include_uuid=True)
         await require_workspace_platform(self.ap, workspace_uuid, bot_data['adapter'])
         bot_data['uuid'] = str(uuid.uuid4())

@@ -22,6 +22,15 @@ HTTP needed. Two MCP servers exist (both reuse existing API keys; see `AGENTS.md
 
 ## Plugin Architecture
 
+Declare installation permissions in the Plugin manifest's `spec.permissions`,
+with `workspace_operations` and `capabilities`. Runner component permissions do
+not accept workspace operation grants. Empty declarations deny global access;
+absent declarations use the fixed legacy-capability compatibility mode and never
+grant Application workspace operations. New installs require member confirmation
+in WebUI; an API key cannot grant permissions. Run/event actions keep their
+trusted context checks. See `docs/en/plugin/dev/permissions.mdx` for the capability
+ceiling table, upgrade/revocation behavior, and typed workspace SDK methods.
+
 A LangBot plugin consists of:
 
 ```

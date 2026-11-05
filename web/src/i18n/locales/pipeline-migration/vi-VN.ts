@@ -15,6 +15,8 @@ export default {
   downloaded: 'Đã tải {{size}}',
   processed: 'Đã xử lý {{completed}} / {{total}} pipeline',
   installErrors: {
+    plugin_permission_confirmation_required:
+      'Không thể xác nhận quyền plugin. Hãy nhờ thành viên có quyền cần thiết kiểm tra rồi thử lại.',
     plugin_version_unavailable:
       'Phiên bản cần thiết chưa có trên chợ. Thử lại sau khi phát hành hoặc chỉ chuyển dữ liệu.',
     plugin_download_timeout:

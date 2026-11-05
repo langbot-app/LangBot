@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { backendClient } from '@/app/infra/http';
 import {
   Dialog,
   DialogContent,
@@ -199,6 +201,7 @@ function formatSpeed(bytesPerSec: number): string {
 
 function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const { t } = useTranslation();
+  const { setSelectedTaskId } = usePluginInstallTasks();
 
   const stages = getStages(task);
   const isDone = task.stage === InstallStage.DONE;
@@ -211,6 +214,30 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   // MCP / Skill don't have the plugin's download + dependency-install stages;
   // show a single "installing → done/failed" row instead of plugin steps.
   const isPlugin = task.extensionType === 'plugin';
+  const [pendingConfirmation, setPendingConfirmation] = useState<
+    boolean | null
+  >(task.pendingConfirmation ?? null);
+  useEffect(() => {
+    if (!isDone || !isPlugin) return;
+    let cancelled = false;
+    setPendingConfirmation(task.pendingConfirmation ?? null);
+    const [author, name] = task.pluginName.split('/');
+    if (author && name) {
+      void backendClient
+        .getPlugin(author, name)
+        .then(({ plugin }) => {
+          if (!cancelled)
+            setPendingConfirmation(
+              plugin.permission_status?.pending_confirmation ?? false,
+            );
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation]);
+  const needsReview = isDone && isPlugin && pendingConfirmation !== false;
   const simpleIcon = task.extensionType === 'mcp' ? Server : Sparkles;
   const simpleInstallingLabel =
     task.extensionType === 'mcp'
@@ -330,7 +357,11 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
             <StageRow
               key={stageConfig.key}
               icon={stageConfig.icon}
-              label={t(stageConfig.i18nKey)}
+              label={
+                needsReview && stageConfig.key === InstallStage.LAUNCHING
+                  ? t('pluginPermissions.pending')
+                  : t(stageConfig.i18nKey)
+              }
               isActive={!isDone && index === currentStageIndex}
               isCompleted={isDone || index < currentStageIndex}
               isError={isError && index === currentStageIndex}
@@ -349,10 +380,22 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
         <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
           <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
           <span className="text-sm text-green-700 dark:text-green-300 font-medium break-words">
-            {task.operation === 'upgrade'
-              ? t('plugins.installProgress.updateComplete')
-              : t('plugins.installProgress.installComplete')}
+            {needsReview
+              ? t('pluginPermissions.pending')
+              : task.operation === 'upgrade'
+                ? t('plugins.installProgress.updateComplete')
+                : t('plugins.installProgress.installComplete')}
           </span>
+          {needsReview && task.pluginName.includes('/') && (
+            <Button asChild variant="outline" size="sm">
+              <Link
+                to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
+                onClick={() => setSelectedTaskId(null)}
+              >
+                {t('pluginPermissions.review')}
+              </Link>
+            </Button>
+          )}
         </div>
       )}
 

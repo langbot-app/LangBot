@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/ru-RU';
+import pluginPermissions from './plugin-permissions/ru-RU';
 const ruRU = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Дата подписки: {{date}}',
     latestQuota: 'Актуальные квоты этого плана',
@@ -1590,7 +1592,7 @@ const ruRU = {
     eventToolUnavailable: 'Недоступно',
     eventApiToolsDescription:
       'Цели фиксируются по текущему событию. Agent передаёт только параметры действия.',
-    platformApiTools: 'Инструменты платформы',
+    platformApiTools: 'Инструменты бота',
     platformApiToolsDescription:
       'Agent может выбирать ID пользователей, групп и сообщений. Предоставляйте только необходимые права.',
     apiToolEvents: 'События',
@@ -2491,6 +2493,9 @@ const ruRU = {
       enableAllPlugins: 'Включить все плагины',
       enableAllMCPServers: 'Включить все MCP-серверы',
       enableAllSkills: 'Включить все навыки',
+      toolsDescription:
+        'Выберите инструменты событий, инструменты бота и операции рабочего пространства, которые может вызывать агент. Конвейер автоматически отвечает текстом модели, поэтому инструмент ответа не нужен.',
+      saveTools: 'Сохранить доступ к инструментам',
       allPluginsEnabled: 'Все плагины включены',
       allMCPServersEnabled: 'Все MCP-серверы включены',
       allSkillsEnabled: 'Все навыки включены',
@@ -3866,6 +3871,8 @@ const ruRU = {
         'Используйте установленный исполнитель или повторите позже.',
       browseRunners: 'Открыть расширения исполнителей',
       installAndContinue: 'Установить и продолжить',
+      autoConfirmPermissions:
+        'Заявленные разрешения плагина будут выданы автоматически. Их можно изменить в настройках плагина.',
       installing: 'Установка...',
       useInstalled: 'Использовать этот исполнитель',
       installedUnavailable: 'Установлено, исполнитель недоступен',
@@ -4013,6 +4020,15 @@ const ruRU = {
     self_hosted_link: 'версию с открытым исходным кодом на своём сервере',
     period: '.',
     dismiss: 'Закрыть',
+  },
+  sensitiveTools: {
+    badge: 'Опасных инструментов: {{count}}',
+    title: 'Включены чувствительные или опасные инструменты',
+    description:
+      'Если привязанный бот обслуживает недоверенных пользователей, отключите соответствующие инструменты на странице «{{page}}».',
+    list: 'В том числе: {{items}}',
+    listMore: 'В том числе: {{items}} и другие (всего {{count}})',
+    listSeparator: ', ',
   },
 };
 export default ruRU;

@@ -81,6 +81,39 @@ class LangBotMCPServer:
         ap = self.ap
         mcp = self
 
+        @mcp.tool(description='Inspect plugin installation permissions and pending member confirmation.')
+        async def get_plugin_permissions(author: str, plugin_name: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await ap.application_api.invoke(
+                    'plugin.permissions.get', context, {'author': author, 'plugin_name': plugin_name}
+                )
+            )
+
+        @mcp.tool(
+            description='Replace plugin grants with a subset of existing grants. API keys cannot confirm or add grants; use WebUI.'
+        )
+        async def revoke_plugin_permissions(
+            author: str,
+            plugin_name: str,
+            workspace_operations: list[str],
+            capabilities: list[str],
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await ap.application_api.invoke(
+                    'plugin.permissions.update',
+                    context,
+                    {
+                        'author': author,
+                        'plugin_name': plugin_name,
+                        'workspace_operations': workspace_operations,
+                        'capabilities': capabilities,
+                        'confirm': False,
+                    },
+                )
+            )
+
         @mcp.tool(description='Get the Workspace language used for backend messages and default bot replies.')
         async def get_workspace_message_language() -> str:
             context = _authorized(Permission.WORKSPACE_VIEW)
@@ -149,6 +182,8 @@ class LangBotMCPServer:
             enable_all_mcp_servers: bool,
             enable_all_skills: bool,
             mcp_resource_agent_read_enabled: bool,
+            workspace_operations: list[str] | None = None,
+            allowed_platform_tools: list[str] | None = None,
         ) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             require_permission(context, Permission.RESOURCE_VIEW)
@@ -163,6 +198,8 @@ class LangBotMCPServer:
                 enable_all_skills,
                 bound_mcp_resources,
                 mcp_resource_agent_read_enabled,
+                workspace_operations=workspace_operations,
+                allowed_platform_tools=allowed_platform_tools,
             )
             return _dump(await ap.pipeline_service.get_pipeline_extensions(context, pipeline_uuid))
 
@@ -355,7 +392,8 @@ class LangBotMCPServer:
         @mcp.tool(
             description=(
                 'Create a bot. Cloud Workspace platform restrictions also apply to this tool. `bot_data` is a JSON object matching the LangBot '
-                'POST /api/v1/platform/bots body (e.g. name, adapter, config). '
+                'POST /api/v1/platform/bots body: name and adapter are required non-empty strings; '
+                'adapter_config is a required object containing adapter-specific settings. '
                 'Use event_bindings for exclusive Agent/Pipeline routes; plugin_processors is an array '
                 'of {processor_uuid, enabled} subscriptions that automatically match Runner-declared events. '
                 'Subscriptions run independently of each other and of event_bindings. Returns the new bot UUID.'
@@ -447,7 +485,9 @@ class LangBotMCPServer:
                 }
             )
 
-        @mcp.tool(description='Update a pipeline by UUID. `pipeline_data` matches the PUT body.')
+        @mcp.tool(
+            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config merges top-level sections, preserving omitted sections and replacing each supplied section in full. Supplied sections must be objects. Invalid config is rejected before writing.'
+        )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)
             await ap.pipeline_service.update_pipeline(context, pipeline_uuid, pipeline_data)
@@ -644,8 +684,9 @@ class LangBotMCPServer:
             @functools.wraps(fn)
             async def observed(*args, **kwargs):
                 context = get_request_context()
-                with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
-                    return await fn(*args, **kwargs)
+                async with self.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
+                    with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                        return await fn(*args, **kwargs)
 
             return self.mcp.tool(**options)(observed)
 

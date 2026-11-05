@@ -37,11 +37,16 @@ from langbot.pkg.api.http.context import (
 )
 from langbot.pkg.api.http.service.agent import AgentService
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler
 
 
 RUNNER_ID = 'plugin:langbot-team/LocalAgent/default'
+INSTALLATIONS = {
+    'workspace-a': '00000000-0000-4000-8000-000000000001',
+    'workspace-b': '00000000-0000-4000-8000-000000000002',
+}
 DEFAULT_PROMPT = [{'role': 'system', 'content': 'Schema default'}]
 STORED_PROMPT = [{'role': 'system', 'content': 'Reply only with STORED_MARKER'}]
 
@@ -98,7 +103,7 @@ class PromptPullConnector:
             instance_uuid='instance-test',
             workspace_uuid=ctx.conversation.workspace_id,
             placement_generation=1,
-            installation_uuid='00000000-0000-4000-8000-000000000001',
+            installation_uuid=INSTALLATIONS[ctx.conversation.workspace_id],
             runtime_revision=1,
             artifact_digest='a' * 64,
         )
@@ -138,10 +143,23 @@ async def harness():
             'runner_state',
             'event_log',
             'transcript',
+            'plugin_settings',
         )
     ]
     async with engine.begin() as conn:
         await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=tables))
+        for workspace, installation in INSTALLATIONS.items():
+            await conn.execute(
+                PluginSetting.__table__.insert().values(
+                    workspace_uuid=workspace,
+                    installation_uuid=installation,
+                    plugin_author='langbot-team',
+                    plugin_name='LocalAgent',
+                    runtime_revision=1,
+                    artifact_digest='a' * 64,
+                    enabled=True,
+                )
+            )
 
     async def get_execution_binding(workspace_uuid, *, expected_generation):
         assert expected_generation == 1

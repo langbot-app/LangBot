@@ -20,6 +20,7 @@ export { InstallStage } from './install-progress';
 export type PluginTaskOperation = 'install' | 'upgrade';
 
 export interface PluginInstallTask {
+  pendingConfirmation?: boolean;
   id: string; // unique key: `${source}-${taskId}`
   taskId: number; // backend async task id
   pluginName: string; // display name
@@ -191,6 +192,10 @@ export function asyncTaskToPluginInstallTask(
     startedAt: task.created_at ? task.created_at * 1000 : Date.now(),
     stageStartedAt: Date.now(),
     currentAction: action,
+    pendingConfirmation:
+      typeof md.pending_confirmation === 'boolean'
+        ? md.pending_confirmation
+        : undefined,
   };
 }
 
@@ -276,6 +281,10 @@ export function PluginInstallTaskProvider({
                 if (t.id !== taskKey) return t;
 
                 const progressFields = {
+                  pendingConfirmation:
+                    typeof md.pending_confirmation === 'boolean'
+                      ? md.pending_confirmation
+                      : undefined,
                   downloadCurrent: downloadCurrent ?? t.downloadCurrent,
                   downloadTotal: downloadTotal ?? t.downloadTotal,
                   downloadSpeed: downloadSpeed ?? t.downloadSpeed,

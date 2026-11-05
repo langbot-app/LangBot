@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/th-TH';
+import pluginPermissions from './plugin-permissions/th-TH';
 const thTH = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'วันที่สมัคร: {{date}}',
     latestQuota: 'โควตาล่าสุดของแผนนี้',
@@ -1536,7 +1538,7 @@ const thTH = {
     eventToolUnavailable: 'ไม่พร้อมใช้งาน',
     eventApiToolsDescription:
       'ปลายทางกำหนดจากเหตุการณ์ปัจจุบัน Agent ส่งเฉพาะพารามิเตอร์การกระทำ',
-    platformApiTools: 'เครื่องมือแพลตฟอร์ม',
+    platformApiTools: 'เครื่องมือบอต',
     platformApiToolsDescription:
       'Agent เลือก ID ผู้ใช้ กลุ่ม หรือข้อความได้ ให้สิทธิ์เท่าที่จำเป็น',
     apiToolEvents: 'เหตุการณ์',
@@ -2419,6 +2421,9 @@ const thTH = {
       enableAllPlugins: 'เปิดใช้งานปลั๊กอินทั้งหมด',
       enableAllMCPServers: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมด',
       enableAllSkills: 'เปิดใช้สกิลทั้งหมด',
+      toolsDescription:
+        'เลือกเครื่องมือเหตุการณ์ เครื่องมือบอท และการดำเนินการของพื้นที่ทำงานที่ Agent เรียกใช้ได้ ไปป์ไลน์จะตอบกลับด้วยข้อความจากโมเดลโดยอัตโนมัติ จึงไม่ต้องใช้เครื่องมือตอบกลับ',
+      saveTools: 'บันทึกสิทธิ์เครื่องมือ',
       allPluginsEnabled: 'เปิดใช้งานปลั๊กอินทั้งหมดแล้ว',
       allMCPServersEnabled: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมดแล้ว',
       allSkillsEnabled: 'เปิดใช้สกิลทั้งหมดแล้ว',
@@ -3773,6 +3778,8 @@ const thTH = {
         'ใช้รันเนอร์ที่ติดตั้งแล้วหรือลองภายหลัง',
       browseRunners: 'เรียกดูส่วนขยายรันเนอร์',
       installAndContinue: 'ติดตั้งและดำเนินการต่อ',
+      autoConfirmPermissions:
+        'ระบบจะให้สิทธิ์ที่ปลั๊กอินประกาศโดยอัตโนมัติ คุณปรับได้ในการตั้งค่าปลั๊กอิน',
       installing: 'กำลังติดตั้ง...',
       useInstalled: 'ใช้รันเนอร์นี้',
       installedUnavailable: 'ติดตั้งแล้ว แต่รันเนอร์ไม่พร้อมใช้',
@@ -3913,6 +3920,15 @@ const thTH = {
     self_hosted_link: 'เวอร์ชันโอเพนซอร์สที่โฮสต์เอง',
     period: '',
     dismiss: 'ปิด',
+  },
+  sensitiveTools: {
+    badge: 'เครื่องมือที่อ่อนไหว {{count}} รายการ',
+    title: 'เปิดใช้เครื่องมือที่อ่อนไหวหรือมีความเสี่ยงสูง',
+    description:
+      'หากบอทที่ผูกไว้ให้บริการผู้ใช้ที่ไม่น่าเชื่อถือ โปรดไปปิดเครื่องมือที่เกี่ยวข้องในหน้า "{{page}}"',
+    list: 'ได้แก่: {{items}}',
+    listMore: 'ได้แก่: {{items}} และอื่น ๆ (รวม {{count}})',
+    listSeparator: ', ',
   },
 };
 export default thTH;

@@ -13,7 +13,9 @@ from langbot.pkg.api.http.service.agent import (
     PIPELINE_EVENT_PATTERNS,
     AgentService,
 )
+from langbot.pkg.agent.runner.platform_tools import PLATFORM_TOOL_DEFINITIONS, default_agent_platform_tools
 from langbot.pkg.api.http.service.model import LLMModelsService
+from langbot.pkg.api.http.context import ExecutionContext
 
 
 pytestmark = pytest.mark.asyncio
@@ -127,15 +129,17 @@ class TestAgentServiceMetadata:
         ]
         app.tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=host_tools))
 
-        metadata = await AgentService(app).get_agent_metadata(WORKSPACE_UUID)
-        app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(WORKSPACE_UUID)
+        context = ExecutionContext(instance_uuid='instance-test', workspace_uuid=WORKSPACE_UUID, placement_generation=1)
+        app.persistence_mgr.execute_async.return_value = []
+        metadata = await AgentService(app).get_agent_metadata(context)
+        app.pipeline_service.get_pipeline_metadata.assert_awaited_once_with(context)
 
         assert metadata['runner_config'] == ai_metadata
         assert any(tool['name'] == 'event_reply' for tool in metadata['platform_tools'])
         assert all(tool['name'] != 'call_platform_api' for tool in metadata['platform_tools'])
         assert metadata['host_tools'] == host_tools
         app.tool_mgr.get_resolved_tool_catalog.assert_awaited_once_with(
-            WORKSPACE_UUID,
+            context,
             include_skill_authoring=True,
             include_mcp_resource_tools=True,
         )
@@ -500,6 +504,7 @@ class TestAgentServiceCreateUpdateDelete:
         assert insert_values['config'] == {
             'runner': {'id': runner.id, 'expire-time': 0},
             'runner_config': {runner.id: {'model': 'gpt-4.1', 'temperature': 0.2}},
+            'allowed_platform_tools': default_agent_platform_tools(),
         }
         assert 'enabled' not in insert_values
         assert insert_values['supported_event_patterns'] == AGENT_DEFAULT_EVENT_PATTERNS
@@ -609,6 +614,39 @@ class TestAgentServiceCreateUpdateDelete:
 
         insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
         assert insert_values['component_ref'] is None
+
+    async def test_create_agent_enables_all_bot_tools_by_default(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+
+        await AgentService(app).create_agent(
+            WORKSPACE_UUID,
+            {'name': 'Tool Agent', 'config': {'runner': {'id': ''}, 'runner_config': {}}},
+        )
+
+        allowed = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])['config'][
+            'allowed_platform_tools'
+        ]
+        assert allowed == sorted(
+            definition.name for definition in PLATFORM_TOOL_DEFINITIONS if definition.scope == 'platform'
+        )
+        assert 'platform_send_message' in allowed
+        assert not any(name.startswith('event_') for name in allowed)
+
+    async def test_create_agent_keeps_explicit_bot_tool_selection(self):
+        app = _make_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+
+        await AgentService(app).create_agent(
+            WORKSPACE_UUID,
+            {
+                'name': 'Narrow Agent',
+                'config': {'runner': {'id': ''}, 'runner_config': {}, 'allowed_platform_tools': []},
+            },
+        )
+
+        config = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])['config']
+        assert config['allowed_platform_tools'] == []
 
     async def test_create_agent_preserves_explicit_empty_event_scope(self):
         app = _make_app()

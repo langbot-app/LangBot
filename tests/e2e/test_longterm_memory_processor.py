@@ -126,6 +126,9 @@ def test_local_agent_memory_tools_without_pipeline(
         nonlocal memory_kb_id
         model = await local._inject_fake_llm_model(ap)
         await ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': archive.read_bytes()})
+        await local._confirm_plugin_permissions(
+            ap, await ap.plugin_connector._current_execution_context(), 'langbot-team', 'LongTermMemory'
+        )
         for _ in range(60):
             if 'remember' in {tool.metadata.name for tool in await ap.plugin_connector.list_tools()}:
                 break

@@ -61,6 +61,7 @@ from ..cloud import directory_projection as cloud_directory_projection_module
 from ..cloud import entitlements as cloud_entitlements_module
 from ..cloud import model_catalog as cloud_model_catalog_module
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
+from ..api.application import ApplicationAPI
 
 if TYPE_CHECKING:
     from ..agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultConfigService
@@ -188,6 +189,8 @@ class Application:
 
     pipeline_service: pipeline_service.PipelineService = None
 
+    application_api: ApplicationAPI = None
+
     agent_service: agent_service.AgentService = None
 
     bot_service: bot_service.BotService = None
@@ -227,6 +230,7 @@ class Application:
     def __init__(self):
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._stopping = False
         self._shutdown_task: asyncio.Task | None = None
         self.event_loop_monitor = event_loop_monitor.EventLoopLagMonitor()
 
@@ -644,6 +648,7 @@ class Application:
         async with self._shutdown_lock:
             if self._shutdown_complete:
                 return
+            self._stopping = True
 
             if self.task_mgr is not None:
                 self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
@@ -705,6 +710,11 @@ class Application:
                     with contextlib.suppress(Exception):
                         await persistence_engine.dispose()
             self._shutdown_complete = True
+
+    @property
+    def stopping(self) -> bool:
+        """Whether shutdown has begun; late work must not reopen resources."""
+        return self._stopping
 
     def dispose(self):
         """Compatibility wrapper for callers that cannot await shutdown."""

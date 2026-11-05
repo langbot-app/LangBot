@@ -104,6 +104,11 @@ class LocalAgentBox:
                         pass
                 if isinstance(error, dict) and error.get("code") == "box.export.invalid_response":
                     raise NonRetryableToolError(str(error.get("message", exc))) from exc
+                if isinstance(error, dict) and str(error.get("code", "")).startswith("box.export.") and not frame:
+                    # Newer SDKs deliver the export diagnostics as a structured
+                    # error; restore the versioned frame so the model still sees
+                    # the limits and retained files it needs to repair the export.
+                    raise RuntimeError("LANGBOT_EXPORT_V1:" + json.dumps(error, ensure_ascii=False)) from exc
                 raise
             ids = [item.id for item in files if item.id not in self._delivered]
             if self.ctx.delivery.automatic_reply:

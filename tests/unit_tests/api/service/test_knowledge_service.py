@@ -265,14 +265,14 @@ async def test_file_listing_checks_parent_knowledge_base_first():
 async def test_store_and_delete_file_require_runtime_parent_and_capability():
     app = _app()
     runtime_kb = SimpleNamespace(
-        store_file=AsyncMock(return_value='task-a'),
+        store_file=AsyncMock(return_value=17),
         delete_file=AsyncMock(),
     )
     app.rag_mgr.get_knowledge_base_by_uuid.return_value = runtime_kb
     app.rag_mgr.get_knowledge_base_details.return_value = {'knowledge_engine': {'capabilities': ['doc_ingestion']}}
     service = KnowledgeService(app)
 
-    assert await service.store_file(CONTEXT, 'kb-a', 'upload.pdf', 'author/parser') == 'task-a'
+    assert await service.store_file(CONTEXT, 'kb-a', 'upload.pdf', 'author/parser') == 17
     runtime_kb.store_file.assert_awaited_once_with(CONTEXT, 'upload.pdf', parser_plugin_id='author/parser')
     await service.delete_file(CONTEXT, 'kb-a', 'file-a')
     runtime_kb.delete_file.assert_awaited_once_with(CONTEXT, 'file-a')

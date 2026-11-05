@@ -1,6 +1,10 @@
 import { ComponentManifest, I18nObject } from '@/app/infra/entities/common';
 
 export interface Plugin {
+  permission_status?: {
+    compatibility_mode: boolean;
+    pending_confirmation: boolean;
+  };
   status: 'intialized' | 'mounted' | 'unmounted';
   priority: number;
   plugin_config: object;

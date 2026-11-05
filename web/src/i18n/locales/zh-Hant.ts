@@ -1,6 +1,8 @@
 import slackSetup from './slack-setup/zh-Hant';
 import pipelineMigration from './pipeline-migration/zh-Hant';
+import pluginPermissions from './plugin-permissions/zh-Hant';
 const zhHant = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: '訂閱日期：{{date}}',
     latestQuota: '該方案最新配額',
@@ -1475,7 +1477,7 @@ const zhHant = {
     eventToolUnavailable: '不適用',
     eventApiToolsDescription:
       '目標從當前事件凍結，Agent 只能提供動作參數，適合回覆、審核請求和處理相關成員。',
-    platformApiTools: '平臺工具',
+    platformApiTools: '機器人工具',
     platformApiToolsDescription:
       'Agent 可以指定使用者、羣組或訊息標識。請只按實際業務需要授權。',
     apiToolEvents: '適用事件',
@@ -2322,6 +2324,9 @@ const zhHant = {
       enableAllPlugins: '啟用所有插件',
       enableAllMCPServers: '啟用所有 MCP 伺服器',
       enableAllSkills: '啟用全部技能',
+      toolsDescription:
+        '選擇 Agent 可呼叫的事件工具、機器人工具和工作區操作。流水線會將模型輸出的文字自動回覆到目前會話，無需回覆工具。',
+      saveTools: '儲存工具權限',
       allPluginsEnabled: '已啟用所有插件',
       allMCPServersEnabled: '已啟用所有 MCP 伺服器',
       allSkillsEnabled: '已啟用全部技能',
@@ -3625,6 +3630,8 @@ const zhHant = {
       noMarketplaceRunnersDescription: '可以使用已安裝的運行器，或稍後重試。',
       browseRunners: '瀏覽運行器擴展',
       installAndContinue: '安裝並繼續',
+      autoConfirmPermissions:
+        '將自動授予該外掛宣告的權限，可在外掛設定中調整。',
       installing: '正在安裝...',
       useInstalled: '使用此運行器',
       installedUnavailable: '已安裝，運行器不可用',
@@ -3759,6 +3766,43 @@ const zhHant = {
     self_hosted_link: '自行部署的開源版本',
     period: '。',
     dismiss: '關閉橫幅',
+  },
+  workspaceOperations: {
+    title: '工作區操作',
+    description: '配置處理器可以調用的工作區統一 API 操作。勾選即授權。',
+    scopeHint: '允許此處理器以自身身份調用 LangBot 工作區統一 API 操作。',
+    searchPlaceholder: '搜尋操作名稱、ID 或描述...',
+    selectAll: '全選',
+    deselectAll: '取消全選',
+    selectedCount: '已選 {{count}} 項',
+    totalCount: '共 {{count}} 項',
+    noOperations: '暫無可用工作區操作',
+    noSearchResults: '未找到匹配的操作',
+    riskRead: '讀',
+    riskWrite: '寫',
+    riskDangerous: '高危',
+    requiresPermission: '需要權限：{{permission}}',
+    dangerousConfirmTitle: '包含高危工作區操作',
+    dangerousConfirmDescription:
+      '該處理器面向 IM 用戶，任何能和 Bot 對話的人都可能觸發這些操作。確定要保存嗎？',
+    dangerousConfirmAction: '確認保存',
+    dangerousConfirmCancel: '取消',
+    saveWorkspaceOperations: '保存工作區操作',
+    saveSuccess: '工作區操作保存成功',
+    saveFailed: '工作區操作保存失敗',
+    configuredCount: '已配置 {{count}} 個操作',
+    expandDomain: '展開',
+    collapseDomain: '折疊',
+    ungrantableRemoved: '部分操作因權限不足未自動勾選/已移除',
+  },
+  sensitiveTools: {
+    badge: '{{count}} 個敏感/高危工具',
+    title: '已啟用敏感或高危工具',
+    description:
+      '如果綁定的機器人要對外服務不受信任的使用者，請到「{{page}}」頁面關閉對應工具。',
+    list: '包括：{{items}}',
+    listMore: '包括：{{items}}等 {{count}} 項',
+    listSeparator: '、',
   },
 };
 export default zhHant;

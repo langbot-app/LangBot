@@ -29,6 +29,8 @@ from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from .conftest import bind_runtime_action_context, make_resources
 
+pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
+
 
 class FakeConnection:
     pass
@@ -117,7 +119,7 @@ async def _register_session(
         resources=make_resources(),
         conversation_id=conversation_id,
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         thread_id=None,
         available_apis=available_apis or {},
     )
@@ -129,7 +131,7 @@ async def _create_run(
     run_id='run_1',
     conversation_id='conv_1',
     bot_id='bot_1',
-    workspace_id='workspace_1',
+    workspace_id='workspace-test',
     thread_id=None,
     plugin_identity='test/runner',
     runner_id='plugin:test/runner/default',
@@ -797,7 +799,7 @@ async def test_runtime_admin_can_register_list_and_claim_with_own_run_session(se
         runner_id='plugin:other/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=5,
@@ -860,7 +862,7 @@ async def test_runtime_admin_can_register_list_and_claim_without_run_id(db_engin
         runner_id='plugin:other/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=5,
@@ -1373,7 +1375,7 @@ async def test_run_claim_renew_and_release_actions(session_registry, db_engine):
         runner_id='plugin:test/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=5,
@@ -1444,7 +1446,7 @@ async def test_non_admin_run_claim_is_scoped_to_session_runner_and_conversation(
         runner_id='plugin:other/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=30,
@@ -1456,7 +1458,7 @@ async def test_non_admin_run_claim_is_scoped_to_session_runner_and_conversation(
         runner_id='plugin:test/runner/default',
         conversation_id='conv_other',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=20,
@@ -1468,7 +1470,7 @@ async def test_non_admin_run_claim_is_scoped_to_session_runner_and_conversation(
         runner_id='plugin:test/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
         priority=10,
@@ -1565,7 +1567,7 @@ async def test_non_admin_release_claim_cannot_finalize_run(session_registry, db_
         runner_id='plugin:test/runner/default',
         conversation_id='conv_1',
         bot_id='bot_1',
-        workspace_id='workspace_1',
+        workspace_id='workspace-test',
         status='queued',
         queue_name='default',
     )

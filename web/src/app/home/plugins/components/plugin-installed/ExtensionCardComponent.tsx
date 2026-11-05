@@ -102,6 +102,12 @@ export default function ExtensionCardComponent({
 
   const renderPluginContent = () => (
     <>
+      {cardVO.permission_status?.compatibility_mode && (
+        <Badge variant="outline">{t('pluginPermissions.undeclared')}</Badge>
+      )}
+      {cardVO.permission_status?.pending_confirmation && (
+        <Badge variant="destructive">{t('pluginPermissions.pending')}</Badge>
+      )}
       <div className="text-[0.7rem] text-muted-foreground truncate w-full">
         {cardVO.author} / {cardVO.name}
       </div>

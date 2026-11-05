@@ -687,6 +687,7 @@
                 "pages": [
                   "en/plugin/dev/tutor",
                   "en/plugin/dev/basic-info",
+                  "en/plugin/dev/permissions",
                   "en/plugin/dev/directory-structure",
                   {
                     "group": "Component Development",
@@ -718,6 +719,7 @@
                 "pages": [
                   "en/plugin/dev/apis/agent-run",
                   "en/plugin/dev/apis/common",
+                  "en/plugin/dev/apis/workspace",
                   "en/plugin/dev/apis/llm-requests",
                   "en/plugin/dev/apis/platform",
                   "en/plugin/dev/apis/pipeline-events",
@@ -1008,6 +1010,7 @@
                 "pages": [
                   "zh/plugin/dev/tutor",
                   "zh/plugin/dev/basic-info",
+                  "zh/plugin/dev/permissions",
                   "zh/plugin/dev/directory-structure",
                   {
                     "group": "组件开发",
@@ -1039,6 +1042,7 @@
                 "pages": [
                   "zh/plugin/dev/apis/agent-run",
                   "zh/plugin/dev/apis/common",
+                  "zh/plugin/dev/apis/workspace",
                   "zh/plugin/dev/apis/llm-requests",
                   "zh/plugin/dev/apis/platform",
                   "zh/plugin/dev/apis/pipeline-events",
@@ -1327,6 +1331,7 @@
                 "pages": [
                   "ja/plugin/dev/tutor",
                   "ja/plugin/dev/basic-info",
+                  "ja/plugin/dev/permissions",
                   "ja/plugin/dev/directory-structure",
                   {
                     "group": "コンポーネント開発",
@@ -1358,6 +1363,7 @@
                 "pages": [
                   "ja/plugin/dev/apis/agent-run",
                   "ja/plugin/dev/apis/common",
+                  "ja/plugin/dev/apis/workspace",
                   "ja/plugin/dev/apis/llm-requests",
                   "ja/plugin/dev/apis/platform",
                   "ja/plugin/dev/apis/pipeline-events",

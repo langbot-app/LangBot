@@ -1,5 +1,7 @@
 import pipelineMigration from './pipeline-migration/vi-VN';
+import pluginPermissions from './plugin-permissions/vi-VN';
 const viVN = {
+  pluginPermissions,
   planRevision: {
     subscribedOn: 'Ngày đăng ký: {{date}}',
     latestQuota: 'Hạn mức mới nhất của gói này',
@@ -1561,7 +1563,7 @@ const viVN = {
     eventToolUnavailable: 'Không khả dụng',
     eventApiToolsDescription:
       'Đích được cố định theo sự kiện hiện tại. Agent chỉ cung cấp tham số hành động.',
-    platformApiTools: 'Công cụ nền tảng',
+    platformApiTools: 'Công cụ bot',
     platformApiToolsDescription:
       'Agent có thể chọn ID người dùng, nhóm hoặc tin nhắn. Chỉ cấp quyền cần thiết.',
     apiToolEvents: 'Sự kiện',
@@ -2456,6 +2458,9 @@ const viVN = {
       enableAllPlugins: 'Bật tất cả Plugin',
       enableAllMCPServers: 'Bật tất cả máy chủ MCP',
       enableAllSkills: 'Bật tất cả kỹ năng',
+      toolsDescription:
+        'Chọn công cụ sự kiện, công cụ bot và thao tác không gian làm việc mà Agent được gọi. Pipeline tự động trả lời bằng văn bản do mô hình tạo, nên không cần công cụ trả lời.',
+      saveTools: 'Lưu quyền công cụ',
       allPluginsEnabled: 'Đã bật tất cả plugin',
       allMCPServersEnabled: 'Đã bật tất cả máy chủ MCP',
       allSkillsEnabled: 'Tất cả kỹ năng đã được bật',
@@ -3824,6 +3829,8 @@ const viVN = {
         'Dùng trình chạy đã cài hoặc thử lại sau.',
       browseRunners: 'Duyệt tiện ích trình chạy',
       installAndContinue: 'Cài đặt và tiếp tục',
+      autoConfirmPermissions:
+        'Các quyền plugin khai báo sẽ được cấp tự động. Bạn có thể điều chỉnh trong cài đặt plugin.',
       installing: 'Đang cài đặt...',
       useInstalled: 'Dùng trình chạy này',
       installedUnavailable: 'Đã cài, trình chạy không khả dụng',
@@ -3970,6 +3977,15 @@ const viVN = {
     self_hosted_link: 'phiên bản mã nguồn mở tự lưu trữ',
     period: '.',
     dismiss: 'Đóng',
+  },
+  sensitiveTools: {
+    badge: '{{count}} công cụ nhạy cảm',
+    title: 'Đã bật công cụ nhạy cảm hoặc rủi ro cao',
+    description:
+      'Nếu bot được liên kết phục vụ người dùng không đáng tin, hãy tắt các công cụ tương ứng tại trang "{{page}}".',
+    list: 'Bao gồm: {{items}}',
+    listMore: 'Bao gồm: {{items}} và các mục khác ({{count}} mục)',
+    listSeparator: ', ',
   },
 };
 export default viVN;
