@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from typing import Any
-import datetime
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
@@ -19,7 +18,9 @@ class GetCurrentTimeStr(Tool):
 
     async def call(self, params: dict[str, Any], session: provider_session.Session, query_id: int) -> str:
         """
-        Get current time string in format: %Y-%m-%d %H:%M:%S
+        Get the current time in the configured timezone, formatted as
+        ``%Y-%m-%d %H:%M:%S (<timezone>)``, e.g.
+        ``2026-01-01 08:00:00 (Asia/Shanghai, UTC+08:00)``.
 
         Args:
             params: Tool parameters (not used)
@@ -29,6 +30,5 @@ class GetCurrentTimeStr(Tool):
         Returns:
             str: Current time string
         """
-        # Return current time
-        current_time = datetime.datetime.now()
-        return current_time.strftime("%Y-%m-%d %H:%M:%S")
+        # Current time in the timezone configured for this installation.
+        return self.plugin.format_time(self.plugin.current_time())

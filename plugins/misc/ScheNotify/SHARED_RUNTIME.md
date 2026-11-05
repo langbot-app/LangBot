@@ -12,9 +12,11 @@ lightweight contexts; they do not create another object graph.
 
 ## Per invocation
 
-- The `language` config is read through `self.plugin.get_config()` inside the
-  command and Tool components that use it. No config value is stored on the shared
-  object or in a scheduled event.
+- The `language` and `timezone` configs are read through `self.plugin.get_config()`
+  inside the command and Tool components that use them. No config value is stored
+  on the shared object or in a scheduled event: a reminder stores a
+  timezone-aware instant, so the detached scheduler compares it with the current
+  UTC time without reading any installation's config.
 - `get_installation_binding()` is read per invocation and never retained past the
   call; it decides which installation's schedule `add_scheduled_event`,
   `get_scheduled_events` and `delete_scheduled_event` read and write.

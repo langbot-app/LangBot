@@ -80,8 +80,8 @@ class DscheCommand(Command):
                 return
 
             if language == "en_US":
-                reply = f'[Notify] Deleted notification: {event["time"]} {event["message"]}'
+                reply = f'[Notify] Deleted notification: {self.plugin.format_event_time(event["time"])} {event["message"]}'
             else:
-                reply = f'[Notify] 已删除提醒：{event["time"]} {event["message"]}'
+                reply = f'[Notify] 已删除提醒：{self.plugin.format_event_time(event["time"])} {event["message"]}'
 
             yield CommandReturn(text=reply)

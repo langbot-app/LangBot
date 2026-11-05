@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from typing import Any
-import time
 import datetime
+import re
 
 from langbot_plugin.api.definition.components.tool.tool import Tool
 from langbot_plugin.api.entities.builtin.provider import session as provider_session
+
+
+# A time copied verbatim from get_current_time_str may keep its "(zone)" label.
+_ZONE_SUFFIX_RE = re.compile(r"\s*\([^()]*\)\s*$")
 
 
 class ScheduleNotify(Tool):
@@ -71,16 +75,16 @@ class ScheduleNotify(Tool):
             return "Error: time_str and message are required"
 
         try:
-            # Convert time string to timestamp
-            time_stamp = time.mktime(time.strptime(time_str, "%Y-%m-%d %H:%M:%S"))
-            # Get current timestamp
-            current_time_stamp = time.time()
+            # The wall-clock time is in the configured timezone, the same one
+            # get_current_time_str reports.
+            naive = datetime.datetime.strptime(
+                _ZONE_SUFFIX_RE.sub("", str(time_str)).strip(), "%Y-%m-%d %H:%M:%S"
+            )
+            real_date = self.plugin.localize_time(naive)
 
             # If scheduled time has already passed, return error
-            if time_stamp <= current_time_stamp:
+            if real_date <= self.plugin.current_time():
                 return self._get_message("time_passed")
-
-            real_date = datetime.datetime.fromtimestamp(time_stamp)
 
             # Get session info. The bot uuid is part of the session identity, so
             # it is taken from the trusted session (falling back to its active
@@ -105,7 +109,9 @@ class ScheduleNotify(Tool):
             if not queued:
                 return self._get_message("too_many")
 
-            return self._get_message("success", time=real_date, message=message)
+            return self._get_message(
+                "success", time=self.plugin.format_time(real_date), message=message
+            )
 
         except ValueError as e:
             return f"Error: Invalid time format. Expected '%Y-%m-%d %H:%M:%S', got '{time_str}'"

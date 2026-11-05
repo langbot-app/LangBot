@@ -23,6 +23,14 @@ Bạn có thể chọn ngôn ngữ cho thông báo nhắc nhở trong cấu hìn
 -`zh_Hans`(Tiếng Trung giản thể) - Mặc định
 -`en_US`(tiếng Anh)
 
+### Cài đặt múi giờ
+
+Đặt `timezone` là múi giờ của bạn. Áp dụng cho mọi công cụ và lệnh: `get_current_time_str` trả về giờ hiện tại theo múi giờ này, thời gian truyền cho `schedule_notify` được hiểu theo múi giờ này, và `!sche` / `!dsche` hiển thị thời gian theo múi giờ này.
+
+- Tên IANA, ví dụ `Asia/Ho_Chi_Minh`, `America/New_York`
+- `UTC` hoặc độ lệch cố định như `UTC+7`, `UTC-05:30`
+- Để trống (mặc định): múi giờ cục bộ của máy chủ
+
 ## Cách sử dụng
 
 ### 1. Lên lịch qua LLM
