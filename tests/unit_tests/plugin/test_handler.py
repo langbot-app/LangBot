@@ -24,6 +24,39 @@ pytestmark = pytest.mark.usefixtures('installed_legacy_plugin')
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action', [PluginToRuntimeAction.RETRIEVE_KNOWLEDGE, PluginToRuntimeAction.RETRIEVE_KNOWLEDGE_BASE]
+)
+async def test_knowledge_retrieval_counts_on_the_authorized_run(monkeypatch, action):
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    _, counters = make_counters()
+    state = trace.TraceState('event')
+    counters.register_trace(state, 'run')
+    query = SimpleNamespace(
+        session=SimpleNamespace(launcher_type=SimpleNamespace(value='group'), launcher_id='group'),
+        bot_uuid='bot',
+        sender_id='sender',
+    )
+    app = SimpleNamespace(
+        telemetry=SimpleNamespace(execution=counters),
+        logger=Mock(),
+        rag_mgr=SimpleNamespace(
+            get_knowledge_base_by_uuid=AsyncMock(return_value=SimpleNamespace(retrieve=AsyncMock(return_value=[])))
+        ),
+    )
+    monkeypatch.setattr('langbot.pkg.plugin.handler._validate_run_authorization', AsyncMock(return_value=({}, None)))
+    monkeypatch.setattr('langbot.pkg.plugin.handler._resolve_action_query', Mock(return_value=query))
+    runtime_handler = make_handler(app)
+    response = await runtime_handler.actions[action.value](
+        {'run_id': 'run', 'kb_id': 'kb', 'query_text': 'private query'}
+    )
+    assert response.code == 0
+    assert state.features == {'kb': {'retrievals': 1}}
+
+
+@pytest.mark.asyncio
 async def test_plugin_reset_clears_runner_history_in_the_authorized_scope(monkeypatch):
     reset = AsyncMock()
     monkeypatch.setattr('langbot.pkg.agent.runner.context_reset.reset_runner_context', reset)

@@ -106,7 +106,11 @@ class SlackAdapter(SlackAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
         raw = await send_chain(self.bot, self._normalize_target_type(str(target_type)), str(target_id), message)
-        return platform_events.MessageResult(raw=raw)
+        responses = raw.get('responses', [])
+        sent = responses[0] if responses else {}
+        return platform_events.MessageResult(
+            message_id=sent.get('ts') or sent.get('message', {}).get('ts', ''), raw=raw
+        )
 
     async def reply_message(
         self,

@@ -475,6 +475,7 @@ class TestToolCallTracing:
         assert rows[0]['adapter'] == 'native'
         assert rows[0]['outcome'] == 'success'
         assert rows[0]['parent_node_id'] == lane
+        assert binding.state.features == {'tool_calls': {'native': 1}}
 
     @pytest.mark.asyncio
     async def test_a_failed_tool_call_carries_its_reason(self, traced_app, sample_query):
@@ -501,6 +502,7 @@ class TestToolCallTracing:
         assert rows[0]['family'] == 'tool'
         assert rows[0]['outcome'] == 'failed'
         assert rows[0]['error'] == 'server unreachable'
+        assert binding.state.features == {'tool_calls': {'mcp': 1}}
 
 
 class TestToolManagerSourceResolution:

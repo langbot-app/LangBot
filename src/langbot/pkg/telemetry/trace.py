@@ -83,6 +83,7 @@ class TraceState:
         'runner',
         'runner_category',
         'model_name',
+        'features',
         'pipeline_plugins',
         'node_adapter',
         'node_runner',
@@ -119,6 +120,7 @@ class TraceState:
         self.runner = ''
         self.runner_category = ''
         self.model_name = ''
+        self.features: dict[str, int | dict[str, int]] = {}
         self.pipeline_plugins: typing.Any = None
         # First adapter/runner seen on a node, used for the chain record.
         self.node_adapter = ''

@@ -7,6 +7,7 @@ import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 
 from .. import loader
 from ....api.http.context import ExecutionContext
+from ....telemetry import features as telemetry_features
 
 # Align with Claude Code's Skill tool design:
 # - activate: Activate a skill via Tool Call, returns SKILL.md content
@@ -208,6 +209,7 @@ class SkillToolLoader(loader.ToolLoader):
             if skill_data is None:
                 raise ValueError('The run-pinned Skill revision is unavailable')
         skill_data = skill_loader.register_activated_skill(query, skill_data)
+        telemetry_features.increment(self.ap, 'activated_skills', query=query)
 
         instructions = skill_data.get('instructions', '')
         revision = str(skill_data.get('revision', '') or '')

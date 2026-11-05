@@ -54,6 +54,7 @@ publication. Plugins are not included in Core release artifacts.
 - [HumanTakeover](misc/HumanTakeover/README.md)
 - [KeywordAlert](misc/KeywordAlert/README.md)
 - [MCBotPlugin](misc/MCBotPlugin/README.md)
+- [OASlackBridge](misc/OASlackBridge/README.md)
 - [PowerContext](misc/PowerContext/README.md)
 - [QWeather](misc/QWeather/README.md)
 - [ScheNotify](misc/ScheNotify/README.md)

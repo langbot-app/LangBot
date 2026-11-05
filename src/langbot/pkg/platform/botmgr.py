@@ -1933,12 +1933,7 @@ class PlatformManager:
         }
 
         self.adapter_components = self.ap.discover.get_components_by_kind('MessagePlatformAdapter')
-        adapter_dict: dict[str, type[abstract_platform_adapter.AbstractMessagePlatformAdapter]] = {}
-        for component in self.adapter_components:
-            if component.metadata.name in disabled_adapters:
-                continue
-            adapter_dict[component.metadata.name] = component.get_python_component_class()
-        self.adapter_dict = adapter_dict
+        self.adapter_dict = {}
 
         # Filter out disabled adapters from components list (for API responses)
         if disabled_adapters:
@@ -2036,7 +2031,7 @@ class PlatformManager:
                 execution_context.workspace_uuid,
                 expected_generation=execution_context.placement_generation,
             )
-            websocket_adapter_class = self.adapter_dict['websocket']
+            websocket_adapter_class = self._get_adapter_class('websocket')
             websocket_logger = EventLogger(
                 name='websocket-adapter',
                 ap=self.ap,
@@ -2233,10 +2228,7 @@ class PlatformManager:
             )
 
             bot_entity.adapter = canonical_adapter_name(bot_entity.adapter)
-            if bot_entity.adapter not in self.adapter_dict:
-                raise platform_errors.AdapterNotFoundError(bot_entity.adapter)
-
-            adapter_inst = self.adapter_dict[bot_entity.adapter](
+            adapter_inst = self._get_adapter_class(bot_entity.adapter)(
                 bot_entity.adapter_config,
                 logger,
             )
@@ -2353,6 +2345,16 @@ class PlatformManager:
                 if bot.enable:
                     await bot.shutdown()
                 self._pop_runtime_bot(key)
+
+    def _get_adapter_class(self, name: str) -> type[abstract_platform_adapter.AbstractMessagePlatformAdapter]:
+        name = canonical_adapter_name(name)
+        if name not in self.adapter_dict:
+            component = self.get_available_adapter_manifest_by_name(name)
+            if component is None:
+                raise platform_errors.AdapterNotFoundError(name)
+            # Keep unused platform SDKs out of the process until a Bot needs them.
+            self.adapter_dict[name] = component.get_python_component_class()
+        return self.adapter_dict[name]
 
     def get_available_adapters_info(self) -> list[dict]:
         return [

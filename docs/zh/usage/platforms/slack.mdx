@@ -79,11 +79,13 @@ Webhook 模式可跳过本步。长连接模式中，点击助手的 **打开应
 
 ## 事件、交互与已有应用升级
 
-新版快速配置向导会自动配置下列事件订阅和交互入口。安装授权页会申请消息、频道、用户、文件和表情反应权限，其中 `reactions:read` 用于表情反应事件。频道中的普通回复仍只由 @ 机器人触发；为获取编辑、删除和频道信息变化而订阅的频道消息不会全部触发回复。
+新版快速配置向导会自动配置下列事件订阅和交互入口。安装授权页会申请消息、频道、用户、文件和表情反应权限，其中 `reactions:read` 用于表情反应事件。在本机器人发起的 thread 中回复无需 @ 机器人；其他频道消息仍需 @。接收这些 thread 回复需要订阅 `message.channels` 并授权 `channels:history`；私有频道还需要 `message.groups` 和 `groups:history`。添加权限后需重新安装 Slack 应用。
+
+派发 thread 回复不等于 @ 机器人。没有 @ 的回复仍可供插件处理，但不会满足默认流水线基于 @ 的群响应条件。
 
 | Slack 事件 | LangBot 事件 |
 | --- | --- |
-| 私聊消息、`app_mention` | `message.received` |
+| 私聊消息、`app_mention`、本机器人发起的 thread 中的回复 | `message.received` |
 | `message_changed` / `message_deleted` 消息子类型 | `message.edited` / `message.deleted` |
 | `reaction_added` / `reaction_removed` | `message.reaction`，通过 `is_add` 区分 |
 | `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
@@ -104,6 +106,14 @@ Webhook 模式可跳过本步。长连接模式中，点击助手的 **打开应
 4. 保存 Slack 设置，在 LangBot 配置相应事件路由。若重新安装后 Bot Token 改变，回填新值并保存机器人。
 
 字段定义参考 [Slack App Manifest](https://docs.slack.dev/reference/app-manifest/)。
+
+## 使用标准消息 API 操作 thread
+
+使用 `send_message`、`reply_message` 和标准消息组件：
+
+- `send_message` 返回 `MessageResult`，其 `message_id` 为第一条发出消息的 Slack `ts`；文本后附文件时也取第一条消息。保存此 ID 即可在该消息下创建 thread。
+- 出站消息链加入 `Quote(id=message_id, origin=MessageChain([]))`，文本和文件都会发到该 thread。取第一个 ID 非空的 Quote，优先于 `reply_message` 的来源 thread 或 `quote_origin` 选择，且不发送其 origin 内容。没有显式 Quote ID 时，原有发送和回复行为不变。
+- 入站频道 thread 回复带有 `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))`，当前消息 ID 仍在 `Source.id` 中。thread 根消息和非 thread 消息不带此 Quote，插件可直接从消息链读取父消息 ID，无需另查上下文。
 
 ## 手动配置（Webhook）
 

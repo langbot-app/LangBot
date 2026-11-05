@@ -30,6 +30,7 @@ import zlib
 from datetime import datetime, timezone
 
 from . import trace as trace_mod
+from .features import bounded_model_name
 from .identity import workspace_identity
 from .resources import snapshot as resources_snapshot
 from .resources import begin as resources_begin
@@ -429,12 +430,16 @@ class ExecutionCounters:
             'stage_count': state.stage_count,
             'dropped_nodes': state.dropped_nodes,
             'origin': state.origin,
-            'model_name': state.model_name or '',
+            'model_name': bounded_model_name(state.model_name or ''),
             'adapter': state.adapter or state.node_adapter,
             'runner': state.runner or state.node_runner,
             'runner_category': state.runner_category or '',
             'pipeline_plugins': state.pipeline_plugins,
         }
+        if state.features:
+            record['features'] = {
+                key: dict(value) if isinstance(value, dict) else value for key, value in state.features.items()
+            }
         # Bound resources of this execution, when any lane reported them. The
         # key is omitted entirely when nothing was noted, so the payload stays
         # byte-identical for executions with no bindings.

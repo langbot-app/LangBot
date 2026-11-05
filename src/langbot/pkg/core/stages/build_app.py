@@ -317,7 +317,6 @@ class BuildAppStage(stage.BootingStage):
         # 初始化向量数据库管理器
         vectordb_mgr_inst = vectordb_mgr.VectorDBManager(ap)
         ap.vector_db_mgr = vectordb_mgr_inst
-        await vectordb_mgr_inst.initialize()
 
         http_ctrl = http_controller.HTTPController(ap)
         ap.http_ctrl = http_ctrl

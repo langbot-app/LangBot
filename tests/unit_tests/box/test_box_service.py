@@ -698,6 +698,50 @@ async def test_box_runtime_reuses_request_session():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('outcome', ['success', 'exit_error', 'box_error', 'timeout'])
+async def test_execution_telemetry_counts_sandbox_outcomes(outcome):
+    from langbot.pkg.telemetry import trace
+    from tests.unit_tests.telemetry.test_trace import make_counters
+
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend], session_ttl_sec=300)
+    app = make_app(logger)
+    _, counters = make_counters()
+    app.telemetry = SimpleNamespace(execution=counters)
+    service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
+    await service.initialize()
+    if outcome == 'box_error':
+        service.client.execute = AsyncMock(side_effect=BoxError('backend failed'))
+    elif outcome in {'exit_error', 'timeout'}:
+        service.client.execute = AsyncMock(
+            return_value=BoxExecutionResult(
+                session_id='person_test_user',
+                backend_name='fake',
+                status=BoxExecutionStatus.TIMED_OUT if outcome == 'timeout' else BoxExecutionStatus.COMPLETED,
+                exit_code=None if outcome == 'timeout' else 1,
+                stdout='',
+                stderr='private output',
+                duration_ms=1,
+            )
+        )
+    binding = trace.bind()
+    try:
+        if outcome == 'box_error':
+            with pytest.raises(BoxError):
+                await service.execute_tool({'command': 'private command'}, make_query())
+        else:
+            await service.execute_tool({'command': 'private command'}, make_query())
+        expected = {'execs': 1}
+        if outcome != 'success':
+            expected['errors'] = 1
+        assert binding.state.features == {'sandbox': expected}
+    finally:
+        trace.unbind_root(binding)
+        await service.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_box_service_defaults_session_id_from_query():
     logger = Mock()
     backend = FakeBackend(logger)

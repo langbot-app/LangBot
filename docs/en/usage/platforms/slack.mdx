@@ -79,11 +79,13 @@ If no reply arrives, check that both the bot and message route are enabled, the 
 
 ## Events, interactions and upgrading existing apps
 
-Quick setup configures the subscriptions and interaction endpoint below. Installation requests message, channel, user, file and reaction permissions; `reactions:read` enables reaction events. Normal channel replies still require an @mention. Subscribing to channel messages for edits, deletions and channel changes does not trigger replies to all channel traffic.
+Quick setup configures the subscriptions and interaction endpoint below. Installation requests message, channel, user, file and reaction permissions; `reactions:read` enables reaction events. Replies in threads started by this bot are delivered without an @mention; other channel messages still require one. Subscribe to `message.channels` with `channels:history` (and `message.groups` with `groups:history` for private channels) to receive these thread replies. Reinstall the Slack app after adding scopes.
+
+Thread delivery does not imply a bot mention. Unmentioned replies remain available to plugins but do not satisfy the default pipeline's mention-based group response rule.
 
 | Slack event | LangBot event |
 | --- | --- |
-| Direct messages, `app_mention` | `message.received` |
+| Direct messages, `app_mention`, replies in this bot's threads | `message.received` |
 | `message_changed` / `message_deleted` message subtypes | `message.edited` / `message.deleted` |
 | `reaction_added` / `reaction_removed` | `message.reaction`, distinguished by `is_add` |
 | `member_joined_channel` / `member_left_channel` | `group.member_joined` / `group.member_left` |
@@ -104,6 +106,14 @@ Interactions are acknowledged first and processed asynchronously. Synchronous fi
 4. Save Slack settings and configure the corresponding LangBot routes. If reinstallation changes the Bot Token, update it and save the bot.
 
 See the [Slack App Manifest reference](https://docs.slack.dev/reference/app-manifest/) for field definitions.
+
+## Threads with standard message APIs
+
+Use `send_message` and `reply_message` with standard message components:
+
+- `send_message` returns a `MessageResult` whose `message_id` is the first sent message's Slack `ts`, including when text is followed by a file. Save this ID to start a thread beneath that message.
+- Include `Quote(id=message_id, origin=MessageChain([]))` in the outgoing chain to send text and files into that thread. The first Quote with a nonempty ID takes precedence, including over `reply_message`'s source thread or `quote_origin` selection. Its origin content is not sent. Without an explicit Quote ID, existing send/reply behavior is unchanged.
+- Incoming channel thread replies include `Quote(id=thread_ts, group_id=channel, target_id=channel, origin=MessageChain([]))`. The current message's ID remains in `Source.id`. Root messages and messages outside threads have no thread Quote. Plugins can read the parent ID directly from the chain without a separate context lookup.
 
 ## Manual setup (Webhook)
 

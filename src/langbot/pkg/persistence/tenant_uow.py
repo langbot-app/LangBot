@@ -433,6 +433,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
 
     from .resource_urls import ExpandedResourceURLs
 
+    seen_sql_types: set[int] = set()
     for element in _iter_scoped_statement_elements(statement):
         resource_expansion_allowed = (
             type(element) is ExpandedResourceURLs
@@ -445,7 +446,7 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
                 'TenantUnitOfWork does not allow custom SQL AST nodes in public statements'
             )
 
-        _validate_scoped_sql_type(getattr(element, 'type', None))
+        _validate_scoped_sql_type(getattr(element, 'type', None), seen=seen_sql_types)
 
         if isinstance(element, sqlalchemy.sql.selectable.Values):
             raise ScopedSessionTransactionError(
@@ -462,20 +463,18 @@ def _validate_scoped_statement_call(args: tuple[typing.Any, ...], kwargs: dict[s
             if isinstance(identifier, sqlalchemy.sql.elements.quoted_name) and identifier.quote is False:
                 raise ScopedSessionTransactionError('TenantUnitOfWork does not allow forced-unquoted SQL identifiers')
 
-        if any(
-            _scoped_sql_attribute(element, attribute_name, None)
-            for attribute_name in (
-                '_prefixes',
-                '_suffixes',
-                '_hints',
-                '_statement_hints',
-                '_execution_options',
-                '_with_options',
-            )
+        for attribute_name in (
+            '_prefixes',
+            '_suffixes',
+            '_hints',
+            '_statement_hints',
+            '_execution_options',
+            '_with_options',
         ):
-            raise ScopedSessionTransactionError(
-                'TenantUnitOfWork does not allow textual statement modifiers or execution options'
-            )
+            if _scoped_sql_attribute(element, attribute_name, None):
+                raise ScopedSessionTransactionError(
+                    'TenantUnitOfWork does not allow textual statement modifiers or execution options'
+                )
 
         if (
             isinstance(element, sqlalchemy.sql.elements.TextClause)

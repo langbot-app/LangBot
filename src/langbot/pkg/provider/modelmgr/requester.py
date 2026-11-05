@@ -12,6 +12,7 @@ from ...api.http.context import ExecutionContext
 from ...entity.persistence import model as persistence_model
 from ...workspace.errors import WorkspaceInvariantError
 from ...platform.image_urls import refresh_model_images
+from ...telemetry import features as telemetry_features
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
 from . import token
 from . import reasoning
@@ -170,6 +171,7 @@ class RuntimeProvider:
                         'response',
                         state.policy.total_timeout,
                     )
+                    telemetry_features.note_llm(self.requester.ap, model, query)
                     result = await state.wait(
                         lambda: self.requester.invoke_llm(
                             query=query,
@@ -226,6 +228,7 @@ class RuntimeProvider:
                         'first_event',
                         state.policy.total_timeout,
                     )
+                    telemetry_features.note_llm(self.requester.ap, model, query)
                     async with aclosing(
                         self.requester.invoke_llm_stream(
                             query=query,

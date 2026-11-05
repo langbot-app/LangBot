@@ -1,8 +1,10 @@
 from __future__ import annotations
 import abc
 import enum
-from typing import Any, Dict, MutableMapping, MutableSet, TypeVar
-import numpy as np
+from typing import TYPE_CHECKING, Any, Dict, MutableMapping, MutableSet, TypeVar
+
+if TYPE_CHECKING:
+    import numpy as np
 
 _CacheValue = TypeVar('_CacheValue')
 
