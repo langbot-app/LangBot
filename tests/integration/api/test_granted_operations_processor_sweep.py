@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
 
 from langbot.pkg.api.application.api import ApplicationAPI
@@ -201,6 +202,11 @@ def sweep_app(monkeypatch):
     )
     ap.plugin_connector.get_plugin_logs = AsyncMock(return_value={'logs': []})
 
+    # Background tasks
+    ap.task_mgr = SimpleNamespace(
+        get_task_by_id=Mock(return_value=SimpleNamespace(to_public_dict=lambda: {'id': 1, 'status': 'running'}))
+    )
+
     # Tool and model managers
     ap.tool_mgr.get_resolved_tool_catalog = AsyncMock(return_value=[{'name': 'test_tool'}])
     ap.model_mgr.get_available_requesters_info = lambda model_type=None: []
@@ -260,12 +266,13 @@ MIN_READ_PARAMS = {
     'skill.file.read': {'skill_name': 'sk-1', 'path': 'README.md'},
     'skill.get': {'skill_name': 'sk-1'},
     'skill.github.preview': {'data': {}},
+    'task.get': {'task_id': 1},
     'tool.get': {'tool_name': 'test_tool'},
 }
 
 
 async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
-    """Execute all 85 read operations with exposure=='all' under processor context."""
+    """Execute all 87 read operations with exposure=='all' under processor context."""
     api = sweep_app.application_api
     read_op_ids = [
         op_id
@@ -274,7 +281,7 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         and get_operation_doc(op_id, side_effect=spec.side_effect).exposure == 'all'
         and not spec.side_effect
     ]
-    assert len(read_op_ids) == 85
+    assert len(read_op_ids) == 87
 
     proc_ctx = await build_processor_request_context(
         sweep_app,
@@ -286,7 +293,16 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
     )
     assert proc_ctx.allowed_operation_ids == frozenset(read_op_ids)
 
-    with patch('langbot.pkg.api.application.plugin_operations._github_json', AsyncMock(return_value={'assets': []})):
+    marketplace = httpx.MockTransport(lambda request: httpx.Response(200, json={'code': 0, 'data': {'plugins': []}}))
+    real_client = httpx.AsyncClient
+
+    def marketplace_client(*args, **kwargs):
+        return real_client(*args, **{**kwargs, 'transport': marketplace})
+
+    with (
+        patch('langbot.pkg.api.application.plugin_operations._github_json', AsyncMock(return_value={'assets': []})),
+        patch('langbot.pkg.api.application.plugin_operations.httpx.AsyncClient', marketplace_client),
+    ):
         for op_id in read_op_ids:
             args = MIN_READ_PARAMS.get(op_id, {})
             result = await call(sweep_app, proc_ctx, op_id, args, consumer='processor', granted=read_op_ids)
