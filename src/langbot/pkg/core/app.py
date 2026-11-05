@@ -500,6 +500,13 @@ class Application:
                 maintenance_intervals['invitations'] = 3600.0
             if operation_log_enabled:
                 maintenance_intervals['operation_logs'] = operation_log_interval_seconds
+            dedicated_members = None
+            if getattr(self, 'user_service', None) is not None:
+                dedicated_members = self.user_service._space_dedicated_members()
+            if dedicated_members is not None:
+                # Dedicated Cloud instances re-check Space-managed members so a
+                # removal on LangBot Space takes effect without a new login.
+                maintenance_intervals['dedicated_members'] = 600.0
 
             if maintenance_intervals:
 
@@ -587,6 +594,17 @@ class Application:
                                             f'Operation log auto-cleanup failed for '
                                             f'Workspace {context.workspace_uuid}: {exc}'
                                         )
+                            if 'dedicated_members' in due and dedicated_members is not None:
+                                try:
+                                    removed_members = await dedicated_members.sync_all()
+                                    if removed_members:
+                                        self.logger.info(
+                                            f'Removed {removed_members} member(s) no longer invited on LangBot Space'
+                                        )
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(f'Space dedicated member sync failed: {exc}')
                             if 'invitations' in due:
                                 try:
                                     await self.workspace_collaboration_service.cleanup_expired_invitations(

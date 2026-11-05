@@ -194,6 +194,29 @@ class SpaceService:
                 raise ValueError(f'Failed to get user info: {data.get("msg")}')
             return data.get('data', {})
 
+    async def get_dedicated_membership(self, access_token: str) -> typing.Dict:
+        """Ask Space which role the token's account holds on this dedicated instance.
+
+        Space answers with an empty role for instance IDs that are not dedicated
+        Cloud instances, so this is harmless anywhere else.
+        """
+        from langbot.pkg.utils import constants
+
+        space_url = self._get_space_config()['url']
+        session = httpclient.get_session()
+        async with session.get(
+            f'{space_url}/api/v1/cloud/dedicated/membership',
+            params={'instance_id': constants.instance_id},
+            headers={'Authorization': f'Bearer {access_token}'},
+        ) as response:
+            if response.status != 200:
+                error = await httpclient.read_text_limited(response)
+                raise ValueError(f'Failed to get dedicated membership: {error}')
+            data = await httpclient.read_json_limited(response)
+            if data.get('code') != 0:
+                raise ValueError(f'Failed to get dedicated membership: {data.get("msg")}')
+            return data.get('data', {}) or {}
+
     # === API calls with token validation ===
 
     async def get_user_info(self, user_email: str) -> typing.Dict | None:

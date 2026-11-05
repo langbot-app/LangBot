@@ -2849,11 +2849,18 @@ const thTH = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_dedicated_member_requiredTitle:
+      'คุณยังไม่ได้เป็นสมาชิกของอินสแตนซ์นี้',
+    space_dedicated_member_required:
+      'บัญชี LangBot ของคุณยังไม่ได้รับเชิญเข้าอินสแตนซ์นี้ โปรดให้เจ้าของเชิญคุณจากหน้า Cloud ใน LangBot Space แล้วตอบรับคำเชิญและลองอีกครั้ง',
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
+    dedicatedSpaceMembersHint:
+      'สมาชิกที่เข้าสู่ระบบด้วยบัญชี LangBot ให้เชิญจากหน้า Cloud ใน LangBot Space คำเชิญด้านล่างจะสร้างบัญชีรหัสผ่านแยกต่างหากในอินสแตนซ์นี้',
+    manageOnSpace: 'จัดการใน LangBot Space',
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',

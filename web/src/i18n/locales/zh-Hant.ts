@@ -2727,11 +2727,17 @@ const zhHant = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
+    space_dedicated_member_requiredTitle: '你還不是該環境的成員',
+    space_dedicated_member_required:
+      '你的 LangBot 帳號尚未被邀請加入此環境。請聯絡擁有者在 LangBot Space 的 Cloud 頁面邀請你，接受邀請後再試。',
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
+    dedicatedSpaceMembersHint:
+      '使用 LangBot 帳號登入的成員請在 LangBot Space 的 Cloud 頁面邀請。下方邀請會在本實例建立獨立的密碼帳號。',
+    manageOnSpace: '前往 Space 管理成員',
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',

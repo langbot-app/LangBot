@@ -2731,11 +2731,17 @@ const zhHans = {
     space_account_not_registeredTitle: '账户尚未注册',
     space_account_not_registered:
       '此 LangBot 账号邮箱尚无本地账户，请联系工作区所有者获取邀请。',
+    space_dedicated_member_requiredTitle: '你还不是该环境的成员',
+    space_dedicated_member_required:
+      '你的 LangBot 账号尚未被邀请加入此环境。请联系所有者在 LangBot Space 的 Cloud 页面邀请你，接受邀请后再试。',
     space_account_binding_requiredTitle: '需要绑定 LangBot 账号',
     space_account_binding_required:
       '此本地账户必须先在账户设置中绑定 LangBot 账号，才能使用 LangBot 账号登录。',
   },
   workspace: {
+    dedicatedSpaceMembersHint:
+      '使用 LangBot 账号登录的成员请在 LangBot Space 的 Cloud 页面邀请。下方邀请会在本实例创建独立的密码账号。',
+    manageOnSpace: '前往 Space 管理成员',
     title: '工作区',
     description: '管理成员、角色与邀请链接',
     selectTitle: '选择工作区',

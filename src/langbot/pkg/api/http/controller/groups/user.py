@@ -16,6 +16,7 @@ from .....cloud.launch import SpaceLaunchError
 from ...service.user import ControlPlaneDirectoryRequiredError, PublicRegistrationClosedError
 from ...service import totp as totp_module
 from .....utils import constants
+from .....workspace.space_dedicated import space_dedicated_members_enabled
 
 # Fixed-window admission quota for the unauthenticated reset-password endpoint (#2392).
 # The admission check and slot bump share ONE synchronous critical section with no await
@@ -535,6 +536,11 @@ class UserRouterGroup(group.RouterGroup):
                 capabilities['password_login_enabled'] = False
             capabilities['authenticated_invitation_acceptance_enabled'] = cloud_mode
             capabilities['invitation_registration_enabled'] = not cloud_mode
+            if space_dedicated_members_enabled(self.ap):
+                # Dedicated Cloud instances always offer LangBot Account login,
+                # even when the owner initialized the instance with a password,
+                # so members invited on LangBot Space can sign in.
+                capabilities['space_login_enabled'] = True
             passkey_supported = self._passkey_supported()
             capabilities['passkey_login_enabled'] = passkey_supported
             capabilities['passkey_supported'] = passkey_supported

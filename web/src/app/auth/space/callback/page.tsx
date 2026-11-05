@@ -84,7 +84,10 @@ function SpaceOAuthCallbackContent() {
   >('loading');
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [terminalErrorCode, setTerminalErrorCode] = useState<
-    'space_account_not_registered' | 'space_account_binding_required' | null
+    | 'space_account_not_registered'
+    | 'space_account_binding_required'
+    | 'space_dedicated_member_required'
+    | null
   >(null);
   const [isBindMode, setIsBindMode] = useState(false);
   const [code, setCode] = useState<string | null>(null);
@@ -180,7 +183,8 @@ function SpaceOAuthCallbackContent() {
         const errorObj = err as { code?: string; msg?: string };
         if (
           errorObj.code === 'space_account_not_registered' ||
-          errorObj.code === 'space_account_binding_required'
+          errorObj.code === 'space_account_binding_required' ||
+          errorObj.code === 'space_dedicated_member_required'
         ) {
           setTerminalErrorCode(errorObj.code);
           setErrorMessage(t(`account.${errorObj.code}`));
