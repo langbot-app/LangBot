@@ -2761,6 +2761,9 @@ const zhHant = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      '目前工作空間成員已達上限（{{max}} 人，含待接受的邀請）。升級方案即可邀請更多成員。',
+    memberLimitReachedToast: '成員數量已達上限，請升級方案以邀請更多成員。',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',

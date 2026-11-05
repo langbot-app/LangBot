@@ -104,6 +104,15 @@ export default function WorkspaceSettingsPanel({
   const canInvite = permissions.has('member.invite');
   const canUpdateMembers = permissions.has('member.update_role');
   const canRemoveMembers = permissions.has('member.remove');
+  // Cloud plans cap members; pending invitations reserve seats too, matching
+  // the backend check. Self-hosted workspaces report no member limit.
+  const maxMembers = isCloudProjection
+    ? (workspaceInfo?.limitation?.max_members ?? -1)
+    : -1;
+  const memberLimitReached =
+    canViewMembers &&
+    maxMembers >= 0 &&
+    members.length + invitations.length >= maxMembers;
 
   const loadWorkspace = useCallback(async () => {
     setLoading(true);
@@ -163,8 +172,13 @@ export default function WorkspaceSettingsPanel({
       setInviteEmail('');
       await loadWorkspace();
       toast.success(t(`workspace.delivery.${response.delivery.status}`));
-    } catch {
-      toast.error(t('workspace.invitationCreateFailed'));
+    } catch (error) {
+      if ((error as { code?: unknown })?.code === 'member_limit_reached') {
+        toast.error(t('workspace.memberLimitReachedToast'));
+        await loadWorkspace();
+      } else {
+        toast.error(t('workspace.invitationCreateFailed'));
+      }
     } finally {
       setInviteLoading(false);
     }
@@ -322,6 +336,25 @@ export default function WorkspaceSettingsPanel({
                 {t('workspace.inviteDescription')}
               </p>
             </div>
+            {memberLimitReached && (
+              <div
+                role="status"
+                data-testid="workspace-member-limit-cta"
+                className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 sm:flex-row sm:items-center"
+              >
+                <p className="flex-1 text-xs text-muted-foreground">
+                  {t('workspace.memberLimitReached', { max: maxMembers })}
+                </p>
+                <Button
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setPlansOpen(true)}
+                >
+                  {t('workspace.upgradePlan')}
+                  <ArrowRight className="size-3.5" />
+                </Button>
+              </div>
+            )}
             <div className="flex flex-col gap-2 sm:flex-row">
               <Input
                 type="email"
@@ -329,8 +362,10 @@ export default function WorkspaceSettingsPanel({
                 onChange={(event) => setInviteEmail(event.target.value)}
                 placeholder={t('workspace.emailPlaceholder')}
                 className="flex-1"
+                disabled={memberLimitReached}
               />
               <Select
+                disabled={memberLimitReached}
                 value={inviteRole}
                 onValueChange={(value) =>
                   setInviteRole(value as Exclude<WorkspaceRole, 'owner'>)
@@ -349,7 +384,9 @@ export default function WorkspaceSettingsPanel({
               </Select>
               <Button
                 onClick={createInvitation}
-                disabled={inviteLoading || !inviteEmail.trim()}
+                disabled={
+                  memberLimitReached || inviteLoading || !inviteEmail.trim()
+                }
               >
                 {inviteLoading ? (
                   <Loader2 className="size-4 animate-spin" />

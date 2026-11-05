@@ -2763,6 +2763,9 @@ const zhHans = {
       failed: '邀请链接已创建，但邮件发送失败',
     },
     invitationCreateFailed: '创建邀请失败',
+    memberLimitReached:
+      '当前工作空间成员已达上限（{{max}} 人，含待接受的邀请）。升级计划即可邀请更多成员。',
+    memberLimitReachedToast: '成员数量已达上限，请升级计划以邀请更多成员。',
     oneTimeLinkWarning: '请立即复制此链接。它只显示一次。',
     copyInvitation: '复制邀请链接',
     invitationCopied: '邀请链接已复制',

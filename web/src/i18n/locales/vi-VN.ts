@@ -2927,6 +2927,10 @@ const viVN = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'Không gian làm việc đã đạt giới hạn thành viên ({{max}}, bao gồm lời mời đang chờ). Nâng cấp gói để mời thêm thành viên.',
+    memberLimitReachedToast:
+      'Đã đạt giới hạn thành viên. Nâng cấp gói để mời thêm thành viên.',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',

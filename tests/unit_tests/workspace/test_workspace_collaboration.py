@@ -24,6 +24,7 @@ from langbot.pkg.workspace.collaboration import (
     InvitationRoleError,
     InvitationUsedError,
     LastOwnerError,
+    MemberLimitReachedError,
     MembershipPermissionError,
     WorkspaceCollaborationService,
 )
@@ -375,3 +376,73 @@ async def test_invitation_lock_registry_keeps_waiters_serialized(collaboration_c
 
     assert order == ['first', 'second']
     assert service._invitation_locks == {}
+
+
+class _MemberLimitResolver:
+    def __init__(self, members_max: int | None):
+        self.members_max = members_max
+
+    async def resolve(self, workspace_uuid: str, *, minimum_revision: int = 0):
+        limits = {'bots.max': 0, 'pipelines.max': 0, 'plugins.max': 0, 'knowledge_bases.max': 0}
+        if self.members_max is not None:
+            limits['members.max'] = self.members_max
+        return SimpleNamespace(limits=limits, limit=lambda name: limits[name])
+
+
+def _enable_cloud_member_limit(service, members_max: int | None) -> None:
+    service.ap.deployment = SimpleNamespace(mode='cloud')
+    service.ap.entitlement_resolver = _MemberLimitResolver(members_max)
+
+
+async def test_cloud_member_limit_counts_active_members_and_pending_invitations(collaboration_context):
+    service, _, session_factory, _, workspace, owner_membership = collaboration_context
+    _enable_cloud_member_limit(service, 2)
+
+    first = await service.create_invitation(workspace.uuid, owner_membership, 'one@example.com', 'viewer')
+    with pytest.raises(MemberLimitReachedError):
+        await service.create_invitation(workspace.uuid, owner_membership, 'two@example.com', 'viewer')
+
+    # Re-sending the same email replaces its pending seat instead of taking another one.
+    resent = await service.create_invitation(workspace.uuid, owner_membership, 'one@example.com', 'developer')
+    assert resent.invitation.uuid != first.invitation.uuid
+
+    account = await _add_account(session_factory, 'one@example.com')
+    await service.accept_invitation(resent.token, account.uuid)
+    with pytest.raises(MemberLimitReachedError):
+        await service.create_invitation(workspace.uuid, owner_membership, 'two@example.com', 'viewer')
+
+    async with session_factory() as session:
+        pending = await session.scalar(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(WorkspaceInvitation)
+            .where(WorkspaceInvitation.workspace_uuid == workspace.uuid, WorkspaceInvitation.status == 'pending')
+        )
+    assert pending == 0
+
+
+async def test_cloud_member_limit_blocks_acceptance_after_plan_downgrade(collaboration_context):
+    service, _, session_factory, _, workspace, owner_membership = collaboration_context
+    _enable_cloud_member_limit(service, 2)
+    created = await service.create_invitation(workspace.uuid, owner_membership, 'late@example.com', 'viewer')
+
+    service.ap.entitlement_resolver.members_max = 1
+    account = await _add_account(session_factory, 'late@example.com')
+    with pytest.raises(MemberLimitReachedError):
+        await service.accept_invitation(created.token, account.uuid)
+
+
+@pytest.mark.parametrize('members_max', [None, 0])
+async def test_cloud_member_limit_absent_or_zero_is_unlimited(collaboration_context, members_max):
+    service, _, _, _, workspace, owner_membership = collaboration_context
+    _enable_cloud_member_limit(service, members_max)
+
+    for index in range(3):
+        await service.create_invitation(workspace.uuid, owner_membership, f'u{index}@example.com', 'viewer')
+
+
+async def test_self_hosted_invitations_ignore_member_limit(collaboration_context):
+    service, _, _, _, workspace, owner_membership = collaboration_context
+    service.ap.entitlement_resolver = _MemberLimitResolver(1)
+
+    await service.create_invitation(workspace.uuid, owner_membership, 'a@example.com', 'viewer')
+    await service.create_invitation(workspace.uuid, owner_membership, 'b@example.com', 'viewer')

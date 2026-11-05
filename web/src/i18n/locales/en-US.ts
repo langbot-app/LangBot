@@ -2946,6 +2946,10 @@ const enUS = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'Your workspace has reached its member limit ({{max}}, including pending invitations). Upgrade your plan to invite more members.',
+    memberLimitReachedToast:
+      'Member limit reached. Upgrade your plan to invite more members.',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',

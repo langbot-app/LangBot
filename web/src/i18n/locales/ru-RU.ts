@@ -2966,6 +2966,10 @@ const ruRU = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'В рабочем пространстве достигнут лимит участников ({{max}}, включая ожидающие приглашения). Повысьте тариф, чтобы пригласить больше участников.',
+    memberLimitReachedToast:
+      'Достигнут лимит участников. Повысьте тариф, чтобы пригласить больше участников.',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',
