@@ -730,3 +730,6 @@ def test_host_deduplicated_image_reference_uploads_inline_image_once(plugin, met
         asyncio.run(getattr(runner, method)(*args))
         assert len(uploads) == 1
         assert b"image" in uploads[0]
+        if plugin == "dify-agent":
+            # Dify derives the image format from the uploaded file name's extension.
+            assert uploads[0][0] == "image.png"
