@@ -137,6 +137,35 @@ def _is_union(t: typing.Any) -> bool:
     return isinstance(t, types.UnionType) or typing.get_origin(t) in (typing.Union, types.UnionType)
 
 
+@pytest.mark.asyncio
+async def test_runner_standard_send_with_minimal_installation_grants(test_host):
+    host = test_host
+    permissions = {'workspace_operations': [], 'capabilities': ['bot.message.send', 'storage.plugin']}
+    host.setting.permission_declaration = permissions
+    host.setting.permission_grants = permissions
+    host.setting.permission_snapshot = permissions
+    adapter = SimpleNamespace(send_message=AsyncMock(return_value={'message_id': 'sent'}))
+    host.ap.platform_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+
+    class Transport:
+        async def call_action(self, action, data, *args, **kwargs):
+            response = await host.handler.actions[action.value](data)
+            assert response.code == 0, response.message
+            return response.data
+
+    ctx = RunnerContext.model_construct(
+        run_id='run-123',
+        runtime=SimpleNamespace(deadline_at=None),
+        resources=AgentResources(),
+    )
+    api = RunnerAPIProxy(ctx, Transport())
+    chain = platform_message.MessageChain([platform_message.Plain(text='customer reply')])
+    result = await api.send_message('bot-1', 'person', 'openid', chain)
+    assert result == {'message_id': 'sent'}
+    adapter.send_message.assert_awaited_once_with('person', 'openid', chain)
+    assert isinstance(adapter.send_message.await_args.args[2], platform_message.MessageChain)
+
+
 def _dummy_for_type(annotation: typing.Any) -> typing.Any:
     if _is_union(annotation):
         args = typing.get_args(annotation)

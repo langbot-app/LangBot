@@ -7,7 +7,19 @@
 - 已认证且拥有客服消息接口权限的公众号，在 LangBot 中配置为 **Mode = auto**。其他模式无法异步发送员工回复，core 会拒绝发送。
 - LangBot core 必须包含 **langbot-app/LangBot #2863 和 #2864**：公众号 `send_message`、Slack 返回 `message_id`、出站 `Quote` 指定 thread、bot thread 内回复带入站 `Quote.id`。旧版本 core 无法使用本插件。
 - Slack App 已接入 LangBot，并已加入目标频道。订阅 bot events：`app_mention`、`message.channels`；私有频道还需要 `message.groups`。桥接所需 scopes：`chat:write`、`app_mentions:read`、`channels:history`，私有频道还需要 `groups:history`。保留 LangBot Slack 适配器要求的其他权限，修改 scope 后重新安装 App。Socket Mode 还需带 `connections:write` 的 App-Level Token；webhook 模式需要可访问的 LangBot 事件端点。
-- 在**两个 Bot 的消息流水线**中启用本插件，排在会回复或消费消息的其他插件之前。目标频道成员应仅包含有权回复客户的员工；频道中所有能在映射 thread 内发言的员工都可以回传消息。
+- 目标频道成员应仅包含有权回复客户的员工；频道中所有能在映射 thread 内发言的员工都可以回传消息。
+
+## 配置步骤与 0.2.0 升级
+
+1. 使用支持 Unified API、Runner 事件处理器和 Bot Plugin processor 订阅的 LangBot。安装或升级插件后，由 Workspace 成员在插件详情页确认 `bot.message.send` 和 `storage.plugin`。0.2.0 从 compatibility mode 转为 strict；声明权限不等于获得授权，不申请 Workspace operations。
+2. 填写下方插件级配置，两个组件共用这份配置，处理器没有独立配置项。
+3. 公众号 Bot 的**主路由必须是启用了本插件的 Pipeline**，插件排在会回复或消费消息的其他插件之前。EventListener 只在 Pipeline 内运行；如果主路由是 Agent，就无法阻断接管期间的 AI 回复。
+4. 创建使用 **Slack 回复处理器** 的 Plugin processor 实例，在 Slack Bot 详情页的 **Plugin processor** 中订阅。只安装插件不会自动订阅。Slack Bot 主路由可以是任意目标，也可以设为 **discard**，无需再通过启用了本插件的 Pipeline 处理 Slack 回复。
+5. 员工在映射 thread 内回复时**不要 @bot**。处理器和主路由并行运行，不能阻止主路由回复；如果 @bot 且 Slack Bot 主路由是 AI，AI 也会回复。
+
+在同一安装上升级后，0.1.0 已有会话与 thread 映射继续可用，storage key 不变。EventListener 不再处理 Slack 群消息，恢复员工回复前请完成处理器订阅。
+
+回执通过事件范围的标准 `ctx.reply` 发送，沿用 Slack 来源事件的 `thread_ts`。Runner 声明 `tool_calling: true` 和 `permissions.tools: [call]`、`permissions.storage: [plugin]`；消息事件自动获得 `event_reply`，无需额外启用平台工具或安装 capability。`get_bot_uuid` 同属事件范围；跨 Bot 发送需要 `bot.message.send`，存储读写和删除需要 `storage.plugin`。权限拒绝会记日志而不输出原始异常；仍能进行事件回复时，处理器会在 Slack 提示缺少的权限。
 
 ## 配置
 
@@ -24,8 +36,8 @@
 ## 使用方式
 
 1. 用户发送命中关键词的消息，频道中出现根消息，包含截短的 openid、命中词、UTC 时间和原文。
-2. 员工在**这条消息的 thread 内**回复，可不 @bot。插件仅提取 `Plain` 文本，去掉引用上下文与 @bot 前缀，并将 Slack 链接、提及、频道引用及转义的 `&`、`<`、`>` 转成可读纯文本后发送给公众号用户。成功后在 thread 回一条 `✅`；失败则显示中英双语原因和微信 `errcode`。
-3. 在 thread 内发 **`!close`** 结束接管；也支持 `@bot /close`。不要直接使用裸 `/close`，Slack 可能将它当成原生 slash command，而不派发消息。
+2. 员工在**这条消息的 thread 内回复，不要 @bot**。插件仅提取 `Plain` 文本，去掉引用上下文与开头的 @bot 前缀，并将 Slack 链接、提及、频道引用及转义的 `&`、`<`、`>` 转成可读纯文本后发送给公众号用户。成功后在 thread 回一条 `✅`；失败则显示中英双语原因和微信 `errcode`。没有映射的 thread 只记录日志，不回复。
+3. 在 thread 内发 **`!close`** 结束接管；处理器也接受作为消息文本送达的 `/close`，但 Slack 可能将它当成原生 slash command，而不派发消息。
 4. 关闭或超时后，普通用户消息恢复走 AI 流水线；再次命中关键词会建立新 thread。超时在下一条相关事件到达时检查，无后台定时器。员工回复不延长接管期，用户每次发言会刷新接管期和 48 小时窗口。
 
 关闭 `forward_followups` 后，接管期间仍阻断 AI 并刷新时间戳，只是不转发后续消息。修改 Slack Bot 或目标频道后，下次用户发言时旧会话结束；需要再次命中关键词才会在新目标建立会话。
@@ -49,20 +61,25 @@
 
 读取存储时会枚举插件的全部 key。过期且不再被访问的会话仍会保留，并增加枚举量；目前没有定时清理。
 
-支持 `shared-runtime-v1` 和 `stateless-v1`，运行时边界见 `../SHARED_RUNTIME.md`。平台消息只使用标准 `send_message`，无需为插件单独提供平台密钥。
+支持 `shared-runtime-v1` 和 `stateless-v1`，运行时边界见 `../SHARED_RUNTIME.md`。两个组件共用插件存储；平台消息使用标准 `send_message` 和事件回复 API，无需为插件单独提供平台密钥。
 
 ## 验证与打包
 
-安装 `langbot-plugin`、`pytest`、`pytest-asyncio`、`PyYAML` 后，在仓库根目录运行：
+在仓库根目录创建独立环境，使用 Unified API SDK 快照运行：
 
 ```sh
+uv venv plugins/misc/OASlackBridge/.venv
+uv pip install --python plugins/misc/OASlackBridge/.venv/bin/python -r plugins/misc/OASlackBridge/requirements-dev.txt
+source plugins/misc/OASlackBridge/.venv/bin/activate
 python -m pytest plugins/misc/OASlackBridge/tests -q
 python plugins/scripts/check_catalog.py
+python plugins/scripts/test_repository.py
+ruff check plugins/misc/OASlackBridge
 cd plugins/misc/OASlackBridge
 lbp build -o dist
 ```
 
-测试通过真实 SDK invocation binding 和 mock Host 验证消息与存储，不会访问真实微信或 Slack。真机验收需使用获授权的测试账号和专用频道：关键词触发 → 用户后续消息 → 员工不 @bot/@bot 回复 → 重启插件后继续回复 → `!close` 后恢复 AI。不要在生产客户 thread 中测试。
+测试通过真实 SDK invocation binding、RunnerContext 分派和 mock Host 验证消息与存储，不会访问真实微信或 Slack。真机验收需使用获授权的测试账号和专用频道：订阅处理器 → 关键词触发 → 用户后续消息 → 员工不 @bot 回复 → 重启插件后继续回复 → `!close` 后恢复 AI。不要在生产客户 thread 中测试。
 
 ## 限制
 

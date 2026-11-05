@@ -7,9 +7,21 @@ Forward WeChat Official Account messages containing configured keywords to a Sla
 ## Prerequisites
 
 - A verified Official Account with customer-service messaging permission, configured as a LangBot bot with **Mode = auto**. Other modes cannot send asynchronous staff replies; core enforces this restriction.
-- A LangBot core containing **langbot-app/LangBot #2863 and #2864**: Official Account `send_message`, Slack `send_message` returning `message_id`, outbound `Quote` as a thread destination, and inbound bot-thread replies carrying `Quote.id`. Older cores cannot run this bridge.
+- A LangBot core with Unified API, event-capable Runner components, Bot Plugin processor subscriptions, Official Account `send_message`, and Slack thread support (`Quote.id` and `message_id`).
 - A Slack App connected through LangBot, invited to the target channel. Enable bot event subscriptions `app_mention` and `message.channels`; for a private channel also enable `message.groups`. Required bridge scopes are `chat:write`, `app_mentions:read`, `channels:history`, and `groups:history` for private channels. Retain the other scopes required by LangBot's Slack adapter. Reinstall the Slack App after changing scopes. Socket Mode also needs an App-Level Token with `connections:write`; webhook mode needs LangBot's reachable event endpoint.
-- Enable this plugin for **both bots' message pipelines**. Place it before plugins that answer or consume messages. Restrict membership of the target channel to staff authorized to reply to customers; every human participant in that channel can reply through a mapped thread.
+- Restrict membership of the target channel to staff authorized to reply to customers; every human participant in that channel can reply through a mapped thread.
+
+## Setup and upgrade to 0.2.0
+
+1. Install or upgrade the plugin. A Workspace member must confirm `bot.message.send` and `storage.plugin` on the plugin detail page. Version 0.2.0 switches from compatibility mode to strict permissions; declaring permissions does not grant them. No Workspace operations are requested.
+2. Fill in the plugin-level configuration below. Both components use this configuration; the processor has no separate settings.
+3. Set the Official Account Bot's **main route to a Pipeline with this plugin enabled**, before other plugins that answer or consume messages. The EventListener only runs inside a Pipeline. An Agent main route cannot suppress AI replies during takeover.
+4. Create a Plugin processor instance using **Slack reply processor**, then subscribe to it in the Slack Bot detail page's **Plugin processor** section. Installation alone does not subscribe it. The Slack Bot main route can be any target, including **discard**; it no longer needs this plugin in its Pipeline.
+5. Staff must reply in the mapped thread **without @bot**. Processor subscriptions run in parallel with the main route and cannot prevent its replies. Mentioning the bot while the main route is AI can therefore also trigger an AI response.
+
+Existing 0.1.0 sessions and thread mappings remain usable after upgrading the same installation; storage keys are unchanged. The EventListener no longer handles Slack group messages. Complete the processor subscription before resuming staff replies.
+
+Receipts use the event-scoped standard `ctx.reply`, preserving the source Slack `thread_ts`. The Runner declares `tool_calling: true` and `permissions.tools: [call]` with `permissions.storage: [plugin]`; `event_reply` is automatically available for message events, so no extra platform tools or installation capabilities need enabling. `get_bot_uuid` is also event-scoped. Cross-bot sends use `bot.message.send`; session reads, writes, and deletes use `storage.plugin`. Permission denials are logged without raw diagnostics; the processor posts a missing-permission receipt when event replies remain available.
 
 ## Configuration
 
@@ -26,8 +38,8 @@ Forward WeChat Official Account messages containing configured keywords to a Sla
 ## Staff workflow
 
 1. A user sends a keyword. The channel receives a root message containing a shortened openid, the keyword, UTC time, and original text.
-2. Reply **inside that thread**. An @mention is optional. Only `Plain` text is sent to WeChat; the reply context and @bot prefix are removed. Slack links, mentions, channel references, and escaped `&`, `<`, `>` are converted to readable plain text. The thread receives `✅` after a successful send, or a bilingual error category and WeChat `errcode` after rejection.
-3. Send **`!close`** in the thread to release takeover. `@bot /close` is also supported. A bare `/close` may be interpreted by Slack as a native slash command instead of a message.
+2. Reply **inside that thread without @bot**. Only `Plain` text is sent to WeChat; the reply context and any leading @bot prefix are removed. Slack links, mentions, channel references, and escaped `&`, `<`, `>` are converted to readable plain text. The thread receives `✅` after a successful send, or a bilingual error category and WeChat `errcode` after rejection. Unmapped threads are logged and receive no reply.
+3. Send **`!close`** in the thread to release takeover. The processor also accepts `/close` if delivered as message text, but Slack may interpret it as a native slash command instead.
 4. Once closed or expired, ordinary user messages follow the normal AI pipeline. A new keyword starts a new thread. Expiration is checked on the next event, without a background timer. Staff replies do not extend takeover; user messages do.
 
 Turning `forward_followups` off still suppresses AI and refreshes both timestamps during takeover. Changing the configured Slack destination ends the old session when the next user message arrives; a new keyword is required to start a session in the new destination.
@@ -51,20 +63,25 @@ Each session is stored separately by installation, Official Account bot UUID, an
 
 Storage reads enumerate the plugin's keys. Expired conversations that are never accessed again remain stored and increase that listing; there is no periodic cleanup.
 
-The plugin supports `shared-runtime-v1` / `stateless-v1`; details are in [SHARED_RUNTIME.md](SHARED_RUNTIME.md). It uses only standard `send_message` calls for platform messaging and requires no plugin-specific credentials.
+The plugin supports `shared-runtime-v1` / `stateless-v1`; details are in [SHARED_RUNTIME.md](SHARED_RUNTIME.md). Both components share plugin storage and use standard `send_message` and event reply APIs, with no plugin-specific credentials.
 
 ## Validation and packaging
 
-From the repository root, with `langbot-plugin`, `pytest`, `pytest-asyncio`, and `PyYAML` installed:
+From the repository root, create an isolated environment with the Unified API SDK snapshot:
 
 ```sh
+uv venv plugins/misc/OASlackBridge/.venv
+uv pip install --python plugins/misc/OASlackBridge/.venv/bin/python -r plugins/misc/OASlackBridge/requirements-dev.txt
+source plugins/misc/OASlackBridge/.venv/bin/activate
 python -m pytest plugins/misc/OASlackBridge/tests -q
 python plugins/scripts/check_catalog.py
+python plugins/scripts/test_repository.py
+ruff check plugins/misc/OASlackBridge
 cd plugins/misc/OASlackBridge
 lbp build -o dist
 ```
 
-Tests use real SDK invocation bindings and a mock Host for messaging and storage; they never contact Slack or WeChat. A live acceptance check needs your own authorized test accounts: send a keyword, send a follow-up, reply from Slack both with and without @bot, restart the plugin worker and reply again, then send `!close` and confirm normal AI replies resume. Test in a dedicated channel, not a production customer thread.
+Tests use real SDK invocation bindings, RunnerContext dispatch, and a mock Host for messaging and storage; they never contact Slack or WeChat. A live acceptance check needs your own authorized test accounts: subscribe the processor, send a keyword, send a follow-up, reply from Slack without @bot, restart the plugin worker and reply again, then send `!close` and confirm normal AI replies resume. Test in a dedicated channel, not a production customer thread.
 
 ## Limitations
 

@@ -86,6 +86,13 @@ class RepositoryTests(unittest.TestCase):
         for entry in catalog:
             self.assertIn(f'({entry["path"]}/README.md)', readme)
 
+    def test_pipeline_bridge_with_event_runner_remains_misc(self):
+        entry = next(item for item in check_catalog() if item['id'] == 'langbot-team/OASlackBridge')
+        self.assertEqual(entry['category'], 'misc')
+        self.assertEqual(entry['path'], 'misc/OASlackBridge')
+        manifest = yaml.safe_load((ROOT / entry['path'] / 'manifest.yaml').read_text())
+        self.assertEqual(set(manifest['spec']['components']), {'EventListener', 'Runner'})
+
     def test_original_identities_are_preserved(self):
         imported = json.loads((ROOT / 'SOURCE.json').read_text())
         current = {entry['id']: entry['path'] for entry in check_catalog()}
