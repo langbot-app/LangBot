@@ -210,9 +210,14 @@ async def authorize_action(ap, binding, action: str, data: dict) -> None:
                 return
         if tool is None:
             fail('not_found', 'Tool not found')
-        capability = {'plugin': 'plugin_tools', 'mcp': 'mcp', 'builtin': 'sandbox', 'skill': 'sandbox'}.get(
-            tool['source']
-        )
+        # Native and builtin both name the sandbox tool loader (see ToolManager).
+        capability = {
+            'plugin': 'plugin_tools',
+            'mcp': 'mcp',
+            'builtin': 'sandbox',
+            'native': 'sandbox',
+            'skill': 'sandbox',
+        }.get(tool['source'])
         data['_permission_tool_source'] = {key: tool[key] for key in ('source', 'source_id') if key in tool}
     if capability is None:
         fail('permission_denied', 'Plugin action has no capability mapping')

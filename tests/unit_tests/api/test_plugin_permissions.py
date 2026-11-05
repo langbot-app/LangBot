@@ -302,6 +302,28 @@ async def test_platform_tool_fallback_does_not_bypass_installation_grants(app, m
     assert error.value.error.code == 'not_found'
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('source', ['native', 'builtin'])
+async def test_native_sandbox_tools_require_the_sandbox_capability(app, monkeypatch, source):
+    from langbot.pkg.api.application import plugin_permissions
+
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    catalog = [{'name': 'exec', 'source': source, 'source_id': None}]
+    app.tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=catalog))
+    app.plugin_connector._runtime_handler = lambda: SimpleNamespace(_execution_context=lambda value: value)
+    data = {'run_id': 'run', 'tool_name': 'exec'}
+
+    denied = installation({'workspace_operations': [], 'capabilities': ['sandbox']}, {'capabilities': []})
+    monkeypatch.setattr(plugin_permissions, 'load_installation', AsyncMock(return_value=denied))
+    with pytest.raises(ApplicationAPIException) as error:
+        await plugin_permissions.authorize_action(app, binding, PluginToRuntimeAction.CALL_TOOL.value, dict(data))
+    assert error.value.error.details['denied_capabilities'] == ['sandbox']
+
+    granted = installation({'workspace_operations': [], 'capabilities': ['sandbox']}, {'capabilities': ['sandbox']})
+    monkeypatch.setattr(plugin_permissions, 'load_installation', AsyncMock(return_value=granted))
+    await plugin_permissions.authorize_action(app, binding, PluginToRuntimeAction.CALL_TOOL.value, dict(data))
+
+
 def test_preferences_do_not_grant_or_check_member_ceiling(app):
     from langbot.pkg.api.application.tool_grants import validate_operation_preferences
 

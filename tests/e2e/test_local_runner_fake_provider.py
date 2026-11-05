@@ -481,6 +481,26 @@ async def _boot_local_agent_app(tmpdir: Path):
     return ap, run_task
 
 
+async def _confirm_plugin_permissions(ap, execution_context, author: str, name: str):
+    """Grant a plugin's declared permissions as a Workspace member would."""
+    from langbot.pkg.api.application.plugin_permissions import auto_confirm_declared, permission_status
+    from langbot.pkg.api.authz import Permission
+    from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+
+    _, setting = await ap.plugin_connector._setting_for_plugin(author, name)
+    if not permission_status(ap, setting)['pending_confirmation']:
+        return
+    member = RequestContext(
+        instance_uuid=execution_context.instance_uuid,
+        placement_generation=execution_context.placement_generation,
+        request_id='local-agent-e2e',
+        auth_type='user-token',
+        principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid='local-agent-e2e'),
+        workspace=WorkspaceContext(execution_context.workspace_uuid, None, None, frozenset(Permission)),
+    )
+    await auto_confirm_declared(ap, member, setting)
+
+
 async def _wait_for_local_agent_runner(ap, tmpdir: Path):
     """Install and discover the runner on the application-owned connection."""
     from langbot_plugin.runtime.plugin.mgr import PluginInstallSource
@@ -507,6 +527,7 @@ async def _wait_for_local_agent_runner(ap, tmpdir: Path):
             PluginInstallSource.LOCAL,
             {'plugin_file': (tmpdir / 'langbot-local-agent.zip').read_bytes()},
         )
+        await _confirm_plugin_permissions(ap, execution_context, 'langbot-team', 'LocalAgent')
 
         for _ in range(60):
             runners = await ap.runner_registry.list_runners(execution_context, use_cache=False)
