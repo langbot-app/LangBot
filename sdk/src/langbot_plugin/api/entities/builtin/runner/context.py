@@ -292,7 +292,7 @@ class RunnerContext(pydantic.BaseModel):
         )
 
     async def steering_pull(
-        self, mode: str = "all", limit: int | None = None, claim: bool = True
+        self, mode: str = "all", limit: int | None = None, claim: bool = False
     ) -> SteeringPullResult:
         """Pull pending run-scoped steering/follow-up input."""
         return await self.api.steering_pull(mode=mode, limit=limit, claim=claim)
@@ -379,7 +379,7 @@ class RunnerContext(pydantic.BaseModel):
         run_id: str | None = None,
         reason: str | None = None,
     ) -> AgentRun:
-        """Re-queue a terminal run for another execution attempt."""
+        """Start a fresh Host attempt, or re-queue an externally dispatched run."""
         return await self.api.run_retry(run_id=run_id, reason=reason)
 
     async def run_resume(
@@ -388,7 +388,7 @@ class RunnerContext(pydantic.BaseModel):
         from_sequence: int | None = None,
         reason: str | None = None,
     ) -> AgentRun:
-        """Re-queue a terminal run with an optional resume cursor."""
+        """Resume in a fresh Host attempt using the latest committed result cursor."""
         return await self.api.run_resume(
             run_id=run_id,
             from_sequence=from_sequence,

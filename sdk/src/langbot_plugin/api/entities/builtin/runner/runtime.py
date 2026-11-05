@@ -22,4 +22,11 @@ class AgentRuntimeContext(pydantic.BaseModel):
     """Deadline timestamp (epoch seconds) for timeout."""
 
     metadata: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
-    """Additional runtime metadata."""
+    """Additional runtime metadata.
+
+    ``recovery`` is present for explicit Host retries/resumes. It contains
+    ``mode``, ``source_run_id``, ``from_sequence``, and bounded source ``events``.
+    Resume-capable runners must restore committed work/session checkpoints and
+    fail if that checkpoint cannot be used; they must not silently start over.
+    The Host creates a new run ID and deadline and rebuilds current grants.
+    """

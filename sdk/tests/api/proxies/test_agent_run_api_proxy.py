@@ -1519,6 +1519,7 @@ class TestRunnerAPIProxyRunLedgerAPI:
             )
         )
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+        ctx.runtime.deadline_at = time.time() - 1
 
         await proxy.run_retry("run_target", reason="retry")
         action, data, _timeout = mock_handler.call_action_mock.call_args.args
@@ -1534,6 +1535,17 @@ class TestRunnerAPIProxyRunLedgerAPI:
         action, data, _timeout = mock_handler.call_action_mock.call_args.args
         assert action == PluginToRuntimeAction.RUN_CANCEL_ACK
         assert data["cleanup_confirmed"] is True
+
+    @pytest.mark.anyio
+    async def test_steering_preserves_legacy_default_and_explicit_claim(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {"items": []}
+        ctx = create_mock_context()
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+        await proxy.steering_pull()
+        assert mock_handler.call_action_mock.call_args.args[1]["claim"] is False
+        await proxy.steering_pull(claim=True)
+        assert mock_handler.call_action_mock.call_args.args[1]["claim"] is True
 
 
 class TestRunnerAdminAPIProxy:

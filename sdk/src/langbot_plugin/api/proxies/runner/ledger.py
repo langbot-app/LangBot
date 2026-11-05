@@ -135,7 +135,7 @@ class AgentRunLedgerAPIMixin:
     ) -> AgentRun:
         """Acknowledge that cancellation cleanup has completed."""
         self._require_context_api("run_cancel_ack")
-        timeout = self._bounded_timeout(default=15.0)
+        timeout = 15.0
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_CANCEL_ACK,
             {
@@ -153,9 +153,9 @@ class AgentRunLedgerAPIMixin:
         run_id: str | None = None,
         reason: str | None = None,
     ) -> AgentRun:
-        """Re-queue a terminal run for another execution attempt."""
+        """Start a fresh Host attempt, or re-queue a run owned by an external queue."""
         self._require_context_api("run_retry")
-        timeout = self._bounded_timeout(default=15.0)
+        timeout = 15.0
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_RETRY,
             {
@@ -173,9 +173,9 @@ class AgentRunLedgerAPIMixin:
         from_sequence: int | None = None,
         reason: str | None = None,
     ) -> AgentRun:
-        """Re-queue a terminal run with an optional result resume cursor."""
+        """Resume interrupted work in a fresh Host attempt. The cursor must match the latest committed Runner result; completed effects cannot be rewound."""
         self._require_context_api("run_resume")
-        timeout = self._bounded_timeout(default=15.0)
+        timeout = 15.0
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_RESUME,
             {

@@ -8,6 +8,7 @@ import pytest
 
 from langbot_plugin.api.definition.components.runner import Runner, RunnerContext
 from langbot_plugin.api.entities.builtin.platform import events, entities, message
+from langbot_plugin.api.entities.builtin.runner.result import RunnerResult
 
 
 def run_context(*, run_id, event, config=None):
@@ -44,6 +45,18 @@ def processor():
         return_value=SimpleNamespace(call_tool=AsyncMock(return_value={"ok": True}))
     )
     return component
+
+
+async def test_cancelled_result_is_terminal_and_does_not_synthesize_completion():
+    component = processor()
+
+    async def run(ctx):
+        yield RunnerResult.run_cancelled(ctx.run_id, cleanup_confirmed=True)
+        raise AssertionError("Runner continued after its terminal cancellation")
+
+    component.run = run
+    results = [result async for result in component.invoke(context())]
+    assert [result.type for result in results] == ["run.cancelled"]
 
 
 async def test_one_event_invokes_once_and_completes_without_model_loop():

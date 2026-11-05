@@ -202,7 +202,7 @@ class RunnerContextAPIMixin:
         self,
         mode: str = "all",
         limit: int | None = None,
-        claim: bool = True,
+        claim: bool = False,
     ) -> SteeringPullResult:
         """Pull pending run-scoped steering/follow-up input.
 
@@ -212,6 +212,8 @@ class RunnerContextAPIMixin:
                 multiple user messages.
             limit: Optional maximum number of items to pull. Host applies a
                 hard cap.
+            claim: Opt in to leased delivery. Requires steering_ack after the
+                input is accepted. False preserves legacy consume-on-pull.
 
         Returns:
             SteeringPullResult with items containing event/input/context
@@ -282,7 +284,7 @@ class RunnerContextAPIMixin:
     async def steering_ack(self, delivery_ids: list[str]) -> SteeringAckResult:
         """Acknowledge claimed steering inputs after applying them."""
         self._require_context_api("steering_ack")
-        timeout = self._bounded_timeout(default=10.0)
+        timeout = 10.0
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.STEERING_ACK,
             {"run_id": self.run_id, "delivery_ids": delivery_ids},
