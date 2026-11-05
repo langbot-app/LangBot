@@ -190,6 +190,9 @@ const thTH = {
       get_pipeline: 'ดู Pipeline',
       get_knowledge_schema: 'ดูสคีมาของ knowledge engine',
       list_operation_logs: 'ดูบันทึกการดำเนินการ',
+      workspace_search: 'ค้นหาความสามารถของพื้นที่ทำงาน',
+      workspace_describe: 'ดูคำจำกัดความของการดำเนินการ',
+      workspace_call: 'ดำเนินการในพื้นที่ทำงาน',
     },
     resources: {
       models: 'ค้นหาโมเดลแชต',
@@ -208,6 +211,9 @@ const thTH = {
     build: 'ช่วยสร้างแอปตอบคำถามจากฐานความรู้ให้หน่อย',
     toolResult: 'ผลลัพธ์การดำเนินการ',
     review: 'ตรวจสอบการดำเนินการและพารามิเตอร์ก่อนยืนยัน',
+    dangerousWarning:
+      'การดำเนินการที่อ่อนไหว: การดำเนินการนี้มีความเสี่ยงสูงและอาจย้อนกลับไม่ได้ โปรดตรวจสอบอาร์กิวเมนต์ให้ดีก่อนยืนยัน',
+    parameters: 'พารามิเตอร์:',
     confirm: 'ยืนยันและดำเนินการ',
     decline: 'ปฏิเสธ',
     working: 'กำลังประมวลผล…',
@@ -3929,6 +3935,37 @@ const thTH = {
     list: 'ได้แก่: {{items}}',
     listMore: 'ได้แก่: {{items}} และอื่น ๆ (รวม {{count}})',
     listSeparator: ', ',
+  },
+  workspaceOperations: {
+    title: 'การดำเนินการของพื้นที่ทำงาน',
+    description:
+      'กำหนดการดำเนินการของ API รวมของพื้นที่ทำงานที่ตัวประมวลผลนี้เรียกใช้ได้ การเลือกคือการอนุญาต',
+    scopeHint:
+      'อนุญาตให้ตัวประมวลผลนี้เรียกใช้การดำเนินการของ API รวมของพื้นที่ทำงาน LangBot ในนามของตัวเอง',
+    searchPlaceholder: 'ค้นหาตามชื่อ ID หรือคำอธิบาย...',
+    selectAll: 'เลือกทั้งหมด',
+    deselectAll: 'ยกเลิกทั้งหมด',
+    selectedCount: 'เลือก {{count}} รายการ',
+    totalCount: 'ทั้งหมด {{count}} รายการ',
+    noOperations: 'ไม่มีการดำเนินการของพื้นที่ทำงานที่ใช้ได้',
+    noSearchResults: 'ไม่พบการดำเนินการที่ตรงกัน',
+    riskRead: 'อ่าน',
+    riskWrite: 'เขียน',
+    riskDangerous: 'อันตราย',
+    requiresPermission: 'ต้องมีสิทธิ์: {{permission}}',
+    dangerousConfirmTitle: 'มีการดำเนินการของพื้นที่ทำงานที่อันตราย',
+    dangerousConfirmDescription:
+      'ตัวประมวลผลนี้ให้บริการผู้ใช้แชท ใครก็ตามที่แชทกับบอทได้อาจเรียกการดำเนินการเหล่านี้ ต้องการบันทึกหรือไม่',
+    dangerousConfirmAction: 'ยืนยันการบันทึก',
+    dangerousConfirmCancel: 'ยกเลิก',
+    saveWorkspaceOperations: 'บันทึกการดำเนินการ',
+    saveSuccess: 'บันทึกการดำเนินการของพื้นที่ทำงานแล้ว',
+    saveFailed: 'บันทึกการดำเนินการของพื้นที่ทำงานไม่สำเร็จ',
+    configuredCount: 'กำหนดค่าแล้ว {{count}} การดำเนินการ',
+    expandDomain: 'ขยาย',
+    collapseDomain: 'ยุบ',
+    ungrantableRemoved:
+      'การดำเนินการบางรายการไม่ได้ถูกเลือกหรือถูกนำออกเพราะสิทธิ์ไม่เพียงพอ',
   },
 };
 export default thTH;

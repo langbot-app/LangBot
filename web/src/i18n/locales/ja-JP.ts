@@ -197,6 +197,9 @@ const jaJP = {
       get_pipeline: 'Pipeline 参照',
       get_knowledge_schema: 'エンジン設定の参照',
       list_operation_logs: '操作ログの参照',
+      workspace_search: 'ワークスペース機能を検索',
+      workspace_describe: '操作定義を確認',
+      workspace_call: 'ワークスペース操作を実行',
     },
     resources: {
       models: 'チャットモデル検索',
@@ -215,6 +218,9 @@ const jaJP = {
     build: 'ナレッジベースを使う質問応答アプリを作りたい。',
     toolResult: '操作結果',
     review: '実行する操作とパラメータを確認してください',
+    dangerousWarning:
+      '注意が必要な操作：この操作はリスクが高く、元に戻せない場合があります。確認する前に引数をよく確認してください。',
+    parameters: 'パラメーター：',
     confirm: '承認して実行',
     decline: '拒否',
     working: '処理中…',
@@ -4016,6 +4022,37 @@ const jaJP = {
     list: '対象：{{items}}',
     listMore: '対象：{{items}} など計 {{count}} 件',
     listSeparator: '、',
+  },
+  workspaceOperations: {
+    title: 'ワークスペース操作',
+    description:
+      'このプロセッサーが呼び出せるワークスペース統合 API の操作を設定します。チェックすると許可されます。',
+    scopeHint:
+      'このプロセッサー自身の ID で LangBot ワークスペース統合 API の操作を呼び出すことを許可します。',
+    searchPlaceholder: '操作名、ID、説明で検索...',
+    selectAll: 'すべて選択',
+    deselectAll: 'すべて解除',
+    selectedCount: '{{count}} 件選択',
+    totalCount: '全 {{count}} 件',
+    noOperations: '利用できるワークスペース操作はありません',
+    noSearchResults: '一致する操作はありません',
+    riskRead: '読み取り',
+    riskWrite: '書き込み',
+    riskDangerous: '高リスク',
+    requiresPermission: '必要な権限：{{permission}}',
+    dangerousConfirmTitle: '高リスクのワークスペース操作が含まれています',
+    dangerousConfirmDescription:
+      'このプロセッサーは IM ユーザーに公開されており、ボットと会話できる人なら誰でもこれらの操作を実行させられる可能性があります。保存してもよろしいですか？',
+    dangerousConfirmAction: '保存する',
+    dangerousConfirmCancel: 'キャンセル',
+    saveWorkspaceOperations: 'ワークスペース操作を保存',
+    saveSuccess: 'ワークスペース操作を保存しました',
+    saveFailed: 'ワークスペース操作の保存に失敗しました',
+    configuredCount: '{{count}} 件の操作を設定済み',
+    expandDomain: '展開',
+    collapseDomain: '折りたたむ',
+    ungrantableRemoved:
+      '権限が不足しているため、一部の操作は選択されなかったか削除されました',
   },
 };
 export default jaJP;
