@@ -15,7 +15,11 @@ const compiled = ts.transpileModule(source, {
 }).outputText;
 const loaded = { exports: {} };
 new Function('module', 'exports', compiled)(loaded, loaded.exports);
-const { permissionGrantRequest } = loaded.exports;
+const {
+  permissionGrantRequest,
+  permissionSelectionDiff,
+  initialPermissionSelection,
+} = loaded.exports;
 
 const state = {
   compatibility_mode: false,
@@ -84,13 +88,21 @@ test('compatibility confirmation grants all sixteen declared legacy capabilities
   });
 });
 
-test('revocation uses existing grants rather than unsaved selections', () => {
+test('saving without confirmation keeps only selected existing grants', () => {
+  const granted = {
+    ...state,
+    permissions: [
+      { id: 'stats.basic', category: 'workspace_operations', granted: true },
+      { id: 'bot.message.send', category: 'capabilities', granted: true },
+      { id: 'sandbox', category: 'capabilities', granted: true },
+      { id: 'mcp', category: 'capabilities', granted: false },
+    ],
+  };
   assert.deepEqual(
     permissionGrantRequest(
-      state,
-      new Set(['ungranted.operation']),
+      granted,
+      new Set(['stats.basic', 'sandbox', 'mcp']),
       false,
-      state.permissions[1],
     ),
     {
       workspace_operations: ['stats.basic'],
@@ -98,7 +110,61 @@ test('revocation uses existing grants rather than unsaved selections', () => {
       confirm: false,
     },
   );
-  assert.deepEqual(state.grants.capabilities, ['bot.message.send', 'sandbox']);
+});
+
+test('selection diff compares against saved grants', () => {
+  const confirmed = {
+    ...state,
+    pending_confirmation: false,
+    permissions: [
+      { id: 'stats.basic', category: 'workspace_operations', granted: true },
+      { id: 'sandbox', category: 'capabilities', granted: true },
+      { id: 'mcp', category: 'capabilities', granted: false },
+    ],
+  };
+  const { added, removed } = permissionSelectionDiff(
+    confirmed,
+    new Set(['stats.basic', 'mcp']),
+  );
+  assert.deepEqual(
+    added.map((item) => item.id),
+    ['mcp'],
+  );
+  assert.deepEqual(
+    removed.map((item) => item.id),
+    ['sandbox'],
+  );
+});
+
+test('pending installations start with every grantable permission selected', () => {
+  const pending = {
+    ...state,
+    pending_confirmation: true,
+    permissions: [
+      {
+        id: 'stats.basic',
+        category: 'workspace_operations',
+        granted: false,
+        grantable: true,
+      },
+      {
+        id: 'sandbox',
+        category: 'capabilities',
+        granted: true,
+        grantable: false,
+      },
+    ],
+  };
+  assert.deepEqual([...initialPermissionSelection(pending)], ['stats.basic']);
+  const { added, removed } = permissionSelectionDiff(
+    pending,
+    initialPermissionSelection(pending),
+  );
+  assert.deepEqual(
+    added.map((item) => item.id),
+    ['stats.basic'],
+  );
+  assert.deepEqual(removed, []);
 });
 
 test('all eight permission dictionaries expose matching translation keys', () => {

@@ -30,6 +30,8 @@ interface ProcessorDetailWorkbenchProps {
   titleAction?: ReactNode;
   titleControls?: ReactNode;
   headerActions?: ReactNode;
+  /** Hint badges shown right after the workbench/monitoring tabs. */
+  hints?: ReactNode;
   status?: ProcessorDetailStatus | null;
   saveLabel: string;
   saveFormId: string;
@@ -67,6 +69,7 @@ export default function ProcessorDetailWorkbench({
   titleAction,
   titleControls,
   headerActions,
+  hints,
   status,
   saveLabel,
   saveFormId,
@@ -191,6 +194,7 @@ export default function ProcessorDetailWorkbench({
               </TabsTrigger>
             </TabsList>
           )}
+          {hints}
           {status && (
             <Tooltip>
               <TooltipTrigger asChild>

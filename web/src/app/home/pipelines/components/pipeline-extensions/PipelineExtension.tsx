@@ -52,6 +52,7 @@ import PluginComponentList from '@/app/home/plugins/components/plugin-installed/
 import { useInstalledPluginIcon } from '@/app/infra/hooks/useInstalledPluginIcon';
 import WorkspaceOperationsPicker from '@/app/home/components/workspace-operations/WorkspaceOperationsPicker';
 import AgentApiToolPicker from '@/app/home/agents/components/AgentApiToolPicker';
+import { collectSensitiveTools } from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
 
 function PluginThumbnail({ author, name }: { author: string; name: string }) {
   const iconURL = useInstalledPluginIcon(author, name);
@@ -94,8 +95,10 @@ function InfoTooltip({ label }: { label: string }) {
 
 export default function PipelineExtension({
   pipelineId,
+  onSensitiveToolsChange,
 }: {
   pipelineId: string;
+  onSensitiveToolsChange?: (tools: string[]) => void;
 }) {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
@@ -131,6 +134,25 @@ export default function PipelineExtension({
   const [isSavingOperations, setIsSavingOperations] = useState(false);
   const [dangerousModalOpen, setDangerousModalOpen] = useState(false);
   const pendingOperationsRef = useRef<string[] | null>(null);
+
+  useEffect(() => {
+    if (loading) return;
+    onSensitiveToolsChange?.(
+      collectSensitiveTools(
+        platformTools,
+        allowedPlatformTools,
+        availableWorkspaceOperations,
+        workspaceOperations,
+      ),
+    );
+  }, [
+    loading,
+    onSensitiveToolsChange,
+    platformTools,
+    allowedPlatformTools,
+    availableWorkspaceOperations,
+    workspaceOperations,
+  ]);
 
   const isOperationsDirty = (() => {
     const savedTools = new Set(savedPlatformToolsRef.current);
@@ -771,24 +793,15 @@ export default function PipelineExtension({
         </Button>
       </div>
 
-      {/* Workspace Operations Section */}
+      {/* Agent Tools Section: event tools, bot tools and workspace operations */}
       <div className="space-y-3 border-t pt-6">
-        <AgentApiToolPicker
-          platformTools={platformTools}
-          platformValue={allowedPlatformTools}
-          onPlatformChange={setAllowedPlatformTools}
-          hostTools={[]}
-          hostValue={[]}
-          onHostChange={() => {}}
-          scopes={['event', 'platform']}
-        />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-0.5">
             <h3 className="text-sm font-semibold text-foreground">
-              {t('workspaceOperations.title')}
+              {t('agents.apiTools')}
             </h3>
             <p className="text-sm text-muted-foreground">
-              {t('workspaceOperations.scopeHint')}
+              {t('pipelines.extensions.toolsDescription')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -810,17 +823,37 @@ export default function PipelineExtension({
               {isSavingOperations ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
-              {t('workspaceOperations.saveWorkspaceOperations')}
+              {t('pipelines.extensions.saveTools')}
             </Button>
           </div>
         </div>
 
-        <WorkspaceOperationsPicker
-          operations={availableWorkspaceOperations}
-          domains={domains}
-          value={workspaceOperations}
-          onChange={setWorkspaceOperations}
-          disabled={isSavingOperations}
+        <AgentApiToolPicker
+          platformTools={platformTools}
+          platformValue={allowedPlatformTools}
+          onPlatformChange={setAllowedPlatformTools}
+          hostTools={[]}
+          hostValue={[]}
+          onHostChange={() => {}}
+          scopes={['event', 'platform']}
+          workspaceTools={{
+            count: availableWorkspaceOperations.length,
+            selectedCount: workspaceOperations.length,
+            content: (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {t('workspaceOperations.scopeHint')}
+                </p>
+                <WorkspaceOperationsPicker
+                  operations={availableWorkspaceOperations}
+                  domains={domains}
+                  value={workspaceOperations}
+                  onChange={setWorkspaceOperations}
+                  disabled={isSavingOperations}
+                />
+              </div>
+            ),
+          }}
         />
       </div>
 

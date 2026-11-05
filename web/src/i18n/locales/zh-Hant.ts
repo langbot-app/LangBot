@@ -2324,6 +2324,9 @@ const zhHant = {
       enableAllPlugins: '啟用所有插件',
       enableAllMCPServers: '啟用所有 MCP 伺服器',
       enableAllSkills: '啟用全部技能',
+      toolsDescription:
+        '選擇 Agent 可呼叫的事件工具、機器人工具和工作區操作。流水線會將模型輸出的文字自動回覆到目前會話，無需回覆工具。',
+      saveTools: '儲存工具權限',
       allPluginsEnabled: '已啟用所有插件',
       allMCPServersEnabled: '已啟用所有 MCP 伺服器',
       allSkillsEnabled: '已啟用全部技能',
@@ -3791,6 +3794,15 @@ const zhHant = {
     expandDomain: '展開',
     collapseDomain: '折疊',
     ungrantableRemoved: '部分操作因權限不足未自動勾選/已移除',
+  },
+  sensitiveTools: {
+    badge: '{{count}} 個敏感/高危工具',
+    title: '已啟用敏感或高危工具',
+    description:
+      '如果綁定的機器人要對外服務不受信任的使用者，請到「{{page}}」頁面關閉對應工具。',
+    list: '包括：{{items}}',
+    listMore: '包括：{{items}}等 {{count}} 項',
+    listSeparator: '、',
   },
 };
 export default zhHant;

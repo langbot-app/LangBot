@@ -2,9 +2,18 @@ export default {
   managerRequired:
     'Gestionar permisos requiere resource.manage. Solo las cuentas pueden confirmar concesiones; las claves API solo pueden revocarlas.',
   title: 'Permisos del complemento',
+  compatibilityNote:
+    'Este plugin no declara los permisos que necesita. Por compatibilidad, recibe las capacidades heredadas de abajo; puedes desactivarlas una a una después.',
+  statusPending: 'Pendiente de aprobación',
+  statusNone: 'No requiere permisos',
+  grant: 'Conceder',
+  pendingHint:
+    'El plugin permanece desactivado hasta que concedas sus permisos.',
+  confirmTitle: 'Conceder permisos al plugin',
+  highlightedList: 'Atención: {{items}}',
+  listSeparator: ', ',
+  grantCount: 'Conceder {{count}}',
   undeclared: 'Permisos no declarados',
-  compatibilityWarning:
-    'Este complemento no declara permisos. La confirmación concede las 16 capacidades de la API antigua; después pueden revocarse individualmente. No se conceden operaciones de la Application API del espacio de trabajo.',
   pending: 'Se requiere confirmar los permisos',
   saved: 'Permisos guardados',
   failed: 'No se pudieron actualizar los permisos',
@@ -14,7 +23,6 @@ export default {
   sendsMessages: 'Envía mensajes del bot',
   requires: 'Requiere {{permissions}}',
   review: 'Revisar permisos',
-  confirm: 'Confirmar permisos',
   confirmDescription:
     'Concede los permisos seleccionados a esta instalación. Se destacan los permisos peligrosos y el envío de mensajes.',
   grantInPlugin:
@@ -25,8 +33,24 @@ export default {
   grantedCount: '{{granted}} de {{total}} concedidos',
   empty: 'Este plugin no solicita ningún permiso.',
   pendingCount: 'Pendientes de confirmación: {{count}}',
-  highlighted: 'Requiere atención',
-  grantSummary: 'Se concederán {{count}} permisos',
+  searchPlaceholder: 'Buscar por nombre o ID…',
+  selectAll: 'Seleccionar todo',
+  noResults: 'No hay permisos que coincidan',
+  willGrant: 'Se concederá',
+  willRevoke: 'Se revocará',
+  selectedCount: '{{count}} seleccionados',
+  pendingChanges: '+{{added}} concedidos, −{{removed}} revocados',
+  newGrants: 'Se concederán {{count}} permisos',
+  alsoRevoking: 'También se revocarán {{count}}.',
+  capabilityGroup: {
+    bot: 'Bots',
+    models: 'Modelos',
+    knowledge: 'Conocimiento',
+    storage: 'Almacenamiento',
+    extensions: 'Plugins y MCP',
+    runtime: 'Entorno',
+    other: 'Otros',
+  },
   capability: {
     langbot_info: {
       label: 'Versión de LangBot',

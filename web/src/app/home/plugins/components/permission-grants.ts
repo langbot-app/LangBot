@@ -8,6 +8,8 @@ export type PluginPermissionItem = {
   risk: 'read' | 'write' | 'dangerous';
   granted: boolean;
   grantable: boolean;
+  domain?: string;
+  summary?: string;
 };
 
 export type PluginPermissionState = {
@@ -19,24 +21,58 @@ export type PluginPermissionState = {
   enabled: boolean;
   grants: Record<PermissionCategory, string[]>;
   permissions: PluginPermissionItem[];
+  domains?: { domain: string; label: Record<string, string> }[];
 };
 
+/** Selection a freshly loaded panel starts from. */
+export function initialPermissionSelection(state: PluginPermissionState) {
+  return new Set(
+    state.permissions
+      .filter((item) =>
+        state.pending_confirmation
+          ? state.compatibility_mode || item.grantable
+          : item.granted,
+      )
+      .map((item) => item.id),
+  );
+}
+
+/** Permissions the selection adds to, or removes from, the saved grants. */
+export function permissionSelectionDiff(
+  state: PluginPermissionState,
+  selected: Set<string>,
+) {
+  const saved = (item: PluginPermissionItem) =>
+    !state.pending_confirmation && item.granted;
+  return {
+    added: state.permissions.filter(
+      (item) => selected.has(item.id) && !saved(item),
+    ),
+    removed: state.permissions.filter(
+      (item) => !selected.has(item.id) && saved(item),
+    ),
+  };
+}
+
+/**
+ * Request body for a grant change. Adding grants needs ``confirm``; the
+ * compatibility mode can only be confirmed with every legacy capability.
+ */
 export function permissionGrantRequest(
   state: PluginPermissionState,
   selected: Set<string>,
   confirm: boolean,
-  revoked?: PluginPermissionItem,
 ) {
   const grants = (category: PermissionCategory) =>
-    confirm
-      ? state.permissions
-          .filter(
-            (item) =>
-              item.category === category &&
-              (state.compatibility_mode || selected.has(item.id)),
-          )
-          .map((item) => item.id)
-      : state.grants[category].filter((id) => id !== revoked?.id);
+    state.permissions
+      .filter(
+        (item) =>
+          item.category === category &&
+          (confirm
+            ? state.compatibility_mode || selected.has(item.id)
+            : item.granted && selected.has(item.id)),
+      )
+      .map((item) => item.id);
   return {
     workspace_operations: grants('workspace_operations'),
     capabilities: grants('capabilities'),

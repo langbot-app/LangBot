@@ -2334,6 +2334,9 @@ const zhHans = {
       enableAllPlugins: '启用所有插件',
       enableAllMCPServers: '启用所有 MCP 服务器',
       enableAllSkills: '启用所有技能',
+      toolsDescription:
+        '选择 Agent 可调用的事件工具、机器人工具和工作区操作。流水线会把模型输出的文字自动回复到当前会话，无需回复工具。',
+      saveTools: '保存工具权限',
       allPluginsEnabled: '已启用所有插件',
       allMCPServersEnabled: '已启用所有 MCP 服务器',
       allSkillsEnabled: '已启用所有技能',
@@ -3796,6 +3799,15 @@ const zhHans = {
     expandDomain: '展开',
     collapseDomain: '折叠',
     ungrantableRemoved: '部分操作因权限不足未自动勾选/已移除',
+  },
+  sensitiveTools: {
+    badge: '{{count}} 个敏感/高危工具',
+    title: '已启用敏感或高危工具',
+    description:
+      '如果绑定的机器人要对外服务不受信任的用户，请到“{{page}}”页面关闭对应工具。',
+    list: '包括：{{items}}',
+    listMore: '包括：{{items}}等 {{count}} 项',
+    listSeparator: '、',
   },
 };
 export default zhHans;

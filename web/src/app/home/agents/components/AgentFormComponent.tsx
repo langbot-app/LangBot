@@ -63,6 +63,7 @@ import GuidedTour, {
 } from '@/app/home/components/guided-tour/GuidedTour';
 import AgentApiToolPicker from './AgentApiToolPicker';
 import WorkspaceOperationsPicker from '@/app/home/components/workspace-operations/WorkspaceOperationsPicker';
+import { collectSensitiveTools } from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
 import { operationsForRunner } from '@/app/home/components/workspace-operations/runner-operation-grants';
 
 const OTHER_TOOL_SCOPES = [
@@ -88,6 +89,7 @@ interface AgentFormComponentProps {
   onRunnerStatusChange?: (status: RunnerStatus) => void;
   onSupportedEventPatternsChange?: (patterns: string[]) => void;
   onPlatformToolsChange?: (tools: AgentPlatformTool[]) => void;
+  onSensitiveToolsChange?: (tools: string[]) => void;
   guideEnabled?: boolean;
   debugGuideEnabled?: boolean;
 }
@@ -144,6 +146,7 @@ function AgentFormComponent(
     onRunnerStatusChange,
     onSupportedEventPatternsChange,
     onPlatformToolsChange,
+    onSensitiveToolsChange,
     guideEnabled = true,
     debugGuideEnabled = false,
   }: AgentFormComponentProps,
@@ -240,6 +243,31 @@ function AgentFormComponent(
   useEffect(() => {
     onSupportedEventPatternsChange?.(supportedEventPatterns);
   }, [onSupportedEventPatternsChange, supportedEventPatterns]);
+
+  const selectedPlatformTools = useWatch({
+    control: form.control,
+    name: 'allowed_platform_tools',
+  });
+  const selectedWorkspaceOperations = useWatch({
+    control: form.control,
+    name: 'allowed_workspace_operations',
+  });
+  useEffect(() => {
+    onSensitiveToolsChange?.(
+      collectSensitiveTools(
+        platformTools,
+        selectedPlatformTools ?? [],
+        workspaceOperations,
+        selectedWorkspaceOperations ?? [],
+      ),
+    );
+  }, [
+    onSensitiveToolsChange,
+    platformTools,
+    selectedPlatformTools,
+    workspaceOperations,
+    selectedWorkspaceOperations,
+  ]);
 
   useEffect(() => {
     let cancelled = false;

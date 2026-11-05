@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: LocalAgent
-  version: 0.2.6
+  version: 0.2.7
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent
   label:
     en_US: Local Agent
@@ -27,6 +27,8 @@ metadata:
 spec:
   permissions:
     workspace_operations:
+      - adapter.get
+      - adapter.list
       - agent.create
       - agent.debug
       - agent.delete
@@ -50,6 +52,7 @@ spec:
       - bot.routes.status
       - bot.runtime.get
       - bot.update
+      - extension.list
       - knowledge.base.create
       - knowledge.base.delete
       - knowledge.base.get
@@ -63,6 +66,15 @@ spec:
       - knowledge.file.list
       - knowledge.file.store
       - knowledge.parser.list
+      - mcp.resource.list
+      - mcp.resource.read
+      - mcp.resource.templates
+      - mcp.server.delete
+      - mcp.server.get
+      - mcp.server.list
+      - mcp.server.logs
+      - mcp.server.runtime
+      - mcp.server.test
       - model.embedding.create
       - model.embedding.delete
       - model.embedding.get
@@ -87,6 +99,22 @@ spec:
       - model.rerank.list_by_provider
       - model.rerank.test
       - model.rerank.update
+      - monitoring.embedding_calls
+      - monitoring.errors
+      - monitoring.execution.detail
+      - monitoring.executions
+      - monitoring.feedback.list
+      - monitoring.feedback.stats
+      - monitoring.inflight
+      - monitoring.llm_calls
+      - monitoring.message.detail
+      - monitoring.messages
+      - monitoring.overview
+      - monitoring.session.analysis
+      - monitoring.session.reset
+      - monitoring.sessions
+      - monitoring.tokens
+      - monitoring.tool_calls
       - pipeline.chat.broadcast
       - pipeline.chat.connections
       - pipeline.chat.history
@@ -102,19 +130,53 @@ spec:
       - pipeline.metadata
       - pipeline.run
       - pipeline.update
+      - plugin.config.get
+      - plugin.debug_info
+      - plugin.get
+      - plugin.github.assets
+      - plugin.github.releases
+      - plugin.list
+      - plugin.logs
+      - plugin.readme
+      - provider.create
+      - provider.delete
+      - provider.get
+      - provider.list
+      - provider.models.count
+      - provider.models.scan
+      - provider.update
+      - requester.get
+      - requester.list
+      - skill.create
+      - skill.delete
+      - skill.file.list
+      - skill.file.read
+      - skill.file.write
+      - skill.get
+      - skill.github.preview
+      - skill.list
+      - skill.reload
+      - skill.update
       - stats.basic
+      - tool.get
+      - tool.list
     capabilities:
-      - langbot.info
-      - models.invoke
-      - models.read
-      - bot.read
       - bot.message.send
       - bot.platform_api
+      - bot.read
+      - config.read
+      - knowledge.parser
       - knowledge.read
-      - storage.plugin
-      - plugin_tools
+      - knowledge.vector
+      - langbot.info
       - mcp
+      - models.invoke
+      - models.read
+      - plugin.read
+      - plugin_tools
       - sandbox
+      - storage.plugin
+      - storage.workspace
   config: []
   components:
     Runner:

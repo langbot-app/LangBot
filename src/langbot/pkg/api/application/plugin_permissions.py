@@ -12,7 +12,7 @@ from ...entity.persistence.plugin import PluginSetting
 from ..authz import Permission, has_permission, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .contracts import ApplicationAPIError, ApplicationAPIException
-from .operation_docs import get_operation_doc
+from .operation_docs import DOMAINS, get_operation_doc
 from .plugin_capabilities import CAPABILITY_PERMISSIONS, DANGEROUS_CAPABILITIES, LEGACY_CAPABILITIES
 from .tool_grants import validate_grant_change
 
@@ -221,14 +221,18 @@ def describe_permissions(ap, context, setting) -> dict:
     snapshot = setting.permission_snapshot
     can_grant = context.principal.principal_type in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN}
     rows = []
+    domains = set()
     for category, names in declaration.items():
         for name in names:
+            extra = {}
             if category == 'workspace_operations':
                 spec = ap.application_api._operations[name]
                 required = frozenset({spec.permission})
                 doc = get_operation_doc(name, side_effect=spec.side_effect)
                 risk = doc.risk
                 label = doc.label
+                extra = {'domain': doc.domain, 'summary': doc.summary}
+                domains.add(doc.domain)
             else:
                 label = None
                 required = CAPABILITY_PERMISSIONS[name]
@@ -246,6 +250,7 @@ def describe_permissions(ap, context, setting) -> dict:
                     'grantable': can_grant
                     and has_permission(context, Permission.RESOURCE_MANAGE)
                     and all(has_permission(context, permission) for permission in required),
+                    **extra,
                 }
             )
     return {
@@ -258,6 +263,13 @@ def describe_permissions(ap, context, setting) -> dict:
         'enabled': setting.enabled,
         'grants': grants,
         'permissions': rows,
+        'domains': [
+            {
+                'domain': domain,
+                'label': DOMAINS.get(domain, {}).get('label', {'zh_Hans': domain, 'en_US': domain.capitalize()}),
+            }
+            for domain in sorted(domains)
+        ],
     }
 
 

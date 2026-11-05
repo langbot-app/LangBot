@@ -21,6 +21,7 @@ import sqlalchemy
 import json
 
 from langbot.pkg.api.http.service.pipeline import PipelineService, default_stage_order
+from langbot.pkg.agent.runner.platform_tools import default_pipeline_platform_tools
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
 from langbot.pkg.workspace.errors import WorkspaceNotFoundError
 
@@ -386,7 +387,14 @@ class TestPipelineServiceCreatePipeline:
             'mcp_servers': [],
             'mcp_resources': [],
             'mcp_resource_agent_read_enabled': True,
+            'allowed_platform_tools': default_pipeline_platform_tools(),
         }
+        allowed = insert_params[0]['extensions_preferences']['allowed_platform_tools']
+        # Pipelines auto-reply with LLM text; explicit reply tools stay off by default.
+        assert 'event_reply' not in allowed
+        assert 'platform_send_message' not in allowed
+        assert 'event_get_actor' in allowed
+        assert 'platform_get_user_info' in allowed
 
 
 class _MockResultWithBots:

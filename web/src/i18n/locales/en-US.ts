@@ -2477,6 +2477,9 @@ const enUS = {
       enableAllPlugins: 'Enable All Plugins',
       enableAllMCPServers: 'Enable All MCP Servers',
       enableAllSkills: 'Enable All Skills',
+      toolsDescription:
+        'Choose which event tools, bot tools and workspace operations the agent may call. Pipelines reply with the model text output automatically, so no reply tool is needed.',
+      saveTools: 'Save tool access',
       allPluginsEnabled: 'All plugins enabled',
       allMCPServersEnabled: 'All MCP servers enabled',
       allSkillsEnabled: 'All skills enabled',
@@ -4030,6 +4033,15 @@ const enUS = {
     collapseDomain: 'Collapse',
     ungrantableRemoved:
       'Some operations were unselected or removed due to insufficient permissions.',
+  },
+  sensitiveTools: {
+    badge: '{{count}} sensitive tools',
+    title: 'Sensitive or high-risk tools enabled',
+    description:
+      'If a bound bot serves untrusted users, turn the matching tools off on the "{{page}}" page.',
+    list: 'Includes: {{items}}',
+    listMore: 'Includes: {{items}} and more ({{count}} total)',
+    listSeparator: ', ',
   },
 };
 export default enUS;

@@ -2509,6 +2509,9 @@ const esES = {
       enableAllPlugins: 'Activar todos los plugins',
       enableAllMCPServers: 'Activar todos los servidores MCP',
       enableAllSkills: 'Activar todas las skills',
+      toolsDescription:
+        'Elige qué herramientas de eventos, herramientas del bot y operaciones del espacio de trabajo puede llamar el agente. Las pipelines responden automáticamente con el texto del modelo, así que no hace falta una herramienta de respuesta.',
+      saveTools: 'Guardar acceso a herramientas',
       allPluginsEnabled: 'Todos los plugins activados',
       allMCPServersEnabled: 'Todos los servidores MCP activados',
       allSkillsEnabled: 'Todas las skills están activadas',
@@ -4065,6 +4068,15 @@ const esES = {
     self_hosted_link: 'la versión de código abierto autoalojada',
     period: '.',
     dismiss: 'Cerrar',
+  },
+  sensitiveTools: {
+    badge: '{{count}} herramientas sensibles',
+    title: 'Herramientas sensibles o de alto riesgo activadas',
+    description:
+      'Si un bot vinculado atiende a usuarios no confiables, desactiva las herramientas correspondientes en la página «{{page}}».',
+    list: 'Incluye: {{items}}',
+    listMore: 'Incluye: {{items}} y más ({{count}} en total)',
+    listSeparator: ', ',
   },
 };
 export default esES;

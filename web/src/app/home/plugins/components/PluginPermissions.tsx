@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Loader2, ShieldAlert, ShieldCheck, TriangleAlert } from 'lucide-react';
+import {
+  ChevronDown,
+  Loader2,
+  Search,
+  ShieldAlert,
+  ShieldCheck,
+  TriangleAlert,
+} from 'lucide-react';
 import { backendClient } from '@/app/infra/http';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import {
+  initialPermissionSelection,
   permissionGrantRequest,
+  permissionSelectionDiff,
   type PermissionCategory,
   type PluginPermissionItem,
   type PluginPermissionState,
@@ -31,14 +39,50 @@ import {
 } from '@/components/ui/dialog';
 
 const CATEGORIES: PermissionCategory[] = [
-  'workspace_operations',
   'capabilities',
+  'workspace_operations',
+];
+
+const CAPABILITY_GROUPS: Record<string, string> = {
+  'bot.read': 'bot',
+  'bot.message.send': 'bot',
+  'bot.platform_api': 'bot',
+  'models.read': 'models',
+  'models.invoke': 'models',
+  'knowledge.read': 'knowledge',
+  'knowledge.vector': 'knowledge',
+  'knowledge.parser': 'knowledge',
+  'storage.plugin': 'storage',
+  'storage.workspace': 'storage',
+  'plugin.read': 'extensions',
+  plugin_tools: 'extensions',
+  mcp: 'extensions',
+  sandbox: 'runtime',
+  'langbot.info': 'runtime',
+  'config.read': 'runtime',
+};
+const CAPABILITY_GROUP_ORDER = [
+  'bot',
+  'models',
+  'knowledge',
+  'storage',
+  'extensions',
+  'runtime',
+  'other',
 ];
 
 function needsAttention(item: PluginPermissionItem) {
   return item.risk === 'dangerous' || item.id === 'bot.message.send';
 }
 
+/**
+ * Collapsible permission panel for a plugin installation.
+ *
+ * Permissions are edited as a draft: grouped by capability area or workspace
+ * domain, searchable, with per-group select-all. Removing grants saves
+ * directly; adding grants (or confirming a pending install) goes through a
+ * confirmation dialog.
+ */
 export default function PluginPermissions({
   author,
   name,
@@ -51,7 +95,10 @@ export default function PluginPermissions({
   const { t } = useTranslation();
   const inputPrefix = useId();
   const [state, setState] = useState<PluginPermissionState | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState<PermissionCategory>('capabilities');
+  const [query, setQuery] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -61,16 +108,7 @@ export default function PluginPermissions({
     try {
       const value = await backendClient.get<PluginPermissionState>(path);
       setState(value);
-      setSelected(
-        new Set(
-          value.permissions
-            .filter(
-              (item) =>
-                item.granted || (value.pending_confirmation && item.grantable),
-            )
-            .map((item) => item.id),
-        ),
-      );
+      setDraft(initialPermissionSelection(value));
     } catch {
       setFailed(true);
     }
@@ -79,13 +117,143 @@ export default function PluginPermissions({
     void load();
   }, [load]);
 
-  async function save(confirm: boolean, revoked?: PluginPermissionItem) {
+  const labelFor = useCallback(
+    (item: PluginPermissionItem) => {
+      if (item.category === 'capabilities') {
+        const key = `pluginPermissions.capability.${item.id.replace(/\./g, '_')}`;
+        return {
+          label: t(`${key}.label`, { defaultValue: item.id }),
+          description: t(`${key}.description`, { defaultValue: '' }),
+        };
+      }
+      return {
+        label: item.label
+          ? extractI18nObject(
+              item.label as unknown as Parameters<typeof extractI18nObject>[0],
+            ) || item.id
+          : item.id,
+        description: item.summary ?? '',
+      };
+    },
+    [t],
+  );
+
+  const groupOf = useCallback(
+    (item: PluginPermissionItem) =>
+      item.category === 'capabilities'
+        ? (CAPABILITY_GROUPS[item.id] ?? 'other')
+        : (item.domain ?? item.id.split('.')[0]),
+    [],
+  );
+
+  const groupLabel = (group: string) => {
+    if (category === 'capabilities')
+      return t(`pluginPermissions.capabilityGroup.${group}`);
+    const meta = state?.domains?.find((item) => item.domain === group);
+    return meta
+      ? extractI18nObject(
+          meta.label as unknown as Parameters<typeof extractI18nObject>[0],
+        ) || group
+      : group;
+  };
+
+  const counts = useMemo(
+    () =>
+      Object.fromEntries(
+        CATEGORIES.map((key) => [
+          key,
+          state?.permissions.filter((item) => item.category === key).length ??
+            0,
+        ]),
+      ) as Record<PermissionCategory, number>,
+    [state],
+  );
+  const visibleCategories = CATEGORIES.filter((key) => counts[key] > 0);
+  const activeCategory = visibleCategories.includes(category)
+    ? category
+    : (visibleCategories[0] ?? 'capabilities');
+
+  const groups = useMemo(() => {
+    if (!state) return [];
+    const needle = query.trim().toLocaleLowerCase();
+    const map = new Map<string, PluginPermissionItem[]>();
+    for (const item of state.permissions) {
+      if (item.category !== activeCategory) continue;
+      const { label, description } = labelFor(item);
+      if (
+        needle &&
+        ![item.id, label, description]
+          .join(' ')
+          .toLocaleLowerCase()
+          .includes(needle)
+      )
+        continue;
+      const group = groupOf(item);
+      if (!map.has(group)) map.set(group, []);
+      map.get(group)!.push(item);
+    }
+    const order = (group: string) =>
+      activeCategory === 'capabilities'
+        ? CAPABILITY_GROUP_ORDER.indexOf(group)
+        : 0;
+    return [...map.entries()].sort(
+      ([a], [b]) => order(a) - order(b) || a.localeCompare(b),
+    );
+  }, [activeCategory, groupOf, labelFor, query, state]);
+
+  if (failed)
+    return (
+      <Button variant="outline" onClick={() => void load()}>
+        {t('pluginPermissions.retry')}
+      </Button>
+    );
+  if (!state) return null;
+
+  const pending = state.pending_confirmation;
+  const total = state.permissions.length;
+  const grantedCount = state.permissions.filter((item) => item.granted).length;
+  const compatibilityBlocked =
+    state.compatibility_mode &&
+    state.permissions.some((item) => !item.grantable);
+  const canConfirm =
+    state.can_confirm &&
+    !compatibilityBlocked &&
+    (total === 0 || state.permissions.some((item) => item.grantable));
+  const { added, removed } = permissionSelectionDiff(state, draft);
+  const dirty = !pending && (added.length > 0 || removed.length > 0);
+  // Confirming compatibility mode always grants every legacy capability.
+  const toGrant = state.compatibility_mode
+    ? state.permissions.filter((item) => pending || !item.granted)
+    : added;
+  const attention = toGrant.filter(needsAttention);
+  const locked =
+    busy || !state.can_manage || (pending && state.compatibility_mode);
+
+  const selectable = (item: PluginPermissionItem) =>
+    !locked && (item.granted || item.grantable);
+  const setItems = (items: PluginPermissionItem[], checked: boolean) =>
+    setDraft((previous) => {
+      const next = new Set(previous);
+      for (const item of items.filter(selectable)) {
+        if (checked) next.add(item.id);
+        else next.delete(item.id);
+      }
+      return next;
+    });
+  const checkState = (items: PluginPermissionItem[]) =>
+    items.every((item) => draft.has(item.id))
+      ? true
+      : items.some((item) => draft.has(item.id))
+        ? 'indeterminate'
+        : false;
+
+  async function save(confirm: boolean) {
     if (!state || !state.can_manage) return;
     setBusy(true);
     try {
       await backendClient.put(
         path,
-        permissionGrantRequest(state, selected, confirm, revoked),
+        permissionGrantRequest(state, draft, confirm),
       );
       setConfirming(false);
       await load();
@@ -98,293 +266,352 @@ export default function PluginPermissions({
     }
   }
 
-  function labelFor(item: PluginPermissionItem) {
-    if (item.category === 'capabilities') {
-      const key = `pluginPermissions.capability.${item.id.replace(/\./g, '_')}`;
-      return {
-        label: t(`${key}.label`, { defaultValue: item.id }),
-        description: t(`${key}.description`, { defaultValue: '' }),
-      };
-    }
-    return {
-      label: item.label
-        ? extractI18nObject(
-            item.label as unknown as Parameters<typeof extractI18nObject>[0],
-          ) || item.id
-        : item.id,
-      description: '',
-    };
+  function submit() {
+    if (pending || added.length > 0) setConfirming(true);
+    else void save(false);
   }
 
-  if (failed)
-    return (
-      <Button variant="outline" onClick={() => void load()}>
-        {t('pluginPermissions.retry')}
-      </Button>
-    );
-  if (!state) return null;
-  const compatibilityBlocked =
-    state.compatibility_mode &&
-    state.permissions.some((item) => !item.grantable);
-  const canConfirm =
-    state.can_confirm &&
-    (state.permissions.length === 0 ||
-      state.permissions.some((item) => item.grantable));
-  const grantedCount = state.permissions.filter((item) => item.granted).length;
-  const toGrant = state.permissions.filter(
-    (item) => state.compatibility_mode || selected.has(item.id),
-  );
-  const attention = toGrant.filter(needsAttention);
+  const status = pending
+    ? t('pluginPermissions.statusPending')
+    : total === 0
+      ? t('pluginPermissions.statusNone')
+      : t('pluginPermissions.grantedCount', { granted: grantedCount, total });
+  const visibleItems = groups.flatMap(([, items]) => items);
 
   return (
-    <Card className="gap-4">
-      <CardHeader className="gap-1.5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <CardTitle className="flex items-center gap-2 text-base">
-            {state.pending_confirmation ? (
-              <ShieldAlert className="size-4 text-amber-600" />
-            ) : (
-              <ShieldCheck className="size-4 text-emerald-600" />
-            )}
-            {t('pluginPermissions.title')}
-          </CardTitle>
-          <div className="flex flex-wrap gap-1.5">
-            {state.compatibility_mode && (
-              <Badge
-                variant="outline"
-                className="border-amber-500/60 text-amber-700 dark:text-amber-400"
+    <Card className="gap-0 py-0">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex items-center gap-2 px-4 py-3">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-2 text-left"
+            >
+              {pending ? (
+                <ShieldAlert className="size-4 shrink-0 text-amber-600" />
+              ) : (
+                <ShieldCheck className="size-4 shrink-0 text-emerald-600" />
+              )}
+              <span className="text-sm font-medium">
+                {t('pluginPermissions.title')}
+              </span>
+              <span
+                className={cn(
+                  'truncate text-xs tabular-nums',
+                  pending
+                    ? 'text-amber-700 dark:text-amber-400'
+                    : 'text-muted-foreground',
+                )}
               >
-                {t('pluginPermissions.undeclared')}
-              </Badge>
-            )}
-          </div>
+                {status}
+              </span>
+              <ChevronDown
+                className={cn(
+                  'ml-auto size-4 shrink-0 text-muted-foreground transition-transform',
+                  open && 'rotate-180',
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          {pending && canConfirm && (
+            <Button
+              size="sm"
+              className="h-7 shrink-0 px-2.5 text-xs"
+              disabled={busy}
+              onClick={submit}
+            >
+              {t('pluginPermissions.grant')}
+            </Button>
+          )}
         </div>
-        {state.permissions.length > 0 && (
-          <CardDescription>
-            {t('pluginPermissions.grantedCount', {
-              granted: grantedCount,
-              total: state.permissions.length,
-            })}
-          </CardDescription>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {state.compatibility_mode && (
-          <div
-            role="alert"
-            className="flex gap-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
-          >
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            <p>{t('pluginPermissions.compatibilityWarning')}</p>
-          </div>
-        )}
-        {state.pending_confirmation && (
-          <p
-            role="status"
-            className="text-sm font-medium text-amber-700 dark:text-amber-400"
-          >
-            {t('pluginPermissions.pending')}
+        {pending && (
+          <p className="-mt-1.5 px-4 pb-3 pl-10 text-xs text-muted-foreground">
+            {t('pluginPermissions.pendingHint')}
           </p>
         )}
-        {!canConfirm && (
-          <p role="alert" className="text-xs text-muted-foreground">
-            {t('pluginPermissions.managerRequired')}
-          </p>
-        )}
-        {state.permissions.length === 0 && (
-          <p className="text-sm text-muted-foreground">
-            {t('pluginPermissions.empty')}
-          </p>
-        )}
-        <div className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
-          {CATEGORIES.map((category) => {
-            const items = state.permissions.filter(
-              (item) => item.category === category,
-            );
-            if (items.length === 0) return null;
-            return (
-              <section key={category} className="space-y-2">
-                <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {t(
-                    category === 'capabilities'
-                      ? 'pluginPermissions.capabilities'
-                      : 'pluginPermissions.workspaceOperations',
-                  )}
-                  <span className="ml-1 tabular-nums">({items.length})</span>
-                </h4>
-                <ul className="divide-y rounded-md border">
-                  {items.map((item) => {
-                    const { label, description } = labelFor(item);
-                    const inputId = `${inputPrefix}-${item.id}`;
-                    return (
-                      <li
-                        key={`${item.category}:${item.id}`}
-                        data-permission-id={item.id}
+        <CollapsibleContent>
+          <div className="space-y-3 border-t px-4 pb-3 pt-3">
+            {state.compatibility_mode && total > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {t('pluginPermissions.compatibilityNote')}
+              </p>
+            )}
+            {!state.can_manage && (
+              <p className="text-xs text-muted-foreground">
+                {t('pluginPermissions.managerRequired')}
+              </p>
+            )}
+            {total === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                {t('pluginPermissions.empty')}
+              </p>
+            ) : (
+              <>
+                {visibleCategories.length > 1 && (
+                  <div className="inline-flex w-full rounded-lg bg-muted p-1">
+                    {visibleCategories.map((key) => (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={activeCategory === key}
+                        onClick={() => setCategory(key)}
                         className={cn(
-                          'flex items-start gap-3 px-3 py-2.5',
-                          item.risk === 'dangerous' && 'bg-destructive/5',
+                          'flex-1 rounded-md px-2.5 py-1.5 text-sm transition-colors active:scale-[0.98]',
+                          activeCategory === key
+                            ? 'bg-background font-medium shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground',
                         )}
                       >
-                        <Checkbox
-                          id={inputId}
-                          className="mt-0.5"
-                          checked={selected.has(item.id)}
-                          disabled={
-                            busy ||
-                            !state.can_manage ||
-                            state.compatibility_mode ||
-                            !item.grantable
-                          }
-                          onCheckedChange={(checked) =>
-                            setSelected((previous) => {
-                              const next = new Set(previous);
-                              if (checked) next.add(item.id);
-                              else next.delete(item.id);
-                              return next;
-                            })
-                          }
-                        />
-                        <div className="min-w-0 flex-1 space-y-0.5">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            <label
-                              htmlFor={inputId}
-                              className="text-sm font-medium leading-5"
-                            >
-                              {label}
-                              <span className="sr-only"> ({item.id})</span>
-                            </label>
-                            {item.risk === 'dangerous' && (
-                              <Badge
-                                variant="destructive"
-                                className="h-5 px-1.5 text-[11px]"
-                              >
-                                {t('pluginPermissions.dangerous')}
-                              </Badge>
-                            )}
-                            {item.id === 'bot.message.send' && (
-                              <Badge
-                                variant="outline"
-                                className="h-5 border-amber-500/60 px-1.5 text-[11px] text-amber-700 dark:text-amber-400"
-                              >
-                                {t('pluginPermissions.sendsMessages')}
-                              </Badge>
-                            )}
-                          </div>
-                          {label !== item.id && (
-                            <p className="break-all font-mono text-[11px] text-muted-foreground">
-                              {item.id}
-                            </p>
-                          )}
-                          {description && (
-                            <p className="text-xs text-muted-foreground">
-                              {description}
-                            </p>
-                          )}
-                          {!item.grantable && !item.granted && (
-                            <p className="text-xs text-amber-700 dark:text-amber-400">
-                              {t('pluginPermissions.requires', {
-                                permissions:
-                                  item.required_permissions.join(', '),
-                              })}
-                            </p>
-                          )}
-                        </div>
-                        {item.granted && (
-                          <div className="flex shrink-0 items-center gap-1.5">
-                            <Badge
-                              variant="secondary"
-                              className="h-5 px-1.5 text-[11px]"
-                            >
-                              {t('pluginPermissions.granted')}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
-                              disabled={busy || !state.can_manage}
-                              onClick={() => void save(false, item)}
-                            >
-                              {t('pluginPermissions.revoke')}
-                            </Button>
-                          </div>
+                        {t(
+                          key === 'capabilities'
+                            ? 'pluginPermissions.capabilities'
+                            : 'pluginPermissions.workspaceOperations',
                         )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
-        <div className="flex justify-end">
-          <Button
-            disabled={busy || !canConfirm || compatibilityBlocked}
-            onClick={() => setConfirming(true)}
-          >
-            {t('pluginPermissions.review')}
-          </Button>
-        </div>
-        <Dialog open={confirming} onOpenChange={setConfirming}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>{t('pluginPermissions.confirm')}</DialogTitle>
-              <DialogDescription>
-                {t(
-                  state.compatibility_mode
-                    ? 'pluginPermissions.compatibilityWarning'
-                    : 'pluginPermissions.confirmDescription',
+                        <span className="ml-1.5 text-xs tabular-nums text-muted-foreground">
+                          {
+                            state.permissions.filter(
+                              (item) =>
+                                item.category === key && draft.has(item.id),
+                            ).length
+                          }
+                          /{counts[key]}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </DialogDescription>
-            </DialogHeader>
-            <p className="text-sm font-medium">
-              {t('pluginPermissions.grantSummary', { count: toGrant.length })}
-            </p>
-            {attention.length > 0 && (
-              <div className="space-y-1.5 rounded-md border border-destructive/40 bg-destructive/5 p-3">
-                <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-                  <TriangleAlert className="size-3.5" />
-                  {t('pluginPermissions.highlighted')}
-                </p>
-                <ul className="space-y-1 text-sm">
-                  {attention.map((item) => (
-                    <li key={item.id} className="flex items-baseline gap-2">
-                      <span>{labelFor(item).label}</span>
-                      <span className="font-mono text-xs text-destructive">
-                        {item.id}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            <ul className="max-h-48 space-y-1 overflow-y-auto text-sm text-muted-foreground">
-              {toGrant
-                .filter((item) => !needsAttention(item))
-                .map((item) => (
-                  <li key={item.id} className="flex items-baseline gap-2">
-                    <span className="text-foreground">
-                      {labelFor(item).label}
+                <div className="flex items-center gap-2">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder={t('pluginPermissions.searchPlaceholder')}
+                      className="h-8 pl-8 text-sm"
+                    />
+                  </div>
+                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-muted-foreground">
+                    <Checkbox
+                      checked={checkState(visibleItems)}
+                      disabled={!visibleItems.some(selectable)}
+                      onCheckedChange={(checked) =>
+                        setItems(visibleItems, checked === true)
+                      }
+                    />
+                    {t('pluginPermissions.selectAll')}
+                  </label>
+                </div>
+                {groups.length === 0 ? (
+                  <p className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                    {t('pluginPermissions.noResults')}
+                  </p>
+                ) : (
+                  <div className="max-h-[26rem] overflow-y-auto rounded-md border">
+                    {groups.map(([group, items], index) => (
+                      <section
+                        key={group}
+                        className={cn(index > 0 && 'border-t')}
+                      >
+                        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                          <span className="truncate">
+                            {groupLabel(group)}
+                            <span className="ml-1.5 font-normal tabular-nums">
+                              {
+                                items.filter((item) => draft.has(item.id))
+                                  .length
+                              }
+                              /{items.length}
+                            </span>
+                          </span>
+                          <Checkbox
+                            checked={checkState(items)}
+                            disabled={!items.some(selectable)}
+                            onCheckedChange={(checked) =>
+                              setItems(items, checked === true)
+                            }
+                            aria-label={`${groupLabel(group)} · ${t('pluginPermissions.selectAll')}`}
+                          />
+                        </div>
+                        <ul className="divide-y">
+                          {items.map((item) => {
+                            const { label, description } = labelFor(item);
+                            const inputId = `${inputPrefix}-${item.id}`;
+                            const checked = draft.has(item.id);
+                            const change = pending
+                              ? null
+                              : checked && !item.granted
+                                ? 'add'
+                                : !checked && item.granted
+                                  ? 'remove'
+                                  : null;
+                            return (
+                              <li
+                                key={item.id}
+                                data-permission-id={item.id}
+                                className="flex items-start gap-2.5 px-3 py-2"
+                              >
+                                <Checkbox
+                                  id={inputId}
+                                  className="mt-0.5"
+                                  checked={checked}
+                                  disabled={!selectable(item)}
+                                  onCheckedChange={(next) =>
+                                    setItems([item], next === true)
+                                  }
+                                />
+                                <label
+                                  htmlFor={inputId}
+                                  className="min-w-0 flex-1"
+                                  title={description || item.id}
+                                >
+                                  <span className="block truncate text-sm leading-5">
+                                    {label}
+                                  </span>
+                                  <span className="block truncate font-mono text-[11px] text-muted-foreground">
+                                    {item.id}
+                                  </span>
+                                  {!item.grantable && !item.granted && (
+                                    <span className="block text-xs text-amber-700 dark:text-amber-400">
+                                      {t('pluginPermissions.requires', {
+                                        permissions:
+                                          item.required_permissions.join(', '),
+                                      })}
+                                    </span>
+                                  )}
+                                </label>
+                                <span
+                                  className={cn(
+                                    'shrink-0 pt-0.5 text-xs',
+                                    change === 'add'
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : change === 'remove'
+                                        ? 'text-destructive'
+                                        : item.risk === 'dangerous'
+                                          ? 'text-amber-700 dark:text-amber-400'
+                                          : 'text-muted-foreground',
+                                  )}
+                                >
+                                  {change
+                                    ? t(
+                                        change === 'add'
+                                          ? 'pluginPermissions.willGrant'
+                                          : 'pluginPermissions.willRevoke',
+                                      )
+                                    : t(`agents.apiToolRisk.${item.risk}`)}
+                                </span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+                )}
+                {(dirty || pending) && state.can_manage && (
+                  <div className="flex items-center justify-end gap-2">
+                    <span className="mr-auto text-xs text-muted-foreground">
+                      {pending
+                        ? t('pluginPermissions.selectedCount', {
+                            count: draft.size,
+                          })
+                        : t('pluginPermissions.pendingChanges', {
+                            added: added.length,
+                            removed: removed.length,
+                          })}
                     </span>
-                    <span className="font-mono text-xs">{item.id}</span>
-                  </li>
-                ))}
-            </ul>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                disabled={busy}
-                onClick={() => setConfirming(false)}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button disabled={busy} onClick={() => void save(true)}>
-                {busy && <Loader2 className="size-4 animate-spin" />}
-                {t('pluginPermissions.confirm')}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </CardContent>
+                    {dirty && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2.5 text-xs"
+                        disabled={busy}
+                        onClick={() =>
+                          setDraft(initialPermissionSelection(state))
+                        }
+                      >
+                        {t('common.cancel')}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      className="h-7 px-2.5 text-xs"
+                      disabled={
+                        busy || ((pending || added.length > 0) && !canConfirm)
+                      }
+                      onClick={submit}
+                    >
+                      {busy && <Loader2 className="size-3.5 animate-spin" />}
+                      {pending
+                        ? t('pluginPermissions.grant')
+                        : t('common.save')}
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('pluginPermissions.confirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {t(
+                state.compatibility_mode
+                  ? 'pluginPermissions.compatibilityNote'
+                  : 'pluginPermissions.confirmDescription',
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          {attention.length > 0 && (
+            <div className="flex gap-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-800 dark:text-amber-300">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
+              <p>
+                {t('pluginPermissions.highlightedList', {
+                  items: attention
+                    .map((item) => labelFor(item).label)
+                    .join(t('pluginPermissions.listSeparator')),
+                })}
+              </p>
+            </div>
+          )}
+          <p className="text-sm font-medium">
+            {t('pluginPermissions.newGrants', { count: toGrant.length })}
+          </p>
+          <ul className="max-h-60 divide-y overflow-y-auto rounded-md border text-sm">
+            {toGrant.map((item) => (
+              <li key={item.id} className="flex items-center gap-2 px-3 py-1.5">
+                <span className="min-w-0 flex-1 truncate">
+                  {labelFor(item).label}
+                </span>
+                <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                  {item.id}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {!state.compatibility_mode && removed.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {t('pluginPermissions.alsoRevoking', { count: removed.length })}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={busy}
+              onClick={() => setConfirming(false)}
+            >
+              {t('common.cancel')}
+            </Button>
+            <Button disabled={busy} onClick={() => void save(true)}>
+              {busy && <Loader2 className="size-4 animate-spin" />}
+              {t('pluginPermissions.grantCount', { count: toGrant.length })}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

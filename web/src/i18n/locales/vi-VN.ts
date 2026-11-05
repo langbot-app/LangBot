@@ -2458,6 +2458,9 @@ const viVN = {
       enableAllPlugins: 'Bật tất cả Plugin',
       enableAllMCPServers: 'Bật tất cả máy chủ MCP',
       enableAllSkills: 'Bật tất cả kỹ năng',
+      toolsDescription:
+        'Chọn công cụ sự kiện, công cụ bot và thao tác không gian làm việc mà Agent được gọi. Pipeline tự động trả lời bằng văn bản do mô hình tạo, nên không cần công cụ trả lời.',
+      saveTools: 'Lưu quyền công cụ',
       allPluginsEnabled: 'Đã bật tất cả plugin',
       allMCPServersEnabled: 'Đã bật tất cả máy chủ MCP',
       allSkillsEnabled: 'Tất cả kỹ năng đã được bật',
@@ -3974,6 +3977,15 @@ const viVN = {
     self_hosted_link: 'phiên bản mã nguồn mở tự lưu trữ',
     period: '.',
     dismiss: 'Đóng',
+  },
+  sensitiveTools: {
+    badge: '{{count}} công cụ nhạy cảm',
+    title: 'Đã bật công cụ nhạy cảm hoặc rủi ro cao',
+    description:
+      'Nếu bot được liên kết phục vụ người dùng không đáng tin, hãy tắt các công cụ tương ứng tại trang "{{page}}".',
+    list: 'Bao gồm: {{items}}',
+    listMore: 'Bao gồm: {{items}} và các mục khác ({{count}} mục)',
+    listSeparator: ', ',
   },
 };
 export default viVN;

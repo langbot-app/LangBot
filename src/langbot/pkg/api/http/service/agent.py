@@ -36,6 +36,7 @@ from ....agent.runner.host_models import (
 from ....agent.runner.resource_policy import ResourcePolicyProjector
 from ....agent.runner.platform_tools import (
     PLATFORM_TOOL_DEFINITIONS,
+    default_agent_platform_tools,
     platform_tool_catalog,
     resolve_agent_platform_tool_names,
     validate_debug_mock_options,
@@ -463,6 +464,8 @@ class AgentService:
                     config['runner_config'][runner_id],
                 )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
+            if isinstance(config, dict) and 'allowed_platform_tools' not in config:
+                config['allowed_platform_tools'] = default_agent_platform_tools()
         if isinstance(config, dict) and 'allowed_workspace_operations' in config:
             new_ops = config['allowed_workspace_operations']
             config['allowed_workspace_operations'] = validate_operation_preferences(self.ap, context, [], new_ops)

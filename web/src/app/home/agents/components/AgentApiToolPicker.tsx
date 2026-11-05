@@ -42,6 +42,7 @@ type ToolEntry = {
 };
 
 const PLATFORM_CATEGORY_LABELS: Record<string, { zh: string; en: string }> = {
+  interaction: { zh: '交互', en: 'Interaction' },
   message: { zh: '消息', en: 'Messages' },
   identity: { zh: '用户与身份', en: 'Users & identity' },
   group: { zh: '群组', en: 'Groups' },

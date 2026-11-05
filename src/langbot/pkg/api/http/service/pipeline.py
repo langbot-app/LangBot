@@ -17,7 +17,7 @@ from ....pipeline.extension_preferences import (
 from ....workspace.errors import WorkspaceNotFoundError
 from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
 from ...application.plugin_permissions import workspace_operation_grants
-from ....agent.runner.platform_tools import platform_tool_catalog
+from ....agent.runner.platform_tools import default_pipeline_platform_tools, platform_tool_catalog
 from .secrets import redact_secrets, restore_secret_placeholders
 from .tenant import TenantContext, require_workspace_uuid, scope_statement
 
@@ -229,12 +229,15 @@ class PipelineService:
                 'mcp_servers': [],
                 'mcp_resources': [],
                 'mcp_resource_agent_read_enabled': True,
+                'allowed_platform_tools': default_pipeline_platform_tools(),
             }
         else:
             prefs = pipeline_data['extensions_preferences']
             if isinstance(prefs, dict) and 'workspace_operations' in prefs:
                 new_ops = prefs['workspace_operations']
                 prefs['workspace_operations'] = validate_operation_preferences(self.ap, context, [], new_ops)
+            if isinstance(prefs, dict) and 'allowed_platform_tools' not in prefs:
+                prefs['allowed_platform_tools'] = default_pipeline_platform_tools()
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_pipeline.LegacyPipeline).values(**pipeline_data)

@@ -26,6 +26,7 @@ import {
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import PluginProcessorDetailContent from './PluginProcessorDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
+import SensitiveToolsWarning from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
 import AgentDebugPanel from './components/AgentDebugPanel';
 import AgentMonitoringTab from './components/AgentMonitoringTab';
 import AgentFormComponent, {
@@ -54,6 +55,7 @@ export default function AgentDetailContent({
   const { refreshPipelines, pipelines, setDetailEntityName } = useSidebarData();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [platformTools, setPlatformTools] = useState<AgentPlatformTool[]>([]);
+  const [sensitiveTools, setSensitiveTools] = useState<string[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [loading, setLoading] = useState(!isCreateMode);
@@ -105,6 +107,9 @@ export default function AgentDetailContent({
   const [supportedEventPatterns, setSupportedEventPatterns] = useState<
     string[]
   >(['*']);
+  // Hint badges take the place of the "runner ready" badge.
+  const hasHints =
+    supportedEventPatterns.length === 0 || sensitiveTools.length > 0;
   const agentFormRef = useRef<AgentFormHandle>(null);
 
   useEffect(() => {
@@ -240,24 +245,32 @@ export default function AgentDetailContent({
         <ProcessorDetailWorkbench
           key={id}
           title={`${agent.emoji || '🤖'} ${agent.name}`}
-          titleBadge={
-            supportedEventPatterns.length === 0 ? (
-              <Badge
-                variant="outline"
-                role="status"
-                className="shrink-0 gap-1 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-              >
-                <AlertTriangle className="size-3" />
-                {t('agents.noEventsConfiguredBadge')}
-              </Badge>
-            ) : undefined
+          hints={
+            <>
+              {supportedEventPatterns.length === 0 && (
+                <Badge
+                  variant="outline"
+                  role="status"
+                  className="shrink-0 gap-1 rounded-full border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                >
+                  <AlertTriangle className="size-3" />
+                  {t('agents.noEventsConfiguredBadge')}
+                </Badge>
+              )}
+              <SensitiveToolsWarning
+                tools={sensitiveTools}
+                settingsPage={t('agents.eventsAndTools')}
+              />
+            </>
           }
           titleAction={
             canManage ? (
               <EntityTitleEditButton onClick={() => setBasicInfoOpen(true)} />
             ) : undefined
           }
-          status={runnerStatus}
+          status={
+            runnerStatus?.tone === 'success' && hasHints ? null : runnerStatus
+          }
           saveLabel={t('common.save')}
           saveFormId="agent-form"
           canSave={canManage}
@@ -296,6 +309,7 @@ export default function AgentDetailContent({
                 onRunnerStatusChange={updateRunnerStatus}
                 onSupportedEventPatternsChange={setSupportedEventPatterns}
                 onPlatformToolsChange={setPlatformTools}
+                onSensitiveToolsChange={setSensitiveTools}
                 guideEnabled={canManage}
                 debugGuideEnabled={canOperate}
               />

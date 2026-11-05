@@ -311,3 +311,14 @@ def test_preferences_do_not_grant_or_check_member_ceiling(app):
     with pytest.raises(ApplicationAPIException):
         validate_operation_preferences(app, context(), [], ['bot.*'])
     app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+def test_described_operations_carry_domain_metadata(app):
+    setting = installation({'workspace_operations': ['stats.basic'], 'capabilities': ['models.invoke']}, {})
+    described = describe_permissions(app, context(), setting)
+    operation = next(item for item in described['permissions'] if item['id'] == 'stats.basic')
+    capability = next(item for item in described['permissions'] if item['id'] == 'models.invoke')
+    assert operation['domain'] == 'stats'
+    assert 'domain' not in capability
+    assert [domain['domain'] for domain in described['domains']] == ['stats']
+    assert described['domains'][0]['label']

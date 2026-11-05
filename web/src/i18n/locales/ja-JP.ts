@@ -2481,6 +2481,9 @@ const jaJP = {
       enableAllPlugins: 'すべてのプラグインを有効にする',
       enableAllMCPServers: 'すべてのMCPサーバーを有効にする',
       enableAllSkills: 'すべてのスキルを有効化',
+      toolsDescription:
+        'Agent が呼び出せるイベントツール、ボットツール、ワークスペース操作を選択します。パイプラインはモデルのテキスト出力を自動で返信するため、返信ツールは不要です。',
+      saveTools: 'ツール権限を保存',
       allPluginsEnabled: 'すべてのプラグインが有効になっています',
       allMCPServersEnabled: 'すべてのMCPサーバーが有効になっています',
       allSkillsEnabled: 'すべてのスキルが有効です',
@@ -4004,6 +4007,15 @@ const jaJP = {
     self_hosted_link: 'セルフホスト版',
     period: 'をご検討ください。',
     dismiss: '閉じる',
+  },
+  sensitiveTools: {
+    badge: '注意が必要なツール {{count}} 件',
+    title: '注意が必要な高リスクツールが有効です',
+    description:
+      '紐付けたボットを信頼できないユーザーに公開する場合は、「{{page}}」ページで該当するツールをオフにしてください。',
+    list: '対象：{{items}}',
+    listMore: '対象：{{items}} など計 {{count}} 件',
+    listSeparator: '、',
   },
 };
 export default jaJP;
