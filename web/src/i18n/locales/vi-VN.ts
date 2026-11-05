@@ -2893,17 +2893,18 @@ const viVN = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
-    space_dedicated_member_requiredTitle: "Bạn chưa là thành viên của instance này",
+    space_dedicated_member_requiredTitle:
+      'Bạn chưa là thành viên của instance này',
     space_dedicated_member_required:
-      "Tài khoản LangBot của bạn chưa được mời vào instance này. Hãy nhờ chủ sở hữu mời bạn từ trang Cloud trên LangBot Space, chấp nhận lời mời rồi thử lại.",
+      'Tài khoản LangBot của bạn chưa được mời vào instance này. Hãy nhờ chủ sở hữu mời bạn từ trang Cloud trên LangBot Space, chấp nhận lời mời rồi thử lại.',
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
     dedicatedSpaceMembersHint:
-      "Thành viên đăng nhập bằng tài khoản LangBot được mời từ trang Cloud trên LangBot Space. Lời mời bên dưới tạo một tài khoản mật khẩu riêng trên instance này.",
-    manageOnSpace: "Quản lý trên LangBot Space",
+      'Thành viên đăng nhập bằng tài khoản LangBot được mời từ trang Cloud trên LangBot Space. Lời mời bên dưới tạo một tài khoản mật khẩu riêng trên instance này.',
+    manageOnSpace: 'Quản lý trên LangBot Space',
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',

@@ -2925,17 +2925,17 @@ const jaJP = {
     space_account_not_registeredTitle: 'アカウントが登録されていません',
     space_account_not_registered:
       'この LangBot アカウントのメールアドレスのローカルアカウントはありません。ワークスペース所有者に招待を依頼してください。',
-    space_dedicated_member_requiredTitle: "この環境のメンバーではありません",
+    space_dedicated_member_requiredTitle: 'この環境のメンバーではありません',
     space_dedicated_member_required:
-      "お使いの LangBot アカウントはこの環境に招待されていません。オーナーに LangBot Space の Cloud ページから招待してもらい、招待を承諾してから再度お試しください。",
+      'お使いの LangBot アカウントはこの環境に招待されていません。オーナーに LangBot Space の Cloud ページから招待してもらい、招待を承諾してから再度お試しください。',
     space_account_binding_requiredTitle: 'LangBot アカウントの連携が必要です',
     space_account_binding_required:
       'LangBot アカウントログインを使用する前に、アカウント設定でこのローカルアカウントを LangBot アカウントに連携してください。',
   },
   workspace: {
     dedicatedSpaceMembersHint:
-      "LangBot アカウントでログインするメンバーは LangBot Space の Cloud ページから招待します。下の招待はこのインスタンス専用のパスワードアカウントを作成します。",
-    manageOnSpace: "Space でメンバーを管理",
+      'LangBot アカウントでログインするメンバーは LangBot Space の Cloud ページから招待します。下の招待はこのインスタンス専用のパスワードアカウントを作成します。',
+    manageOnSpace: 'Space でメンバーを管理',
     title: 'ワークスペース',
     description: 'メンバー、ロール、招待リンクを管理します',
     selectTitle: 'ワークスペースを選択',

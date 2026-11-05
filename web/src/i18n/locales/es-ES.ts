@@ -2966,17 +2966,17 @@ const esES = {
     space_account_not_registeredTitle: 'Account not registered',
     space_account_not_registered:
       'No local account is registered for this LangBot Account email. Ask the Workspace owner for an invitation.',
-    space_dedicated_member_requiredTitle: "No eres miembro de esta instancia",
+    space_dedicated_member_requiredTitle: 'No eres miembro de esta instancia',
     space_dedicated_member_required:
-      "Tu cuenta de LangBot no ha sido invitada a esta instancia. Pide al propietario que te invite desde la página Cloud de LangBot Space, acepta la invitación e inténtalo de nuevo.",
+      'Tu cuenta de LangBot no ha sido invitada a esta instancia. Pide al propietario que te invite desde la página Cloud de LangBot Space, acepta la invitación e inténtalo de nuevo.',
     space_account_binding_requiredTitle: 'LangBot Account connection required',
     space_account_binding_required:
       'This local account must connect a LangBot Account from Account settings before using LangBot Account login.',
   },
   workspace: {
     dedicatedSpaceMembersHint:
-      "Los miembros que inician sesión con su cuenta de LangBot se invitan desde la página Cloud de LangBot Space. La invitación de abajo crea una cuenta con contraseña independiente en esta instancia.",
-    manageOnSpace: "Gestionar en LangBot Space",
+      'Los miembros que inician sesión con su cuenta de LangBot se invitan desde la página Cloud de LangBot Space. La invitación de abajo crea una cuenta con contraseña independiente en esta instancia.',
+    manageOnSpace: 'Gestionar en LangBot Space',
     title: 'Workspace',
     description: 'Manage members, roles, and invitation links',
     selectTitle: 'Choose a Workspace',
