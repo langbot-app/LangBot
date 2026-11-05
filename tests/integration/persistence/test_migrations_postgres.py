@@ -91,8 +91,6 @@ from langbot.pkg.entity.persistence.workspace import (
 from langbot.pkg.platform.botmgr import PlatformManager
 from langbot.pkg.pipeline.pipelinemgr import PipelineManager
 from langbot.pkg.plugin.connector import PluginRuntimeConnector
-from langbot.pkg.provider.modelmgr import requester as model_requester
-from langbot.pkg.provider.modelmgr import token as model_token
 from langbot.pkg.provider.modelmgr.modelmgr import ModelManager
 from langbot.pkg.provider.tools.loaders.mcp import MCPLoader
 from langbot.pkg.rag.knowledge.kbmgr import RAGManager
@@ -1161,21 +1159,20 @@ class TestPostgreSQLTenantRuntime:
 
             model_manager = ModelManager(runtime_application)
 
-            async def build_capacity_provider(
-                context,
-                provider_entity,
-            ):
-                return model_requester.RuntimeProvider(
-                    context,
-                    provider_entity,
-                    model_token.TokenManager(
-                        provider_entity.uuid,
-                        provider_entity.api_keys or [],
-                    ),
-                    SimpleNamespace(aclose=AsyncMock()),
-                )
+            class CapacityRequester:
+                """Network-free requester; reloads build providers on a staged manager."""
 
-            model_manager._build_provider = build_capacity_provider
+                def __init__(self, ap, config):
+                    self.config = config
+
+                async def initialize(self):
+                    return None
+
+                async def aclose(self):
+                    return None
+
+            # Registered on the manager so the staged reload manager inherits it.
+            model_manager.requester_dict = {'capacity-probe': CapacityRequester}
             await model_manager.load_models_from_db()
 
             platform_manager = PlatformManager(runtime_application)
