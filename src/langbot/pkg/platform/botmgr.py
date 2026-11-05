@@ -412,8 +412,16 @@ class RuntimeBot:
         failure_code: str | None = None,
         reason: str | None = None,
         run_id: str | None = None,
+        node: str | None = None,
+        error: str = '',
     ) -> dict[str, typing.Any]:
-        """Record structured event routing state while preserving the human log."""
+        """Record structured event routing state while preserving the human log.
+
+        ``node`` is the routing step opened by the caller *before* it delivered
+        the event, so the Pipeline or Agent it delivered to nests under it and
+        the step's interval covers the delivery. Without it the step is opened
+        here.
+        """
         binding = binding or {}
         metadata = {
             'kind': 'event_route_trace',
@@ -434,24 +442,34 @@ class RuntimeBot:
             from ..telemetry.execution import record
 
             state = trace_mod.current()
+            detail = ''
+            if status == 'failed':
+                detail = error or ': '.join(part for part in (failure_code or 'route_failed', reason or '') if part)
             if status == 'failed' and state is not None and state.reportable and not trace_mod.reporting_suppressed():
                 # The root event can finish successfully after a delivery failed.
                 # Preserve that failure for closure reporting in failures mode.
-                state.mark_failure(failure_code or 'route_failed')
+                state.mark_failure(detail)
+
+            def _record_route(route_node: str) -> None:
+                record(
+                    getattr(self, 'ap', None),
+                    getattr(self, 'execution_context', None),
+                    family='event_route',
+                    operation=event_type,
+                    adapter=type(getattr(self, 'adapter', None)).__name__,
+                    mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
+                    outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
+                    error=detail,
+                    node=route_node,
+                )
+
             with trace_mod.scope(route_ref=self._route_ref(binding, target_type, target_uuid)):
-                # The routing decision is its own workflow step; the Pipeline or
-                # processor it delivers to hangs under this node.
-                with trace_mod.stage_scope() as node:
-                    record(
-                        getattr(self, 'ap', None),
-                        getattr(self, 'execution_context', None),
-                        family='event_route',
-                        operation=event_type,
-                        adapter=type(getattr(self, 'adapter', None)).__name__,
-                        mode=target_type if target_type in {'pipeline', 'agent', 'event_processor'} else 'none',
-                        outcome={'delivered': 'success', 'failed': 'failed'}.get(status, 'skipped'),
-                        node=node,
-                    )
+                if node is not None:
+                    _record_route(node)
+                else:
+                    # The routing decision is its own workflow step.
+                    with trace_mod.stage_scope() as opened:
+                        _record_route(opened)
         return metadata
 
     def get_pipeline_target_for_event_type(self, event_type: str = 'message.received') -> str | None:
@@ -961,11 +979,14 @@ class RuntimeBot:
                 await self._persist_monitoring_ingress(event, adapter, execution_id)
         with ingress(
             getattr(self, 'ap', None),
-            'event_done',
+            'completed',
             getattr(self, 'execution_context', None),
             execution_id,
             require_route=True,
-        ):
+        ) as binding:
+            if binding.created:
+                # The platform is known at ingress, whatever the route does next.
+                binding.state.adapter = adapter.__class__.__name__
             # The inbound event is the root workflow step: everything recorded
             # while handling it hangs under this node.
             with trace_mod.stage_scope() as node:
@@ -977,8 +998,10 @@ class RuntimeBot:
         error_detail = ''
         for result in results:
             if isinstance(result, BaseException):
+                from ..telemetry.execution import describe_exception
+
                 outcome = 'failed'
-                error_detail = error_detail or f'{type(result).__name__}: {result}'
+                error_detail = error_detail or describe_exception(result)
         return outcome, error_detail
 
     def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
@@ -1057,7 +1080,9 @@ class RuntimeBot:
             # another subscriber or the primary route from receiving the event.
             results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
-            self._record_platform_event(event, adapter, 'failed', f'{type(exc).__name__}: {exc}', node)
+            from ..telemetry.execution import describe_exception
+
+            self._record_platform_event(event, adapter, 'failed', describe_exception(exc), node)
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
 
@@ -1230,23 +1255,27 @@ class RuntimeBot:
                 )
             from ..telemetry import trace as trace_mod
 
-            with trace_mod.scope(
-                route_ref=self._route_ref(event_binding, target_type, event_binding.get('target_uuid'))
-            ):
-                await self._dispatch_eba_message_to_pipeline(
-                    event,
-                    adapter,
-                    pipeline_uuid=event_binding.get('target_uuid'),
-                    routed_by_event_binding=True,
+            # The routing step opens before delivery so the queued Pipeline
+            # lane nests under it and runs after it in the chain order.
+            with trace_mod.stage_scope() as route_node:
+                with trace_mod.scope(
+                    route_ref=self._route_ref(event_binding, target_type, event_binding.get('target_uuid'))
+                ):
+                    await self._dispatch_eba_message_to_pipeline(
+                        event,
+                        adapter,
+                        pipeline_uuid=event_binding.get('target_uuid'),
+                        routed_by_event_binding=True,
+                    )
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='delivered',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=event_binding.get('target_uuid'),
+                    text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
+                    node=route_node,
                 )
-            return await self._record_event_route_trace(
-                event_type=event_type,
-                status='delivered',
-                binding=event_binding,
-                target_type=target_type,
-                target_uuid=event_binding.get('target_uuid'),
-                text=f'Event {event_type} delivered to Pipeline {event_binding.get("target_uuid") or ""}'.strip(),
-            )
         if target_type not in {'agent', 'event_processor'}:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1325,56 +1354,64 @@ class RuntimeBot:
                 envelope.data['message_chain'] = event.message_chain.model_dump()
         from ..telemetry import trace as trace_mod
 
-        try:
-            with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
-                if target_type == 'agent' and await self.ap.agent_run_orchestrator.try_claim_steering_from_event(
-                    envelope, binding, self.execution_context
-                ):
-                    return await self._record_event_route_trace(
-                        event_type=event_type,
-                        status='delivered',
-                        binding=event_binding,
-                        target_type=target_type,
-                        target_uuid=target_uuid,
-                        text=f'Event {event_type} queued as steering',
-                    )
-                from .processing_indicator import processing_indicator
-
-                reply_type, reply_id = (None, None)
-                if isinstance(event, platform_events.MessageReceivedEvent):
-                    reply_type, reply_id, _ = self._infer_reply_target(event)
-                async with processing_indicator(adapter, reply_type, reply_id):
-                    async for _ in self.ap.agent_run_orchestrator.run(
-                        envelope,
-                        binding,
-                        adapter_context={
-                            '_delivery_adapter': adapter,
-                            '_platform_event': event,
-                            '_execution_context': self.execution_context,
-                        },
+        # The routing step opens before the Agent runs, so the run nests under it.
+        with trace_mod.stage_scope() as route_node:
+            try:
+                with trace_mod.scope(route_ref=self._route_ref(event_binding, target_type, target_uuid)):
+                    if target_type == 'agent' and await self.ap.agent_run_orchestrator.try_claim_steering_from_event(
+                        envelope, binding, self.execution_context
                     ):
-                        # Results are journaled by the orchestrator; platform sends require explicit actions.
-                        pass
-        except Exception:
+                        return await self._record_event_route_trace(
+                            event_type=event_type,
+                            status='delivered',
+                            binding=event_binding,
+                            target_type=target_type,
+                            target_uuid=target_uuid,
+                            text=f'Event {event_type} queued as steering',
+                            node=route_node,
+                        )
+                    from .processing_indicator import processing_indicator
+
+                    reply_type, reply_id = (None, None)
+                    if isinstance(event, platform_events.MessageReceivedEvent):
+                        reply_type, reply_id, _ = self._infer_reply_target(event)
+                    async with processing_indicator(adapter, reply_type, reply_id):
+                        async for _ in self.ap.agent_run_orchestrator.run(
+                            envelope,
+                            binding,
+                            adapter_context={
+                                '_delivery_adapter': adapter,
+                                '_platform_event': event,
+                                '_execution_context': self.execution_context,
+                            },
+                        ):
+                            # Results are journaled by the orchestrator; platform sends require explicit actions.
+                            pass
+            except Exception as exc:
+                from ..telemetry.execution import describe_exception
+
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='error',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=target_uuid,
+                    failure_code='runner_failed',
+                    reason='Agent runner failed',
+                    text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+                    error=describe_exception(exc),
+                    node=route_node,
+                )
             return await self._record_event_route_trace(
                 event_type=event_type,
-                status='failed',
-                level='error',
+                status='delivered',
                 binding=event_binding,
                 target_type=target_type,
                 target_uuid=target_uuid,
-                failure_code='runner_failed',
-                reason='Agent runner failed',
-                text=f'Failed to run Agent for EBA event {event_type}: {traceback.format_exc()}',
+                text=f'Event {event_type} delivered to Agent {target_uuid}',
+                node=route_node,
             )
-        return await self._record_event_route_trace(
-            event_type=event_type,
-            status='delivered',
-            binding=event_binding,
-            target_type=target_type,
-            target_uuid=target_uuid,
-            text=f'Event {event_type} delivered to Agent {target_uuid}',
-        )
 
     def resolve_event_pipeline_uuid(
         self,

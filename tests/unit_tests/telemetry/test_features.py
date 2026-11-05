@@ -38,7 +38,7 @@ def test_features_accumulate_without_nodes_or_uploads(telemetry):
             'activated_skills': 2,
             'llm_calls': 2,
         }
-        payload = counters._build_chain_record(binding.state, 'event_done')
+        payload = counters._build_chain_record(binding.state, 'completed')
         assert payload['features'] == binding.state.features
         features.increment(ap, 'tool_calls', 'native')
         assert payload['features']['tool_calls']['native'] == 2
@@ -52,10 +52,10 @@ def test_empty_and_zero_counters_are_omitted(telemetry):
     ap, counters = telemetry
     binding = bind_trace()
     try:
-        assert 'features' not in counters._build_chain_record(binding.state, 'event_done')
+        assert 'features' not in counters._build_chain_record(binding.state, 'completed')
         features.increment(ap, 'tool_calls', 'mcp')
         features.increment(ap, 'user-content', 'secret')
-        assert counters._build_chain_record(binding.state, 'event_done')['features'] == {'tool_calls': {'mcp': 1}}
+        assert counters._build_chain_record(binding.state, 'completed')['features'] == {'tool_calls': {'mcp': 1}}
     finally:
         trace.unbind_root(binding)
 
@@ -73,7 +73,7 @@ def test_model_first_write_wins_and_is_utf8_bounded(telemetry, name):
         assert binding.state.model_name == first
         assert binding.state.features == {'llm_calls': 2}
         binding.state.model_name = name
-        assert len(counters._build_chain_record(binding.state, 'event_done')['model_name'].encode('utf-8')) <= 128
+        assert len(counters._build_chain_record(binding.state, 'completed')['model_name'].encode('utf-8')) <= 128
     finally:
         trace.unbind_root(binding)
 
@@ -150,7 +150,7 @@ def test_saturating_counters_bound_payload_growth(telemetry):
             target[group if key is None else key] = features.MAX_COUNTER
             features.increment(ap, group, key)
             assert target[group if key is None else key] == features.MAX_COUNTER
-        payload = counters._build_chain_record(binding.state, 'event_done')
+        payload = counters._build_chain_record(binding.state, 'completed')
         baseline = {key: value for key, value in payload.items() if key != 'features'}
         growth = len(json.dumps(payload, separators=(',', ':'))) - len(json.dumps(baseline, separators=(',', ':')))
         assert growth <= 200
@@ -176,13 +176,13 @@ def test_representative_chain_payload_growth(telemetry):
     for workload in workloads:
         binding = bind_trace()
         try:
-            before = counters._build_chain_record(binding.state, 'event_done')
+            before = counters._build_chain_record(binding.state, 'completed')
             for group, key in workload:
                 if group == 'llm_calls':
                     features.note_llm(ap, model())
                 else:
                     features.increment(ap, group, key)
-            after = counters._build_chain_record(binding.state, 'event_done')
+            after = counters._build_chain_record(binding.state, 'completed')
             after['timestamp'] = before['timestamp']
             after['duration_ms'] = before['duration_ms']
             growth.append(len(encode(after)) - len(encode(before)))

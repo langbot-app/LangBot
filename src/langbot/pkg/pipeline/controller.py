@@ -188,6 +188,9 @@ class Controller:
                 f'Dropped query {selected_query.query_id} because its Workspace execution binding is stale: {exc}'
             )
         finally:
+            # A query that never reached its Pipeline lane still closes the
+            # execution chain it was handed off from.
+            self._settle_telemetry_handoff(selected_query, 'Query dropped before its Pipeline ran')
             try:
                 try:
                     await self.ap.query_pool.remove_query(selected_query)
@@ -202,9 +205,23 @@ class Controller:
                 if global_slot_reserved:
                     self.semaphore.release()
 
+    def _settle_telemetry_handoff(self, query, error: str = '', *, merged: bool = False) -> None:
+        try:
+            from ..telemetry import execution as telemetry_execution
+
+            telemetry_execution.release_handoff(
+                self.ap,
+                getattr(query, 'variables', None),
+                error='' if merged else error,
+                merged_into='' if merged else None,
+            )
+        except Exception:
+            pass
+
     async def _drop_selected_query(self, selected_query, selected_session) -> None:
         """Undo scheduler ownership when work cannot be handed to a task."""
 
+        self._settle_telemetry_handoff(selected_query, 'Query dropped before its Pipeline ran')
         try:
             await self.ap.query_pool.remove_query(selected_query)
         finally:
@@ -253,6 +270,8 @@ class Controller:
                             break
 
                     if claimed_steering_query is not None:
+                        # The message steered an active run instead of starting one.
+                        self._settle_telemetry_handoff(claimed_steering_query, merged=True)
                         self.ap.query_pool.remove_query_locked(claimed_steering_query)
                         self.ap.query_pool.condition.notify_all()
                         continue

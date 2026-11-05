@@ -88,6 +88,11 @@ class TraceState:
         'node_adapter',
         'node_runner',
         'open_frames',
+        'pending',
+        'root_exited',
+        'merged_into',
+        'close_reason',
+        'resources',
     )
 
     def __init__(self, execution_id: str | None = None) -> None:
@@ -129,6 +134,16 @@ class TraceState:
         # opened. A record emitted by a task that owns no step of its own
         # attaches to the innermost entry here.
         self.open_frames: dict[str, NodeFrame] = {}
+        # Downstream work handed off to another task (a queued Pipeline query)
+        # that still belongs to this execution. The chain closes only once the
+        # ingress boundary exited *and* every handoff was released.
+        self.pending = 0
+        self.root_exited = False
+        # Set when message aggregation folded this event into another chain.
+        self.merged_into = ''
+        self.close_reason = ''
+        # Bound-resource collection dict shared by every task of this chain.
+        self.resources: dict | None = None
 
     def allocate_seq(self) -> int:
         """Mint the next chain-local node order."""
@@ -227,6 +242,27 @@ def current() -> TraceState | None:
 
 def reporting_suppressed() -> bool:
     return _reporting_suppressed.get()
+
+
+@contextlib.contextmanager
+def adopt(state: TraceState, parent: NodeFrame | None = None) -> typing.Iterator[None]:
+    """Continue an in-flight chain in a task that did not inherit its context.
+
+    Used when downstream work of one execution runs in another task, e.g. a
+    queued Pipeline query. ``parent`` is the step that handed the work off; it
+    becomes the base of this task's step stack, so steps opened here nest under
+    it and keep allocating from the chain's own sequence.
+    """
+    current_token = _current.set(state)
+    node_token = _node.set((parent,) if parent is not None else ())
+    try:
+        yield
+    finally:
+        for var, token in ((_node, node_token), (_current, current_token)):
+            try:
+                var.reset(token)
+            except (ValueError, RuntimeError):
+                pass
 
 
 def admit() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import typing
+
 import ipaddress
 import re
 from urllib.parse import urlparse
@@ -8,6 +10,9 @@ from urllib.parse import urlparse
 class RunnerCategory:
     LOCAL = 'local'
     CLOUD = 'cloud'
+    # The Runner reasons inside LangBot or its Plugin (e.g. LocalAgent) rather
+    # than delegating to an external agent service.
+    EMBEDDED = 'embedded'
     UNKNOWN = 'unknown'
 
 
@@ -142,3 +147,39 @@ def extract_runner_url(runner_name: str, runner, pipeline_config: dict | None) -
 def get_runner_category_from_runner(runner_name: str, runner, pipeline_config: dict | None) -> str:
     runner_url = extract_runner_url(runner_name, runner, pipeline_config)
     return get_runner_category(runner_name, runner_url)
+
+
+_URL_KEY_HINTS = ('url', 'base', 'endpoint', 'host', 'api')
+
+
+def _runner_service_url(runner_config: typing.Any) -> str | None:
+    """First external-service URL found in a Runner configuration form."""
+    if not isinstance(runner_config, dict):
+        return None
+    for key, value in runner_config.items():
+        if (
+            isinstance(key, str)
+            and isinstance(value, str)
+            and any(hint in key.lower() for hint in _URL_KEY_HINTS)
+            and value.strip().lower().startswith(('http://', 'https://'))
+        ):
+            return value.strip()
+    return None
+
+
+def get_telemetry_runner_category(runner_id: str | None, runner_config: typing.Any = None) -> str:
+    """Where a Runner's agent logic runs: a local/cloud service, or embedded.
+
+    Runners that call an external agent service (Dify, n8n, Coze, ...) are
+    classified by the service URL in their configuration; Runners without one
+    reason inside LangBot or their Plugin.
+    """
+    try:
+        url = _runner_service_url(runner_config)
+        if url:
+            return get_runner_category(runner_id or '', url)
+        if runner_id:
+            return RunnerCategory.EMBEDDED
+    except Exception:
+        pass
+    return RunnerCategory.UNKNOWN
