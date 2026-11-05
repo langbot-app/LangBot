@@ -230,7 +230,7 @@ unfixable = []
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.uv.sources]
-langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "29338642ff3fbe8792543be75292543480480e07" }
+langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "186d962b47054c3339031268f2b705d633abc298" }
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
