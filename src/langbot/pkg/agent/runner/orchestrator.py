@@ -177,6 +177,10 @@ class AgentRunOrchestrator:
             descriptor=descriptor,
             resources=resources,
         )
+        recovery = (adapter_context or {}).get('_recovery')
+        if recovery:
+            context['run_id'] = recovery['run_id']
+            context['runtime'].setdefault('metadata', {})['recovery'] = recovery['request']
 
         authorized_skill_names = [
             str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
@@ -287,6 +291,16 @@ class AgentRunOrchestrator:
                 context=context,
                 authorization=run_authorization,
             )
+            if recovery:
+                await self.journal._get_run_ledger_store().authorize_recovery_run(
+                    run_id,
+                    authorization={
+                        **run_authorization,
+                        'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
+                        'recovery_checkpoint': recovery['request']['events'],
+                    },
+                    deadline_at=context.get('runtime', {}).get('deadline_at'),
+                )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
                 await self.ap.monitoring_service.link_execution_message(
@@ -322,6 +336,16 @@ class AgentRunOrchestrator:
                 ),
                 runtime_context=context.get('runtime'),
             )
+            recovered_steering = await self._load_recoverable_steering(
+                event=event,
+                descriptor=descriptor,
+                run_id=run_id,
+                binding=binding,
+            )
+            if recovered_steering:
+                restored = await self._session_registry.restore_steering(run_id, recovered_steering)
+                if restored:
+                    self.ap.logger.info(f'Restored {restored} unacknowledged steering input(s) for run {run_id}')
 
             event_log_id = await self.journal.write_event_log(
                 event=event,
@@ -384,6 +408,14 @@ class AgentRunOrchestrator:
                         ):
                             continue
 
+                        usage = result_dict.get('usage')
+                        if isinstance(usage, dict):
+                            # Runners may emit cumulative usage snapshots on
+                            # progress or message events. Keep the latest
+                            # snapshot for cancellation, timeout, and
+                            # disconnect finalization.
+                            terminal_usage = usage
+
                         if result_type == 'tool.call.started':
                             result_data = result_dict.get('data') or {}
                             tool_definition = PLATFORM_TOOLS_BY_NAME.get(result_data.get('tool_name'))
@@ -419,6 +451,7 @@ class AgentRunOrchestrator:
                                 str(result_data.get('tool_call_id') or ''), None
                             )
 
+                        self.result_normalizer.annotate_result_size(result_dict, descriptor)
                         journal_started = time.monotonic()
                         await self.journal.append_run_result(
                             result_dict=result_dict,
@@ -457,16 +490,14 @@ class AgentRunOrchestrator:
                                 if isinstance(result_dict.get('data'), dict)
                                 else None
                             )
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
                         elif result_type == 'run.failed':
                             data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
                             terminal_status = 'cancelled' if data.get('code') == 'cancelled' else 'failed'
                             terminal_reason = data.get('error') or data.get('code')
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
+                        elif result_type == 'run.cancelled':
+                            data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
+                            terminal_status = 'cancelled'
+                            terminal_reason = data.get('reason') or 'runner_cancelled'
 
                         has_completed_message = result_type == 'message.completed' or (
                             result_type == 'run.completed'
@@ -902,6 +933,91 @@ class AgentRunOrchestrator:
                 ],
             },
         }
+
+    async def _load_recoverable_steering(
+        self,
+        *,
+        event: AgentEventEnvelope,
+        descriptor: RunnerDescriptor,
+        run_id: str,
+        binding: AgentBinding | None = None,
+    ) -> list[dict[str, typing.Any]]:
+        """Rebuild unacknowledged steering inputs after a run restart."""
+        if not event.conversation_id or not descriptor.supports_steering():
+            return []
+        from .event_log_store import EventLogStore
+
+        store = EventLogStore(self.ap.persistence_mgr.get_db_engine())
+        records = await store.list_pending_steering(
+            conversation_id=event.conversation_id,
+            runner_id=descriptor.id,
+            bot_id=event.bot_id,
+            workspace_id=event.workspace_id,
+            thread_id=event.thread_id,
+            binding_id=binding.binding_id if binding else None,
+        )
+        recovered: list[dict[str, typing.Any]] = []
+        for record in records:
+            source_run_id = record.get('run_id')
+            if source_run_id == run_id:
+                continue
+            if source_run_id and await self._session_registry.get(str(source_run_id)) is not None:
+                continue
+            if not await store.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
+                continue
+            metadata = record.get('metadata') if isinstance(record.get('metadata'), dict) else {}
+            steering = metadata.get('steering') if isinstance(metadata.get('steering'), dict) else {}
+            input_json = record.get('input_json') if isinstance(record.get('input_json'), dict) else {}
+            event_data = metadata.get('input_event') if isinstance(metadata.get('input_event'), dict) else {}
+            item: dict[str, typing.Any] = {
+                'claimed_run_id': run_id,
+                'runner_id': descriptor.id,
+                'claimed_at': record.get('created_at') or int(time.time()),
+                'event': {
+                    'event_id': record.get('event_id'),
+                    'event_type': record.get('event_type'),
+                    'event_time': record.get('event_time'),
+                    'source': record.get('source'),
+                    'data': event_data,
+                },
+                'conversation': {
+                    'conversation_id': record.get('conversation_id'),
+                    'thread_id': record.get('thread_id'),
+                    'bot_id': record.get('bot_id'),
+                    'workspace_id': record.get('workspace_id'),
+                },
+                'actor': (
+                    {
+                        'actor_type': record.get('actor_type'),
+                        'actor_id': record.get('actor_id'),
+                        'actor_name': record.get('actor_name'),
+                    }
+                    if record.get('actor_type')
+                    else None
+                ),
+                'subject': (
+                    {
+                        'subject_type': record.get('subject_type'),
+                        'subject_id': record.get('subject_id'),
+                    }
+                    if record.get('subject_type')
+                    else None
+                ),
+                'input': {
+                    'text': input_json.get('text'),
+                    'contents': input_json.get('contents') or [],
+                    'attachments': input_json.get('attachments') or [],
+                },
+                'metadata': {'recovered': True, 'source_run_id': source_run_id},
+            }
+            delivery_id = steering.get('delivery_id')
+            lease_expires_at = steering.get('lease_expires_at')
+            if delivery_id:
+                item['_steering_delivery_id'] = delivery_id
+            if isinstance(lease_expires_at, int):
+                item['_steering_lease_expires_at'] = lease_expires_at
+            recovered.append(item)
+        return recovered
 
     async def _invoke_runner(
         self,

@@ -111,6 +111,20 @@ spec:
         field: advanced-settings
         operator: eq
         value: true
+    - name: stream-budget-mb
+      label:
+        en_US: Stream Budget (MiB)
+        zh_Hans: 流式响应预算（MiB）
+      type: integer
+      description:
+        en_US: Maximum accumulated bytes in MiB for one Dify streaming response. Raise it when agent tool observations consume the default 16 MiB budget before the answer finishes.
+        zh_Hans: 单次 Dify 流式响应的累计字节上限（MiB）。Agent 应用的工具观测数据较大、默认 16 MiB 预算不够时，可调大该值。
+      required: false
+      default: 16
+      show_if:
+        field: advanced-settings
+        operator: eq
+        value: true
     - name: remove-think
       label:
         en_US: Hide Thinking Content

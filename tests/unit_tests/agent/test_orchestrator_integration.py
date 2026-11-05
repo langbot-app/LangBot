@@ -601,11 +601,11 @@ async def test_orchestrator_persists_run_ledger(clean_agent_state):
             {
                 'type': 'message.completed',
                 'data': {'message': {'role': 'assistant', 'content': 'fake response'}},
+                'usage': {'prompt_tokens': 1, 'completion_tokens': 1, 'total_tokens': 2},
             },
             {
                 'type': 'run.completed',
                 'data': {'finish_reason': 'stop'},
-                'usage': {'prompt_tokens': 2, 'completion_tokens': 3, 'total_tokens': 5},
             },
         ]
     )
@@ -624,9 +624,9 @@ async def test_orchestrator_persists_run_ledger(clean_agent_state):
     assert run['event_id'] == plugin_connector.contexts[0]['event']['event_id']
     assert run['runner_id'] == RUNNER_ID
     assert run['usage'] == {
-        'prompt_tokens': 2,
-        'completion_tokens': 3,
-        'total_tokens': 5,
+        'prompt_tokens': 1,
+        'completion_tokens': 1,
+        'total_tokens': 2,
     }
 
     events, next_cursor, prev_cursor, has_more = await store.page_run_events(
@@ -1092,7 +1092,7 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         event
         for event in event_logs
         if event['event_type'] == 'message.received'
-        and event.get('metadata', {}).get('steering', {}).get('status') == 'queued'
+        and event.get('metadata', {}).get('steering', {}).get('status') == 'dropped'
     )
 
     assert dropped['input_summary'] == 'Unconsumed steering input dropped'
