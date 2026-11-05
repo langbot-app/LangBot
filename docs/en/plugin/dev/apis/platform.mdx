@@ -4,6 +4,36 @@ title: "Platform APIs"
 
 Call platform adapter APIs using a bot UUID. Continue using `self.plugin.send_message()` for message chains; use the API below for groups, users, and other platform features.
 
+## Send messages, replies, and threads
+
+The standard `send_message` API returns a `MessageResult`, whose `message_id` identifies the sent message when the platform provides one. `self.plugin.send_message()` returns its serialized dictionary, so read `result["message_id"]` rather than an object attribute. The ID may be `None` or empty when the platform does not return one.
+
+Use the standard `Quote` component to express a reply or thread reference in a message chain. `Quote.id` is the referenced message or thread root ID; `origin` is the quoted message chain and may be empty. Support and reply/thread behavior depend on the adapter. For example, Slack returns the message `ts` as `message_id`, sends a chain with `Quote(id=ts)` into that thread, and appends `Quote(id=thread_ts)` to inbound channel thread replies. This uses standard message APIs, not a Slack-specific action.
+
+```python
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain, Quote
+
+result = await self.plugin.send_message(
+    bot_uuid=bot_uuid,
+    target_type="group",
+    target_id=group_id,
+    message_chain=MessageChain([Plain(text="Support request")]),
+)
+message_id = result.get("message_id") if result else None
+if message_id is not None and message_id != "":
+    await self.plugin.send_message(
+        bot_uuid=bot_uuid,
+        target_type="group",
+        target_id=group_id,
+        message_chain=MessageChain([
+            Plain(text="Follow-up"),
+            Quote(id=message_id, origin=MessageChain([])),
+        ]),
+    )
+```
+
+Use IDs from the same bot and conversation. `Quote` preserves reference metadata in serialization but adds no text to `str(message_chain)`, so it does not change command or keyword matching.
+
 ## Call a platform API
 
 ```python

@@ -4,7 +4,7 @@ Adapter directory: `src/langbot/pkg/platform/adapters/officialaccount/`
 
 Manifest name: `officialaccount-omni`
 
-Status: partial migration. Unit/API-shape coverage is present, and private text `plugin-e2e-ui` plus safe API evidence has been verified against the `dev.rockchin.top` Official Account fixture. Proactive outbound `send_message` remains not supported by this adapter because WeChat Official Account replies must be tied to inbound webhook windows.
+Status: partial migration. Unit/API-shape coverage is present, and private text `plugin-e2e-ui` plus safe API evidence has been verified against the `dev.rockchin.top` Official Account fixture. Outbound `send_message` uses the customer-service messaging API in `Mode=auto`; other modes raise `NotSupportedError`.
 
 ## Config
 
@@ -15,8 +15,8 @@ Status: partial migration. Unit/API-shape coverage is present, and private text 
 | `EncodingAESKey` | yes | WeChat message encryption key. |
 | `AppID` | yes | Official Account app ID. |
 | `AppSecret` | yes | Official Account app secret. |
-| `Mode` | yes | `drop` waits for an in-callback reply; `passive` returns the loading text first and queues the answer for the user's next message. |
-| `LoadingMessage` | no | Only used by `passive` mode. |
+| `Mode` | yes | `drop` waits for an in-callback reply; `passive` queues the answer for the user's next message; `auto` tries customer-service delivery for `reply_message` and falls back to next-message retrieval when restricted. Only `auto` supports `send_message`. |
+| `LoadingMessage` | no | Used for next-message retrieval in `passive` and `auto` modes. |
 | `api_base_url` | no | Optional API base URL for proxy deployments. |
 
 ## Events
@@ -35,7 +35,22 @@ Status: partial migration. Unit/API-shape coverage is present, and private text 
 | `get_user_info` | plugin-e2e-ui, unit | Cached inbound sender retrieved by `EBAEventProbe` platform API sweep. |
 | `get_friend_list` | plugin-e2e-ui, unit | Cached inbound sender list retrieved by `EBAEventProbe` platform API sweep. |
 | `call_platform_api` | plugin-e2e-ui, unit | Safe diagnostic actions verified through `get_mode` and `get_cached_response_status`. |
-| `send_message` | not-supported | Official Account customer-service proactive messaging is not implemented by the existing SDK adapter; only webhook reply is supported here. |
+| `send_message` | unit | In `auto` mode, sends non-empty `Plain` text to a user's OpenID through the customer-service API. Accepts `person`, `friend`, or `private` targets; other modes or target types raise `NotSupportedError`. |
+
+### Customer-service sends
+
+`send_message` requires customer-service API permission and an eligible user interaction within the 48-hour reply window. WeChat enforces the permission, window, quota, and follow status. Unlike `reply_message`, a rejected `send_message` is not queued for the user's next message.
+
+Nonzero API results raise `OfficialAccountSendError`, with the original code available as `errcode`:
+
+| errcode | Meaning |
+| --- | --- |
+| `48001` | Customer-service API permission denied. |
+| `45015` | The 48-hour customer-service reply window has expired. |
+| `45047` | Customer-service message quota exceeded. |
+| `43004` | The user is not following the Official Account. |
+
+Other nonzero codes also raise `OfficialAccountSendError`. Transport failures raise `RuntimeError` without exposing request credentials. Empty text and non-`Plain` components raise `ValueError` before delivery. Successful sends return `MessageResult(raw={"errcode": 0})`; this API does not supply a `message_id`.
 
 ## Platform APIs
 
@@ -57,8 +72,8 @@ Status: partial migration. Unit/API-shape coverage is present, and private text 
 
 | Send Component | Evidence | Notes |
 | --- | --- | --- |
-| `Plain` | unit | Sent as webhook reply text. |
-| `Image`, `Voice`, `File`, `Quote`, `At`, `AtAll`, `Face`, `Forward`, mixed chain | not-supported | Existing SDK reply path is text XML only; non-text components degrade to readable placeholders in tests and are not declared as supported outbound components. |
+| `Plain` | unit | Sent as webhook reply text or customer-service text in `auto` mode. Multiple `Plain` components are concatenated. |
+| `Image`, `Voice`, `File`, `Quote`, `At`, `AtAll`, `Face`, `Forward`, mixed chain | not-supported | `send_message` rejects non-text components; the reply path degrades them to readable placeholders and does not declare them as supported outbound components. |
 
 ## Verification Record
 
@@ -73,7 +88,7 @@ Observed event/API evidence:
 - `MessageReceived`: `bot_uuid=d7c46880-a9f8-431a-9172-5d3e0d663dbc`, `adapter_name=officialaccount-omni`, `chat_type=private`, `chat_id=ovH9L7OW6hNpWZWvp_NMmypVh26w`, `message_chain=[Source, Plain]`.
 - Common safe APIs through probe platform sweep: `get_message`, `get_user_info`, `get_friend_list`.
 - Platform APIs through `call_platform_api`: `get_mode`, `get_cached_response_status`.
-- `send_message` and outbound component sweep returned explicit `NotSupportedError: send_message:official_account_requires_inbound_webhook_reply`, as expected for this adapter.
+- This `drop`-mode probe does not verify customer-service `send_message`; that path has mocked unit coverage in `tests/unit_tests/platform/test_officialaccount_send_message.py`.
 
 Standalone runtime command:
 

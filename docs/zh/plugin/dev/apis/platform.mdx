@@ -4,6 +4,36 @@ title: "平台 API"
 
 通过机器人 UUID 调用平台适配器的 API。发送消息链可继续使用 `self.plugin.send_message()`；查询群组、用户及其他平台能力使用下面的接口。
 
+## 发送消息、回复与线程
+
+标准 `send_message` API 返回 `MessageResult`；平台提供消息 ID 时，`message_id` 表示已发送的消息。`self.plugin.send_message()` 返回其序列化字典，因此应读取 `result["message_id"]`，而不是对象属性。平台不返回消息 ID 时，该值可能为 `None` 或空字符串。
+
+使用标准消息组件 `Quote` 表达回复或线程引用：`Quote.id` 为被引用消息或线程根消息的 ID，`origin` 为被引用的消息链，可以为空。具体支持情况和回复／线程行为由适配器决定。例如，Slack 将消息的 `ts` 作为 `message_id` 返回，带 `Quote(id=ts)` 的消息链会发到对应线程，入站频道线程回复的消息链末尾会附加 `Quote(id=thread_ts)`。这些操作使用标准消息 API，而非 Slack 专属 action。
+
+```python
+from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain, Quote
+
+result = await self.plugin.send_message(
+    bot_uuid=bot_uuid,
+    target_type="group",
+    target_id=group_id,
+    message_chain=MessageChain([Plain(text="Support request")]),
+)
+message_id = result.get("message_id") if result else None
+if message_id is not None and message_id != "":
+    await self.plugin.send_message(
+        bot_uuid=bot_uuid,
+        target_type="group",
+        target_id=group_id,
+        message_chain=MessageChain([
+            Plain(text="Follow-up"),
+            Quote(id=message_id, origin=MessageChain([])),
+        ]),
+    )
+```
+
+请使用同一机器人、同一会话中的消息 ID。`Quote` 在序列化时保留引用元数据，但不会向 `str(message_chain)` 添加文本，因此不会影响命令或关键词匹配。
+
 ## 调用平台 API
 
 ```python

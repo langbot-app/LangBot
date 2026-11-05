@@ -111,11 +111,16 @@ def test_officialaccount_supported_events_match_manifest():
     assert make_adapter().get_supported_events() == manifest()['spec']['supported_events']
 
 
-def test_officialaccount_supported_apis_match_manifest():
-    supported_apis = make_adapter().get_supported_apis()
+@pytest.mark.parametrize('mode', ['drop', 'passive', 'auto'])
+def test_officialaccount_supported_apis_match_manifest(mode):
+    supported_apis = make_adapter(mode).get_supported_apis()
     manifest_apis = manifest()['spec']['supported_apis']
+    declared_apis = manifest_apis['required'] + manifest_apis['optional']
 
-    assert supported_apis == manifest_apis['required'] + manifest_apis['optional']
+    assert 'send_message' in manifest_apis['optional']
+    if mode != 'auto':
+        declared_apis.remove('send_message')
+    assert supported_apis == declared_apis
 
 
 def test_officialaccount_platform_api_map_matches_manifest():

@@ -5,8 +5,8 @@
 Slack is migrated into `src/langbot/pkg/platform/adapters/slack/` with the standard EBA adapter layout:
 
 - `adapter.py` owns lifecycle, listener dispatch, unified webhook handling, outbound send/reply, and event caches.
-- `event_converter.py` maps Slack `im` and `app_mention` channel events to `message.received`.
-- `message_converter.py` maps common `MessageChain` components to Slack text fallback and maps inbound Slack text/image payloads back to EBA components.
+- `event_converter.py` maps Slack `im`, `app_mention`, and eligible channel thread replies to `message.received`.
+- `message_converter.py` maps text components and inbound attachments; `libs/slack_api/media.py` sends message chains, uploads media, and applies `Quote` thread references.
 - `api_impl.py` provides cache-backed common read APIs.
 - `platform_api.py` declares safe Slack-specific API actions.
 - `manifest.yaml` declares `slack-omni`.
@@ -25,7 +25,7 @@ The legacy `src/langbot/pkg/platform/sources/slack.py` adapter is kept unchanged
 
 | Event | Notes |
 |-------|-------|
-| `message.received` | Emitted for private `im` messages and channel `app_mention` events. Channel messages are mapped to group chats. |
+| `message.received` | Emitted for private `im` messages, channel `app_mention` events, and unmentioned replies in bot-started threads. Channel messages are mapped to group chats. |
 | `platform.specific` | Reserved for Slack event types that are not converted into common message events. |
 
 ## Common APIs
@@ -48,6 +48,15 @@ Optional:
 
 Cache-backed APIs are only available after the relevant inbound event has been observed.
 
+### Replies and threads
+
+- `send_message` returns the first response's Slack message `ts` as `MessageResult.message_id`; a response without a message timestamp (such as a file-only upload) leaves it empty.
+- An outbound chain containing `Quote(id=ts, origin=MessageChain([]))` sends into that thread using the standard message API. No Slack-specific action is needed.
+- Inbound channel thread replies end with `Quote(id=thread_ts, origin=MessageChain([]))`, referencing the thread root rather than the individual reply.
+- Replies in threads started by the bot are dispatched even without an @mention. They do not receive a synthetic `At`, so pipeline mention rules still distinguish mentions from ordinary thread replies.
+- Subscribe to `message.channels` for public-channel messages and `message.groups` for private-channel messages, in addition to `app_mention` and the DM events used by the app. Without the channel message subscriptions, unmentioned replies will not reach the adapter.
+- `reply_message` stays in the source thread; `quote_origin=True` starts a thread from an unthreaded source message.
+
 ## Platform APIs
 
 | Action | Notes |
@@ -57,8 +66,8 @@ Cache-backed APIs are only available after the relevant inbound event has been o
 
 ## Known Limits
 
-- Slack file/image outbound is currently represented as text fallback because the existing Slack SDK wrapper only exposes `chat_postMessage`.
-- Inbound channel coverage follows the legacy adapter behavior: only `app_mention` events are treated as group messages.
+- File, image, and voice uploads use `files_upload_v2`; attachment bytes are limited to 20 MiB per component.
+- Unmentioned channel messages outside bot-started threads are ignored. Thread dispatch requires the payload's `parent_user_id` to match the known bot user ID.
 - Real live testing requires a public callback URL configured in Slack Event Subscriptions.
 
 ## Verification
