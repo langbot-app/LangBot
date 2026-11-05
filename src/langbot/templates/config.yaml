@@ -448,6 +448,15 @@ box:
         # Cloud bootstrap requires a positive hard quota.
         workspace_quota_mb: 0
         readiness_cache_sec: 15
+    # Workspace overrides cannot exceed these administrator-owned ceilings.
+    workspace_limit_caps:
+        timeout_sec: 120
+        idle_ttl_sec: 86400
+        max_sessions: 64
+        cpus: 8.0
+        memory_mb: 8192
+        pids_limit: 1024
+        workspace_quota_mb: 10240
     local:
         profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.

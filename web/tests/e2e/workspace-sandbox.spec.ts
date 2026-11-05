@@ -33,11 +33,21 @@ async function setup(
   let reason: string | null = e2bAvailable ? null : 'missing_credentials';
   const writes: unknown[] = [];
   const checks: unknown[] = [];
+  const runs: unknown[] = [];
+  let limits: Record<string, number> = {};
+  const common = { timeout_sec: true, idle_ttl_sec: true, max_sessions: true };
+  const local = {
+    ...common,
+    cpus: true,
+    memory_mb: true,
+    pids_limit: true,
+    workspace_quota_mb: true,
+  };
   await page.route('**/api/v1/workspaces/current/sandbox**', async (route) => {
     const request = route.request();
     if (request.method() === 'POST') {
       const draft = request.postDataJSON().e2b;
-      checks.push(draft);
+      (request.url().endsWith('/test') ? runs : checks).push(draft);
       e2bAvailable = draft.api_key !== 'invalid';
       reason = e2bAvailable ? null : 'authentication_failed';
     }
@@ -46,6 +56,7 @@ async function setup(
       const body = request.postDataJSON();
       writes.push(body);
       backend = body.backend;
+      limits = body.limits || limits;
       if (body.e2b)
         config = {
           api_url: body.e2b.api_url,
@@ -62,6 +73,16 @@ async function setup(
           effective_backend: backend,
           enabled: true,
           e2b_configurable: true,
+          limits,
+          limit_caps: {
+            timeout_sec: 120,
+            idle_ttl_sec: 86400,
+            max_sessions: 64,
+            cpus: 8,
+            memory_mb: 8192,
+            pids_limit: 1024,
+            workspace_quota_mb: 10240,
+          },
           e2b: {
             ...config,
             api_key_configured: mode !== 'unavailable' || writes.length > 0,
@@ -70,17 +91,22 @@ async function setup(
           backends: [
             {
               name: 'docker',
+              limit_capabilities: local,
               available: mode !== 'unavailable',
               reason: mode === 'unavailable' ? 'docker_unreachable' : null,
             },
             {
               name: 'e2b',
+              limit_capabilities: common,
+              template_validation: 'unsupported',
               available: e2bAvailable,
               reason,
-              template_validated: request.method() === 'POST' && e2bAvailable,
+              template_validated:
+                request.url().endsWith('/test') && e2bAvailable,
             },
             {
               name: 'nsjail',
+              limit_capabilities: local,
               available: mode === 'unavailable',
               reason: mode === 'unavailable' ? null : 'policy_restricted',
             },
@@ -90,7 +116,7 @@ async function setup(
     });
   });
   await page.goto('/home?action=showWorkspaceSettings');
-  return { writes, checks, backend: () => backend };
+  return { writes, checks, runs, backend: () => backend };
 }
 
 test('selection and E2B drafts require explicit confirmation; failed checks do not save', async ({
@@ -115,7 +141,7 @@ test('selection and E2B drafts require explicit confirmation; failed checks do n
     name: 'Confirm and save',
     exact: true,
   });
-  await expect(save).toBeDisabled();
+  await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Check again', exact: true }).click();
   await expect(save).toBeEnabled();
   expect(state.writes).toHaveLength(0);
@@ -125,6 +151,16 @@ test('selection and E2B drafts require explicit confirmation; failed checks do n
   ).toBeVisible();
   expect(state.writes).toHaveLength(1);
   expect(state.backend()).toBe('e2b');
+  expect(state.runs).toHaveLength(0);
+  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await expect(
+    page.getByText(
+      'Template verified: temporary sandbox created, executed and deleted',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  expect(state.runs).toHaveLength(1);
+  expect(state.writes).toHaveLength(1);
   await page.reload();
   await page.goto('/home?action=showWorkspaceSettings');
   await expect(select).toHaveText('E2B');
@@ -198,4 +234,52 @@ test('viewer can read configuration without receiving an API key or editing sett
     page.getByRole('button', { name: 'Confirm and save', exact: true }),
   ).toBeDisabled();
   expect(state.writes).toHaveLength(0);
+});
+
+test('workspace limits persist, reject out-of-range values and disable unsupported E2B controls', async ({
+  page,
+}) => {
+  const state = await setup(page);
+  const cpu = page.getByLabel('CPU cores', { exact: true });
+  await expect(cpu).toBeEnabled();
+  await cpu.fill('99');
+  const save = page.getByRole('button', {
+    name: 'Confirm and save',
+    exact: true,
+  });
+  await expect(save).toBeDisabled();
+  await cpu.fill('0.5');
+  await page.getByLabel('Command timeout (seconds)', { exact: true }).fill('2');
+  await page.getByLabel('Idle cleanup (seconds)', { exact: true }).fill('60');
+  await page.getByLabel('Maximum sandboxes', { exact: true }).fill('2');
+  await save.click();
+  await expect(save).toBeDisabled();
+  expect(state.writes[0]).toMatchObject({
+    limits: { cpus: 0.5, timeout_sec: 2, idle_ttl_sec: 60, max_sessions: 2 },
+  });
+  await page.reload();
+  await page.goto('/home?action=showWorkspaceSettings');
+  await expect(cpu).toHaveValue('0.5');
+  const select = page.getByRole('combobox', {
+    name: 'Execution environment',
+    exact: true,
+  });
+  await select.click();
+  await page.getByRole('option', { name: 'E2B', exact: true }).click();
+  await expect(cpu).toBeDisabled();
+  await expect(
+    page.getByLabel('Workspace disk quota (MiB)', { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByLabel('Command timeout (seconds)', { exact: true }),
+  ).toBeEnabled();
+  await save.click();
+  await expect(save).toBeDisabled();
+  expect(state.writes[1]).toMatchObject({
+    limits: { timeout_sec: 2, idle_ttl_sec: 60, max_sessions: 2 },
+  });
+  expect(
+    (state.writes[1] as { limits: Record<string, number> }).limits.cpus,
+  ).toBeUndefined();
+  expect(state.runs).toHaveLength(0);
 });

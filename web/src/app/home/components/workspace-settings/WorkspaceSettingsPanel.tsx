@@ -40,6 +40,7 @@ import type {
   CurrentWorkspace,
   WorkspaceSandboxSettings,
   E2BConfigInput,
+  WorkspaceLimits,
   WorkspaceInvitation,
   WorkspaceMembership,
   WorkspaceRole,
@@ -63,6 +64,16 @@ const ASSIGNABLE_ROLES: Exclude<WorkspaceRole, 'owner'>[] = [
   'operator',
   'viewer',
 ];
+
+const LIMIT_FIELDS = [
+  'timeout_sec',
+  'idle_ttl_sec',
+  'max_sessions',
+  'cpus',
+  'memory_mb',
+  'pids_limit',
+  'workspace_quota_mb',
+] as const;
 
 const SANDBOX_LABELS: Record<string, string> = {
   docker: 'Docker',
@@ -107,9 +118,18 @@ export default function WorkspaceSettingsPanel({
     api_key: '',
     template: 'base',
   });
+  const [limitDraft, setLimitDraft] = useState<Record<string, string>>({});
   const [e2bReady, setE2bReady] = useState(false);
   const resetSandboxDraft = useCallback(
     (settings: WorkspaceSandboxSettings) => {
+      setLimitDraft(
+        Object.fromEntries(
+          LIMIT_FIELDS.map((key) => [
+            key,
+            settings.limits?.[key]?.toString() || '',
+          ]),
+        ),
+      );
       setDraftBackend(settings.effective_backend || '');
       setDetectedBackends(settings.backends);
       setE2bDraft({
@@ -179,7 +199,27 @@ export default function WorkspaceSettingsPanel({
     }
   }, [t, resetSandboxDraft]);
 
+  const selectedEnvironment = detectedBackends.find(
+    (item) => item.name === draftBackend,
+  );
+  const limitSupported = (key: keyof WorkspaceLimits) =>
+    Boolean(selectedEnvironment?.limit_capabilities?.[key]);
+  const invalidLimits = LIMIT_FIELDS.some((key) => {
+    const text = limitDraft[key] || '';
+    if (!limitSupported(key) || !text) return false;
+    const value = Number(text);
+    return (
+      !Number.isFinite(value) ||
+      value < (key === 'cpus' ? 0.1 : key === 'memory_mb' ? 32 : 1) ||
+      (key !== 'cpus' && !Number.isInteger(value)) ||
+      value > (sandbox?.limit_caps?.[key] ?? 0)
+    );
+  });
   const sandboxDirty =
+    LIMIT_FIELDS.some(
+      (key) =>
+        (limitDraft[key] || '') !== (sandbox?.limits?.[key]?.toString() || ''),
+    ) ||
     draftBackend !== (sandbox?.effective_backend || '') ||
     (draftBackend === 'e2b' &&
       (e2bDraft.api_url !== (sandbox?.e2b?.api_url || '') ||
@@ -203,12 +243,14 @@ export default function WorkspaceSettingsPanel({
     );
   }
 
-  async function refreshSandbox() {
+  async function refreshSandbox(testRun = false) {
     setCheckingSandbox(true);
     try {
       const result =
         draftBackend === 'e2b'
-          ? await backendClient.checkWorkspaceSandbox(e2bDraft)
+          ? await (testRun
+              ? backendClient.testWorkspaceSandbox(e2bDraft)
+              : backendClient.checkWorkspaceSandbox(e2bDraft))
           : await backendClient.getWorkspaceSandbox(true);
       setDetectedBackends(result.backends);
       setE2bReady(
@@ -218,16 +260,7 @@ export default function WorkspaceSettingsPanel({
         ),
       );
     } catch {
-      if (draftBackend === 'e2b') {
-        setE2bReady(false);
-        setDetectedBackends((current) =>
-          current.map((item) =>
-            item.name === 'e2b'
-              ? { ...item, available: false, reason: 'invalid_configuration' }
-              : item,
-          ),
-        );
-      }
+      setE2bReady(false);
       toast.error(t('workspaceSandbox.loadFailed'));
     } finally {
       setCheckingSandbox(false);
@@ -237,9 +270,32 @@ export default function WorkspaceSettingsPanel({
   async function saveSandbox() {
     setSavingSandbox(true);
     try {
+      // This preflight only performs read-only checks; saving never creates a sandbox.
+      const checked =
+        draftBackend === 'e2b'
+          ? await backendClient.checkWorkspaceSandbox(e2bDraft)
+          : await backendClient.getWorkspaceSandbox(true);
+      setDetectedBackends(checked.backends);
+      if (
+        !checked.backends.some(
+          (item) => item.name === draftBackend && item.available,
+        )
+      ) {
+        toast.error(t('workspaceSandbox.saveFailed'));
+        return;
+      }
+      const values: WorkspaceLimits = {};
+      const capabilities = checked.backends.find(
+        (item) => item.name === draftBackend,
+      )?.limit_capabilities;
+      for (const key of LIMIT_FIELDS) {
+        if (capabilities?.[key] && limitDraft[key])
+          values[key] = Number(limitDraft[key]);
+      }
       const result = await backendClient.setWorkspaceSandbox(
         draftBackend,
         draftBackend === 'e2b' ? e2bDraft : undefined,
+        values,
       );
       setSandbox(result);
       resetSandboxDraft(result);
@@ -479,7 +535,7 @@ export default function WorkspaceSettingsPanel({
             <Button
               variant="outline"
               size="sm"
-              onClick={refreshSandbox}
+              onClick={() => refreshSandbox()}
               disabled={checkingSandbox || savingSandbox || loading}
             >
               {checkingSandbox && <Loader2 className="size-3.5 animate-spin" />}
@@ -597,9 +653,30 @@ export default function WorkspaceSettingsPanel({
               <p className="text-xs text-muted-foreground">
                 {t('workspaceSandbox.keyHelp')}
               </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refreshSandbox(true)}
+                disabled={
+                  loading ||
+                  savingSandbox ||
+                  checkingSandbox ||
+                  !permissions.has('workspace.update')
+                }
+              >
+                {t('workspaceSandbox.testRun')}
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                {t('workspaceSandbox.testRunCost')}
+              </p>
               {e2bReady && (
                 <p className="text-xs text-green-600">
                   {t('workspaceSandbox.templateVerified')}
+                </p>
+              )}
+              {selectedEnvironment?.template_validation === 'unsupported' && (
+                <p role="status" className="text-xs text-muted-foreground">
+                  {t('workspaceSandbox.queryUnsupported')}
                 </p>
               )}
               {!e2bReady && (
@@ -623,6 +700,64 @@ export default function WorkspaceSettingsPanel({
                 )}
               </p>
             ))}
+          <fieldset className="space-y-3 rounded-md border p-3">
+            <legend className="px-1 text-sm font-semibold">
+              {t('workspaceSandbox.limitsTitle')}
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              {t('workspaceSandbox.limitsHelp')}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {t('workspaceSandbox.quotaCheck')}
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {LIMIT_FIELDS.map((key) => (
+                <div key={key} className="space-y-1">
+                  <Label htmlFor={`sandbox-limit-${key}`}>
+                    {t(`workspaceSandbox.limitLabels.${key}`)}
+                  </Label>
+                  <Input
+                    id={`sandbox-limit-${key}`}
+                    type="number"
+                    value={limitDraft[key] || ''}
+                    placeholder={t('workspaceSandbox.inherit')}
+                    min={key === 'cpus' ? 0.1 : key === 'memory_mb' ? 32 : 1}
+                    max={sandbox?.limit_caps?.[key]}
+                    step={key === 'cpus' ? 0.1 : 1}
+                    onChange={(event) =>
+                      setLimitDraft((current) => ({
+                        ...current,
+                        [key]: event.target.value,
+                      }))
+                    }
+                    disabled={
+                      !limitSupported(key) ||
+                      loading ||
+                      savingSandbox ||
+                      checkingSandbox ||
+                      !permissions.has('workspace.update')
+                    }
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {limitSupported(key)
+                      ? t('workspaceSandbox.limitMax', {
+                          value: sandbox?.limit_caps?.[key],
+                        })
+                      : t(
+                          draftBackend === 'e2b'
+                            ? 'workspaceSandbox.e2bLimitUnsupported'
+                            : 'workspaceSandbox.limitUnsupported',
+                        )}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {invalidLimits && (
+              <p role="alert" className="text-xs text-destructive">
+                {t('workspaceSandbox.invalidLimits')}
+              </p>
+            )}
+          </fieldset>
           <div className="flex gap-2">
             <Button
               size="sm"
@@ -633,10 +768,10 @@ export default function WorkspaceSettingsPanel({
                 checkingSandbox ||
                 !sandboxDirty ||
                 !permissions.has('workspace.update') ||
-                !detectedBackends.some(
-                  (item) => item.name === draftBackend && item.available,
-                ) ||
-                (draftBackend === 'e2b' && !e2bReady)
+                !draftBackend ||
+                invalidLimits ||
+                (selectedEnvironment?.available === false &&
+                  selectedEnvironment.reason !== 'not_checked')
               }
             >
               {savingSandbox && <Loader2 className="size-3.5 animate-spin" />}

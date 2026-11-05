@@ -1203,3 +1203,34 @@ async def test_stdio_handshake_raises_fatal_when_process_exited(mcp_module, tmp_
         await session._init_box_stdio_server()
     assert not isinstance(ei.value, mcp_stdio_module._ColdStartRetry)
     await session.exit_stack.aclose()
+
+
+def test_mcp_workspace_helpers_share_pinned_limit_revision_and_session_id(mcp_module):
+    ap = _make_ap()
+    session = _make_session(
+        mcp_module,
+        {
+            'uuid': 'limits-server',
+            'mode': 'stdio',
+            '_sandbox_backend': 'docker',
+            '_sandbox_limits': {'config': {'memory_mb': 64}, 'revision': 'first'},
+        },
+        ap,
+    )
+    first = session._build_box_session_id()
+    assert first.endswith('-limits-first-backend-docker')
+    one = session._box_stdio_runtime._build_workspace(host_path=None)
+    two = session._box_stdio_runtime._build_workspace(host_path=None)
+    assert one.session_id == two.session_id == first
+    assert one.selected_limits == two.selected_limits == session.sandbox_limits
+    changed = _make_session(
+        mcp_module,
+        {
+            'uuid': 'limits-server',
+            'mode': 'stdio',
+            '_sandbox_backend': 'docker',
+            '_sandbox_limits': {'config': {'memory_mb': 128}, 'revision': 'second'},
+        },
+        ap,
+    )
+    assert changed._build_box_session_id() != first
