@@ -416,7 +416,10 @@ def _bind_action_query_context(
         object.__setattr__(query, field_name, getattr(execution_context, field_name))
 
 
-def _build_plugin_action_query(action_context: ActionContext) -> pipeline_query.Query:
+def _build_plugin_action_query(
+    action_context: ActionContext,
+    plugin_identity: _PluginInstallationIdentity | None = None,
+) -> pipeline_query.Query:
     """Create a scoped Query for plugin actions that did not originate in a pipeline."""
 
     query_uuid = str(uuid.uuid4())
@@ -434,12 +437,28 @@ def _build_plugin_action_query(action_context: ActionContext) -> pipeline_query.
         query_uuid=query_uuid,
         bot_uuid=None,
         pipeline_uuid=None,
-        variables={},
+        variables=_plugin_monitoring_variables(plugin_identity),
         resp_messages=[],
         resp_message_chain=None,
     )
     object.__setattr__(query, '_execution_context', execution_context)
     return query
+
+
+def _plugin_monitoring_variables(
+    plugin_identity: _PluginInstallationIdentity | None,
+) -> dict[str, Any]:
+    """Monitoring labels for a Host-built Query owned by one plugin installation."""
+    if plugin_identity is None:
+        return {}
+    from ..pipeline.monitoring_helper import PLUGIN_ATTRIBUTION_VAR
+
+    plugin_ref = f'{plugin_identity.plugin_author}/{plugin_identity.plugin_name}'
+    return {
+        PLUGIN_ATTRIBUTION_VAR: plugin_ref,
+        '_monitoring_bot_name': 'Plugin',
+        '_monitoring_pipeline_name': f'plugin:{plugin_ref}',
+    }
 
 
 def _resolve_remove_think(data: dict[str, Any], query: Any | None) -> bool:
@@ -1686,7 +1705,7 @@ class RuntimeConnectionHandler(handler.Handler):
             For Runner calls: requires run_id and validates model_uuid against session.resources.models.
             For regular plugin calls: no run_id, unrestricted access (backward compatibility).
             """
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             llm_model_uuid = data['llm_model_uuid']
             messages = data['messages']
             funcs = data.get('funcs', [])
@@ -1750,7 +1769,7 @@ class RuntimeConnectionHandler(handler.Handler):
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
-                query = _build_plugin_action_query(action_context)
+                query = _build_plugin_action_query(action_context, plugin_identity)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []
@@ -1788,7 +1807,7 @@ class RuntimeConnectionHandler(handler.Handler):
             For Runner calls: requires run_id and validates model_uuid against session.resources.models.
             For regular plugin calls: no run_id, unrestricted access (backward compatibility).
             """
-            action_context, _ = await self._require_plugin_action_context()
+            action_context, plugin_identity = await self._require_plugin_action_context()
             llm_model_uuid = data['llm_model_uuid']
             messages = data['messages']
             funcs = data.get('funcs', [])
@@ -1848,7 +1867,7 @@ class RuntimeConnectionHandler(handler.Handler):
             funcs_obj = [resource_tool.LLMTool.model_validate({**func, 'func': _placeholder_func}) for func in funcs]
             query = _resolve_action_query(data, session, self.ap, action_context)
             if query is None:
-                query = _build_plugin_action_query(action_context)
+                query = _build_plugin_action_query(action_context, plugin_identity)
             effective_extra_args = _merge_model_extra_args(llm_model, extra_args, llm_policy=True)
             remove_think = _resolve_remove_think(data, query)
             effective_funcs = funcs_obj if 'func_call' in (llm_model.model_entity.abilities or []) else []

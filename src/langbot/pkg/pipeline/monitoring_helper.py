@@ -18,6 +18,28 @@ if typing.TYPE_CHECKING:
 
 from .pool import get_query_execution_context
 
+# Query variable naming the plugin (``author/name``) that owns a Host-built
+# Query. Such Queries back plugin actions that did not originate in a pipeline
+# and therefore carry no launcher/session identity of their own.
+PLUGIN_ATTRIBUTION_VAR = '_monitoring_plugin'
+
+
+def monitoring_platform(query: typing.Any) -> str | None:
+    """Return the launcher type recorded as monitoring platform, if any."""
+    launcher_type = getattr(query, 'launcher_type', None)
+    if launcher_type is None:
+        return None
+    return launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
+
+
+def monitoring_session_id(query: typing.Any) -> str:
+    """Return the monitoring session id for pipeline and plugin-owned Queries."""
+    platform = monitoring_platform(query)
+    if platform is not None:
+        return f'{platform}_{getattr(query, "launcher_id", None)}'
+    plugin = (getattr(query, 'variables', None) or {}).get(PLUGIN_ATTRIBUTION_VAR)
+    return f'plugin:{plugin}' if plugin else 'unknown'
+
 
 async def resolve_processor_name(
     ap: app.Application,
@@ -151,7 +173,7 @@ class MonitoringHelper:
         """Record the start of query processing, returns message_id"""
         try:
             # Message persistence updates the summary in the same transaction.
-            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
+            session_id = monitoring_session_id(query)
 
             # Get sender name from message event
             sender_name = None
@@ -182,10 +204,8 @@ class MonitoringHelper:
                 session_id=session_id,
                 status='pending',
                 level='info',
-                platform=query.launcher_type.value
-                if hasattr(query.launcher_type, 'value')
-                else str(query.launcher_type),
-                user_id=query.sender_id,
+                platform=monitoring_platform(query),
+                user_id=getattr(query, 'sender_id', None),
                 user_name=sender_name,
                 runner_name=runner_name,
                 variables=None,  # Will be updated in record_query_success
@@ -236,7 +256,7 @@ class MonitoringHelper:
     ):
         """Record bot response message to monitoring"""
         try:
-            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
+            session_id = monitoring_session_id(query)
 
             # Get sender name from message event
             sender_name = None
@@ -278,10 +298,8 @@ class MonitoringHelper:
                 session_id=session_id,
                 status='success',
                 level='info',
-                platform=query.launcher_type.value
-                if hasattr(query.launcher_type, 'value')
-                else str(query.launcher_type),
-                user_id=query.sender_id,
+                platform=monitoring_platform(query),
+                user_id=getattr(query, 'sender_id', None),
                 user_name=sender_name,
                 runner_name=runner_name,
                 role='assistant',
@@ -306,7 +324,7 @@ class MonitoringHelper:
             original_message_id = (query.variables or {}).get('_monitoring_message_id')
             if original_message_id:
                 await MonitoringHelper.finish_query(ap, query, original_message_id, 'error')
-            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
+            session_id = monitoring_session_id(query)
 
             # Get sender name from message event
             sender_name = None
@@ -329,10 +347,8 @@ class MonitoringHelper:
                 session_id=session_id,
                 status='error',
                 level='error',
-                platform=query.launcher_type.value
-                if hasattr(query.launcher_type, 'value')
-                else str(query.launcher_type),
-                user_id=query.sender_id,
+                platform=monitoring_platform(query),
+                user_id=getattr(query, 'sender_id', None),
                 user_name=sender_name,
                 runner_name=runner_name,
             )
@@ -376,7 +392,7 @@ class MonitoringHelper:
     ):
         """Record LLM call"""
         try:
-            session_id = f'{query.launcher_type.value if hasattr(query.launcher_type, "value") else query.launcher_type}_{query.launcher_id}'
+            session_id = monitoring_session_id(query)
 
             await ap.monitoring_service.record_llm_call(
                 get_query_execution_context(query),
