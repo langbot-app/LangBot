@@ -48,7 +48,10 @@ lightweight contexts; they do not create another object graph.
 ## The detached scheduler
 
 Each installation's scheduler is a detached task, registered per installation and
-stopped by revocation. It carries its installation scope as an explicit argument
+stopped by revocation. The task starts from an empty `contextvars.Context()`
+rather than a copy of the scheduling invocation's context: that copy would carry
+the SDK's per-action audit correlation, which the SDK closes when the action
+returns, so every later send failed with `Plugin audit invocation has ended`. It carries its installation scope as an explicit argument
 and re-enters the invocation it was started from: the handler, config and binding
 captured at scheduling time are passed back into `bind_invocation(...)` for the
 whole life of the loop, so every `SEND_MESSAGE` a firing reminder makes is

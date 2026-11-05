@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import datetime
 import itertools
 import logging
@@ -232,8 +233,14 @@ class ScheNotify(BasePlugin):
                 return
             task.cancel()
         self._loop_bindings[scope] = binding
+        # Start from an empty context: ``create_task`` would otherwise copy the
+        # scheduling invocation's task-local state, including the SDK's audit
+        # correlation, which is closed once that invocation returns and makes
+        # every later send fail with "Plugin audit invocation has ended". The
+        # loop re-enters the captured invocation itself.
         self._loops[scope] = asyncio.create_task(
-            self._check_loop_wrapper(scope, handler, config, binding)
+            self._check_loop_wrapper(scope, handler, config, binding),
+            context=contextvars.Context(),
         )
 
     async def _stop_loop(self, scope: str) -> None:

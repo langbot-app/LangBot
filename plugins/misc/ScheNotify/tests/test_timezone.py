@@ -15,6 +15,7 @@ from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 from langbot_plugin.api.proxies.invocation import bind_invocation
 
 from test_installation_schedule import (
+    FlatHost,
     _context,
     _render,
     _session,
@@ -153,6 +154,50 @@ def test_commands_display_times_in_the_configured_timezone():
                 await _render(dsche, _context("bot", LauncherTypes.PERSON, "1", "dsche", ("i", "1")))
             )[0]
             assert "2999-01-01 05:30:00 (Asia/Kolkata, UTC+05:30)" in deleted
+        await plugin.on_installation_revoked(first)
+
+    asyncio.run(scenario())
+
+
+def test_detached_scheduler_survives_the_closed_audit_correlation():
+    """The scheduler must not inherit the scheduling call's audit correlation.
+
+    Newer SDKs close the per-action audit correlation when the action returns.
+    Pre-fix ``create_task`` copied that closed correlation into the scheduler,
+    so every delivery failed with "Plugin audit invocation has ended" and the
+    reminder was never sent.
+    """
+    import pytest
+
+    invocation = pytest.importorskip("langbot_plugin.api.proxies.invocation")
+    if not hasattr(invocation, "audit_correlation_scope"):
+        pytest.skip("SDK has no audit correlation")
+
+    async def scenario():
+        class RelayingHost(FlatHost):
+            """Relays the audit correlation first, like the real handler does."""
+
+            async def call_action(self, action, data, *args, **kwargs):
+                data = invocation.relay_audit_correlation(data)
+                return await super().call_action(action, data, *args, **kwargs)
+
+        plugin = sche_main.ScheNotify()
+        host = RelayingHost()
+        plugin.plugin_runtime_handler = host
+        first = binding("installation-a")
+        past = datetime.datetime.now(UTC) - datetime.timedelta(minutes=1)
+        with invocation.audit_correlation_scope("audit-1"):
+            with bind_invocation(host, config={}, binding=first):
+                await plugin.add_scheduled_event(
+                    time=past, message="due", bot_uuid="bot", target_type="person", target_id="1"
+                )
+        # The action has returned; the scheduler now runs its first pass.
+        for _ in range(50):
+            if host.sent:
+                break
+            await asyncio.sleep(0.01)
+        assert _texts(host.sent) == ["[Notify] due"]
+        assert plugin._events[plugin._scope(first)] == []
         await plugin.on_installation_revoked(first)
 
     asyncio.run(scenario())
