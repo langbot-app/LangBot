@@ -1521,7 +1521,7 @@ class BoxService:
         public.update(api_key_configured=bool(private.get('api_key')), source='workspace' if entry else 'deployment')
         backends = []
         if self._available:
-            options = {'refresh': refresh, 'e2b_templates': True, 'validate_e2b_template': validate_e2b_template}
+            options = {'refresh': refresh, 'validate_e2b_template': validate_e2b_template}
             if model is not None:
                 options['e2b_config'] = model
             backends = await self.client.get_backends(**options)

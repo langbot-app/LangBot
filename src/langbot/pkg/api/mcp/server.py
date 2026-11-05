@@ -143,7 +143,7 @@ class LangBotMCPServer:
             return _dump(await ap.box_service.set_workspace_backend(context, backend, e2b_draft=e2b))
 
         @mcp.tool(
-            description='Check draft sandbox settings without saving. Lists E2B templates and creates, executes in, then deletes a temporary sandbox. Requires workspace.update. Stored API keys are never returned.'
+            description='Check draft sandbox settings without saving. Creates, executes in, then deletes a temporary sandbox using the supplied E2B template. Requires workspace.update. Stored API keys are never returned.'
         )
         async def check_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
             context = _authorized(Permission.WORKSPACE_UPDATE)

@@ -138,10 +138,7 @@ const zhHant = {
     noEnvironment: '沒有可用環境',
     unavailable: '目前選擇的環境不可用，新任務將無法執行沙盒操作。',
     templateVerified: '模板验证通过：临时沙箱已创建、执行并清理',
-    selectTemplate: '请选择模板；无列表时请重新检测',
     reasons: {
-      template_list_failed: '无法获取 E2B 模板列表，请检查服务接口与权限',
-      template_not_found: '选中的模板不可用，请从列表重新选择',
       template_creation_failed: '模板创建沙箱失败，请检查服务容量和模板状态',
       template_execution_failed: '沙箱已创建，但执行验证失败',
       template_cleanup_failed: '临时沙箱清理失败，请检查 E2B 服务',

@@ -147,7 +147,6 @@ const jaJP = {
       '選択した環境は利用できません。新しいタスクはサンドボックスで実行できません。',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
-    selectTemplate: 'Select a template; check again to load templates',
     reasons: {
       template_list_failed:
         'Unable to load E2B templates; check service API and permissions',

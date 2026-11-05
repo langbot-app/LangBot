@@ -92,7 +92,6 @@ export interface WorkspaceSandboxSettings {
     available: boolean;
     reason: string | null;
     managed_processes?: boolean;
-    templates?: { id: string; name: string; aliases: string[] }[];
     template_validated?: boolean;
   }[];
 }

@@ -146,7 +146,6 @@ const esES = {
       'El entorno seleccionado no está disponible para nuevas ejecuciones.',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
-    selectTemplate: 'Select a template; check again to load templates',
     reasons: {
       template_list_failed:
         'Unable to load E2B templates; check service API and permissions',

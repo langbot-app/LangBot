@@ -108,12 +108,6 @@ export default function WorkspaceSettingsPanel({
     template: 'base',
   });
   const [e2bReady, setE2bReady] = useState(false);
-  const templates =
-    detectedBackends.find((item) => item.name === 'e2b')?.templates || [];
-  const selectedTemplate = templates.find(
-    (item) =>
-      item.id === e2bDraft.template || item.aliases.includes(e2bDraft.template),
-  );
   const resetSandboxDraft = useCallback(
     (settings: WorkspaceSandboxSettings) => {
       setDraftBackend(settings.effective_backend || '');
@@ -212,7 +206,6 @@ export default function WorkspaceSettingsPanel({
               ...item,
               available: false,
               reason: 'not_checked',
-              templates: field === 'template' ? item.templates : [],
             }
           : item,
       ),
@@ -599,31 +592,20 @@ export default function WorkspaceSettingsPanel({
                   <Label htmlFor="e2b-template">
                     {t('workspaceSandbox.template')}
                   </Label>
-                  <Select
-                    value={selectedTemplate?.id || ''}
-                    onValueChange={(value) => editE2b('template', value)}
+                  <Input
+                    id="e2b-template"
+                    value={e2bDraft.template}
+                    placeholder="base"
+                    onChange={(event) =>
+                      editE2b('template', event.target.value)
+                    }
                     disabled={
                       savingSandbox ||
                       checkingSandbox ||
                       !permissions.has('workspace.update') ||
                       sandbox?.e2b_configurable === false
                     }
-                  >
-                    <SelectTrigger id="e2b-template" className="w-full">
-                      <SelectValue
-                        placeholder={t('workspaceSandbox.selectTemplate')}
-                      />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templates.map((item) => (
-                        <SelectItem key={item.id} value={item.id}>
-                          {item.name === item.id
-                            ? item.id
-                            : `${item.name} (${item.id})`}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
