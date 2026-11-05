@@ -9,6 +9,7 @@ metadata:
     en_US: Run an Agent Client Protocol compatible agent process through stdio JSON-RPC.
     zh_Hans: 通过 stdio JSON-RPC 运行兼容 Agent Client Protocol 的智能体进程。
 spec:
+  resume: true
   usages: [agent]
   config:
     - name: provider

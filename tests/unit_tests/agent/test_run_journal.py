@@ -95,6 +95,7 @@ async def test_agent_run_snapshot_records_identity_and_redacts_inline_attachment
         data={'user_id': 'user-1', 'group_id': 'group-1'},
         source='platform',
         delivery=SimpleNamespace(model_dump=lambda **kwargs: {'target_id': 'group-1'}),
+        model_dump=lambda **kwargs: {'event_id': 'event-1', 'input': raw_input},
     )
     binding = SimpleNamespace(
         binding_id='agent_agent-1_runner-1',

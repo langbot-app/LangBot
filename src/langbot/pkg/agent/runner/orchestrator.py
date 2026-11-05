@@ -178,6 +178,10 @@ class AgentRunOrchestrator:
             descriptor=descriptor,
             resources=resources,
         )
+        recovery = (adapter_context or {}).get('_recovery')
+        if recovery:
+            context['run_id'] = recovery['run_id']
+            context['runtime'].setdefault('metadata', {})['recovery'] = recovery['request']
 
         authorized_skill_names = [
             str(skill['skill_name']) for skill in resources.get('skills', []) if skill.get('skill_name')
@@ -288,6 +292,16 @@ class AgentRunOrchestrator:
                 context=context,
                 authorization=run_authorization,
             )
+            if recovery:
+                await self.journal._get_run_ledger_store().authorize_recovery_run(
+                    run_id,
+                    authorization={
+                        **run_authorization,
+                        'recovery_event': self.journal._sanitize_event_data(event.model_dump(mode='json')),
+                        'recovery_checkpoint': recovery['request']['events'],
+                    },
+                    deadline_at=context.get('runtime', {}).get('deadline_at'),
+                )
             monitoring_id = (execution_query.variables or {}).get('_monitoring_message_id')
             if monitoring_id and monitoring_id != run_id:
                 await self.ap.monitoring_service.link_execution_message(
@@ -328,6 +342,7 @@ class AgentRunOrchestrator:
                 event=event,
                 descriptor=descriptor,
                 run_id=run_id,
+                binding=binding,
             )
             if recovered_steering:
                 restored = await self._session_registry.restore_steering(run_id, recovered_steering)
@@ -959,6 +974,7 @@ class AgentRunOrchestrator:
         event: AgentEventEnvelope,
         descriptor: RunnerDescriptor,
         run_id: str,
+        binding: AgentBinding | None = None,
     ) -> list[dict[str, typing.Any]]:
         """Rebuild unacknowledged steering inputs after a run restart."""
         if not event.conversation_id or not descriptor.supports_steering():
@@ -972,6 +988,7 @@ class AgentRunOrchestrator:
             bot_id=event.bot_id,
             workspace_id=event.workspace_id,
             thread_id=event.thread_id,
+            binding_id=binding.binding_id if binding else None,
         )
         recovered: list[dict[str, typing.Any]] = []
         for record in records:
@@ -979,6 +996,8 @@ class AgentRunOrchestrator:
             if source_run_id == run_id:
                 continue
             if source_run_id and await self._session_registry.get(str(source_run_id)) is not None:
+                continue
+            if not await store.reserve_steering_recovery(str(record['event_id']), run_id=run_id):
                 continue
             metadata = record.get('metadata') if isinstance(record.get('metadata'), dict) else {}
             steering = metadata.get('steering') if isinstance(metadata.get('steering'), dict) else {}

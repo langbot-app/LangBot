@@ -535,7 +535,9 @@ class LangBotSteeringPuller:
             return []
 
         try:
-            response = await steering_pull(mode=mode)
+            capabilities = getattr(getattr(getattr(self.api, "ctx", None), "context", None), "available_apis", None)
+            claim = getattr(capabilities, "steering_ack", False) is True
+            response = await steering_pull(mode=mode, claim=True) if claim else await steering_pull(mode=mode)
         except PermissionDeniedError:
             return []
         except Exception:
@@ -547,10 +549,20 @@ class LangBotSteeringPuller:
             return []
 
         messages: list[Message] = []
+        delivery_ids: list[str] = []
         for item in items:
             message = self._message_from_item(item)
             if message is not None:
                 messages.append(message)
+                delivery_id = _model_or_mapping_get(item, "delivery_id")
+                if claim and delivery_id:
+                    delivery_ids.append(delivery_id)
+        if delivery_ids:
+            try:
+                await self.api.steering_ack(delivery_ids)
+            except Exception:
+                logger.warning("Failed to acknowledge steering inputs", exc_info=True)
+                return []
         return messages
 
     def _message_from_item(self, item: typing.Any) -> Message | None:
