@@ -8,7 +8,7 @@ import os
 import re
 import uuid
 import zipfile
-from typing import Any
+from typing import Any, Literal
 from typing_extensions import TypedDict
 from urllib.parse import urlparse
 
@@ -33,8 +33,9 @@ from ...plugin.management import (
 from ...utils import httpclient
 from ...workspace.errors import WorkspaceNotFoundError
 from ..authz import Permission
+from ..context import PrincipalType
 from ..http.service.workspace_limits import workspace_limits
-from .contracts import Input, Operation
+from .contracts import ApplicationAPIError, ApplicationAPIException, Input, Operation
 
 
 class PluginsResult(TypedDict):
@@ -162,6 +163,27 @@ class MarketplaceInput(Input):
     plugin_name: str = Field(min_length=1)
     plugin_version: str | None = None
     auto_confirm_permissions: bool = False
+
+
+class MarketplaceSearchInput(Input):
+    query: str = Field(default='', max_length=200, description='Search keywords; empty lists popular plugins')
+    page: int = Field(default=1, ge=1, le=100)
+    page_size: int = Field(default=10, ge=1, le=50)
+    sort_by: Literal['install_count', 'like_count', 'created_at', 'updated_at'] = 'install_count'
+    sort_order: Literal['ASC', 'DESC'] = 'DESC'
+    component_filter: str | None = Field(
+        default=None,
+        pattern=r'^[A-Za-z]{1,64}$',
+        description='Only plugins providing this component type, e.g. Tool, Command, EventListener or Runner',
+    )
+    tags_filter: list[str] = Field(default_factory=list, max_length=10)
+
+
+class MarketplaceSearchResult(TypedDict):
+    plugins: list[dict[str, Any]]
+    total: int
+    page: int
+    page_size: int
 
 
 class FileInput(Input):
@@ -347,6 +369,67 @@ async def github_releases(ap, context, payload):
     return {'releases': releases, 'owner': owner, 'repo': name, 'source_subdir': repo['subdir']}
 
 
+def _fail(code: str, message: str, status: int, **details: Any):
+    from ...i18n import error_text
+
+    raise ApplicationAPIException(ApplicationAPIError(code, error_text(code, message), status, details or None))
+
+
+_MARKETPLACE_RESULT_FIELDS = (
+    'plugin_id',
+    'author',
+    'name',
+    'label',
+    'description',
+    'latest_version',
+    'tags',
+    'components',
+    'runner_usages',
+    'install_count',
+    'certification_status',
+    'source',
+    'repository',
+)
+
+
+def _marketplace_url(ap) -> str:
+    data = ap.instance_config.data
+    if not data.get('plugin', {}).get('enable_marketplace', True):
+        _fail('marketplace_disabled', 'The plugin marketplace is disabled on this instance', 503)
+    return data.get('space', {}).get('url', 'https://space.langbot.app').rstrip('/')
+
+
+async def marketplace_search(ap, context, payload):
+    await _fence(ap, context)
+    body = payload.model_dump(exclude_none=True)
+    if not body.get('tags_filter'):
+        body.pop('tags_filter', None)
+    url = f'{_marketplace_url(ap)}/api/v1/marketplace/plugins/search'
+    try:
+        async with httpx.AsyncClient(
+            trust_env=True, timeout=15, event_hooks=httpclient.httpx_response_limit_hooks()
+        ) as client:
+            response = await client.post(url, json=body)
+            response.raise_for_status()
+            data = await httpclient.parse_json_response(response)
+    except (httpx.HTTPError, ValueError):
+        data = None
+    if not isinstance(data, dict) or data.get('code', 0) != 0 or not isinstance(data.get('data'), dict):
+        _fail('marketplace_unavailable', 'The plugin marketplace returned an invalid response', 502)
+    plugins = data['data'].get('plugins') or []
+    total = data['data'].get('total')
+    return {
+        'plugins': [
+            {key: item[key] for key in _MARKETPLACE_RESULT_FIELDS if key in item}
+            for item in plugins
+            if isinstance(item, dict)
+        ],
+        'total': total if isinstance(total, int) else len(plugins),
+        'page': payload.page,
+        'page_size': payload.page_size,
+    }
+
+
 async def github_assets(ap, context, payload):
     await _fence(ap, context)
     release = await _github_json(
@@ -489,8 +572,39 @@ async def install_github(ap, context, payload):
     )
 
 
+_AGENT_PRINCIPALS = frozenset({PrincipalType.PLUGIN, PrincipalType.PROCESSOR})
+
+
+async def _check_agent_marketplace_install(ap, context, payload):
+    """Plugins and processors may only add new, unconfirmed installations.
+
+    Confirming permissions and replacing an installed plugin stay with members,
+    so an installed plugin or a chat-driven Agent cannot run code it activated itself.
+    """
+    if getattr(getattr(context, 'principal', None), 'principal_type', None) not in _AGENT_PRINCIPALS:
+        return
+    if payload.auto_confirm_permissions:
+        _fail('permission_denied', 'Only a member can confirm plugin permissions', 403, auto_confirm_permissions=True)
+    _marketplace_url(ap)
+    result = await ap.persistence_mgr.execute_async(
+        sqlalchemy.select(persistence_plugin.PluginSetting.installation_uuid)
+        .where(persistence_plugin.PluginSetting.workspace_uuid == context.workspace_uuid)
+        .where(persistence_plugin.PluginSetting.plugin_author == payload.plugin_author)
+        .where(persistence_plugin.PluginSetting.plugin_name == payload.plugin_name)
+        .limit(1)
+    )
+    if result.first() is not None:
+        _fail(
+            'plugin_already_installed',
+            'The plugin is already installed; a member must upgrade or reinstall it',
+            409,
+            plugin=f'{payload.plugin_author}/{payload.plugin_name}',
+        )
+
+
 async def install_marketplace(ap, context, payload):
     await _check_limit(ap, context)
+    await _check_agent_marketplace_install(ap, context, payload)
     identity = f'{payload.plugin_author}/{payload.plugin_name}'
     return await _install(
         ap,
@@ -573,6 +687,9 @@ def operations() -> list[Operation]:
         Operation('plugin.page_action', manage, page_action, PageInput, Any, side_effect=True),
         Operation('plugin.github.releases', view, github_releases, GithubRepoInput, dict),
         Operation('plugin.github.assets', view, github_assets, GithubAssetsInput, dict),
+        Operation(
+            'plugin.marketplace.search', view, marketplace_search, MarketplaceSearchInput, MarketplaceSearchResult
+        ),
         Operation('plugin.upgrade', manage, upgrade, PluginInput, TaskResult, side_effect=True),
         Operation('plugin.delete', manage, delete, DeleteInput, TaskResult, side_effect=True),
         Operation('plugin.install.github', manage, install_github, GithubInstallInput, TaskResult, side_effect=True),

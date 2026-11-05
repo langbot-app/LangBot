@@ -65,7 +65,7 @@ spec:
 現在使えるワイルドカード：
 
 - ドメイン全体：`adapter.*`、`extension.*`、`knowledge.*`、`model.*`、`requester.*`、`stats.*`、`tool.*`
-- より狭いプレフィックス：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`provider.models.*`、`skill.file.*`、および `knowledge.` と `model.` 配下のすべてのプレフィックス
+- より狭いプレフィックス：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`plugin.marketplace.*`、`provider.models.*`、`skill.file.*`、および `knowledge.` と `model.` 配下のすべてのプレフィックス
 
 プラグインが申請できるすべての操作は[ワークスペース API の操作一覧](/ja/plugin/dev/apis/workspace#操作一覧)にあります。
 
@@ -113,6 +113,17 @@ spec:
 ### インストール時の自動確認
 
 セットアップウィザードとパイプラインの移行では、公式プラグインのインストールと同時に、宣言された権限も確認されます。この処理は手動の確認とまったく同じチェックを通ります。呼び出し元はメンバーであり、必要な権限をすべて持っている必要があります。いずれかのチェックに失敗した場合、プラグインはインストールされますが承認待ちのままです。HTTP では `POST /api/v1/plugins/install/marketplace` の `auto_confirm_permissions: true` に相当します。既定値は `false` で、API キーがこれを使ってメンバーの確認を回避することはできません。
+
+### プラグインと Agent によるインストール
+
+メンバーが該当する操作を許可すると、プラグイン、またはワークスペースツールを通じた Agent やパイプラインは、`plugin.marketplace.search` でマーケットプレイスを検索し、`plugin.install.marketplace` でプラグインをインストールできます。インストールは**高リスク**に分類されるため、Agent やパイプラインで選択すると機密ツールの警告が表示されます。これらの呼び出し元が行えるのは、マーケットプレイスからの新規インストールだけです。
+
+- `auto_confirm_permissions: true` は `permission_denied` で拒否されます。新しいプラグインは、メンバーが詳細ページで権限を確認するまで無効のままです。
+- すでにインストールされているプラグインのインストールは `plugin_already_installed` で失敗します。アップグレードや再インストールはメンバーが行います。
+- インスタンスでマーケットプレイスが無効な場合、どちらの操作も `marketplace_disabled` で失敗します。
+- GitHub やローカルファイルからのインストールは利用できません。
+
+インストールの呼び出しは `task_id` を返します。`status` が `succeeded` または `failed` になるまで `task.get` をポーリングしてください。`pending_permission_confirmation: true` は、プラグインがメンバーの確認を待っていることを示します。
 
 ## 取り消しとアップグレード
 

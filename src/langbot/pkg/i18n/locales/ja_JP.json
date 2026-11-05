@@ -114,5 +114,9 @@
   "Session reset successfully": "セッションをリセットしました",
   "Voice transcription failed.": "音声の文字起こしに失敗しました。",
   "Voice message exceeds maximum duration.": "音声メッセージが最大時間を超えています。",
-  "Voice synthesis failed.": "音声合成に失敗しました。"
+  "Voice synthesis failed.": "音声合成に失敗しました。",
+  "The plugin marketplace is disabled on this instance": "このインスタンスではプラグインマーケットプレイスが無効です",
+  "The plugin marketplace returned an invalid response": "プラグインマーケットプレイスから無効な応答が返されました",
+  "Only a member can confirm plugin permissions": "プラグインの権限を確認できるのはメンバーのみです",
+  "The plugin is already installed; a member must upgrade or reinstall it": "このプラグインはすでにインストールされています。アップグレードや再インストールはメンバーが行う必要があります"
 }

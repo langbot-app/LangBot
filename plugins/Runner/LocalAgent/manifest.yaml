@@ -135,8 +135,10 @@ spec:
       - plugin.get
       - plugin.github.assets
       - plugin.github.releases
+      - plugin.install.marketplace
       - plugin.list
       - plugin.logs
+      - plugin.marketplace.search
       - plugin.readme
       - provider.create
       - provider.delete
@@ -158,6 +160,7 @@ spec:
       - skill.reload
       - skill.update
       - stats.basic
+      - task.get
       - tool.get
       - tool.list
     capabilities:

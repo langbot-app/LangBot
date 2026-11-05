@@ -114,5 +114,9 @@
   "Session reset successfully": "對話已重設",
   "Voice transcription failed.": "語音轉寫失敗。",
   "Voice message exceeds maximum duration.": "語音訊息超過最大時長。",
-  "Voice synthesis failed.": "語音合成失敗。"
+  "Voice synthesis failed.": "語音合成失敗。",
+  "The plugin marketplace is disabled on this instance": "此實例已停用外掛市場",
+  "The plugin marketplace returned an invalid response": "外掛市場回傳了無效的回應",
+  "Only a member can confirm plugin permissions": "只有成員可以確認外掛權限",
+  "The plugin is already installed; a member must upgrade or reinstall it": "該外掛已安裝，需由成員升級或重新安裝"
 }

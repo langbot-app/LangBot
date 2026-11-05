@@ -114,5 +114,9 @@
   "Session reset successfully": "Session reset successfully",
   "Voice transcription failed.": "Voice transcription failed.",
   "Voice message exceeds maximum duration.": "Voice message exceeds maximum duration.",
-  "Voice synthesis failed.": "Voice synthesis failed."
+  "Voice synthesis failed.": "Voice synthesis failed.",
+  "The plugin marketplace is disabled on this instance": "The plugin marketplace is disabled on this instance",
+  "The plugin marketplace returned an invalid response": "The plugin marketplace returned an invalid response",
+  "Only a member can confirm plugin permissions": "Only a member can confirm plugin permissions",
+  "The plugin is already installed; a member must upgrade or reinstall it": "The plugin is already installed; a member must upgrade or reinstall it"
 }

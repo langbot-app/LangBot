@@ -114,5 +114,9 @@
   "Session reset successfully": "会话已重置",
   "Voice transcription failed.": "语音转写失败。",
   "Voice message exceeds maximum duration.": "语音消息超出最大时长。",
-  "Voice synthesis failed.": "语音合成失败。"
+  "Voice synthesis failed.": "语音合成失败。",
+  "The plugin marketplace is disabled on this instance": "此实例已禁用插件市场",
+  "The plugin marketplace returned an invalid response": "插件市场返回了无效的响应",
+  "Only a member can confirm plugin permissions": "只有成员可以确认插件权限",
+  "The plugin is already installed; a member must upgrade or reinstall it": "该插件已安装，需由成员升级或重新安装"
 }

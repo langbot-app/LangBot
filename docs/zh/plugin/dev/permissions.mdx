@@ -65,7 +65,7 @@ spec:
 目前可用的通配符：
 
 - 整个领域：`adapter.*`、`extension.*`、`knowledge.*`、`model.*`、`requester.*`、`stats.*`、`tool.*`
-- 更窄的前缀：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`provider.models.*`、`skill.file.*`，以及 `knowledge.` 和 `model.` 下的所有前缀
+- 更窄的前缀：`agent.runs.*`、`bot.group_filter.*`、`bot.message.*`、`bot.routes.*`、`bot.runtime.*`、`mcp.resource.*`、`monitoring.execution.*`、`monitoring.feedback.*`、`monitoring.message.*`、`monitoring.session.*`、`pipeline.chat.*`、`pipeline.extensions.*`、`plugin.github.*`、`plugin.marketplace.*`、`provider.models.*`、`skill.file.*`，以及 `knowledge.` 和 `model.` 下的所有前缀
 
 插件可以申请的全部操作见[工作区 API 操作列表](/zh/plugin/dev/apis/workspace#操作列表)。
 
@@ -113,6 +113,17 @@ spec:
 ### 安装时自动确认
 
 初始化向导和流水线迁移在安装官方插件时，会一并确认它们声明的权限。这一步走的是与手动确认完全相同的检查：调用方必须是成员，并具备所有需要的权限。任何一项检查不通过，插件仍会安装，但保持待授权状态。在 HTTP 接口中，这对应 `POST /api/v1/plugins/install/marketplace` 的 `auto_confirm_permissions: true`；默认值为 `false`，API Key 也无法借此跳过成员确认。
+
+### 由插件和 Agent 发起的安装
+
+成员授予相应操作后，插件，或通过工作区工具调用的 Agent、流水线，可以用 `plugin.marketplace.search` 搜索插件市场，并用 `plugin.install.marketplace` 安装插件。安装操作标记为**高危**，为 Agent 或流水线勾选它时会显示敏感工具提示。这类调用方只能从插件市场新增安装：
+
+- 传入 `auto_confirm_permissions: true` 会被拒绝，返回 `permission_denied`。新插件保持禁用，直到成员在插件详情页确认其权限。
+- 安装已经安装的插件会失败，返回 `plugin_already_installed`；升级或重新安装仍由成员完成。
+- 实例禁用插件市场时，两个操作都会返回 `marketplace_disabled`。
+- 不能从 GitHub 或本地文件安装。
+
+安装调用返回 `task_id`。轮询 `task.get`，直到 `status` 为 `succeeded` 或 `failed`；`pending_permission_confirmation: true` 表示插件正在等待成员确认。
 
 ## 撤销与升级
 

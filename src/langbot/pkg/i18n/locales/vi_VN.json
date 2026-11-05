@@ -114,5 +114,9 @@
   "Session reset successfully": "Đã đặt lại phiên",
   "Voice transcription failed.": "Chuyển đổi giọng nói thành văn bản thất bại.",
   "Voice message exceeds maximum duration.": "Tin nhắn thoại vượt quá thời lượng tối đa.",
-  "Voice synthesis failed.": "Tổng hợp giọng nói thất bại."
+  "Voice synthesis failed.": "Tổng hợp giọng nói thất bại.",
+  "The plugin marketplace is disabled on this instance": "Chợ plugin đã bị tắt trên phiên bản này",
+  "The plugin marketplace returned an invalid response": "Chợ plugin trả về phản hồi không hợp lệ",
+  "Only a member can confirm plugin permissions": "Chỉ thành viên mới có thể xác nhận quyền của plugin",
+  "The plugin is already installed; a member must upgrade or reinstall it": "Plugin đã được cài đặt; thành viên phải nâng cấp hoặc cài đặt lại"
 }
