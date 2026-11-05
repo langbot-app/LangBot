@@ -134,9 +134,6 @@ def test_explicit_reply_guidance_requires_manual_delivery_and_authorized_platfor
 async def test_assembler_includes_delivery_guidance_in_model_system_prompt(automatic_reply, workspace_mode):
     tools = [ToolResource(tool_name="event_reply", tool_type="platform")]
     api = FakeRunnerAPIProxy(models=[ModelResource(model_id="primary")], tools=tools)
-    api.workspace = SimpleNamespace(
-        list=AsyncMock(return_value={"operations": [{"id": "bot.list"}] if workspace_mode else []})
-    )
     ctx = make_context(
         config={
             "model": {"primary": "primary"},
@@ -145,6 +142,11 @@ async def test_assembler_includes_delivery_guidance_in_model_system_prompt(autom
         },
         resources=AgentResources(models=api.get_allowed_models(), tools=tools),
         input_text="hello",
+    )
+    # Workspace tools come from the operations LangBot selected for this run.
+    ctx.resources = SimpleNamespace(
+        **{name: getattr(ctx.resources, name) for name in ("models", "tools", "knowledge_bases", "skills")},
+        workspace_operations=[{"id": "bot.list"}] if workspace_mode else [],
     )
     ctx.delivery.automatic_reply = automatic_reply
 

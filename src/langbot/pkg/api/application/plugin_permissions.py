@@ -55,7 +55,12 @@ def expand_declaration(ap, declaration: dict | None) -> dict:
     if declaration is None:
         return {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
     parsed = PluginPermissions.model_validate(declaration)
-    operations = ap.application_api._operations
+    app_api = getattr(ap, 'application_api', None)
+    if app_api is None:
+        from .api import ApplicationAPI
+
+        app_api = ApplicationAPI(ap)
+    operations = app_api._operations
     expanded = set()
     for pattern in parsed.workspace_operations:
         if pattern.endswith('.*') and '*' not in pattern[:-2]:

@@ -107,8 +107,10 @@ export default function PluginPermissions({
     setFailed(false);
     try {
       const value = await backendClient.get<PluginPermissionState>(path);
+      // Compute the selection first so a malformed response shows the retry state.
+      const selection = initialPermissionSelection(value);
       setState(value);
-      setDraft(initialPermissionSelection(value));
+      setDraft(selection);
     } catch {
       setFailed(true);
     }
@@ -220,7 +222,9 @@ export default function PluginPermissions({
     !compatibilityBlocked &&
     (total === 0 || state.permissions.some((item) => item.grantable));
   const { added, removed } = permissionSelectionDiff(state, draft);
-  const dirty = !pending && (added.length > 0 || removed.length > 0);
+  const dirty = added.length > 0 || removed.length > 0;
+  // Pending installations and new grants both need an explicit confirmation.
+  const needsConfirmation = (pending && canConfirm) || added.length > 0;
   // Confirming compatibility mode always grants every legacy capability.
   const toGrant = state.compatibility_mode
     ? state.permissions.filter((item) => pending || !item.granted)
@@ -267,7 +271,7 @@ export default function PluginPermissions({
   }
 
   function submit() {
-    if (pending || added.length > 0) setConfirming(true);
+    if (needsConfirmation) setConfirming(true);
     else void save(false);
   }
 
@@ -336,7 +340,7 @@ export default function PluginPermissions({
                 {t('pluginPermissions.compatibilityNote')}
               </p>
             )}
-            {!state.can_manage && (
+            {!state.can_confirm && (
               <p className="text-xs text-muted-foreground">
                 {t('pluginPermissions.managerRequired')}
               </p>
@@ -507,10 +511,10 @@ export default function PluginPermissions({
                     ))}
                   </div>
                 )}
-                {(dirty || pending) && state.can_manage && (
+                {(dirty || (pending && canConfirm)) && state.can_manage && (
                   <div className="flex items-center justify-end gap-2">
                     <span className="mr-auto text-xs text-muted-foreground">
-                      {pending
+                      {!dirty
                         ? t('pluginPermissions.selectedCount', {
                             count: draft.size,
                           })
@@ -535,13 +539,11 @@ export default function PluginPermissions({
                     <Button
                       size="sm"
                       className="h-7 px-2.5 text-xs"
-                      disabled={
-                        busy || ((pending || added.length > 0) && !canConfirm)
-                      }
+                      disabled={busy || (added.length > 0 && !canConfirm)}
                       onClick={submit}
                     >
                       {busy && <Loader2 className="size-3.5 animate-spin" />}
-                      {pending
+                      {needsConfirmation
                         ? t('pluginPermissions.grant')
                         : t('common.save')}
                     </Button>

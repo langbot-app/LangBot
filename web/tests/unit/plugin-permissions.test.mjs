@@ -136,7 +136,7 @@ test('selection diff compares against saved grants', () => {
   );
 });
 
-test('pending installations start with every grantable permission selected', () => {
+test('pending installations keep grants and preselect every grantable permission', () => {
   const pending = {
     ...state,
     pending_confirmation: true,
@@ -153,18 +153,23 @@ test('pending installations start with every grantable permission selected', () 
         granted: true,
         grantable: false,
       },
+      { id: 'mcp', category: 'capabilities', granted: false, grantable: false },
     ],
   };
-  assert.deepEqual([...initialPermissionSelection(pending)], ['stats.basic']);
-  const { added, removed } = permissionSelectionDiff(
-    pending,
-    initialPermissionSelection(pending),
-  );
+  const selection = initialPermissionSelection(pending);
+  assert.deepEqual([...selection], ['stats.basic', 'sandbox']);
+  const { added, removed } = permissionSelectionDiff(pending, selection);
   assert.deepEqual(
     added.map((item) => item.id),
     ['stats.basic'],
   );
   assert.deepEqual(removed, []);
+  // An existing grant can still be revoked while the upgrade is pending.
+  selection.delete('sandbox');
+  assert.deepEqual(
+    permissionSelectionDiff(pending, selection).removed.map((item) => item.id),
+    ['sandbox'],
+  );
 });
 
 test('all eight permission dictionaries expose matching translation keys', () => {

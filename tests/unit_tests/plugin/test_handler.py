@@ -12,7 +12,7 @@ import pytest
 
 from tests.utils.plugin_installations import install_legacy_plugin
 
-from langbot_plugin.entities.io.actions.enums import LangBotToRuntimeAction, PluginToRuntimeAction
+from langbot_plugin.entities.io.actions.enums import CommonAction, LangBotToRuntimeAction, PluginToRuntimeAction
 from langbot_plugin.entities.io.context import (
     ActionContext,
     InstallationBinding,
@@ -48,11 +48,27 @@ async def test_knowledge_retrieval_counts_on_the_authorized_run(monkeypatch, act
     )
     monkeypatch.setattr('langbot.pkg.plugin.handler._validate_run_authorization', AsyncMock(return_value=({}, None)))
     monkeypatch.setattr('langbot.pkg.plugin.handler._resolve_action_query', Mock(return_value=query))
-    runtime_handler = make_handler(app)
-    response = await runtime_handler.actions[action.value](
-        {'run_id': 'run', 'kb_id': 'kb', 'query_text': 'private query'}
+    from langbot.pkg.agent.runner.session_registry import get_session_registry
+    from tests.unit_tests.plugin.test_handler_actions import make_agent_resources
+
+    # The execution facade only admits runs owned by the calling installation.
+    registry = get_session_registry()
+    await registry.register(
+        workspace_id='workspace-a',
+        run_id='run',
+        runner_id='plugin:test-author/test-plugin/default',
+        query_id=None,
+        plugin_identity='test-author/test-plugin',
+        resources=make_agent_resources(),
     )
-    assert response.code == 0
+    runtime_handler = make_handler(app)
+    try:
+        response = await runtime_handler.actions[action.value](
+            {'run_id': 'run', 'kb_id': 'kb', 'query_text': 'private query'}
+        )
+    finally:
+        await registry.unregister('run')
+    assert response.code == 0, response.message
     assert state.features == {'kb': {'retrievals': 1}}
 
 
@@ -410,6 +426,16 @@ class TestHandlerRagErrorResponse:
         # No context parts means no brackets
         assert '[' in response.message  # Still has error type bracket
         assert 'KeyError' in response.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('action', [CommonAction.STREAM_ACK, CommonAction.CANCEL_ACTION])
+async def test_stream_control_actions_bypass_capability_authorization(action):
+    """Stream acks and cancellations ride on the plugin's own authorized action."""
+    app = SimpleNamespace(logger=Mock())
+    runtime_handler = make_handler(app)
+    response = await runtime_handler.actions[action.value]({'seq_id': 404, 'index': 0})
+    assert response.code == 0, response.message
 
 
 class TestHandlerPluginDiagnostic:

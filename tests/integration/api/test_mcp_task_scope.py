@@ -29,6 +29,7 @@ from langbot.pkg.entity.persistence.mcp import MCPServer
 from langbot.pkg.entity.persistence.metadata import WorkspaceMetadata
 from langbot.pkg.entity.persistence.model import ModelProvider
 from langbot.pkg.entity.persistence.pipeline import LegacyPipeline
+from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.pipeline.pipelinemgr import PipelineManager
@@ -77,6 +78,7 @@ async def test_mcp_session_tools_use_task_owned_scopes_and_real_services(tmp_pat
                         ModelProvider,
                         WorkspaceMetadata,
                         MCPServer,
+                        PluginSetting,
                     )
                 ],
             )
@@ -230,7 +232,10 @@ async def test_mcp_session_tools_use_task_owned_scopes_and_real_services(tmp_pat
                     result = await call(key, role, 'scope_probe', {'fail': True})
                     assert result['isError']
 
-                denied = await call(
+                # Pipeline workspace operations only select among operations an
+                # account already granted to the runner plugin installation, so a
+                # manager may store a selection outside its own permissions.
+                result = await call(
                     limited,
                     'limited',
                     'update_pipeline_extensions',
@@ -239,8 +244,22 @@ async def test_mcp_session_tools_use_task_owned_scopes_and_real_services(tmp_pat
                         'workspace_operations': ['model.llm.create'],
                     },
                 )
-                assert denied['isError']
-                assert 'permission' in json.dumps(denied).lower(), denied
+                assert not result.get('isError'), result
+                response = await client.get('/api/v1/pipelines/pipeline-a', headers={'X-API-Key': limited['key']})
+                assert response.status_code == 200, response.text
+                assert response.json()['data']['pipeline']['extensions_preferences']['workspace_operations'] == [
+                    'model.llm.create'
+                ]
+                result = await call(
+                    limited,
+                    'limited',
+                    'update_pipeline_extensions',
+                    {
+                        **extension_arguments,
+                        'workspace_operations': ['pipeline.get', 'pipeline.list'],
+                    },
+                )
+                assert not result.get('isError'), result
                 denied = await call(
                     viewer,
                     'viewer',

@@ -154,6 +154,17 @@ async function mockPermissions(
   return { writes, state };
 }
 
+async function openPermissions(page: Page) {
+  await page.getByRole('button', { name: /^Plugin permissions/ }).click();
+}
+
+function permission(page: Page, id: string) {
+  // Rows are named by label, ID and an optional requirement hint.
+  return page.getByRole('checkbox', {
+    name: new RegExp(`(^|\\s)${id.replace(/\./g, '\\.')}(\\s|$)`),
+  });
+}
+
 test('strict installation supports partial grants and a second confirmation', async ({
   page,
 }, testInfo) => {
@@ -170,14 +181,15 @@ test('strict installation supports partial grants and a second confirmation', as
     .getByRole('button', { name: 'Review permissions', exact: true })
     .click();
   await expect(page).toHaveURL(/id=qa%2Fpermissions/);
-  await expect(page.getByText('Dangerous', { exact: true })).toBeVisible();
-  await expect(
-    page.getByText('Sends bot messages', { exact: true }),
-  ).toBeVisible();
-  await page.getByRole('checkbox', { name: /\(sandbox\)/ }).uncheck();
-  await page
-    .getByRole('button', { name: 'Review permissions', exact: true })
-    .click();
+  await expect(page.getByText('Needs approval', { exact: true })).toBeVisible();
+  await openPermissions(page);
+  // Capabilities and workspace operations are separate, searchable tabs.
+  await expect(permission(page, 'sandbox')).toBeChecked();
+  await page.getByPlaceholder('Search by name or ID…').fill('sandbox');
+  await expect(page.locator('li[data-permission-id]')).toHaveCount(1);
+  await permission(page, 'sandbox').uncheck();
+  await page.getByPlaceholder('Search by name or ID…').fill('');
+  await page.getByRole('button', { name: 'Grant', exact: true }).last().click();
   expect(writes).toHaveLength(0);
   const dialog = page.getByRole('dialog');
   await expect(
@@ -188,9 +200,7 @@ test('strict installation supports partial grants and a second confirmation', as
     path: testInfo.outputPath('strict-confirmation.png'),
     fullPage: true,
   });
-  await dialog
-    .getByRole('button', { name: 'Confirm grants', exact: true })
-    .click();
+  await dialog.getByRole('button', { name: 'Grant 2', exact: true }).click();
   await expect
     .poll(() => writes)
     .toEqual([
@@ -200,6 +210,7 @@ test('strict installation supports partial grants and a second confirmation', as
         capabilities: ['bot.message.send'],
       },
     ]);
+  await expect(page.getByText('2 of 3 granted', { exact: true })).toBeVisible();
   await page.goto('/home/extensions');
   await expect(review).toHaveCount(0);
 });
@@ -209,32 +220,34 @@ test('compatibility confirmation grants all 16 capabilities and keeps its warnin
 }, testInfo) => {
   const { writes } = await mockPermissions(page, { compatibility: true });
   await page.goto('/home/extensions?id=qa%2Fpermissions');
+  await openPermissions(page);
   await expect(
-    page.getByText('Undeclared permissions', { exact: true }),
+    page.getByText(/doesn't declare the permissions it needs/),
   ).toBeVisible();
-  await expect(page.getByRole('checkbox')).toHaveCount(16);
-  await expect(page.getByRole('checkbox').first()).toBeDisabled();
+  const rows = page.locator('li[data-permission-id]');
+  await expect(rows).toHaveCount(16);
+  await expect(rows.first().getByRole('checkbox')).toBeDisabled();
   await page
-    .getByRole('button', { name: 'Review permissions', exact: true })
+    .getByRole('button', { name: 'Grant', exact: true })
+    .first()
     .click();
   await page
     .getByRole('dialog')
-    .getByRole('button', { name: 'Confirm grants', exact: true })
+    .getByRole('button', { name: 'Grant 16', exact: true })
     .click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0].capabilities).toHaveLength(16);
   expect(writes[0].workspace_operations).toEqual([]);
-  const row = page.locator('li[data-permission-id="bot.message.send"]');
-  await row.getByRole('button', { name: 'Revoke', exact: true }).click();
+  // Removing a grant needs no confirmation.
+  await permission(page, 'bot.message.send').uncheck();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect.poll(() => writes.length).toBe(2);
   expect(writes[1].confirm).toBe(false);
   expect(writes[1].capabilities).toHaveLength(15);
   expect(writes[1].capabilities).not.toContain('bot.message.send');
-  await expect(row.getByRole('checkbox')).not.toBeChecked();
+  await expect(permission(page, 'bot.message.send')).not.toBeChecked();
   await expect(
-    page
-      .getByRole('alert')
-      .filter({ hasText: 'This plugin does not declare permissions' }),
+    page.getByText(/doesn't declare the permissions it needs/),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('compatibility-revoked.png'),
@@ -251,22 +264,19 @@ test('upgrade preserves existing grants and confirms newly declared permissions'
 }) => {
   const { writes } = await mockPermissions(page, { upgrade: true });
   await page.goto('/home/extensions?id=qa%2Fpermissions');
-  await expect(
-    page.getByText('Permission confirmation required', { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole('checkbox', { name: /\(stats\.basic\)/ }),
-  ).toBeChecked();
+  await expect(page.getByText('Needs approval', { exact: true })).toBeVisible();
+  await openPermissions(page);
+  await page.getByRole('button', { name: /^Workspace operations/ }).click();
+  await expect(permission(page, 'stats.basic')).toBeChecked();
   await page
-    .getByRole('button', { name: 'Review permissions', exact: true })
+    .getByRole('button', { name: 'Grant', exact: true })
+    .first()
     .click();
-  await expect(
-    page.getByRole('dialog').getByText('sandbox', { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole('dialog')
-    .getByRole('button', { name: 'Confirm grants', exact: true })
-    .click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByText('sandbox', { exact: true })).toBeVisible();
+  // Only the newly declared permissions are listed for confirmation.
+  await expect(dialog.getByText('stats.basic', { exact: true })).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Grant 2', exact: true }).click();
   await expect.poll(() => writes.length).toBe(1);
   expect(writes[0]).toEqual({
     confirm: true,
@@ -286,12 +296,16 @@ for (const principal of ['API key', 'missing resource.manage']) {
     });
     await page.goto('/home/extensions?id=qa%2Fpermissions');
     await expect(
-      page.getByRole('button', { name: 'Review permissions', exact: true }),
-    ).toBeDisabled();
-    const revoke = page.getByRole('button', { name: 'Revoke', exact: true });
-    if (principal === 'API key') await expect(revoke).toBeEnabled();
-    else await expect(revoke).toBeDisabled();
-    await expect(page.getByRole('checkbox').first()).toBeDisabled();
+      page.getByRole('button', { name: 'Grant', exact: true }),
+    ).toHaveCount(0);
+    await openPermissions(page);
+    await page.getByRole('button', { name: /^Workspace operations/ }).click();
+    const granted = permission(page, 'stats.basic');
+    await expect(granted).toBeChecked();
+    if (principal === 'API key') await expect(granted).toBeEnabled();
+    else await expect(granted).toBeDisabled();
+    await page.getByRole('button', { name: /^Plugin capabilities/ }).click();
+    await expect(permission(page, 'sandbox')).toBeDisabled();
     await expect(
       page.getByText(/Managing plugin permissions requires resource.manage/),
     ).toBeVisible();
@@ -301,7 +315,10 @@ for (const principal of ['API key', 'missing resource.manage']) {
       fullPage: true,
     });
     if (principal === 'API key') {
-      await revoke.click();
+      // API keys may still revoke an existing grant.
+      await page.getByRole('button', { name: /^Workspace operations/ }).click();
+      await granted.uncheck();
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect
         .poll(() => writes)
         .toEqual([
@@ -317,16 +334,17 @@ test('ungrantable strict permissions are disabled; compatibility cannot partiall
   await mockPermissions(page, { blocked: true });
   await page.goto('/home/extensions?id=qa%2Fpermissions');
   await expect(
-    page.getByRole('checkbox', { name: /\(sandbox\)/ }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole('button', { name: 'Review permissions', exact: true }),
+    page.getByRole('button', { name: 'Grant', exact: true }),
   ).toBeEnabled();
+  await openPermissions(page);
+  await expect(permission(page, 'sandbox')).toBeDisabled();
+  await expect(permission(page, 'sandbox')).not.toBeChecked();
   await mockPermissions(page, { compatibility: true, blocked: true });
   await page.reload();
+  await expect(page.getByText('Needs approval', { exact: true })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Review permissions', exact: true }),
-  ).toBeDisabled();
+    page.getByRole('button', { name: 'Grant', exact: true }),
+  ).toHaveCount(0);
 });
 
 test('completed installation remains pending instead of claiming activation', async ({

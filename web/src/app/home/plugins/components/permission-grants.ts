@@ -24,14 +24,18 @@ export type PluginPermissionState = {
   domains?: { domain: string; label: Record<string, string> }[];
 };
 
-/** Selection a freshly loaded panel starts from. */
+/**
+ * Selection a freshly loaded panel starts from: the current grants, plus every
+ * grantable permission while the installation awaits confirmation.
+ */
 export function initialPermissionSelection(state: PluginPermissionState) {
   return new Set(
     state.permissions
-      .filter((item) =>
-        state.pending_confirmation
-          ? state.compatibility_mode || item.grantable
-          : item.granted,
+      .filter(
+        (item) =>
+          item.granted ||
+          (state.pending_confirmation &&
+            (state.compatibility_mode || item.grantable)),
       )
       .map((item) => item.id),
   );
@@ -42,14 +46,12 @@ export function permissionSelectionDiff(
   state: PluginPermissionState,
   selected: Set<string>,
 ) {
-  const saved = (item: PluginPermissionItem) =>
-    !state.pending_confirmation && item.granted;
   return {
     added: state.permissions.filter(
-      (item) => selected.has(item.id) && !saved(item),
+      (item) => selected.has(item.id) && !item.granted,
     ),
     removed: state.permissions.filter(
-      (item) => !selected.has(item.id) && saved(item),
+      (item) => !selected.has(item.id) && item.granted,
     ),
   };
 }

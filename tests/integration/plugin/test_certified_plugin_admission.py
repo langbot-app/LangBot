@@ -191,7 +191,9 @@ async def test_marketplace_version_selection_keeps_certificate_gate_and_single_a
         binding,
         artifact_package=package,
         enabled=True,
-        execution_mode=(PluginExecutionMode.SHARED_CERTIFIED if archive_kind == 'signed_shared' else PluginExecutionMode.DEDICATED),
+        execution_mode=(
+            PluginExecutionMode.SHARED_CERTIFIED if archive_kind == 'signed_shared' else PluginExecutionMode.DEDICATED
+        ),
     )
     connector._refresh_runner_registry.assert_awaited_once()
     assert task_context.metadata['progress_percent'] == 100
@@ -237,6 +239,8 @@ def _connector(deployment: str, trusted_public_keys: dict[str, str]):
     connector._current_execution_context = AsyncMock(return_value=execution_context)
     connector._store_artifact_package = AsyncMock()
     connector._persist_installation_package = AsyncMock(return_value=(binding, None, False))
+    # The persisted installation decides whether the Runtime starts it enabled.
+    connector._setting_for_plugin = AsyncMock(return_value=(execution_context, SimpleNamespace(enabled=True)))
     connector._wait_for_installed_plugin_ready = AsyncMock()
     return connector, execution_context, binding
 

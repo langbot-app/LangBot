@@ -496,9 +496,14 @@ _UNTRUSTED_SCOPE_FIELDS = frozenset(
     }
 )
 
+# Protocol actions that carry no plugin capability. Stream acknowledgements and
+# cancellations are bound by the SDK to the caller's own in-flight action, so
+# the installation grants of the original action already apply.
 _RUNTIME_SCOPED_ACTIONS = frozenset(
     {
         CommonAction.FILE_CHUNK.value,
+        CommonAction.STREAM_ACK.value,
+        CommonAction.CANCEL_ACTION.value,
         RuntimeToLangBotAction.INITIALIZE_PLUGIN_SETTINGS.value,
         RuntimeToLangBotAction.GET_PLUGIN_SETTINGS.value,
     }

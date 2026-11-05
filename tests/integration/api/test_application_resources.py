@@ -1,7 +1,7 @@
 """Real resource services and SQLite; only external runtime caches are stubbed."""
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 import sqlalchemy as sa
@@ -42,7 +42,12 @@ async def resources(foundation):  # noqa: F811 - pytest resolves the imported fi
     ap.embedding_models_service = EmbeddingModelsService(ap)
     ap.rerank_models_service = RerankModelsService(ap)
     ap.pipeline_service = PipelineService(ap)
-    ap.pipeline_mgr = SimpleNamespace(load_pipeline=AsyncMock(), remove_pipeline=AsyncMock())
+    ap.pipeline_mgr = SimpleNamespace(
+        load_pipeline=AsyncMock(),
+        remove_pipeline=AsyncMock(),
+        prepare_pipeline=AsyncMock(),
+        publish_pipeline=Mock(),
+    )
     ap.ver_mgr = SimpleNamespace(get_current_version=lambda: 'test-foundation')
     ap.sess_mgr = SimpleNamespace(session_list=[])
     ap.plugin_connector = SimpleNamespace(is_enable_plugin=False)

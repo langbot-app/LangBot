@@ -72,7 +72,7 @@ test('pipeline saves bot tools together with existing bindings and workspace sel
   await page.getByRole('button', { name: 'Extensions', exact: true }).click();
   await page.getByRole('button', { name: /Bot tools/ }).click();
   await page.getByRole('checkbox', { name: /Send bot message/ }).check();
-  await page.getByRole('button', { name: /Save Workspace Operations/ }).click();
+  await page.getByRole('button', { name: /Save tool access/ }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog).toBeVisible();
   expect(writes).toHaveLength(0);
