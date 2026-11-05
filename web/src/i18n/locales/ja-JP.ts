@@ -119,6 +119,65 @@ const jaJP = {
       managed_sandbox_sessions: '管理サンドボックスセッション',
     },
   },
+  workspaceSandbox: {
+    confirm: '確認して保存',
+    cancel: 'キャンセル',
+    current: '現在の設定：{{backend}}',
+    unsaved: '未保存',
+    configureE2b: 'E2B を設定',
+    apiUrl: 'API URL',
+    sandboxUrl: 'サンドボックス URL',
+    template: 'テンプレート',
+    keyConfigured: '設定済み。空欄で維持',
+    keyRequired: 'API Key を入力',
+    keyHelp:
+      '保存済みのキーは表示されません。URL を変更する場合は新しいキーを入力してください。',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'この環境は stdio MCP サーバーに対応していません。',
+    label: '実行環境',
+    description:
+      'このワークスペースの新しいタスクに適用されます。実行中のタスクは元の環境を使い続けます。',
+    saved: '保存しました。新しいタスクに適用されます',
+    saveFailed: '実行環境を保存できませんでした',
+    loadFailed: '環境の確認に失敗しました',
+    refresh: '再確認',
+    noEnvironment: '利用可能な環境がありません',
+    unavailable:
+      '選択した環境は利用できません。新しいタスクはサンドボックスで実行できません。',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: '利用不可',
+      policy_restricted: 'プラットフォームにより制限',
+      probe_failed: '環境確認に失敗',
+      docker_missing: 'Docker CLI が未インストール',
+      docker_unreachable: 'Docker が停止中、またはアクセス権限がありません',
+      nsjail_missing: 'nsjail が未インストール',
+      cgroup_unavailable: 'nsjail cgroup の制限が未準備',
+      isolation_unavailable:
+        'nsjail の名前空間・マウント・ネットワーク隔離に失敗',
+      sdk_missing: 'E2B SDK が未インストール',
+      missing_credentials: 'E2B API キーが未設定',
+      connection_failed:
+        'E2B に接続できません。URL とネットワークを確認してください',
+      authentication_failed: 'E2B 認証に失敗。API キーを確認してください',
+      probe_timeout: '確認がタイムアウトしました',
+      invalid_configuration: 'E2B の URL または認証情報が不完全',
+      not_checked: '設定が変更されました。再確認してください',
+    },
+  },
   workspaceLanguage: {
     label: 'ワークスペースの言語',
     description:

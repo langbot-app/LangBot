@@ -117,6 +117,62 @@ const viVN = {
       managed_sandbox_sessions: 'Phiên sandbox được quản lý',
     },
   },
+  workspaceSandbox: {
+    confirm: 'Xác nhận và lưu',
+    cancel: 'Hủy',
+    current: 'Đang dùng: {{backend}}',
+    unsaved: 'Chưa lưu',
+    configureE2b: 'Cấu hình E2B',
+    apiUrl: 'URL API',
+    sandboxUrl: 'URL sandbox',
+    template: 'Mẫu',
+    keyConfigured: 'Đã cấu hình; để trống để giữ nguyên',
+    keyRequired: 'Nhập API Key',
+    keyHelp:
+      'Khóa đã lưu không được trả về. Nhập khóa mới khi đổi URL dịch vụ.',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'Môi trường này không hỗ trợ máy chủ MCP stdio.',
+    label: 'Môi trường thực thi',
+    description:
+      'Tác vụ mới dùng môi trường này. Tác vụ đang chạy tiếp tục dùng môi trường cũ.',
+    saved: 'Đã lưu, áp dụng cho tác vụ mới',
+    saveFailed: 'Không thể lưu môi trường',
+    loadFailed: 'Không thể kiểm tra môi trường',
+    refresh: 'Kiểm tra lại',
+    noEnvironment: 'Không có môi trường khả dụng',
+    unavailable: 'Môi trường đã chọn không khả dụng cho tác vụ mới.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Không khả dụng',
+      policy_restricted: 'Bị nền tảng hạn chế',
+      probe_failed: 'Kiểm tra thất bại',
+      docker_missing: 'Chưa cài Docker CLI',
+      docker_unreachable: 'Docker chưa chạy hoặc bị từ chối truy cập',
+      nsjail_missing: 'Chưa cài nsjail',
+      cgroup_unavailable: 'Giới hạn cgroup nsjail chưa sẵn sàng',
+      isolation_unavailable: 'Kiểm tra cách ly nsjail thất bại',
+      sdk_missing: 'Chưa cài E2B SDK',
+      missing_credentials: 'Thiếu API Key E2B',
+      connection_failed: 'Không thể kết nối E2B; kiểm tra URL và mạng',
+      authentication_failed: 'Xác thực E2B thất bại; kiểm tra khóa',
+      probe_timeout: 'Kiểm tra hết thời gian',
+      invalid_configuration: 'URL hoặc thông tin xác thực E2B chưa đầy đủ',
+      not_checked: 'Cấu hình đã đổi; hãy kiểm tra lại',
+    },
+  },
   workspaceLanguage: {
     label: 'Ngôn ngữ không gian làm việc',
     description:

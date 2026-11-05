@@ -118,6 +118,62 @@ const ruRU = {
       managed_sandbox_sessions: 'Управляемые сеансы песочницы',
     },
   },
+  workspaceSandbox: {
+    confirm: 'Подтвердить и сохранить',
+    cancel: 'Отмена',
+    current: 'Активно: {{backend}}',
+    unsaved: 'Не сохранено',
+    configureE2b: 'Настроить E2B',
+    apiUrl: 'URL API',
+    sandboxUrl: 'URL песочницы',
+    template: 'Шаблон',
+    keyConfigured: 'Настроено; оставьте пустым для сохранения',
+    keyRequired: 'Введите API Key',
+    keyHelp:
+      'Сохранённые ключи не возвращаются. При изменении URL введите новый ключ.',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'Эта среда не поддерживает серверы MCP stdio.',
+    label: 'Среда выполнения',
+    description:
+      'Новые задачи используют эту среду. Запущенные задачи продолжают работу в прежней среде.',
+    saved: 'Сохранено для новых задач',
+    saveFailed: 'Не удалось сохранить среду',
+    loadFailed: 'Не удалось проверить среды',
+    refresh: 'Проверить снова',
+    noEnvironment: 'Нет доступных сред',
+    unavailable: 'Выбранная среда недоступна для выполнения новых задач.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Недоступно',
+      policy_restricted: 'Ограничено платформой',
+      probe_failed: 'Ошибка проверки',
+      docker_missing: 'Docker CLI не установлен',
+      docker_unreachable: 'Docker остановлен или нет доступа',
+      nsjail_missing: 'nsjail не установлен',
+      cgroup_unavailable: 'Ограничения cgroup nsjail не готовы',
+      isolation_unavailable: 'Ошибка изоляции nsjail',
+      sdk_missing: 'E2B SDK не установлен',
+      missing_credentials: 'Не задан ключ API E2B',
+      connection_failed: 'Нет соединения с E2B; проверьте URL и сеть',
+      authentication_failed: 'Ошибка авторизации E2B; проверьте ключ',
+      probe_timeout: 'Истекло время проверки',
+      invalid_configuration: 'URL или учётные данные E2B не заполнены',
+      not_checked: 'Настройки изменены; проверьте снова',
+    },
+  },
   workspaceLanguage: {
     label: 'Язык рабочего пространства',
     description:

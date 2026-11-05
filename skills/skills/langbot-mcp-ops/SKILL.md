@@ -74,6 +74,11 @@ permissions. Migration with plugin installation enabled uses the same checks.
 Pipeline extensions accept `allowed_platform_tools` as model preferences, not
 installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
+
+## Workspace execution environment
+
+Use `get_workspace_sandbox(refresh=true)` to detect selectable Docker, E2B, and nsjail environments on the Box Runtime host. `set_workspace_sandbox(backend)` requires `workspace.update` and only accepts an available, platform-permitted backend. The setting applies to new tasks; running tasks keep their bound Box. For workspace E2B settings, pass `e2b` with `api_url`, `sandbox_url`, `template`, and a new `api_key` when needed. Template options come from the E2B service. Use `check_workspace_sandbox(e2b)` to list templates and create, execute in, and delete a temporary sandbox for the selected template without saving, then call `set_workspace_sandbox(backend, e2b)` only after the user confirms the settings. Stored keys are never returned; an omitted or blank key preserves the existing key only when endpoints are unchanged. Docker/nsjail host setup remains deployment-owned.
+
 ## Tool surface
 
 `create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,

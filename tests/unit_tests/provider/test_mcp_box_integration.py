@@ -164,6 +164,8 @@ def _make_ap():
         )
     )
     ap.box_service = Mock()
+    ap.box_service.resolve_workspace_backend = AsyncMock(return_value=None)
+    ap.box_service.resolve_workspace_selection = AsyncMock(return_value={'backend': None, 'e2b': {}})
     ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box.example/process', {}))
     return ap
 
@@ -1007,7 +1009,7 @@ async def test_init_box_stdio_server_stages_host_path_in_shared_workspace(mcp_mo
     shared_workspace = tmp_path / 'shared-box-workspace' / 'tenants' / 'workspace-a'
     ap.box_service.default_workspace = str(tmp_path / 'shared-box-workspace')
     ap.box_service.workspace_host_path = Mock(return_value=str(shared_workspace))
-    ap.box_service.create_session = AsyncMock(return_value={})
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
     ap.box_service.build_spec = Mock(return_value='validated-spec')
     ap.box_service.client = SimpleNamespace(
         execute=AsyncMock(return_value=SimpleNamespace(ok=True, stderr='', exit_code=0))
@@ -1111,7 +1113,7 @@ async def test_stdio_handshake_raises_coldstart_retry_while_process_alive(mcp_mo
 
     ap = _make_ap()
     ap.box_service.available = True
-    ap.box_service.create_session = AsyncMock(return_value={})
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
     ap.box_service.start_managed_process = AsyncMock(return_value={})
     ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
 
@@ -1177,7 +1179,7 @@ async def test_stdio_handshake_raises_fatal_when_process_exited(mcp_module, tmp_
 
     ap = _make_ap()
     ap.box_service.available = True
-    ap.box_service.create_session = AsyncMock(return_value={})
+    ap.box_service.create_session = AsyncMock(return_value={'session_id': 'mcp-shared', 'backend_name': None})
     ap.box_service.start_managed_process = AsyncMock(return_value={})
     ap.box_service.get_managed_process_websocket_connection = AsyncMock(return_value=('ws://box/p', {}))
 

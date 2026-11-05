@@ -118,6 +118,63 @@ const esES = {
       managed_sandbox_sessions: 'Sesiones de sandbox gestionado',
     },
   },
+  workspaceSandbox: {
+    confirm: 'Confirmar y guardar',
+    cancel: 'Cancelar',
+    current: 'Activo: {{backend}}',
+    unsaved: 'Sin guardar',
+    configureE2b: 'Configurar E2B',
+    apiUrl: 'URL de API',
+    sandboxUrl: 'URL del sandbox',
+    template: 'Plantilla',
+    keyConfigured: 'Configurada; dejar vacío para conservar',
+    keyRequired: 'Introducir API Key',
+    keyHelp:
+      'Las claves guardadas no se devuelven. Introduzca una nueva clave al cambiar las URL.',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'Este entorno no admite servidores MCP stdio.',
+    label: 'Entorno de ejecución',
+    description:
+      'Las tareas nuevas de este espacio usan este entorno. Las tareas en curso conservan su entorno.',
+    saved: 'Guardado; se aplica a tareas nuevas',
+    saveFailed: 'No se pudo guardar el entorno',
+    loadFailed: 'No se pudieron comprobar los entornos',
+    refresh: 'Comprobar de nuevo',
+    noEnvironment: 'No hay entornos disponibles',
+    unavailable:
+      'El entorno seleccionado no está disponible para nuevas ejecuciones.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'No disponible',
+      policy_restricted: 'Restringido por la plataforma',
+      probe_failed: 'Error de comprobación',
+      docker_missing: 'Docker CLI no está instalado',
+      docker_unreachable: 'Docker está detenido o no hay permiso de acceso',
+      nsjail_missing: 'nsjail no está instalado',
+      cgroup_unavailable: 'Los límites cgroup de nsjail no están listos',
+      isolation_unavailable: 'Falló el aislamiento de nsjail',
+      sdk_missing: 'E2B SDK no está instalado',
+      missing_credentials: 'Falta la clave API de E2B',
+      connection_failed: 'No se puede conectar a E2B; revise URL y red',
+      authentication_failed: 'Error de autenticación E2B; revise la clave',
+      probe_timeout: 'Tiempo de espera agotado',
+      invalid_configuration: 'URL o credenciales E2B incompletas',
+      not_checked: 'La configuración cambió; compruebe de nuevo',
+    },
+  },
   workspaceLanguage: {
     label: 'Idioma del espacio de trabajo',
     description:

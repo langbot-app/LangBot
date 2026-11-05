@@ -70,3 +70,29 @@ export interface WorkspaceInvitationDelivery {
   status: WorkspaceInvitationDeliveryStatus;
   provider: 'resend' | 'smtp' | null;
 }
+
+export interface E2BConfigInput {
+  api_url: string;
+  sandbox_url: string;
+  api_key?: string;
+  template: string;
+}
+
+export interface WorkspaceSandboxSettings {
+  e2b?: Omit<E2BConfigInput, 'api_key'> & {
+    api_key_configured: boolean;
+    source: string;
+  };
+  e2b_configurable?: boolean;
+  backend: string | null;
+  effective_backend: string | null;
+  enabled: boolean;
+  backends: {
+    name: string;
+    available: boolean;
+    reason: string | null;
+    managed_processes?: boolean;
+    templates?: { id: string; name: string; aliases: string[] }[];
+    template_validated?: boolean;
+  }[];
+}

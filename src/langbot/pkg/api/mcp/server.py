@@ -128,6 +128,31 @@ class LangBotMCPServer:
             context = _authorized(Permission.WORKSPACE_UPDATE)
             return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
 
+        @mcp.tool(description='Get the Workspace sandbox backend and detected selectable environments.')
+        async def get_workspace_sandbox(refresh: bool = False) -> str:
+            context = _authorized(Permission.WORKSPACE_VIEW)
+            return _dump(await ap.box_service.get_workspace_backend_settings(context, refresh=refresh))
+
+        @mcp.tool(
+            description='Set the Workspace sandbox backend for new tasks. Existing tasks keep their Box. Requires workspace.update.'
+        )
+        async def set_workspace_sandbox(
+            backend: typing.Literal['docker', 'e2b', 'nsjail'], e2b: dict[str, str] | None = None
+        ) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(await ap.box_service.set_workspace_backend(context, backend, e2b_draft=e2b))
+
+        @mcp.tool(
+            description='Check draft sandbox settings without saving. Lists E2B templates and creates, executes in, then deletes a temporary sandbox. Requires workspace.update. Stored API keys are never returned.'
+        )
+        async def check_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(
+                await ap.box_service.get_workspace_backend_settings(
+                    context, refresh=True, e2b_draft=e2b, validate_e2b_template=True
+                )
+            )
+
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
         async def get_system_info() -> str:

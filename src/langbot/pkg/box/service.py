@@ -34,6 +34,7 @@ from langbot_plugin.box.models import (
     BoxMountSpec,
     BoxProfile,
     BoxSpec,
+    E2BConnectionConfig,
 )
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
@@ -620,7 +621,11 @@ class BoxService:
             trusted_read_only_mounts = binding.read_only_mounts
         if spec_payload.get('session_id') not in (None, '', binding.session_id):
             raise BoxValidationError('session_id must match the bound Box')
+        backend = binding.spec.get('backend')
+        e2b_config = binding.spec.get('e2b_config')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
+        spec_payload.pop('backend', None)
+        spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
         spec_payload = self._managed_policy_payload(
             execution_context,
@@ -634,6 +639,10 @@ class BoxService:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        if backend is not None:
+            spec_payload['backend'] = backend
+        if e2b_config is not None:
+            spec_payload['e2b_config'] = e2b_config
         try:
             spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
@@ -718,6 +727,8 @@ class BoxService:
         spec_payload: dict,
         *,
         skip_host_mount_validation: bool = False,
+        selected_backend: str | None = None,
+        selected_e2b_config: dict | None = None,
     ) -> BoxExecutionResult:
         """Execute trusted internal Box work inside one Workspace namespace."""
 
@@ -730,6 +741,9 @@ class BoxService:
                 payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        payload = await self._workspace_backend_payload(
+            execution_context, payload, backend=selected_backend, e2b_selection=selected_e2b_config
+        )
         spec = self.build_spec(payload, skip_host_mount_validation=skip_host_mount_validation)
         result = await self.client.execute(spec, action_context=self._action_context(execution_context))
         await self._validated_execution_context(execution_context)
@@ -1430,6 +1444,146 @@ class BoxService:
             self._validate_host_mount(spec)
         return spec
 
+    async def resolve_workspace_selection(self, context: TenantContext) -> dict:
+        from .settings import get_settings
+
+        saved = await get_settings(self.ap, require_workspace_uuid(context))
+        backend = saved['backend']
+        if backend is None and self._available:
+            backend = (await self.client.get_backend_info()).get('name')
+        return {'backend': backend, 'e2b': saved['e2b'] or {}}
+
+    async def resolve_workspace_backend(self, context: TenantContext) -> str | None:
+        return (await self.resolve_workspace_selection(context))['backend']
+
+    def _deployment_e2b_config(self) -> dict:
+        config = _get_box_config(self.ap).get('e2b') or {}
+        return {
+            'api_url': os.getenv('E2B_API_URL') or config.get('api_url', ''),
+            'sandbox_url': os.getenv('E2B_SANDBOX_URL') or config.get('sandbox_url', ''),
+            'api_key': os.getenv('E2B_API_KEY') or config.get('api_key', ''),
+            'template': config.get('template') or 'base',
+        }
+
+    async def _prepare_e2b_config(self, context: TenantContext, draft: dict) -> E2BConnectionConfig:
+        from .settings import get_settings
+
+        if self._cloud_managed:
+            raise BoxValidationError('Custom E2B configuration is restricted by platform policy')
+        if not isinstance(draft, dict) or set(draft) - {'api_url', 'sandbox_url', 'api_key', 'template'}:
+            raise BoxValidationError('Invalid E2B connection configuration')
+        entry = (await get_settings(self.ap, context.workspace_uuid))['e2b']
+        current = entry['config'] if entry else self._deployment_e2b_config()
+        config = {**current, **draft}
+        if not draft.get('api_key'):
+            if any(
+                str(config.get(key, '')).strip().rstrip('/') != str(current.get(key, '')).strip().rstrip('/')
+                for key in ('api_url', 'sandbox_url')
+            ):
+                raise BoxValidationError('A new API key is required when E2B addresses change')
+            config['api_key'] = current.get('api_key', '')
+        try:
+            return E2BConnectionConfig.model_validate(config)
+        except (pydantic.ValidationError, ValueError):
+            raise BoxValidationError('Provide valid E2B API URL, sandbox URL and API key') from None
+
+    async def backend_supports_managed_processes(self, backend: str) -> bool:
+        items = await self.client.get_backends()
+        return any(item['name'] == backend and item.get('managed_processes', False) for item in items)
+
+    async def get_workspace_backend_settings(
+        self,
+        context: TenantContext,
+        *,
+        refresh: bool = False,
+        e2b_draft: dict | None = None,
+        e2b_model: E2BConnectionConfig | None = None,
+        validate_e2b_template: bool = False,
+    ) -> dict:
+        from .settings import get_settings
+
+        await self._validated_execution_context(context)
+        saved = await get_settings(self.ap, context.workspace_uuid)
+        entry = saved['e2b']
+        private = entry['config'] if entry else self._deployment_e2b_config()
+        model = (
+            e2b_model
+            if e2b_model is not None
+            else await self._prepare_e2b_config(context, e2b_draft)
+            if e2b_draft is not None
+            else E2BConnectionConfig.model_validate(entry['config'])
+            if entry
+            else None
+        )
+        if model is not None:
+            private = model.model_dump()
+        public = {key: private.get(key, '') for key in ('api_url', 'sandbox_url', 'template')}
+        public.update(api_key_configured=bool(private.get('api_key')), source='workspace' if entry else 'deployment')
+        backends = []
+        if self._available:
+            options = {'refresh': refresh, 'e2b_templates': True, 'validate_e2b_template': validate_e2b_template}
+            if model is not None:
+                options['e2b_config'] = model
+            backends = await self.client.get_backends(**options)
+            if self._cloud_managed:
+                backends = [
+                    dict(item, available=False, reason='policy_restricted')
+                    if item['name'] != self._admission_policy.required_backend
+                    else item
+                    for item in backends
+                ]
+        effective = saved['backend'] or (
+            (await self.client.get_backend_info()).get('name') if self._available else None
+        )
+        return {
+            'backend': saved['backend'],
+            'effective_backend': effective,
+            'backends': backends,
+            'enabled': self._enabled,
+            'e2b': public,
+            'e2b_configurable': not self._cloud_managed,
+        }
+
+    async def set_workspace_backend(
+        self, context: TenantContext, backend: str, *, e2b_draft: dict | None = None
+    ) -> dict:
+        from .settings import SELECTABLE_BACKENDS, set_backend
+
+        if backend not in SELECTABLE_BACKENDS:
+            raise BoxValidationError('Unsupported sandbox backend')
+        model = await self._prepare_e2b_config(context, e2b_draft) if e2b_draft is not None else None
+        settings = await self.get_workspace_backend_settings(
+            context, refresh=True, e2b_model=model, validate_e2b_template=backend == 'e2b'
+        )
+        if not any(item['name'] == backend and item['available'] for item in settings['backends']):
+            raise BoxValidationError('The selected sandbox backend is unavailable')
+        await set_backend(
+            self.ap, context.workspace_uuid, backend, e2b_config=model.model_dump() if model is not None else None
+        )
+        return await self.get_workspace_backend_settings(context)
+
+    async def _workspace_backend_payload(
+        self, context: TenantContext, payload: dict, *, backend: str | None = None, e2b_selection: dict | None = None
+    ) -> dict:
+        payload = dict(payload)
+        if backend is None or (backend == 'e2b' and e2b_selection is None):
+            selected = await self.resolve_workspace_selection(context)
+            backend = backend or selected['backend']
+            e2b_selection = selected['e2b'] if e2b_selection is None else e2b_selection
+        payload.pop('e2b_config', None)
+        if backend is not None:
+            payload['backend'] = backend
+            if backend == 'e2b':
+                config = e2b_selection['config'] if e2b_selection else self._deployment_e2b_config()
+                payload['image'] = config.get('template') or 'base'
+            suffix = '-backend-' + backend
+            if backend == 'e2b' and e2b_selection:
+                payload['e2b_config'] = e2b_selection['config']
+                suffix += '-' + e2b_selection['revision']
+            if not self._cloud_managed and not payload['session_id'].endswith(suffix):
+                payload['session_id'] += suffix
+        return payload
+
     async def create_session(
         self,
         context: TenantContext,
@@ -1437,6 +1591,8 @@ class BoxService:
         *,
         skip_host_mount_validation: bool = False,
         trusted_read_only_mounts: list[dict] | None = None,
+        selected_backend: str | None = None,
+        selected_e2b_config: dict | None = None,
     ) -> dict:
         execution_context = await self._validated_execution_context(context)
         spec_payload = self._managed_policy_payload(
@@ -1449,6 +1605,9 @@ class BoxService:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        spec_payload = await self._workspace_backend_payload(
+            execution_context, spec_payload, backend=selected_backend, e2b_selection=selected_e2b_config
+        )
         spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         return await self.client.create_session(spec, action_context=self._action_context(execution_context))
 
@@ -1993,6 +2152,15 @@ class BoxService:
         # detailed ``backend`` object stays in the payload so the dialog
         # can still show which backend was tried.
         backend_info = runtime_status.get('backend') if isinstance(runtime_status, dict) else None
+        from .settings import get_backend
+
+        selected = await get_backend(self.ap, execution_context.workspace_uuid)
+        if selected is not None:
+            candidates = (await self.get_workspace_backend_settings(context))['backends']
+            backend_info = next(
+                (item for item in candidates if item['name'] == selected), {'name': selected, 'available': False}
+            )
+            runtime_status = {**runtime_status, 'backend': backend_info}
         backend_ok = bool(backend_info and backend_info.get('available', False))
         payload = {
             **runtime_status,

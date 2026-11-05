@@ -120,6 +120,64 @@ const enUS = {
       managed_sandbox_sessions: 'Managed sandbox sessions',
     },
   },
+  workspaceSandbox: {
+    confirm: 'Confirm and save',
+    cancel: 'Cancel',
+    current: 'Currently active: {{backend}}',
+    unsaved: 'Unsaved',
+    configureE2b: 'Configure E2B',
+    apiUrl: 'API URL',
+    sandboxUrl: 'Sandbox URL',
+    template: 'Template',
+    keyConfigured: 'Configured; leave blank to keep',
+    keyRequired: 'Enter API key',
+    keyHelp:
+      'Stored API keys are never returned. Enter a new key when changing service URLs.',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'This environment does not support stdio MCP servers.',
+    label: 'Execution environment',
+    description:
+      'All new tasks in this workspace use this environment. Running tasks keep their current environment.',
+    saved: 'Saved; applies to new tasks',
+    saveFailed: 'Failed to save execution environment',
+    loadFailed: 'Failed to check environments',
+    refresh: 'Check again',
+    noEnvironment: 'No available environment',
+    unavailable:
+      'The selected environment is unavailable. New tasks cannot start sandbox execution.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Unavailable',
+      policy_restricted: 'Restricted by platform policy',
+      probe_failed: 'Environment check failed',
+      docker_missing: 'Docker CLI is not installed',
+      docker_unreachable: 'Docker daemon is stopped or access is denied',
+      nsjail_missing: 'nsjail is not installed',
+      cgroup_unavailable: 'nsjail cgroup resource limits are not ready',
+      isolation_unavailable:
+        'nsjail namespace, mount or network isolation failed',
+      sdk_missing: 'E2B SDK is not installed',
+      missing_credentials: 'E2B API key is missing',
+      connection_failed: 'Cannot connect to E2B; check URLs and network',
+      authentication_failed: 'E2B authentication failed; check API key',
+      probe_timeout: 'Check timed out; check service and network',
+      invalid_configuration: 'E2B URLs or credentials are incomplete',
+      not_checked: 'Configuration changed; check again',
+    },
+  },
   workspaceLanguage: {
     label: 'Workspace language',
     description:

@@ -115,6 +115,61 @@ const thTH = {
       managed_sandbox_sessions: 'เซสชันแซนด์บ็อกซ์ที่จัดการ',
     },
   },
+  workspaceSandbox: {
+    confirm: 'ยืนยันและบันทึก',
+    cancel: 'ยกเลิก',
+    current: 'ใช้งานอยู่: {{backend}}',
+    unsaved: 'ยังไม่บันทึก',
+    configureE2b: 'ตั้งค่า E2B',
+    apiUrl: 'URL ของ API',
+    sandboxUrl: 'URL ของแซนด์บ็อกซ์',
+    template: 'เทมเพลต',
+    keyConfigured: 'ตั้งค่าแล้ว เว้นว่างเพื่อคงเดิม',
+    keyRequired: 'ป้อน API Key',
+    keyHelp: 'ระบบไม่แสดงคีย์ที่บันทึกไว้ เมื่อเปลี่ยน URL ต้องป้อนคีย์ใหม่',
+    checkHint:
+      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
+    noManagedProcesses: 'สภาพแวดล้อมนี้ไม่รองรับเซิร์ฟเวอร์ stdio MCP',
+    label: 'สภาพแวดล้อมการทำงาน',
+    description:
+      'งานใหม่ในเวิร์กสเปซนี้จะใช้สภาพแวดล้อมนี้ งานที่กำลังทำงานจะใช้สภาพแวดล้อมเดิม',
+    saved: 'บันทึกแล้ว มีผลกับงานใหม่',
+    saveFailed: 'บันทึกสภาพแวดล้อมไม่สำเร็จ',
+    loadFailed: 'ตรวจสอบสภาพแวดล้อมไม่สำเร็จ',
+    refresh: 'ตรวจสอบอีกครั้ง',
+    noEnvironment: 'ไม่มีสภาพแวดล้อมที่ใช้ได้',
+    unavailable: 'สภาพแวดล้อมที่เลือกไม่พร้อมใช้งานสำหรับงานใหม่',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    selectTemplate: 'Select a template; check again to load templates',
+    reasons: {
+      template_list_failed:
+        'Unable to load E2B templates; check service API and permissions',
+      template_not_found:
+        'Selected template is unavailable; choose one from the list',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'ไม่พร้อมใช้งาน',
+      policy_restricted: 'ถูกจำกัดโดยแพลตฟอร์ม',
+      probe_failed: 'ตรวจสอบไม่สำเร็จ',
+      docker_missing: 'ไม่ได้ติดตั้ง Docker CLI',
+      docker_unreachable: 'Docker ไม่ทำงานหรือไม่มีสิทธิ์เข้าถึง',
+      nsjail_missing: 'ไม่ได้ติดตั้ง nsjail',
+      cgroup_unavailable: 'ข้อจำกัด cgroup ของ nsjail ไม่พร้อม',
+      isolation_unavailable: 'การแยกสภาพแวดล้อม nsjail ไม่ผ่าน',
+      sdk_missing: 'ไม่ได้ติดตั้ง E2B SDK',
+      missing_credentials: 'ยังไม่ได้ตั้งค่า E2B API Key',
+      connection_failed: 'เชื่อมต่อ E2B ไม่ได้ ตรวจสอบ URL และเครือข่าย',
+      authentication_failed: 'ยืนยันตัวตน E2B ไม่ผ่าน ตรวจสอบคีย์',
+      probe_timeout: 'การตรวจสอบหมดเวลา',
+      invalid_configuration: 'URL หรือข้อมูลรับรอง E2B ไม่ครบ',
+      not_checked: 'การตั้งค่าเปลี่ยนแล้ว โปรดตรวจสอบอีกครั้ง',
+    },
+  },
   workspaceLanguage: {
     label: 'ภาษาของพื้นที่ทำงาน',
     description:

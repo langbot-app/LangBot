@@ -18,6 +18,7 @@ def service():
 
     box = SimpleNamespace(
         ap=SimpleNamespace(),
+        resolve_workspace_selection=AsyncMock(return_value={'backend': None, 'e2b': {}}),
         enabled=True,
         managed_admission_required=False,
         _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
@@ -265,3 +266,27 @@ async def test_run_quota_failure_is_atomic_and_reports_remaining_budget():
     assert caught.value.error.details['remaining'] == 1
     assert len(q._box_binding.exported) == len(q._box_binding.exported_fingerprints) == 1
     api.box.clear_selected_files.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_new_task_cannot_bind_a_box_from_an_old_e2b_configuration():
+    api = service()
+    old_config = {
+        'config': {
+            'api_url': 'http://old.test',
+            'sandbox_url': 'http://old-sandbox.test',
+            'api_key': 'old-private',
+            'template': 'base',
+        },
+        'revision': 'old',
+    }
+    new_config = {'config': {**old_config['config'], 'api_key': 'new-private'}, 'revision': 'new'}
+    api.box.client.get_sessions = AsyncMock(
+        return_value=[{'session_id': 'runner-backend-e2b-old', 'backend_name': 'e2b'}]
+    )
+    previous = SimpleNamespace(variables={}, _sandbox_backend='e2b', _sandbox_e2b_config=old_config)
+    current = SimpleNamespace(variables={}, _sandbox_backend='e2b', _sandbox_e2b_config=new_config)
+    await api.bind('workspace', previous, 'old-run', 'runner-backend-e2b-old')
+    assert previous._box_binding.spec['e2b_config']['api_key'] == 'old-private'
+    with pytest.raises(BoxValidationError, match='task E2B configuration'):
+        await api.bind('workspace', current, 'new-run', 'runner-backend-e2b-old')

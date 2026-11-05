@@ -1003,3 +1003,182 @@ async def test_workspace_language_persists_and_controls_api_errors(workspace_api
     # An untrusted selector never causes us to read another tenant's language.
     unauthorized = await client.get('/api/v1/workspaces/current/language', headers=_auth(owner_token, 'language-other'))
     assert unauthorized.status_code in (403, 404)
+
+
+async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(workspace_api, tmp_path):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.runner import RunnerBoxService
+    from langbot.pkg.box.settings import get_backend
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot_plugin.box.runtime import BoxRuntime
+    from langbot_plugin.box.models import BoxSpec
+    from tests.unit_tests.box.test_box_service import FakeBackend, _InProcessBoxRuntimeClient
+
+    application, client, engine, owner_token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(owner_token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(owner_token, workspace_uuid)
+    docker, e2b = FakeBackend(application.logger), FakeBackend(application.logger)
+    docker.name, e2b.name = 'docker', 'e2b'
+    runtime = BoxRuntime(application.logger, backends=[docker, e2b], session_ttl_sec=0)
+    runtime._box_config = {'backend': 'docker'}
+
+    class Client(_InProcessBoxRuntimeClient):
+        async def get_backends(self, *, refresh=False, **options):
+            return await self._runtime.get_backends(refresh=refresh)
+
+    application.instance_config.data['box'] = {'local': {'host_root': str(tmp_path / 'boxes')}}
+    box = BoxService(application, client=Client(application.logger, runtime))
+    application.box_service = box
+    await box.initialize()
+    binding = await application.workspace_service.get_execution_binding(workspace_uuid)
+    context = ExecutionContext(
+        instance_uuid=binding.instance_uuid,
+        workspace_uuid=workspace_uuid,
+        placement_generation=binding.placement_generation,
+    )
+    runner = RunnerBoxService(box)
+    try:
+        initial = await client.get('/api/v1/workspaces/current/sandbox?refresh=true', headers=headers)
+        assert initial.status_code == 200
+        assert (await initial.get_json())['data']['effective_backend'] == 'docker'
+        old_query = SimpleNamespace(variables={}, _sandbox_backend=await box.resolve_workspace_backend(context))
+        old = await runner.acquire(context, {'reuse_key': 'shared'}, old_query)
+        await runner.bind(context, old_query, 'old-run', old['id'])
+
+        saved = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b'})
+        assert saved.status_code == 200
+        assert await get_backend(SimpleNamespace(persistence_mgr=application.persistence_mgr), workspace_uuid) == 'e2b'
+        new_query = SimpleNamespace(variables={}, _sandbox_backend=await box.resolve_workspace_backend(context))
+        new = await runner.acquire(context, {'reuse_key': 'shared'}, new_query)
+        await runner.bind(context, new_query, 'new-run', new['id'])
+        assert old['id'] != new['id']
+        assert old_query._box_binding.spec['backend'] == 'docker'
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        for query, expected in [(old_query, 'docker'), (new_query, 'e2b')]:
+            info = runtime.get_session(query._box_binding.session_id)
+            spec = BoxSpec.model_validate(
+                {
+                    **{key: value for key, value in info.items() if key in BoxSpec.model_fields},
+                    'backend': expected,
+                    'cmd': 'still-running',
+                }
+            )
+            assert (await runtime.execute(spec)).backend_name == expected
+        assert (await box.get_status(context))['backend']['name'] == 'e2b'
+
+        unavailable = await client.put(
+            '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'nsjail'}
+        )
+        invalid = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'host'})
+        assert unavailable.status_code == invalid.status_code == 400
+        assert await get_backend(application, workspace_uuid) == 'e2b'
+        async with engine.begin() as connection:
+            await connection.execute(
+                sqlalchemy.update(WorkspaceMembership)
+                .where(
+                    WorkspaceMembership.workspace_uuid == workspace_uuid,
+                    WorkspaceMembership.account_uuid == current['membership']['account_uuid'],
+                )
+                .values(role='viewer')
+            )
+        assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+        assert (
+            await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
+        ).status_code == 403
+    finally:
+        await box.shutdown()
+
+
+async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmation(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    headers = _auth(token, ws)
+    key = 'workspace-private-key-for-test'
+    draft = {
+        'api_url': 'http://api.example.test:3000',
+        'sandbox_url': 'http://sandbox.example.test:3001',
+        'api_key': key,
+        'template': 'base',
+    }
+    observed = []
+
+    async def probe(*, refresh=False, e2b_config=None, **options):
+        observed.append(e2b_config.model_dump() if e2b_config is not None else None)
+        available = e2b_config is not None and e2b_config.api_key == key
+        return [
+            {'name': 'docker', 'available': True, 'reason': None},
+            {'name': 'e2b', 'available': available, 'reason': None if available else 'authentication_failed'},
+            {'name': 'nsjail', 'available': False, 'reason': 'nsjail_missing'},
+        ]
+
+    rpc = SimpleNamespace(
+        get_backends=AsyncMock(side_effect=probe),
+        get_backend_info=AsyncMock(return_value={'name': 'docker', 'available': True}),
+    )
+    box = BoxService(ap, client=rpc)
+    box._available = True
+    ap.box_service = box
+    checked = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': draft})
+    assert checked.status_code == 200
+    assert key not in await checked.get_data(as_text=True)
+    assert (await get_settings(ap, ws)) == {'backend': None, 'e2b': None}
+    saved = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': draft}
+    )
+    assert saved.status_code == 200
+    assert key not in await saved.get_data(as_text=True)
+    stored = await get_settings(ap, ws)
+    assert stored['backend'] == 'e2b' and stored['e2b']['config'] == draft
+    assert observed[-1] == stored['e2b']['config']
+    visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+    public = (await visible.get_json())['data']['e2b']
+    assert public['api_key_configured'] and 'api_key' not in public
+    assert key not in await visible.get_data(as_text=True)
+
+    bad = {**draft, 'api_key': 'invalid-new-key'}
+    checked = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': bad})
+    assert checked.status_code == 200
+    assert (
+        next(item for item in (await checked.get_json())['data']['backends'] if item['name'] == 'e2b')['reason']
+        == 'authentication_failed'
+    )
+    refused = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': bad}
+    )
+    assert refused.status_code == 400
+    assert await get_settings(ap, ws) == stored
+
+    changed_url = {**draft, 'api_key': '', 'api_url': 'http://different.example.test'}
+    calls = len(observed)
+    refused = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': changed_url})
+    assert refused.status_code == 400 and len(observed) == calls
+    assert key not in await refused.get_data(as_text=True)
+    keep_key = {**draft, 'api_key': '', 'template': 'python'}
+    saved = await client.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': keep_key}
+    )
+    assert saved.status_code == 200
+    newer = await get_settings(ap, ws)
+    assert newer['e2b']['config']['api_key'] == key
+    assert newer['e2b']['revision'] != stored['e2b']['revision']
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.update(WorkspaceMembership)
+            .where(
+                WorkspaceMembership.workspace_uuid == ws,
+                WorkspaceMembership.account_uuid == current['membership']['account_uuid'],
+            )
+            .values(role='viewer')
+        )
+    assert (
+        await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': draft})
+    ).status_code == 403
+    assert (
+        await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
+    ).status_code == 403
+    assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
