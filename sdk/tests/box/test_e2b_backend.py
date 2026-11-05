@@ -1380,3 +1380,97 @@ def test_workspace_template_overrides_task_image():
         ).image
         == "chosen-template"
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case,available,validation,reason",
+    [
+        ("ready", True, "ready", None),
+        ("building", False, "not_ready", "template_not_ready"),
+        ("disabled", True, "unsupported", None),
+        ("not_found", False, "not_found", "template_not_found"),
+        ("forbidden", False, "failed", "permission_denied"),
+    ],
+)
+async def test_lightweight_template_check_never_creates(
+    logger, mock_e2b_module, case, available, validation, reason
+):
+    import httpx
+    from langbot_plugin.box.models import E2BConnectionConfig
+
+    config = E2BConnectionConfig(
+        api_url="https://api.test",
+        sandbox_url="https://proxy.test",
+        api_key="private-key",
+        template="chosen",
+    )
+    backend = E2BSandboxBackend(logger, connection_config=config)
+    await backend.initialize()
+    mock_e2b_module.list.return_value.next_items = mock.AsyncMock(return_value=[])
+    paths = []
+
+    def respond(request):
+        paths.append(request.url.path)
+        assert request.headers["X-API-Key"] == "private-key"
+        if case == "disabled":
+            return httpx.Response(404, json={"message": "route is disabled by profile"})
+        if case == "forbidden":
+            return httpx.Response(
+                403, json={"message": "private-key provider diagnostic"}
+            )
+        if request.url.path.startswith("/templates/aliases/"):
+            return httpx.Response(
+                200, json={"templateID": "resolved-id", "public": False}
+            )
+        if case == "not_found":
+            return httpx.Response(404, json={"message": "Template not found"})
+        return httpx.Response(
+            200,
+            json={"builds": [{"status": "ready" if case == "ready" else "building"}]},
+        )
+
+    real_client = httpx.AsyncClient
+    with mock.patch(
+        "langbot_plugin.box.e2b_backend.httpx.AsyncClient",
+        side_effect=lambda **kw: real_client(
+            transport=httpx.MockTransport(respond), **kw
+        ),
+    ):
+        result = await backend.inspect_template(validate=False)
+    assert result["available"] is available
+    assert result["template_validation"] == validation
+    assert result["reason"] == reason
+    assert result["template_validated"] is False
+    assert "private-key" not in json.dumps(result)
+    mock_e2b_module.create.assert_not_called()
+    mock_e2b_module.kill.assert_not_called()
+    assert paths[0] == "/templates/aliases/chosen"
+    if case != "forbidden":
+        assert paths[-1] == (
+            "/templates/chosen" if case == "disabled" else "/templates/resolved-id"
+        )
+
+
+@pytest.mark.parametrize(
+    "status,stage,expected",
+    [
+        (401, "template_query_failed", "authentication_failed"),
+        (403, "template_creation_failed", "permission_denied"),
+        (404, "template_query_failed", "template_not_found"),
+        (404, "connection_failed", "resource_not_found"),
+        (429, "template_creation_failed", "capacity_limited"),
+        (429, "template_query_failed", "rate_limited"),
+    ],
+)
+def test_e2b_failure_classification_uses_status_without_echoing_body(
+    status, stage, expected
+):
+    from e2b.exceptions import SandboxException
+
+    assert (
+        E2BSandboxBackend._failure_reason(
+            SandboxException(f"{status}: private-key"), stage
+        )
+        == expected
+    )

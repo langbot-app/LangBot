@@ -143,6 +143,7 @@ class _RuntimeSession:
     # to detect when a reused session would be missing newly-requested mounts.
     extra_mounts_key: frozenset[tuple[str, str, str, str, str]] = frozenset()
     closing: bool = False
+    idle_ttl_sec: int | None = None
 
 
 def _compute_extra_mounts_key(
@@ -272,6 +273,7 @@ class BoxRuntime:
         self._expirable_session_ids: set[str] = set()
         self._managed_process_session_ids: set[str] = set()
         self._session_ids_by_workspace: dict[tuple[str, str], set[str]] = {}
+        self._workspace_reserved_sessions: dict[tuple[str, str], set[str]] = {}
         self._lock = asyncio.Lock()
         self._session_operation_locks: weakref.WeakValueDictionary[
             str, asyncio.Lock
@@ -281,6 +283,7 @@ class BoxRuntime:
         self._managed_starting_count = 0
         self._shutdown_in_progress = False
         self._reaper_task: asyncio.Task | None = None
+        self._reaper_wakeup = asyncio.Event()
         self._active_exec_counts: collections.Counter[str] = collections.Counter()
         self._closing_session_tasks: dict[str, asyncio.Task[None]] = {}
         self._background_tasks: set[asyncio.Task] = set()
@@ -1332,9 +1335,16 @@ done
                         raise
 
     def start_background_reaper(self) -> None:
-        if self.session_ttl_sec <= 0 and not self.admission_required:
+        if (
+            self.session_ttl_sec <= 0
+            and not self.admission_required
+            and not any(
+                session.idle_ttl_sec is not None for session in self._sessions.values()
+            )
+        ):
             return
         if self._reaper_task is not None and not self._reaper_task.done():
+            self._reaper_wakeup.set()
             return
         self._reaper_task = asyncio.create_task(self._reaper_loop())
 
@@ -1348,13 +1358,27 @@ done
         await self.event_loop_monitor.stop()
 
     async def _reaper_loop(self) -> None:
-        while self.session_ttl_sec > 0 or self.admission_required:
-            interval = (
-                min(_REAPER_INTERVAL_SEC, self.session_ttl_sec)
-                if self.session_ttl_sec > 0
-                else _REAPER_INTERVAL_SEC
+        while (
+            self.session_ttl_sec > 0
+            or self.admission_required
+            or any(
+                session.idle_ttl_sec is not None for session in self._sessions.values()
             )
-            await asyncio.sleep(interval)
+        ):
+            self._reaper_wakeup.clear()
+            intervals = [_REAPER_INTERVAL_SEC]
+            if self.session_ttl_sec > 0:
+                intervals.append(self.session_ttl_sec)
+            intervals.extend(
+                session.idle_ttl_sec
+                for session in self._sessions.values()
+                if session.idle_ttl_sec is not None
+            )
+            interval = min(intervals)
+            try:
+                await asyncio.wait_for(self._reaper_wakeup.wait(), timeout=interval)
+            except asyncio.TimeoutError:
+                pass
             try:
                 cleanup_tasks: list[asyncio.Task[None]]
                 async with self._lock:
@@ -1717,11 +1741,38 @@ done
             f"Managed sandbox isolation is not ready (failed checks: {detail})"
         )
 
+    @staticmethod
+    def _limit_capabilities(
+        name: str, backend: BaseSandboxBackend | None = None
+    ) -> dict:
+        local = name in ("docker", "nsjail")
+        hard_resources = local
+        if name == "nsjail" and backend is not None:
+            hard_resources = bool(
+                getattr(backend, "_cgroup_v2_available", False)
+                or getattr(backend, "_cgroup_v1_available", False)
+            )
+        return {
+            "timeout_sec": True,
+            "idle_ttl_sec": True,
+            "max_sessions": True,
+            "cpus": hard_resources
+            and bool(getattr(backend, "cpu_limit_enabled", True)),
+            "memory_mb": hard_resources,
+            "pids_limit": hard_resources,
+            "workspace_quota_mb": local,
+        }
+
     async def _probe_backend(
         self, name: str, e2b_config: E2BConnectionConfig | None = None
     ) -> dict:
         if self.admission_required and name != self.admission_policy.required_backend:
-            return {"name": name, "available": False, "reason": "policy_restricted"}
+            return {
+                "name": name,
+                "available": False,
+                "reason": "policy_restricted",
+                "limit_capabilities": self._limit_capabilities(name),
+            }
         backend = next(
             (b for b in self.backends if b is not None and b.name == name), None
         )
@@ -1730,6 +1781,12 @@ done
             async def check():
                 nonlocal backend
                 backend = await self._get_backend(name, e2b_config)
+                if (
+                    name == "e2b"
+                    and not self.admission_required
+                    and hasattr(backend, "inspect_template")
+                ):
+                    return await backend.inspect_template(validate=False)
                 available = (
                     bool((await self.get_readiness()).get("ready"))
                     if self.admission_required
@@ -1738,10 +1795,16 @@ done
                 return available
 
             available = await asyncio.wait_for(check(), timeout=8)
+            if isinstance(available, dict):
+                return {
+                    **available,
+                    "limit_capabilities": self._limit_capabilities(name, backend),
+                }
             return {
                 "name": name,
                 "available": available,
                 "reason": None if available else backend.unavailable_reason(),
+                "limit_capabilities": self._limit_capabilities(name, backend),
                 "managed_processes": type(backend).start_managed_process
                 is not BaseSandboxBackend.start_managed_process,
             }
@@ -1757,7 +1820,12 @@ done
                 reason = backend.unavailable_reason()
             else:
                 reason = "sdk_missing" if name == "e2b" else "environment_unavailable"
-        return {"name": name, "available": False, "reason": reason}
+        return {
+            "name": name,
+            "available": False,
+            "reason": reason,
+            "limit_capabilities": self._limit_capabilities(name, backend),
+        }
 
     async def get_backends(
         self,
@@ -1773,7 +1841,8 @@ done
                 return items
             try:
                 backend = await self._get_backend("e2b", e2b_config)
-                e2b = await backend.inspect_template()
+                e2b = await backend.inspect_template(validate=True)
+                e2b["limit_capabilities"] = self._limit_capabilities("e2b", backend)
             except Exception:
                 e2b = {
                     "name": "e2b",
@@ -1897,6 +1966,16 @@ done
         track_active_exec: bool = False,
         action_context: ActionContext | None = None,
     ) -> _RuntimeSession:
+        workspace_key = None
+        if action_context is not None:
+            context = ActionContext.model_validate(
+                action_context
+            ).without_installation()
+            workspace_key = (context.instance_uuid, context.workspace_uuid)
+        elif spec.workspace_max_sessions is not None:
+            raise BoxValidationError(
+                "Workspace session limits require a trusted Workspace context"
+            )
         existing_session = self._sessions.get(spec.session_id)
         if existing_session is not None:
             backend = existing_session.backend
@@ -2042,6 +2121,17 @@ done
 
                 async with self._lock:
                     if (
+                        workspace_key is not None
+                        and spec.workspace_max_sessions is not None
+                    ):
+                        used = len(
+                            self._workspace_reserved_sessions.get(workspace_key, ())
+                        )
+                        if used >= min(spec.workspace_max_sessions, self.max_sessions):
+                            raise BoxCapacityExceededError(
+                                "Workspace Box session capacity reached"
+                            )
+                    if (
                         len(self._sessions)
                         + len(self._creating_session_tasks)
                         + len(self._closing_session_tasks)
@@ -2050,6 +2140,10 @@ done
                         raise BoxCapacityExceededError(
                             f"Box session capacity reached ({self.max_sessions})"
                         )
+                    if workspace_key is not None:
+                        self._workspace_reserved_sessions.setdefault(
+                            workspace_key, set()
+                        ).add(spec.session_id)
                     current_task = asyncio.current_task()
                     if current_task is not None:
                         self._creating_session_tasks[spec.session_id] = current_task
@@ -2057,28 +2151,23 @@ done
                 info: BoxSessionInfo | None = None
                 try:
                     info = await backend.start_session(spec)
-                    workspace_key = None
-                    if action_context is not None:
-                        context = ActionContext.model_validate(
-                            action_context
-                        ).without_installation()
-                        workspace_key = (
-                            context.instance_uuid,
-                            context.workspace_uuid,
-                        )
                     runtime_session = _RuntimeSession(
                         info=info,
                         backend=backend,
                         lock=asyncio.Lock(),
                         workspace_key=workspace_key,
                         extra_mounts_key=new_extra_mounts_key,
+                        idle_ttl_sec=spec.idle_ttl_sec,
                     )
                     async with self._lock:
                         if self._shutdown_in_progress:
                             runtime_session.closing = True
                         else:
                             self._sessions[spec.session_id] = runtime_session
-                            if not runtime_session.info.persistent:
+                            if (
+                                not runtime_session.info.persistent
+                                or spec.idle_ttl_sec is not None
+                            ):
                                 self._expirable_session_ids.add(spec.session_id)
                             if workspace_key is not None:
                                 self._session_ids_by_workspace.setdefault(
@@ -2097,7 +2186,16 @@ done
                             is asyncio.current_task()
                         ):
                             self._creating_session_tasks.pop(spec.session_id, None)
+                        if (
+                            spec.session_id not in self._sessions
+                            and spec.session_id not in self._closing_session_tasks
+                        ):
+                            self._release_workspace_slot_locked(
+                                workspace_key, spec.session_id
+                            )
 
+                if spec.idle_ttl_sec is not None:
+                    self.start_background_reaper()
                 self.logger.info(
                     "LangBot Box session created: "
                     f"session_id={spec.session_id} "
@@ -2109,6 +2207,15 @@ done
                     f"workspace_quota_mb={info.workspace_quota_mb}"
                 )
                 return runtime_session
+
+    def _release_workspace_slot_locked(
+        self, workspace_key: tuple[str, str] | None, session_id: str
+    ) -> None:
+        slots = self._workspace_reserved_sessions.get(workspace_key)
+        if slots is not None:
+            slots.discard(session_id)
+            if not slots:
+                self._workspace_reserved_sessions.pop(workspace_key, None)
 
     async def _get_session_operation_lock(self, session_id: str) -> asyncio.Lock:
         async with self._lock:
@@ -2241,18 +2348,21 @@ done
 
     async def _reap_expired_sessions_locked(self) -> list[asyncio.Task[None]]:
         self._reap_completed_processes()
-        if self.session_ttl_sec <= 0:
-            return []
-
-        deadline = dt.datetime.now(_UTC) - dt.timedelta(seconds=self.session_ttl_sec)
+        now = dt.datetime.now(_UTC)
         expired_session_ids: list[str] = []
         for session_id in tuple(self._expirable_session_ids):
             session = self._sessions.get(session_id)
             if session is None:
                 self._expirable_session_ids.discard(session_id)
                 continue
+            ttl = (
+                session.idle_ttl_sec
+                if session.idle_ttl_sec is not None
+                else self.session_ttl_sec
+            )
             if (
-                session.info.last_used_at < deadline
+                ttl > 0
+                and session.info.last_used_at < now - dt.timedelta(seconds=ttl)
                 and self._active_exec_counts.get(session_id, 0) <= 0
                 and self._session_leases.get(session_id, 0) <= 0
                 and not any(mp.is_running for mp in session.managed_processes.values())
@@ -2413,6 +2523,9 @@ done
                             session_id, runtime_session
                         )
                     self._closing_session_tasks.pop(session_id, None)
+                    self._release_workspace_slot_locked(
+                        runtime_session.workspace_key, session_id
+                    )
 
     async def _wait_for_session_cleanups(
         self, cleanup_tasks: list[asyncio.Task[None]]

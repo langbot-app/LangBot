@@ -1891,3 +1891,206 @@ async def test_fixed_mount_conflict_preserves_existing_session(logger):
     assert backend.started_sessions == 1
     backend.stop_session.assert_not_awaited()
     await runtime.shutdown()
+
+
+@pytest.mark.anyio
+async def test_workspace_capacity_counts_inflight_creation_and_releases_slots(logger):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend], session_ttl_sec=0)
+    context_a = ActionContext(
+        instance_uuid="instance", workspace_uuid="a", placement_generation=1
+    )
+    context_b = ActionContext(
+        instance_uuid="instance", workspace_uuid="b", placement_generation=1
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = backend.start_session
+
+    async def start(spec):
+        if spec.session_id == "a-pending":
+            entered.set()
+            await release.wait()
+        return await original(spec)
+
+    backend.start_session = start
+    pending = asyncio.create_task(
+        runtime.create_session(
+            _make_spec("a-pending", workspace_max_sessions=1), action_context=context_a
+        )
+    )
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        with pytest.raises(BoxCapacityExceededError, match="Workspace"):
+            await runtime.create_session(
+                _make_spec("a-extra", workspace_max_sessions=1),
+                action_context=context_a,
+            )
+        await runtime.create_session(
+            _make_spec("b-independent", workspace_max_sessions=1),
+            action_context=context_b,
+        )
+        release.set()
+        await pending
+        # Lower/new limits do not prevent reusing an existing Box.
+        reused = await runtime.create_session(
+            _make_spec("a-pending", workspace_max_sessions=1), action_context=context_a
+        )
+        assert reused["session_id"] == "a-pending"
+        await runtime.delete_session("a-pending")
+        await runtime.create_session(
+            _make_spec("a-after-release", workspace_max_sessions=1),
+            action_context=context_a,
+        )
+        assert set(runtime._sessions) == {"a-after-release", "b-independent"}
+    finally:
+        release.set()
+        await asyncio.gather(pending, return_exceptions=True)
+        await runtime.shutdown()
+    assert runtime._workspace_reserved_sessions == {}
+
+
+@pytest.mark.anyio
+async def test_workspace_capacity_requires_trusted_identity(logger):
+    runtime = BoxRuntime(logger, backends=[FakeBackend(logger)], session_ttl_sec=0)
+    with pytest.raises(BoxValidationError, match="trusted Workspace context"):
+        await runtime.create_session(_make_spec("unscoped", workspace_max_sessions=1))
+    assert runtime._sessions == {}
+
+
+@pytest.mark.anyio
+async def test_idle_ttl_snapshot_expires_persistent_but_never_active_sessions(logger):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend], session_ttl_sec=0)
+    await runtime.create_session(_make_spec("idle", persistent=True, idle_ttl_sec=2))
+    await runtime.create_session(_make_spec("active", persistent=True, idle_ttl_sec=2))
+    await runtime.create_session(_make_spec("legacy", persistent=True))
+    await runtime.stop_background_reaper()
+    # Reuse must retain the original TTL snapshot.
+    await runtime.create_session(_make_spec("idle", persistent=True, idle_ttl_sec=100))
+    for session in runtime._sessions.values():
+        session.info.last_used_at -= dt.timedelta(seconds=3)
+    runtime._active_exec_counts["active"] = 1
+    async with runtime._lock:
+        cleanup = await runtime._reap_expired_sessions_locked()
+    await runtime._wait_for_session_cleanups(cleanup)
+    assert set(runtime._sessions) == {"active", "legacy"}
+    runtime._active_exec_counts.pop("active")
+    async with runtime._lock:
+        cleanup = await runtime._reap_expired_sessions_locked()
+    await runtime._wait_for_session_cleanups(cleanup)
+    assert set(runtime._sessions) == {"legacy"}
+    await runtime.shutdown()
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("workspace_max_sessions", 0),
+        ("workspace_max_sessions", True),
+        ("idle_ttl_sec", 0),
+        ("idle_ttl_sec", 86401),
+    ],
+)
+def test_workspace_limit_fields_validate_ranges(field, value):
+    with pytest.raises(ValueError):
+        _make_spec(**{field: value})
+
+
+@pytest.mark.anyio
+async def test_workspace_capacity_remains_reserved_until_backend_cleanup_finishes(
+    logger,
+):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend], session_ttl_sec=0)
+    context = ActionContext(
+        instance_uuid="instance", workspace_uuid="a", placement_generation=1
+    )
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    async def stop(session):
+        entered.set()
+        await release.wait()
+
+    backend.stop_session = stop
+    await runtime.create_session(
+        _make_spec("closing", workspace_max_sessions=1), action_context=context
+    )
+    deleting = asyncio.create_task(runtime.delete_session("closing"))
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        with pytest.raises(BoxCapacityExceededError, match="Workspace"):
+            await runtime.create_session(
+                _make_spec("replacement", workspace_max_sessions=1),
+                action_context=context,
+            )
+        release.set()
+        await deleting
+        await runtime.create_session(
+            _make_spec("replacement", workspace_max_sessions=1), action_context=context
+        )
+    finally:
+        release.set()
+        await asyncio.gather(deleting, return_exceptions=True)
+        await runtime.shutdown()
+
+
+def test_limit_capabilities_do_not_claim_unsupported_resources():
+    assert BoxRuntime._limit_capabilities("e2b") == {
+        "timeout_sec": True,
+        "idle_ttl_sec": True,
+        "max_sessions": True,
+        "cpus": False,
+        "memory_mb": False,
+        "pids_limit": False,
+        "workspace_quota_mb": False,
+    }
+    from types import SimpleNamespace
+
+    assert (
+        BoxRuntime._limit_capabilities(
+            "docker", SimpleNamespace(cpu_limit_enabled=False)
+        )["cpus"]
+        is False
+    )
+    assert (
+        BoxRuntime._limit_capabilities(
+            "nsjail",
+            SimpleNamespace(_cgroup_v2_available=False, _cgroup_v1_available=False),
+        )["memory_mb"]
+        is False
+    )
+
+
+@pytest.mark.anyio
+async def test_new_short_idle_ttl_wakes_reaper_waiting_on_long_interval(
+    logger, monkeypatch
+):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend], session_ttl_sec=0)
+    waiting, short_reaped = asyncio.Event(), asyncio.Event()
+    original_wait = runtime._reaper_wakeup.wait
+    original_stop = backend.stop_session
+
+    async def observe_wait():
+        waiting.set()
+        return await original_wait()
+
+    async def observe_stop(session):
+        await original_stop(session)
+        if session.session_id == "short-ttl":
+            short_reaped.set()
+
+    monkeypatch.setattr(runtime._reaper_wakeup, "wait", observe_wait)
+    backend.stop_session = observe_stop
+    try:
+        await runtime.create_session(
+            _make_spec("long-ttl", persistent=True, idle_ttl_sec=60)
+        )
+        await asyncio.wait_for(waiting.wait(), timeout=1)
+        await runtime.create_session(
+            _make_spec("short-ttl", persistent=True, idle_ttl_sec=1)
+        )
+        await asyncio.wait_for(short_reaped.wait(), timeout=3)
+        assert set(runtime._sessions) == {"long-ttl"}
+    finally:
+        await runtime.shutdown()

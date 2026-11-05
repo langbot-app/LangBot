@@ -1203,3 +1203,84 @@ async def test_cancelled_availability_probe_terminates_and_reaps_cli(backend):
     assert command.await_count == 1
     assert proc.terminated is True
     assert proc._hang is False
+
+
+class _InheritedPipeProcess:
+    """Killing the CLI does not close pipes retained by its sudo child."""
+
+    def __init__(self):
+        self.returncode = None
+        self.wait_started = asyncio.Event()
+        self.closed = asyncio.Event()
+        self.killed = False
+        self.terminated = False
+        self.stdout = self.stderr = self
+        self._transport = SimpleNamespace(close=self.closed.set)
+
+    async def read(self, _size):
+        await self.closed.wait()
+        return b""
+
+    async def wait(self):
+        self.wait_started.set()
+        await self.closed.wait()
+        self.returncode = -9
+        return self.returncode
+
+    def kill(self):
+        self.killed = True
+
+    def terminate(self):
+        self.terminated = True
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancelled", [False, True])
+async def test_aborted_exec_stops_box_before_waiting_for_inherited_pipes(
+    backend, session, cancelled
+):
+    proc = _InheritedPipeProcess()
+
+    async def stop(stopped):
+        assert stopped is session
+        assert proc.killed or proc.terminated
+        proc.closed.set()
+
+    backend.stop_session = mock.AsyncMock(side_effect=stop)
+    spec = BoxSpec(session_id=session.session_id, cmd="sleep 100", timeout_sec=1)
+    with mock.patch("asyncio.create_subprocess_exec", return_value=proc):
+        task = asyncio.create_task(backend.exec(session, spec))
+        await proc.wait_started.wait()
+        if cancelled:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=1)
+        else:
+            result = await asyncio.wait_for(task, timeout=3)
+            assert result.status == BoxExecutionStatus.TIMED_OUT
+            assert result.duration_ms < 2500
+    backend.stop_session.assert_awaited_once_with(session)
+    assert proc.closed.is_set()
+
+
+@pytest.mark.anyio
+async def test_timeout_cleanup_failure_keeps_timeout_and_bounds_pipe_drain(
+    backend, session, monkeypatch
+):
+    proc = _InheritedPipeProcess()
+    backend.stop_session = mock.AsyncMock(side_effect=BoxError("remove failed"))
+    monkeypatch.setattr("langbot_plugin.box.backend._CLI_CLEANUP_TIMEOUT_SEC", 0.02)
+    with mock.patch("asyncio.create_subprocess_exec", return_value=proc):
+        result = await asyncio.wait_for(
+            backend._run_command(
+                ["docker", "exec", session.backend_session_id],
+                timeout_sec=0.02,
+                check=False,
+                timeout_session=session,
+            ),
+            timeout=0.5,
+        )
+    assert result.timed_out
+    assert "timed out" in result.stderr
+    assert "remove failed" in result.stderr
+    assert proc.closed.is_set()

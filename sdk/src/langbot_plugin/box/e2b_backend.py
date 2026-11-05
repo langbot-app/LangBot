@@ -10,6 +10,9 @@ import posixpath
 import re
 import shlex
 import uuid
+from urllib.parse import quote
+
+import httpx
 
 
 from ..artifact import build_tree_manifest, load_tree_manifest
@@ -220,24 +223,118 @@ class E2BSandboxBackend(BaseSandboxBackend):
         await _AsyncSandbox.list(limit=1, **self._connection_kwargs()).next_items()
         return True
 
-    async def inspect_template(self) -> dict:
+    @staticmethod
+    def _failure_reason(exc: Exception, stage: str) -> str:
+        status = getattr(exc, "status_code", None)
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code
+        if status is None:
+            match = re.match(r"^(401|403|404|429)(?::|\s)", str(exc))
+            if match:
+                status = int(match.group(1))
+        if status == 401 or type(exc).__name__ == "AuthenticationException":
+            return "authentication_failed"
+        if status == 403:
+            return "permission_denied"
+        if status == 404:
+            return (
+                "template_not_found"
+                if stage in ("template_query_failed", "template_creation_failed")
+                else "resource_not_found"
+            )
+        if status == 429 or type(exc).__name__ == "RateLimitException":
+            return (
+                "capacity_limited"
+                if stage == "template_creation_failed"
+                else "rate_limited"
+            )
+        if isinstance(exc, (asyncio.TimeoutError, httpx.TimeoutException)) or type(
+            exc
+        ).__name__ in ("TimeoutException", "DeadlineExceeded"):
+            return "probe_timeout"
+        if isinstance(exc, (httpx.NetworkError, ConnectionError)):
+            return "network_error"
+        return stage
+
+    async def _inspect_template_readonly(self, options: dict) -> dict:
+        """Use the official alias and template-with-builds read APIs only."""
+        from e2b.connection_config import ConnectionConfig
+
+        selected = self._template or "base"
+        base = ConnectionConfig(**options).api_url.rstrip("/")
+        headers = {"X-API-Key": self._api_key}
+        async with httpx.AsyncClient(timeout=8) as client:
+            alias = await client.get(
+                base + "/templates/aliases/" + quote(selected, safe=""), headers=headers
+            )
+            template_id = selected
+            if alias.status_code == 200:
+                template_id = alias.json()["templateID"]
+            elif alias.status_code in (400, 404, 405, 501):
+                pass
+            else:
+                alias.raise_for_status()
+            response = await client.get(
+                base + "/templates/" + quote(template_id, safe=""),
+                params={"limit": 1},
+                headers=headers,
+            )
+            if response.status_code in (404, 405, 501):
+                text = response.text[:2048].lower().replace("_", " ").replace("-", " ")
+                missing = (
+                    response.status_code == 404
+                    and "not found" in text
+                    and "template" in text
+                    and "disabled" not in text
+                )
+                if missing:
+                    return {
+                        "available": False,
+                        "reason": "template_not_found",
+                        "template_validation": "not_found",
+                    }
+                return {
+                    "available": True,
+                    "reason": None,
+                    "template_validation": "unsupported",
+                }
+            response.raise_for_status()
+            builds = response.json()["builds"]
+            ready = any(item.get("status") == "ready" for item in builds)
+            return {
+                "available": ready,
+                "reason": None if ready else "template_not_ready",
+                "template_validation": "ready" if ready else "not_ready",
+            }
+
+    async def inspect_template(self, *, validate: bool = True) -> dict:
         result = {
             "name": "e2b",
             "available": False,
             "reason": None,
             "managed_processes": False,
             "template_validated": False,
+            "template_validation": "failed",
         }
         if not await self.is_available():
             result["reason"] = self.unavailable_reason()
             return result
         options = self._connection_kwargs()
-        stage = "template_creation_failed"
+        stage = "template_creation_failed" if validate else "template_query_failed"
         sandbox = None
         try:
-            selected = self._template or "base"
+            if not validate:
+                # Establish service connectivity/auth even when template management APIs are disabled.
+                stage = "connection_failed"
+                await _AsyncSandbox.list(limit=1, **options).next_items()
+                stage = "template_query_failed"
+                result.update(await self._inspect_template_readonly(options))
+                return result
             sandbox = await _AsyncSandbox.create(
-                template=selected, timeout=60, request_timeout=15, **options
+                template=self._template or "base",
+                timeout=60,
+                request_timeout=15,
+                **options,
             )
             stage = "template_execution_failed"
             marker = "langbot-template-" + uuid.uuid4().hex
@@ -247,12 +344,11 @@ class E2BSandboxBackend(BaseSandboxBackend):
             if output.exit_code != 0 or output.stdout != marker:
                 result["reason"] = stage
                 return result
-            result.update(available=True, template_validated=True)
-        except Exception as exc:
-            status = getattr(exc, "status_code", None)
-            result["reason"] = (
-                "authentication_failed" if status in (401, 403) else stage
+            result.update(
+                available=True, template_validated=True, template_validation="ready"
             )
+        except Exception as exc:
+            result["reason"] = self._failure_reason(exc, stage)
         finally:
             if sandbox is not None:
                 try:
@@ -261,11 +357,14 @@ class E2BSandboxBackend(BaseSandboxBackend):
                             sandbox.sandbox_id, request_timeout=10, **options
                         )
                     )
-                except Exception:
+                except Exception as exc:
                     result.update(
                         available=False,
                         template_validated=False,
                         reason="template_cleanup_failed",
+                        cleanup_reason=self._failure_reason(
+                            exc, "template_cleanup_failed"
+                        ),
                     )
         return result
 

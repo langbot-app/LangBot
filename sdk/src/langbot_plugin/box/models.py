@@ -348,6 +348,10 @@ class BoxSpec(pydantic.BaseModel):
     mount_path: str = DEFAULT_BOX_MOUNT_PATH
     extra_mounts: list[BoxMountSpec] = pydantic.Field(default_factory=list)
     persistent: bool = False
+    workspace_max_sessions: int | None = pydantic.Field(
+        default=None, ge=1, le=1024, strict=True
+    )
+    idle_ttl_sec: int | None = pydantic.Field(default=None, ge=1, le=86400, strict=True)
     # Resource limits
     cpus: float = 1.0
     memory_mb: int = 512
