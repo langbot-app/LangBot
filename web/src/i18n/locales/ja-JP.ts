@@ -120,6 +120,25 @@ const jaJP = {
     },
   },
   workspaceSandbox: {
+    quotaCheck:
+      'ディスク上限はコマンド実行前後に確認します。継続的なファイルシステム制限ではありません。',
+    testRun: 'テスト実行',
+    testRunCost:
+      '一時サンドボックスを作成し、枠を1つ使用します。料金が発生する場合があります。',
+    checkHint:
+      '確認と保存ではサンドボックスを作成しません。テスト実行は任意です。',
+    queryUnsupported:
+      'テンプレート照会に未対応のため未検証です。保存または任意のテストが可能です。',
+    limitsTitle: 'ワークスペースの上限',
+    limitsHelp:
+      '空欄はデプロイの既定値を継承します。変更は新規タスクに適用されます。',
+    inherit: '既定値を継承',
+    limitMax: '上限: {{value}}',
+    limitUnsupported: 'バックエンドまたは管理ポリシーが未対応です',
+    e2bLimitUnsupported:
+      'E2Bテンプレートまたはサービスで管理されるため設定できません',
+    invalidLimits: '表示された範囲内の値を入力してください',
+
     confirm: '確認して保存',
     cancel: 'キャンセル',
     current: '現在の設定：{{backend}}',
@@ -132,8 +151,6 @@ const jaJP = {
     keyRequired: 'API Key を入力',
     keyHelp:
       '保存済みのキーは表示されません。URL を変更する場合は新しいキーを入力してください。',
-    checkHint:
-      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
     noManagedProcesses: 'この環境は stdio MCP サーバーに対応していません。',
     label: '実行環境',
     description:
@@ -147,11 +164,25 @@ const jaJP = {
       '選択した環境は利用できません。新しいタスクはサンドボックスで実行できません。',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'コマンド制限時間（秒）',
+      idle_ttl_sec: 'アイドル回収（秒）',
+      max_sessions: '最大サンドボックス数',
+      cpus: 'CPUコア数',
+      memory_mb: 'メモリ（MiB）',
+      pids_limit: 'プロセス数上限',
+      workspace_quota_mb: 'ディスク上限（MiB）',
+    },
     reasons: {
-      template_list_failed:
-        'Unable to load E2B templates; check service API and permissions',
-      template_not_found:
-        'Selected template is unavailable; choose one from the list',
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
       template_creation_failed:
         'Sandbox creation failed; check template status and service capacity',
       template_execution_failed: 'Sandbox created but execution check failed',

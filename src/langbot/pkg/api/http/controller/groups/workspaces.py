@@ -102,7 +102,10 @@ class WorkspacesRouterGroup(group.RouterGroup):
             backend = body.get('backend') if isinstance(body, dict) else None
             try:
                 result = await self.ap.box_service.set_workspace_backend(
-                    request_context, backend, e2b_draft=body.get('e2b') if isinstance(body, dict) else None
+                    request_context,
+                    backend,
+                    e2b_draft=body.get('e2b') if isinstance(body, dict) else None,
+                    limits=body.get('limits') if isinstance(body, dict) else None,
                 )
             except BoxValidationError as exc:
                 return self.http_status(400, 'sandbox_backend_unavailable', str(exc))
@@ -115,6 +118,27 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def check_sandbox(request_context: RequestContext):
+            from langbot_plugin.box.errors import BoxValidationError
+
+            body = await quart.request.get_json()
+            try:
+                result = await self.ap.box_service.get_workspace_backend_settings(
+                    request_context,
+                    refresh=True,
+                    validate_e2b_template=False,
+                    e2b_draft=body.get('e2b') if isinstance(body, dict) else None,
+                )
+            except BoxValidationError as exc:
+                return self.http_status(400, 'invalid_sandbox_configuration', str(exc))
+            return self.success(data=result)
+
+        @self.route(
+            '/current/sandbox/test',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.WORKSPACE_UPDATE,
+        )
+        async def test_sandbox(request_context: RequestContext):
             from langbot_plugin.box.errors import BoxValidationError
 
             body = await quart.request.get_json()

@@ -121,6 +121,25 @@ const enUS = {
     },
   },
   workspaceSandbox: {
+    quotaCheck:
+      'Disk quotas are checked before and after commands, not continuously.',
+    testRun: 'Test run',
+    testRunCost:
+      'Creates a temporary sandbox, uses one slot and may incur charges.',
+    checkHint:
+      'Lightweight checks do not create a sandbox. Test run is optional.',
+    queryUnsupported:
+      'This service does not expose template queries; the template is unverified. You can save or run an optional test.',
+    limitsTitle: 'Workspace limits',
+    limitsHelp:
+      'Blank values inherit deployment defaults. Changes apply to new tasks only.',
+    inherit: 'Inherit default',
+    limitMax: 'Maximum: {{value}}',
+    limitUnsupported: 'Unsupported by this backend or deployment policy',
+    e2bLimitUnsupported:
+      'Controlled by the E2B template/service; this setting is unsupported',
+    invalidLimits: 'Enter values within the displayed bounds',
+
     confirm: 'Confirm and save',
     cancel: 'Cancel',
     current: 'Currently active: {{backend}}',
@@ -133,8 +152,6 @@ const enUS = {
     keyRequired: 'Enter API key',
     keyHelp:
       'Stored API keys are never returned. Enter a new key when changing service URLs.',
-    checkHint:
-      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
     noManagedProcesses: 'This environment does not support stdio MCP servers.',
     label: 'Execution environment',
     description:
@@ -148,11 +165,25 @@ const enUS = {
       'The selected environment is unavailable. New tasks cannot start sandbox execution.',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Command timeout (seconds)',
+      idle_ttl_sec: 'Idle cleanup (seconds)',
+      max_sessions: 'Maximum sandboxes',
+      cpus: 'CPU cores',
+      memory_mb: 'Memory (MiB)',
+      pids_limit: 'Process limit',
+      workspace_quota_mb: 'Workspace disk quota (MiB)',
+    },
     reasons: {
-      template_list_failed:
-        'Unable to load E2B templates; check service API and permissions',
-      template_not_found:
-        'Selected template is unavailable; choose one from the list',
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
       template_creation_failed:
         'Sandbox creation failed; check template status and service capacity',
       template_execution_failed: 'Sandbox created but execution check failed',

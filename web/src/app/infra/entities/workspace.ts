@@ -78,7 +78,22 @@ export interface E2BConfigInput {
   template: string;
 }
 
+export type WorkspaceLimits = Partial<
+  Record<
+    | 'timeout_sec'
+    | 'idle_ttl_sec'
+    | 'max_sessions'
+    | 'cpus'
+    | 'memory_mb'
+    | 'pids_limit'
+    | 'workspace_quota_mb',
+    number
+  >
+>;
+
 export interface WorkspaceSandboxSettings {
+  limits?: WorkspaceLimits;
+  limit_caps?: WorkspaceLimits;
   e2b?: Omit<E2BConfigInput, 'api_key'> & {
     api_key_configured: boolean;
     source: string;
@@ -93,5 +108,7 @@ export interface WorkspaceSandboxSettings {
     reason: string | null;
     managed_processes?: boolean;
     template_validated?: boolean;
+    template_validation?: string;
+    limit_capabilities?: Partial<Record<keyof WorkspaceLimits, boolean>>;
   }[];
 }

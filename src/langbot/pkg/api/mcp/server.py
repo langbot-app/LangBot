@@ -137,15 +137,24 @@ class LangBotMCPServer:
             description='Set the Workspace sandbox backend for new tasks. Existing tasks keep their Box. Requires workspace.update.'
         )
         async def set_workspace_sandbox(
-            backend: typing.Literal['docker', 'e2b', 'nsjail'], e2b: dict[str, str] | None = None
+            backend: typing.Literal['docker', 'e2b', 'nsjail'],
+            e2b: dict[str, str] | None = None,
+            limits: dict[str, float | int | None] | None = None,
         ) -> str:
             context = _authorized(Permission.WORKSPACE_UPDATE)
-            return _dump(await ap.box_service.set_workspace_backend(context, backend, e2b_draft=e2b))
+            return _dump(await ap.box_service.set_workspace_backend(context, backend, e2b_draft=e2b, limits=limits))
 
         @mcp.tool(
-            description='Check draft sandbox settings without saving. Creates, executes in, then deletes a temporary sandbox using the supplied E2B template. Requires workspace.update. Stored API keys are never returned.'
+            description='Lightweight check of draft sandbox settings without saving or creating a sandbox. Requires workspace.update. Stored API keys are never returned.'
         )
         async def check_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(await ap.box_service.get_workspace_backend_settings(context, refresh=True, e2b_draft=e2b))
+
+        @mcp.tool(
+            description='Test the supplied E2B template by creating, executing in and deleting a temporary sandbox. Consumes a sandbox slot and may incur provider charges. Does not save. Requires workspace.update.'
+        )
+        async def test_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
             context = _authorized(Permission.WORKSPACE_UPDATE)
             return _dump(
                 await ap.box_service.get_workspace_backend_settings(

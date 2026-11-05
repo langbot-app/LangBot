@@ -116,6 +116,22 @@ const thTH = {
     },
   },
   workspaceSandbox: {
+    quotaCheck:
+      'ตรวจโควตาดิสก์ก่อนและหลังคำสั่ง ไม่ใช่การจำกัดระบบไฟล์อย่างต่อเนื่อง',
+    testRun: 'ทดสอบการทำงาน',
+    testRunCost: 'สร้างแซนด์บ็อกซ์ชั่วคราว ใช้หนึ่งโควตา และอาจมีค่าใช้จ่าย',
+    checkHint: 'การตรวจสอบและบันทึกไม่สร้างแซนด์บ็อกซ์ การทดสอบเป็นทางเลือก',
+    queryUnsupported:
+      'บริการไม่รองรับการค้นหาเทมเพลต จึงยังไม่ยืนยัน สามารถบันทึกหรือทดสอบได้',
+    limitsTitle: 'ขีดจำกัดพื้นที่ทำงาน',
+    limitsHelp: 'เว้นว่างเพื่อใช้ค่าเริ่มต้น การเปลี่ยนแปลงมีผลกับงานใหม่',
+    inherit: 'ใช้ค่าเริ่มต้น',
+    limitMax: 'สูงสุด: {{value}}',
+    limitUnsupported: 'สภาพแวดล้อมหรือนโยบายไม่รองรับ',
+    e2bLimitUnsupported:
+      'ควบคุมโดยเทมเพลตหรือบริการ E2B ไม่รองรับการตั้งค่านี้',
+    invalidLimits: 'กรอกค่าภายในขอบเขตที่แสดง',
+
     confirm: 'ยืนยันและบันทึก',
     cancel: 'ยกเลิก',
     current: 'ใช้งานอยู่: {{backend}}',
@@ -127,8 +143,6 @@ const thTH = {
     keyConfigured: 'ตั้งค่าแล้ว เว้นว่างเพื่อคงเดิม',
     keyRequired: 'ป้อน API Key',
     keyHelp: 'ระบบไม่แสดงคีย์ที่บันทึกไว้ เมื่อเปลี่ยน URL ต้องป้อนคีย์ใหม่',
-    checkHint:
-      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
     noManagedProcesses: 'สภาพแวดล้อมนี้ไม่รองรับเซิร์ฟเวอร์ stdio MCP',
     label: 'สภาพแวดล้อมการทำงาน',
     description:
@@ -141,11 +155,25 @@ const thTH = {
     unavailable: 'สภาพแวดล้อมที่เลือกไม่พร้อมใช้งานสำหรับงานใหม่',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'หมดเวลาคำสั่ง (วินาที)',
+      idle_ttl_sec: 'คืนทรัพยากรเมื่อว่าง (วินาที)',
+      max_sessions: 'จำนวนแซนด์บ็อกซ์สูงสุด',
+      cpus: 'แกน CPU',
+      memory_mb: 'หน่วยความจำ (MiB)',
+      pids_limit: 'จำนวนโปรเซสสูงสุด',
+      workspace_quota_mb: 'โควตาดิสก์ (MiB)',
+    },
     reasons: {
-      template_list_failed:
-        'Unable to load E2B templates; check service API and permissions',
-      template_not_found:
-        'Selected template is unavailable; choose one from the list',
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
       template_creation_failed:
         'Sandbox creation failed; check template status and service capacity',
       template_execution_failed: 'Sandbox created but execution check failed',

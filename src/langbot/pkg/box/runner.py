@@ -167,6 +167,7 @@ class RunnerBoxService:
             if not hasattr(query, '_sandbox_backend'):
                 object.__setattr__(query, '_sandbox_backend', selection['backend'])
             object.__setattr__(query, '_sandbox_e2b_config', selection['e2b'])
+            object.__setattr__(query, '_sandbox_limits', selection.get('limits', {}))
 
     async def acquire(self, context, data, query=None):
         await self._pin_selection(context, query)
@@ -192,6 +193,7 @@ class RunnerBoxService:
             trusted_read_only_mounts=mounts,
             selected_backend=backend,
             selected_e2b_config=getattr(query, '_sandbox_e2b_config', None) if query is not None else None,
+            selected_limits=getattr(query, '_sandbox_limits', None) if query is not None else None,
         )
         return self.public_session(result)
 
@@ -217,6 +219,11 @@ class RunnerBoxService:
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
         spec['backend'] = item.get('backend_name')
+        limits = getattr(query, '_sandbox_limits', {}) or {}
+        if limits.get('config') and '-limits-' + limits['revision'] not in box_id:
+            raise BoxValidationError('Box does not match the task workspace limits')
+        if limits.get('config'):
+            spec = self.box._apply_workspace_limits(spec, limits)
         selected_config = getattr(query, '_sandbox_e2b_config', None)
         if item.get('backend_name') == 'e2b' and selected_config is not None:
             suffix = '-backend-e2b' + ('-' + selected_config['revision'] if selected_config else '')

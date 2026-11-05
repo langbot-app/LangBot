@@ -123,6 +123,7 @@ class AgentRunOrchestrator:
             '_execution_context': context,
             '_sandbox_backend': backend,
             '_sandbox_e2b_config': selection['e2b'],
+            '_sandbox_limits': selection.get('limits', {}),
         }
         mcp_loader = getattr(getattr(self.ap, 'tool_mgr', None), 'mcp_tool_loader', None)
         async with contextlib.AsyncExitStack() as stack:
@@ -133,7 +134,12 @@ class AgentRunOrchestrator:
                     else (binding.resource_policy.allowed_tool_names or [])
                 )
                 adapter_context['_sandbox_mcp_sessions'] = await stack.enter_async_context(
-                    mcp_loader.task_sandbox_scope(context, backend, tool_names=tool_names)
+                    mcp_loader.task_sandbox_scope(
+                        context,
+                        backend,
+                        tool_names=tool_names,
+                        **({'limits_selection': selection['limits']} if selection.get('limits') else {}),
+                    )
                 )
             stream = self._run(event, binding, bound_plugins, adapter_context)
             try:
@@ -183,6 +189,7 @@ class AgentRunOrchestrator:
         object.__setattr__(execution_query, '_execution_context', execution_context)
         object.__setattr__(execution_query, '_sandbox_backend', adapter_context.get('_sandbox_backend'))
         object.__setattr__(execution_query, '_sandbox_e2b_config', adapter_context.get('_sandbox_e2b_config', {}))
+        object.__setattr__(execution_query, '_sandbox_limits', adapter_context.get('_sandbox_limits', {}))
         object.__setattr__(execution_query, '_sandbox_mcp_sessions', adapter_context.get('_sandbox_mcp_sessions'))
 
         from ...box.runner import prepare_input_files

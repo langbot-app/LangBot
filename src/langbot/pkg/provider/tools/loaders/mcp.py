@@ -300,6 +300,7 @@ class RuntimeMCPSession:
         self.ap = ap
         self.execution_context = execution_context
         self.sandbox_backend = server_config.get('_sandbox_backend')
+        self.sandbox_limits = server_config.get('_sandbox_limits')
         self.enable = enable
         self.session = None
         self.tool_call_timeout_sec = self._parse_tool_call_timeout(
@@ -1570,11 +1571,15 @@ class RuntimeMCPSession:
         }
         if self.sandbox_backend:
             profile['backend'] = self.sandbox_backend
+        limits = getattr(self, 'sandbox_limits', None) or {}
+        limits_suffix = '-limits-' + limits['revision'] if limits.get('config') else ''
+        if limits_suffix:
+            profile['limits'] = limits['revision']
         if profile == default_profile:
             return 'mcp-shared'
         digest = hashlib.sha256(json.dumps(profile, sort_keys=True).encode('utf-8')).hexdigest()[:12]
         suffix = '-backend-' + self.sandbox_backend if self.sandbox_backend else ''
-        return f'mcp-shared-{digest}{suffix}'
+        return f'mcp-shared-{digest}{limits_suffix}{suffix}'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
         return self._box_stdio_runtime.rewrite_path(path, host_path)
@@ -2067,7 +2072,12 @@ class MCPLoader(loader.ToolLoader):
 
     @asynccontextmanager
     async def task_sandbox_scope(
-        self, context: TenantContext, backend: str | None, *, tool_names: list[str] | None = None
+        self,
+        context: TenantContext,
+        backend: str | None,
+        *,
+        tool_names: list[str] | None = None,
+        limits_selection: dict | None = None,
     ):
         sessions = []
         owned = []
@@ -2075,7 +2085,10 @@ class MCPLoader(loader.ToolLoader):
         query_key = (*self._scope_key(context), context.query_uuid) if context.query_uuid else None
         try:
             for session in self._sessions_for_context(context):
-                if session._uses_box_stdio() and session.sandbox_backend != backend:
+                if session._uses_box_stdio() and (
+                    session.sandbox_backend != backend
+                    or (getattr(session, 'sandbox_limits', None) or {}) != (limits_selection or {})
+                ):
                     known_tools = session.get_tools()
                     if tool_names == [] or (
                         tool_names is not None
@@ -2095,6 +2108,7 @@ class MCPLoader(loader.ToolLoader):
                     config = {
                         **session.server_config,
                         '_sandbox_backend': backend,
+                        '_sandbox_limits': limits_selection,
                         '_sandbox_task_id': uuid_module.uuid4().hex,
                     }
                     session = RuntimeMCPSession(

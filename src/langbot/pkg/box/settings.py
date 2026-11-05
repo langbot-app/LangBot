@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import uuid
 
+import pydantic
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -14,27 +15,35 @@ from ..entity.persistence.metadata import WorkspaceMetadata
 
 BACKEND_KEY = 'sandbox_backend'
 E2B_KEY = 'sandbox_e2b'
+LIMITS_KEY = 'sandbox_limits'
 SELECTABLE_BACKENDS = ('docker', 'e2b', 'nsjail')
 
 
 async def get_settings(ap, workspace_uuid: str) -> dict:
     if getattr(ap, 'persistence_mgr', None) is None:
-        return {'backend': None, 'e2b': None}
+        return {'backend': None, 'e2b': None, 'limits': None}
     async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
         result = await uow.execute(
             sa.select(WorkspaceMetadata.key, WorkspaceMetadata.value).where(
-                WorkspaceMetadata.workspace_uuid == workspace_uuid, WorkspaceMetadata.key.in_([BACKEND_KEY, E2B_KEY])
+                WorkspaceMetadata.workspace_uuid == workspace_uuid,
+                WorkspaceMetadata.key.in_([BACKEND_KEY, E2B_KEY, LIMITS_KEY]),
             )
         )
         values = dict(result.all())
-    return {'backend': values.get(BACKEND_KEY), 'e2b': json.loads(values[E2B_KEY]) if values.get(E2B_KEY) else None}
+    return {
+        'backend': values.get(BACKEND_KEY),
+        'e2b': json.loads(values[E2B_KEY]) if values.get(E2B_KEY) else None,
+        'limits': json.loads(values[LIMITS_KEY]) if values.get(LIMITS_KEY) else None,
+    }
 
 
 async def get_backend(ap, workspace_uuid: str) -> str | None:
     return (await get_settings(ap, workspace_uuid))['backend']
 
 
-async def set_backend(ap, workspace_uuid: str, backend: str, *, e2b_config: dict | None = None) -> None:
+async def set_backend(
+    ap, workspace_uuid: str, backend: str, *, e2b_config: dict | None = None, limits: dict | None = None
+) -> None:
     values = {BACKEND_KEY: backend}
     if e2b_config is not None:
         current = (await get_settings(ap, workspace_uuid))['e2b']
@@ -44,6 +53,10 @@ async def set_backend(ap, workspace_uuid: str, backend: str, *, e2b_config: dict
             else {'config': e2b_config, 'revision': uuid.uuid4().hex}
         )
         values[E2B_KEY] = json.dumps(entry)
+    if limits is not None:
+        current = (await get_settings(ap, workspace_uuid))['limits']
+        entry = current if current and current['config'] == limits else {'config': limits, 'revision': uuid.uuid4().hex}
+        values[LIMITS_KEY] = json.dumps(entry)
     try:
         async with ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
             insert = pg_insert if ap.persistence_mgr.get_db_engine().dialect.name == 'postgresql' else sqlite_insert
@@ -55,3 +68,14 @@ async def set_backend(ap, workspace_uuid: str, backend: str, *, e2b_config: dict
     except Exception:
         # Database errors can include the private credential payload in SQL parameters.
         raise BoxValidationError('Sandbox settings could not be stored') from None
+
+
+class WorkspaceLimits(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(extra='forbid', strict=True)
+    timeout_sec: int | None = pydantic.Field(default=None, ge=1)
+    idle_ttl_sec: int | None = pydantic.Field(default=None, ge=1, le=86400)
+    max_sessions: int | None = pydantic.Field(default=None, ge=1, le=1024)
+    cpus: float | None = pydantic.Field(default=None, gt=0, allow_inf_nan=False)
+    memory_mb: int | None = pydantic.Field(default=None, ge=32)
+    pids_limit: int | None = pydantic.Field(default=None, ge=1)
+    workspace_quota_mb: int | None = pydantic.Field(default=None, ge=1)

@@ -119,6 +119,24 @@ const ruRU = {
     },
   },
   workspaceSandbox: {
+    quotaCheck: 'Квота диска проверяется до и после команд, а не непрерывно.',
+    testRun: 'Пробный запуск',
+    testRunCost:
+      'Создаёт временную песочницу, занимает один слот и может потребовать оплаты.',
+    checkHint:
+      'Проверка и сохранение не создают песочниц. Пробный запуск необязателен.',
+    queryUnsupported:
+      'Сервис не поддерживает запрос шаблона; он не проверен. Можно сохранить или запустить тест.',
+    limitsTitle: 'Лимиты пространства',
+    limitsHelp:
+      'Пустые поля наследуют настройки сервера. Изменения действуют для новых задач.',
+    inherit: 'Наследовать',
+    limitMax: 'Максимум: {{value}}',
+    limitUnsupported: 'Не поддерживается средой или политикой',
+    e2bLimitUnsupported:
+      'Управляется шаблоном или сервисом E2B; настройка недоступна',
+    invalidLimits: 'Введите значения в указанных пределах',
+
     confirm: 'Подтвердить и сохранить',
     cancel: 'Отмена',
     current: 'Активно: {{backend}}',
@@ -131,8 +149,6 @@ const ruRU = {
     keyRequired: 'Введите API Key',
     keyHelp:
       'Сохранённые ключи не возвращаются. При изменении URL введите новый ключ.',
-    checkHint:
-      'Check again to create and delete a temporary sandbox and verify the selected template before saving.',
     noManagedProcesses: 'Эта среда не поддерживает серверы MCP stdio.',
     label: 'Среда выполнения',
     description:
@@ -145,11 +161,25 @@ const ruRU = {
     unavailable: 'Выбранная среда недоступна для выполнения новых задач.',
     templateVerified:
       'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Тайм-аут команды (сек.)',
+      idle_ttl_sec: 'Очистка при простое (сек.)',
+      max_sessions: 'Максимум песочниц',
+      cpus: 'Ядра CPU',
+      memory_mb: 'Память (MiB)',
+      pids_limit: 'Лимит процессов',
+      workspace_quota_mb: 'Квота диска (MiB)',
+    },
     reasons: {
-      template_list_failed:
-        'Unable to load E2B templates; check service API and permissions',
-      template_not_found:
-        'Selected template is unavailable; choose one from the list',
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
       template_creation_failed:
         'Sandbox creation failed; check template status and service capacity',
       template_execution_failed: 'Sandbox created but execution check failed',

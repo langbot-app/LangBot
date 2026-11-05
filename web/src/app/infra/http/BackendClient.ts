@@ -150,10 +150,12 @@ export class BackendClient extends BaseHttpClient {
   public setWorkspaceSandbox(
     backend: string,
     e2b?: E2BConfigInput,
+    limits?: import('@/app/infra/entities/workspace').WorkspaceLimits,
   ): Promise<WorkspaceSandboxSettings> {
     return this.put('/api/v1/workspaces/current/sandbox', {
       backend,
       ...(e2b ? { e2b } : {}),
+      ...(limits ? { limits } : {}),
     });
   }
 
@@ -164,6 +166,12 @@ export class BackendClient extends BaseHttpClient {
       '/api/v1/workspaces/current/sandbox/check',
       e2b ? { e2b } : {},
     );
+  }
+
+  public testWorkspaceSandbox(
+    e2b: E2BConfigInput,
+  ): Promise<WorkspaceSandboxSettings> {
+    return this.post('/api/v1/workspaces/current/sandbox/test', { e2b });
   }
 
   public getWorkspaceLanguage(): Promise<{

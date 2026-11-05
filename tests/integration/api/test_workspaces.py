@@ -1126,7 +1126,7 @@ async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmatio
     checked = await client.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={'e2b': draft})
     assert checked.status_code == 200
     assert key not in await checked.get_data(as_text=True)
-    assert (await get_settings(ap, ws)) == {'backend': None, 'e2b': None}
+    assert (await get_settings(ap, ws)) == {'backend': None, 'e2b': None, 'limits': None}
     saved = await client.put(
         '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'e2b': draft}
     )
@@ -1182,3 +1182,98 @@ async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmatio
         await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
     ).status_code == 403
     assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_workspace_limits_and_explicit_test_run_are_separate(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.box.runner import RunnerBoxService
+
+    ap, http, _, token = workspace_api
+    current = (await (await http.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    headers = _auth(token, ws)
+    common = dict.fromkeys(('timeout_sec', 'idle_ttl_sec', 'max_sessions'), True)
+    local = {**common, **dict.fromkeys(('cpus', 'memory_mb', 'pids_limit', 'workspace_quota_mb'), True)}
+    calls = []
+
+    async def probe(**options):
+        calls.append(options)
+        return [
+            {'name': 'docker', 'available': True, 'reason': None, 'limit_capabilities': local},
+            {
+                'name': 'e2b',
+                'available': True,
+                'reason': None,
+                'template_validation': 'unsupported',
+                'limit_capabilities': common,
+            },
+        ]
+
+    rpc = SimpleNamespace(
+        get_backends=AsyncMock(side_effect=probe), get_backend_info=AsyncMock(return_value={'name': 'docker'})
+    )
+    ap.box_service = box = BoxService(ap, client=rpc)
+    box._available = True
+    limits = {'timeout_sec': 2, 'idle_ttl_sec': 60, 'max_sessions': 2, 'cpus': 0.5, 'memory_mb': 64, 'pids_limit': 16}
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker', 'limits': limits}
+    )
+    assert response.status_code == 200, await response.get_json()
+    assert (await response.get_json())['data']['limits'] == limits
+    assert not any(call.get('validate_e2b_template') for call in calls)
+    stored = await get_settings(ap, ws)
+    for invalid in ({'cpus': 999}, {'timeout_sec': 0}, {'max_sessions': True}, {'unknown': 1}):
+        response = await http.put(
+            '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker', 'limits': invalid}
+        )
+        assert response.status_code == 400, await response.get_json()
+        assert await get_settings(ap, ws) == stored
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b', 'limits': {'memory_mb': 64}}
+    )
+    assert response.status_code == 400
+    assert await get_settings(ap, ws) == stored
+    response = await http.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'e2b'})
+    assert response.status_code == 400  # Existing unsupported Docker limits must also be checked.
+    assert await get_settings(ap, ws) == stored
+    binding = await ap.workspace_service.get_execution_binding(ws)
+    context = ExecutionContext(
+        instance_uuid=binding.instance_uuid, workspace_uuid=ws, placement_generation=binding.placement_generation
+    )
+    old = await box.resolve_workspace_selection(context)
+    payload = {'session_id': 'snapshot', 'timeout_sec': 90}
+    before = await box._workspace_backend_payload(
+        context, payload, backend='docker', e2b_selection={}, limits_selection=old['limits']
+    )
+    assert before['timeout_sec'] == 2 and before['workspace_max_sessions'] == 2
+    assert before['cpus'] == 0.5 and before['idle_ttl_sec'] == 60
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox',
+        headers=headers,
+        json={'backend': 'docker', 'limits': {'timeout_sec': 1, 'max_sessions': 1}},
+    )
+    assert response.status_code == 200
+    again = await box._workspace_backend_payload(
+        context, payload, backend='docker', e2b_selection={}, limits_selection=old['limits']
+    )
+    after = await box._workspace_backend_payload(context, payload)
+    assert before == again and after['session_id'] != before['session_id']
+    assert after['timeout_sec'] == 1 and after['workspace_max_sessions'] == 1
+    rpc.get_sessions = AsyncMock(return_value=[{'session_id': before['session_id'], 'backend_name': 'docker'}])
+    query = SimpleNamespace(
+        _sandbox_backend='docker',
+        _sandbox_e2b_config={},
+        _sandbox_limits=(await box.resolve_workspace_selection(context))['limits'],
+    )
+    with pytest.raises(Exception, match='workspace limits'):
+        await RunnerBoxService(box).bind(context, query, 'new-run', before['session_id'])
+    calls.clear()
+    assert (await http.post('/api/v1/workspaces/current/sandbox/check', headers=headers, json={})).status_code == 200
+    assert not any(call.get('validate_e2b_template') for call in calls)
+    calls.clear()
+    assert (await http.post('/api/v1/workspaces/current/sandbox/test', headers=headers, json={})).status_code == 200
+    assert calls[0]['validate_e2b_template'] is True
+    assert await get_settings(ap, ws) != stored  # Only the confirmed limits update changed metadata.
