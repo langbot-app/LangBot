@@ -2994,6 +2994,10 @@ const esES = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'Tu espacio de trabajo alcanzó su límite de miembros ({{max}}, incluidas las invitaciones pendientes). Mejora tu plan para invitar a más miembros.',
+    memberLimitReachedToast:
+      'Se alcanzó el límite de miembros. Mejora tu plan para invitar a más miembros.',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',

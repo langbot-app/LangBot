@@ -2954,6 +2954,10 @@ const jaJP = {
       failed: '招待リンクを作成しましたが、メールを送信できませんでした',
     },
     invitationCreateFailed: '招待の作成に失敗しました',
+    memberLimitReached:
+      'このワークスペースはメンバー上限（{{max}} 人、保留中の招待を含む）に達しています。より多くのメンバーを招待するにはプランをアップグレードしてください。',
+    memberLimitReachedToast:
+      'メンバー上限に達しました。プランをアップグレードしてください。',
     oneTimeLinkWarning:
       'このリンクを今すぐコピーしてください。一度だけ表示されます。',
     copyInvitation: '招待リンクをコピー',

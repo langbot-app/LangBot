@@ -187,11 +187,11 @@ async def workspace_current(ap, context, payload):
         result['membership'] = _membership(member, display_name=account.user, email=account.normalized_email)
     resolver = getattr(ap, 'entitlement_resolver', None)
     if workspace.source == 'cloud_projection' and resolver is not None:
-        from ..http.service.workspace_limits import LIMIT_KEYS
+        from ..http.service.workspace_limits import entitlement_limitation
 
         entitlement = await resolver.resolve(workspace.uuid, minimum_revision=context.entitlement_revision)
         result['plan_name'] = entitlement.plan_name
-        result['limitation'] = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
+        result['limitation'] = entitlement_limitation(entitlement)
         if entitlement.plan_revision is not None and entitlement.monthly_bonus_credits is not None:
             result['current_plan'] = {
                 'name': entitlement.plan_name,

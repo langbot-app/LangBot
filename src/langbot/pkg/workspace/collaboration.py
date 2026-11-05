@@ -79,6 +79,10 @@ class AlreadyMemberError(InvitationError):
     code = 'already_a_member'
 
 
+class MemberLimitReachedError(InvitationError):
+    code = 'member_limit_reached'
+
+
 @dataclasses.dataclass(frozen=True, slots=True)
 class ResolvedWorkspaceAccess:
     workspace: Workspace
@@ -360,6 +364,7 @@ class WorkspaceCollaborationService:
         normalized_email = normalize_email(email)
         if expires_in <= datetime.timedelta(0):
             raise InvitationError('Invitation expiry must be in the future')
+        max_members = await self._member_limit(workspace_uuid)
 
         async def operation(active_session: AsyncSession) -> CreatedInvitation:
             await self._require_active_workspace(active_session, workspace_uuid)
@@ -393,6 +398,14 @@ class WorkspaceCollaborationService:
                 existing_pending.status = InvitationStatus.REVOKED.value
                 existing_pending.revoked_at = now
                 await active_session.flush()
+            # Replacing a pending invitation for the same email does not take
+            # another seat, so count reservations only after revoking it.
+            await self._enforce_member_limit(
+                active_session,
+                workspace_uuid,
+                max_members,
+                include_pending_invitations=True,
+            )
 
             token = f'lbi_{secrets.token_urlsafe(32)}'
             invitation = WorkspaceInvitation(
@@ -476,6 +489,14 @@ class WorkspaceCollaborationService:
                 )
                 .with_for_update()
             )
+            if membership is None or membership.status != MembershipStatus.ACTIVE.value:
+                # Seats may have been consumed after the invitation was sent.
+                await self._enforce_member_limit(
+                    active_session,
+                    invitation.workspace_uuid,
+                    await self._member_limit(invitation.workspace_uuid),
+                    include_pending_invitations=False,
+                )
             now = self._utcnow()
             if membership is None:
                 membership = WorkspaceMembership(
@@ -693,6 +714,56 @@ class WorkspaceCollaborationService:
         ):
             raise WorkspaceNotFoundError('Workspace not found')
         return workspace
+
+    async def _member_limit(self, workspace_uuid: str) -> int:
+        """Return the Workspace member cap, or -1 when members are uncapped.
+
+        Only Cloud entitlements cap members; self-hosted editions keep their
+        existing unlimited collaboration behavior.
+        """
+
+        if getattr(getattr(self.ap, 'deployment', None), 'mode', None) != 'cloud':
+            return -1
+        from ..api.http.service.workspace_limits import workspace_limits
+
+        return (await workspace_limits(self.ap, workspace_uuid)).get('max_members', -1)
+
+    async def _enforce_member_limit(
+        self,
+        session: AsyncSession,
+        workspace_uuid: str,
+        max_members: int,
+        *,
+        include_pending_invitations: bool,
+    ) -> None:
+        """Reject a seat reservation once active members (and pending invites) fill the plan."""
+
+        if max_members < 0:
+            return
+        # Serialize seat accounting across concurrent invites and accepts.
+        await session.execute(
+            sqlalchemy.select(Workspace.uuid).where(Workspace.uuid == workspace_uuid).with_for_update()
+        )
+        total = await session.scalar(
+            sqlalchemy.select(sqlalchemy.func.count())
+            .select_from(WorkspaceMembership)
+            .where(
+                WorkspaceMembership.workspace_uuid == workspace_uuid,
+                WorkspaceMembership.status == MembershipStatus.ACTIVE.value,
+            )
+        )
+        if include_pending_invitations:
+            total += await session.scalar(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(WorkspaceInvitation)
+                .where(
+                    WorkspaceInvitation.workspace_uuid == workspace_uuid,
+                    WorkspaceInvitation.status == InvitationStatus.PENDING.value,
+                    WorkspaceInvitation.expires_at > self._utcnow(),
+                )
+            )
+        if total >= max_members:
+            raise MemberLimitReachedError(f'Workspace member limit ({max_members}) reached')
 
     def _validate_invitation_state(self, invitation: WorkspaceInvitation) -> None:
         if invitation.status == InvitationStatus.REVOKED.value:

@@ -2877,6 +2877,10 @@ const thTH = {
       failed: 'Invitation link created, but email could not be sent',
     },
     invitationCreateFailed: 'Failed to create invitation',
+    memberLimitReached:
+      'เวิร์กสเปซนี้มีสมาชิกครบตามขีดจำกัดแล้ว ({{max}} คน รวมคำเชิญที่รอดำเนินการ) อัปเกรดแผนเพื่อเชิญสมาชิกเพิ่ม',
+    memberLimitReachedToast:
+      'สมาชิกครบตามขีดจำกัดแล้ว อัปเกรดแผนเพื่อเชิญสมาชิกเพิ่ม',
     oneTimeLinkWarning: 'Copy this link now. It is shown only once.',
     copyInvitation: 'Copy invitation link',
     invitationCopied: 'Invitation link copied',

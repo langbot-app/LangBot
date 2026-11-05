@@ -177,9 +177,9 @@ class WorkspacesRouterGroup(group.RouterGroup):
                         'limits': entitlement.limits,
                         'entitlement_features': entitlement.features,
                     }
-                from ...service.workspace_limits import LIMIT_KEYS
+                from ...service.workspace_limits import entitlement_limitation
 
-                limitation = {key: entitlement.limit(value) for key, value in LIMIT_KEYS.items()}
+                limitation = entitlement_limitation(entitlement)
             if request_context.principal.principal_type == PrincipalType.SUPPORT_ADMIN:
                 return self.success(
                     data={
