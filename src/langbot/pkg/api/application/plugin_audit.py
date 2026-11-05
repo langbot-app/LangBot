@@ -83,11 +83,13 @@ async def audit_action(ap, binding, action, *, side_effect=False):
     observed_at = time.monotonic()
     call = AuditCall(())
     token = None
+    cancelled = False
     try:
         call.chain = _ancestry(ap, binding) + (_frame(binding, action),)
         token = _current_call.set(call)
         yield call
     except (asyncio.CancelledError, GeneratorExit):
+        cancelled = True
         call.outcome, call.status = ('unknown' if side_effect else 'error'), 499
         raise
     except ApplicationAPIException as exc:
@@ -101,12 +103,21 @@ async def audit_action(ap, binding, action, *, side_effect=False):
         call.active = False
         if token is not None:
             _current_call.reset(token)
-        await _record(ap, binding, action, call, observed_at, side_effect)
+        if cancelled:
+            # A further cancellation must not interrupt the write halfway and
+            # strand its database connection; let the record finish on its own.
+            await asyncio.shield(asyncio.ensure_future(_record(ap, binding, action, call, observed_at, side_effect)))
+        else:
+            await _record(ap, binding, action, call, observed_at, side_effect)
 
 
 async def _record(ap, binding, action, call, observed_at, side_effect):
     service = getattr(ap, 'workspace_settings_service', None)
     if service is None:
+        return
+    # Actions cancelled by shutdown finish after persistence closed; writing
+    # then would open a connection on the disposed engine that is never closed.
+    if getattr(ap, 'stopping', False) is True:
         return
     from ...operation_trace.service import ActionRule, bucket_allows
 

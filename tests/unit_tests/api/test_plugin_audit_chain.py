@@ -377,3 +377,13 @@ def test_core_does_not_relay_target_correlation_to_unrelated_outbound_actions(ho
         assert host.handler._outbound_action_data({'key': 'value'}) == {'key': 'value'}
         explicit = {'_host_audit_id': 'new-target-id'}
         assert host.handler._outbound_action_data(explicit) == explicit
+
+
+@pytest.mark.asyncio
+async def test_actions_finishing_after_shutdown_are_not_recorded(host):
+    """A late audit write would reopen a connection on the disposed engine."""
+    host.ap.stopping = True
+    async with audit_action(host.ap, host.caller, 'get_langbot_version'):
+        pass
+    host.ap.workspace_settings_service.get_configured_level.assert_not_awaited()
+    host.ap.workspace_settings_service.record.assert_not_awaited()

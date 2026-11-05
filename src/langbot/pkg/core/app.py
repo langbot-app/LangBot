@@ -230,6 +230,7 @@ class Application:
     def __init__(self):
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._stopping = False
         self._shutdown_task: asyncio.Task | None = None
         self.event_loop_monitor = event_loop_monitor.EventLoopLagMonitor()
 
@@ -647,6 +648,7 @@ class Application:
         async with self._shutdown_lock:
             if self._shutdown_complete:
                 return
+            self._stopping = True
 
             if self.task_mgr is not None:
                 self.task_mgr.cancel_by_scope(core_entities.LifecycleControlScope.APPLICATION)
@@ -708,6 +710,11 @@ class Application:
                     with contextlib.suppress(Exception):
                         await persistence_engine.dispose()
             self._shutdown_complete = True
+
+    @property
+    def stopping(self) -> bool:
+        """Whether shutdown has begun; late work must not reopen resources."""
+        return self._stopping
 
     def dispose(self):
         """Compatibility wrapper for callers that cannot await shutdown."""
