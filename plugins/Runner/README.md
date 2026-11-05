@@ -49,6 +49,7 @@ LangBot 默认不会内联完整历史。如果运行器需要更多上下文，
 | `codex-agent` | `plugin:langbot-team/CodexAgent/default` | - | Codex CLI 专属集成 |
 | `deerflow-agent` | `plugin:langbot-team/DeerFlowAgent/default` | `deerflow-api` | DeerFlow LangGraph 集成 |
 | `dify-agent` | `plugin:langbot-team/DifyAgent/default` | `dify-service-api` | Dify 应用集成 |
+| `multica-agent` | `plugin:langbot-team/MulticaAgent/default` | - | 与选定的 Multica 智能体直接对话 |
 | `n8n-agent` | `plugin:langbot-team/N8nAgent/default` | `n8n-service-api` | n8n 工作流 webhook 集成 |
 | `coze-agent` | `plugin:langbot-team/CozeAgent/default` | `coze-api` | Coze（扣子）机器人集成 |
 | `dashscope-agent` | `plugin:langbot-team/DashScopeAgent/default` | `dashscope-app-api` | 阿里云 DashScope（百炼）集成 |
