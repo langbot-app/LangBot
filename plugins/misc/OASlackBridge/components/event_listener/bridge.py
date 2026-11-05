@@ -17,8 +17,6 @@ class BridgeListener(EventListener):
             except Exception as error:
                 if not permission_denied(error):
                     raise
-                event_context.prevent_default()
-                event_context.prevent_postorder()
                 logging.getLogger(__name__).warning(
                     permission_notice("storage.plugin / bot.message.send")
                 )

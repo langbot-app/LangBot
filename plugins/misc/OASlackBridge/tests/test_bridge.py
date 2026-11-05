@@ -540,14 +540,28 @@ async def test_denied_receipt_does_not_retry_customer_send():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("action", [Action.GET_PLUGIN_STORAGE_KEYS, Action.SET_PLUGIN_STORAGE, Action.SEND_MESSAGE])
-async def test_listener_permission_denial_stops_pipeline_without_crashing(action, caplog):
+@pytest.mark.parametrize("action,existing,incoming_text", [
+    (action, existing, incoming_text)
+    for action, existing, texts in [
+        (Action.GET_PLUGIN_STORAGE_KEYS, False, ["help", "你好，请问营业时间？"]),
+        (Action.GET_PLUGIN_STORAGE, True, ["help", "你好，请问营业时间？"]),
+        (Action.SET_PLUGIN_STORAGE, False, ["help"]),
+        (Action.SET_PLUGIN_STORAGE, True, ["help", "你好，请问营业时间？"]),
+        (Action.SEND_MESSAGE, False, ["help"]),
+        (Action.SEND_MESSAGE, True, ["help", "你好，请问营业时间？"]),
+    ]
+    for incoming_text in texts
+])
+async def test_listener_permission_denial_leaves_pipeline_open(action, existing, incoming_text, caplog):
     _plugin, host, handlers = await graph()
-    host.denied_action, host.denial = action, denied()
     with bind_invocation(host, config=CONFIG):
-        incoming = context()
+        if existing:
+            await receive(handlers, context())
+        host.denied_action, host.denial = action, denied()
+        incoming = context(incoming_text)
         await receive(handlers, incoming)
-    incoming.prevent_default.assert_called()
+    incoming.prevent_default.assert_not_called()
+    incoming.prevent_postorder.assert_not_called()
     assert "Permission denied" in caplog.text
     assert "Host rejected" not in caplog.text
 

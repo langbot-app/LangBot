@@ -11,6 +11,8 @@
 
 ## 配置步骤与 0.2.0 升级
 
+0.2.0 的最低 Host 能力要求为：Unified API、插件安装权限、Runner `usages: [event]`、Bot Plugin processor 订阅、公众号标准发送及 Slack thread 支持；同时需要本次更新包含的 Runner 标准发送权限检查和 MessageChain 转换。缺少这些能力的旧版 Host 无法加载或运行本版本。
+
 1. 使用支持 Unified API、Runner 事件处理器和 Bot Plugin processor 订阅的 LangBot。安装或升级插件后，由 Workspace 成员在插件详情页确认 `bot.message.send` 和 `storage.plugin`。0.2.0 从 compatibility mode 转为 strict；声明权限不等于获得授权，不申请 Workspace operations。
 2. 填写下方插件级配置，两个组件共用这份配置，处理器没有独立配置项。
 3. 公众号 Bot 的**主路由必须是启用了本插件的 Pipeline**，插件排在会回复或消费消息的其他插件之前。EventListener 只在 Pipeline 内运行；如果主路由是 Agent，就无法阻断接管期间的 AI 回复。
@@ -22,6 +24,8 @@
 回执通过事件范围的标准 `ctx.reply` 发送，沿用 Slack 来源事件的 `thread_ts`。Runner 声明 `tool_calling: true` 和 `permissions.tools: [call]`、`permissions.storage: [plugin]`；消息事件自动获得 `event_reply`，无需额外启用平台工具或安装 capability。`get_bot_uuid` 同属事件范围；跨 Bot 发送需要 `bot.message.send`，存储读写和删除需要 `storage.plugin`。权限拒绝会记日志而不输出原始异常；仍能进行事件回复时，处理器会在 Slack 提示缺少的权限。
 
 ## 配置
+
+插件存储或发送 Slack 的权限被拒绝时，公众号监听器只记录警告，本条消息继续走正常 AI 流水线；关键词命中和已有接管期间的消息同样放行。只有桥接处理成功后才阻断 AI，避免缺少权限时用户收不到回复；已经转发至 Slack 的消息仍会保留。插件不会清除其他流水线插件设置的阻断标记。
 
 | 配置项 | 默认值 | 说明 |
 | --- | --- | --- |

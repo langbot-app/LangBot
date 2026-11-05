@@ -148,8 +148,6 @@ class OASlackBridge(BasePlugin):
             )
             if not session and not matched:
                 return
-            event_context.prevent_default()
-            event_context.prevent_postorder()
             new_session = session is None
             if new_session:
                 timestamp = datetime.fromtimestamp(now, UTC).isoformat()
@@ -177,3 +175,5 @@ class OASlackBridge(BasePlugin):
             await self.save(self.thread_key(session), {"session_key": key})
             if not new_session and config.get("forward_followups", True):
                 await self.to_slack(config, slack_text(text) or "[非文本消息 / Non-text message]", session["thread"])
+            event_context.prevent_default()
+            event_context.prevent_postorder()

@@ -7,7 +7,7 @@ Forward WeChat Official Account messages containing configured keywords to a Sla
 ## Prerequisites
 
 - A verified Official Account with customer-service messaging permission, configured as a LangBot bot with **Mode = auto**. Other modes cannot send asynchronous staff replies; core enforces this restriction.
-- A LangBot core with Unified API, event-capable Runner components, Bot Plugin processor subscriptions, Official Account `send_message`, and Slack thread support (`Quote.id` and `message_id`).
+- The minimum Host contract for 0.2.0 includes Unified API, plugin installation permissions, Runner `usages: [event]`, Bot Plugin processor subscriptions, Official Account `send_message`, and Slack thread support (`Quote.id` and `message_id`). Core must also include the standard Runner send authorization and MessageChain conversion shipped with this plugin update. Older Hosts without these capabilities cannot load or run this version.
 - A Slack App connected through LangBot, invited to the target channel. Enable bot event subscriptions `app_mention` and `message.channels`; for a private channel also enable `message.groups`. Required bridge scopes are `chat:write`, `app_mentions:read`, `channels:history`, and `groups:history` for private channels. Retain the other scopes required by LangBot's Slack adapter. Reinstall the Slack App after changing scopes. Socket Mode also needs an App-Level Token with `connections:write`; webhook mode needs LangBot's reachable event endpoint.
 - Restrict membership of the target channel to staff authorized to reply to customers; every human participant in that channel can reply through a mapped thread.
 
@@ -24,6 +24,8 @@ Existing 0.1.0 sessions and thread mappings remain usable after upgrading the sa
 Receipts use the event-scoped standard `ctx.reply`, preserving the source Slack `thread_ts`. The Runner declares `tool_calling: true` and `permissions.tools: [call]` with `permissions.storage: [plugin]`; `event_reply` is automatically available for message events, so no extra platform tools or installation capabilities need enabling. `get_bot_uuid` is also event-scoped. Cross-bot sends use `bot.message.send`; session reads, writes, and deletes use `storage.plugin`. Permission denials are logged without raw diagnostics; the processor posts a missing-permission receipt when event replies remain available.
 
 ## Configuration
+
+If plugin storage or sending to Slack is denied, the Official Account listener logs a warning and leaves the normal AI Pipeline enabled for that message, including keyword matches and messages during an existing takeover. It suppresses AI only after bridge handling succeeds. This keeps customers from receiving no response while permissions are unavailable; messages already forwarded to Slack remain visible there. The plugin does not clear suppression set by another Pipeline plugin.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
