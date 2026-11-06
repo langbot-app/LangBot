@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { backendClient } from '@/app/infra/http';
 import {
@@ -11,15 +11,10 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
   Download,
-  Package,
-  Server,
-  Sparkles,
-  Rocket,
   CheckCircle2,
   XCircle,
   Loader2,
   RefreshCcw,
-  ShieldCheck,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -27,11 +22,9 @@ import {
   InstallStage,
   PluginInstallTask,
 } from './PluginInstallTaskContext';
-import { cn } from '@/lib/utils';
 
 type StageConfig = {
   key: InstallStage;
-  icon: React.ElementType;
   i18nKey: string;
 };
 
@@ -41,24 +34,20 @@ function getStages(task: PluginInstallTask): StageConfig[] {
       ? [
           {
             key: InstallStage.CHECKING,
-            icon: RefreshCcw,
             i18nKey: 'plugins.installProgress.checkingUpdate',
           } as StageConfig,
         ]
       : []),
     {
       key: InstallStage.DOWNLOADING,
-      icon: Download,
       i18nKey: 'plugins.installProgress.downloading',
     },
     {
       key: InstallStage.VALIDATING,
-      icon: ShieldCheck,
       i18nKey: 'plugins.installProgress.validating',
     },
     {
       key: InstallStage.INSTALLING_DEPS,
-      icon: Package,
       i18nKey:
         task.operation === 'upgrade'
           ? 'plugins.installProgress.applyingUpdate'
@@ -66,7 +55,6 @@ function getStages(task: PluginInstallTask): StageConfig[] {
     },
     {
       key: InstallStage.LAUNCHING,
-      icon: Rocket,
       i18nKey: 'plugins.installProgress.activating',
     },
   ];
@@ -87,110 +75,6 @@ function formatFileSize(bytes: number): string {
   return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
 }
 
-/**
- * A single stage row — used in both active (single) and completed (all) views.
- */
-function StageRow({
-  icon: Icon,
-  label,
-  isActive,
-  isCompleted,
-  isError,
-  detail,
-}: {
-  icon: React.ElementType;
-  label: string;
-  isActive: boolean;
-  isCompleted: boolean;
-  isError: boolean;
-  detail?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        'flex items-center gap-2 sm:gap-3 px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg transition-all duration-300',
-        isActive &&
-          !isError &&
-          'bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800',
-        isCompleted &&
-          'bg-green-50/50 dark:bg-green-950/15 border border-green-100 dark:border-green-900/50',
-        isError &&
-          isActive &&
-          'bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900',
-      )}
-    >
-      {/* Left: status indicator */}
-      <div
-        className={cn(
-          'flex items-center justify-center w-7 h-7 rounded-full shrink-0',
-          isCompleted &&
-            'bg-green-100 dark:bg-green-900/40 text-green-600 dark:text-green-400',
-          isActive &&
-            !isError &&
-            !isCompleted &&
-            'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400',
-          isError &&
-            isActive &&
-            'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400',
-        )}
-      >
-        {isCompleted ? (
-          <CheckCircle2 className="w-4 h-4" />
-        ) : isError && isActive ? (
-          <XCircle className="w-4 h-4" />
-        ) : isActive ? (
-          <Loader2 className="w-4 h-4 animate-spin" />
-        ) : (
-          <Icon className="w-4 h-4" />
-        )}
-      </div>
-
-      {/* Middle: label + detail */}
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
-          <span
-            className={cn(
-              'text-sm font-medium',
-              isActive &&
-                !isError &&
-                !isCompleted &&
-                'text-blue-700 dark:text-blue-300',
-              isCompleted && 'text-green-600 dark:text-green-400',
-              isError && isActive && 'text-red-600 dark:text-red-400',
-            )}
-          >
-            {label}
-          </span>
-          {/* Small icon after text */}
-          <Icon
-            className={cn(
-              'w-3.5 h-3.5 shrink-0',
-              isActive &&
-                !isError &&
-                !isCompleted &&
-                'text-blue-400 dark:text-blue-500',
-              isCompleted && 'text-green-400 dark:text-green-500',
-              isError && isActive && 'text-red-400 dark:text-red-500',
-            )}
-          />
-        </div>
-        {detail && (
-          <div
-            className={cn(
-              'text-xs mt-0.5 break-words',
-              isCompleted
-                ? 'text-green-600/70 dark:text-green-400/70'
-                : 'text-blue-600/70 dark:text-blue-400/70',
-            )}
-          >
-            {detail}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 function formatSpeed(bytesPerSec: number): string {
   if (bytesPerSec === 0) return '0 B/s';
   const k = 1024;
@@ -206,13 +90,11 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const stages = getStages(task);
   const isDone = task.stage === InstallStage.DONE;
   const isError = task.stage === InstallStage.ERROR;
-  const currentStageIndex = getStageIndex(
-    stages,
-    isError ? (task.failedStage ?? InstallStage.INSTALLING_DEPS) : task.stage,
-  );
+  const currentStageIndex = getStageIndex(stages, task.stage);
 
-  // MCP / Skill don't have the plugin's download + dependency-install stages;
-  // show a single "installing → done/failed" row instead of plugin steps.
+  // Keep the dialog compact: show only the current step + overall progress
+  // while running, and a single result banner when done / failed.
+  // MCP / Skill have no plugin stages, so they use a generic label.
   const isPlugin = task.extensionType === 'plugin';
   const [pendingConfirmation, setPendingConfirmation] = useState<
     boolean | null
@@ -238,174 +120,101 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
     };
   }, [isDone, isPlugin, task.pluginName, task.pendingConfirmation]);
   const needsReview = isDone && isPlugin && pendingConfirmation !== false;
-  const simpleIcon = task.extensionType === 'mcp' ? Server : Sparkles;
   const simpleInstallingLabel =
     task.extensionType === 'mcp'
       ? t('addExtension.installStage.mcpInstalling')
       : t('addExtension.installStage.skillInstalling');
 
-  /** Build detail node for a stage */
-  const getStageDetail = (
-    stageKey: InstallStage,
-    isCompletedView: boolean,
-  ): React.ReactNode | undefined => {
-    if (stageKey === InstallStage.DOWNLOADING) {
-      // Show download progress: current / total + speed
-      const dlTotal = task.downloadTotal || task.fileSize;
-      const dlCurrent = task.downloadCurrent;
-      const dlSpeed = task.downloadSpeed;
+  const currentStage =
+    currentStageIndex >= 0 ? stages[currentStageIndex] : undefined;
+  const statusLabel = isPlugin
+    ? currentStage
+      ? t(currentStage.i18nKey)
+      : t('plugins.installProgress.overallProgress')
+    : simpleInstallingLabel;
 
-      if (isCompletedView && dlTotal) {
-        // Done view: just show total size
-        return t('plugins.installProgress.downloadSize', {
-          size: formatFileSize(dlTotal),
-        });
-      }
-
-      if (dlTotal && dlCurrent != null) {
-        const parts: string[] = [];
-        parts.push(`${formatFileSize(dlCurrent)} / ${formatFileSize(dlTotal)}`);
-        if (dlSpeed && dlSpeed > 0) {
-          parts.push(formatSpeed(dlSpeed));
-        }
-        return parts.join('  ·  ');
-      }
-
-      if (dlTotal) {
-        return t('plugins.installProgress.downloadSize', {
-          size: formatFileSize(dlTotal),
-        });
-      }
-
-      return undefined;
+  /** Download progress text (only meaningful while downloading). */
+  const getDownloadDetail = (): string | undefined => {
+    if (!isPlugin || task.stage !== InstallStage.DOWNLOADING) return undefined;
+    const dlTotal = task.downloadTotal || task.fileSize;
+    const dlCurrent = task.downloadCurrent;
+    if (!dlTotal) return undefined;
+    if (dlCurrent == null) {
+      return t('plugins.installProgress.downloadSize', {
+        size: formatFileSize(dlTotal),
+      });
     }
-
-    if (stageKey === InstallStage.INSTALLING_DEPS) {
-      // The runtime installs dependencies and starts the plugin in one step
-      // and does not report per-dependency progress, so this stage has no
-      // detail to show beyond its label.
-      return undefined;
+    const parts = [`${formatFileSize(dlCurrent)} / ${formatFileSize(dlTotal)}`];
+    if (task.downloadSpeed && task.downloadSpeed > 0) {
+      parts.push(formatSpeed(task.downloadSpeed));
     }
-
-    return undefined;
+    return parts.join(' · ');
   };
 
-  return (
-    <div className="space-y-4">
-      {/* Overall progress bar — always blue */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <span
-            className={cn(
-              'text-sm font-medium shrink-0',
-              isDone
-                ? 'text-green-700 dark:text-green-300'
-                : 'text-blue-700 dark:text-blue-300',
-            )}
-          >
-            {isDone
-              ? t('plugins.installProgress.completed')
-              : isError
-                ? t('plugins.installProgress.failed')
-                : t('plugins.installProgress.overallProgress')}
-          </span>
-          <span
-            className={cn(
-              'text-sm font-medium',
-              isDone
-                ? 'text-green-600 dark:text-green-400'
-                : 'text-blue-600 dark:text-blue-400',
-            )}
-          >
-            {isDone ? '100%' : `${task.overallProgress}%`}
-          </span>
-        </div>
-        <Progress
-          value={isDone ? 100 : task.overallProgress}
-          className={cn(
-            'h-2.5',
-            '[&>div]:bg-blue-500 dark:[&>div]:bg-blue-400',
-            'bg-blue-100 dark:bg-blue-900/30',
-            isDone &&
-              '[&>div]:bg-green-500 dark:[&>div]:bg-green-400 bg-green-100 dark:bg-green-900/30',
-            isError &&
-              '[&>div]:bg-red-500 dark:[&>div]:bg-red-400 bg-red-100 dark:bg-red-900/30',
-          )}
-        />
-      </div>
-
-      {/* Stage display */}
-      <div className="space-y-1.5">
-        {!isPlugin ? (
-          /* MCP / Skill: single installing → done/failed row */
-          <StageRow
-            icon={simpleIcon}
-            label={
-              isDone
-                ? t('addExtension.installStage.installed')
-                : isError
-                  ? t('plugins.installProgress.failed')
-                  : simpleInstallingLabel
-            }
-            isActive={!isDone}
-            isCompleted={isDone}
-            isError={isError}
-            detail={isError ? task.error : undefined}
-          />
-        ) : (
-          stages.map((stageConfig, index) => (
-            <StageRow
-              key={stageConfig.key}
-              icon={stageConfig.icon}
-              label={
-                needsReview && stageConfig.key === InstallStage.LAUNCHING
-                  ? t('pluginPermissions.pending')
-                  : t(stageConfig.i18nKey)
-              }
-              isActive={!isDone && index === currentStageIndex}
-              isCompleted={isDone || index < currentStageIndex}
-              isError={isError && index === currentStageIndex}
-              detail={
-                isDone || index === currentStageIndex
-                  ? getStageDetail(stageConfig.key, isDone)
-                  : undefined
-              }
-            />
-          ))
-        )}
-      </div>
-
-      {/* Done banner */}
-      {isDone && (
-        <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
-          <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
-          <span className="text-sm text-green-700 dark:text-green-300 font-medium break-words">
-            {needsReview
-              ? t('pluginPermissions.pending')
+  if (isDone) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
+        <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
+        <span className="flex-1 text-sm text-green-700 dark:text-green-300 font-medium break-words">
+          {needsReview
+            ? t('pluginPermissions.pending')
+            : !isPlugin
+              ? t('addExtension.installStage.installed')
               : task.operation === 'upgrade'
                 ? t('plugins.installProgress.updateComplete')
                 : t('plugins.installProgress.installComplete')}
-          </span>
-          {needsReview && task.pluginName.includes('/') && (
-            <Button asChild variant="outline" size="sm">
-              <Link
-                to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
-                onClick={() => setSelectedTaskId(null)}
-              >
-                {t('pluginPermissions.review')}
-              </Link>
-            </Button>
+        </span>
+        {needsReview && task.pluginName.includes('/') && (
+          <Button asChild variant="outline" size="sm">
+            <Link
+              to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
+              onClick={() => setSelectedTaskId(null)}
+            >
+              {t('pluginPermissions.review')}
+            </Link>
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
+        <XCircle className="w-5 h-5 shrink-0 text-red-600 dark:text-red-400" />
+        <div className="min-w-0 space-y-1">
+          <p className="text-sm font-medium text-red-700 dark:text-red-300">
+            {t('plugins.installProgress.failed')}
+          </p>
+          {task.error && (
+            <p className="text-xs text-red-600 dark:text-red-400 break-all line-clamp-4">
+              {task.error}
+            </p>
           )}
         </div>
-      )}
+      </div>
+    );
+  }
 
-      {/* Error detail */}
-      {isError && task.error && (
-        <div className="px-3 py-2 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
-          <p className="text-xs text-red-600 dark:text-red-400 break-all line-clamp-4">
-            {task.error}
-          </p>
-        </div>
+  const detail = getDownloadDetail();
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2 text-sm">
+        <span className="flex items-center gap-2 min-w-0 text-blue-700 dark:text-blue-300 font-medium">
+          <Loader2 className="w-4 h-4 shrink-0 animate-spin" />
+          <span className="truncate">{statusLabel}</span>
+        </span>
+        <span className="shrink-0 text-blue-600 dark:text-blue-400 font-medium">
+          {task.overallProgress}%
+        </span>
+      </div>
+      <Progress
+        value={task.overallProgress}
+        className="h-2 bg-blue-100 dark:bg-blue-900/30 [&>div]:bg-blue-500 dark:[&>div]:bg-blue-400"
+      />
+      {detail && (
+        <p className="text-xs text-muted-foreground break-words">{detail}</p>
       )}
     </div>
   );
