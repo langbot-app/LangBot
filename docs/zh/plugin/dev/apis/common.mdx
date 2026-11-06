@@ -94,6 +94,8 @@ async def send_message(
     target_type: str,
     target_id: str,
     message_chain: platform_message.MessageChain,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """Send a message to a session"""
 
@@ -104,7 +106,22 @@ await self.plugin.send_message(
     target_id="1010553892",
     message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
 )
+
+# 发送图片等媒体消息时可显式延长等待时间
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Image(url="https://example.com/a.png")]),
+    timeout=180,
+)
 ```
+
+`timeout` 是插件等待 LangBot 完成发送的秒数，默认 60 秒，只能以关键字参数传入，必须为正数，否则抛出 `ValueError`。图片、文件、语音等媒体消息需要先上传到消息平台再发送，耗时可能更长，可按需调大。超时只表示插件不再等待，不会取消 LangBot 中正在进行的发送，因此超时后不要直接重发，以免重复发送。
+
+<Info>
+需要 0.7.22 之后发布的 `langbot-plugin`：插件使用该版本 SDK 才能传入 `timeout`，Plugin Runtime 升级到该版本后才会采用 60 秒默认值和插件指定的超时。0.7.22 及更早版本固定等待 15 秒。
+</Info>
 
 ### 获取已配置的 LLM 模型列表
 
