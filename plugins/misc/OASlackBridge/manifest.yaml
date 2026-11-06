@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: OASlackBridge
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/OASlackBridge
-  version: 0.2.0
+  version: 0.3.0
   description:
     en_US: Forward Official Account keyword messages to Slack and reply from threads.
     zh_Hans: 公众号关键词消息转发 Slack，员工在 thread 内回复用户。
@@ -71,6 +71,24 @@ spec:
       label:
         en_US: Forward follow-up messages
         zh_Hans: 转发接管期间的后续消息
+    - name: start_notice
+      type: string
+      default: "已为您转接人工客服，请稍候，客服会在这里回复您。"
+      label:
+        en_US: Notice to the user when takeover starts
+        zh_Hans: 进入人工时发给用户的提示
+      description:
+        en_US: Sent to the Official Account user when a keyword starts a takeover. Leave empty to disable.
+        zh_Hans: 命中关键词进入人工接管时发给公众号用户。留空则不发送。
+    - name: end_notice
+      type: string
+      default: "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。"
+      label:
+        en_US: Notice to the user when takeover ends
+        zh_Hans: 退出人工时发给用户的提示
+      description:
+        en_US: Sent to the Official Account user when staff send !close or the takeover expires. Not sent after the 48-hour reply window. Leave empty to disable.
+        zh_Hans: 员工发送 !close 或接管到期时发给公众号用户；超过 48 小时回复窗口时不发送。留空则不发送。
   components:
     Runner:
       fromDirs:
