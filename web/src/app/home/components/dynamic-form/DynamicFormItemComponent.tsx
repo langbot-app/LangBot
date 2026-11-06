@@ -76,6 +76,7 @@ import SettingsDialog, {
   SettingsSection,
 } from '@/app/home/components/settings-dialog/SettingsDialog';
 import ToolResourceSelectors from '@/app/home/components/dynamic-form/ToolResourceSelectors';
+import ToolGroupChecklist from '@/app/home/components/tool-groups/ToolGroupChecklist';
 import { LANGBOT_MODELS_PROVIDER_REQUESTER } from '@/app/home/components/models-dialog/types';
 import ReasoningLevelPicker, {
   REASONING_LEVELS,
@@ -1970,44 +1971,13 @@ export default function DynamicFormItemComponent({
                   {t('tools.selectTools', 'Select Tools')}
                 </DialogTitle>
               </DialogHeader>
-              <div className="flex-1 overflow-y-auto space-y-2 pr-2">
-                {tools.map((tool) => {
-                  const isSelected = tempSelectedToolNames.includes(tool.name);
-                  return (
-                    <div
-                      key={tool.name}
-                      className="flex items-center gap-3 rounded-lg border p-3 hover:bg-accent cursor-pointer"
-                      onClick={() => {
-                        setTempSelectedToolNames((prev) =>
-                          prev.includes(tool.name)
-                            ? prev.filter((name) => name !== tool.name)
-                            : [...prev, tool.name],
-                        );
-                      }}
-                    >
-                      <Checkbox
-                        checked={isSelected}
-                        aria-label={`Select ${tool.name}`}
-                      />
-                      <Wrench className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <div className="flex-1">
-                        <div className="font-medium">{tool.name}</div>
-                        {tool.human_desc && (
-                          <div className="text-sm text-muted-foreground">
-                            {tool.human_desc}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-                {tools.length === 0 && (
-                  <div className="flex h-32 items-center justify-center">
-                    <p className="text-sm text-muted-foreground">
-                      {t('tools.noToolsAvailable', 'No tools available')}
-                    </p>
-                  </div>
-                )}
+              <div className="flex-1 overflow-y-auto pr-2">
+                <ToolGroupChecklist
+                  tools={tools}
+                  value={tempSelectedToolNames}
+                  onChange={setTempSelectedToolNames}
+                  emptyText={t('tools.noToolsAvailable', 'No tools available')}
+                />
               </div>
               <DialogFooter>
                 <Button
