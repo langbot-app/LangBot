@@ -68,6 +68,44 @@ DEFAULT_START_NOTICE = "已为您转接人工客服，请稍候，客服会在�
 DEFAULT_END_NOTICE = "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。"
 
 
+COMPONENT_LABELS = {
+    "Image": "[图片 / Image]", "Voice": "[语音 / Voice]", "File": "[文件 / File]",
+    "Face": "[表情 / Sticker]", "Forward": "[转发 / Forward]",
+}
+MAX_HISTORY_MESSAGES = 50
+MAX_HISTORY_CHARS = 300
+
+
+def stored_text(content) -> str:
+    """Render a monitoring message_content (JSON message chain) as one line of plain text."""
+    try:
+        parts = json.loads(content) if isinstance(content, str) else content
+    except ValueError:
+        return str(content)
+    if not isinstance(parts, list):
+        return str(parts)
+    rendered = []
+    for part in parts:
+        if not isinstance(part, dict) or part.get("type") in ("Source", "Quote"):
+            continue
+        if part.get("type") == "Plain":
+            rendered.append(str(part.get("text", "")))
+        else:
+            rendered.append(COMPONENT_LABELS.get(part.get("type"), f"[{part.get('type')}]"))
+    text = " ".join("".join(rendered).split())
+    return text if len(text) <= MAX_HISTORY_CHARS else text[:MAX_HISTORY_CHARS] + "…"
+
+
+def utc_label(timestamp) -> str:
+    try:
+        moment = datetime.fromisoformat(str(timestamp))
+    except ValueError:
+        return str(timestamp)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return moment.astimezone(UTC).strftime("%Y-%m-%d %H:%M")
+
+
 def permission_notice(capability: str) -> str:
     return f"❌ 缺少权限 / Permission denied: {capability}. 请成员确认插件权限 / Ask a member to confirm plugin permissions."
 
@@ -130,6 +168,77 @@ class OASlackBridge(BasePlugin):
             label = "开始" if kind == "start" else "结束"
             return f"⚠️ 未能向用户发送接管{label}提示 / Failed to send the {kind} notice: {send_error(error)}"
         return ""
+
+    async def query_messages(self, bot: str, session_id: str, limit: int, offset: int = 0):
+        """Read the user's processed messages (newest first); returns (rows, total) or an error string."""
+        try:
+            response = await self.workspace.monitoring.messages(
+                bot_ids=[bot], session_ids=[session_id], limit=limit, offset=offset,
+            )
+        except Exception as error:
+            return None, "permission_denied" if permission_denied(error) else type(error).__name__
+        if not isinstance(response, dict) or not response.get("ok"):
+            if "permission_denied" in str(response):
+                return None, "permission_denied"
+            code = (response.get("error") or {}).get("code", "error") if isinstance(response, dict) else "error"
+            return None, str(code)
+        rows, total = (list(response.get("result") or []) + [[], 0])[:2]
+        return (rows if isinstance(rows, list) else [], int(total or 0)), ""
+
+    async def user_details(self, config: dict, session: dict, matched: str) -> str:
+        """Build the user details posted into a new takeover thread."""
+        openid = session["openid"]
+        session_id = f"person_{openid}"
+        expires = datetime.fromtimestamp(session["expires_at"], UTC).strftime("%Y-%m-%d %H:%M")
+        lines = [
+            "👤 用户详情 / User details",
+            f"• OpenID: `{slack_text(openid)}`",
+            f"• 会话 / Session: `{slack_text(session_id)}`",
+            f"• 触发关键词 / Keyword: {slack_text(matched)}",
+            f"• 接管至 / Takeover until (UTC): {expires}",
+        ]
+        try:
+            history = min(MAX_HISTORY_MESSAGES, max(0, int(config.get("history_messages", 10))))
+        except (TypeError, ValueError):
+            history = 10
+        page, error = await self.query_messages(session["oa_bot"], session_id, max(history, 1))
+        if error:
+            reason = (
+                "需在插件详情页确认 monitoring.messages 权限 / confirm the monitoring.messages permission"
+                if error == "permission_denied" else f"查询失败 / query failed ({slack_text(error)})"
+            )
+            lines.append(f"• 历史记录不可用 / History unavailable: {reason}")
+            return "\n".join(lines)
+        rows, total = page
+        first_seen = rows[-1].get("timestamp") if rows else None
+        if total > len(rows):
+            oldest, _ = await self.query_messages(session["oa_bot"], session_id, 1, total - 1)
+            if oldest and oldest[0]:
+                first_seen = oldest[0][0].get("timestamp")
+        bot_name = next((row.get("bot_name") for row in rows if row.get("bot_name")), "")
+        if bot_name:
+            lines.insert(1, f"• 公众号 Bot / Official Account bot: {slack_text(str(bot_name))}")
+        lines.append(f"• 历史消息数 / Messages so far: {total}")
+        if first_seen:
+            lines.append(f"• 首次联系 / First contact (UTC): {utc_label(first_seen)}")
+        if history and rows:
+            lines.append("")
+            lines.append(f"最近 {min(history, len(rows))} 条对话 / Recent conversation (UTC):")
+            for row in reversed(rows[:history]):
+                who = "用户 / User" if row.get("role") == "user" else "AI / Bot"
+                body = stored_text(row.get("message_content")) or "[空 / empty]"
+                lines.append(f"[{utc_label(row.get('timestamp'))}] {who}: {slack_text(body)}")
+        return "\n".join(lines)
+
+    async def post_user_details(self, config: dict, session: dict, matched: str):
+        if not config.get("send_user_details", True):
+            return
+        try:
+            details = await self.user_details(config, session, matched)
+        except Exception as error:
+            logging.getLogger(__name__).warning("OASlackBridge user details failed: %s", type(error).__name__)
+            return
+        await self.warn_in_thread(config, session, details)
 
     async def warn_in_thread(self, config: dict, session: dict, warning: str):
         if not warning:
@@ -214,6 +323,7 @@ class OASlackBridge(BasePlugin):
             await self.save(key, session)
             await self.save(self.thread_key(session), {"session_key": key})
             if new_session:
+                await self.post_user_details(config, session, matched)
                 await self.warn_in_thread(config, session, await self.notify_user(config, session, "start"))
             elif config.get("forward_followups", True):
                 await self.to_slack(config, slack_text(text) or "[非文本消息 / Non-text message]", session["thread"])
