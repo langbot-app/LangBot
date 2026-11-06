@@ -55,8 +55,14 @@ def upgrade():
         op.create_index(EXPIRY_INDEX, TABLE, ['expires_at'])
 
     # Executions leased before this index existed must stay reapable after upgrade.
+    def leased(table, scope_column):
+        if not inspector.has_table(table):
+            return False
+        columns = {column['name'] for column in inspector.get_columns(table)}
+        return {'execution_owner_id', 'execution_lease_expires_at', scope_column} <= columns
+
     sources = []
-    if inspector.has_table('agent_run'):
+    if leased('agent_run', 'workspace_id'):
         sources.append(
             'SELECT execution_owner_id AS owner_id, workspace_id AS workspace_uuid, '
             'execution_lease_expires_at AS expires_at FROM agent_run '
@@ -64,7 +70,7 @@ def upgrade():
             'AND execution_owner_id IS NOT NULL AND workspace_id IS NOT NULL '
             'AND execution_lease_expires_at IS NOT NULL'
         )
-    if inspector.has_table('monitoring_messages'):
+    if leased('monitoring_messages', 'workspace_uuid'):
         sources.append(
             'SELECT execution_owner_id AS owner_id, workspace_uuid, '
             'execution_lease_expires_at AS expires_at FROM monitoring_messages '

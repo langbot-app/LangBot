@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from langbot.pkg.agent.runner.run_journal import AgentRunJournal
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
 from langbot.pkg.entity.persistence.agent_run import AgentRun, AgentRunEvent
+from langbot.pkg.entity.persistence.execution_lease import ExecutionLeaseScope
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.media import MediaCache
@@ -33,6 +34,7 @@ def _published_schema(connection):
             '58846a8d7a81_add_event_log_and_transcript_tables',
             '8d3a1f2c4b6e_add_agent_run_ledger',
             '0036_execution_host_leases',
+            '0046_execution_lease_scopes',
         ):
             importlib.import_module(f'langbot.pkg.persistence.alembic.versions.{revision}').upgrade()
 
@@ -52,7 +54,7 @@ async def pg_engine(request):
         async with engine.begin() as conn:
             if request.param == 'metadata':
                 await conn.run_sync(
-                    lambda sync: Base.metadata.create_all(sync, tables=[AgentRun.__table__, AgentRunEvent.__table__])
+                    lambda sync: Base.metadata.create_all(sync, tables=[AgentRun.__table__, AgentRunEvent.__table__, ExecutionLeaseScope.__table__])
                 )
             else:
                 await conn.run_sync(_published_schema)

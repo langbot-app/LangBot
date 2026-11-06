@@ -140,6 +140,7 @@ async def harness():
             'agents',
             'agent_run',
             'agent_run_event',
+            'execution_lease_scopes',
             'runner_state',
             'event_log',
             'transcript',
