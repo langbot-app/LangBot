@@ -11,7 +11,7 @@ from types import SimpleNamespace
 import pytest
 from components.runner.default import DefaultRunner
 from pkg.dify_client import AsyncDifyClient, DifyAPIError, DifyConfigError, _iter_sse_json
-from pkg.http_limits import MAX_STREAM_BYTES, limited_bytes
+from pkg.http_limits import MAX_STREAM_BYTES, limited_bytes, limited_lines
 
 
 class FakeResponse:
@@ -143,3 +143,57 @@ def test_runner_config_falls_back_to_default_for_garbage_budget(monkeypatch):
     )
     config = _validate(ctx, monkeypatch)
     assert config["stream_budget_bytes"] == 16 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_raised_budget_lifts_single_event_cap_proportionally():
+    observation = "z" * (3 * 1024 * 1024)
+    payload = (
+        'data: {"event": "agent_thought", "tool": "read_file", "observation": "' + observation + '"}\n\n'
+    ).encode()
+    events = [event async for event in _iter_sse_json(FakeResponse([payload]), max_stream_bytes=64 * 1024 * 1024)]
+    assert events[0]["observation"] == observation
+
+
+@pytest.mark.asyncio
+async def test_oversized_event_reports_its_size_and_limit():
+    payload = b'data: {"event": "agent_thought", "observation": "' + b"z" * 64 + b'"}\n\n'
+    with pytest.raises(DifyAPIError) as excinfo:
+        async for _ in limited_lines(FakeResponse([payload]), DifyAPIError, max_stream_bytes=1024, max_line_bytes=32):
+            pass
+    assert "Provider event too large" in excinfo.value.message
+    assert "limit is 32 bytes" in excinfo.value.message
+    assert "runtime limit" not in excinfo.value.message
+
+
+@pytest.mark.asyncio
+async def test_budget_error_names_last_event_and_tool(caplog):
+    first = b'data: {"event": "agent_thought", "tool": "get_class_source", "observation": ""}\n\n'
+    second = b'data: {"event": "agent_thought", "observation": "' + b"y" * 200 + b'"}\n\n'
+    with caplog.at_level("WARNING", logger="pkg.dify_client"):
+        with pytest.raises(DifyAPIError) as excinfo:
+            async for _ in _iter_sse_json(FakeResponse([first, second]), max_stream_bytes=len(first) + 10):
+                pass
+    assert excinfo.value.code == "dify.stream_limit_exceeded"
+    assert "stream budget exceeded" in excinfo.value.message
+    assert "last event: agent_thought, last tool: get_class_source" in excinfo.value.message
+    assert "last tool: get_class_source" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_budget_error_names_workflow_node():
+    first = b'data: {"event": "node_finished", "data": {"title": "Tool observation 3", "outputs": {}}}\n\n'
+    second = b"data: " + b"x" * 100 + b"\n\n"
+    with pytest.raises(DifyAPIError) as excinfo:
+        async for _ in _iter_sse_json(FakeResponse([first, second]), max_stream_bytes=len(first) + 10):
+            pass
+    assert "last event: node_finished, last tool: Tool observation 3" in excinfo.value.message
+
+
+@pytest.mark.asyncio
+async def test_default_budget_keeps_native_1mib_event_cap():
+    payload = b'data: {"event": "agent_thought", "observation": "' + b"z" * (1024 * 1024) + b'"}\n\n'
+    with pytest.raises(DifyAPIError) as excinfo:
+        async for _ in _iter_sse_json(FakeResponse([payload])):
+            pass
+    assert "limit is 1048576 bytes" in excinfo.value.message

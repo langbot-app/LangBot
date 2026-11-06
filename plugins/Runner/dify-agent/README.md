@@ -20,6 +20,7 @@ Configuration is **static** and should not contain runtime state. Only the follo
 | app-type | select | yes | chat | Application type (chat/chatflow/agent/workflow) |
 | base-prompt | text | yes | File-handling instruction | Fallback instruction when LangBot input is empty |
 | timeout | integer | no | 30 | Request timeout (seconds) |
+| stream-budget-mb | integer | no | 16 | Byte budget (MiB) for one streaming response; a single event may use 1/16 of it (at least 1 MiB) |
 | langbot-assets-enabled | boolean | no | false | Register a short-lived LangBot asset token for each run and pass it to Dify inputs |
 | langbot-assets-gateway-host | string | no | 0.0.0.0 | Host for the local LangBot Asset Gateway |
 | langbot-assets-gateway-port | integer | no | 8765 | Port for the local LangBot Asset Gateway |

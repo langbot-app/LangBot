@@ -117,8 +117,8 @@ spec:
         zh_Hans: 流式响应预算（MiB）
       type: integer
       description:
-        en_US: Maximum accumulated bytes in MiB for one Dify streaming response. Raise it when agent tool observations consume the default 16 MiB budget before the answer finishes.
-        zh_Hans: 单次 Dify 流式响应的累计字节上限（MiB）。Agent 应用的工具观测数据较大、默认 16 MiB 预算不够时，可调大该值。
+        en_US: Maximum accumulated bytes in MiB for one Dify streaming response. A single event, such as one tool observation, may use 1/16 of it (at least 1 MiB). Raise it when large agent tool observations exhaust the budget before the answer finishes.
+        zh_Hans: 单次 Dify 流式响应的累计字节上限（MiB）。单个事件（例如一次工具观测）最多可占用其 1/16（至少 1 MiB）。Agent 工具观测数据较大、预算在回答完成前耗尽时，可调大该值。
       required: false
       default: 16
       show_if:

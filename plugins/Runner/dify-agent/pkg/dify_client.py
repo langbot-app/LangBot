@@ -13,7 +13,7 @@ import typing
 import httpx
 from pkg.deadline import deadline
 from pkg.endpoint import endpoint
-from pkg.http_limits import MAX_STREAM_BYTES, limited_body, limited_bytes, limited_lines, limited_post
+from pkg.http_limits import MAX_LINE_CHARS, MAX_STREAM_BYTES, limited_body, limited_bytes, limited_lines, limited_post
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +36,34 @@ class DifyConfigError(Exception):
         super().__init__(message)
 
 
+def _event_tool(payload: dict) -> str | None:
+    """Return the tool or node a Dify SSE event belongs to, for diagnostics."""
+    if payload.get("tool"):
+        return str(payload["tool"])[:200]
+    data = payload.get("data")
+    if isinstance(data, dict) and str(payload.get("event", "")).startswith("node_") and data.get("title"):
+        return str(data["title"])[:200]
+    return None
+
+
 async def _iter_sse_json(response, max_stream_bytes: int = MAX_STREAM_BYTES):
-    async for line in limited_lines(response, DifyAPIError, max_stream_bytes):
+    # The default budget keeps the native 1 MiB event cap; a raised budget lifts
+    # it proportionally so one large tool observation can still pass.
+    max_line_bytes = max(MAX_LINE_CHARS, max_stream_bytes // (MAX_STREAM_BYTES // MAX_LINE_CHARS))
+    lines = limited_lines(response, DifyAPIError, max_stream_bytes, max_line_bytes)
+    last_event = None
+    last_tool = None
+    while True:
+        try:
+            line = await anext(lines)
+        except StopAsyncIteration:
+            return
+        except DifyAPIError as exc:
+            context = f"last event: {last_event or 'none'}"
+            if last_tool:
+                context += f", last tool: {last_tool}"
+            logger.warning("Dify stream stopped by the plugin byte budget: %s (%s)", exc.message, context)
+            raise DifyAPIError(f"{exc.message} ({context})", code="dify.stream_limit_exceeded") from None
         line = line.strip()
         if not line.startswith("data:"):
             continue
@@ -50,6 +76,8 @@ async def _iter_sse_json(response, max_stream_bytes: int = MAX_STREAM_BYTES):
             raise DifyAPIError("Dify SSE data is not valid JSON", code="dify.response_invalid") from None
         if not isinstance(payload, dict):
             raise DifyAPIError("Dify SSE event is not a JSON object", code="dify.response_invalid")
+        last_event = str(payload.get("event") or last_event or "")[:100] or None
+        last_tool = _event_tool(payload) or last_tool
         yield payload
 
 
