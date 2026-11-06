@@ -22,6 +22,7 @@ from typing import Optional
 from urllib.parse import quote
 
 import aiohttp
+from yarl import URL
 
 from langbot.pkg.utils import httpclient
 
@@ -64,6 +65,12 @@ DEFAULT_BOT_TYPE = '3'
 MAX_TEXT_CHUNK_SIZE = 2000
 MAX_CDN_MEDIA_BYTES = 10 * 1024 * 1024
 
+# CDN upload: retry server errors / timeouts only, never 4xx (matches the
+# official Tencent client). Each attempt has its own timeout.
+CDN_UPLOAD_MAX_ATTEMPTS = 3
+CDN_UPLOAD_ATTEMPT_TIMEOUT = 60
+CDN_UPLOAD_RETRY_BASE_DELAY = 1.0
+
 
 async def _response_text(response: aiohttp.ClientResponse) -> str:
     body = await httpclient.read_limited(
@@ -78,6 +85,89 @@ async def _response_json(response: aiohttp.ClientResponse) -> dict:
     if not isinstance(payload, dict):
         raise ApiError('OpenClaw API returned a non-object response', status=response.status)
     return payload
+
+
+def _clean_full_url(value: typing.Any) -> str:
+    if value is None:
+        return ''
+    if not isinstance(value, str):
+        raise ApiError('Invalid CDN upload URL', status=0)
+    return value.strip()
+
+
+def _build_cdn_upload_url(upload_resp: GetUploadUrlResponse, filekey: str) -> URL:
+    """Choose the CDN upload endpoint.
+
+    Prefer the server-provided ``upload_full_url``; fall back to the legacy
+    CDN endpoint built from ``upload_param`` and ``filekey``. The URL is kept
+    encoded so signed query components are not normalized or re-encoded.
+    """
+    full_url = _clean_full_url(upload_resp.upload_full_url)
+    if full_url:
+        return URL(full_url, encoded=True)
+    if upload_resp.upload_param:
+        return URL(
+            f'{CDN_BASE_URL}/upload?encrypted_query_param={quote(upload_resp.upload_param, safe="")}'
+            f'&filekey={quote(filekey, safe="")}',
+            encoded=True,
+        )
+    raise ApiError('Failed to get upload URL (need upload_full_url or upload_param)', status=0)
+
+
+async def _post_cdn_upload(session: aiohttp.ClientSession, cdn_url: URL, encrypted: bytes) -> str:
+    """POST ciphertext to the CDN and return the ``x-encrypted-param`` header.
+
+    Only the CDN transfer is retried, reusing the same ciphertext, filekey and
+    URL; getuploadurl and sendmessage are never repeated. Signed URLs, keys and
+    response bodies are not logged.
+    """
+    for attempt in range(1, CDN_UPLOAD_MAX_ATTEMPTS + 1):
+        is_last = attempt == CDN_UPLOAD_MAX_ATTEMPTS
+        try:
+            async with session.post(
+                cdn_url,
+                data=encrypted,
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=aiohttp.ClientTimeout(total=CDN_UPLOAD_ATTEMPT_TIMEOUT),
+            ) as resp:
+                error_message = resp.headers.get('x-error-message', '')
+                if resp.status == 200:
+                    download_param = resp.headers.get('x-encrypted-param', '')
+                    if download_param:
+                        return download_param
+                    logger.warning('CDN upload response missing x-encrypted-param: attempt=%d', attempt)
+                    if is_last:
+                        raise ApiError('CDN upload succeeded but no x-encrypted-param returned', status=0)
+                elif 400 <= resp.status < 500:
+                    logger.error(
+                        'CDN upload client error: status=%d attempt=%d error=%s',
+                        resp.status,
+                        attempt,
+                        error_message[:200],
+                    )
+                    raise ApiError(f'CDN upload failed: HTTP {resp.status}', status=resp.status)
+                else:
+                    if is_last:
+                        logger.error(
+                            'CDN upload failed: status=%d attempts=%d error=%s',
+                            resp.status,
+                            attempt,
+                            error_message[:200],
+                        )
+                        raise ApiError(f'CDN upload failed: HTTP {resp.status}', status=resp.status)
+                    logger.warning(
+                        'CDN upload server error, retrying: status=%d attempt=%d error=%s',
+                        resp.status,
+                        attempt,
+                        error_message[:200],
+                    )
+        except (asyncio.TimeoutError, aiohttp.ClientConnectionError) as exc:
+            if is_last:
+                logger.error('CDN upload failed: %s attempts=%d', type(exc).__name__, attempt)
+                raise ApiError(f'CDN upload failed: {type(exc).__name__}', status=0) from None
+            logger.warning('CDN upload %s, retrying: attempt=%d', type(exc).__name__, attempt)
+        await asyncio.sleep(CDN_UPLOAD_RETRY_BASE_DELAY * attempt)
+    raise ApiError('CDN upload failed', status=0)  # pragma: no cover
 
 
 def _decrypt_cdn_payload(encrypted: bytes, aes_key: bytes) -> bytes:
@@ -375,33 +465,16 @@ class OpenClawWeixinClient:
             aeskey=aes_key_hex,  # hex string, as expected by the API
         )
 
-        if not upload_resp.upload_param:
-            raise ApiError('Failed to get upload URL', status=0)
-
-        # 5. Upload to CDN
-        # upload_param is an opaque token from the server — pass it as-is
-        session = await self._get_session()
-        cdn_url = f'{CDN_BASE_URL}/upload?encrypted_query_param={quote(upload_resp.upload_param, safe="")}&filekey={quote(filekey, safe="")}'
+        cdn_url = _build_cdn_upload_url(upload_resp, filekey)
         logger.debug(
-            'CDN upload: url=%s raw_size=%d encrypted_size=%d md5=%s aeskey=%s',
-            cdn_url,
+            'CDN upload: endpoint=%s raw_size=%d encrypted_size=%d',
+            'server' if _clean_full_url(upload_resp.upload_full_url) else 'legacy',
             len(file_bytes),
             len(encrypted),
-            raw_md5,
-            encoded_key,
         )
 
-        async with session.post(
-            cdn_url,
-            data=encrypted,
-            headers={'Content-Type': 'application/octet-stream'},
-            timeout=aiohttp.ClientTimeout(total=120),
-        ) as resp:
-            if resp.status != 200:
-                text = await _response_text(resp)
-                logger.error('CDN upload failed: status=%d url=%s body=%s', resp.status, cdn_url, text[:500])
-                raise ApiError(f'CDN upload failed: {resp.status} {text}', status=resp.status)
-            download_param = resp.headers.get('x-encrypted-param', '')
+        session = await self._get_session()
+        download_param = await _post_cdn_upload(session, cdn_url, encrypted)
 
         if not download_param:
             raise ApiError('CDN upload succeeded but no x-encrypted-param returned', status=0)
@@ -516,10 +589,15 @@ class OpenClawWeixinClient:
             payload['aeskey'] = aeskey
 
         data = await self._post('ilink/bot/getuploadurl', payload)
-        logger.debug('get_upload_url response: %s', data)
+        logger.debug(
+            'get_upload_url response: full_url=%s upload_param=%s',
+            bool(data.get('upload_full_url')),
+            bool(data.get('upload_param')),
+        )
         return GetUploadUrlResponse(
             upload_param=data.get('upload_param'),
             thumb_upload_param=data.get('thumb_upload_param'),
+            upload_full_url=data.get('upload_full_url'),
         )
 
     # -----------------------------------------------------------------------

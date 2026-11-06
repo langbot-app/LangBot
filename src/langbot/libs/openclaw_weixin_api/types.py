@@ -170,6 +170,8 @@ class GetConfigResponse:
 class GetUploadUrlResponse:
     upload_param: Optional[str] = None
     thumb_upload_param: Optional[str] = None
+    # Complete, server-selected upload URL; preferred over upload_param when set.
+    upload_full_url: Optional[str] = None
 
 
 @dataclass
