@@ -9,7 +9,7 @@
 - Slack App 已接入 LangBot，并已加入目标频道。订阅 bot events：`app_mention`、`message.channels`；私有频道还需要 `message.groups`。桥接所需 scopes：`chat:write`、`app_mentions:read`、`channels:history`，私有频道还需要 `groups:history`。保留 LangBot Slack 适配器要求的其他权限，修改 scope 后重新安装 App。Socket Mode 还需带 `connections:write` 的 App-Level Token；webhook 模式需要可访问的 LangBot 事件端点。
 - 目标频道成员应仅包含有权回复客户的员工；频道中所有能在映射 thread 内发言的员工都可以回传消息。
 
-## 配置步骤与 0.2.0 升级
+## 配置步骤与 0.3.0 升级
 
 0.2.0 的最低 Host 能力要求为：Unified API、插件安装权限、Runner `usages: [event]`、Bot Plugin processor 订阅、公众号标准发送及 Slack thread 支持；同时需要本次更新包含的 Runner 标准发送权限检查和 MessageChain 转换。缺少这些能力的旧版 Host 无法加载或运行本版本。
 
@@ -36,6 +36,8 @@
 | `case_sensitive` | `false` | 是否区分关键词大小写 |
 | `takeover_minutes` | `60` | 用户最后一次发言后的接管时长，单位分钟，请填写正整数 |
 | `forward_followups` | `true` | 后续用户消息是否转到同一 thread |
+| `start_notice` | `已为您转接人工客服，请稍候，客服会在这里回复您。` | 命中关键词进入人工时发给用户的提示，留空不发送 |
+| `end_notice` | `人工客服已结束本次服务，后续将由 AI 助手继续为您解答。` | 员工发 `!close` 或接管到期时发给用户的提示，留空不发送 |
 
 ## 使用方式
 
@@ -43,6 +45,8 @@
 2. 员工在**这条消息的 thread 内回复，不要 @bot**。插件仅提取 `Plain` 文本，去掉引用上下文与开头的 @bot 前缀，并将 Slack 链接、提及、频道引用及转义的 `&`、`<`、`>` 转成可读纯文本后发送给公众号用户。成功后在 thread 回一条 `✅`；失败则显示中英双语原因和微信 `errcode`。没有映射的 thread 只记录日志，不回复。
 3. 在 thread 内发 **`!close`** 结束接管；处理器也接受作为消息文本送达的 `/close`，但 Slack 可能将它当成原生 slash command，而不派发消息。
 4. 关闭或超时后，普通用户消息恢复走 AI 流水线；再次命中关键词会建立新 thread。超时在下一条相关事件到达时检查，无后台定时器。员工回复不延长接管期，用户每次发言会刷新接管期和 48 小时窗口。
+
+用户提示（0.3.0）与员工回复一样走客服消息接口。进入提示在 Slack 根消息之后发送；结束提示在 `!close` / `/close` 或观测到超时（用户下一条消息时，或员工在到期后回复时）后发送，先于 AI 回复。超过 48 小时回复窗口时不发结束提示；到期后用户的消息若再次命中关键词，会直接开始新的接管，也不发结束提示。提示发送失败不会撤销接管状态变化，thread 中会显示 `⚠️` 和可读的 errcode。从 0.2.0 升级且未重新保存配置的安装使用默认文案。
 
 关闭 `forward_followups` 后，接管期间仍阻断 AI 并刷新时间戳，只是不转发后续消息。修改 Slack Bot 或目标频道后，下次用户发言时旧会话结束；需要再次命中关键词才会在新目标建立会话。
 

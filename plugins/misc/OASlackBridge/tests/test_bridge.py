@@ -38,7 +38,10 @@ CONFIG = {
     "oa_bot": "oa-1", "slack_bot": "slack-1", "slack_channel_id": "C-1",
     "keywords": ["help", "人工"], "case_sensitive": False,
     "takeover_minutes": 60, "forward_followups": True,
+    # Notices are covered by their own tests; keep the original message counts here.
+    "start_notice": "", "end_notice": "",
 }
+NOTICES = {**CONFIG, "start_notice": "start-notice", "end_notice": "end-notice"}
 OPENID = "openid-complete-value-12345"
 
 
@@ -574,7 +577,7 @@ def test_sdk_local_permission_denial_is_recognized():
 def test_component_and_permission_manifest():
     plugin = yaml.safe_load((ROOT / "manifest.yaml").read_text())
     runner = yaml.safe_load((ROOT / "components/runner/slack_reply.yaml").read_text())
-    assert plugin["metadata"]["version"] == "0.2.0"
+    assert plugin["metadata"]["version"] == "0.3.0"
     assert plugin["spec"]["permissions"] == {
         "capabilities": ["bot.message.send", "storage.plugin"], "workspace_operations": [],
     }
@@ -586,3 +589,126 @@ def test_component_and_permission_manifest():
     for manifest in (plugin, runner):
         for field in ("label", "description"):
             assert set(manifest["metadata"][field]) == locales
+
+
+def to_user(host):
+    return [text(payload) for payload in host.sent if payload["target_type"] == "person"]
+
+
+@pytest.mark.asyncio
+async def test_start_notice_follows_root_and_keeps_takeover():
+    plugin, host, handlers = await graph()
+    ctx = context()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, ctx)
+        assert await plugin.load(plugin.key("session", "oa-1", OPENID))
+    assert [payload["target_type"] for payload in host.sent] == ["group", "person"]
+    assert host.sent[1]["bot_uuid"] == "oa-1"
+    assert host.sent[1]["target_id"] == OPENID
+    assert to_user(host) == ["start-notice"]
+    ctx.prevent_default.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_followups_do_not_repeat_start_notice():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, context())
+        await receive(handlers, context("another question"))
+    assert to_user(host) == ["start-notice"]
+
+
+@pytest.mark.asyncio
+async def test_missing_notice_keys_use_defaults_after_upgrade():
+    _plugin, host, handlers = await graph()
+    legacy = {key: value for key, value in CONFIG.items() if not key.endswith("_notice")}
+    with bind_invocation(host, config=legacy, binding=binding()):
+        await receive(handlers, context())
+        await receive(handlers, context("!close", bot="slack-1", thread="1234.000001"), group=True)
+    assert to_user(host) == [bridge.DEFAULT_START_NOTICE, bridge.DEFAULT_END_NOTICE]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("command", ["/close", "!close"])
+async def test_close_sends_end_notice_after_release(command):
+    plugin, host, handlers = await graph()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, context())
+        await receive(handlers, context(command, bot="slack-1", thread="1234.000001"), group=True)
+        followup = context("ordinary text")
+        await receive(handlers, followup)
+    assert host.storage == {}
+    assert to_user(host) == ["start-notice", "end-notice"]
+    assert "closed" in text(host.sent[2])
+    followup.prevent_default.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("from_staff", [False, True])
+async def test_expiry_sends_end_notice(monkeypatch, from_staff):
+    now = [1000]
+    monkeypatch.setattr(bridge.time, "time", lambda: now[0])
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, context())
+        now[0] = 4600
+        ctx = context("normal", bot="slack-1", thread="1234.000001") if from_staff else context("normal")
+        await receive(handlers, ctx, group=from_staff)
+    assert host.storage == {}
+    assert to_user(host) == ["start-notice", "end-notice"]
+    ctx.prevent_default.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_expired_session_with_keyword_starts_again_without_end_notice(monkeypatch):
+    now = [1000]
+    monkeypatch.setattr(bridge.time, "time", lambda: now[0])
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, context())
+        now[0] = 4600
+        ctx = context("help again")
+        await receive(handlers, ctx)
+    assert to_user(host) == ["start-notice", "start-notice"]
+    ctx.prevent_default.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_no_end_notice_after_reply_window(monkeypatch):
+    now = [1000]
+    monkeypatch.setattr(bridge.time, "time", lambda: now[0])
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config={**NOTICES, "takeover_minutes": 4000}, binding=binding()):
+        await receive(handlers, context())
+        now[0] += 48 * 3600
+        await receive(handlers, context("answer", bot="slack-1", thread="1234.000001"), group=True)
+    assert to_user(host) == ["start-notice"]
+    assert "48-hour" in text(host.sent[-1])
+
+
+@pytest.mark.asyncio
+async def test_failed_start_notice_warns_in_thread_and_keeps_takeover():
+    plugin, host, handlers = await graph()
+    host.failure = RuntimeError("OfficialAccount customer message rejected: errcode=45047 (secret-token)")
+    ctx = context()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, ctx)
+        assert await plugin.load(plugin.key("session", "oa-1", OPENID))
+    ctx.prevent_default.assert_called_once()
+    ctx.prevent_postorder.assert_called_once()
+    warning = text(host.sent[-1])
+    assert thread_id(host.sent[-1]) == "1234.000001"
+    assert "errcode=45047" in warning and "start notice" in warning
+    assert "secret-token" not in warning
+
+
+@pytest.mark.asyncio
+async def test_failed_end_notice_is_reported_after_close():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=NOTICES, binding=binding()):
+        await receive(handlers, context())
+        host.failure = RuntimeError("errcode=45015")
+        await receive(handlers, context("!close", bot="slack-1", thread="1234.000001"), group=True)
+    assert host.storage == {}
+    assert "closed" in text(host.sent[-2])
+    assert "end notice" in text(host.sent[-1]) and "errcode=45015" in text(host.sent[-1])

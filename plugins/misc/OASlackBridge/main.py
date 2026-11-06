@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import re
 import time
@@ -63,6 +64,10 @@ def permission_denied(error: Exception) -> bool:
     )
 
 
+DEFAULT_START_NOTICE = "已为您转接人工客服，请稍候，客服会在这里回复您。"
+DEFAULT_END_NOTICE = "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。"
+
+
 def permission_notice(capability: str) -> str:
     return f"❌ 缺少权限 / Permission denied: {capability}. 请成员确认插件权限 / Ask a member to confirm plugin permissions."
 
@@ -105,6 +110,37 @@ class OASlackBridge(BasePlugin):
         await self.delete_plugin_storage(self.thread_key(session))
         await self.delete_plugin_storage(key)
 
+    async def notify_user(self, config: dict, session: dict, kind: str) -> str:
+        """Send the configured start/end notice to the Official Account user.
+
+        Returns an empty string on success or when the notice is disabled, otherwise a
+        readable error for the Slack thread. Never raises, so a failed notice cannot undo
+        or block the takeover state change that triggered it.
+        """
+        default = DEFAULT_START_NOTICE if kind == "start" else DEFAULT_END_NOTICE
+        notice = str(config.get(f"{kind}_notice", default) or "").strip()
+        if not notice:
+            return ""
+        try:
+            await self.send_message(
+                bot_uuid=session["oa_bot"], target_type="person", target_id=session["openid"],
+                message_chain=message.MessageChain([message.Plain(text=notice)]),
+            )
+        except Exception as error:
+            label = "开始" if kind == "start" else "结束"
+            return f"⚠️ 未能向用户发送接管{label}提示 / Failed to send the {kind} notice: {send_error(error)}"
+        return ""
+
+    async def warn_in_thread(self, config: dict, session: dict, warning: str):
+        if not warning:
+            return
+        try:
+            await self.to_slack(config, warning, session["thread"])
+        except Exception as error:
+            if not permission_denied(error):
+                raise
+            logging.getLogger(__name__).warning(warning)
+
     async def to_slack(self, config: dict, text: str, thread: str = ""):
         parts = []
         if thread:
@@ -131,13 +167,14 @@ class OASlackBridge(BasePlugin):
             key = self.key("session", bot, openid)
             session = await self.load(key)
             now = time.time()
+            ended = None
             if session and (
                 session["expires_at"] <= now
                 or session["slack_bot"] != config["slack_bot"]
                 or session["channel"] != config["slack_channel_id"]
             ):
                 await self.close(key, session)
-                session = None
+                ended, session = session, None
             text = plain_text(event.message_chain)
             sensitive = config.get("case_sensitive", False)
             candidate = text if sensitive else text.casefold()
@@ -146,6 +183,9 @@ class OASlackBridge(BasePlugin):
                  if word.strip() and (word if sensitive else word.casefold()) in candidate),
                 "",
             )
+            if ended and not matched:
+                # The user is back with the AI; tell them before its reply arrives.
+                await self.warn_in_thread(config, ended, await self.notify_user(config, ended, "end"))
             if not session and not matched:
                 return
             new_session = session is None
@@ -173,7 +213,9 @@ class OASlackBridge(BasePlugin):
             session["expires_at"] = now + max(0, float(config.get("takeover_minutes", 60))) * 60
             await self.save(key, session)
             await self.save(self.thread_key(session), {"session_key": key})
-            if not new_session and config.get("forward_followups", True):
+            if new_session:
+                await self.warn_in_thread(config, session, await self.notify_user(config, session, "start"))
+            elif config.get("forward_followups", True):
                 await self.to_slack(config, slack_text(text) or "[非文本消息 / Non-text message]", session["thread"])
             event_context.prevent_default()
             event_context.prevent_postorder()

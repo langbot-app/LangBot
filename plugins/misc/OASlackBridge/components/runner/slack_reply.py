@@ -43,6 +43,11 @@ class SlackReplyProcessor(Runner):
                 raise
             await ctx.log("Permission denied: event_reply; check processor tools.call authorization.", "warning")
 
+    async def notify_end(self, ctx: RunnerContext, config: dict, session: dict):
+        warning = await self.plugin.notify_user(config, session, "end")
+        if warning:
+            await self.acknowledge(ctx, warning)
+
     async def handle_reply(self, ctx: RunnerContext, config: dict, thread: str):
         event = ctx.platform_event
         mapping = await self.plugin.load(self.plugin.key("thread", event.bot_uuid, str(event.chat_id), thread))
@@ -61,6 +66,7 @@ class SlackReplyProcessor(Runner):
         if text in ("/close", "!close"):
             await self.plugin.close(key, session)
             await self.acknowledge(ctx, "✅ 接管已结束，恢复 AI 回复 / Takeover closed; AI replies resumed.")
+            await self.notify_end(ctx, config, session)
             return
         if now - session["last_user_at"] >= 48 * 3600:
             await self.plugin.close(key, session)
@@ -69,6 +75,7 @@ class SlackReplyProcessor(Runner):
         if session["expires_at"] <= now:
             await self.plugin.close(key, session)
             await self.acknowledge(ctx, "❌ 接管已到期，恢复 AI 回复 / Takeover expired; AI replies resumed.")
+            await self.notify_end(ctx, config, session)
             return
         if not text:
             await self.acknowledge(ctx, "❌ 仅支持文本回复 / Only text replies are supported.")

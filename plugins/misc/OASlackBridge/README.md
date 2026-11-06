@@ -11,7 +11,7 @@ Forward WeChat Official Account messages containing configured keywords to a Sla
 - A Slack App connected through LangBot, invited to the target channel. Enable bot event subscriptions `app_mention` and `message.channels`; for a private channel also enable `message.groups`. Required bridge scopes are `chat:write`, `app_mentions:read`, `channels:history`, and `groups:history` for private channels. Retain the other scopes required by LangBot's Slack adapter. Reinstall the Slack App after changing scopes. Socket Mode also needs an App-Level Token with `connections:write`; webhook mode needs LangBot's reachable event endpoint.
 - Restrict membership of the target channel to staff authorized to reply to customers; every human participant in that channel can reply through a mapped thread.
 
-## Setup and upgrade to 0.2.0
+## Setup and upgrade to 0.3.0
 
 1. Install or upgrade the plugin. A Workspace member must confirm `bot.message.send` and `storage.plugin` on the plugin detail page. Version 0.2.0 switches from compatibility mode to strict permissions; declaring permissions does not grant them. No Workspace operations are requested.
 2. Fill in the plugin-level configuration below. Both components use this configuration; the processor has no separate settings.
@@ -36,6 +36,8 @@ If plugin storage or sending to Slack is denied, the Official Account listener l
 | `case_sensitive` | `false` | Case-sensitive keyword matching |
 | `takeover_minutes` | `60` | Idle takeover duration after the latest user message; use a positive integer |
 | `forward_followups` | `true` | Forward subsequent user messages into the same thread |
+| `start_notice` | `已为您转接人工客服，请稍候，客服会在这里回复您。` | Sent to the user when a keyword starts takeover; empty disables it |
+| `end_notice` | `人工客服已结束本次服务，后续将由 AI 助手继续为您解答。` | Sent to the user when staff send `!close` or takeover expiration is observed; empty disables it |
 
 ## Staff workflow
 
@@ -43,6 +45,8 @@ If plugin storage or sending to Slack is denied, the Official Account listener l
 2. Reply **inside that thread without @bot**. Only `Plain` text is sent to WeChat; the reply context and any leading @bot prefix are removed. Slack links, mentions, channel references, and escaped `&`, `<`, `>` are converted to readable plain text. The thread receives `✅` after a successful send, or a bilingual error category and WeChat `errcode` after rejection. Unmapped threads are logged and receive no reply.
 3. Send **`!close`** in the thread to release takeover. The processor also accepts `/close` if delivered as message text, but Slack may interpret it as a native slash command instead.
 4. Once closed or expired, ordinary user messages follow the normal AI pipeline. A new keyword starts a new thread. Expiration is checked on the next event, without a background timer. Staff replies do not extend takeover; user messages do.
+
+User notices (0.3.0) go through the same customer-service API as staff replies. The start notice follows the Slack root message; the end notice follows `!close` / `/close` or an observed expiration (on the user's next message, or when staff reply after expiry, before the AI answer). No end notice is sent when the 48-hour window has passed, or when the user's message after expiry contains a keyword again, since that starts a new takeover. A notice that fails never undoes the takeover change; the thread shows `⚠️` with the readable `errcode`. Installations upgraded from 0.2.0 without saving the config use the default texts.
 
 Turning `forward_followups` off still suppresses AI and refreshes both timestamps during takeover. Changing the configured Slack destination ends the old session when the next user message arrives; a new keyword is required to start a session in the new destination.
 
