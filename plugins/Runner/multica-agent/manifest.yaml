@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: MulticaAgent
-  version: 0.1.0
+  version: 0.2.0
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent
   label:
     en_US: Multica Agent
@@ -25,7 +25,34 @@ metadata:
     ru_RU: Общайтесь с выбранным агентом Multica прямо из LangBot.
   icon: assets/icon.svg
 spec:
-  config: []
+  config:
+    - name: language
+      label:
+        en_US: Language
+        zh_Hans: 语言
+      description:
+        en_US: Language of this plugin's own chat output (progress lines, commands, errors). The agent's answer is never translated.
+        zh_Hans: 插件自身聊天输出（进度、命令、错误提示）的语言。智能体的回答正文不会被翻译。
+      type: select
+      required: false
+      default: en_US
+      options:
+        - name: en_US
+          label: {en_US: English, zh_Hans: 英文}
+        - name: zh_Hans
+          label: {en_US: Simplified Chinese, zh_Hans: 简体中文}
+        - name: zh_Hant
+          label: {en_US: Traditional Chinese, zh_Hans: 繁体中文}
+        - name: ja_JP
+          label: {en_US: Japanese, zh_Hans: 日语}
+        - name: es_ES
+          label: {en_US: Spanish, zh_Hans: 西班牙语}
+        - name: ru_RU
+          label: {en_US: Russian, zh_Hans: 俄语}
+        - name: th_TH
+          label: {en_US: Thai, zh_Hans: 泰语}
+        - name: vi_VN
+          label: {en_US: Vietnamese, zh_Hans: 越南语}
   components:
     Runner:
       fromDirs:
