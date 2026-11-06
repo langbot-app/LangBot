@@ -94,6 +94,8 @@ async def send_message(
     target_type: str,
     target_id: str,
     message_chain: platform_message.MessageChain,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """セッションにメッセージを送信する"""
 
@@ -104,7 +106,22 @@ await self.plugin.send_message(
     target_id="1010553892",
     message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
 )
+
+# 画像などのメディアメッセージでは待ち時間を明示的に延ばせます
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Image(url="https://example.com/a.png")]),
+    timeout=180,
+)
 ```
+
+`timeout` はプラグインが LangBot の送信完了を待つ秒数です。デフォルトは 60 秒で、キーワード引数としてのみ指定でき、正の数である必要があります。そうでない場合は `ValueError` が発生します。画像・ファイル・音声などのメディアメッセージは送信前にメッセージプラットフォームへアップロードされるため時間がかかることがあり、必要に応じて大きくしてください。タイムアウトはプラグインが待つのをやめるだけで、LangBot で進行中の送信は取り消されません。重複送信を避けるため、タイムアウト後にすぐ再送しないでください。
+
+<Info>
+0.7.22 より後にリリースされる `langbot-plugin` が必要です。`timeout` を渡すにはプラグインがその SDK を使う必要があり、60 秒のデフォルトとプラグイン指定のタイムアウトを適用するには Plugin Runtime もそのバージョンである必要があります。0.7.22 以前は 15 秒固定で待機します。
+</Info>
 
 ### 設定済みLLMモデルリストの取得
 

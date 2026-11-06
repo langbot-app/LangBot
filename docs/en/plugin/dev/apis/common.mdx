@@ -94,6 +94,8 @@ async def send_message(
     target_type: str,
     target_id: str,
     message_chain: platform_message.MessageChain,
+    *,
+    timeout: float | None = None,
 ) -> None:
     """Send a message to a session"""
 
@@ -104,7 +106,22 @@ await self.plugin.send_message(
     target_id="1010553892",
     message_chain=platform_message.MessageChain([platform_message.Plain(text="Hello, world!")]),
 )
+
+# Allow more time for media messages such as images
+await self.plugin.send_message(
+    bot_uuid="de639861-be05-4018-859b-c2e2d3e0d603",
+    target_type="person",
+    target_id="1010553892",
+    message_chain=platform_message.MessageChain([platform_message.Image(url="https://example.com/a.png")]),
+    timeout=180,
+)
 ```
+
+`timeout` is how many seconds the plugin waits for LangBot to finish sending. It defaults to 60 seconds, must be passed as a keyword argument, and must be a positive number; otherwise `ValueError` is raised. Images, files and voice messages are uploaded to the platform before they are sent and can take longer, so raise it when needed. A timeout only means the plugin stops waiting: it does not cancel a send already in progress in LangBot, so do not resend right away after a timeout, or the message may be delivered twice.
+
+<Info>
+Requires a `langbot-plugin` release after 0.7.22: plugins need that SDK version to pass `timeout`, and the Plugin Runtime needs it to apply the 60-second default and the plugin's timeout. Version 0.7.22 and earlier wait a fixed 15 seconds.
+</Info>
 
 ### Get Configured LLM Model List
 
