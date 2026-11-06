@@ -231,6 +231,13 @@
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/KeywordAlert"
   },
   {
+    "id": "langbot-team/LeadCapture",
+    "version": "0.1.0",
+    "category": "misc",
+    "path": "misc/LeadCapture",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture"
+  },
+  {
     "id": "RockChinQ/MCBotPlugin",
     "version": "0.1.3",
     "category": "misc",
