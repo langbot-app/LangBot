@@ -41,13 +41,23 @@ spec:
       type: string
       required: true
       default: ''
+    - name: agent
+      label:
+        en_US: Default Agent
+        zh_Hans: 默认智能体
+      description:
+        en_US: Name or UUID of the Multica agent used by default. A name is matched exactly (case-insensitive), then by a unique substring; an ambiguous name fails and lists the candidates. Users can switch with the chat command when agent switching is enabled.
+        zh_Hans: 默认使用的 Multica 智能体，名称或 UUID 均可。名称先按完整名称（忽略大小写）匹配，再按唯一的子串匹配；匹配到多个时报错并列出候选。启用切换后，用户可在聊天中用命令切换。
+      type: string
+      required: false
+      default: ''
     - name: agent-id
       label:
-        en_US: Default Agent ID
-        zh_Hans: 默认智能体 ID
+        en_US: Default Agent ID (deprecated)
+        zh_Hans: 默认智能体 ID（已废弃）
       description:
-        en_US: Multica agent UUID used by default. Users can switch with the chat command when agent switching is enabled.
-        zh_Hans: 默认使用的 Multica 智能体 UUID。启用切换后，用户可在聊天中用命令切换。
+        en_US: Deprecated since 0.2.0; use Default Agent instead. Kept for existing pipelines and used as an agent UUID only when Default Agent is empty.
+        zh_Hans: 0.2.0 起废弃，请改用“默认智能体”。为兼容已有流水线保留，仅在“默认智能体”为空时作为智能体 UUID 使用。
       type: string
       required: false
       default: ''
@@ -56,8 +66,8 @@ spec:
         en_US: Allow Switching Agents in Chat
         zh_Hans: 允许在聊天中切换智能体
       description:
-        en_US: Let users list agents and pick one per conversation with "<prefix> agents" and "<prefix> use <name or id>".
-        zh_Hans: 允许用户通过 “<前缀> agents” 和 “<前缀> use <名称或 ID>” 按会话选择智能体。
+        en_US: Let users pick an agent per conversation with "<prefix> use <number, name or id>" after listing or searching with "<prefix> agents [keyword]".
+        zh_Hans: 允许用户先用 “<前缀> agents [关键词]” 列出或搜索，再用 “<前缀> use <序号、名称或 ID>” 按会话选择智能体。
       type: boolean
       required: false
       default: true
@@ -88,8 +98,41 @@ spec:
       type: number
       required: false
       default: 2
+    - name: progress-mode
+      label:
+        en_US: Progress Output
+        zh_Hans: 进度输出
+      description:
+        en_US: How to show progress while the agent works. Multica only exposes the task lifecycle (submitted, started, still running), not individual agent steps. "messages" sends each update as its own message and the answer last; "stream" updates one message in place (platforms without streaming receive it once at the end); "off" sends only the answer, as in 0.1.x.
+        zh_Hans: 智能体运行期间如何显示进度。Multica 只提供任务生命周期（已提交、开始执行、仍在执行），不提供智能体内部步骤。“多条消息”逐条发送进度、最后一条是答案；“流式”在同一条消息内追加（不支持流式的平台会在结束时一次性收到）；“关闭”只发送答案，与 0.1.x 一致。
+      type: select
+      required: false
+      default: messages
+      options:
+        - name: messages
+          label:
+            en_US: Separate messages
+            zh_Hans: 多条消息
+        - name: stream
+          label:
+            en_US: One streamed message
+            zh_Hans: 流式（单条消息）
+        - name: "off"
+          label:
+            en_US: "Off"
+            zh_Hans: 关闭
+    - name: progress-interval
+      label:
+        en_US: Progress Interval (seconds)
+        zh_Hans: 进度间隔（秒）
+      description:
+        en_US: Minimum seconds between "still running" updates (5-300). State changes are reported when they happen.
+        zh_Hans: “仍在执行”进度的最小间隔秒数（5-300）。状态变化发生时立即报告。
+      type: number
+      required: false
+      default: 15
   capabilities:
-    streaming: false
+    streaming: true
     tool_calling: false
     knowledge_retrieval: false
     multimodal_input: false

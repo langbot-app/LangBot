@@ -106,7 +106,7 @@
   },
   {
     "id": "langbot-team/MulticaAgent",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "category": "Runner",
     "path": "Runner/multica-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent"

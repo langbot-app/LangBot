@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: MulticaAgent
-  version: 0.1.0
+  version: 0.2.0
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/multica-agent
   label:
     en_US: Multica Agent
