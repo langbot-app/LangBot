@@ -84,10 +84,10 @@ class _SlowHttp:
 
     def __init__(self, delay: float):
         self.delay = delay
-        self.calls: list[tuple[str, dict]] = []
+        self.calls: list[tuple[str, dict, str | None]] = []
 
-    async def __call__(self, url, params=None):
-        self.calls.append((url, dict(params or {})))
+    async def __call__(self, url, params=None, api_key=None):
+        self.calls.append((url, dict(params or {}), api_key))
         await asyncio.sleep(self.delay)
         return _FakeResponse(_payload_for(url))
 
@@ -115,7 +115,7 @@ class _ControlHttp:
                 raise AssertionError(f"only {len(self.hang_tasks)} of {count} hanging requests started")
             await asyncio.sleep(0.005)
 
-    async def __call__(self, url, params=None):
+    async def __call__(self, url, params=None, api_key=None):
         if "city/" not in url:
             self.tasks.append(asyncio.current_task())
         for suffix, cleanup in self.hang_suffixes.items():
@@ -190,12 +190,19 @@ class WeatherSharedRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("温度", results_a[0].text)
         self.assertIsNone(results_a[0].error)
 
-        keys_a = [params.get("key") for _, params in slow.calls[:8]]
-        keys_b = [params.get("key") for _, params in slow.calls[8:]]
+        # The key travels in the request header, never in the query string:
+        # httpx logs the full request URL at INFO, so a ``key`` parameter would
+        # write this invocation's credential into the shared log.
+        keys_a = [api_key for _, _, api_key in slow.calls[:8]]
+        keys_b = [api_key for _, _, api_key in slow.calls[8:]]
         self.assertEqual(keys_a, ["KEY-A"] * 8)
         self.assertEqual(keys_b, ["KEY-B"] * 8)
         self.assertNotIn("KEY-B", keys_a)
         self.assertNotIn("KEY-A", keys_b)
+        self.assertTrue(
+            all("key" not in params for _, params, _ in slow.calls),
+            "the API key must not appear in the request query string",
+        )
 
     async def test_failed_fan_out_leaves_no_request_task_running(self) -> None:
         """F-01: a failing branch must cancel and await its fan-out siblings.
@@ -261,6 +268,39 @@ class WeatherSharedRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 if not task.done():
                     task.cancel()
                     await asyncio.gather(task, return_exceptions=True)
+
+
+    async def test_api_key_is_sent_as_a_header_not_a_query_parameter(self) -> None:
+        """A ``key`` query parameter would be logged by httpx at INFO level."""
+        captured: dict = {}
+
+        class _RecordingClient:
+            def __init__(self, **kwargs):
+                captured["headers"] = dict(kwargs.get("headers") or {})
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc_info):
+                return False
+
+            async def get(self, url, params=None):
+                captured["url"] = url
+                captured["params"] = dict(params or {})
+                return _FakeResponse({"code": "200"})
+
+        original_client = weather_data.httpx.AsyncClient
+        weather_data.httpx.AsyncClient = _RecordingClient
+        try:
+            await weather_data._get_data(
+                "https://api.qweather.com/v7/weather/now", {"location": "101"}, "KEY-A"
+            )
+        finally:
+            weather_data.httpx.AsyncClient = original_client
+
+        self.assertEqual(captured["headers"], {"X-QW-Api-Key": "KEY-A"})
+        self.assertNotIn("key", captured["params"])
+        self.assertNotIn("KEY-A", captured["url"])
 
 
 if __name__ == "__main__":

@@ -24,14 +24,21 @@ class CityNotFoundError(Exception):
     ...
 
 
-async def _get_data(url: str, params: dict) -> httpx.Response:
-    async with httpx.AsyncClient(timeout=_REQUEST_TIMEOUT) as client:
+async def _get_data(url: str, params: dict, api_key: str) -> httpx.Response:
+    """Send the API key as a request header, never as a query parameter.
+
+    ``httpx`` logs ``HTTP Request: GET <full url>`` at INFO level, so a ``key``
+    query parameter would write the caller's credential into the shared runtime
+    log. QWeather accepts ``X-QW-Api-Key`` for API KEY authentication.
+    """
+    async with httpx.AsyncClient(
+        timeout=_REQUEST_TIMEOUT, headers={"X-QW-Api-Key": api_key}
+    ) as client:
         return await client.get(url, params=params)
 
 
 def _check_response(response: httpx.Response) -> bool:
     if response.status_code == 200:
-        logger.debug(f"{response.json()}")
         return True
     else:
         raise APIError(f"Response code:{response.status_code}")
@@ -111,11 +118,11 @@ class Weather:
     async def _get_city_id(self, api_type: str = "lookup"):
         res = await _get_data(
             url=self.url_geoapi + api_type,
-            params={"location": self.city_name, "key": self.apikey, "number": 1},
+            params={"location": self.city_name, "number": 1},
+            api_key=self.apikey,
         )
 
         res = res.json()
-        logger.debug(res)
         if res["code"] == "404":
             raise CityNotFoundError()
         elif res["code"] != "200":
@@ -140,7 +147,8 @@ class Weather:
     async def _now(self) -> NowApi:
         res = await _get_data(
             url=self.url_weather_api + "now",
-            params={"location": self.city_id, "key": self.apikey},
+            params={"location": self.city_id},
+            api_key=self.apikey,
         )
         _check_response(res)
         return NowApi(**res.json())
@@ -148,7 +156,8 @@ class Weather:
     async def _daily(self) -> DailyApi:
         res = await _get_data(
             url=self.url_weather_api + str(self.forecast_days) + "d",
-            params={"location": self.city_id, "key": self.apikey},
+            params={"location": self.city_id},
+            api_key=self.apikey,
         )
         _check_response(res)
         return DailyApi(**res.json())
@@ -156,7 +165,8 @@ class Weather:
     async def _air(self) -> AirApi:
         res = await _get_data(
             url=self.url_air,
-            params={"location": self.city_id, "key": self.apikey},
+            params={"location": self.city_id},
+            api_key=self.apikey,
         )
         _check_response(res)
         return AirApi(**res.json())
@@ -164,7 +174,8 @@ class Weather:
     async def _warning(self) -> Optional[WarningApi]:
         res = await _get_data(
             url=self.url_weather_warning,
-            params={"location": self.city_id, "key": self.apikey},
+            params={"location": self.city_id},
+            api_key=self.apikey,
         )
         _check_response(res)
         return None if res.json().get("code") == "204" else WarningApi(**res.json())
@@ -172,7 +183,8 @@ class Weather:
     async def _hourly(self) -> HourlyApi:
         res = await _get_data(
             url=self.url_hourly,
-            params={"location": self.city_id, "key": self.apikey},
+            params={"location": self.city_id},
+            api_key=self.apikey,
         )
         _check_response(res)
         return HourlyApi(**res.json())
@@ -180,7 +192,8 @@ class Weather:
     async def _info(self) -> WeatherInfo:
         res = await _get_data(
             url=self.url_info,
-            params={"location": self.city_id, "key": self.apikey, "type": self.qweather_info, 'lang': 'zh'}
+            params={"location": self.city_id, "type": self.qweather_info, "lang": "zh"},
+            api_key=self.apikey,
         )
         _check_response(res)
         return WeatherInfo(**res.json())
@@ -190,7 +203,8 @@ class Weather:
         formatted_time = now.strftime('%Y%m%d')
         res = await _get_data(
             url=self.url_sun,
-            params={"location": self.city_id, "key": self.apikey, "date": formatted_time, 'lang': 'zh'}
+            params={"location": self.city_id, "date": formatted_time, "lang": "zh"},
+            api_key=self.apikey,
         )
         _check_response(res)
         return SunApi(**res.json())
