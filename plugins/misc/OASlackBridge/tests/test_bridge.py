@@ -39,7 +39,7 @@ CONFIG = {
     "keywords": ["help", "人工"], "case_sensitive": False,
     "takeover_minutes": 60, "forward_followups": True,
     # Notices are covered by their own tests; keep the original message counts here.
-    "start_notice": "", "end_notice": "",
+    "start_notice": "", "end_notice": "", "send_user_details": False,
 }
 NOTICES = {**CONFIG, "start_notice": "start-notice", "end_notice": "end-notice"}
 OPENID = "openid-complete-value-12345"
@@ -51,6 +51,9 @@ class Host:
         self.sent = []
         self.failure = None
         self.root_result = {"message_id": "1234.000001"}
+        self.history = []
+        self.operations = []
+        self.operation_response = None
 
     async def call_action(self, action, data, *args, **kwargs):
         if action == getattr(self, "denied_action", None):
@@ -62,6 +65,13 @@ class Host:
             data = {"bot_uuid": data["bot_uuid"], "target_type": data["params"]["target_type"],
                     "target_id": data["params"]["target_id"], "message_chain": data["params"]["message"]}
             action = Action.SEND_MESSAGE
+        if action == Action.CALL_APPLICATION_OPERATION:
+            self.operations.append(data)
+            if self.operation_response is not None:
+                return self.operation_response
+            args = data["arguments"]
+            rows = self.history[args["offset"]:args["offset"] + args["limit"]]
+            return {"ok": True, "result": [rows, len(self.history)]}
         if action == Action.GET_PLUGIN_STORAGE_KEYS:
             return {"keys": list(self.storage)}
         if action == Action.GET_PLUGIN_STORAGE:
@@ -577,9 +587,9 @@ def test_sdk_local_permission_denial_is_recognized():
 def test_component_and_permission_manifest():
     plugin = yaml.safe_load((ROOT / "manifest.yaml").read_text())
     runner = yaml.safe_load((ROOT / "components/runner/slack_reply.yaml").read_text())
-    assert plugin["metadata"]["version"] == "0.3.0"
+    assert plugin["metadata"]["version"] == "0.4.0"
     assert plugin["spec"]["permissions"] == {
-        "capabilities": ["bot.message.send", "storage.plugin"], "workspace_operations": [],
+        "capabilities": ["bot.message.send", "storage.plugin"], "workspace_operations": ["monitoring.messages"],
     }
     assert runner["spec"]["usages"] == ["event"]
     assert runner["spec"]["events"] == ["message.received"]
@@ -712,3 +722,103 @@ async def test_failed_end_notice_is_reported_after_close():
     assert host.storage == {}
     assert "closed" in text(host.sent[-2])
     assert "end notice" in text(host.sent[-1]) and "errcode=45015" in text(host.sent[-1])
+
+
+DETAILS = {**CONFIG, "send_user_details": True}
+
+
+def history_row(index, role, text, ts):
+    return {
+        "role": role, "bot_name": "微信公众号", "timestamp": ts,
+        "message_content": json.dumps([{"type": "Source", "id": index}, {"type": "Plain", "text": text}]),
+    }
+
+
+@pytest.mark.asyncio
+async def test_user_details_follow_root_in_thread(monkeypatch):
+    monkeypatch.setattr(bridge.time, "time", lambda: 1000)
+    _plugin, host, handlers = await graph()
+    # Newest first, as monitoring.messages returns them.
+    host.history = [
+        history_row(3, "user", "help <me>", "2026-11-06T07:29:33"),
+        history_row(2, "assistant", "I am the assistant", "2026-11-06T07:29:25"),
+        history_row(1, "user", "who are you", "2026-11-06T07:29:08"),
+    ]
+    ctx = context()
+    with bind_invocation(host, config={**DETAILS, "history_messages": 2}, binding=binding()):
+        await receive(handlers, ctx)
+    assert [payload["target_type"] for payload in host.sent] == ["group", "group"]
+    details = text(host.sent[1])
+    assert thread_id(host.sent[1]) == "1234.000001"
+    assert f"OpenID: `{OPENID}`" in details
+    assert f"person_{OPENID}" in details
+    assert "微信公众号" in details
+    assert "Messages so far: 3" in details
+    assert "First contact (UTC): 2026-11-06 07:29" in details
+    assert "who are you" not in details
+    assert details.index("I am the assistant") < details.index("help &lt;me&gt;")
+    assert host.operations[0]["operation_id"] == "monitoring.messages"
+    assert host.operations[0]["arguments"]["session_ids"] == [f"person_{OPENID}"]
+    assert host.operations[0]["arguments"]["bot_ids"] == ["oa-1"]
+    ctx.prevent_default.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_user_details_first_contact_reads_oldest_page():
+    _plugin, host, handlers = await graph()
+    host.history = [history_row(i, "user", f"m{i}", f"2026-11-0{6 - i}T00:00:00") for i in range(5)]
+    with bind_invocation(host, config={**DETAILS, "history_messages": 2}, binding=binding()):
+        await receive(handlers, context())
+    details = text(host.sent[1])
+    assert "Messages so far: 5" in details
+    assert "First contact (UTC): 2026-11-02 00:00" in details
+    assert host.operations[1]["arguments"]["offset"] == 4
+
+
+@pytest.mark.asyncio
+async def test_user_details_without_permission_still_takes_over():
+    _plugin, host, handlers = await graph()
+    host.operation_response = {"ok": False, "error": {"code": "permission_denied", "message": "denied"}}
+    ctx = context()
+    with bind_invocation(host, config=DETAILS, binding=binding()):
+        await receive(handlers, ctx)
+    details = text(host.sent[1])
+    assert f"OpenID: `{OPENID}`" in details
+    assert "monitoring.messages" in details
+    ctx.prevent_default.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_user_details_only_on_new_takeover_and_can_be_disabled():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=DETAILS, binding=binding()):
+        await receive(handlers, context())
+        await receive(handlers, context("another question"))
+    assert sum("User details" in text(payload) for payload in host.sent) == 1
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config={**DETAILS, "send_user_details": False}, binding=binding()):
+        await receive(handlers, context())
+    assert host.operations == []
+    assert len(host.sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_zero_history_keeps_summary_without_conversation():
+    _plugin, host, handlers = await graph()
+    host.history = [history_row(1, "user", "secret question", "2026-11-06T07:00:00")]
+    with bind_invocation(host, config={**DETAILS, "history_messages": 0}, binding=binding()):
+        await receive(handlers, context())
+    details = text(host.sent[1])
+    assert "Messages so far: 1" in details
+    assert "secret question" not in details
+
+
+def test_stored_text_renders_components_and_truncates():
+    content = json.dumps([
+        {"type": "Source", "id": 1}, {"type": "Plain", "text": "hi"},
+        {"type": "Image", "url": "x"}, {"type": "Plain", "text": " there"},
+    ])
+    assert bridge.stored_text(content) == "hi[图片 / Image] there"
+    long = bridge.stored_text(json.dumps([{"type": "Plain", "text": "a" * 400}]))
+    assert len(long) == bridge.MAX_HISTORY_CHARS + 1 and long.endswith("…")
+    assert bridge.stored_text("not json") == "not json"

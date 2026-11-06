@@ -7,9 +7,10 @@ Hand off WeChat Official Account conversations from the AI to human agents in Sl
 1. A WeChat user sends a message containing a keyword (for example 转人工). The AI stops replying.
 2. The user receives a notice: "已为您转接人工客服，请稍候，客服会在这里回复您。" (You are being connected to a human agent.)
 3. A "📩 Official Account takeover" message appears in Slack with the (masked) user, the matched keyword and the original text.
-4. Further messages from the user during the takeover are added to that message's thread.
-5. Staff reply in the thread; the user receives the reply in WeChat and the thread shows ✅.
-6. Staff send `!close` in the thread. The user receives "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。" (The human session has ended; the AI assistant will continue.) and the AI takes over again.
+4. Right below it, the thread gets a "👤 User details" reply: full OpenID, session ID, message count, first contact time and the most recent user/AI messages, so staff have the context.
+5. Further messages from the user during the takeover are added to that message's thread.
+6. Staff reply in the thread; the user receives the reply in WeChat and the thread shows ✅.
+7. Staff send `!close` in the thread. The user receives "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。" (The human session has ended; the AI assistant will continue.) and the AI takes over again.
 
 Both user notices can be changed or turned off in the plugin configuration.
 
@@ -52,7 +53,12 @@ Both user notices can be changed or turned off in the plugin configuration.
 ### Step 4: Install the plugin and confirm permissions
 
 1. Install this plugin.
-2. On the plugin detail page, **confirm the permissions** `bot.message.send` (send messages to the WeChat user and to Slack) and `storage.plugin` (store takeover sessions). The plugin does nothing until they are confirmed.
+2. On the plugin detail page, **confirm the permissions**:
+   - `bot.message.send`: send messages to the WeChat user and to Slack;
+   - `storage.plugin`: store takeover sessions;
+   - `monitoring.messages` (read-only message history): message count, first contact time and recent conversation in the user details.
+
+   The plugin does nothing until the first two are confirmed. Without the third, user details contain only the OpenID and basic info, plus a hint to confirm the permission.
 
 ### Step 5: Fill in the plugin configuration
 
@@ -65,6 +71,8 @@ Both user notices can be changed or turned off in the plugin configuration.
 | Case-sensitive matching | Off by default |
 | Takeover duration (minutes) | How long after the user's latest message the takeover ends on its own. Default 60; every user message restarts the timer |
 | Forward follow-up messages | On by default. When off, the AI still stays quiet during the takeover, but follow-up messages are not posted to Slack |
+| Post user details in the thread | On by default. Replies in the takeover thread with user details |
+| Recent messages in user details | Default 10, up to 50; 0 posts only the basic info, without conversation |
 | Notice to the user when takeover starts | Default "已为您转接人工客服，请稍候，客服会在这里回复您。"; leave empty to disable |
 | Notice to the user when takeover ends | Default "人工客服已结束本次服务，后续将由 AI 助手继续为您解答。"; leave empty to disable |
 
@@ -123,6 +131,8 @@ An ongoing takeover ends when the user next writes; the user has to send a keywo
 - The plugin does not queue or retry sends, so users never get duplicates; a ❌ receipt in the thread is the source of truth.
 - Customer messages stay in Slack; set channel membership and retention to match your organization's policy.
 - The plugin stores only the user ↔ Slack thread mapping, not chat history. Replies to an existing thread still work after a plugin restart.
+- The conversation in "User details" comes from LangBot's message records and is posted to Slack; make sure that fits your data policy, or turn it off / set the count to 0.
+- WeChat no longer gives Official Accounts the user's nickname or avatar, so users are identified by OpenID.
 
 ## For developers
 
