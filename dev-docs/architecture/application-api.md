@@ -129,3 +129,13 @@ targets that already have an installation in the Workspace (upgrades and reinsta
 `plugin.enable_marketplace`. A new installation is persisted disabled until a member confirms its permissions.
 `task.get` returns the stable public projection, including `pending_permission_confirmation`, to every principal except
 accounts, support administrators and Core.
+
+## Workspace language for plugins and Agents
+
+`workspace.language.get` is exposed to plugins and processors (`exposure='all'`, risk `read`, permission
+`workspace.view`). It returns the Workspace `message_language` (the value Core uses for backend messages and default
+replies, default `en_US`) plus `supported_languages`, so plugins and Agent tools can localize their own output. It reads
+the Workspace from the trusted context and accepts no arguments. `workspace.language.update` stays member/API-key only,
+so `workspace.language.*` and `workspace.*` remain invalid wildcards. LocalAgent declares the operation; the SDK exposes it
+as `workspace.workspace.language.get()`. HTTP (`GET /api/v1/workspaces/current/language`) and the MCP
+`get_workspace_message_language` tool are unchanged.

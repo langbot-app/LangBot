@@ -296,3 +296,10 @@ result = await self.plugin.workspace.call("knowledge.base.retrieve", kb_uuid=kb_
 | 工具详情 | `tool.get`<br/>`workspace.tool.get()` | 读 | `resource.view` |
 | 工具列表 | `tool.list`<br/>`workspace.tool.list()` | 读 | `resource.view` |
 
+### 工作区 (`workspace`)
+
+| 操作 | ID 与方法 | 风险 | 授予者需要 |
+| --- | --- | --- | --- |
+| 工作区语言 | `workspace.language.get`<br/>`workspace.workspace.language.get()` | 读 | `workspace.view` |
+
+`workspace.language.get` 返回 `{"language": "zh_Hans", "supported_languages": [...]}`。`language` 是工作区设置中的消息语言（默认 `en_US`），与成员个人的 WebUI 语言无关。插件和 Agent 可据此本地化回复与生成内容；修改语言仍只能由成员操作。

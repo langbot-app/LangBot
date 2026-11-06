@@ -46,6 +46,7 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             op_id.startswith('monitoring.')
             or op_id == 'stats.basic'
             or op_id == 'task.get'
+            or op_id == 'workspace.language.get'
             or op_id.startswith('bot.')
             or op_id.startswith('adapter.')
             or op_id.startswith('agent.')
@@ -65,8 +66,8 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 164
-    assert len(OPERATION_DOCS) == 164
+    assert len(in_scope_operation_ids) == 165
+    assert len(OPERATION_DOCS) == 165
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -85,7 +86,7 @@ def test_out_of_scope_operations_are_none(
     in_scope_operation_ids: set[str], all_application_operations: list[Operation]
 ):
     out_of_scope_ops = [op for op in all_application_operations if op.operation_id not in in_scope_operation_ids]
-    assert len(out_of_scope_ops) == 73
+    assert len(out_of_scope_ops) == 72
 
     for op in out_of_scope_ops:
         doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)

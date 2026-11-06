@@ -296,3 +296,10 @@ Runner では、実行に紐づいたプロキシを `ctx.api.workspace` とし�
 | Get Tool<br/>Get parameter schema and description for a specific tool. | `tool.get`<br/>`workspace.tool.get()` | 読み取り | `resource.view` |
 | List Tools<br/>List all registered function tools available for execution. | `tool.list`<br/>`workspace.tool.list()` | 読み取り | `resource.view` |
 
+### Workspace (`workspace`)
+
+| 操作 | ID とメソッド | リスク | 付与するメンバーに必要な権限 |
+| --- | --- | --- | --- |
+| Get Workspace Language<br/>Get the Workspace language used for backend messages and default bot replies. | `workspace.language.get`<br/>`workspace.workspace.language.get()` | 読み取り | `workspace.view` |
+
+`workspace.language.get` は `{"language": "zh_Hans", "supported_languages": [...]}` を返します。`language` はワークスペース設定のメッセージ言語（既定は `en_US`）で、メンバー個人の WebUI 言語とは無関係です。プラグインと Agent はこれを使って返信や生成内容をローカライズできます。言語の変更は引き続きメンバーのみが行えます。

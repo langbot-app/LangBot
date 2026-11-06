@@ -272,7 +272,7 @@ MIN_READ_PARAMS = {
 
 
 async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
-    """Execute all 87 read operations with exposure=='all' under processor context."""
+    """Execute all 88 read operations with exposure=='all' under processor context."""
     api = sweep_app.application_api
     read_op_ids = [
         op_id
@@ -281,7 +281,7 @@ async def test_processor_sweep_all_in_scope_read_operations(sweep_app):
         and get_operation_doc(op_id, side_effect=spec.side_effect).exposure == 'all'
         and not spec.side_effect
     ]
-    assert len(read_op_ids) == 87
+    assert len(read_op_ids) == 88
 
     proc_ctx = await build_processor_request_context(
         sweep_app,
