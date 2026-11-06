@@ -55,6 +55,12 @@ def _redact_url(url: str) -> str:
 
 _URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s'\"<>()\[\],;]+")
 
+# The extraction pattern keeps control characters (a DEL survives the trailing
+# punctuation strip). A fetch of such a URL makes ``http.client`` raise
+# ``InvalidURL`` with the raw request target, query string included, so these
+# URLs never reach the fetch or the log boundary.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _redact_text(text: str) -> str:
     """Redact credentials/query/fragment from every URL inside ``text``.
@@ -110,6 +116,8 @@ class URLDetector(EventListener):
             unique_urls = []
             for url in urls:
                 url = url.rstrip('.,;:!?')
+                if _CONTROL_CHARS.search(url):
+                    continue
                 if url not in seen:
                     seen.add(url)
                     unique_urls.append(url)
@@ -147,12 +155,17 @@ class URLDetector(EventListener):
                     ]))
 
                 except Exception as e:
+                    # Exception classes only: a message can quote the request
+                    # target, whose query string may hold a credential.
                     logger.warning(
-                        f"Failed to summarize {_redact_url(url)}: {_redact_text(str(e))}"
+                        f"Failed to summarize {_redact_url(url)}: {type(e).__name__}"
                     )
 
         except Exception as e:
+            # Frames without the exception message: traceback.format_exc()
+            # ends with the raw exception text, which can quote a request
+            # target and its query string.
             logger.error(
-                "Error in _handle_message: "
-                f"{_redact_text(str(e))}\n{_redact_text(traceback.format_exc())}"
+                f"Error in _handle_message ({type(e).__name__}): "
+                f"{_redact_text(''.join(traceback.format_tb(e.__traceback__)))}"
             )
