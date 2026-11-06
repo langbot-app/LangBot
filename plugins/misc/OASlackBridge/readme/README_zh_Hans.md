@@ -1,96 +1,142 @@
 # 公众号 Slack 桥接
 
-公众号消息命中关键词后，转发到指定 Slack 频道并接管会话。员工在对应 thread 内回复，插件通过公众号客服接口发回用户；接管期间阻断 AI 回复。
+把微信公众号的 AI 客服接上 Slack 人工客服：用户发出「转人工」之类的关键词后，对话会推送到你指定的 Slack 频道，员工直接在 Slack 里回复，回复会发回给公众号用户。接管期间 AI 不会插话，员工结束接管后自动恢复 AI 回复。
 
-## 前置条件
+## 效果一览
 
-- 已认证且拥有客服消息接口权限的公众号，在 LangBot 中配置为 **Mode = auto**。其他模式无法异步发送员工回复，core 会拒绝发送。
-- LangBot core 必须包含 **langbot-app/LangBot #2863 和 #2864**：公众号 `send_message`、Slack 返回 `message_id`、出站 `Quote` 指定 thread、bot thread 内回复带入站 `Quote.id`。旧版本 core 无法使用本插件。
-- Slack App 已接入 LangBot，并已加入目标频道。订阅 bot events：`app_mention`、`message.channels`；私有频道还需要 `message.groups`。桥接所需 scopes：`chat:write`、`app_mentions:read`、`channels:history`，私有频道还需要 `groups:history`。保留 LangBot Slack 适配器要求的其他权限，修改 scope 后重新安装 App。Socket Mode 还需带 `connections:write` 的 App-Level Token；webhook 模式需要可访问的 LangBot 事件端点。
-- 目标频道成员应仅包含有权回复客户的员工；频道中所有能在映射 thread 内发言的员工都可以回传消息。
+1. 公众号用户发送含关键词的消息（例如「转人工」），AI 停止回复。
+2. 用户收到提示：「已为您转接人工客服，请稍候，客服会在这里回复您。」
+3. Slack 频道出现一条「📩 公众号人工接管」通知，包含用户（已脱敏）、命中的关键词和原文。
+4. 用户在接管期间继续发的消息，会追加到这条通知的 thread 里。
+5. 员工在 thread 里回复，用户在公众号里收到；回复成功后 thread 里会出现 ✅。
+6. 员工在 thread 里发 `!close` 结束接管，用户收到「人工客服已结束本次服务，后续将由 AI 助手继续为您解答。」，之后恢复 AI 回复。
 
-## 配置步骤与 0.3.0 升级
+两条给用户的提示文案都可以在插件配置里修改或关闭。
 
-0.2.0 的最低 Host 能力要求为：Unified API、插件安装权限、Runner `usages: [event]`、Bot Plugin processor 订阅、公众号标准发送及 Slack thread 支持；同时需要本次更新包含的 Runner 标准发送权限检查和 MessageChain 转换。缺少这些能力的旧版 Host 无法加载或运行本版本。
+## 准备工作
 
-1. 使用支持 Unified API、Runner 事件处理器和 Bot Plugin processor 订阅的 LangBot。安装或升级插件后，由 Workspace 成员在插件详情页确认 `bot.message.send` 和 `storage.plugin`。0.2.0 从 compatibility mode 转为 strict；声明权限不等于获得授权，不申请 Workspace operations。
-2. 填写下方插件级配置，两个组件共用这份配置，处理器没有独立配置项。
-3. 公众号 Bot 的**主路由必须是启用了本插件的 Pipeline**，插件排在会回复或消费消息的其他插件之前。EventListener 只在 Pipeline 内运行；如果主路由是 Agent，就无法阻断接管期间的 AI 回复。
-4. 创建使用 **Slack 回复处理器** 的 Plugin processor 实例，在 Slack Bot 详情页的 **Plugin processor** 中订阅。只安装插件不会自动订阅。Slack Bot 主路由可以是任意目标，也可以设为 **discard**，无需再通过启用了本插件的 Pipeline 处理 Slack 回复。
-5. 员工在映射 thread 内回复时**不要 @bot**。处理器和主路由并行运行，不能阻止主路由回复；如果 @bot 且 Slack Bot 主路由是 AI，AI 也会回复。
-
-在同一安装上升级后，0.1.0 已有会话与 thread 映射继续可用，storage key 不变。EventListener 不再处理 Slack 群消息，恢复员工回复前请完成处理器订阅。
-
-回执通过事件范围的标准 `ctx.reply` 发送，沿用 Slack 来源事件的 `thread_ts`。Runner 声明 `tool_calling: true` 和 `permissions.tools: [call]`、`permissions.storage: [plugin]`；消息事件自动获得 `event_reply`，无需额外启用平台工具或安装 capability。`get_bot_uuid` 同属事件范围；跨 Bot 发送需要 `bot.message.send`，存储读写和删除需要 `storage.plugin`。权限拒绝会记日志而不输出原始异常；仍能进行事件回复时，处理器会在 Slack 提示缺少的权限。
-
-## 配置
-
-插件存储或发送 Slack 的权限被拒绝时，公众号监听器只记录警告，本条消息继续走正常 AI 流水线；关键词命中和已有接管期间的消息同样放行。只有桥接处理成功后才阻断 AI，避免缺少权限时用户收不到回复；已经转发至 Slack 的消息仍会保留。插件不会清除其他流水线插件设置的阻断标记。
-
-| 配置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `oa_bot` | 必填 | 公众号 Bot，必须为 auto 模式 |
-| `slack_bot` | 必填 | Slack Bot |
-| `slack_channel_id` | 必填 | 频道 ID，不是频道名称 |
-| `keywords` | `[]` | 触发接管的子串列表，忽略空项 |
-| `case_sensitive` | `false` | 是否区分关键词大小写 |
-| `takeover_minutes` | `60` | 用户最后一次发言后的接管时长，单位分钟，请填写正整数 |
-| `forward_followups` | `true` | 后续用户消息是否转到同一 thread |
-| `start_notice` | `已为您转接人工客服，请稍候，客服会在这里回复您。` | 命中关键词进入人工时发给用户的提示，留空不发送 |
-| `end_notice` | `人工客服已结束本次服务，后续将由 AI 助手继续为您解答。` | 员工发 `!close` 或接管到期时发给用户的提示，留空不发送 |
-
-## 使用方式
-
-1. 用户发送命中关键词的消息，频道中出现根消息，包含截短的 openid、命中词、UTC 时间和原文。
-2. 员工在**这条消息的 thread 内回复，不要 @bot**。插件仅提取 `Plain` 文本，去掉引用上下文与开头的 @bot 前缀，并将 Slack 链接、提及、频道引用及转义的 `&`、`<`、`>` 转成可读纯文本后发送给公众号用户。成功后在 thread 回一条 `✅`；失败则显示中英双语原因和微信 `errcode`。没有映射的 thread 只记录日志，不回复。
-3. 在 thread 内发 **`!close`** 结束接管；处理器也接受作为消息文本送达的 `/close`，但 Slack 可能将它当成原生 slash command，而不派发消息。
-4. 关闭或超时后，普通用户消息恢复走 AI 流水线；再次命中关键词会建立新 thread。超时在下一条相关事件到达时检查，无后台定时器。员工回复不延长接管期，用户每次发言会刷新接管期和 48 小时窗口。
-
-用户提示（0.3.0）与员工回复一样走客服消息接口。进入提示在 Slack 根消息之后发送；结束提示在 `!close` / `/close` 或观测到超时（用户下一条消息时，或员工在到期后回复时）后发送，先于 AI 回复。超过 48 小时回复窗口时不发结束提示；到期后用户的消息若再次命中关键词，会直接开始新的接管，也不发结束提示。提示发送失败不会撤销接管状态变化，thread 中会显示 `⚠️` 和可读的 errcode。从 0.2.0 升级且未重新保存配置的安装使用默认文案。
-
-关闭 `forward_followups` 后，接管期间仍阻断 AI 并刷新时间戳，只是不转发后续消息。修改 Slack Bot 或目标频道后，下次用户发言时旧会话结束；需要再次命中关键词才会在新目标建立会话。
-
-## 微信回复限制
-
-客服消息接口仅允许在符合条件的用户互动后 **48 小时内**回复，并设有发送条数上限。插件根据收到的用户消息更新时间戳，但窗口资格和剩余额度以微信平台实际判定为准。增大 `takeover_minutes` 不能绕过微信限制。本插件不排队延迟发送，也不自动重试，避免重复回传。
-
-| errcode | 可读原因 |
+| 需要 | 说明 |
 | --- | --- |
-| `45015` | 48 小时回复窗口已过 |
-| `45047` | 客服消息条数超限 |
-| `43004` | 用户未关注公众号 |
-| `48001` | 接口无权限，请检查公众号认证 |
+| **已认证的公众号** | 回复要通过微信「客服消息接口」发送，一般需要认证过的服务号；以微信后台实际权限为准。 |
+| **公众号 Bot 设为 auto 模式** | 只有 auto 模式能让插件主动给用户发消息。 |
+| **一个 Slack 工作区和专用频道** | 建议单独建一个客服频道，只邀请负责回复客户的员工。 |
+| **LangBot 管理员权限** | 用来安装插件、确认权限、配置 Bot。 |
 
-其他错误码显示“微信拒绝发送”并保留数字错误码；无错误码的异常仅提示检查 Bot 配置与连接。插件生成的 Slack 诊断和日志不会输出原始异常、token 或 AppSecret。
+## 配置步骤
 
-## 存储与运行时
+### 第 1 步：配置公众号 Bot
 
-会话按安装作用域、公众号 bot_uuid 和完整 openid 独立存储，另有 Slack bot/channel/root-ts 到会话的映射，不把所有用户合并进一个大对象。重启插件后仍可回复原 thread。`!close`、`/close` 和观测到的超时会删除两条记录；无人再次访问的过期记录在下次相关事件时清理。不在插件存储中保存消息历史。Slack 内会保留客户文本，请按组织要求配置频道权限和保留策略。
+1. 在 LangBot 的「机器人」页打开你的公众号 Bot（适配器选新版「微信公众号」）。
+2. 把「接入模式」改为 **auto（自动回复，受限时转为领取）**。
+3. 建议把「加载提示语」（LoadingMessage）**清空**。auto 模式下 AI 回复会自动推送，不需要这句占位提示；不清空的话，人工接管期间用户每发一条都会先看到「AI正在思考中…」。
+4. 确认这个 Bot 收到消息后交给一条**流水线**处理（不能是 Agent），并且这条流水线允许使用本插件。插件靠流水线里的事件监听在接管期间拦住 AI 回复。
 
-读取存储时会枚举插件的全部 key。过期且不再被访问的会话仍会保留，并增加枚举量；目前没有定时清理。
+### 第 2 步：创建 Slack 应用并接入 LangBot
 
-支持 `shared-runtime-v1` 和 `stateless-v1`，运行时边界见 `../SHARED_RUNTIME.md`。两个组件共用插件存储；平台消息使用标准 `send_message` 和事件回复 API，无需为插件单独提供平台密钥。
+1. 在 LangBot 新建一个 Bot，平台选 **Slack**，可以用「Slack 快速配置」按提示自动创建应用；也可以在 [api.slack.com/apps](https://api.slack.com/apps) 手动创建后填入凭据。
+2. 手动创建时，在 Slack 应用后台检查：
+   - **OAuth & Permissions → Bot Token Scopes**：至少包含 `chat:write`、`app_mentions:read`、`channels:history`；私有频道还需要 `groups:history`。
+   - **Event Subscriptions → Subscribe to bot events**：至少包含 `app_mention`、`message.channels`；私有频道还需要 `message.groups`。
+   - 修改 scope 后要点 **Reinstall to Workspace** 重新安装应用。
+   - 用**长连接模式**（Socket Mode，不需要公网地址）时，在 **Basic Information → App-Level Tokens** 生成一个带 `connections:write` 的 `xapp-` 令牌，填到 LangBot 的 App-Level Token；用 Webhook 模式时，把 LangBot 显示的回调地址填到 Slack 的 Event Subscriptions。
+3. 在 LangBot 里填好机器人令牌（`xoxb-` 开头）等凭据并启用这个 Bot。
 
-## 验证与打包
+### 第 3 步：准备 Slack 频道并找到频道 ID
 
-在仓库根目录创建独立环境，使用 Unified API SDK 快照运行：
+1. 在 Slack 新建一个频道（例如 `#customer-service`），邀请负责客服的同事。
+2. 在频道里发送 `/invite @你的Slack应用名`，把应用拉进频道。**不拉进来的话，应用既发不了通知也收不到回复。**
+3. 找到**频道 ID**（插件要填的是 ID，不是 `#频道名`），两种方法任选：
+   - 点频道顶部的**频道名称**，在弹出窗口最底部能看到 **Channel ID**（形如 `C0123ABCD45`），旁边有复制按钮。
+   - 在左侧频道列表右键该频道 → **复制链接**，链接最后一段 `…/archives/C0123ABCD45` 就是频道 ID。
 
-```sh
-uv venv plugins/misc/OASlackBridge/.venv
-uv pip install --python plugins/misc/OASlackBridge/.venv/bin/python -r plugins/misc/OASlackBridge/requirements-dev.txt
-source plugins/misc/OASlackBridge/.venv/bin/activate
-python -m pytest plugins/misc/OASlackBridge/tests -q
-python plugins/scripts/check_catalog.py
-python plugins/scripts/test_repository.py
-ruff check plugins/misc/OASlackBridge
-cd plugins/misc/OASlackBridge
-lbp build -o dist
+### 第 4 步：安装插件并确认权限
+
+1. 安装本插件。
+2. 在插件详情页**确认权限**：`bot.message.send`（给公众号用户和 Slack 发消息）和 `storage.plugin`（保存接管会话）。不确认的话插件不会工作。
+
+### 第 5 步：填写插件配置
+
+在插件详情页的配置里填写：
+
+| 配置项 | 填什么 |
+| --- | --- |
+| 公众号 Bot（auto 模式） | 选第 1 步的公众号 Bot |
+| Slack Bot | 选第 2 步的 Slack Bot |
+| Slack 频道 ID | 第 3 步找到的 ID，例如 `C0123ABCD45` |
+| 接管关键词 | 触发转人工的词，例如 `转人工`、`人工客服`。消息里**包含**任意一个即触发 |
+| 区分大小写 | 关键词是否区分大小写，默认否 |
+| 接管时长（分钟） | 用户最后一次发言后多久自动结束接管，默认 60。用户每发一条都会重新计时 |
+| 转发接管期间的后续消息 | 默认开启。关闭后接管期间仍不回复 AI，但不把用户后续消息转到 Slack |
+| 进入人工时发给用户的提示 | 默认「已为您转接人工客服，请稍候，客服会在这里回复您。」，留空则不发 |
+| 退出人工时发给用户的提示 | 默认「人工客服已结束本次服务，后续将由 AI 助手继续为您解答。」，留空则不发 |
+
+### 第 6 步：把「Slack 回复处理器」挂到 Slack Bot 上
+
+员工在 Slack 里的回复由插件里的「Slack 回复处理器」转发回公众号，**必须单独挂到 Slack Bot 上**，只安装插件是不够的：
+
+1. 在 LangBot 创建一份插件处理器配置，选择 **Slack 回复处理器 / Slack reply processor**（无需填参数）并保存。
+2. 打开第 2 步的 **Slack Bot** 详情页，在「**插件处理器**」板块点「添加插件处理器」，选刚才那份配置。
+
+> 漏了这一步时的表现：公众号能转人工、Slack 能收到通知，但员工回复和 `!close` 都没有反应。
+
+### 第 7 步：测试
+
+用你自己的微信和一个测试频道走一遍：
+
+1. 公众号发「转人工」→ 收到进入提示，Slack 出现通知。
+2. 公众号再发一句 → 出现在通知的 thread 里。
+3. 在 thread 里回复（**不要 @应用**）→ 公众号收到，thread 里出现 ✅。
+4. 在 thread 里发 `!close` → 公众号收到结束提示；再发消息，AI 正常回复。
+
+## 员工日常使用
+
+- **只在通知的 thread 里回复**，直接发在频道里的消息不会转给用户。
+- **回复时不要 @应用**。如果 Slack Bot 还配置了「群里 @ 就由 AI 回复」，@ 会让 AI 在 Slack 里多回一条（转发本身不受影响）。频道只做客服的话，可以把 Slack Bot 的这条路由关掉。
+- 只支持**文字**回复，图片、文件不会转发。Slack 的链接、@ 人、频道引用会转成普通文字。
+- 发 `!close` 结束接管；不发的话，用户最后一条消息后过了「接管时长」会自动结束，并在用户下次发消息时（或员工再回复时）发送结束提示。
+- 每条回复都会在 thread 里回执：✅ 表示已送达，❌ 会说明原因。
+
+## 常见问题
+
+**用户只看到「AI正在思考中，请发送任意内容获取回复。」**
+这是公众号 Bot 的「加载提示语」。auto 模式下每条消息都会先回这句，人工接管期间 AI 不回复，用户就只看到它。按第 1 步把加载提示语清空即可。
+
+**员工回复了，用户没收到，thread 里也没有 ✅/❌**
+「Slack 回复处理器」没有挂到 Slack Bot 上（第 6 步），或者 Slack 应用没订阅 `message.channels` / `message.groups` 事件、没被邀请进频道（第 2、3 步）。
+
+**thread 里出现 ❌ 和 errcode**
+
+| errcode | 含义 | 怎么办 |
+| --- | --- | --- |
+| `45015` | 超过 48 小时回复窗口 | 微信只允许在用户最后一次互动后 48 小时内回复，需等用户再次发消息 |
+| `45047` | 客服消息条数超限 | 微信对客服消息有条数限制，等用户再次发消息后恢复 |
+| `43004` | 用户未关注公众号 | 用户需要先关注公众号 |
+| `48001` | 接口无权限 | 公众号没有客服消息接口权限，检查是否已认证 |
+
+**通知发到 Slack 失败 / 插件没反应**
+检查插件权限是否已确认（第 4 步）、Slack 频道 ID 是否填对、应用是否在频道里。
+
+**换了 Slack 频道或 Slack Bot 之后**
+进行中的接管会在用户下一次发消息时结束，需要用户再次触发关键词，才会在新频道开启接管。
+
+## 限制与说明
+
+- 微信规定客服消息只能在用户最后一次互动后 **48 小时内**发送，并有条数上限；把接管时长设得很长也无法突破这一点。
+- 插件不排队、不自动重发，避免用户收到重复消息；发送失败时以 thread 里的 ❌ 为准。
+- 客户的消息内容会保留在 Slack 里，请按公司要求设置频道成员和消息保留策略。
+- 插件只保存「用户 ↔ Slack thread」的对应关系，不保存聊天记录；插件重启后仍可继续在原 thread 回复。
+
+## 给开发者
+
+插件结构：公众号侧是一个 EventListener（`components/event_listener/bridge.py`，在流水线中运行，负责关键词匹配、阻断 AI、转发到 Slack），Slack 侧是一个声明 `usages: [event]` 的 Runner（`components/runner/slack_reply.py`，作为插件处理器订阅 Slack Bot 的 `message.received`）。只使用标准 `send_message` + `Quote` 表达 Slack thread。
+
+在插件目录运行测试：
+
+```bash
+uv venv
+uv pip install -r requirements-dev.txt
+uv run pytest -q
+uv run ruff check .
 ```
 
-测试通过真实 SDK invocation binding、RunnerContext 分派和 mock Host 验证消息与存储，不会访问真实微信或 Slack。真机验收需使用获授权的测试账号和专用频道：订阅处理器 → 关键词触发 → 用户后续消息 → 员工不 @bot 回复 → 重启插件后继续回复 → `!close` 后恢复 AI。不要在生产客户 thread 中测试。
-
-## 限制
-
-- 仅回传文本；员工发送纯附件会收到提示，用户纯非文本后续消息转为占位说明。
-- Slack/API 或存储传输失败交由运行时报告。确认发送状态后再重试；确认消息失败不代表客户没有收到已成功发送的内容。
-- mock 测试不等于真实公众号和 Slack 环境的端到端验收。
+测试使用真实 SDK invocation binding、RunnerContext 分派和 mock Host，不会访问真实的微信或 Slack。
