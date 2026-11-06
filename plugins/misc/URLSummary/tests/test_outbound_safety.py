@@ -261,6 +261,33 @@ def test_malformed_urls_are_refused(url: str, monkeypatch):
         safe_fetch.fetch_document(url)
 
 
+def test_control_characters_are_refused_before_a_request_target_is_built(monkeypatch):
+    """``http.client`` quotes the whole target in ``InvalidURL``.
+
+    A control character inside a URL used to reach ``connection.request``, which
+    raised ``InvalidURL`` containing the relative target — query string
+    included — and that text was logged. The URL is now refused up front, and
+    the refusal message carries no query string.
+    """
+    monkeypatch.setattr(
+        safe_fetch.socket, "create_connection", lambda *a, **k: pytest.fail("no connection expected")
+    )
+
+    with pytest.raises(BlockedTargetError) as excinfo:
+        safe_fetch.fetch_document("http://example.com/page?token=REVIEW_SECRET\x7f")
+
+    message = str(excinfo.value)
+    assert "REVIEW_SECRET" not in message
+    assert "control characters" in message
+
+
+@pytest.mark.parametrize("control", ["\x00", "\x1f", "\x7f"])
+def test_validate_url_rejects_control_characters(control):
+    with pytest.raises(BlockedTargetError) as excinfo:
+        safe_fetch.validate_url(f"http://example.com/a?token=REVIEW_SECRET{control}b")
+    assert "REVIEW_SECRET" not in str(excinfo.value)
+
+
 def test_redirect_to_private_address_is_refused_and_never_connected(monkeypatch):
     plugin = URLSummary()
     attempted: list = []

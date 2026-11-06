@@ -162,6 +162,12 @@ def redact_url(url: str) -> str:
 
 _URL_IN_TEXT = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s'\"<>()\[\],;]+")
 
+# http.client rejects control characters inside the request target and quotes
+# the whole target in ``InvalidURL``. That message would carry a query string
+# (and any token in it) into the shared log, so control characters are refused
+# before a request is built.
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def redact_text(text: str) -> str:
     """Redact credentials/query/fragment from every URL inside ``text``.
@@ -462,6 +468,10 @@ def _getaddrinfo(host: str, port: int, deadline: float | None, stop_event: Any) 
 
 def validate_url(url: str) -> tuple[str, str, int, str]:
     """Validate scheme/host/port and return ``(scheme, host, port, path)``."""
+    if _CONTROL_CHARS.search(url):
+        raise BlockedTargetError(
+            f"URL contains control characters: {redact_url(_CONTROL_CHARS.sub('', url))!r}"
+        )
     try:
         parts = urlsplit(url)
     except ValueError as exc:
@@ -634,8 +644,11 @@ def _request_once(
             raise FetchAbortedError(
                 "fetch cancelled or deadline exceeded"
             ) from _scrub_exception(exc)
+        # Only the exception class: an exception message can quote the request
+        # target, and a relative target such as ``/page?token=...`` carries a
+        # credential that no absolute-URL redaction can strip.
         raise FetchError(
-            f"request to {redact_url(url)!r} failed: {redact_text(str(exc))}"
+            f"request to {redact_url(url)!r} failed: {type(exc).__name__}"
         ) from _scrub_exception(exc)
     finally:
         watch.stop()
