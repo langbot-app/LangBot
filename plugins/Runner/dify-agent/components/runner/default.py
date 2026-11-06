@@ -373,6 +373,7 @@ class DefaultRunner(Runner):
     - api-key: Dify API key
     - base-prompt: Default prompt when input is empty
     - timeout: Request timeout in seconds
+    - stream-budget-mb: Accumulated byte budget for one streaming response, in MiB
     - remove-think: Whether to remove thinking tags from output
 
     Runtime state (from ctx.state):
@@ -411,12 +412,17 @@ class DefaultRunner(Runner):
         if not isinstance(remove_think, bool):
             raise DifyConfigError("remove-think must be a boolean", code="dify.config_invalid")
 
+        stream_budget_mb = _to_int(config.get("stream-budget-mb"), 16)
+        if stream_budget_mb <= 0:
+            raise DifyConfigError("stream-budget-mb must be a positive integer", code="dify.config_invalid")
+
         return {
             "base_url": base_url,
             "api_key": api_key,
             "app_type": app_type,
             "base_prompt": config.get("base-prompt", ""),
             "timeout": float(config.get("timeout", 30)),
+            "stream_budget_bytes": stream_budget_mb * 1024 * 1024,
             "remove_think": remove_think,
             "langbot_assets_enabled": _to_bool(config.get("langbot-assets-enabled"), False),
             "asset_gateway_host": str(config.get("langbot-assets-gateway-host") or "0.0.0.0"),
@@ -785,6 +791,7 @@ class DefaultRunner(Runner):
             api_key=config["api_key"],
             base_url=config["base_url"],
             timeout=config["timeout"],
+            max_stream_bytes=config["stream_budget_bytes"],
         )
 
         user = self._get_user_tag(ctx)
