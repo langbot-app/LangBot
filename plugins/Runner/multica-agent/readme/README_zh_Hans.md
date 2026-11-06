@@ -14,7 +14,19 @@
 2. 记下工作区 UUID（`multica workspace list --output json`）。智能体填名称即可，也可填 UUID。
 3. 在 LangBot 流水线中选择 **Multica 智能体** 运行器并填写下列配置。智能体所在的运行时（Multica daemon）需在线才能回复。
 
-## 配置项
+## 插件设置
+
+每个安装在插件设置页面配置一次。
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- | --- |
+| language | select | 否 | en_US | 插件自身聊天输出的语言：`en_US`、`zh_Hans`、`zh_Hant`、`ja_JP`、`es_ES`、`ru_RU`、`th_TH`、`vi_VN` |
+
+- 只影响插件自己写出的内容：进度行、命令回复和错误提示。智能体的回答正文和 Multica 返回的原始错误文本原样透传，不翻译。
+- 不影响 LangBot 自身的界面语言（那是工作区设置）。
+- 支持上面 8 个 locale，其他值回退英文。没有“跟随工作区语言”选项：那需要额外的工作区权限，每个安装都要成员确认授权。
+
+## 运行器配置项
 
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 | --- | --- | --- | --- | --- |
@@ -41,18 +53,18 @@
 | `/multica` | 查看当前智能体、会话和可用命令 |
 | `/multica agents` | 列出令牌可见的智能体（带序号和 ID 前 8 位） |
 | `/multica agents <关键词>` | 只列出名称包含关键词的智能体 |
-| `/multica find <关键词>` | 同 `agents <关键词>` |
+| `/multica find <关键词>` | 同 `agents <关键词>`；不带关键词时显示用法 |
 | `/multica use <名称或 ID>` | 为当前会话切换智能体（开启新的 Multica 会话）；名称有歧义时回复带序号的候选 |
 | `/multica use <序号>` | 按最近一次 `agents` / `find` / 候选列表的序号选择（10 分钟内有效，回复会写明选中的智能体） |
 | `/multica new` | 与当前智能体开启新的 Multica 聊天会话 |
 
-`/multica` 还会显示当前的 `progress-mode`。`use` 的参数是纯数字时总是按序号处理。
+`/multica` 还会显示当前的 `progress-mode` 和 `language`。`use` 的参数是纯数字时总是按序号处理。
 
 ## 进度输出
 
 Multica 没有任务事件流：运行器只能观察到任务生命周期（排队、执行、结束）和已等待时长，看不到智能体正在调用哪些工具或执行哪一步，因此进度不会写出这些信息。
 
-`progress-mode: messages` 的一次运行如下：
+`progress-mode: messages`、`language: zh_Hans` 时的一次运行如下：
 
 ```
 ⏳ 已提交给 Coder（任务 3f2a9c1e）

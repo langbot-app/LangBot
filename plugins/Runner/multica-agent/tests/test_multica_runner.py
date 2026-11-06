@@ -44,6 +44,7 @@ class FakeMultica:
     def __init__(self, *, reply_after_polls: int = 1, outcome: str = "reply", queued_polls: int = 0):
         self.sessions: dict[str, dict] = {}
         self.queued_polls = queued_polls
+        self.reply_content: str | None = None
         self.status_polls = 0
         self.requests: list[tuple[str, str, dict | None]] = []
         self.reply_after_polls = reply_after_polls
@@ -84,7 +85,11 @@ class FakeMultica:
                 task_id = session["pending"].pop(0)
                 if self.outcome == "reply":
                     session["messages"].append(
-                        {"role": "assistant", "content": f"echo:{session['agent_id']}", "task_id": task_id}
+                        {
+                            "role": "assistant",
+                            "content": self.reply_content or f"echo:{session['agent_id']}",
+                            "task_id": task_id,
+                        }
                     )
                 elif self.outcome == "fail":
                     session["messages"].append(
@@ -117,8 +122,20 @@ def fake_clock(monkeypatch):
     monkeypatch.setattr(runner_module, "_monotonic", lambda: clock["now"])
 
 
-def make_runner(fake: FakeMultica):
+class FakePlugin:
+    """Stands in for MulticaAgentPlugin: the plugin-level language comes from installation config."""
+
+    def __init__(self, language: str | None):
+        self.language = language
+
+    def get_language(self) -> str:
+        return self.language or "en_US"
+
+
+def make_runner(fake: FakeMultica, language: str | None = None):
     runner = object.__new__(runner_module.DefaultRunner)
+    if language is not None:
+        runner.plugin = FakePlugin(language)
     transport = httpx.MockTransport(fake.handler)
 
     def make_client(config):
@@ -313,7 +330,7 @@ def test_agent_field_wins_over_deprecated_agent_id():
 
 def test_ambiguous_agent_name_fails_with_numbered_candidates():
     fake = FakeMultica()
-    results = run(make_runner(fake), make_ctx("hi", **{"agent-id": "", "agent": "er"}))
+    results = run(make_runner(fake, "zh_Hans"), make_ctx("hi", **{"agent-id": "", "agent": "er"}))
     assert results[-1].data["code"] == "multica.agent_ambiguous"
     error = results[-1].data["error"]
     assert "1) Coder [agent-1]" in error and "2) Writer [agent-2]" in error
@@ -361,7 +378,7 @@ def test_use_number_from_agents_listing():
 )
 def test_invalid_use_number_never_switches(state):
     number = "3" if state and state["multica.agent_choices"]["expires_at"] else "1"
-    results = run(make_runner(FakeMultica()), make_ctx(f"/multica use {number}", state))
+    results = run(make_runner(FakeMultica(), "zh_Hans"), make_ctx(f"/multica use {number}", state))
     assert "无效或已过期" in text_of(results)
     assert "multica.agent_id" not in states(results)
 
@@ -402,7 +419,7 @@ def test_help_shows_new_commands_and_progress_mode():
 def test_messages_mode_reports_lifecycle_then_answer_last():
     fake = FakeMultica(reply_after_polls=20, queued_polls=2)
     ctx = make_ctx("hi", **{"progress-mode": "messages", "poll-interval": 2, "progress-interval": 15})
-    results = run(make_runner(fake), ctx)
+    results = run(make_runner(fake, "zh_Hans"), ctx)
 
     texts = completed_texts(results)
     assert texts == [
@@ -418,7 +435,7 @@ def test_messages_mode_reports_lifecycle_then_answer_last():
 
 def test_messages_mode_uses_resolved_agent_name():
     ctx = make_ctx("hi", **{"agent-id": "", "agent": "coder", "progress-mode": "messages"})
-    texts = completed_texts(run(make_runner(FakeMultica(reply_after_polls=3)), ctx))
+    texts = completed_texts(run(make_runner(FakeMultica(reply_after_polls=3), "zh_Hans"), ctx))
     assert texts[0].startswith("⏳ 已提交给 Coder（任务 ")
     assert texts[1] == "▶️ Coder 开始执行"
     assert texts[-1] == "echo:agent-1"
@@ -433,7 +450,7 @@ def test_messages_mode_is_the_default():
 def test_stream_mode_appends_to_one_message_and_ends_with_answer():
     fake = FakeMultica(reply_after_polls=20, queued_polls=2)
     ctx = make_ctx("hi", **{"progress-mode": "stream", "poll-interval": 2, "progress-interval": 15})
-    results = run(make_runner(fake), ctx)
+    results = run(make_runner(fake, "zh_Hans"), ctx)
 
     assert "message.completed" not in kinds(results)
     chunks = [r.data["chunk"] for r in results if kinds([r])[0] == "message.delta"]
@@ -472,13 +489,15 @@ def test_progress_interval_caps_message_count(timeout, interval):
 
 def test_timeout_sends_closing_progress_before_failure():
     fake = FakeMultica(reply_after_polls=10**9)
-    results = run(make_runner(fake), make_ctx("hi", timeout=10, **{"progress-mode": "messages", "poll-interval": 1}))
-    assert completed_texts(results)[-1] == "⚠️ 超时，任务仍在 Multica 里跑"
+    results = run(
+        make_runner(fake, "zh_Hans"), make_ctx("hi", timeout=10, **{"progress-mode": "messages", "poll-interval": 1})
+    )
+    assert completed_texts(results)[-1] == "⚠️ 等待超时，任务仍在 Multica 中运行"
     assert results[-1].data["code"] == "multica.timeout"
 
 
 def test_stream_mode_failure_closes_stream_before_run_failed():
-    results = run(make_runner(FakeMultica(outcome="fail")), make_ctx("hi", **{"progress-mode": "stream"}))
+    results = run(make_runner(FakeMultica(outcome="fail"), "zh_Hans"), make_ctx("hi", **{"progress-mode": "stream"}))
     chunk = [r.data["chunk"] for r in results if kinds([r])[0] == "message.delta"][-1]
     assert chunk["is_final"] is True
     assert chunk["all_content"].endswith("⚠️ agent-1 运行失败\n")
@@ -486,7 +505,9 @@ def test_stream_mode_failure_closes_stream_before_run_failed():
 
 
 def test_cancelled_task_closes_progress_before_failure():
-    results = run(make_runner(FakeMultica(outcome="cancel")), make_ctx("hi", **{"progress-mode": "messages"}))
+    results = run(
+        make_runner(FakeMultica(outcome="cancel"), "zh_Hans"), make_ctx("hi", **{"progress-mode": "messages"})
+    )
     assert completed_texts(results)[-1].startswith("⚠️ 任务已结束但没有回复")
     assert results[-1].data["code"] == "multica.no_reply"
 
@@ -495,3 +516,120 @@ def test_cancelled_task_closes_progress_before_failure():
 def test_invalid_progress_config_is_rejected(key, value):
     results = run(make_runner(FakeMultica()), make_ctx("hi", **{key: value}))
     assert results[-1].data["code"] == "multica.config_invalid"
+
+
+# ------------------------------------------------------------ 0.2.0: plugin language
+
+import yaml  # noqa: E402
+from langbot_plugin.api.definition.plugin import NonePlugin  # noqa: E402
+from pkg import i18n  # noqa: E402
+from pkg.i18n import MESSAGES, SUPPORTED_LANGUAGES, get_text  # noqa: E402
+
+LOCALES = list(SUPPORTED_LANGUAGES)
+# Keys whose en_US and zh_Hans text may legitimately match (pure placeholders); none today.
+SAME_IN_EN_AND_ZH: set[str] = set()
+
+
+def test_manifest_language_option_matches_supported_locales():
+    manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
+    assert manifest["metadata"]["version"] == "0.2.0"
+    (language,) = [c for c in manifest["spec"]["config"] if c["name"] == "language"]
+    assert language["type"] == "select" and language["default"] == "en_US"
+    assert [o["name"] for o in language["options"]] == LOCALES
+    assert "auto" not in [o["name"] for o in language["options"]]
+
+
+def test_every_locale_defines_every_key():
+    for locale in LOCALES:
+        assert set(MESSAGES[locale]) == set(MESSAGES["en_US"]), locale
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_each_locale_renders_core_texts(locale):
+    keys = ["progress.submitted", "use.ambiguous"] + [k for k in MESSAGES["en_US"] if k.startswith("help.")]
+    args = {"agent": "A", "task_id": "t", "query": "q", "candidates": "1) A", "prefix": "/m", "session": "s"}
+    args.update({"mode": "messages", "language": locale})
+    for key in keys:
+        text = get_text(locale, key, **args)
+        assert text.strip() and text != key, (locale, key)
+        assert "{" not in text, (locale, key)
+
+
+def test_unknown_locale_falls_back_to_english():
+    assert get_text("xx_XX", "new.ok") == MESSAGES["en_US"]["new.ok"]
+    assert get_text(None, "progress.started", agent="A") == "▶️ A started"
+
+
+def test_key_missing_in_locale_falls_back_to_english(monkeypatch):
+    monkeypatch.delitem(i18n.MESSAGES["ja_JP"], "new.ok")
+    assert get_text("ja_JP", "new.ok") == MESSAGES["en_US"]["new.ok"]
+    assert get_text("ja_JP", "no.such.key") == "no.such.key"
+
+
+def test_english_and_simplified_chinese_never_share_text():
+    same = {k for k, v in MESSAGES["en_US"].items() if MESSAGES["zh_Hans"][k] == v}
+    assert same == SAME_IN_EN_AND_ZH
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_agent_answer_passes_through_untranslated(locale):
+    fake = FakeMultica(reply_after_polls=3)
+    fake.reply_content = "Answer with {agent} braces, 中文 and progress.started"
+    for mode in ("messages", "off"):
+        texts = completed_texts(run(make_runner(fake, locale), make_ctx("hi", **{"progress-mode": mode})))
+        assert texts[-1] == fake.reply_content
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_off_mode_is_unchanged_in_every_locale(locale):
+    results = run(make_runner(FakeMultica(reply_after_polls=3), locale), make_ctx("hello"))
+    assert kinds(results) == ["state.updated", "state.updated", "message.completed", "run.completed"]
+    assert text_of(results) == "echo:agent-1"
+
+
+@pytest.mark.parametrize("locale", LOCALES)
+def test_progress_and_errors_follow_plugin_language(locale):
+    ctx = make_ctx("hi", **{"progress-mode": "messages"})
+    texts = completed_texts(run(make_runner(FakeMultica(reply_after_polls=3), locale), ctx))
+    assert texts[0] == get_text(locale, "progress.submitted", agent="agent-1", task_id="task-2")
+
+    failed = run(make_runner(FakeMultica(outcome="fail"), locale), make_ctx("hi"))
+    # Localized shell, Multica's own failure text appended verbatim.
+    assert failed[-1].data["error"] == get_text(locale, "error.agent_failed", detail="runtime offline")
+
+    bad = run(make_runner(FakeMultica(), locale), make_ctx("hi", **{"api-token": ""}))
+    assert bad[-1].data["error"] == get_text(locale, "config.api_token_required")
+
+
+def test_help_reports_language():
+    reply = text_of(run(make_runner(FakeMultica(), "ja_JP"), make_ctx("/multica")))
+    assert "言語：ja_JP" in reply
+    assert "進捗表示：off" in reply
+
+
+def test_language_falls_back_to_installation_config_without_plugin_class():
+    runner = make_runner(FakeMultica())
+    runner.plugin = NonePlugin()
+    runner.get_plugin_config = lambda: {"language": "ru_RU"}
+    assert "Использование" in text_of(run(runner, make_ctx("/multica use")))
+
+    runner.get_plugin_config = lambda: {"language": "xx_XX"}
+    assert text_of(run(runner, make_ctx("/multica use"))) == "Usage: /multica use <number, name or id>"
+
+
+def test_plugin_get_language_reads_invocation_config():
+    spec = importlib.util.spec_from_file_location("multica_main", PLUGIN_ROOT / "main.py")
+    main_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(main_module)
+    plugin = main_module.MulticaAgentPlugin()
+    assert plugin.get_language() == "en_US"
+    plugin.config = {"language": "vi_VN"}
+    assert plugin.get_language() == "vi_VN"
+    plugin.config = {"language": "auto"}
+    assert plugin.get_language() == "en_US"
+
+
+def test_find_without_keyword_shows_usage():
+    assert (
+        text_of(run(make_runner(FakeMultica(), "zh_Hans"), make_ctx("/multica find"))) == "用法：/multica find <关键词>"
+    )

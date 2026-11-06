@@ -29,13 +29,15 @@ from langbot_plugin.api.entities.builtin.provider.message import Message, Messag
 from langbot_plugin.api.entities.builtin.runner import RunnerContext, RunnerResult
 from pkg.endpoint import endpoint
 from pkg.errors import MulticaAPIError, MulticaConfigError
+from pkg.i18n import DEFAULT_LANGUAGE, get_text, normalize_language
 from pkg.multica_client import (
-    MAX_LISTED_NAMES,
     TASK_RUNNING,
     AgentResolutionError,
     AsyncMulticaClient,
     is_uuid,
     match_agents,
+    names_hint,
+    numbered,
     short_id,
 )
 
@@ -63,35 +65,49 @@ class DefaultRunner(Runner):
 
     # ------------------------------------------------------------------ config
 
-    def _validate_config(self, ctx: RunnerContext) -> dict[str, typing.Any]:
+    def _language(self) -> str:
+        """Plugin-level ``language`` of this invocation (installation config, not runner config)."""
+        plugin = getattr(self, "plugin", None)
+        if callable(getattr(plugin, "get_language", None)):
+            return normalize_language(plugin.get_language())
+        try:
+            # Not running under MulticaAgentPlugin (e.g. NonePlugin in tests): read the
+            # installation config bound to this invocation directly.
+            config = self.get_plugin_config()
+        except Exception:
+            config = {}
+        return normalize_language(config.get("language") or DEFAULT_LANGUAGE)
+
+    def _validate_config(self, ctx: RunnerContext, lang: str) -> dict[str, typing.Any]:
         config = ctx.config or {}
 
         server_url = str(config.get("server-url") or DEFAULT_SERVER_URL).strip()
         try:
             endpoint(server_url)
         except ValueError as exc:
-            raise MulticaConfigError(f"server-url is invalid: {exc}") from None
+            raise MulticaConfigError(get_text(lang, "config.server_url_invalid", detail=exc)) from None
 
         token = str(config.get("api-token") or "").strip()
         if not token:
-            raise MulticaConfigError("api-token is required (a Multica personal access token, mul_...)")
+            raise MulticaConfigError(get_text(lang, "config.api_token_required"))
 
         workspace_id = str(config.get("workspace-id") or "").strip()
         if not workspace_id:
-            raise MulticaConfigError("workspace-id is required")
+            raise MulticaConfigError(get_text(lang, "config.workspace_id_required"))
 
-        timeout = _number(config.get("timeout", 600), "timeout", 10, 3600)
-        poll_interval = _number(config.get("poll-interval", 2), "poll-interval", 0.5, 60)
-        request_timeout = _number(config.get("request-timeout", 30), "request-timeout", 1, 300)
+        timeout = _number(lang, config.get("timeout", 600), "timeout", 10, 3600)
+        poll_interval = _number(lang, config.get("poll-interval", 2), "poll-interval", 0.5, 60)
+        request_timeout = _number(lang, config.get("request-timeout", 30), "request-timeout", 1, 300)
 
         prefix = str(config.get("command-prefix") or "/multica").strip()
 
         progress_mode = str(config.get("progress-mode") or "messages").strip().lower()
         if progress_mode not in PROGRESS_MODES:
-            raise MulticaConfigError(f"progress-mode must be one of: {', '.join(PROGRESS_MODES)}")
-        progress_interval = _number(config.get("progress-interval", 15), "progress-interval", 5, 300)
+            raise MulticaConfigError(get_text(lang, "config.progress_mode_invalid", options=", ".join(PROGRESS_MODES)))
+        progress_interval = _number(lang, config.get("progress-interval", 15), "progress-interval", 5, 300)
 
         return {
+            "language": lang,
             "server_url": server_url,
             "token": token,
             "workspace_id": workspace_id,
@@ -118,8 +134,9 @@ class DefaultRunner(Runner):
     # --------------------------------------------------------------------- run
 
     async def run(self, ctx: RunnerContext) -> typing.AsyncGenerator[RunnerResult, None]:
+        lang = self._language()
         try:
-            config = self._validate_config(ctx)
+            config = self._validate_config(ctx, lang)
         except MulticaConfigError as e:
             yield RunnerResult.run_failed(ctx.run_id, error=e.message, code=e.code)
             return
@@ -137,7 +154,9 @@ class DefaultRunner(Runner):
                 return
 
             if not text:
-                yield RunnerResult.run_failed(ctx.run_id, error="Empty message", code="multica.empty_input")
+                yield RunnerResult.run_failed(
+                    ctx.run_id, error=get_text(lang, "error.empty_input"), code="multica.empty_input"
+                )
                 return
 
             try:
@@ -145,12 +164,18 @@ class DefaultRunner(Runner):
             except AgentResolutionError as e:
                 if e.candidates:
                     yield _choices_update(ctx.run_id, e.candidates)
-                hint = (
-                    f"用 {config['command_prefix']} use <序号> 或完整 ID 选择。"
-                    if config["allow_agent_switch"]
-                    else "请在运行器配置中填写更精确的名称或完整 ID。"
-                )
-                error = f"{e.message}{hint}" if e.candidates else e.message
+                    hint = (
+                        "error.ambiguous_hint_switch" if config["allow_agent_switch"] else "error.ambiguous_hint_config"
+                    )
+                    error = get_text(
+                        lang,
+                        "error.agent_ambiguous",
+                        query=e.query,
+                        candidates=numbered(e.candidates, get_text(lang, "agents.unnamed")),
+                        hint=get_text(lang, hint, prefix=config["command_prefix"]),
+                    )
+                else:
+                    error = get_text(lang, "error.agent_not_resolved", query=e.query, names=_names(lang, e.visible))
                 yield RunnerResult.run_failed(ctx.run_id, error=error, code=e.code)
                 return
             for update in updates:
@@ -181,7 +206,7 @@ class DefaultRunner(Runner):
 
             progress = _Progress(ctx.run_id, config["progress_mode"], config["progress_interval"])
             label = agent_name or short_id(agent_id)
-            for result in progress.emit(f"⏳ 已提交给 {label}（任务 {short_id(task_id)}）"):
+            for result in progress.emit(get_text(lang, "progress.submitted", agent=label, task_id=short_id(task_id))):
                 yield result
 
             reply: dict[str, typing.Any] = {}
@@ -192,16 +217,17 @@ class DefaultRunner(Runner):
                     else:
                         reply = item
             except MulticaAPIError as e:
-                for result in progress.close(_failure_line(e.code)):
+                for result in progress.close(_failure_line(lang, e.code)):
                     yield result
                 raise
 
             if reply.get("failure_reason"):
-                for result in progress.close(f"⚠️ {label} 运行失败"):
+                for result in progress.close(get_text(lang, "progress.failed", agent=label)):
                     yield result
+                # The Multica failure text is server output: appended verbatim, never translated.
                 yield RunnerResult.run_failed(
                     ctx.run_id,
-                    error=f"Multica agent run failed: {reply.get('content') or reply['failure_reason']}",
+                    error=get_text(lang, "error.agent_failed", detail=reply.get("content") or reply["failure_reason"]),
                     code="multica.agent_failed",
                 )
                 return
@@ -215,7 +241,7 @@ class DefaultRunner(Runner):
             logger.exception("Multica runner unexpected error")
             yield RunnerResult.run_failed(
                 ctx.run_id,
-                error=f"Multica runner error: {e.__class__.__name__}",
+                error=get_text(lang, "error.unexpected", name=e.__class__.__name__),
                 code="multica.unexpected_error",
             )
 
@@ -235,8 +261,7 @@ class DefaultRunner(Runner):
             return config["legacy_agent_id"], "", []
         if not query:
             raise MulticaConfigError(
-                f"No Multica agent selected. Set agent (a name or UUID) in the runner config or send "
-                f"'{config['command_prefix']} use <agent>'."
+                get_text(config["language"], "error.no_agent_selected", prefix=config["command_prefix"])
             )
         cached = state.get(STATE_RESOLVED)
         if isinstance(cached, dict) and cached.get("query") == query and cached.get("id"):
@@ -263,6 +288,7 @@ class DefaultRunner(Runner):
         label: str,
     ) -> typing.AsyncGenerator[RunnerResult | dict[str, typing.Any], None]:
         """Poll until the task's reply lands; yield progress results, then the reply row."""
+        lang = config["language"]
         timeout = config["timeout"]
         host_deadline = getattr(ctx.runtime, "deadline_at", None) if ctx.runtime else None
         if host_deadline:
@@ -287,25 +313,24 @@ class DefaultRunner(Runner):
                     yield reply
                     return
                 raise MulticaAPIError(
-                    "The Multica agent task ended without a reply (it may have been cancelled).",
+                    get_text(lang, "error.task_no_reply"),
                     code="multica.no_reply",
                 )
 
             now = _monotonic()
             if status == TASK_RUNNING and not running:
                 running = True
-                for result in progress.emit(f"▶️ {label} 开始执行"):
+                for result in progress.emit(get_text(lang, "progress.started", agent=label)):
                     yield result
             elif progress.due(now):
                 waited = int(now - started_at)
-                line = f"⏱ 仍在执行 · 已等待 {waited}s" if running else f"⏱ 排队中 · 已等待 {waited}s"
-                for result in progress.emit(line):
+                key = "progress.running" if running else "progress.queued"
+                for result in progress.emit(get_text(lang, key, seconds=waited)):
                     yield result
 
             if _monotonic() >= deadline:
                 raise MulticaAPIError(
-                    f"The Multica agent did not reply within {int(timeout)}s; "
-                    "the task keeps running and its reply stays visible in Multica.",
+                    get_text(lang, "error.timeout", seconds=int(timeout)),
                     code="multica.timeout",
                     retryable=True,
                 )
@@ -321,10 +346,15 @@ class DefaultRunner(Runner):
         verb: str,
         arg: str,
     ) -> typing.AsyncGenerator[RunnerResult, None]:
+        lang = config["language"]
         prefix = config["command_prefix"]
+        unnamed = get_text(lang, "agents.unnamed")
         current_id, current_name = _known_agent(config, state)
 
-        if verb in ("agents", "find"):
+        if verb == "find" and not arg:
+            reply = get_text(lang, "find.usage", prefix=prefix)
+
+        elif verb in ("agents", "find"):
             agents = await client.list_agents()
             if not current_id and config["agent"]:
                 matches = match_agents(agents, config["agent"])
@@ -335,74 +365,77 @@ class DefaultRunner(Runner):
                 keyword = arg.casefold()
                 shown = [a for a in agents if keyword in str(a.get("name") or "").casefold()]
             if not agents:
-                reply = "No Multica agents are visible to this token."
+                reply = get_text(lang, "agents.empty")
             elif not shown:
-                reply = f"No Multica agent name contains '{arg}'. Available: {_names_hint(agents)}"
+                reply = get_text(lang, "find.no_match", keyword=arg, names=_names(lang, agents))
             else:
                 yield _choices_update(ctx.run_id, shown)
-                lines = [f"Multica agents matching '{arg}':" if arg else "Multica agents:"]
+                header = (
+                    get_text(lang, "agents.header_filtered", keyword=arg) if arg else get_text(lang, "agents.header")
+                )
+                lines = [header]
                 for index, agent in enumerate(shown, start=1):
-                    mark = " (current)" if str(agent.get("id")) == current_id else ""
-                    lines.append(f"{index}) {agent.get('name') or '(unnamed)'} [{short_id(agent.get('id'))}]{mark}")
+                    mark = get_text(lang, "agents.current_mark") if str(agent.get("id")) == current_id else ""
+                    lines.append(f"{index}) {agent.get('name') or unnamed} [{short_id(agent.get('id'))}]{mark}")
                 if config["allow_agent_switch"]:
-                    lines.append(f"Switch with: {prefix} use <number or name>")
+                    lines.append(get_text(lang, "agents.switch_hint", prefix=prefix))
                 reply = "\n".join(lines)
 
         elif verb == "use":
             if not config["allow_agent_switch"]:
-                reply = "Switching agents is disabled for this runner."
+                reply = get_text(lang, "use.disabled")
             elif not arg:
-                reply = f"Usage: {prefix} use <number, name or id>"
+                reply = get_text(lang, "use.usage", prefix=prefix)
             else:
                 agent: dict[str, typing.Any] | None = None
                 reply = ""
                 if arg.isdigit():
                     agent = _pick_choice(state, int(arg))
                     if agent is None:
-                        reply = (
-                            f"序号 {arg} 无效或已过期（{CHOICES_TTL // 60} 分钟内有效）。"
-                            f"先发送 '{prefix} agents' 或 '{prefix} find <关键词>' 查看带序号的列表。"
-                        )
+                        reply = get_text(lang, "use.bad_number", number=arg, minutes=CHOICES_TTL // 60, prefix=prefix)
                 else:
                     try:
                         agent = await client.resolve_agent(arg)
                     except AgentResolutionError as e:
                         if e.candidates:
                             yield _choices_update(ctx.run_id, e.candidates)
-                            reply = f"{e.message}用 {prefix} use <序号> 或完整 ID 选择。"
+                            candidates = numbered(e.candidates, unnamed)
+                            reply = get_text(lang, "use.ambiguous", query=arg, candidates=candidates, prefix=prefix)
                         else:
-                            reply = f"{e.message}。发送 '{prefix} agents' 查看全部。"
+                            reply = get_text(
+                                lang, "use.no_match", query=arg, names=_names(lang, e.visible), prefix=prefix
+                            )
                 if agent is not None:
                     agent_id = str(agent["id"])
                     agent_name = str(agent.get("name") or "")
                     yield RunnerResult.state_updated(ctx.run_id, STATE_AGENT, agent_id, scope="conversation")
                     yield RunnerResult.state_updated(ctx.run_id, STATE_AGENT_NAME, agent_name, scope="conversation")
-                    reply = f"Now chatting with Multica agent {agent_name or agent_id}."
-                    if agent_id != current_id:
-                        reply += " A new Multica chat session will start with your next message."
+                    key = "use.ok" if agent_id == current_id else "use.ok_new_session"
+                    reply = get_text(lang, key, agent=agent_name or agent_id)
 
         elif verb in ("new", "reset"):
             yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION, "", scope="conversation")
             yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION_AGENT, "", scope="conversation")
-            reply = "Started over: your next message opens a new Multica chat session."
+            reply = get_text(lang, "new.ok")
 
         else:
             session = state.get(STATE_SESSION) if current_id and state.get(STATE_SESSION_AGENT) == current_id else ""
             if current_id:
                 agent_label = f"{current_name} [{short_id(current_id)}]" if current_name else current_id
             else:
-                agent_label = config["agent"] or "(none)"
+                agent_label = config["agent"] or get_text(lang, "help.none")
             lines = [
-                f"Current Multica agent: {agent_label}",
-                f"Chat session: {session or '(new on next message)'}",
-                f"Progress mode: {config['progress_mode']}",
-                "Commands:",
-                f"  {prefix} agents [keyword] - list agents, optionally filtered by name",
-                f"  {prefix} find <keyword> - same as agents <keyword>",
+                get_text(lang, "help.agent", agent=agent_label),
+                get_text(lang, "help.session", session=session or get_text(lang, "help.session_new")),
+                get_text(lang, "help.progress", mode=config["progress_mode"]),
+                get_text(lang, "help.language", language=lang),
+                get_text(lang, "help.commands"),
+                get_text(lang, "help.cmd_agents", prefix=prefix),
+                get_text(lang, "help.cmd_find", prefix=prefix),
             ]
             if config["allow_agent_switch"]:
-                lines.append(f"  {prefix} use <number, name or id> - switch agent")
-            lines.append(f"  {prefix} new - start a new chat session")
+                lines.append(get_text(lang, "help.cmd_use", prefix=prefix))
+            lines.append(get_text(lang, "help.cmd_new", prefix=prefix))
             reply = "\n".join(lines)
 
         yield RunnerResult.message_completed(ctx.run_id, Message(role="assistant", content=reply))
@@ -454,13 +487,13 @@ class _Progress:
 # ----------------------------------------------------------------- helpers
 
 
-def _number(value: typing.Any, name: str, low: float, high: float) -> float:
+def _number(lang: str, value: typing.Any, name: str, low: float, high: float) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError):
-        raise MulticaConfigError(f"{name} must be a number") from None
+        raise MulticaConfigError(get_text(lang, "config.not_number", name=name)) from None
     if not low <= number <= high:
-        raise MulticaConfigError(f"{name} must be between {low} and {high}")
+        raise MulticaConfigError(get_text(lang, "config.out_of_range", name=name, low=low, high=high))
     return number
 
 
@@ -511,17 +544,16 @@ def _pick_choice(state: dict[str, typing.Any], number: int) -> dict[str, typing.
     return item if isinstance(item, dict) and item.get("id") else None
 
 
-def _names_hint(agents: list[dict[str, typing.Any]]) -> str:
-    names = ", ".join(str(a.get("name") or "(unnamed)") for a in agents[:MAX_LISTED_NAMES])
-    return names + (", …" if len(agents) > MAX_LISTED_NAMES else "")
+def _names(lang: str, agents: list[dict[str, typing.Any]]) -> str:
+    return names_hint(agents, get_text(lang, "agents.unnamed")) or get_text(lang, "help.none")
 
 
-def _failure_line(code: str) -> str:
+def _failure_line(lang: str, code: str) -> str:
     if code == "multica.timeout":
-        return "⚠️ 超时，任务仍在 Multica 里跑"
+        return get_text(lang, "progress.timeout")
     if code == "multica.no_reply":
-        return "⚠️ 任务已结束但没有回复（可能被取消）"
-    return f"⚠️ 等待回复时出错（{code}）"
+        return get_text(lang, "progress.no_reply")
+    return get_text(lang, "progress.error", code=code)
 
 
 def _find_reply(messages: list[dict[str, typing.Any]], task_id: str) -> dict[str, typing.Any] | None:

@@ -54,12 +54,38 @@ def match_agents(agents: list[dict[str, typing.Any]], query: str) -> list[dict[s
     return [a for a in agents if lowered in str(a.get("name") or "").casefold()]
 
 
-class AgentResolutionError(MulticaAPIError):
-    """A name did not select exactly one agent; ``candidates`` holds the ambiguous matches."""
+def names_hint(agents: list[dict[str, typing.Any]], unnamed: str = "(unnamed)") -> str:
+    """Comma-separated names of the first agents, for "did you mean" hints."""
+    names = ", ".join(str(a.get("name") or unnamed) for a in agents[:MAX_LISTED_NAMES])
+    return names + (", …" if len(agents) > MAX_LISTED_NAMES else "")
 
-    def __init__(self, message: str, code: str, candidates: list[dict[str, typing.Any]] | None = None):
+
+def numbered(agents: list[dict[str, typing.Any]], unnamed: str = "(unnamed)") -> str:
+    """``1) name [id8] 2) ...``: the numbering ``use <number>`` refers to."""
+    return " ".join(
+        f"{index}) {a.get('name') or unnamed} [{short_id(a.get('id'))}]" for index, a in enumerate(agents, start=1)
+    )
+
+
+class AgentResolutionError(MulticaAPIError):
+    """A name did not select exactly one agent.
+
+    ``candidates`` holds ambiguous matches, ``visible`` the agents searched when
+    nothing matched; callers render their own localized message from them.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        code: str,
+        query: str = "",
+        candidates: list[dict[str, typing.Any]] | None = None,
+        visible: list[dict[str, typing.Any]] | None = None,
+    ):
         super().__init__(message, code=code)
+        self.query = query
         self.candidates = candidates or []
+        self.visible = visible or []
 
 
 class AsyncMulticaClient:
@@ -176,21 +202,17 @@ class AsyncMulticaClient:
         if len(matches) == 1:
             return {"id": str(matches[0].get("id")), "name": str(matches[0].get("name") or "")}
         if matches:
-            listed = " ".join(
-                f"{index}) {a.get('name') or '(unnamed)'} [{short_id(a.get('id'))}]"
-                for index, a in enumerate(matches, start=1)
-            )
             raise AgentResolutionError(
-                f"名称 '{query}' 匹配到多个智能体：{listed}。",
+                f"'{query}' matches several Multica agents: {numbered(matches)}",
                 code="multica.agent_ambiguous",
+                query=query,
                 candidates=matches,
             )
-        names = ", ".join(str(a.get("name") or "(unnamed)") for a in agents[:MAX_LISTED_NAMES])
-        if len(agents) > MAX_LISTED_NAMES:
-            names += ", …"
         raise AgentResolutionError(
-            f"名称 '{query}' 没有匹配的 Multica 智能体。可见智能体：{names or '(无)'}",
+            f"No Multica agent matches '{query}'. Visible agents: {names_hint(agents)}",
             code="multica.agent_not_found",
+            query=query,
+            visible=agents,
         )
 
     async def create_session(self, agent_id: str, title: str) -> str:

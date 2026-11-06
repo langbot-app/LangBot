@@ -22,7 +22,22 @@ in the Multica web app under **Chat**.
 3. In a LangBot pipeline, choose the **Multica Agent** runner and fill in the fields
    below. The agent's runtime (Multica daemon) must be online to reply.
 
-## Configuration
+## Plugin settings
+
+Set once per installation on the plugin's settings page.
+
+| Field | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| language | select | no | en_US | Language of the plugin's own chat output: `en_US`, `zh_Hans`, `zh_Hant`, `ja_JP`, `es_ES`, `ru_RU`, `th_TH`, `vi_VN` |
+
+- It only affects text this plugin writes: progress lines, command replies and error
+  messages. The agent's answer and Multica's own error text are passed through as-is.
+- It does not change LangBot's interface language, which is a Workspace setting.
+- The 8 locales above are supported; any other value falls back to English. There is
+  no "follow the Workspace language" option: that would need an extra Workspace
+  permission that every installation must approve.
+
+## Runner configuration
 
 | Field | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
@@ -54,12 +69,12 @@ agent names are listed.
 | `/multica` | Show the current agent, session and commands |
 | `/multica agents` | List the agents visible to the token, numbered, with short IDs |
 | `/multica agents <keyword>` | List only agents whose name contains the keyword |
-| `/multica find <keyword>` | Same as `agents <keyword>` |
+| `/multica find <keyword>` | Same as `agents <keyword>`; without a keyword it shows usage |
 | `/multica use <name or id>` | Switch this conversation to another agent (new Multica session); an ambiguous name replies with numbered candidates |
 | `/multica use <number>` | Pick by number from the latest `agents` / `find` / candidate list (valid for 10 minutes; the reply names the chosen agent) |
 | `/multica new` | Start a new Multica chat session with the current agent |
 
-`/multica` also shows the current `progress-mode`. A purely numeric `use` argument is
+`/multica` also shows the current `progress-mode` and `language`. A purely numeric `use` argument is
 always read as a list number.
 
 ## Progress output
@@ -68,16 +83,16 @@ Multica exposes no task event stream: the runner can only observe the task lifec
 (queued, running, finished) and how long it has waited. It cannot see which tools or
 steps the agent is running, so progress never claims more than that.
 
-With `progress-mode: messages` a run looks like:
+With `progress-mode: messages` and `language: en_US`, a run looks like:
 
 ```
-⏳ 已提交给 Coder（任务 3f2a9c1e）
-▶️ Coder 开始执行
-⏱ 仍在执行 · 已等待 45s
+⏳ Submitted to Coder (task 3f2a9c1e)
+▶️ Coder started
+⏱ Still running · waited 45s
 <the agent's answer, unprefixed>
 ```
 
-A queued task reports `⏱ 排队中 · 已等待 Ns` instead. "Still running" updates are sent
+A queued task reports `⏱ Queued · waited Ns` instead. "Still running" updates are sent
 at most once per `progress-interval`, so a run produces at most
 `3 + timeout / progress-interval` messages. On timeout, cancellation or failure a final
 `⚠️ ...` line is sent before the run fails.
