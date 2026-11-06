@@ -1,25 +1,25 @@
 apiVersion: langbot/v1
 kind: Runner
 metadata:
-  name: slack_reply
+  name: staff_reply
   label:
-    en_US: Slack reply processor
-    zh_Hans: Slack 回复处理器
-    zh_Hant: Slack 回覆處理器
-    ja_JP: Slack 返信プロセッサー
-    es_ES: Procesador de respuestas de Slack
-    ru_RU: Обработчик ответов Slack
-    th_TH: ตัวประมวลผลการตอบกลับ Slack
-    vi_VN: Bộ xử lý trả lời Slack
+    en_US: Staff reply processor
+    zh_Hans: 员工回复处理器
+    zh_Hant: 員工回覆處理器
+    ja_JP: 担当者返信プロセッサー
+    es_ES: Procesador de respuestas del personal
+    ru_RU: Обработчик ответов сотрудников
+    th_TH: ตัวประมวลผลคำตอบของเจ้าหน้าที่
+    vi_VN: Bộ xử lý phản hồi của nhân viên
   description:
-    en_US: Send mapped Slack thread replies to Official Account users.
-    zh_Hans: 将已映射的 Slack thread 回复发送给公众号用户。
-    zh_Hant: 將已對應的 Slack 討論串回覆傳送給公眾號使用者。
-    ja_JP: 対応する Slack スレッドの返信を公式アカウントのユーザーに送信します。
-    es_ES: Envía respuestas de hilos vinculados de Slack a usuarios de cuentas oficiales.
-    ru_RU: Отправляет ответы из связанных веток Slack пользователям официального аккаунта.
-    th_TH: ส่งคำตอบจากเธรด Slack ที่เชื่อมโยงไปยังผู้ใช้บัญชีทางการ
-    vi_VN: Gửi trả lời từ luồng Slack đã liên kết đến người dùng tài khoản chính thức.
+    en_US: Send staff replies to linked handoff requests back to the user, and handle !close.
+    zh_Hans: 把员工对转人工请求的回复发回给用户，并处理 !close。
+    zh_Hant: 將員工對轉接請求的回覆傳回給使用者，並處理 !close。
+    ja_JP: 引き継ぎリクエストへの担当者の返信をユーザーに送り、!close を処理します。
+    es_ES: Envía al usuario las respuestas del personal a solicitudes vinculadas y gestiona !close.
+    ru_RU: Отправляет пользователю ответы сотрудников на связанные запросы и обрабатывает !close.
+    th_TH: ส่งคำตอบของเจ้าหน้าที่ต่อคำขอที่เชื่อมโยงกลับไปยังผู้ใช้ และจัดการ !close
+    vi_VN: Gửi phản hồi của nhân viên cho yêu cầu đã liên kết về người dùng và xử lý !close.
 spec:
   usages: [event]
   events: [message.received]
@@ -31,5 +31,5 @@ spec:
     storage: [plugin]
 execution:
   python:
-    path: slack_reply.py
-    attr: SlackReplyProcessor
+    path: staff_reply.py
+    attr: StaffReplyProcessor

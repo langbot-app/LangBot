@@ -30,12 +30,13 @@ def load_module(path, name):
     return module
 
 
-bridge = load_module(ROOT / "main.py", "oa_slack_bridge")
+bridge = load_module(ROOT / "main.py", "handoff_bridge")
 sys.modules["main"] = bridge
-listener_module = load_module(ROOT / "components/event_listener/bridge.py", "oa_slack_listener")
-runner_module = load_module(ROOT / "components/runner/slack_reply.py", "oa_slack_runner")
+listener_module = load_module(ROOT / "components/event_listener/handoff.py", "handoff_listener")
+runner_module = load_module(ROOT / "components/runner/staff_reply.py", "handoff_runner")
 CONFIG = {
-    "oa_bot": "oa-1", "slack_bot": "slack-1", "slack_channel_id": "C-1",
+    "source_bot": "oa-1", "staff_bot": "slack-1", "staff_target_type": "group", "staff_target_id": "C-1",
+    "reply_window_hours": 48,
     "keywords": ["help", "人工"], "case_sensitive": False,
     "takeover_minutes": 60, "forward_followups": True,
     # Notices are covered by their own tests; keep the original message counts here.
@@ -52,6 +53,11 @@ class Host:
         self.failure = None
         self.root_result = {"message_id": "1234.000001"}
         self.history = []
+        self.bots = {
+            "oa-1": {"uuid": "oa-1", "name": "微信公众号", "adapter": "officialaccount-omni"},
+            "slack-1": {"uuid": "slack-1", "name": "Slack CS", "adapter": "slack-omni"},
+            "tg-1": {"uuid": "tg-1", "name": "Staff TG", "adapter": "telegram-omni"},
+        }
         self.operations = []
         self.operation_response = None
 
@@ -72,6 +78,8 @@ class Host:
             args = data["arguments"]
             rows = self.history[args["offset"]:args["offset"] + args["limit"]]
             return {"ok": True, "result": [rows, len(self.history)]}
+        if action == Action.GET_BOT_INFO:
+            return {"bot": self.bots.get(data["bot_uuid"], {"uuid": data["bot_uuid"], "name": "", "adapter": ""})}
         if action == Action.GET_PLUGIN_STORAGE_KEYS:
             return {"keys": list(self.storage)}
         if action == Action.GET_PLUGIN_STORAGE:
@@ -112,13 +120,13 @@ def context(text="help", *, bot="oa-1", channel="C-1", user=OPENID, thread="", m
 
 async def graph(host=None):
     host = host or Host()
-    plugin = bridge.OASlackBridge()
+    plugin = bridge.HandoffBridge()
     plugin.plugin_runtime_handler = host
-    listener = listener_module.BridgeListener()
+    listener = listener_module.HandoffListener()
     listener.plugin = plugin
     await listener.initialize()
     assert events.GroupMessageReceived not in listener.registered_handlers
-    runner = runner_module.SlackReplyProcessor()
+    runner = runner_module.StaffReplyProcessor()
     runner.plugin = plugin
     runner.bind_runtime(plugin_runtime_handler=host)
     await runner.initialize()
@@ -133,6 +141,7 @@ async def receive(handlers, ctx, *, group=False):
     bot = await ctx.get_bot_uuid()
     data = {
         "type": "message.received", "bot_uuid": bot, "chat_id": ctx.event.launcher_id,
+        "chat_type": getattr(ctx, "chat_type", "group"),
         "message_chain": ctx.event.message_chain.model_dump(mode="json"),
     }
     run_ctx = RunnerContext.model_validate({
@@ -141,7 +150,7 @@ async def receive(handlers, ctx, *, group=False):
         "input": {}, "delivery": {"surface": "test"},
         "resources": {"storage": {"plugin_storage": True},
                       "tools": [{"tool_name": "event_reply", "tool_type": "platform", "operations": ["call"]}]},
-        "runtime": {}, "config": {"oa_bot": "ignored-processor-setting"},
+        "runtime": {}, "config": {"source_bot": "ignored-processor-setting"},
     })
 
     async def call_tool(name, parameters):
@@ -181,11 +190,11 @@ async def test_keyword_creates_root_and_persistent_mapping(monkeypatch):
     with bind_invocation(host, config=CONFIG, binding=binding()):
         await receive(handlers, ctx)
         session = await plugin.load(plugin.key("session", "oa-1", OPENID))
-        mapping = await plugin.load(plugin.thread_key(session))
+        mapping = await plugin.load(plugin.ref_key(session, session["root"]))
         assert mapping["session_key"] == plugin.key("session", "oa-1", OPENID)
     ctx.prevent_default.assert_called_once()
     ctx.prevent_postorder.assert_called_once()
-    assert session["openid"] == OPENID
+    assert session["user"] == OPENID
     assert session["last_user_at"] == 1000
     assert session["expires_at"] == 4600
     assert len(host.storage) == 2
@@ -409,11 +418,11 @@ async def test_bot_and_user_keys_are_independent():
     _plugin, host, handlers = await graph()
     for bot, user in (("oa-1", OPENID), ("oa-2", OPENID), ("oa-1", "another-user")):
         host.root_result = {"message_id": f"{len(host.sent)}.000001"}
-        with bind_invocation(host, config={**CONFIG, "oa_bot": bot}, binding=binding()):
+        with bind_invocation(host, config={**CONFIG, "source_bot": bot}, binding=binding()):
             await receive(handlers, context(bot=bot, user=user))
-    rows = [json.loads(value) for value in host.storage.values() if "openid" in json.loads(value)]
+    rows = [json.loads(value) for value in host.storage.values() if "user" in json.loads(value)]
     assert len(rows) == 3
-    assert {(row["oa_bot"], row["openid"]) for row in rows} == {("oa-1", OPENID), ("oa-2", OPENID), ("oa-1", "another-user")}
+    assert {(row["source_bot"], row["user"]) for row in rows} == {("oa-1", OPENID), ("oa-2", OPENID), ("oa-1", "another-user")}
 
 
 @pytest.mark.asyncio
@@ -471,7 +480,7 @@ async def test_channel_change_creates_new_thread():
     with bind_invocation(host, config=CONFIG):
         await receive(handlers, context())
     host.root_result = {"message_id": "2222.000001"}
-    with bind_invocation(host, config={**CONFIG, "slack_channel_id": "C-2"}):
+    with bind_invocation(host, config={**CONFIG, "staff_target_id": "C-2"}):
         await receive(handlers, context())
     assert len(host.storage) == 2
     assert host.sent[-1]["target_id"] == "C-2"
@@ -484,24 +493,7 @@ def denied():
     })
 
 
-@pytest.mark.asyncio
-async def test_version_010_rows_work_without_rewriting_keys(monkeypatch):
-    monkeypatch.setattr(bridge.time, "time", lambda: 2000)
-    _plugin, host, handlers = await graph()
-    key = "oasb:instance-1%3Aworkspace-1%3Afirst:session:oa-1:openid-sensitive-123456789"
-    mapping_key = "oasb:instance-1%3Aworkspace-1%3Afirst:thread:slack-1:C-1:1234.000001"
-    session = {"oa_bot": "oa-1", "openid": "openid-sensitive-123456789", "slack_bot": "slack-1",
-               "channel": "C-1", "thread": "1234.000001", "last_user_at": 1000, "expires_at": 4600}
-    host.storage = {key: json.dumps(session).encode(), mapping_key: json.dumps({"session_key": key}).encode()}
-    previous = dict(host.storage)
-    with bind_invocation(host, config=CONFIG, binding=binding(revision=2)):
-        reply = context("old session reply", bot="slack-1", thread="1234.000001")
-        await receive(handlers, reply, group=True)
-    assert host.storage == previous
-    assert text(host.sent[0]) == "old session reply"
-    assert host.sent[0]["target_id"] == session["openid"]
-    reply.reply_api.assert_awaited_once_with("event_reply", {"text": "✅ 已发送 / Sent"})
-    assert reply.results[-1].type == "run.completed"
+
 
 
 @pytest.mark.asyncio
@@ -510,12 +502,12 @@ async def test_unmapped_threads_log_without_reply(missing_session):
     plugin, host, handlers = await graph()
     with bind_invocation(host, config=CONFIG):
         if missing_session:
-            await plugin.save(plugin.key("thread", "slack-1", "C-1", "1234.000001"), {"session_key": "missing"})
+            await plugin.save(plugin.key("ref", "slack-1", "group", "C-1", "1234.000001"), {"session_key": "missing"})
         reply = context("answer", bot="slack-1", thread="1234.000001")
         await receive(handlers, reply, group=True)
     assert not host.sent
     reply.reply_api.assert_not_called()
-    assert any("Ignoring Slack" in result.data.get("text", "") for result in reply.results)
+    assert any("Ignoring a staff reply" in result.data.get("text", "") for result in reply.results)
 
 
 @pytest.mark.asyncio
@@ -586,10 +578,10 @@ def test_sdk_local_permission_denial_is_recognized():
 
 def test_component_and_permission_manifest():
     plugin = yaml.safe_load((ROOT / "manifest.yaml").read_text())
-    runner = yaml.safe_load((ROOT / "components/runner/slack_reply.yaml").read_text())
-    assert plugin["metadata"]["version"] == "0.4.0"
+    runner = yaml.safe_load((ROOT / "components/runner/staff_reply.yaml").read_text())
+    assert plugin["metadata"]["version"] == "0.1.0"
     assert plugin["spec"]["permissions"] == {
-        "capabilities": ["bot.message.send", "storage.plugin"], "workspace_operations": ["monitoring.messages"],
+        "capabilities": ["bot.read", "bot.message.send", "storage.plugin"], "workspace_operations": ["monitoring.messages"],
     }
     assert runner["spec"]["usages"] == ["event"]
     assert runner["spec"]["events"] == ["message.received"]
@@ -750,7 +742,7 @@ async def test_user_details_follow_root_in_thread(monkeypatch):
     assert [payload["target_type"] for payload in host.sent] == ["group", "group"]
     details = text(host.sent[1])
     assert thread_id(host.sent[1]) == "1234.000001"
-    assert f"OpenID: `{OPENID}`" in details
+    assert f"User ID: `{OPENID}`" in details
     assert f"person_{OPENID}" in details
     assert "微信公众号" in details
     assert "Messages so far: 3" in details
@@ -783,7 +775,7 @@ async def test_user_details_without_permission_still_takes_over():
     with bind_invocation(host, config=DETAILS, binding=binding()):
         await receive(handlers, ctx)
     details = text(host.sent[1])
-    assert f"OpenID: `{OPENID}`" in details
+    assert f"User ID: `{OPENID}`" in details
     assert "monitoring.messages" in details
     ctx.prevent_default.assert_called_once()
 
@@ -822,3 +814,81 @@ def test_stored_text_renders_components_and_truncates():
     long = bridge.stored_text(json.dumps([{"type": "Plain", "text": "a" * 400}]))
     assert len(long) == bridge.MAX_HISTORY_CHARS + 1 and long.endswith("…")
     assert bridge.stored_text("not json") == "not json"
+
+
+TELEGRAM = {**CONFIG, "staff_bot": "tg-1", "staff_target_id": "-100200"}
+
+
+@pytest.mark.asyncio
+async def test_non_slack_staff_gets_raw_text_and_replies_to_any_forwarded_message():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=TELEGRAM, binding=binding()):
+        await receive(handlers, context("help <b>now</b> & more"))
+        host.root_result = {"message_id": "555"}
+        await receive(handlers, context("follow <up>"))
+        # Staff reply to the forwarded follow-up (not the root), with HTML-like text.
+        reply = context("use <code>x</code> &amp; y", bot="tg-1", channel="-100200", thread="555")
+        await receive(handlers, reply, group=True)
+    assert "help <b>now</b> & more" in text(host.sent[0])
+    assert host.sent[0]["bot_uuid"] == "tg-1" and host.sent[0]["target_id"] == "-100200"
+    assert text(host.sent[1]) == "follow <up>" and thread_id(host.sent[1]) == "1234.000001"
+    to_customer = [payload for payload in host.sent if payload["target_type"] == "person"]
+    assert [text(payload) for payload in to_customer] == ["use <code>x</code> &amp; y"]
+    assert "✅" in text(host.sent[-1])
+
+
+@pytest.mark.asyncio
+async def test_private_chat_staff_target():
+    _plugin, host, handlers = await graph()
+    config = {**TELEGRAM, "staff_target_type": "person", "staff_target_id": "staff-user"}
+    with bind_invocation(host, config=config, binding=binding()):
+        await receive(handlers, context())
+        group_reply = context("from a group", bot="tg-1", channel="staff-user", thread="1234.000001")
+        await receive(handlers, group_reply, group=True)
+        private_reply = context("hello from staff", bot="tg-1", channel="staff-user", thread="1234.000001")
+        private_reply.chat_type = "private"
+        await receive(handlers, private_reply, group=True)
+    assert host.sent[0]["target_type"] == "person" and host.sent[0]["target_id"] == "staff-user"
+    to_customer = [text(payload) for payload in host.sent if payload["target_id"] == OPENID]
+    assert to_customer == ["hello from staff"]
+
+
+@pytest.mark.asyncio
+async def test_zero_reply_window_allows_late_staff_replies(monkeypatch):
+    now = [1000]
+    monkeypatch.setattr(bridge.time, "time", lambda: now[0])
+    _plugin, host, handlers = await graph()
+    config = {**TELEGRAM, "reply_window_hours": 0, "takeover_minutes": 10000}
+    with bind_invocation(host, config=config, binding=binding()):
+        await receive(handlers, context())
+        now[0] += 72 * 3600
+        await receive(handlers, context("late answer", bot="tg-1", channel="-100200", thread="1234.000001"), group=True)
+    assert [text(payload) for payload in host.sent if payload["target_type"] == "person"] == ["late answer"]
+
+
+@pytest.mark.asyncio
+async def test_any_source_platform():
+    _plugin, host, handlers = await graph()
+    config = {**CONFIG, "source_bot": "tg-1"}
+    with bind_invocation(host, config=config, binding=binding()):
+        ctx = context(bot="tg-1", user="tg-user-7")
+        await receive(handlers, ctx)
+        await receive(handlers, context("answer", bot="slack-1", thread="1234.000001"), group=True)
+    ctx.prevent_default.assert_called_once()
+    assert "Staff TG" in text(host.sent[0])
+    customer = [payload for payload in host.sent if payload["target_type"] == "person"]
+    assert customer[0]["bot_uuid"] == "tg-1" and customer[0]["target_id"] == "tg-user-7"
+
+
+@pytest.mark.asyncio
+async def test_close_removes_every_reply_reference():
+    _plugin, host, handlers = await graph()
+    with bind_invocation(host, config=TELEGRAM, binding=binding()):
+        await receive(handlers, context())
+        host.root_result = {"message_id": "556"}
+        await receive(handlers, context("more"))
+        await receive(handlers, context("!close", bot="tg-1", channel="-100200", thread="556"), group=True)
+        late = context("after close", bot="tg-1", channel="-100200", thread="1234.000001")
+        await receive(handlers, late, group=True)
+    assert host.storage == {}
+    assert not [payload for payload in host.sent if payload["target_type"] == "person"]

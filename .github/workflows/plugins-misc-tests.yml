@@ -56,11 +56,12 @@ jobs:
             if [ -s "$plugin/requirements.txt" ]; then
               install_args+=(-r "$plugin/requirements.txt")
             fi
-            if [ "$name" = OASlackBridge ]; then
+            # Plugins that need a newer SDK pin it in their own requirements-dev.txt.
+            if [ -s "$plugin/requirements-dev.txt" ]; then
               install_args=(--python "$python_bin" -r "$plugin/requirements-dev.txt")
             fi
             uv pip install "${install_args[@]}" >/dev/null
-            if [ "$name" != OASlackBridge ]; then
+            if [ ! -s "$plugin/requirements-dev.txt" ]; then
               "$python_bin" -c 'from importlib.metadata import version; assert version("langbot-plugin") == "0.7.4"'
             fi
             if ! (cd "$plugin" && "$python_bin" -m pytest tests -q -p no:cacheprovider); then

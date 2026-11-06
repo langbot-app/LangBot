@@ -1,6 +1,6 @@
 # Shared runtime
 
-OASlackBridge declares `shared-runtime-v1` and `stateless-v1`. The Official Account EventListener and Slack reply Runner retain no invocation data. Both share the plugin's storage and installation lock. The plugin reads configuration and the active installation binding only inside event invocations, not during initialization. The Runner receives a fresh RunnerContext per invocation and uses the plugin configuration rather than processor instance configuration.
+HandoffBridge declares `shared-runtime-v1` and `stateless-v1`. The customer-side EventListener and staff reply Runner retain no invocation data. Both share the plugin's storage and installation lock. The plugin reads configuration and the active installation binding only inside event invocations, not during initialization. The Runner receives a fresh RunnerContext per invocation and uses the plugin configuration rather than processor instance configuration.
 
 Storage keys include the stable `instance_uuid:workspace_uuid:installation_uuid` scope. Runtime revision is excluded so upgrades preserve mappings. Session rows additionally include Official Account bot UUID and full openid; thread lookup rows include Slack bot UUID, channel ID, and root message timestamp. Each row is written separately. A shared worker without a binding refuses storage access; dedicated placement uses a dedicated scope.
 

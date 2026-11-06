@@ -6,7 +6,7 @@ from langbot_plugin.api.entities import events
 from main import permission_denied, permission_notice
 
 
-class BridgeListener(EventListener):
+class HandoffListener(EventListener):
     async def initialize(self):
         await super().initialize()
 
