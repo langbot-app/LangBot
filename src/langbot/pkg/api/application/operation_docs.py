@@ -1433,6 +1433,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='all',
     ),
+    'workspace.language.get': OperationDoc(
+        domain='workspace',
+        label={'zh_Hans': '工作区语言', 'en_US': 'Get Workspace Language'},
+        summary='Get the Workspace language used for backend messages and default bot replies.',
+        description="Return the Workspace message language (language, for example en_US or zh_Hans) and the supported_languages list. It is independent of any member's personal WebUI language. Use it to localize replies, notices or generated content for this Workspace.",
+        risk='read',
+        exposure='all',
+    ),
 }
 
 

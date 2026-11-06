@@ -296,3 +296,10 @@ This reference covers every operation a plugin can request in the current LangBo
 | Get Tool<br/>Get parameter schema and description for a specific tool. | `tool.get`<br/>`workspace.tool.get()` | Read | `resource.view` |
 | List Tools<br/>List all registered function tools available for execution. | `tool.list`<br/>`workspace.tool.list()` | Read | `resource.view` |
 
+### Workspace (`workspace`)
+
+| Operation | ID and method | Risk | Granting member needs |
+| --- | --- | --- | --- |
+| Get Workspace Language<br/>Get the Workspace language used for backend messages and default bot replies. | `workspace.language.get`<br/>`workspace.workspace.language.get()` | Read | `workspace.view` |
+
+`workspace.language.get` returns `{"language": "zh_Hans", "supported_languages": [...]}`. `language` is the Workspace message language set under Workspace settings (default `en_US`), not a member's WebUI language. Plugins and Agents can use it to localize replies and generated content. Changing the language stays with members.

@@ -163,6 +163,7 @@ spec:
       - task.get
       - tool.get
       - tool.list
+      - workspace.language.get
     capabilities:
       - bot.message.send
       - bot.platform_api
