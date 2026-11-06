@@ -203,6 +203,13 @@
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GroupChatSummary"
   },
   {
+    "id": "langbot-team/HandoffBridge",
+    "version": "0.1.0",
+    "category": "misc",
+    "path": "misc/HandoffBridge",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HandoffBridge"
+  },
+  {
     "id": "RockChinQ/HelloPlugin",
     "version": "0.1.5",
     "category": "misc",
@@ -229,13 +236,6 @@
     "category": "misc",
     "path": "misc/MCBotPlugin",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/MCBotPlugin"
-  },
-  {
-    "id": "langbot-team/OASlackBridge",
-    "version": "0.4.0",
-    "category": "misc",
-    "path": "misc/OASlackBridge",
-    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/OASlackBridge"
   },
   {
     "id": "langbot-team/PowerContext",

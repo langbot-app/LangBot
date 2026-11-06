@@ -87,9 +87,9 @@ class RepositoryTests(unittest.TestCase):
             self.assertIn(f'({entry["path"]}/README.md)', readme)
 
     def test_pipeline_bridge_with_event_runner_remains_misc(self):
-        entry = next(item for item in check_catalog() if item['id'] == 'langbot-team/OASlackBridge')
+        entry = next(item for item in check_catalog() if item['id'] == 'langbot-team/HandoffBridge')
         self.assertEqual(entry['category'], 'misc')
-        self.assertEqual(entry['path'], 'misc/OASlackBridge')
+        self.assertEqual(entry['path'], 'misc/HandoffBridge')
         manifest = yaml.safe_load((ROOT / entry['path'] / 'manifest.yaml').read_text())
         self.assertEqual(set(manifest['spec']['components']), {'EventListener', 'Runner'})
 
