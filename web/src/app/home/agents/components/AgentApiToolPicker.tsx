@@ -6,6 +6,7 @@ import { extractI18nObject } from '@/i18n/I18nProvider';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import SelectableGroupCard from '@/app/home/components/tool-groups/SelectableGroupCard';
 
 interface AgentApiToolPickerProps {
   platformTools: AgentPlatformTool[];
@@ -306,130 +307,115 @@ export default function AgentApiToolPicker({
             </div>
           )}
           {catalogAvailable && filteredEntries.length > 0 && (
-            <div className="overflow-hidden rounded-lg border bg-background">
-              {groupedEntries.map(([group, groupTools], groupIndex) => (
-                <section
-                  key={group}
-                  className={cn(groupIndex > 0 && 'border-t')}
+            <div className="space-y-3">
+              {groupedEntries.map(([group, groupTools]) => (
+                <SelectableGroupCard
+                  key={`${activeScope}:${group}`}
+                  title={groupLabel(group)}
+                  subtitle={groupLabel(group) !== group ? group : undefined}
+                  selectedCount={groupTools.filter(isSelected).length}
+                  total={groupTools.length}
+                  forceOpen={query.trim().length > 0}
+                  selectAllLabel={t('agents.apiToolsSelectAll')}
+                  onToggleAll={(checked) => setGroup(groupTools, checked)}
                 >
-                  <div className="flex items-center justify-between gap-3 bg-muted/30 px-3 py-2 text-xs font-medium text-muted-foreground">
-                    <span>{groupLabel(group)}</span>
-                    <label className="flex cursor-pointer items-center gap-2">
-                      <Checkbox
-                        checked={
-                          groupTools.every(isSelected)
-                            ? true
-                            : groupTools.some(isSelected)
-                              ? 'indeterminate'
-                              : false
-                        }
-                        onCheckedChange={(checked) =>
-                          setGroup(groupTools, checked === true)
-                        }
-                        aria-label={`${groupLabel(group)} · ${t('agents.apiToolsSelectAll')}`}
-                      />
-                      {t('agents.apiToolsSelectAll')}
-                    </label>
-                  </div>
-                  <div className="divide-y">
-                    {groupTools.map((tool) => {
-                      const checked =
-                        tool.kind === 'platform'
-                          ? selectedPlatform.has(tool.name)
-                          : selectedHost.has(tool.name);
-                      const expanded = expandedTool === tool.key;
-                      const parameterNames = Object.keys(
-                        (tool.parameters.properties as
-                          Record<string, unknown> | undefined) ?? {},
-                      );
-                      return (
-                        <div
-                          key={tool.key}
-                          className="bg-background px-3 py-2.5"
+                  {groupTools.map((tool) => {
+                    const checked =
+                      tool.kind === 'platform'
+                        ? selectedPlatform.has(tool.name)
+                        : selectedHost.has(tool.name);
+                    const expanded = expandedTool === tool.key;
+                    const parameterNames = Object.keys(
+                      (tool.parameters.properties as
+                        Record<string, unknown> | undefined) ?? {},
+                    );
+                    return (
+                      <div
+                        key={tool.key}
+                        className="px-3 py-2.5 transition-colors hover:bg-muted/30"
+                      >
+                        <label
+                          className={cn(
+                            'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5',
+                            'cursor-pointer',
+                          )}
                         >
-                          <label
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(next) =>
+                              setTool(tool, next === true)
+                            }
+                            aria-label={tool.label}
+                            className="mt-0.5"
+                          />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium leading-5">
+                              {tool.label}
+                            </span>
+                            <span className="block truncate text-xs leading-5 text-muted-foreground">
+                              {tool.description}
+                            </span>
+                          </span>
+                          <span
                             className={cn(
-                              'grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2.5',
-                              'cursor-pointer',
+                              'min-w-12 pt-0.5 text-right text-xs text-muted-foreground',
+                              tool.risk === 'dangerous' &&
+                                'text-amber-700 dark:text-amber-400',
                             )}
                           >
-                            <Checkbox
-                              checked={checked}
-                              onCheckedChange={(next) =>
-                                setTool(tool, next === true)
-                              }
-                              aria-label={tool.label}
-                              className="mt-0.5"
-                            />
-                            <span className="min-w-0">
-                              <span className="block text-sm font-medium leading-5">
-                                {tool.label}
-                              </span>
-                              <span className="block truncate text-xs leading-5 text-muted-foreground">
-                                {tool.description}
-                              </span>
-                            </span>
-                            <span
-                              className={cn(
-                                'min-w-12 pt-0.5 text-right text-xs text-muted-foreground',
-                                tool.risk === 'dangerous' &&
-                                  'text-amber-700 dark:text-amber-400',
-                              )}
-                            >
-                              {tool.risk
-                                ? t(`agents.apiToolRisk.${tool.risk}`)
-                                : scopeLabel(tool.scope)}
-                            </span>
-                          </label>
-                          <button
-                            type="button"
-                            aria-expanded={expanded}
-                            onClick={() =>
-                              setExpandedTool(expanded ? null : tool.key)
-                            }
-                            className="ml-7 mt-0.5 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground active:scale-[0.98]"
-                          >
-                            {expanded
-                              ? t('agents.apiToolHideDetails')
-                              : t('agents.apiToolDetails')}
-                            <ChevronDown
-                              className={cn(
-                                'size-3 transition-transform',
-                                expanded && 'rotate-180',
-                              )}
-                            />
-                          </button>
-                          {expanded && (
-                            <div className="ml-8 mt-1.5 space-y-1 border-l pl-3 text-xs text-muted-foreground">
-                              <div className="font-mono text-foreground/75">
-                                {tool.name}
-                              </div>
-                              {tool.api && <div>API: {tool.api}</div>}
-                              {tool.kind === 'host' && (
-                                <div>
-                                  {t('agents.apiToolSource')}:{' '}
-                                  {groupLabel(tool.group)}
-                                </div>
-                              )}
-                              {tool.eventPatterns && (
-                                <div>
-                                  {t('agents.apiToolEvents')}:{' '}
-                                  {tool.eventPatterns.join(', ')}
-                                </div>
-                              )}
-                              <div>
-                                {t('agents.apiToolParameters')}:{' '}
-                                {parameterNames.length
-                                  ? parameterNames.join(', ')
-                                  : t('agents.apiToolNoParameters')}
-                              </div>
+                            {tool.risk
+                              ? t(`agents.apiToolRisk.${tool.risk}`)
+                              : scopeLabel(tool.scope)}
+                          </span>
+                        </label>
+                        <button
+                          type="button"
+                          aria-expanded={expanded}
+                          onClick={() =>
+                            setExpandedTool(expanded ? null : tool.key)
+                          }
+                          className="ml-7 mt-0.5 inline-flex items-center gap-1 rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-foreground active:scale-[0.98]"
+                        >
+                          {expanded
+                            ? t('agents.apiToolHideDetails')
+                            : t('agents.apiToolDetails')}
+                          <ChevronDown
+                            className={cn(
+                              'size-3 transition-transform',
+                              expanded && 'rotate-180',
+                            )}
+                          />
+                        </button>
+                        {expanded && (
+                          <div className="ml-8 mt-1.5 space-y-1 border-l pl-3 text-xs text-muted-foreground">
+                            <div className="font-mono text-foreground/75">
+                              {tool.name}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </section>
+                            {tool.api && <div>API: {tool.api}</div>}
+                            {tool.kind === 'host' && (
+                              <div>
+                                {t('agents.apiToolSource')}:{' '}
+                                {groupLabel(tool.group)}
+                              </div>
+                            )}
+                            {tool.eventPatterns && (
+                              <div>
+                                {t('agents.apiToolEvents')}:{' '}
+                                {tool.eventPatterns.join(', ')}
+                              </div>
+                            )}
+                            <div>
+                              {t('agents.apiToolParameters')}:{' '}
+                              {parameterNames.length
+                                ? parameterNames.join(', ')
+                                : t('agents.apiToolNoParameters')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </SelectableGroupCard>
               ))}
             </div>
           )}
