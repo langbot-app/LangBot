@@ -9,7 +9,7 @@ Multi-Workspace (Cloud) instances only offer plugin upgrades per Workspace in th
 - Reads each plugin's `latest_version` from the configured Space Marketplace, then walks `workspace_service.list_active_execution_bindings()` with `concurrency` Workspaces at a time (default 2). The optional `workspaces` list limits the sweep to canary Workspace UUIDs.
 - Each Workspace is entered with `persistence_mgr.tenant_scope()` and `plugin_connector._prepare_workspace_context()`, the same fence as HTTP requests. Outdated `marketplace` installations go through `upgrade_plugin()`, the WebUI upgrade path.
 - An upgrade to a version without `spec.permissions` disables the installation until a member confirms. With `confirm_permissions` (default true), the sweep calls `auto_confirm_declared()` for every listed installation that is **pending confirmation**, which also enables it. An installation the tenant switched off keeps its confirmed snapshot, is not pending, and stays disabled.
-- Upgrade and confirmation are retried twice (5 s, 20 s) to ride out DNS errors and blocking-executor saturation while a large instance starts.
+- Upgrade and confirmation are retried twice (5 s, 20 s) to ride out DNS errors and blocking-executor saturation while a large instance starts. If the whole run fails (for example fetching Marketplace versions during startup), it is retried after 60, 120, 300 and 600 s.
 - The operator principal is `SUPPORT_ADMIN` with `support_session_id=operator:marketplace-upgrade`, owner role. Failures are logged per installation and do not stop the sweep. The summary is logged as `Marketplace upgrade finished: {...}`.
 
 Re-running is idempotent: installations already at the latest version are only confirmed if they are pending confirmation.
