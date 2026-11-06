@@ -2897,6 +2897,15 @@ const zhHans = {
       triggeredBy: '触发：{{trigger}}',
       handledByPlugin: '插件处理 · {{plugin}}',
       handledByUnknownPlugin: '插件处理（未识别插件）',
+      filteredByStage: '已被流水线拦截 · {{stage}}',
+      filteredByUnknownStage: '已被流水线拦截',
+      filterStages: {
+        BanSessionCheckStage: '访问控制',
+        GroupRespondRuleCheckStage: '群聊响应规则',
+        PreContentFilterStage: '内容过滤 / 忽略规则',
+        PostContentFilterStage: '输出内容过滤',
+        RequireRateLimitOccupancy: '速率限制',
+      },
       cards: {
         latencyHint:
           'P50/P95：约 50%/95% 的执行能在此时间内完成。仅统计最近已完成的 Agent 执行，不含排队时间。',

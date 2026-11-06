@@ -2896,6 +2896,15 @@ const zhHant = {
       triggeredBy: '觸發：{{trigger}}',
       handledByPlugin: '外掛處理 · {{plugin}}',
       handledByUnknownPlugin: '外掛處理（未識別外掛）',
+      filteredByStage: '已被流水線攔截 · {{stage}}',
+      filteredByUnknownStage: '已被流水線攔截',
+      filterStages: {
+        BanSessionCheckStage: '存取控制',
+        GroupRespondRuleCheckStage: '群組回應規則',
+        PreContentFilterStage: '內容過濾 / 忽略規則',
+        PostContentFilterStage: '輸出內容過濾',
+        RequireRateLimitOccupancy: '速率限制',
+      },
       loading: '載入執行記錄中...',
       cards: {
         latencyHint:

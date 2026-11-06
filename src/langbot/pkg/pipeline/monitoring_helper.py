@@ -51,6 +51,36 @@ def is_plugin_handler(handled_by: str | None) -> bool:
     return bool(handled_by) and handled_by.startswith('plugin:')
 
 
+# Stages that drop a message by pipeline rule (access control, group respond
+# rules, ignore rules / content filter, rate limit). They interrupt silently,
+# so monitoring records where the message stopped as ``filtered:<stage>``.
+FILTERED_HANDLER_PREFIX = 'filtered:'
+FILTER_STAGES = frozenset(
+    {
+        'BanSessionCheckStage',
+        'GroupRespondRuleCheckStage',
+        'PreContentFilterStage',
+        'PostContentFilterStage',
+        'RequireRateLimitOccupancy',
+    }
+)
+
+
+def filtered_handler(stage_name: str) -> str:
+    return f'{FILTERED_HANDLER_PREFIX}{stage_name}'
+
+
+def is_filtered_handler(handled_by: str | None) -> bool:
+    return bool(handled_by) and handled_by.startswith(FILTERED_HANDLER_PREFIX)
+
+
+def mark_stage_interrupt(query: typing.Any, stage_name: str) -> None:
+    """Record that a filter stage stopped this Query, unless someone already handled it."""
+    if stage_name not in FILTER_STAGES or get_handled_by(query):
+        return
+    mark_handled_by(query, filtered_handler(stage_name))
+
+
 def mark_handled_by(query: typing.Any, handled_by: str | None) -> None:
     """Remember who handled this Query; written when the message is finished."""
     if not handled_by:
@@ -226,8 +256,12 @@ class MonitoringHelper:
         handled_by = get_handled_by(query)
         attribution = {}
         if handled_by:
-            # A plugin that took the message over means the runner never ran.
-            attribution = {'handled_by': handled_by, 'clear_runner_name': is_plugin_handler(handled_by)}
+            # A plugin that took the message over, or a filter stage that dropped
+            # it, means the runner never ran.
+            attribution = {
+                'handled_by': handled_by,
+                'clear_runner_name': is_plugin_handler(handled_by) or is_filtered_handler(handled_by),
+            }
         for attempt in range(3):
             try:
                 async with asyncio.timeout(2):

@@ -3104,6 +3104,15 @@ const ruRU = {
       triggeredBy: 'Запущено: {{trigger}}',
       handledByPlugin: 'Обработано плагином {{plugin}}',
       handledByUnknownPlugin: 'Обработано неопознанным плагином',
+      filteredByStage: 'Остановлено конвейером · {{stage}}',
+      filteredByUnknownStage: 'Остановлено конвейером',
+      filterStages: {
+        BanSessionCheckStage: 'Контроль доступа',
+        GroupRespondRuleCheckStage: 'Правила ответа в группах',
+        PreContentFilterStage: 'Фильтр контента / правила игнорирования',
+        PostContentFilterStage: 'Фильтр исходящего контента',
+        RequireRateLimitOccupancy: 'Ограничение частоты',
+      },
       cards: {
         latencyHint:
           'P50/P95: около 50%/95% запусков завершаются за это время. Только недавние завершённые запуски Agent, без ожидания в очереди.',

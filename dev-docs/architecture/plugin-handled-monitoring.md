@@ -19,7 +19,16 @@ monitoring writer (`'Query' object has no attribute 'launcher_type'`).
 | `runner:<runner_id>` | The pipeline handed the message to its Runner. |
 | `plugin:<author>/<name>` | That plugin prevented the default processing. |
 | `plugin:unknown` | A plugin prevented it, but the Runtime could not say which. |
-| `NULL` | Legacy rows, or messages stopped before processing (rules, rate limit, ...). |
+| `filtered:<StageName>` | A pipeline rule stage dropped the message (LANG-342), see below. |
+| `NULL` | Legacy rows, or messages that stopped without a recorded reason. |
+
+Rule-stage drops (`FILTER_STAGES` in `monitoring_helper.py`): `BanSessionCheckStage` (access
+control), `GroupRespondRuleCheckStage` (group respond rules), `PreContentFilterStage` (ignore
+rules, sensitive words), `PostContentFilterStage` (output filter) and `RequireRateLimitOccupancy`
+(rate limit). When one of them returns `INTERRUPT`, `RuntimePipeline._execute_from_stage` logs the
+stage and, unless a handler is already recorded, marks `filtered:<StageName>`. `finish_query()`
+writes it and clears `runner_name`. The WebUI shows it as a "stopped by pipeline · <rule>" badge
+on execution rows and details.
 
 Writers:
 

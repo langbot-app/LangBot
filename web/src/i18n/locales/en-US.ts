@@ -3085,6 +3085,15 @@ const enUS = {
       triggeredBy: 'Triggered by {{trigger}}',
       handledByPlugin: 'Handled by plugin {{plugin}}',
       handledByUnknownPlugin: 'Handled by an unidentified plugin',
+      filteredByStage: 'Stopped by pipeline · {{stage}}',
+      filteredByUnknownStage: 'Stopped by pipeline',
+      filterStages: {
+        BanSessionCheckStage: 'Access control',
+        GroupRespondRuleCheckStage: 'Group respond rules',
+        PreContentFilterStage: 'Content filter / ignore rules',
+        PostContentFilterStage: 'Output content filter',
+        RequireRateLimitOccupancy: 'Rate limit',
+      },
       cards: {
         latencyHint:
           'P50/P95: about 50%/95% of runs finish within this time. Based on recent completed Agent runs, excluding queue time.',
