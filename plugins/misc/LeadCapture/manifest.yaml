@@ -1,0 +1,114 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: LeadCapture
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture
+  version: 0.1.0
+  description:
+    en_US: "Let an LLM spot customers with strong purchase intent, ask them once for contact details, and email the lead with the full conversation via Resend."
+    zh_Hans: "由 LLM 根据对话和提示词判断用户是否有强烈购买意愿，只请求一次联系方式，并通过 Resend 把线索和完整对话发到指定邮箱。"
+    zh_Hant: "由 LLM 根據對話與提示詞判斷使用者是否有強烈購買意願，只請求一次聯絡方式，並透過 Resend 將線索與完整對話寄到指定信箱。"
+    ja_JP: "LLM が会話から強い購入意向を判定し、連絡先を一度だけ尋ね、Resend でリードと会話全文をメール送信します。"
+    es_ES: "Un LLM detecta clientes con fuerte intención de compra, les pide el contacto una vez y envía el cliente con la conversación completa por Resend."
+    ru_RU: "LLM определяет клиентов с сильным намерением купить, один раз просит контакты и отправляет лид с полной перепиской через Resend."
+    th_TH: "ให้ LLM ตรวจหาลูกค้าที่ตั้งใจซื้อสูง ขอช่องทางติดต่อหนึ่งครั้ง แล้วส่งข้อมูลพร้อมบทสนทนาทั้งหมดทางอีเมลผ่าน Resend"
+    vi_VN: "LLM nhận diện khách hàng có ý định mua mạnh, hỏi liên hệ một lần và gửi khách hàng tiềm năng kèm toàn bộ hội thoại qua Resend."
+  label:
+    en_US: Purchase Intent Lead Capture
+    zh_Hans: 购买意向留资
+    zh_Hant: 購買意向留資
+    ja_JP: 購入意向リード獲得
+    es_ES: Captación por intención de compra
+    ru_RU: Сбор лидов по намерению купить
+    th_TH: เก็บลีดตามความตั้งใจซื้อ
+    vi_VN: Thu thập khách hàng theo ý định mua
+  icon: assets/icon.svg
+spec:
+  permissions:
+    capabilities: [models.invoke, storage.plugin]
+    workspace_operations:
+      - monitoring.messages
+  config:
+    - name: model
+      type: llm-model-selector
+      required: true
+      label:
+        en_US: Model for judging intent
+        zh_Hans: 判断用的模型
+      description:
+        en_US: Used to judge purchase intent and to read contact details that patterns cannot find.
+        zh_Hans: 用来判断购买意愿，以及在规则识别不到时识别联系方式。
+    - name: intent_prompt
+      type: text
+      default: "用户明确表达了购买、下单、试用、报价、签约、采购或与销售沟通的意愿，或在询问价格、套餐、付款方式、发票、合同、交付时间等成交相关细节，视为强烈购买意愿。只是了解产品功能、闲聊或技术咨询，不算强烈购买意愿。"
+      label:
+        en_US: Intent criteria (prompt)
+        zh_Hans: 购买意愿判断标准（提示词）
+      description:
+        en_US: Describe what counts as strong purchase intent for your business. The plugin adds the conversation and asks for a yes/no answer.
+        zh_Hans: 描述在你们业务里什么算强烈购买意愿。插件会附上对话并要求模型给出是/否结论。
+    - name: history_messages
+      type: integer
+      default: 20
+      label:
+        en_US: Messages used for judging
+        zh_Hans: 参与判断的对话条数
+      description:
+        en_US: How many recent messages (user and AI) the model reads each time, up to 100.
+        zh_Hans: 每次判断时读取最近多少条对话（含用户和 AI），最多 100。
+    - name: ask_text
+      type: text
+      default: "为了更好地为您服务，方便留下您的手机号或微信号吗？我们的顾问会尽快与您联系。"
+      label:
+        en_US: Contact request text
+        zh_Hans: 请求联系方式的话术
+      description:
+        en_US: Appended to the AI reply once, when strong intent is detected.
+        zh_Hans: 判断为强烈购买意愿时，附加在该次 AI 回复后面，每个用户只发一次。
+    - name: thanks_text
+      type: text
+      default: "已收到您的联系方式，我们的顾问会尽快与您联系，感谢您的信任！"
+      label:
+        en_US: Thank-you text
+        zh_Hans: 收到联系方式后的致谢
+      description:
+        en_US: Appended to the next AI reply after contact details are received. Leave empty to disable.
+        zh_Hans: 收到联系方式后附加在下一次 AI 回复后面。留空则不发送。
+    - name: resend_api_key
+      type: secret
+      required: true
+      label:
+        en_US: Resend API key
+        zh_Hans: Resend API Key
+      description:
+        en_US: Create one at resend.com → API Keys (Sending access is enough).
+        zh_Hans: 在 resend.com → API Keys 创建，选 Sending access 即可。
+    - name: from_email
+      type: string
+      required: true
+      label:
+        en_US: Sender address
+        zh_Hans: 发件地址
+      description:
+        en_US: "An address on a domain verified in Resend, e.g. leads@example.com or \"Leads <leads@example.com>\"."
+        zh_Hans: "必须是在 Resend 验证过的域名下的地址，例如 leads@example.com 或 \"销售线索 <leads@example.com>\"。"
+    - name: to_emails
+      type: array[string]
+      default: []
+      label:
+        en_US: Recipient addresses
+        zh_Hans: 收件邮箱
+      description:
+        en_US: One or more addresses that receive each lead.
+        zh_Hans: 接收线索的邮箱，可填多个。
+  components:
+    EventListener:
+      fromDirs:
+        - path: components/event_listener/
+execution:
+  python:
+    path: main.py
+    attr: LeadCapture
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1
