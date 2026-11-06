@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: GeneralParsers
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/GeneralParsers
-  version: 0.1.11
+  version: 0.1.12
   description:
     en_US: General Parsers - Extract text from PDF, Word, Markdown, HTML, TXT, and
       image files

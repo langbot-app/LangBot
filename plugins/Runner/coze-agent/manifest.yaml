@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: CozeAgent
-  version: 0.2.2
+  version: 0.2.3
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent
   label:
     en_US: Coze Agent

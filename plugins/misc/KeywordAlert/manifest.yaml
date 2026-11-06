@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: KeywordAlert
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/KeywordAlert
-  version: 0.1.3
+  version: 0.1.4
   description:
     en_US: 'Monitor group chat messages for keywords and send private alerts to admins.
       Supports multiple groups and keyword lists.'

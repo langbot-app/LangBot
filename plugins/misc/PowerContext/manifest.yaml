@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: PowerContext
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/PowerContext
-  version: 0.1.2
+  version: 0.1.3
   label:
     en_US: PowerContext
     zh_Hans: PowerContext

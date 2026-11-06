@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: FAQManager
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/FAQManager
-  version: 0.1.3
+  version: 0.1.4
   description:
     en_US: Manage FAQ entries via a visual page and let the LLM search them during conversations.
     zh_Hans: 通过可视化页面管理常见问答条目，并让 LLM 在对话中检索它们。

@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: HumanTakeover
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HumanTakeover
-  version: 0.1.6
+  version: 0.1.7
   description:
     en_US: 人工接管与人工回复插件,可阻断AI消息处理
     zh_Hans: 人工接管与人工回复插件,可阻断AI消息处理
