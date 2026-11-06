@@ -1880,7 +1880,16 @@ export default function DynamicFormItemComponent({
             <SelectGroup>
               {bots.filter(hasUsableUuid).map((bot) => (
                 <SelectItem key={bot.uuid} value={bot.uuid}>
-                  {bot.name}
+                  <span className="flex min-w-0 items-center gap-2">
+                    {bot.adapter && (
+                      <img
+                        src={httpClient.getAdapterIconURL(bot.adapter)}
+                        alt=""
+                        className="size-4 shrink-0 rounded-sm object-contain"
+                      />
+                    )}
+                    <span className="truncate">{bot.name}</span>
+                  </span>
                 </SelectItem>
               ))}
             </SelectGroup>
