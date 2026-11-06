@@ -699,3 +699,37 @@ def test_dify_downloaded_file_keeps_native_upload_budget(monkeypatch):
         context.input.contents = [ContentElement.from_file_url("https://example.invalid/file", "file")]
         with pytest.raises(m.DifyAPIError, match="limit"):
             asyncio.run(runner._upload_input_files(context, m.AsyncDifyClient("fixture"), "user"))
+
+
+@pytest.mark.parametrize(
+    "plugin,method,client_name",
+    [
+        ("dify-agent", "_upload_input_files", "AsyncDifyClient"),
+        ("coze-agent", "_build_additional_messages", "AsyncCozeClient"),
+        ("tbox-agent", "_upload_input_files", "AsyncTboxClient"),
+    ],
+)
+def test_host_deduplicated_image_reference_uploads_inline_image_once(plugin, method, client_name):
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+    from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+
+    with load_runner(plugin) as (m, runner):
+        client = object.__new__(getattr(m, client_name))
+        uploads = []
+
+        async def upload(*args):
+            uploads.append(args)
+            return {"id": "provider-upload"} if plugin == "dify-agent" else "provider-upload"
+
+        client.upload_file = upload
+        context = ctx()
+        context.input.contents = [ContentElement.from_image_base64("data:image/png;base64,aW1hZ2U=")]
+        # The Host strips inline image payloads already present in contents and keeps only the ref.
+        context.input.attachments = [InputAttachment(type="image", source="base64", content=None, ref="attachment-0")]
+        args = (context, client, "user") if plugin == "dify-agent" else (context, client)
+        asyncio.run(getattr(runner, method)(*args))
+        assert len(uploads) == 1
+        assert b"image" in uploads[0]
+        if plugin == "dify-agent":
+            # Dify derives the image format from the uploaded file name's extension.
+            assert uploads[0][0] == "image.png"

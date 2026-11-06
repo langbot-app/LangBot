@@ -8,6 +8,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
+import os
 import re
 import typing
 import uuid
@@ -522,9 +524,20 @@ class DefaultRunner(Runner):
         """
         uploaded_files: list[dict[str, typing.Any]] = []
 
-        attachments = list(ctx.input.attachments or [])
-        if not any(_attachment_get(attachment, "content") for attachment in attachments):
-            attachments.extend(_attachments_from_contents(ctx.input.contents))
+        # The Host strips image payloads already inlined in contents and keeps only the ref.
+        attachments = [
+            attachment
+            for attachment in ctx.input.attachments or []
+            if _attachment_get(attachment, "content") or _attachment_get(attachment, "url")
+        ]
+        payloads = [
+            _attachment_get(attachment, "content") or _attachment_get(attachment, "url") for attachment in attachments
+        ]
+        attachments.extend(
+            attachment
+            for attachment in _attachments_from_contents(ctx.input.contents)
+            if (attachment.get("content") or attachment.get("url")) not in payloads
+        )
 
         for attachment in attachments:
             try:
@@ -545,6 +558,9 @@ class DefaultRunner(Runner):
                     or downloaded_type
                     or "application/octet-stream"
                 )
+                if not os.path.splitext(file_name)[1]:
+                    # Dify derives the image format from the file extension and rejects an empty one.
+                    file_name += mimetypes.guess_extension(content_type) or ""
 
                 # Determine Dify file type from content type
                 if content_type.startswith("image/"):
