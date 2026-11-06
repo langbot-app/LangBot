@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: WordFSRS
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/WordFSRS
-  version: 0.2.3
+  version: 0.2.4
   description:
     en_US: 'Spaced-repetition vocabulary review in your IM, powered by the FSRS algorithm (the same memory model behind Maimemo / 墨墨背单词).'
     zh_Hans: '在 IM 里背单词:基于 FSRS 间隔重复算法(墨墨背单词同款记忆模型),用 !word 命令添加卡片并按到期复习。'

@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: TavilySearch
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/TavilySearch
-  version: 0.1.5
+  version: 0.1.6
   description:
     en_US: A search engine tool built specifically for AI agents (LLMs), 
       delivering real-time, accurate, and factual results at speed.

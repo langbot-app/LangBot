@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: DailyLimitPlugin
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/DailyLimitPlugin
-  version: 0.3.3
+  version: 0.3.4
   description:
     en_US: 'Limit conversations per session per day, with a management page to view, configure and reset limits.'
     zh_Hans: '按会话限制每天的对话次数，并提供可视化页面查看、配置和重置各会话的限制。'
