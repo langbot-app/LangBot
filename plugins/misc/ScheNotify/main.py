@@ -12,12 +12,9 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from langbot_plugin.api.definition.plugin import BasePlugin
+from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
-from langbot_plugin.api.proxies.invocation import (
-    bind_invocation,
-    current_binding,
-    current_config,
-)
+from langbot_plugin.api.proxies.invocation import current_binding
 
 logger = logging.getLogger(__name__)
 
@@ -216,16 +213,14 @@ class ScheNotify(BasePlugin):
     def _ensure_loop(self, scope: str) -> None:
         """Start (or refresh) the scheduler of the invoking installation.
 
-        The invocation's handler, config and binding are captured here: the
-        detached loop re-enters them at fire time so every Host send stays
-        attributable to the installation that scheduled the reminder. A worker
-        upgrade keeps the scope token (the revision is excluded from it) but
-        presents a new binding, so the loop is restarted under the new authority
-        instead of sending with the superseded revision.
+        The loop captures no invocation: a reminder is delivered through the
+        installation-authorized ``bot.message.send`` Workspace operation, which
+        the Host authorizes from the installation grant and revokes with it. A
+        worker upgrade keeps the scope token (the revision is excluded from it)
+        but presents a new binding, so the loop is restarted for the new
+        revision instead of outliving it.
         """
-        handler = getattr(self, "plugin_runtime_handler", None)
-        config = current_config(handler)
-        binding = current_binding(handler)
+        binding = current_binding(getattr(self, "plugin_runtime_handler", None))
 
         task = self._loops.get(scope)
         if task is not None and not task.done():
@@ -233,13 +228,12 @@ class ScheNotify(BasePlugin):
                 return
             task.cancel()
         self._loop_bindings[scope] = binding
-        # Start from an empty context: ``create_task`` would otherwise copy the
-        # scheduling invocation's task-local state, including the SDK's audit
-        # correlation, which is closed once that invocation returns and makes
-        # every later send fail with "Plugin audit invocation has ended". The
-        # loop re-enters the captured invocation itself.
+        # Start from an empty Context: the scheduling invocation's task-local
+        # state is closed once that call returns, and the loop must not inherit
+        # it. What the loop keeps is the immutable installation binding, which
+        # the Host validates against the live connection on every delivery.
         self._loops[scope] = asyncio.create_task(
-            self._check_loop_wrapper(scope, handler, config, binding),
+            self._check_loop_wrapper(scope, binding),
             context=contextvars.Context(),
         )
 
@@ -260,27 +254,26 @@ class ScheNotify(BasePlugin):
     # ------------------------------------------------------------------ #
     # Scheduler
     # ------------------------------------------------------------------ #
-    async def _check_loop_wrapper(self, scope: str, handler: Any, config: Any, binding: Any):
-        """Check one installation's due events until that binding is revoked.
+    async def _check_loop_wrapper(self, scope: str, binding: Any = None):
+        """Check one installation's due events until that installation is revoked.
 
-        A detached task keeps no usable invocation of its own — the invocation
-        that started it has ended and is marked inactive. It therefore re-enters
-        the handler, config and binding captured when it started, so every send
-        this loop makes carries the scheduling installation's authority instead
-        of falling back to the worker's connection default. ``on_installation_revoked``
-        cancels the task, which exits this scope and drops the authority with it.
+        The loop holds no invocation and no configuration: each delivery passes
+        the installation binding as the explicit action context, so the Host
+        validates it (Workspace, installation, revision and artifact) against
+        the live connection and rejects a superseded or detached installation.
+        ``on_installation_revoked`` cancels the task, so a revoked installation
+        stops delivering immediately.
         """
-        with bind_invocation(handler, config=config, binding=binding):
-            while True:
-                try:
-                    await self._check_scheduled_events(scope)
-                except asyncio.CancelledError:
-                    raise
-                except Exception as e:
-                    logger.error(f"Error in check loop: {e}", exc_info=True)
-                await asyncio.sleep(CHECK_INTERVAL_SECONDS)  # Check every minute
+        while True:
+            try:
+                await self._check_scheduled_events(scope, binding)
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error(f"Error in check loop: {type(e).__name__}: {e}")
+            await asyncio.sleep(CHECK_INTERVAL_SECONDS)  # Check every minute
 
-    async def _check_scheduled_events(self, scope: str):
+    async def _check_scheduled_events(self, scope: str, binding: Any = None):
         """Send notifications for this installation's due events."""
         # Event times are aware (naive ones are host-local), so the comparison
         # needs no config and is independent of the configured timezone.
@@ -299,7 +292,7 @@ class ScheNotify(BasePlugin):
             if now >= to_timezone(event["time"], datetime.timezone.utc):
                 # Send notification
                 try:
-                    await self._send_notification(event)
+                    await self._send_notification(event, binding)
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
@@ -318,24 +311,48 @@ class ScheNotify(BasePlugin):
         delivered = set(delivered_ids)
         events[:] = [event for event in events if event["id"] not in delivered]
 
-    async def _send_notification(self, event: dict[str, Any]):
+    async def _send_notification(self, event: dict[str, Any], binding: Any = None):
         """
         Send notification message to the session.
 
+        The delivery is an ordinary Host action carrying the installation
+        binding as its explicit action context: the Host validates that context
+        against the live connection (Workspace, installation, revision and
+        artifact) and applies the installation's granted capabilities, so no
+        invocation is invented for the background task and a detached or
+        upgraded installation cannot be used to deliver.
+
         Args:
             event: Event dict containing session info and message
+            binding: Installation binding captured when the reminder was created
         """
         message_chain = platform_message.MessageChain([
             platform_message.Plain(text=f"{NOTIFY_PREFIX}{event['message']}")
         ])
+        payload = {
+            "bot_uuid": event["bot_uuid"],
+            "target_type": event["target_type"],
+            "target_id": event["target_id"],
+            "message_chain": message_chain.model_dump(),
+        }
 
-        # Send message using saved session info. Failures propagate so the
-        # scheduler can keep the event queued and record the failed attempt.
-        await self.send_message(
-            bot_uuid=event["bot_uuid"],
-            target_type=event["target_type"],
-            target_id=event["target_id"],
-            message_chain=message_chain
+        if binding is None:
+            # A dedicated worker's invocation carries no binding; the connection
+            # itself is the installation, so the task-local context is correct.
+            await self.send_message(
+                bot_uuid=payload["bot_uuid"],
+                target_type=payload["target_type"],
+                target_id=payload["target_id"],
+                message_chain=message_chain,
+            )
+            return
+
+        # Failures propagate so the scheduler keeps the event queued.
+        await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.SEND_MESSAGE,
+            payload,
+            timeout=180.0,
+            action_context=binding,
         )
 
     async def add_scheduled_event(
