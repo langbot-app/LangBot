@@ -801,6 +801,24 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         }
                     )
 
+    def _schedule_marketplace_upgrade(self) -> None:
+        """Start the operator-configured Marketplace upgrade once per process."""
+
+        if getattr(self, '_marketplace_upgrade_task', None) is not None:
+            return
+        from .marketplace_upgrade import MarketplaceUpgradeConfig, run_configured_sweep
+
+        if MarketplaceUpgradeConfig.from_instance_config(self.ap.instance_config.data) is None:
+            return
+
+        async def sweep() -> None:
+            try:
+                await run_configured_sweep(self.ap)
+            except Exception as exc:
+                self.ap.logger.error(f'Marketplace upgrade sweep failed: {exc!r}')
+
+        self._marketplace_upgrade_task = asyncio.create_task(sweep(), name='plugin-marketplace-upgrade')
+
     async def _prepare_connected_runtime(self) -> None:
         """Handshake follow-up: pin OSS compatibility, then replay authority."""
 
@@ -817,6 +835,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             await self.reconcile_projected_workspaces(
                 self._execution_from_binding(binding) for binding in projected_bindings
             )
+            self._schedule_marketplace_upgrade()
             return
 
         if self.runtime_profile == 'oss_dev':

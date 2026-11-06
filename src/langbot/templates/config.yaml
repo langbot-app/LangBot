@@ -327,6 +327,19 @@ plugin:
         # Cloud shared Runtime sets this to true and fails closed unless
         # delegated cgroup v2 controllers are available.
         require_hard_limits: false
+    marketplace_upgrade:
+        # Operator-only bulk upgrade for multi-Workspace (Cloud) deployments.
+        # After the shared Plugin Runtime connects, every installation of the
+        # listed Marketplace plugins (author/name) that is behind the latest
+        # Marketplace version is upgraded in each Workspace. With
+        # confirm_permissions, installations that were enabled are re-enabled
+        # by confirming the plugin's declared permissions as an operator.
+        plugins: []
+        concurrency: 2
+        start_delay_seconds: 120.0
+        confirm_permissions: true
+        # Optional canary: limit the sweep to these Workspace UUIDs.
+        workspaces: []
     binary_storage:
         # Max bytes for a single plugin binary storage value
         max_value_bytes: 10485760

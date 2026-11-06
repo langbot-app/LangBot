@@ -63,6 +63,15 @@ _RUNTIME_POLICY_DEFAULTS = {
             'dedicated': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
             'shared': dict.fromkeys(('max_cpus', 'max_memory_mb', 'max_pids', 'max_open_files', 'max_file_size_mb')),
         },
+        # Operator-only: upgrade the listed Marketplace plugins in every
+        # Workspace after the shared Runtime connects. Empty disables it.
+        'marketplace_upgrade': {
+            'plugins': [],
+            'concurrency': 2,
+            'start_delay_seconds': 120.0,
+            'confirm_permissions': True,
+            'workspaces': [],
+        },
     },
     'mcp': {'stdio': {'enabled': True}},
     'monitoring': {
