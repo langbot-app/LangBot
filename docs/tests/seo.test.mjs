@@ -32,55 +32,39 @@ test("the historical README_EN URL keeps its permanent canonical redirect", asyn
   assert.notEqual(redirects[0].permanent, false);
 });
 
-test("navbar is localized and links to locale-aware product pages", async () => {
+test("navbar keeps only the localized LangBot site link and GitHub", async () => {
   const docs = JSON.parse(await readFile(new URL("docs.json", repoRoot), "utf8"));
   const languages = Object.fromEntries(
     docs.navigation.languages.map((item) => [item.language, item.navbar]),
   );
   const expected = {
-    en: {
-      labels: ["Cloud", "Extensions", "Blog", "Roadmap"],
-      roadmap: "https://langbot.app/en/roadmap",
-    },
-    cn: {
-      labels: ["云服务", "扩展", "博客", "路线图"],
-      roadmap: "https://langbot.app/zh/roadmap",
-    },
-    jp: {
-      labels: ["クラウド", "拡張機能", "ブログ", "ロードマップ"],
-      roadmap: "https://langbot.app/ja/roadmap",
-    },
+    en: "https://langbot.app/en",
+    cn: "https://langbot.app/zh",
+    jp: "https://langbot.app/ja",
   };
 
-  for (const [language, navbar] of Object.entries(languages)) {
-    assert.ok(expected[language], `unexpected language: ${language}`);
-    assert.deepEqual(
-      navbar.links.map((link) => link.label),
-      expected[language].labels,
-    );
-    assert.deepEqual(
-      navbar.links.map((link) => link.icon),
-      ["cloud", "blocks", "newspaper", "map"],
-    );
-    assert.equal(navbar.links.at(-1).href, expected[language].roadmap);
+  for (const [language, navbar] of Object.entries({ ...languages, root: docs.navbar })) {
+    const home = language === "root" ? expected.en : expected[language];
+    assert.ok(home, `unexpected language: ${language}`);
+    assert.deepEqual(navbar.links, [{ label: "LangBot", href: home, icon: "langbot" }]);
     assert.equal(navbar.primary.type, "button");
     assert.equal(navbar.primary.label, "GitHub");
     assert.equal(navbar.primary.icon, "github");
-    assert.equal(
-      navbar.primary.href,
-      "https://github.com/langbot-app/LangBot",
-    );
+    assert.equal(navbar.primary.href, "https://github.com/langbot-app/LangBot");
   }
+});
 
-  assert.deepEqual(
-    docs.navbar.links.map((link) => link.label),
-    expected.en.labels,
-  );
-  assert.deepEqual(
-    docs.navbar.links.map((link) => link.icon),
-    ["cloud", "blocks", "newspaper", "map"],
-  );
-  assert.equal(docs.navbar.primary.icon, "github");
+test("docs theme follows the device and loads no third-party fonts", async () => {
+  const docs = JSON.parse(await readFile(new URL("docs.json", repoRoot), "utf8"));
+  assert.equal(docs.appearance.default, "system");
+  assert.notEqual(docs.appearance.strict, true);
+  assert.equal(docs.fonts, undefined, "docs.json fonts would load Google Fonts");
+  const css = await readFile(new URL("src/app.css", repoRoot), "utf8");
+  for (const family of ["@fontsource-variable/inter", "@fontsource-variable/source-serif-4", "@fontsource-variable/geist-mono"]) {
+    assert.ok(css.includes(`@import "${family}"`), `missing ${family}`);
+  }
+  const config = await readFile(new URL("press.config.tsx", repoRoot), "utf8");
+  assert.match(config, /themeSwitch:\s*\{\s*mode:\s*"light-dark-system"/);
 });
 
 test("custom robots policy is served from the Mintlify project root", async () => {

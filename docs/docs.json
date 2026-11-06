@@ -3,11 +3,10 @@
   "theme": "mint",
   "name": "LangBot",
   "colors": {
-    "primary": "#4692dd",
-    "light": "#4692dd",
-    "dark": "#4692dd"
+    "primary": "#2f6fcf",
+    "light": "#7aaef2",
+    "dark": "#2f6fcf"
   },
-  "fontFamily": "Noto Sans SC",
   "logo": {
     "light": "/logo/langbot-logo-0.5x.png",
     "dark": "/logo/langbot-logo-0.5x.png",
@@ -32,24 +31,9 @@
   "navbar": {
     "links": [
       {
-        "label": "Cloud",
-        "href": "https://space.langbot.app/cloud?language=en",
-        "icon": "cloud"
-      },
-      {
-        "label": "Extensions",
-        "href": "https://space.langbot.app/market?language=en",
-        "icon": "blocks"
-      },
-      {
-        "label": "Blog",
-        "href": "https://langbot.app/en/blog",
-        "icon": "newspaper"
-      },
-      {
-        "label": "Roadmap",
-        "href": "https://langbot.app/en/roadmap",
-        "icon": "map"
+        "label": "LangBot",
+        "href": "https://langbot.app/en",
+        "icon": "langbot"
       }
     ],
     "primary": {
@@ -809,24 +793,9 @@
         "navbar": {
           "links": [
             {
-              "label": "Cloud",
-              "href": "https://space.langbot.app/cloud?language=en",
-              "icon": "cloud"
-            },
-            {
-              "label": "Extensions",
-              "href": "https://space.langbot.app/market?language=en",
-              "icon": "blocks"
-            },
-            {
-              "label": "Blog",
-              "href": "https://langbot.app/en/blog",
-              "icon": "newspaper"
-            },
-            {
-              "label": "Roadmap",
-              "href": "https://langbot.app/en/roadmap",
-              "icon": "map"
+              "label": "LangBot",
+              "href": "https://langbot.app/en",
+              "icon": "langbot"
             }
           ],
           "primary": {
@@ -1145,24 +1114,9 @@
         "navbar": {
           "links": [
             {
-              "label": "云服务",
-              "href": "https://space.langbot.app/cloud?language=zh",
-              "icon": "cloud"
-            },
-            {
-              "label": "扩展",
-              "href": "https://space.langbot.app/market?language=zh",
-              "icon": "blocks"
-            },
-            {
-              "label": "博客",
-              "href": "https://langbot.app/zh/blog",
-              "icon": "newspaper"
-            },
-            {
-              "label": "路线图",
-              "href": "https://langbot.app/zh/roadmap",
-              "icon": "map"
+              "label": "LangBot",
+              "href": "https://langbot.app/zh",
+              "icon": "langbot"
             }
           ],
           "primary": {
@@ -1453,24 +1407,9 @@
         "navbar": {
           "links": [
             {
-              "label": "クラウド",
-              "href": "https://space.langbot.app/cloud?language=ja",
-              "icon": "cloud"
-            },
-            {
-              "label": "拡張機能",
-              "href": "https://space.langbot.app/market?language=ja",
-              "icon": "blocks"
-            },
-            {
-              "label": "ブログ",
-              "href": "https://langbot.app/ja/blog",
-              "icon": "newspaper"
-            },
-            {
-              "label": "ロードマップ",
-              "href": "https://langbot.app/ja/roadmap",
-              "icon": "map"
+              "label": "LangBot",
+              "href": "https://langbot.app/ja",
+              "icon": "langbot"
             }
           ],
           "primary": {
@@ -1483,10 +1422,11 @@
       }
     ]
   },
-  "fonts": {
-    "family": "Source Sans Pro"
-  },
   "metadata": {
     "google-site-verification": "LBNmWbXCAXdoqrbwg5Gep-xzQ7u7lJHSdpR49N3Ttgg"
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
   }
 }

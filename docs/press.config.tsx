@@ -9,7 +9,7 @@ import { update } from "fumadocs-core/source";
 import { uiTranslations } from "fumadocs-ui/i18n";
 import { defineDocs } from "fumadocs-mdx/macro";
 import { createOpenAPI, type OpenAPIServer } from "fumadocs-openapi/server";
-import { Blocks, Bot, Cloud, ExternalLink, Map as MapIcon, Newspaper } from "lucide-react";
+import { Bot, ExternalLink } from "lucide-react";
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { LocalePreferenceProvider } from "./src/locale-preference-provider";
@@ -211,12 +211,14 @@ function GithubMark(props: import("react").ComponentProps<"svg">) {
   </svg>;
 }
 
+function LangBotMark(props: import("react").ComponentProps<"img">) {
+  return <img src="/langbot-logo.png" alt="" {...props} className={`${props.className ?? ""} rounded-sm object-contain`} />;
+}
+
+// The sidebar keeps only the product site and the source repository.
 const QUICK_LINK_ICONS = {
-  blocks: Blocks,
-  cloud: Cloud,
   github: GithubMark,
-  map: MapIcon,
-  newspaper: Newspaper,
+  langbot: LangBotMark,
 } as const;
 
 type QuickLinkIcon = keyof typeof QUICK_LINK_ICONS;
@@ -363,6 +365,8 @@ export default defineConfig({
     const locale = LOCALES.includes(lang as (typeof LOCALES)[number]) ? lang as (typeof LOCALES)[number] : "en";
     return {
       links: localizedNavbar(locale),
+      // Offer Light / Dark / System; "system" (the default) follows the device.
+      themeSwitch: { mode: "light-dark-system" as const },
       nav: {
         title: docsBrand(),
         url: `/${locale}/insight/guide`,

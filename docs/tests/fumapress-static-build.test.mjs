@@ -257,26 +257,33 @@ function extractHeadLinks(html, rel) {
 
 test("rendered navbar and documentation tree use each locale's docs.json labels", async () => {
   const expected = {
-    en: ["Roadmap", "https://langbot.app/en/roadmap", "Guides", "Quick Start", "Installation", "Developers", "Articles", "API Reference"],
-    zh: ["路线图", "https://langbot.app/zh/roadmap", "指南", "快速开始", "安装部署", "开发者", "文章", "API 参考"],
-    ja: ["ロードマップ", "https://langbot.app/ja/roadmap", "ガイド", "クイックスタート", "インストール", "開発者", "記事", "API リファレンス"],
+    en: ["https://langbot.app/en", "Guides", "Quick Start", "Installation", "Developers", "Articles", "API Reference"],
+    zh: ["https://langbot.app/zh", "指南", "快速开始", "安装部署", "开发者", "文章", "API 参考"],
+    ja: ["https://langbot.app/ja", "ガイド", "クイックスタート", "インストール", "開発者", "記事", "API リファレンス"],
   };
-  const removedHomeLinks = {
-    en: "https://langbot.app/en",
-    zh: "https://langbot.app/zh",
-    ja: "https://langbot.app/ja",
-  };
+  const removedQuickLinks = [
+    "https://space.langbot.app/cloud?language=",
+    "https://space.langbot.app/market?language=",
+    "https://langbot.app/en/blog",
+    "https://langbot.app/zh/blog",
+    "https://langbot.app/ja/blog",
+    "https://langbot.app/en/roadmap",
+    "https://langbot.app/zh/roadmap",
+    "https://langbot.app/ja/roadmap",
+  ];
   for (const locale of locales) {
     const html = await readFile(path.join(publicRoot, locale, "insight/guide/index.html"), "utf8");
     for (const value of expected[locale]) assert.ok(html.includes(value), `${locale} navbar missing ${value}`);
+    assert.ok(html.includes("https://github.com/langbot-app/LangBot"), `${locale} navbar missing GitHub`);
     assert.match(html, /<img[^>]+src="\/docs\/langbot-logo\.png"[^>]*>/, `${locale} docs brand logo is not base-path scoped`);
     assert.doesNotMatch(html, /<img[^>]+src="\/langbot-logo\.png"[^>]*>/, `${locale} docs brand logo points outside /docs`);
-    assert.ok(!html.includes(`href="${removedHomeLinks[locale]}"`), `${locale} navbar still includes Home`);
+    for (const link of removedQuickLinks) assert.ok(!html.includes(link), `${locale} navbar still includes ${link}`);
+    assert.doesNotMatch(html, /fonts\.googleapis\.com/, `${locale} page loads Google Fonts`);
     for (const languageName of ["English", "简体中文", "日本語"]) {
       assert.ok(html.includes(languageName), `${locale} language selector missing ${languageName}`);
     }
     for (const other of locales.filter((item) => item !== locale)) {
-      assert.ok(!html.includes(expected[other][1]), `${locale} navbar includes ${other} roadmap link`);
+      assert.ok(!html.includes(`href="${expected[other][0]}"`), `${locale} navbar includes ${other} site link`);
     }
   }
 });
