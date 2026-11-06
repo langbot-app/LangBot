@@ -402,3 +402,10 @@ async def test_telegram_inbound_image_does_not_expose_token_url(monkeypatch):
     image = next(p for p in converted if isinstance(p, pm.Image))
     assert image.base64 and not image.url
     assert 'SECRET' not in image.model_dump_json()
+
+
+@pytest.mark.parametrize('name', OMNI_NAMES)
+def test_sources_superseded_by_eba_adapter_are_marked_legacy(name):
+    source = PLATFORM / 'sources' / f'{name}.yaml'
+    if source.exists():
+        assert yaml.safe_load(source.read_text(encoding='utf-8'))['spec'].get('legacy') is True
