@@ -482,7 +482,14 @@ class OAClientForLongerResponse:
                     if not self.loading_message:
                         response_xml = 'success'
 
-                    if self.user_msg_queue.get(from_user):
+                    # Passive mode treats a follow-up message from a user with a
+                    # pending generation as a request to fetch that reply, so it
+                    # is not dispatched again. Auto mode pushes replies through
+                    # the customer service API instead, so every message must be
+                    # dispatched: a message that never gets an AI reply (for
+                    # example one handled by a plugin with prevent_default)
+                    # would otherwise silence that user until the bot reloads.
+                    if self.customer_service is None and self.user_msg_queue.get(from_user):
                         return remember(response_xml)
                     else:
                         message_data = await self.get_message(xml_msg)
