@@ -321,6 +321,16 @@ class RuntimePipeline:
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
 
+    def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
+        """Make rule-based drops visible: log them and attribute them in monitoring."""
+        from .monitoring_helper import FILTER_STAGES, mark_stage_interrupt
+
+        if stage_name not in FILTER_STAGES:
+            return
+        session = f'{getattr(query.launcher_type, "value", query.launcher_type)}_{query.launcher_id}'
+        self.ap.logger.info(f'Query {query.query_id} ({session}) stopped by pipeline stage {stage_name}')
+        mark_stage_interrupt(query, stage_name)
+
     async def _execute_from_stage(
         self,
         stage_index: int,
@@ -367,6 +377,7 @@ class RuntimePipeline:
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                     self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                    self._mark_stage_interrupt(query, stage_container.inst_name)
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
@@ -387,6 +398,7 @@ class RuntimePipeline:
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
+                        self._mark_stage_interrupt(query, stage_container.inst_name)
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query

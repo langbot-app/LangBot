@@ -3066,6 +3066,15 @@ const viVN = {
       triggeredBy: 'Được kích hoạt bởi {{trigger}}',
       handledByPlugin: 'Được plugin {{plugin}} xử lý',
       handledByUnknownPlugin: 'Được một plugin không xác định xử lý',
+      filteredByStage: 'Bị pipeline chặn · {{stage}}',
+      filteredByUnknownStage: 'Bị pipeline chặn',
+      filterStages: {
+        BanSessionCheckStage: 'Kiểm soát truy cập',
+        GroupRespondRuleCheckStage: 'Quy tắc phản hồi nhóm',
+        PreContentFilterStage: 'Bộ lọc nội dung / quy tắc bỏ qua',
+        PostContentFilterStage: 'Bộ lọc nội dung đầu ra',
+        RequireRateLimitOccupancy: 'Giới hạn tần suất',
+      },
       cards: {
         latencyHint:
           'P50/P95: khoảng 50%/95% lượt chạy hoàn tất trong thời gian này. Chỉ tính Agent đã hoàn tất gần đây, không gồm thời gian xếp hàng.',

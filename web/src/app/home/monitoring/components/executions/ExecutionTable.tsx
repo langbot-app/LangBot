@@ -113,12 +113,41 @@ export function pluginHandlerName(
   return handledBy.slice('plugin:'.length);
 }
 
+// `filtered:<StageName>` when a pipeline rule (access control, group respond
+// rules, content filter, rate limit) dropped the message; null otherwise.
+export function filteredStageName(
+  handledBy: string | null | undefined,
+): string | null {
+  if (!handledBy || !handledBy.startsWith('filtered:')) return null;
+  return handledBy.slice('filtered:'.length);
+}
+
+function FilteredStageBadge({ stage }: { stage: string }) {
+  const { t } = useTranslation();
+  const label = t(`monitoring.execution.filterStages.${stage}`, {
+    defaultValue: stage,
+  });
+  return (
+    <Badge
+      variant="outline"
+      title={stage}
+      className="whitespace-nowrap border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-300"
+    >
+      {stage
+        ? t('monitoring.execution.filteredByStage', { stage: label })
+        : t('monitoring.execution.filteredByUnknownStage')}
+    </Badge>
+  );
+}
+
 export function PluginHandledBadge({
   handledBy,
 }: {
   handledBy: string | null | undefined;
 }) {
   const { t } = useTranslation();
+  const stage = filteredStageName(handledBy);
+  if (stage !== null) return <FilteredStageBadge stage={stage} />;
   const plugin = pluginHandlerName(handledBy);
   if (plugin === null) return null;
   return (

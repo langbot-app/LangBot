@@ -3022,6 +3022,15 @@ const thTH = {
       triggeredBy: 'เรียกใช้โดย {{trigger}}',
       handledByPlugin: 'จัดการโดยปลั๊กอิน {{plugin}}',
       handledByUnknownPlugin: 'จัดการโดยปลั๊กอินที่ระบุไม่ได้',
+      filteredByStage: 'ถูกหยุดโดยไปป์ไลน์ · {{stage}}',
+      filteredByUnknownStage: 'ถูกหยุดโดยไปป์ไลน์',
+      filterStages: {
+        BanSessionCheckStage: 'การควบคุมการเข้าถึง',
+        GroupRespondRuleCheckStage: 'กฎการตอบกลับในกลุ่ม',
+        PreContentFilterStage: 'ตัวกรองเนื้อหา / กฎการเพิกเฉย',
+        PostContentFilterStage: 'ตัวกรองเนื้อหาขาออก',
+        RequireRateLimitOccupancy: 'การจำกัดอัตรา',
+      },
       cards: {
         latencyHint:
           'P50/P95: ประมาณ 50%/95% ทำงานเสร็จภายในเวลานี้ ใช้เฉพาะ Agent ที่เสร็จล่าสุด ไม่รวมเวลารอคิว',

@@ -3098,6 +3098,15 @@ const jaJP = {
       triggeredBy: '{{trigger}} により開始',
       handledByPlugin: 'プラグインが処理 · {{plugin}}',
       handledByUnknownPlugin: 'プラグインが処理（特定不可）',
+      filteredByStage: 'パイプラインで停止 · {{stage}}',
+      filteredByUnknownStage: 'パイプラインで停止',
+      filterStages: {
+        BanSessionCheckStage: 'アクセス制御',
+        GroupRespondRuleCheckStage: 'グループ応答ルール',
+        PreContentFilterStage: 'コンテンツフィルター / 無視ルール',
+        PostContentFilterStage: '出力コンテンツフィルター',
+        RequireRateLimitOccupancy: 'レート制限',
+      },
       cards: {
         latencyHint:
           'P50/P95：実行の約 50%/95% がこの時間内に完了します。最近の完了済み Agent 実行が対象で、キュー待ちは除きます。',

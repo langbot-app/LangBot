@@ -33,7 +33,7 @@ export interface ExecutionRow {
   pipeline_id: string | null;
   pipeline_name: string | null;
   runner_id: string | null;
-  /** `runner:<id>` or `plugin:<author>/<name>`; null for legacy rows. */
+  /** `runner:<id>`, `plugin:<author>/<name>` or `filtered:<stage>`; null for legacy rows. */
   handled_by?: string | null;
   conversation_id: string | null;
   session_id: string | null;

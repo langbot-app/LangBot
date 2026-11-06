@@ -3139,6 +3139,15 @@ const esES = {
       triggeredBy: 'Activada por {{trigger}}',
       handledByPlugin: 'Gestionado por el plugin {{plugin}}',
       handledByUnknownPlugin: 'Gestionado por un plugin no identificado',
+      filteredByStage: 'Detenido por el pipeline · {{stage}}',
+      filteredByUnknownStage: 'Detenido por el pipeline',
+      filterStages: {
+        BanSessionCheckStage: 'Control de acceso',
+        GroupRespondRuleCheckStage: 'Reglas de respuesta en grupos',
+        PreContentFilterStage: 'Filtro de contenido / reglas de ignorar',
+        PostContentFilterStage: 'Filtro de contenido de salida',
+        RequireRateLimitOccupancy: 'Límite de frecuencia',
+      },
       cards: {
         latencyHint:
           'P50/P95: cerca del 50%/95% termina dentro de este tiempo. Solo ejecuciones recientes de Agent completadas, sin espera en cola.',
