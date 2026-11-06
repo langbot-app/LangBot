@@ -239,3 +239,29 @@ async def test_workspace_allowlist_limits_the_sweep():
         summary = await mu.MarketplaceUpgradeSweep(ap, config(ap)).run()
     assert summary['workspaces'] == 1
     assert ap.plugin_connector.upgraded == [('ws-2', 'langbot-team/LocalAgent')]
+
+
+async def test_whole_sweep_is_retried_when_startup_is_saturated(monkeypatch):
+    monkeypatch.setattr(mu, 'RUN_RETRY_DELAYS_SECONDS', (0.0, 0.0))
+    ap = make_ap({'ws-1': [setting('ws-1')]})
+    ap.instance_config.data['plugin']['marketplace_upgrade']['start_delay_seconds'] = 0
+    fetch = AsyncMock(
+        side_effect=[RuntimeError('Blocking executor capacity reached'), {'langbot-team/LocalAgent': '0.2.8'}]
+    )
+    with (
+        patch.object(mu, 'fetch_latest_versions', fetch),
+        patch('langbot.pkg.api.application.plugin_permissions.auto_confirm_declared', AsyncMock()),
+    ):
+        summary = await mu.run_configured_sweep(ap)
+    assert fetch.await_count == 2
+    assert summary['upgraded'] == 1
+
+
+async def test_sweep_gives_up_after_all_retries(monkeypatch):
+    monkeypatch.setattr(mu, 'RUN_RETRY_DELAYS_SECONDS', (0.0,))
+    ap = make_ap({'ws-1': [setting('ws-1')]})
+    ap.instance_config.data['plugin']['marketplace_upgrade']['start_delay_seconds'] = 0
+    fetch = AsyncMock(side_effect=RuntimeError('dns'))
+    with patch.object(mu, 'fetch_latest_versions', fetch), pytest.raises(RuntimeError):
+        await mu.run_configured_sweep(ap)
+    assert fetch.await_count == 2

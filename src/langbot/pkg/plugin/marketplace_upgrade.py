@@ -31,6 +31,7 @@ if typing.TYPE_CHECKING:
     from ..core.app import Application
 
 OPERATOR_SESSION_ID = 'operator:marketplace-upgrade'
+RUN_RETRY_DELAYS_SECONDS: tuple[float, ...] = (60.0, 120.0, 300.0, 600.0)
 _METADATA_MAX_BYTES = 1024 * 1024
 
 
@@ -225,4 +226,13 @@ async def run_configured_sweep(ap: Application) -> dict[str, int] | None:
         return None
     if config.start_delay_seconds:
         await asyncio.sleep(config.start_delay_seconds)
-    return await MarketplaceUpgradeSweep(ap, config).run()
+    # A large instance may still be saturated (DNS, blocking executor) when
+    # the sweep starts; the sweep is idempotent, so retry it as a whole.
+    for attempt, delay in enumerate((*RUN_RETRY_DELAYS_SECONDS, None), start=1):
+        try:
+            return await MarketplaceUpgradeSweep(ap, config).run()
+        except Exception as exc:
+            if delay is None:
+                raise
+            ap.logger.warning(f'Marketplace upgrade attempt {attempt} failed: {exc!r}; retrying in {delay:.0f}s')
+            await asyncio.sleep(delay)
