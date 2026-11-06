@@ -14,7 +14,12 @@ from sqlalchemy.orm import sessionmaker
 from ...persistence.datetime_utils import as_naive_utc
 from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
-from ...utils.execution_lease import host_execution_lease
+from ...utils.execution_lease import (
+    INTERRUPTED_REASON,
+    OWNER_ID as EXECUTION_OWNER_ID,
+    host_execution_lease,
+    register_execution_scope,
+)
 
 from ...entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 
@@ -127,6 +132,9 @@ class RunLedgerStore:
         """Create a run if it does not already exist."""
         status = _validate_run_status(status)
         now = _utc_now()
+        leased = status == 'running' and queue_name is None
+        if leased:
+            await register_execution_scope(self.engine, workspace_id)
         async with self._session_factory() as session:
             existing = await self._get_run_row(session, run_id)
             if existing is not None:
@@ -142,7 +150,7 @@ class RunLedgerStore:
                 thread_id=thread_id,
                 workspace_id=workspace_id,
                 bot_id=bot_id,
-                **(host_execution_lease() if status == 'running' and queue_name is None else {}),
+                **(host_execution_lease() if leased else {}),
                 status=status,
                 queue_name=queue_name,
                 priority=priority,
@@ -422,8 +430,19 @@ class RunLedgerStore:
             if run is None:
                 return None
 
-            if run.status in TERMINAL_STATUSES and run.status != status:
+            # A Host whose lease lapsed (for example a stalled event loop) may still
+            # finish the run it owns; its real outcome replaces the interruption.
+            reclaim_interrupted = (
+                run.status == 'failed'
+                and run.status_reason == INTERRUPTED_REASON
+                and run.execution_owner_id == EXECUTION_OWNER_ID
+                and status in TERMINAL_STATUSES
+            )
+            if run.status in TERMINAL_STATUSES and run.status != status and not reclaim_interrupted:
                 raise ValueError(f'Cannot transition terminal run {run_id} from {run.status} to {status}')
+            if reclaim_interrupted:
+                run.finished_at = None
+                run.status_reason = None
 
             run.status = status
             if status_reason is not None:
