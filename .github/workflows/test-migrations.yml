@@ -89,4 +89,5 @@ jobs:
           tests/integration/persistence/test_pgvector_postgres.py
           tests/integration/persistence/test_release_migration_postgres.py
           tests/integration/persistence/test_plugin_identity_migration.py
+          tests/integration/persistence/test_execution_lease_scopes_postgres.py
           -q --tb=short

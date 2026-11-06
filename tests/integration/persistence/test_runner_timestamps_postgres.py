@@ -23,6 +23,7 @@ from langbot.pkg.agent.runner.run_journal import AgentRunJournal
 from langbot.pkg.entity.persistence.agent_run import AgentRun, AgentRunEvent, AgentRuntime
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.event_log import EventLog
+from langbot.pkg.entity.persistence.execution_lease import ExecutionLeaseScope
 from langbot.pkg.entity.persistence.transcript import Transcript
 
 pytestmark = [
@@ -34,7 +35,14 @@ pytestmark = [
 
 UTC = dt.timezone.utc
 NOW = dt.datetime(2026, 9, 22, 4, 5, 6, 123000, tzinfo=UTC)
-TABLES = [AgentRun.__table__, AgentRunEvent.__table__, AgentRuntime.__table__, EventLog.__table__, Transcript.__table__]
+TABLES = [
+    AgentRun.__table__,
+    AgentRunEvent.__table__,
+    AgentRuntime.__table__,
+    EventLog.__table__,
+    Transcript.__table__,
+    ExecutionLeaseScope.__table__,
+]
 
 
 def _published_schema(connection):
@@ -43,6 +51,7 @@ def _published_schema(connection):
             '58846a8d7a81_add_event_log_and_transcript_tables',
             '8d3a1f2c4b6e_add_agent_run_ledger',
             '0036_execution_host_leases',
+            '0046_execution_lease_scopes',
         ):
             importlib.import_module(f'langbot.pkg.persistence.alembic.versions.{revision}').upgrade()
 

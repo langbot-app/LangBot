@@ -633,6 +633,12 @@ class MonitoringService(ExecutionDetailsMixin):
     ) -> str:
         """Record a message"""
         workspace_uuid = self._require_write_context(context)
+        if status == 'pending':
+            from ....utils.execution_lease import register_execution_scope
+
+            # Register before this Workspace transaction writes anything: the scope
+            # uses its own short transaction (SQLite allows one writer at a time).
+            await register_execution_scope(self.ap.persistence_mgr.get_db_engine(), workspace_uuid)
         from ....telemetry import trace
 
         trace_state = trace.current()
