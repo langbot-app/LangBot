@@ -71,7 +71,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.21",
+    "langbot-plugin==0.7.22",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -228,9 +228,6 @@ unfixable = []
 
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
-
-[tool.uv.sources]
-langbot-plugin = { git = "https://github.com/langbot-app/langbot-plugin-sdk", rev = "186d962b47054c3339031268f2b705d633abc298" }
 
 [tool.ruff.format]
 # Like Black, use double quotes for strings.
