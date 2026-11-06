@@ -60,6 +60,15 @@ def make_ap(per_ws, plugins=('langbot-team/LocalAgent',), confirm=True):
     return ap
 
 
+@pytest.fixture(autouse=True)
+def no_retry_delay(monkeypatch):
+    monkeypatch.setattr(mu.MarketplaceUpgradeSweep, 'RETRY_DELAYS_SECONDS', (0.0, 0.0))
+
+
+def pending_unless_snapshot(ap, s):
+    return {'pending_confirmation': s.permission_snapshot is None}
+
+
 def config(ap):
     return mu.MarketplaceUpgradeConfig.from_instance_config(ap.instance_config.data)
 
@@ -89,7 +98,7 @@ def test_operator_context_is_owner_support_admin():
     assert ctx.workspace_uuid == 'w' and ctx.placement_generation == 3
 
 
-async def test_upgrades_outdated_and_confirms_previously_enabled():
+async def test_upgrades_outdated_and_confirms_pending():
     ap = make_ap(
         {
             'ws-1': [setting('ws-1'), setting('ws-1', name='Other', author='someone')],
@@ -109,23 +118,66 @@ async def test_upgrades_outdated_and_confirms_previously_enabled():
 
     assert ap.plugin_connector.upgraded == [('ws-1', 'langbot-team/LocalAgent')]
     assert summary['upgraded'] == 1 and summary['up_to_date'] == 1 and summary['failed'] == 0
-    # ws-1 was disabled by the upgrade and ws-2's current setting is reported
-    # disabled by the fake, so both previously enabled installs are confirmed
-    # in their own Workspace context.
+    # Both current settings are reported disabled and pending by the fake, so
+    # each is confirmed in its own Workspace context.
     assert summary['confirmed'] == 2
     assert sorted(call.args[1].workspace_uuid for call in confirm.await_args_list) == WS
 
 
 async def test_tenant_disabled_install_is_upgraded_but_not_enabled():
     ap = make_ap({'ws-1': [setting('ws-1', enabled=False)]})
+    switched_off = setting('ws-1', enabled=False)
+    switched_off.permission_snapshot = {'workspace_operations': [], 'capabilities': []}
+    ap.plugin_connector.after_upgrade[('ws-1', 'LocalAgent')] = switched_off
     confirm = AsyncMock()
     with (
         patch.object(mu, 'fetch_latest_versions', AsyncMock(return_value={'langbot-team/LocalAgent': '0.2.8'})),
         patch('langbot.pkg.api.application.plugin_permissions.auto_confirm_declared', confirm),
+        patch('langbot.pkg.api.application.plugin_permissions.permission_status', pending_unless_snapshot),
     ):
         summary = await mu.MarketplaceUpgradeSweep(ap, config(ap)).run()
     assert summary['upgraded'] == 1
     confirm.assert_not_awaited()
+
+
+async def test_up_to_date_install_left_pending_is_confirmed_on_rerun():
+    # A previous run upgraded the install but its confirmation failed, leaving
+    # it disabled and pending; the next run confirms it.
+    ap = make_ap({'ws-1': [setting('ws-1', version='0.2.8', enabled=False)]})
+    confirm = AsyncMock()
+    with (
+        patch.object(mu, 'fetch_latest_versions', AsyncMock(return_value={'langbot-team/LocalAgent': '0.2.8'})),
+        patch('langbot.pkg.api.application.plugin_permissions.auto_confirm_declared', confirm),
+        patch('langbot.pkg.api.application.plugin_permissions.permission_status', pending_unless_snapshot),
+    ):
+        summary = await mu.MarketplaceUpgradeSweep(ap, config(ap)).run()
+    assert ap.plugin_connector.upgraded == []
+    assert summary['up_to_date'] == 1 and summary['confirmed'] == 1
+    confirm.assert_awaited_once()
+
+
+async def test_transient_failures_are_retried():
+    ap = make_ap({'ws-1': [setting('ws-1')]})
+    original = ap.plugin_connector.upgrade_plugin
+    attempts = []
+
+    async def flaky(author, name):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise RuntimeError('Blocking executor capacity reached')
+        await original(author, name)
+
+    ap.plugin_connector.upgrade_plugin = flaky
+    confirm = AsyncMock(side_effect=[RuntimeError('dns'), None])
+    with (
+        patch.object(mu, 'fetch_latest_versions', AsyncMock(return_value={'langbot-team/LocalAgent': '0.2.8'})),
+        patch('langbot.pkg.api.application.plugin_permissions.auto_confirm_declared', confirm),
+        patch('langbot.pkg.api.application.plugin_permissions.permission_status', pending_unless_snapshot),
+    ):
+        summary = await mu.MarketplaceUpgradeSweep(ap, config(ap)).run()
+    assert len(attempts) == 3
+    assert confirm.await_count == 2
+    assert summary == {'workspaces': 1, 'upgraded': 1, 'confirmed': 1, 'up_to_date': 0, 'failed': 0}
 
 
 async def test_confirmation_can_be_turned_off():

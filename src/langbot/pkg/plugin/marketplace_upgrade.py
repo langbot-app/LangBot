@@ -9,8 +9,9 @@ same ``upgrade_plugin`` path as the WebUI.
 Upgrading to a version without a permission declaration leaves the plugin
 disabled until a member confirms. With ``confirm_permissions`` enabled, the
 sweep confirms the declared permissions as an operator (owner role, the same
-principal shape as a support-admin session) for installations that were
-enabled before the sweep. Installations the tenant disabled stay disabled.
+principal shape as a support-admin session) for every listed installation
+that is pending confirmation. Installations the tenant switched off keep
+their confirmed snapshot and stay disabled. Transient failures are retried.
 """
 
 from __future__ import annotations
@@ -104,6 +105,8 @@ async def fetch_latest_versions(space_url: str, plugin_ids: typing.Iterable[str]
 
 
 class MarketplaceUpgradeSweep:
+    RETRY_DELAYS_SECONDS: tuple[float, ...] = (5.0, 20.0)
+
     def __init__(self, ap: Application, config: MarketplaceUpgradeConfig) -> None:
         self.ap = ap
         self.config = config
@@ -161,28 +164,47 @@ class MarketplaceUpgradeSweep:
             self.summary['failed'] += 1
             self.ap.logger.warning(f'Marketplace upgrade: Workspace {context.workspace_uuid} skipped: {exc!r}')
 
+    async def _retry(self, operation: typing.Callable[[], typing.Awaitable[typing.Any]]) -> typing.Any:
+        """Retry transient failures (DNS, blocking-executor saturation, timeouts)."""
+
+        for delay in (*self.RETRY_DELAYS_SECONDS, None):
+            try:
+                return await operation()
+            except Exception:
+                if delay is None:
+                    raise
+                await asyncio.sleep(delay)
+
     async def _upgrade_one(self, context: RequestContext, setting: typing.Any, plugin_id: str, version: str) -> None:
         from ..api.application.plugin_permissions import auto_confirm_declared, permission_status
 
         connector = self.ap.plugin_connector
         author, name = plugin_id.split('/', 1)
-        was_enabled = bool(setting.enabled)
         installed = (setting.install_info or {}).get('plugin_version')
         try:
             if installed == version:
                 self.summary['up_to_date'] += 1
             else:
-                await connector.upgrade_plugin(author, name)
+                await self._retry(lambda: connector.upgrade_plugin(author, name))
                 self.summary['upgraded'] += 1
                 self.ap.logger.info(
                     f'Marketplace upgrade: {context.workspace_uuid} {plugin_id} {installed} -> {version}'
                 )
-            if not (self.config.confirm_permissions and was_enabled):
+            if not self.config.confirm_permissions:
                 return
             _, current = await connector._setting_for_plugin(author, name)
-            if current.enabled and not permission_status(self.ap, current)['pending_confirmation']:
+            # Only installations waiting for permission confirmation are
+            # confirmed (and thereby enabled). An installation the tenant
+            # switched off keeps its confirmed snapshot and stays disabled.
+            if not permission_status(self.ap, current)['pending_confirmation']:
                 return
-            await auto_confirm_declared(self.ap, context, current)
+
+            async def confirm():
+                _, fresh = await connector._setting_for_plugin(author, name)
+                if permission_status(self.ap, fresh)['pending_confirmation']:
+                    await auto_confirm_declared(self.ap, context, fresh)
+
+            await self._retry(confirm)
             self.summary['confirmed'] += 1
         except Exception as exc:
             self.summary['failed'] += 1
