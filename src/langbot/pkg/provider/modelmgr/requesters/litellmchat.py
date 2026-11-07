@@ -598,9 +598,14 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             return minimax.reasoning_levels(normalized_name)
 
         if family == 'deepseek' and normalized_name.startswith('deepseek-'):
-            if normalized_name.startswith('deepseek-v4-'):
-                return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
+            if normalized_name.startswith('deepseek-v4-') or normalized_name in ('deepseek-flash', 'deepseek-chat'):
+                # DeepSeek declares effort levels low/high/max via /models, and the
+                # same backend model answers both `deepseek-flash` and `deepseek-v4-*`
+                # aliases, so they must share one table; `xhigh` is not declared.
+                return ['provider_default', 'disabled', 'low', 'high', 'max']
             if 'reasoner' in normalized_name or '-r1' in normalized_name:
+                # Always-on reasoning model: no `disabled`, per the contract that
+                # always-on models never offer it.
                 return ['provider_default']
             return ['provider_default', 'disabled', 'enabled']
 
