@@ -489,7 +489,7 @@ class BoxStdioSessionRuntime:
     def _shared_workspace_host_path(self) -> str:
         workspace_host_path = getattr(self.ap.box_service, 'workspace_host_path', None)
         if callable(workspace_host_path):
-            shared_workspace = workspace_host_path(self.owner.execution_context)
+            shared_workspace = workspace_host_path(self.owner.execution_context, self.owner._build_box_session_id())
         else:
             # Compatibility for older BoxService embedders used by plugins and tests.
             shared_workspace = getattr(self.ap.box_service, 'default_workspace', None)

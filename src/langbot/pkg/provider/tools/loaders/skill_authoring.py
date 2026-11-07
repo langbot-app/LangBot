@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import typing
 
 import langbot_plugin.api.entities.builtin.resource.tool as resource_tool
@@ -317,35 +316,35 @@ class SkillToolLoader(loader.ToolLoader):
         if not sandbox_path:
             raise ValueError('path is required')
 
-        # Resolve sandbox path to host path
-        execution_context = self._execution_context(query)
-        host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
-
-        # Get or create skill service
+        if (sandbox_path != '/workspace' and not sandbox_path.startswith('/workspace/')) or any(
+            part in {'', '.', '..'} for part in sandbox_path.split('/')[1:]
+        ):
+            raise ValueError('path escapes the workspace boundary')
         skill_service = getattr(self.ap, 'skill_service', None)
         if skill_service is None:
             raise ValueError('Skill service not available')
+        execution_context = self._execution_context(query)
+        async with self.ap.box_service.export_skill_draft(query, sandbox_path) as host_path:
+            # Scan and register the skill
+            scanned = await skill_service.scan_directory_async(execution_context, host_path)
 
-        # Scan and register the skill
-        scanned = await skill_service.scan_directory_async(execution_context, host_path)
+            # Override name if provided
+            skill_name = str(parameters.get('name') or scanned['name']).strip()
+            if not skill_name:
+                raise ValueError('skill name is required')
 
-        # Override name if provided
-        skill_name = str(parameters.get('name') or scanned['name']).strip()
-        if not skill_name:
-            raise ValueError('skill name is required')
-
-        base_revision = str(parameters.get('base_revision', '') or '').strip() or None
-        published = await skill_service.import_skill_directory(
-            execution_context,
-            host_path,
-            {
-                'name': skill_name,
-                'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
-                'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
-                'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
-            },
-            base_revision=base_revision,
-        )
+            base_revision = str(parameters.get('base_revision', '') or '').strip() or None
+            published = await skill_service.import_skill_directory(
+                execution_context,
+                host_path,
+                {
+                    'name': skill_name,
+                    'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
+                    'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
+                    'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
+                },
+                base_revision=base_revision,
+            )
         skill_loader.register_created_skill_visibility(query, skill_name)
 
         return {
@@ -355,42 +354,6 @@ class SkillToolLoader(loader.ToolLoader):
             'revision': published.get('revision'),
             'skill': published,
         }
-
-    def _resolve_workspace_directory(
-        self,
-        sandbox_path: str,
-        execution_context: ExecutionContext,
-    ) -> str:
-        """Resolve sandbox path to host filesystem path."""
-        box_service = getattr(self.ap, 'box_service', None)
-        tenant_workspace = getattr(box_service, '_tenant_workspace', None)
-        workspace_root = (
-            tenant_workspace(execution_context)
-            if callable(tenant_workspace)
-            else getattr(box_service, 'default_workspace', None)
-        )
-        if not workspace_root:
-            raise ValueError('No default workspace configured')
-
-        normalized_path = str(sandbox_path).strip() or '/workspace'
-        if not normalized_path.startswith('/workspace'):
-            raise ValueError('path must be under /workspace')
-
-        relative = normalized_path[len('/workspace') :].lstrip('/')
-        host_root = os.path.realpath(workspace_root)
-        host_path = os.path.realpath(os.path.join(host_root, relative))
-
-        # Security check: ensure path doesn't escape workspace
-        if not (host_path == host_root or host_path.startswith(host_root + os.sep)):
-            raise ValueError('path escapes the workspace boundary')
-
-        if getattr(box_service, 'available', False):
-            return host_path
-
-        if not os.path.isdir(host_path):
-            raise ValueError(f'Directory does not exist: {sandbox_path}')
-
-        return host_path
 
     def _build_list_skills_tool(self) -> resource_tool.LLMTool:
         return resource_tool.LLMTool(
@@ -462,6 +425,7 @@ class SkillToolLoader(loader.ToolLoader):
             human_desc='Register a skill from sandbox',
             description=(
                 "Publish a skill draft from a directory under /workspace into LangBot's skill store. "
+                'Box drafts are private working copies; edits are never published automatically. '
                 'Use this after creating or preparing the draft with exec/read/write/edit. '
                 'The directory must contain a SKILL.md file. '
                 'Updating an existing Skill requires its current base_revision; conflicting updates are rejected. '

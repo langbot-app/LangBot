@@ -580,10 +580,25 @@ class BoxService:
         namespace = box_namespace(self._action_context(context))
         return os.path.join(self.default_workspace, 'tenants', namespace)
 
-    def workspace_host_path(self, context: TenantContext) -> str | None:
+    def _box_workspace(self, context: TenantContext, session_id: str) -> str | None:
+        root = self._tenant_workspace(context)
+        if root is None or self._cloud_managed:
+            return root
+        if not session_id:
+            raise BoxValidationError('Box workspace requires a session identity')
+        return os.path.join(root, 'boxes', hashlib.sha256(session_id.encode()).hexdigest())
+
+    def _query_workspace(self, query) -> str | None:
+        context = self._query_execution_context(query)
+        binding = getattr(query, '_box_binding', None)
+        return (
+            self._box_workspace(context, binding.session_id) if binding is not None else self._tenant_workspace(context)
+        )
+
+    def workspace_host_path(self, context: TenantContext, session_id: str | None = None) -> str | None:
         """Return the host path mounted as /workspace for one execution context."""
 
-        return self._tenant_workspace(context)
+        return self._box_workspace(context, session_id) if session_id else self._tenant_workspace(context)
 
     async def execute_spec_payload(
         self,
@@ -623,6 +638,13 @@ class BoxService:
             raise BoxValidationError('session_id must match the bound Box')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
+        if binding.backend_session_id:
+            current = await self.client.get_session(
+                binding.session_id,
+                action_context=self._action_context(execution_context),
+            )
+            if current.get('backend_session_id') != binding.backend_session_id:
+                raise BoxValidationError('Bound Box was replaced; acquire and bind a new Box before continuing')
         spec_payload = self._managed_policy_payload(
             execution_context,
             spec_payload,
@@ -630,7 +652,7 @@ class BoxService:
         )
         await self._require_validated_workspace_sandbox(execution_context)
         if spec_payload.get('host_path') in (None, ''):
-            tenant_workspace = self._tenant_workspace(execution_context)
+            tenant_workspace = self._box_workspace(execution_context, str(spec_payload.get('session_id') or ''))
             if tenant_workspace is not None:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
@@ -726,7 +748,7 @@ class BoxService:
         payload = self._managed_policy_payload(execution_context, spec_payload)
         await self._require_validated_workspace_sandbox(execution_context)
         if payload.get('host_path') in (None, ''):
-            tenant_workspace = self._tenant_workspace(execution_context)
+            tenant_workspace = self._box_workspace(execution_context, str(payload.get('session_id') or ''))
             if tenant_workspace is not None:
                 payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
@@ -766,9 +788,6 @@ class BoxService:
     _ATTACHMENT_MAX_BYTES = 10 * _MIB
     _ATTACHMENT_MAX_FILES = 20
     _ATTACHMENT_MAX_TOTAL_BYTES = 50 * _MIB
-    # Conservative cap for the exec FALLBACK path only (ARG_MAX / stdout
-    # truncation). The host-filesystem path has no such limit.
-    _EXEC_FALLBACK_MAX_BYTES = 256 * 1024
 
     def _attachment_query_key(self, query: pipeline_query.Query) -> str:
         binding = getattr(query, '_box_binding', None)
@@ -793,11 +812,14 @@ class BoxService:
         to the sandbox (and vice-versa). It is ``None`` / not a local dir for
         E2B and remote runtimes, where we must fall back to the exec channel.
         """
+        binding = getattr(query, '_box_binding', None)
+        if binding is not None and not binding.host_filesystem_accessible:
+            return None
         # secure_fs relies on POSIX openat/O_NOFOLLOW. On Windows use the
         # sandbox execution channel rather than misclassifying EACCES as a link.
         if os.open not in os.supports_dir_fd or not hasattr(os, 'O_NOFOLLOW'):
             return None
-        root = self._tenant_workspace(self._query_execution_context(query))
+        root = self._query_workspace(query)
         if not root or not os.path.isdir(root) or os.path.islink(root):
             return None
         return os.path.join(root, subdir, self._attachment_query_key(query))
@@ -838,6 +860,14 @@ class BoxService:
                                 (tenant_entry.path, self.OUTBOX_SUBDIR),
                             ]
                         )
+                        boxes_root = os.path.join(tenant_entry.path, 'boxes')
+                        if os.path.isdir(boxes_root) and not os.path.islink(boxes_root):
+                            with os.scandir(boxes_root) as boxes:
+                                for box in boxes:
+                                    if box.is_dir(follow_symlinks=False):
+                                        candidates.extend(
+                                            [(box.path, self.INBOX_SUBDIR), (box.path, self.OUTBOX_SUBDIR)]
+                                        )
             survivors: list[str] = []
             for candidate_root, subdir in candidates:
                 path = os.path.join(candidate_root, subdir)
@@ -998,63 +1028,129 @@ class BoxService:
             written.append(f'{target_mount_dir}/{name}')
         return written
 
-    async def _write_files_via_exec(
-        self,
-        query: pipeline_query.Query,
-        target_dir: str,
-        files: list[tuple[str, bytes]],
-    ) -> list[str]:
-        """Fallback: ship files into the sandbox over the exec channel.
+    async def _write_files_via_exec(self, query, target_dir, files) -> list[str]:
+        """Explicitly import complete files without a writable Host mirror."""
+        import base64
+        from .file_transfer import CHUNK_BYTES, import_chunk_script, remove_import_script
 
-        Only used for backends without host-filesystem access (E2B / remote).
-        Each file is base64-decoded inside the sandbox. Files larger than the
-        conservative exec cap are skipped (ARG_MAX / stdout limits).
-        """
-        import base64 as _b64
-        import json as _json
-
-        manifest = []
+        written = []
         for name, data in files:
-            if len(data) > self._EXEC_FALLBACK_MAX_BYTES:
-                self.ap.logger.warning(
-                    f'Attachment "{name}" ({len(data)} bytes) exceeds the exec-channel '
-                    f'fallback limit ({self._EXEC_FALLBACK_MAX_BYTES} bytes); skipping. '
-                    f'Configure a host-shared workspace to transfer large files.'
-                )
-                continue
-            manifest.append({'name': name, 'b64': _b64.b64encode(data).decode('ascii')})
-        if not manifest:
-            return []
+            secure_fs._component(name)
+            staging = '.langbot-import-' + secrets.token_hex(16)
+            digest = hashlib.sha256(data).hexdigest()
+            try:
+                for offset in range(0, max(1, len(data)), CHUNK_BYTES):
+                    chunk = data[offset : offset + CHUNK_BYTES]
+                    script = import_chunk_script(
+                        target_dir,
+                        staging,
+                        name,
+                        base64.b64encode(chunk).decode('ascii'),
+                        offset,
+                        len(data),
+                        digest,
+                    )
+                    result = await self._execute_file_transfer(query, script)
+                    reply = json.loads(result.stdout)
+                    if reply != {'size': offset + len(chunk), 'complete': offset + len(chunk) == len(data)}:
+                        raise BoxValidationError('Invalid sandbox import acknowledgement')
+            except BaseException:
+                try:
+                    await self._execute_file_transfer(query, remove_import_script(target_dir, staging))
+                except Exception:
+                    self.ap.logger.warning('Could not clean up an incomplete sandbox import')
+                raise
+            written.append(f'{target_dir}/{name}')
+        return written
 
-        manifest_b64 = _b64.b64encode(_json.dumps(manifest).encode('utf-8')).decode('ascii')
-        script = (
-            'import base64, json, os, shutil\n'
-            f'target = {target_dir!r}\n'
-            'shutil.rmtree(target, ignore_errors=True)\n'
-            'os.makedirs(target, exist_ok=True)\n'
-            f'manifest = json.loads(base64.b64decode({manifest_b64!r}))\n'
-            'written = []\n'
-            'for item in manifest:\n'
-            "    p = os.path.join(target, item['name'])\n"
-            "    with open(p, 'wb') as f:\n"
-            "        f.write(base64.b64decode(item['b64']))\n"
-            '    written.append(p)\n'
-            'print(json.dumps(written))\n'
-        )
-        result = await self.execute_tool(
-            {'command': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 120},
+    async def _execute_file_transfer(self, query, script):
+        result = await self._execute_spec_payload_result(
+            {'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY", 'timeout_sec': 120},
             query,
         )
-        if not result.get('ok'):
-            self.ap.logger.warning(
-                f'Failed to write inbound attachments into sandbox via exec: '
-                f'query_id={query.query_id} stderr={result.get("stderr", "")[:200]}'
-            )
-            return []
+        if not result.ok:
+            raise BoxValidationError(f'Sandbox file transfer failed: {(result.stderr or "")[-4000:]}')
+        clipped = transport_export_error(result.stdout)
+        if clipped is not None:
+            raise clipped
+        return result
+
+    async def _read_transfer_snapshot(self, query, script, max_bytes):
+        import base64
+        from .file_transfer import CHUNK_BYTES, capture_script, read_chunk_script
+
+        path = '/tmp/langbot-transfer-' + secrets.token_hex(16)
         try:
-            return _json.loads(str(result.get('stdout') or '').strip().splitlines()[-1])
-        except Exception:
-            return []
+            result = await self._execute_file_transfer(query, capture_script(script, path, max_bytes))
+            metadata = json.loads(result.stdout)
+            size = metadata.get('size')
+            digest = metadata.get('sha256')
+            if type(size) is not int or not 0 <= size <= max_bytes or not isinstance(digest, str):
+                raise BoxValidationError('Invalid sandbox snapshot metadata')
+            body = bytearray()
+            for offset in range(0, size, CHUNK_BYTES):
+                result = await self._execute_file_transfer(query, read_chunk_script(path, offset))
+                chunk = base64.b64decode(result.stdout.strip(), validate=True)
+                if len(chunk) != min(CHUNK_BYTES, size - offset):
+                    raise BoxValidationError('Incomplete sandbox snapshot')
+                body.extend(chunk)
+            if hashlib.sha256(body).hexdigest() != digest:
+                raise BoxValidationError('Sandbox snapshot changed during transfer')
+            return json.loads(body)
+        finally:
+            try:
+                await self._execute_file_transfer(query, f'import os\nos.unlink({path!r})\n')
+            except Exception:
+                self.ap.logger.warning('Could not clean up a sandbox transfer temporary file')
+
+    @contextlib.asynccontextmanager
+    async def export_skill_draft(self, query, sandbox_path):
+        """Fetch only the selected draft into private Host staging for publication."""
+        import base64
+        import tempfile
+        from pathlib import Path
+        from .file_transfer import directory_snapshot_script
+        from .runner import binding_for
+
+        binding_for(query)
+        if sandbox_path != '/workspace' and not sandbox_path.startswith('/workspace/'):
+            raise BoxValidationError('Skill draft path must be under /workspace')
+        entries = await self._read_transfer_snapshot(
+            query,
+            directory_snapshot_script(sandbox_path),
+            360 * _MIB,
+        )
+        if not isinstance(entries, list) or len(entries) > 2048:
+            raise BoxValidationError('Invalid Skill draft snapshot')
+        root = self.ap.skill_repository.import_staging_root(self._query_execution_context(query))
+        if not root or os.path.islink(root):
+            raise BoxValidationError('Skill import staging is unavailable')
+        os.makedirs(root, mode=0o700, exist_ok=True)
+        staging = tempfile.TemporaryDirectory(prefix='.skill-import-', dir=root)
+        package_root = Path(staging.name) / secure_fs._component(os.path.basename(sandbox_path))
+        package_root.mkdir()
+        try:
+            total = 0
+            seen = set()
+            for entry in entries:
+                name = entry['name']
+                if not isinstance(name, str) or name in seen:
+                    raise BoxValidationError('Invalid or duplicate Skill draft file')
+                parts = name.split('/')
+                for part in parts:
+                    if secure_fs._component(part) != part:
+                        raise BoxValidationError('Invalid Skill draft file name')
+                data = base64.b64decode(entry['b64'], validate=True)
+                total += len(data)
+                if len(data) > 10 * _MIB or total > 256 * _MIB:
+                    raise BoxValidationError('Skill draft exceeds transfer limits')
+                seen.add(name)
+                path = package_root.joinpath(*parts)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            yield str(package_root)
+        finally:
+            staging.cleanup()
 
     async def materialize_inbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
         """Persist message-chain attachments into the sandbox inbox.
@@ -1507,7 +1603,7 @@ class BoxService:
         )
         await self._require_validated_workspace_sandbox(execution_context)
         if spec_payload.get('host_path') in (None, ''):
-            tenant_workspace = self._tenant_workspace(execution_context)
+            tenant_workspace = self._box_workspace(execution_context, str(spec_payload.get('session_id') or ''))
             if tenant_workspace is not None:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:

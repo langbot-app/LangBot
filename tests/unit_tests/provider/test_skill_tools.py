@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
+
 import os
 import tempfile
 from types import SimpleNamespace
@@ -17,6 +19,11 @@ _CONTEXT = ExecutionContext(
     placement_generation=1,
     query_uuid='query-a',
 )
+
+
+@asynccontextmanager
+async def _exported_draft(path):
+    yield path
 
 
 def _make_query(*, variables=None, **kwargs):
@@ -405,6 +412,7 @@ class TestSkillToolLoader:
             ap = _make_ap()
             ap.box_service = SimpleNamespace(
                 default_workspace=tmpdir,
+                export_skill_draft=lambda query, path: _exported_draft(os.path.realpath(repo_dir)),
                 available=True,
                 require_workspace_sandbox=AsyncMock(return_value=_CONTEXT),
             )
@@ -459,6 +467,7 @@ class TestSkillToolLoader:
             ap = _make_ap()
             ap.box_service = SimpleNamespace(
                 default_workspace=tmpdir,
+                export_skill_draft=lambda query, path: _exported_draft(draft),
                 available=True,
                 require_workspace_sandbox=AsyncMock(return_value=_CONTEXT),
             )
