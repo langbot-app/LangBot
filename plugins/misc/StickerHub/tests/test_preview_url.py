@@ -57,7 +57,8 @@ def test_page_never_reads_a_nested_data_wrapper():
     code = re.sub(r"//[^\n]*|/\*.*?\*/", "", body, flags=re.S)
     assert "item.data" not in code
     assert "res.data" not in code
-    assert "item && item.url" in code
+    # the item comes straight from /list, so url hangs off it directly
+    assert "cached.url" in code
 
 
 def test_page_does_not_guard_on_the_never_set_error_property():
@@ -82,3 +83,15 @@ def test_empty_url_is_reported_instead_of_silently_copying():
     assert "copyNoUrl" in body
     copy = body[body.index("async function copyText"): body.index("async function loadStats")]
     assert "if (!text)" in copy
+
+
+def test_copy_is_synchronous_and_never_refetches_the_item():
+    """/list already holds the URL, so copy must not await a round trip."""
+    body = script()
+    copy = body[body.index("function copyCard"): body.index("async function loadStats")]
+    assert "cache[name]" in copy
+    assert "await" not in copy, "an awaited hop would also eat the user-gesture window"
+    assert "langbot.api" not in copy
+    handler = body[body.index("grid').addEventListener"): body.index("langbot.onReady")]
+    assert "copyCard(name)" in handler
+    assert "langbot.api('/item'" not in handler
