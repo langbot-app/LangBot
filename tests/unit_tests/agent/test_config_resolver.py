@@ -205,3 +205,25 @@ class TestValidateCurrentConfig:
     def test_get_expire_time_default(self):
         expire_time = RunnerConfigResolver.get_expire_time({})
         assert expire_time == 0
+
+
+def _pipeline_config(runner_id):
+    return {'ai': {'runner': {'id': runner_id}, 'runner_config': {runner_id: {}}}}
+
+
+def test_validate_pipeline_config_rejects_legacy_runner_name_with_target_hint():
+    with pytest.raises(
+        ValueError, match=r"pre-4\.11 runner name 'local-agent'.*plugin:langbot-team/LocalAgent/default"
+    ):
+        RunnerConfigResolver.validate_pipeline_config(_pipeline_config('local-agent'))
+
+
+@pytest.mark.parametrize('runner_id', ['my-runner', 'plugin:a/b', 'plugin:a/b/c/d'])
+def test_validate_pipeline_config_rejects_non_plugin_runner_ids(runner_id):
+    with pytest.raises(ValueError, match='must be a plugin Runner ID'):
+        RunnerConfigResolver.validate_pipeline_config(_pipeline_config(runner_id))
+
+
+def test_validate_pipeline_config_accepts_plugin_runner_id():
+    config = _pipeline_config('plugin:langbot-team/LocalAgent/default')
+    assert RunnerConfigResolver.validate_pipeline_config(config) is config
