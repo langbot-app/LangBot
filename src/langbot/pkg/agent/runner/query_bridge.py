@@ -36,8 +36,17 @@ class QueryRunBridge:
         """Build an event-first run plan from a Pipeline Query."""
         runner_id = RunnerConfigResolver.resolve_runner_id(query.pipeline_config)
         if not runner_id:
+            if self._has_legacy_runner_config(query.pipeline_config):
+                raise RunnerNotFoundError(
+                    'no runner configured; legacy (pre-4.11) pipelines must be migrated with the pipeline '
+                    'migration assistant'
+                )
+            raise RunnerNotFoundError("no runner selected; choose a Runner in this pipeline's AI settings")
+        legacy_target = RunnerConfigResolver.legacy_runner_target(runner_id)
+        if legacy_target:
             raise RunnerNotFoundError(
-                'no runner configured; legacy (pre-4.11) pipelines must be migrated with the pipeline migration assistant'
+                f'{runner_id} is a pre-4.11 runner name; migrate this pipeline with the pipeline migration '
+                f'assistant or select {legacy_target}'
             )
 
         event = QueryEntryAdapter.query_to_event(query)
@@ -52,6 +61,21 @@ class QueryRunBridge:
             bound_plugins=bound_plugins,
             adapter_context=adapter_context,
         )
+
+    @staticmethod
+    def _has_legacy_runner_config(pipeline_config: typing.Any) -> bool:
+        """Whether a Pipeline still carries a pre-4.11 runner selection or section."""
+        from ...pipeline.legacy_config_migration import _TARGETS
+
+        ai_config = pipeline_config.get('ai') if isinstance(pipeline_config, dict) else None
+        if not isinstance(ai_config, dict):
+            return False
+        runner = ai_config.get('runner')
+        if isinstance(runner, str) and runner:
+            return True
+        if isinstance(runner, dict) and runner.get('runner'):
+            return True
+        return any(name in ai_config for name in _TARGETS)
 
     def resolve_runner_id_for_telemetry(self, query: pipeline_query.Query) -> str | None:
         """Resolve runner ID for telemetry/logging without full execution."""
