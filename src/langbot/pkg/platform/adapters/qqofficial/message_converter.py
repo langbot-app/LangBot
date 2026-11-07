@@ -5,6 +5,7 @@ import html
 import re
 
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
+from langbot.pkg.platform.qqofficial_faces import parse_qqofficial_face_components
 from langbot.pkg.utils import image
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
@@ -118,7 +119,7 @@ class QQOfficialMessageConverter(abstract_platform_adapter.AbstractMessageConver
                 components.append(platform_message.Image(url=event.attachments))
 
         if event.content:
-            components.append(platform_message.Plain(text=event.content))
+            components.extend(parse_qqofficial_face_components(event.content))
 
         if len(components) == 1 or (len(components) == 2 and isinstance(components[1], platform_message.At)):
             components.append(platform_message.Unknown(text=f'[unsupported qqofficial event: {event.t or "unknown"}]'))

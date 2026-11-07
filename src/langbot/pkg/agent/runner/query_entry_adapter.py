@@ -462,6 +462,10 @@ class QueryEntryAdapter:
                     if component_text:
                         text_parts.append(component_text)
                         contents.append({'type': 'text', 'text': component_text})
+                elif isinstance(component, platform_message.Face):
+                    face_text = str(component)
+                    text_parts.append(face_text)
+                    contents.append({'type': 'text', 'text': face_text})
                 elif isinstance(component, platform_message.Image):
                     image_base64 = getattr(component, 'base64', None)
                     image_url = getattr(component, 'url', None)

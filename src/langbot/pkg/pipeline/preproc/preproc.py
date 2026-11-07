@@ -352,6 +352,10 @@ class PreProcessor(stage.PipelineStage):
             if isinstance(me, platform_message.Plain):
                 content_list.append(provider_message.ContentElement.from_text(me.text))
                 plain_text += me.text
+            elif isinstance(me, platform_message.Face):
+                face_text = str(me)
+                content_list.append(provider_message.ContentElement.from_text(face_text))
+                plain_text += face_text
             elif isinstance(me, platform_message.Image):
                 if keep_image_inputs:
                     if me.base64:
@@ -376,6 +380,8 @@ class PreProcessor(stage.PipelineStage):
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
+                    elif isinstance(msg, platform_message.Face):
+                        content_list.append(provider_message.ContentElement.from_text(str(msg)))
                     elif isinstance(msg, platform_message.Image):
                         if keep_image_inputs:
                             if msg.base64:
