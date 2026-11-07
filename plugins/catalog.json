@@ -266,6 +266,13 @@
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/ScheNotify"
   },
   {
+    "id": "langbot-team/StickerHub",
+    "version": "0.1.7",
+    "category": "misc",
+    "path": "misc/StickerHub",
+    "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/StickerHub"
+  },
+  {
     "id": "langbot-team/SysStatPlugin",
     "version": "0.2.6",
     "category": "misc",

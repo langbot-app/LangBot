@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: hub
+  label:
+    en_US: StickerHub
+    zh_Hans: 表情包图床
+    ja_JP: StickerHub
+    vi_VN: StickerHub
+    th_TH: StickerHub
+    es_ES: StickerHub
+  description:
+    en_US: Manage and fetch stored sticker images.
+    zh_Hans: 管理并获取已存储的表情包图片。
+spec:
+  path: index.html
+execution:
+  python:
+    path: hub.py
+    attr: HubPage
