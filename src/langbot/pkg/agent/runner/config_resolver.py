@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import typing
 
+from .id import parse_runner_id
+
 
 HOST_SECURITY_BOOLEAN_FIELDS = (
     'enable-all-tools',
@@ -114,6 +116,7 @@ class RunnerConfigResolver:
             raise ValueError("Pipeline config field 'ai.runner.id' must be a string")
         if not runner_id:
             return config
+        cls.validate_runner_id(runner_id)
 
         runner_configs = ai_config.get('runner_config')
         if not isinstance(runner_configs, dict):
@@ -148,6 +151,31 @@ class RunnerConfigResolver:
         runner_configs = typing.cast(dict[str, typing.Any], validated['runner_config'])
         runner_config = runner_configs.get(runner_id, {}) if runner_id else {}
         return validated, runner_id, typing.cast(dict[str, typing.Any], runner_config)
+
+    @staticmethod
+    def legacy_runner_target(runner_id: str) -> str | None:
+        """The plugin Runner ID that replaced a pre-4.11 built-in runner name."""
+        from ...pipeline.legacy_config_migration import _TARGETS
+
+        target = _TARGETS.get(runner_id)
+        return f'plugin:langbot-team/{target[0]}/default' if target else None
+
+    @classmethod
+    def validate_runner_id(cls, runner_id: str) -> None:
+        """Reject a selected Runner ID that no Runner can ever have."""
+        try:
+            parse_runner_id(runner_id)
+        except ValueError as exc:
+            target = cls.legacy_runner_target(runner_id)
+            if target:
+                raise ValueError(
+                    f"Pipeline config field 'ai.runner.id' uses the pre-4.11 runner name {runner_id!r}; "
+                    f'select {target!r} instead or migrate the pipeline with the pipeline migration assistant'
+                ) from exc
+            raise ValueError(
+                f"Pipeline config field 'ai.runner.id' must be a plugin Runner ID "
+                f"('plugin:<author>/<plugin>/<runner>'), got {runner_id!r}"
+            ) from exc
 
     @staticmethod
     def resolve_runner_id(pipeline_config: dict[str, typing.Any]) -> str | None:
