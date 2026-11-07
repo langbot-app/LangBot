@@ -120,5 +120,6 @@
   "Only a member can confirm plugin permissions": "Подтвердить разрешения плагина может только участник",
   "The plugin is already installed; a member must upgrade or reinstall it": "Плагин уже установлен; обновить или переустановить его должен участник",
   "Insufficient balance or quota for this model. Please top up and try again.": "Недостаточно средств или квоты для этой модели. Пополните баланс и повторите попытку.",
-  "No API key is configured for this model provider": "Для этого поставщика моделей не настроен ключ API"
+  "No API key is configured for this model provider": "Для этого поставщика моделей не настроен ключ API",
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Этот элемент всё ещё используется в привязках событий следующих ботов: {bots}. Сначала измените эти привязки, затем удалите его."
 }

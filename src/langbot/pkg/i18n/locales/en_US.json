@@ -120,5 +120,6 @@
   "Only a member can confirm plugin permissions": "Only a member can confirm plugin permissions",
   "The plugin is already installed; a member must upgrade or reinstall it": "The plugin is already installed; a member must upgrade or reinstall it",
   "Insufficient balance or quota for this model. Please top up and try again.": "Insufficient balance or quota for this model. Please top up and try again.",
-  "No API key is configured for this model provider": "No API key is configured for this model provider"
+  "No API key is configured for this model provider": "No API key is configured for this model provider",
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it."
 }

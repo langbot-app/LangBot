@@ -120,5 +120,6 @@
   "Only a member can confirm plugin permissions": "Solo un miembro puede confirmar los permisos del plugin",
   "The plugin is already installed; a member must upgrade or reinstall it": "El plugin ya está instalado; un miembro debe actualizarlo o reinstalarlo",
   "Insufficient balance or quota for this model. Please top up and try again.": "Saldo o cuota insuficiente para este modelo. Recarga e inténtalo de nuevo.",
-  "No API key is configured for this model provider": "No hay ninguna clave de API configurada para este proveedor de modelos"
+  "No API key is configured for this model provider": "No hay ninguna clave de API configurada para este proveedor de modelos",
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Las vinculaciones de eventos de estos bots aún usan este elemento: {bots}. Cambie primero esas vinculaciones y luego elimínelo."
 }

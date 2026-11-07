@@ -54,3 +54,7 @@ You can [customize any variable through plugins](/en/plugin/dev/apis/common.html
 ## Other Configurations
 
 Please refer to the descriptions in the configuration form.
+
+## Deleting a Pipeline
+
+A pipeline that a bot's event binding still points to cannot be deleted; the error lists the bots that use it. Point those bindings at another pipeline or Agent first, then delete it. The same applies to Agents.
