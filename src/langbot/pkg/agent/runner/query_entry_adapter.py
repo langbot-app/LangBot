@@ -493,6 +493,11 @@ class QueryEntryAdapter:
         seen_keys: dict[tuple[str, str, str], set[str]] = {}
 
         def add_attachment(attachment: dict[str, typing.Any]) -> None:
+            # Some providers expose an image_base64 content element without bytes,
+            # while the message chain contains the usable resource reference.
+            # Never send an empty placeholder to a Runner as an attachment.
+            if not any(attachment.get(field) for field in ('id', 'url', 'content')):
+                return
             key = cls._attachment_dedupe_key(attachment)
             if key is not None:
                 source = str(attachment.get('source') or '')
