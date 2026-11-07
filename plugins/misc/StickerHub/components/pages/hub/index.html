@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StickerHub</title>
+  <style>
+    * { box-sizing: border-box; }
+    /* Match the host (shadcn): 10px radius, muted secondary, focus ring. */
+    :root {
+      --radius: 0.625rem;
+      --r-sm: 6px;
+      --r-md: 8px;
+      --muted: color-mix(in srgb, var(--langbot-text, #0a0a0a) 7%, transparent);
+      --muted-hover: color-mix(in srgb, var(--langbot-text, #0a0a0a) 11%, transparent);
+      --ring: color-mix(in srgb, var(--langbot-accent, #2563eb) 40%, transparent);
+    }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--langbot-bg, #f7f8fa);
+      color: var(--langbot-text, #0a0a0a);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      font-size: 14px;
+      overflow: hidden;
+    }
+    .app { display: flex; flex-direction: column; height: 100vh; min-width: 0; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px; border-bottom: 1px solid var(--langbot-border, #e4e4e7);
+      background: var(--langbot-bg-card, #ffffff);
+    }
+    header h1 { margin: 0; font-size: 16px; font-weight: 600; }
+    header .meta { color: var(--langbot-text-muted, #71717a); font-size: 12px; }
+    main { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 20px 24px; }
+    .toolbar {
+      display: grid; gap: 12px 14px; align-items: end;
+      grid-template-columns: minmax(140px, 1fr) minmax(180px, 1.4fr) auto auto;
+      padding: 16px; background: var(--langbot-bg-card, #ffffff);
+      border: 1px solid var(--langbot-border, #e4e4e7); border-radius: 12px; margin-bottom: 18px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .field > span { font-size: 12px; font-weight: 500; color: var(--langbot-text-muted, #71717a); }
+    .toolbar .actions { display: flex; gap: 8px; align-items: center; }
+    @media (max-width: 780px) {
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .toolbar .actions { grid-column: 1 / -1; justify-content: flex-end; }
+    }
+    input, button, select {
+      font: inherit; padding: 7px 10px; border-radius: 8px;
+      border: 1px solid var(--langbot-border, #e4e4e7); background: var(--langbot-bg-card, #ffffff);
+      color: var(--langbot-text, #0a0a0a); transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    .field input { width: 100%; }
+    .field input:focus { border-color: var(--langbot-accent, #2563eb); box-shadow: 0 0 0 3px var(--ring); }
+    .file-btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 8px;
+      border: 1px dashed var(--langbot-border, #e4e4e7); background: transparent;
+      color: var(--langbot-text, #0a0a0a); cursor: pointer; white-space: nowrap; font-size: 13px;
+    }
+    .file-btn:hover { border-color: var(--langbot-accent, #2563eb); }
+    .file-btn.has-file { border-style: solid; border-color: var(--langbot-accent, #2563eb); }
+    .file-btn input[type=file] { display: none; }
+    .file-btn .picked { max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    button {
+      cursor: pointer; border: 1px solid transparent; border-radius: var(--r-md);
+      background: var(--langbot-accent, #2563eb); color: #fff; font-weight: 500;
+      transition: background .15s, border-color .15s, box-shadow .15s;
+    }
+    button:hover:not(:disabled) { background: color-mix(in srgb, var(--langbot-accent, #2563eb) 88%, #000); }
+    button:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
+    button.ghost { background: var(--muted); color: var(--langbot-text, #0a0a0a); border-color: var(--langbot-border, #e4e4e7); }
+    button.ghost:hover:not(:disabled) { background: var(--muted-hover); }
+    /* Copy is the primary card action: accent outline, filled on hover. Delete
+       stays a quiet ghost that only reddens on hover, so the ranks read. */
+    button.ghost.copy {
+      background: transparent; color: var(--langbot-accent, #2563eb);
+      border-color: color-mix(in srgb, var(--langbot-accent, #2563eb) 45%, transparent);
+    }
+    button.ghost.copy:hover:not(:disabled) {
+      background: var(--langbot-accent, #2563eb); color: #fff;
+      border-color: var(--langbot-accent, #2563eb);
+    }
+    /* A destructive action reads as secondary until hovered, then turns red. */
+    button.ghost.danger { background: var(--muted); color: var(--langbot-text, #0a0a0a); }
+    button.ghost.danger:hover:not(:disabled) { background: #dc2626; color: #fff; border-color: #dc2626; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+    .card {
+      background: var(--langbot-bg-card, #ffffff); border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px;
+      transition: border-color .15s;
+    }
+    /* Neutral checkerboard keeps transparent PNGs visible on both themes. */
+    .card .thumb {
+      position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: 8px; overflow: hidden;
+      background-color: color-mix(in srgb, currentColor 8%, transparent);
+      background-image:
+        linear-gradient(45deg, color-mix(in srgb, currentColor 10%, transparent) 25%, transparent 25%),
+        linear-gradient(-45deg, color-mix(in srgb, currentColor 10%, transparent) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, color-mix(in srgb, currentColor 10%, transparent) 75%),
+        linear-gradient(-45deg, transparent 75%, color-mix(in srgb, currentColor 10%, transparent) 75%);
+      background-size: 14px 14px;
+      background-position: 0 0, 0 7px, 7px -7px, -7px 0;
+    }
+    /* contain keeps the shape; a 4:3 box beats a fixed 120px for sharp thumbs. */
+    .card .thumb img {
+      width: 100%; height: 100%; object-fit: contain; display: block;
+    }
+    .card .thumb.failed { display: flex; align-items: center; justify-content: center; }
+    .card .thumb .failed-icon {
+      display: none; flex-direction: column; align-items: center; gap: 4px;
+      color: var(--langbot-text-muted, #71717a); font-size: 11px;
+    }
+    .card .thumb.failed .failed-icon { display: flex; }
+    .card .thumb.failed img { display: none; }
+    .card:hover { border-color: var(--langbot-accent, #2563eb); }
+    .card .name { font-size: 12px; word-break: break-all; color: var(--langbot-text-muted, #71717a); }
+    .card .row { display: flex; gap: 6px; }
+    .card .row button { flex: 1; padding: 5px 6px; font-size: 12px; }
+    .empty, .loading {
+      color: var(--langbot-text-muted, #71717a); padding: 56px 24px; text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 13px;
+    }
+    .empty svg, .loading svg { opacity: .45; }
+    .empty b { font-size: 14px; color: var(--langbot-text, #0a0a0a); font-weight: 600; }
+    .toast {
+      position: fixed; right: 20px; bottom: 20px; padding: 10px 14px; border-radius: 8px;
+      /* Inverted from the page surface so it reads as an overlay on both themes. */
+      background: var(--langbot-text, #0a0a0a); color: var(--langbot-bg, #ffffff);
+      border: 1px solid var(--langbot-border, #27272a); opacity: 0; transition: opacity .2s; pointer-events: none;
+      max-width: min(360px, calc(100% - 40px)); font-weight: 500;
+      box-shadow: 0 10px 24px -10px rgba(0, 0, 0, .5);
+    }
+    .toast.show { opacity: .98; }
+    /* In-page sheet: modal calls are ignored inside the host's sandboxed frame. */
+    .sheet-backdrop {
+      position: fixed; inset: 0; background: color-mix(in srgb, #000 45%, transparent);
+      display: none; align-items: center; justify-content: center; padding: 24px; z-index: 20;
+    }
+    .sheet-backdrop.open { display: flex; }
+    .sheet {
+      width: min(460px, 100%); background: var(--langbot-bg-card, #ffffff);
+      color: var(--langbot-text, #0a0a0a); border: 1px solid var(--langbot-border, #e4e4e7);
+      border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px;
+      box-shadow: 0 18px 40px -12px rgba(0, 0, 0, .45);
+    }
+    .sheet h2 { margin: 0; font-size: 15px; font-weight: 600; }
+    .sheet p { margin: 0; font-size: 13px; color: var(--langbot-text-muted, #71717a); }
+    .sheet textarea {
+      width: 100%; min-height: 74px; resize: vertical; font-size: 12px;
+      padding: 8px 10px; border-radius: 8px; border: 1px solid var(--langbot-border, #e4e4e7);
+      background: var(--langbot-bg, #ffffff); color: var(--langbot-text, #0a0a0a);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all;
+    }
+    .sheet textarea:focus { border-color: var(--langbot-accent, #2563eb); box-shadow: 0 0 0 3px var(--ring); }
+    .sheet .row { display: flex; gap: 8px; justify-content: flex-end; }
+    .footer {
+      margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--langbot-border, #e4e4e7);
+      color: var(--langbot-text-muted, #71717a); font-size: 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .footer button[hidden] { display: none; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1 data-i18n="title">StickerHub</h1>
+      <span class="meta" id="stats">…</span>
+    </header>
+
+    <main>
+      <div class="toolbar">
+        <label class="field">
+          <span data-i18n="name">昵称</span>
+          <input type="text" id="name" data-i18n="namePlaceholder" data-i18n-attr="placeholder" placeholder="例如 猫猫" />
+        </label>
+        <label class="field">
+          <span data-i18n="url">图片地址</span>
+          <input type="text" id="url" data-i18n="urlPlaceholder" data-i18n-attr="placeholder" placeholder="https://… 或选择本地文件" />
+        </label>
+        <label class="field">
+          <span data-i18n="file">本地文件</span>
+          <label class="file-btn" id="fileBtn" for="file">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span class="picked" id="picked" data-i18n="chooseFile">选择文件</span>
+            <input type="file" id="file" accept="image/*" />
+          </label>
+        </label>
+        <div class="actions">
+          <button id="add" data-i18n="add">添加</button>
+          <button class="ghost" id="refresh" data-i18n="refresh">刷新</button>
+          <button class="ghost danger" id="clear" data-i18n="clear">清空</button>
+        </div>
+      </div>
+
+      <div id="status" class="loading" data-i18n="loading">加载中…</div>
+      <div class="grid" id="grid"></div>
+      <div class="footer">
+        <span id="total"></span>
+        <button class="ghost" id="more" data-i18n="more" hidden>加载更多</button>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="sheet-backdrop" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+    <div class="sheet">
+      <h2 id="sheetTitle"></h2>
+      <p id="sheetHint"></p>
+      <textarea id="sheetValue" readonly spellcheck="false"></textarea>
+      <div class="row">
+        <button class="ghost" id="sheetCancel" data-i18n="cancel">取消</button>
+        <button id="sheetConfirm" data-i18n="copy">复制地址</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    var LIMIT = 60;
+    // Slice at 256 KB so one page-api request body never grows with the image
+    var CHUNK = 256 * 1024;
+    var offset = 0;
+    var total = 0;
+    var cache = {};
+    var sheetResolve = null;
+
+    function T(key, fb, vars) {
+      var txt = langbot.t(key, fb || key);
+      if (vars) Object.keys(vars).forEach(function (k) {
+        txt = txt.replace('{' + k + '}', vars[k]);
+      });
+      return txt;
+    }
+
+    function toast(message) {
+      var el = document.getElementById('toast');
+      el.textContent = message;
+      el.classList.add('show');
+      setTimeout(function () { el.classList.remove('show'); }, 1800);
+    }
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // The page runs in a blob: iframe with sandbox="allow-scripts allow-forms",
+    // so its own origin is opaque: location.origin is "null" and a relative
+    // src neither loads nor survives a paste. The host origin is reachable
+    // through ancestorOrigins, which is what asset URLs are built against.
+    function hostOrigin() {
+      try {
+        var ancestors = location.ancestorOrigins;
+        if (ancestors && ancestors.length && ancestors[0]) return ancestors[0];
+      } catch (_) { /* older browsers */ }
+      var origin = String(location.origin || '');
+      return origin === 'null' ? '' : origin;
+    }
+
+    function absoluteUrl(url) {
+      var value = String(url || '').trim();
+      if (!value) return '';
+      if (/^[a-z][a-z0-9+.-]*:/i.test(value)) return value;
+      var base = hostOrigin();
+      if (!base) return value;
+      return base + (value.charAt(0) === '/' ? value : '/' + value);
+    }
+
+    // langbot.api() resolves the already-unwrapped payload and rejects on
+    // failure, so a response is only ever the data itself: never read
+    // res.data / res.error off it.
+    function failText(err) {
+      return T('operationFailed', '操作失败') + (err && err.message ? '：' + err.message : '');
+    }
+
+    // ---------- in-page sheet, does not depend on allow-modals ----------
+    function openSheet(title, hint, value, confirmLabel) {
+      var backdrop = document.getElementById('sheet');
+      document.getElementById('sheetTitle').textContent = title;
+      var hintEl = document.getElementById('sheetHint');
+      hintEl.textContent = hint || '';
+      hintEl.hidden = !hint;
+      var field = document.getElementById('sheetValue');
+      field.value = value || '';
+      field.hidden = !value;
+      document.getElementById('sheetConfirm').textContent = confirmLabel;
+      backdrop.classList.add('open');
+      if (value) { field.focus(); field.select(); } else { document.getElementById('sheetConfirm').focus(); }
+      return new Promise(function (resolve) { sheetResolve = resolve; });
+    }
+
+    function closeSheet(result) {
+      document.getElementById('sheet').classList.remove('open');
+      var resolve = sheetResolve;
+      sheetResolve = null;
+      if (resolve) resolve(Boolean(result));
+    }
+
+    document.getElementById('sheetCancel').addEventListener('click', function () { closeSheet(false); });
+    document.getElementById('sheetConfirm').addEventListener('click', function () { closeSheet(true); });
+    document.getElementById('sheet').addEventListener('click', function (event) {
+      if (event.target === event.currentTarget) closeSheet(false);
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && document.getElementById('sheet').classList.contains('open')) {
+        closeSheet(false);
+      }
+    });
+
+    // ---------- copy: clipboard -> execCommand -> sheet, three tiers ----------
+    function legacyCopy(value) {
+      if (!document.body || !document.execCommand) return false;
+      var ta = document.createElement('textarea');
+      ta.value = value;
+      ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, value.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch (_) { ok = false; }
+      ta.remove();
+      return ok;
+    }
+
+    async function copyText(value, label) {
+      var text = String(value || '');
+      if (!text) {
+        // writeText('') resolves without throwing, so an empty value used to
+        // look exactly like success.
+        toast(T('copyNoUrl', '没有拿到图片地址，无法复制'));
+        return;
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast(T('copied', '{name} 已复制', { name: label }));
+          return;
+        } catch (_) { /* opaque origin rejects with NotAllowedError: fall through */ }
+      }
+      if (legacyCopy(text)) {
+        toast(T('copied', '{name} 已复制', { name: label }));
+        return;
+      }
+      // Last tier: put the value on screen already selected for Ctrl+C.
+      // Not awaited: the sheet's promise only settles when it is dismissed.
+      openSheet(T('copyPrompt', '复制下面的地址'), '', text, T('copy', '复制地址'));
+      toast(T('copyFallback', '已选中地址，请按 Ctrl+C'));
+    }
+
+    async function loadStats() {
+      var data;
+      try {
+        data = await langbot.api('/stats', null, 'GET');
+      } catch (err) {
+        toast(failText(err));
+        return;
+      }
+      data = data || {};
+      var used = data.display_bytes || fallbackBytes(data.bytes || 0);
+      var capBytes = data.max_sticker_bytes;
+      var cap = (typeof capBytes === 'number' && capBytes > 0)
+        ? (capBytes / 1024 / 1024).toFixed(0) + ' MB'
+        : '—';
+      document.getElementById('stats').textContent =
+        T('stats', '已用 {used} · 单图上限 {cap}', { used: used, cap: cap });
+    }
+
+    function fallbackBytes(value) {
+      var size = Number(value) || 0;
+      if (size < 1024) return Math.round(size) + ' B';
+      if (size < 1024 * 1024) return (size / 1024).toFixed(1) + ' KB';
+      return (size / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    async function loadList(append) {
+      var status = document.getElementById('status');
+      if (!append) { status.className = 'loading'; status.textContent = T('loading', '加载中…'); }
+      var data;
+      try {
+        data = await langbot.api('/list', { limit: LIMIT, offset: offset }, 'GET');
+      } catch (err) {
+        status.className = 'empty';
+        status.textContent = failText(err);
+        return;
+      }
+      data = data || {};
+      var items = data.items || [];
+      total = data.total || 0;
+      document.getElementById('total').textContent = T('total', '共 {n} 个', { n: total });
+      // One source of truth: the hidden attribute, not display plus visibility.
+      document.getElementById('more').hidden = (offset + items.length) >= total;
+      var grid = document.getElementById('grid');
+      if (!append) { grid.innerHTML = ''; cache = {}; }
+      for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        cache[item.name] = item;
+        grid.insertAdjacentHTML('beforeend',
+          '<div class="card" data-name="' + escapeHtml(item.name) + '">' +
+            '<div class="thumb">' +
+              '<img alt="" loading="lazy" decoding="async" src="' + escapeHtml(absoluteUrl(item.url)) + '" />' +
+              '<span class="failed-icon">' +
+                '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
+                '<span>' + escapeHtml(T('imageFailed', '图片加载失败')) + '</span>' +
+              '</span>' +
+            '</div>' +
+            '<div class="name">' + escapeHtml(item.name) + '</div>' +
+            '<div class="row">' +
+              '<button class="ghost copy" data-action="copy">' + escapeHtml(T('copy', '复制地址')) + '</button>' +
+              '<button class="ghost danger" data-action="delete">' + escapeHtml(T('delete', '删除')) + '</button>' +
+            '</div>' +
+          '</div>');
+      }
+      offset += items.length;
+      status.className = '';
+      status.textContent = '';
+      if (!items.length) {
+        status.className = 'empty';
+        status.innerHTML =
+          '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>' +
+          '<b>' + escapeHtml(T('empty', '还没有表情包')) + '</b><span>' + escapeHtml(T('emptyHint', '填昵称再选图片或贴地址,然后点「添加」。')) + '</span>';
+      }
+      wireThumbs();
+    }
+
+    // Only when the direct URL failed (asset missing) fall back to image bytes.
+    function wireThumbs() {
+      var thumbs = document.querySelectorAll('.card .thumb:not([data-wired])');
+      for (var i = 0; i < thumbs.length; i++) {
+        thumbFallback(thumbs[i]);
+      }
+    }
+
+    function thumbFallback(thumb) {
+      thumb.setAttribute('data-wired', '1');
+      var img = thumb.querySelector('img');
+      if (!img) return;
+      var name = thumb.closest('.card').getAttribute('data-name');
+      img.addEventListener('error', function () {
+        if (thumb.classList.contains('failed')) return;
+        if (img.dataset.retried) { thumb.classList.add('failed'); return; }
+        img.dataset.retried = '1';
+        langbot.api('/image', { name: name, with_data: true }, 'GET').then(function (res) {
+          if (res && res.base64) {
+            img.src = 'data:' + (res.mime || 'image/png') + ';base64,' + res.base64;
+          } else {
+            thumb.classList.add('failed');
+          }
+        }, function () { thumb.classList.add('failed'); });
+      });
+      if (img.complete && img.naturalWidth === 0 && img.src) {
+        img.dispatchEvent(new Event('error'));
+      }
+    }
+
+    document.getElementById('refresh').addEventListener('click', function () {
+      offset = 0; loadList(false); loadStats();
+    });
+
+    document.getElementById('more').addEventListener('click', function () { loadList(true); });
+
+    // ---------- upload: chunked base64, constant per-request size ----------
+    function sliceBase64(blob) {
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () {
+          var result = String(reader.result || '');
+          resolve(result.slice(result.indexOf(',') + 1));
+        };
+        reader.onerror = function () { reject(reader.error || new Error('read failed')); };
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function uploadFile(file, name) {
+      var status = document.getElementById('status');
+      var begin = await langbot.api('/upload/begin', {}, 'POST');
+      if (!begin || !begin.session) throw new Error(T('operationFailed', '操作失败'));
+      var session = begin.session;
+      var size = begin.chunk_bytes || CHUNK;
+      var chunks = Math.ceil(file.size / size);
+      try {
+        for (var index = 0; index < chunks; index++) {
+          var slice = file.slice(index * size, (index + 1) * size);
+          var data = await sliceBase64(slice);
+          status.className = 'loading';
+          status.textContent = T('uploading', '上传中 {done}/{all}…', { done: index + 1, all: chunks });
+          await langbot.api('/upload/chunk', { session: session, index: index, data: data }, 'POST');
+        }
+        var done = await langbot.api('/upload/finish', {
+          session: session, name: name, mime: file.type || 'image/png'
+        }, 'POST');
+        return done || {};
+      } catch (err) {
+        await langbot.api('/upload/abort', { session: session }, 'POST').catch(function () {});
+        throw err;
+      }
+    }
+
+    document.getElementById('file').addEventListener('change', async function (event) {
+      var file = event.target.files && event.target.files[0];
+      if (!file) { return; }
+      var picked = document.getElementById('picked');
+      if (picked) picked.textContent = file.name;
+      document.getElementById('fileBtn').classList.add('has-file');
+      var name = document.getElementById('name').value.trim() || file.name.split('.')[0];
+      try {
+        var res = await uploadFile(file, name);
+        toast(T('added', '已添加 {name}', { name: (res && res.name) || name }));
+      } catch (err) {
+        toast(failText(err));
+      }
+      document.getElementById('file').value = '';
+      if (picked) { picked.textContent = T('chooseFile', '选择文件'); picked.removeAttribute('data-i18n'); }
+      document.getElementById('fileBtn').classList.remove('has-file');
+      offset = 0; loadList(false); loadStats();
+    });
+
+    document.getElementById('add').addEventListener('click', async function () {
+      var name = document.getElementById('name').value.trim();
+      var url = document.getElementById('url').value.trim();
+      if (!name) { toast(T('nameRequired', '请填写昵称')); return; }
+      if (!url) { toast(T('sourceRequired', '请填写图片地址或选择文件')); return; }
+      var res;
+      try {
+        res = await langbot.api('/add', { name: name, url: url }, 'POST');
+      } catch (err) {
+        toast(failText(err));
+        return;
+      }
+      toast(T('added', '已添加 {name}', { name: (res && res.name) || name }));
+      offset = 0; loadList(false); loadStats();
+    });
+
+    // Clear asks in our own sheet, because modal dialogs are ignored without allow-modals.
+    document.getElementById('clear').addEventListener('click', async function () {
+      var ok = await openSheet(
+        T('confirmClearTitle', '清空全部表情包'),
+        T('confirmClear', '确认清空当前安装下的所有表情包?此操作不可撤销。'),
+        '',
+        T('clear', '清空')
+      );
+      if (!ok) { return; }
+      try {
+        await langbot.api('/clear', null, 'DELETE');
+      } catch (err) {
+        toast(failText(err));
+        return;
+      }
+      toast(T('cleared', '已清空'));
+      offset = 0; loadList(false); loadStats();
+    });
+
+    document.getElementById('grid').addEventListener('click', async function (event) {
+      var button = event.target.closest('button[data-action]');
+      if (!button) { return; }
+      var card = button.closest('.card');
+      var name = card.getAttribute('data-name');
+      if (button.getAttribute('data-action') === 'copy') {
+        // /list already carried the URL, so no extra round trip; the payload
+        // is the item itself (langbot.api() unwraps PageResponse.data).
+        var cached = cache[name] || {};
+        var url = absoluteUrl(cached.url);
+        if (!url) {
+          try {
+            var item = await langbot.api('/item', { name: name }, 'GET');
+            url = absoluteUrl(item && item.url);
+          } catch (err) {
+            toast(failText(err));
+            return;
+          }
+        }
+        if (!url) {
+          // Never report success for an empty clipboard.
+          toast(T('copyNoUrl', '没有拿到图片地址，无法复制'));
+          return;
+        }
+        await copyText(url, name);
+      } else {
+        try {
+          await langbot.api('/delete', { name: name }, 'POST');
+        } catch (err) {
+          toast(failText(err));
+          return;
+        }
+        toast(T('removed', '已删除'));
+        offset = 0; loadList(false); loadStats();
+      }
+    });
+
+    langbot.onReady(function () {
+      loadList(false);
+      loadStats();
+    });
+
+    // After a language switch the SDK retranslates static nodes; redraw ours.
+    langbot.onLanguageChange(function () {
+      offset = 0;
+      loadList(false);
+      loadStats();
+    });
+  </script>
+</body>
+</html>
