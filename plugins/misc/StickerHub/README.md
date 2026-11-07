@@ -30,7 +30,8 @@ usable from a human reply (the management page) and from AI replies alike.
   `sandbox="allow-scripts allow-forms"` — an opaque origin with no modals. Copy
   therefore falls back clipboard → `execCommand` → an in-page sheet and clears
   through an in-page dialog, and asset URLs are made absolute against
-  `location.ancestorOrigins[0]` so both the clipboard and `<img>` work.
+  `location.ancestorOrigins[0]` so both the clipboard and `<img>` work. Copying
+  reads the URL already held from `/list`, so it stays synchronous.
 - **Cheap listing**: one key scan plus one metadata read per sticker serves both
   `/list` and the following `/stats`, instead of two full scans and an extra
   read per row.

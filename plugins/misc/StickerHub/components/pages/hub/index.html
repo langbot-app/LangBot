@@ -359,6 +359,22 @@
       toast(T('copyFallback', '已选中地址，请按 Ctrl+C'));
     }
 
+    // Copy is fully synchronous: /list already stored the whole item, so the
+    // URL is in hand and no /item round trip stands between the click and the
+    // clipboard (which would also spend the user-gesture window execCommand
+    // needs).
+    function copyCard(name) {
+      var cached = cache[name] || {};
+      var url = absoluteUrl(cached.url);
+      if (!url) {
+        // writeText('') resolves silently, so an empty value used to look like
+        // success. Say so instead.
+        toast(T('copyNoUrl', '没有拿到图片地址，无法复制'));
+        return;
+      }
+      copyText(url, name);
+    }
+
     async function loadStats() {
       var data;
       try {
@@ -568,25 +584,7 @@
       var card = button.closest('.card');
       var name = card.getAttribute('data-name');
       if (button.getAttribute('data-action') === 'copy') {
-        // /list already carried the URL, so no extra round trip; the payload
-        // is the item itself (langbot.api() unwraps PageResponse.data).
-        var cached = cache[name] || {};
-        var url = absoluteUrl(cached.url);
-        if (!url) {
-          try {
-            var item = await langbot.api('/item', { name: name }, 'GET');
-            url = absoluteUrl(item && item.url);
-          } catch (err) {
-            toast(failText(err));
-            return;
-          }
-        }
-        if (!url) {
-          // Never report success for an empty clipboard.
-          toast(T('copyNoUrl', '没有拿到图片地址，无法复制'));
-          return;
-        }
-        await copyText(url, name);
+        copyCard(name);
       } else {
         try {
           await langbot.api('/delete', { name: name }, 'POST');

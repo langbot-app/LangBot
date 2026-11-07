@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: StickerHub
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/StickerHub
-  version: 0.1.7
+  version: 0.1.8
   description:
     en_US: Serverless sticker and image host backed by plugin storage; returns stable
       URLs for human and AI replies.
