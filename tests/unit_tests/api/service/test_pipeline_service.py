@@ -545,11 +545,13 @@ class TestPipelineServiceDeletePipeline:
         ap.persistence_mgr.execute_async = AsyncMock()
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
+        ap.bot_service = SimpleNamespace(require_processor_unbound=AsyncMock())
 
         service = PipelineService(ap)
 
         # Execute
         await service.delete_pipeline(WORKSPACE_UUID, 'test-uuid')
+        ap.bot_service.require_processor_unbound.assert_awaited_once_with(WORKSPACE_UUID, 'test-uuid')
 
         # Verify
         ap.pipeline_mgr.remove_pipeline.assert_called_once_with(WORKSPACE_UUID, 'test-uuid')
@@ -563,6 +565,7 @@ class TestPipelineServiceDeletePipeline:
         ap.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=0))
         ap.pipeline_mgr = SimpleNamespace()
         ap.pipeline_mgr.remove_pipeline = AsyncMock()
+        ap.bot_service = SimpleNamespace(require_processor_unbound=AsyncMock())
 
         service = PipelineService(ap)
 
@@ -1035,3 +1038,67 @@ class TestDefaultStageOrder:
         """Default stage order contains key processing stages."""
         assert 'MessageProcessor' in default_stage_order
         assert 'SendResponseBackStage' in default_stage_order
+
+
+class TestPipelineDeleteBoundToBot:
+    """A Pipeline that a Bot still routes to cannot be deleted (LANG-357)."""
+
+    def _bot_service(self, bots):
+        from langbot.pkg.api.http.service.bot import BotService
+
+        service = object.__new__(BotService)
+        service.get_bots = AsyncMock(return_value=bots)
+        return service
+
+    async def test_delete_refused_while_bound_and_nothing_is_removed(self):
+        from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+        ap = SimpleNamespace()
+        ap.persistence_mgr = SimpleNamespace(execute_async=AsyncMock())
+        ap.pipeline_mgr = SimpleNamespace(remove_pipeline=AsyncMock())
+        ap.bot_service = self._bot_service(
+            [
+                {
+                    'uuid': 'bot-1',
+                    'name': 'QQ Bot',
+                    'event_bindings': [
+                        {'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': 'p-1'}
+                    ],
+                    'plugin_processors': [],
+                },
+                {'uuid': 'bot-2', 'name': 'Other', 'event_bindings': [], 'plugin_processors': []},
+            ]
+        )
+
+        with pytest.raises(ApplicationAPIException) as exc_info:
+            await PipelineService(ap).delete_pipeline(WORKSPACE_UUID, 'p-1')
+
+        assert exc_info.value.error.code == 'resource_in_use'
+        assert exc_info.value.error.status_code == 409
+        assert exc_info.value.error.details == {'bots': ['QQ Bot']}
+        assert 'QQ Bot' in exc_info.value.error.message
+        ap.persistence_mgr.execute_async.assert_not_awaited()
+        ap.pipeline_mgr.remove_pipeline.assert_not_awaited()
+
+    async def test_unbound_pipeline_and_string_bindings_are_handled(self):
+        bot_service = self._bot_service(
+            [
+                {
+                    'uuid': 'bot-1',
+                    'name': 'Bot',
+                    # Legacy rows may still hold the JSON-encoded form.
+                    'event_bindings': json.dumps(
+                        [{'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': 'p-2'}]
+                    ),
+                    'plugin_processors': [{'processor_uuid': 'proc-1', 'enabled': True}],
+                }
+            ]
+        )
+        await bot_service.require_processor_unbound(WORKSPACE_UUID, 'p-1')
+
+        from langbot.pkg.api.application.contracts import ApplicationAPIException
+
+        with pytest.raises(ApplicationAPIException):
+            await bot_service.require_processor_unbound(WORKSPACE_UUID, 'p-2')
+        with pytest.raises(ApplicationAPIException):
+            await bot_service.require_processor_unbound(WORKSPACE_UUID, 'proc-1')

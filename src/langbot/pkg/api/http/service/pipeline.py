@@ -334,6 +334,7 @@ class PipelineService:
                 session.using_conversation = None
 
     async def delete_pipeline(self, context: TenantContext, pipeline_uuid: str) -> None:
+        await self.ap.bot_service.require_processor_unbound(context, pipeline_uuid)
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.delete(persistence_pipeline.LegacyPipeline).where(

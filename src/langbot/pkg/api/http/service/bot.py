@@ -20,6 +20,7 @@ from ....platform.adapter_names import canonical_adapter_name
 from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
 from ....i18n import t
+from ...application.contracts import ApplicationAPIError, ApplicationAPIException
 
 
 class BotService:
@@ -694,6 +695,40 @@ class BotService:
         for bot in serialized:
             bot['adapter'] = canonical_adapter_name(bot['adapter'])
         return serialized
+
+    async def require_processor_unbound(self, context: TenantContext, processor_uuid: str) -> None:
+        """Refuse to remove a Pipeline or Agent that a Bot still routes events to.
+
+        Deleting a bound target used to leave the binding dangling, so every
+        matching inbound event was routed to a missing target and dropped.
+        """
+        from ....platform.botmgr import RuntimeBot
+
+        processor_uuid = str(processor_uuid or '').strip()
+        if not processor_uuid:
+            return
+        bot_names: list[str] = []
+        for bot in await self.get_bots(context):
+            bindings = RuntimeBot._get_event_bindings_from_value(bot.get('event_bindings') or [])
+            subscriptions = bot.get('plugin_processors') or []
+            if any(str(binding.get('target_uuid') or '').strip() == processor_uuid for binding in bindings) or any(
+                isinstance(subscription, dict) and subscription.get('processor_uuid') == processor_uuid
+                for subscription in (subscriptions if isinstance(subscriptions, list) else [])
+            ):
+                bot_names.append(str(bot.get('name') or bot.get('uuid')))
+        if bot_names:
+            raise ApplicationAPIException(
+                ApplicationAPIError(
+                    'resource_in_use',
+                    t(
+                        'This item is still used by the event bindings of these bots: {bots}. '
+                        'Change those bindings first, then delete it.',
+                        bots=', '.join(sorted(bot_names)),
+                    ),
+                    409,
+                    {'bots': sorted(bot_names)},
+                )
+            )
 
     async def get_bot(self, context: TenantContext, bot_uuid: str, include_secret: bool = False) -> dict | None:
         """获取机器人"""

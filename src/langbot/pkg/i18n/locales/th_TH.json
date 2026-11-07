@@ -120,5 +120,6 @@
   "Only a member can confirm plugin permissions": "เฉพาะสมาชิกเท่านั้นที่ยืนยันสิทธิ์ของปลั๊กอินได้",
   "The plugin is already installed; a member must upgrade or reinstall it": "ติดตั้งปลั๊กอินนี้แล้ว สมาชิกต้องเป็นผู้อัปเกรดหรือติดตั้งใหม่",
   "Insufficient balance or quota for this model. Please top up and try again.": "ยอดเงินหรือโควตาสำหรับโมเดลนี้ไม่เพียงพอ โปรดเติมเงินแล้วลองอีกครั้ง",
-  "No API key is configured for this model provider": "ยังไม่ได้กำหนดค่าคีย์ API สำหรับผู้ให้บริการโมเดลนี้"
+  "No API key is configured for this model provider": "ยังไม่ได้กำหนดค่าคีย์ API สำหรับผู้ให้บริการโมเดลนี้",
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "การผูกเหตุการณ์ของบอตต่อไปนี้ยังใช้รายการนี้อยู่: {bots} โปรดเปลี่ยนการผูกเหล่านั้นก่อน แล้วจึงลบ"
 }

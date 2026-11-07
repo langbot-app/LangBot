@@ -180,5 +180,8 @@ class AgentsRouterGroup(group.RouterGroup):
                 return self.success()
 
             require_permission(request_context, Permission.RESOURCE_MANAGE)
-            await self.ap.agent_service.delete_agent(request_context, agent_uuid)
+            try:
+                await self.ap.agent_service.delete_agent(request_context, agent_uuid)
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             return self.success()

@@ -1253,6 +1253,21 @@ class RuntimeBot:
                     reason='Pipeline targets only support message events',
                     text=f'Event {event_type} ignored Pipeline target for non-message event',
                 )
+            pipeline_uuid = event_binding.get('target_uuid')
+            if not await self._pipeline_target_exists(pipeline_uuid):
+                # A binding left pointing at a deleted Pipeline must fail
+                # visibly instead of queueing a query that is later dropped.
+                return await self._record_event_route_trace(
+                    event_type=event_type,
+                    status='failed',
+                    level='warning',
+                    binding=event_binding,
+                    target_type=target_type,
+                    target_uuid=pipeline_uuid,
+                    failure_code='processor_not_found',
+                    reason='Pipeline target not found',
+                    text=f'Event {event_type} target Pipeline not found: {pipeline_uuid or ""}'.strip(),
+                )
             from ..telemetry import trace as trace_mod
 
             # The routing step opens before delivery so the queued Pipeline
@@ -1618,6 +1633,23 @@ class RuntimeBot:
                     await adapter.update_interaction(handle, 'cancelled')
                 except Exception as exc:
                     await self.logger.warning(f'Failed to invalidate orphaned interaction card: {exc}')
+
+    async def _pipeline_target_exists(self, pipeline_uuid: str | None) -> bool:
+        """Whether a bound Pipeline target still exists in this Workspace.
+
+        The loaded Pipeline answers the common case; only a miss falls back to
+        the database, so a Pipeline being reloaded is never reported missing.
+        """
+        pipeline_uuid = str(pipeline_uuid or '').strip()
+        if not pipeline_uuid:
+            return False
+        try:
+            if await self.ap.pipeline_mgr.get_pipeline_by_uuid(self.execution_context, pipeline_uuid) is not None:
+                return True
+            return await self.ap.pipeline_service.get_pipeline(self.execution_context, pipeline_uuid) is not None
+        except Exception:
+            # An inconclusive lookup keeps the previous delivery behaviour.
+            return True
 
     async def _dispatch_eba_message_to_pipeline(
         self,

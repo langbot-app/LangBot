@@ -10,6 +10,7 @@ from langbot.pkg.api.application import ApplicationAPIException
 from langbot.pkg.api.authz import Permission
 from langbot.pkg.api.http.service.knowledge import KnowledgeService
 from langbot.pkg.api.http.service.model import EmbeddingModelsService, LLMModelsService, RerankModelsService
+from langbot.pkg.api.http.service.bot import BotService
 from langbot.pkg.api.http.service.pipeline import PipelineService
 from langbot.pkg.api.http.service.provider import ModelProviderService
 from langbot.pkg.entity.persistence.model import EmbeddingModel, LLMModel, ModelProvider, RerankModel
@@ -42,6 +43,7 @@ async def resources(foundation):  # noqa: F811 - pytest resolves the imported fi
     ap.embedding_models_service = EmbeddingModelsService(ap)
     ap.rerank_models_service = RerankModelsService(ap)
     ap.pipeline_service = PipelineService(ap)
+    ap.bot_service = BotService(ap)
     ap.pipeline_mgr = SimpleNamespace(
         load_pipeline=AsyncMock(),
         remove_pipeline=AsyncMock(),

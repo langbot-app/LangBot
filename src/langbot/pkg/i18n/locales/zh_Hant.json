@@ -120,5 +120,6 @@
   "Only a member can confirm plugin permissions": "只有成員可以確認外掛權限",
   "The plugin is already installed; a member must upgrade or reinstall it": "該外掛已安裝，需由成員升級或重新安裝",
   "Insufficient balance or quota for this model. Please top up and try again.": "該模型的餘額或額度不足，請儲值後重試。",
-  "No API key is configured for this model provider": "該模型供應商未設定 API Key"
+  "No API key is configured for this model provider": "該模型供應商未設定 API Key",
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "以下機器人的事件綁定仍在使用此項：{bots}。請先修改這些綁定，再刪除。"
 }

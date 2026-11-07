@@ -540,6 +540,7 @@ class AgentService:
     async def delete_agent(self, context: TenantContext, agent_uuid: str) -> None:
         existing_agent = await self._get_agent_row(context, agent_uuid)
         if existing_agent is not None:
+            await self.ap.bot_service.require_processor_unbound(context, agent_uuid)
             result = await self.ap.persistence_mgr.execute_async(
                 scope_statement(
                     sqlalchemy.delete(persistence_agent.Agent).where(persistence_agent.Agent.uuid == agent_uuid),

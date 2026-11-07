@@ -118,7 +118,10 @@ class PipelinesRouterGroup(group.RouterGroup):
                 if rule is not None and changes:
                     quart.g.operation_log_summary = settings_service.build_summary(rule, changes)
             else:
-                await self.ap.pipeline_service.delete_pipeline(request_context, pipeline_uuid)
+                try:
+                    await self.ap.pipeline_service.delete_pipeline(request_context, pipeline_uuid)
+                except ApplicationAPIException as exc:
+                    return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             return self.success()
 
         @self.route(

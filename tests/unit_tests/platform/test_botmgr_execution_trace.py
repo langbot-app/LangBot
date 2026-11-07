@@ -595,3 +595,40 @@ def test_agent_event_keeps_image_file_and_voice_attachments():
     assert agent_input.attachments[1].name == 'input.txt'
     assert agent_input.attachments[1].url == 'https://cdn.example.test/input.txt'
     assert agent_input.attachments[2].content == 'dGVzdA=='
+
+
+async def test_binding_to_deleted_pipeline_fails_visibly_instead_of_queueing():
+    bot, manager, counters = make_bot(
+        [business_route(target_type='pipeline', target_uuid='deleted-pipeline', event_pattern='message.received')],
+        config={'url': 'https://space.example.test', 'execution_trace': 'all'},
+    )
+    bot.ap.pipeline_mgr = SimpleNamespace(get_pipeline_by_uuid=AsyncMock(return_value=None))
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+
+    bot._dispatch_eba_message_to_pipeline.assert_not_awaited()
+    metadata = bot.logger.warning.await_args.kwargs['metadata']
+    assert metadata['status'] == 'failed'
+    assert metadata['failure_code'] == 'processor_not_found'
+    assert metadata['target_uuid'] == 'deleted-pipeline'
+    records = await flushed_records(counters, manager)
+    (chain,) = execution_chains(records)
+    assert chain['outcome'] == 'failed'
+    assert 'Pipeline target not found' in chain['error']
+    await counters.shutdown()
+
+
+async def test_pipeline_missing_from_memory_but_persisted_is_still_delivered():
+    bot, manager, counters = make_bot(
+        [business_route(target_type='pipeline', target_uuid='reloading-pipeline', event_pattern='message.received')],
+    )
+    bot.ap.pipeline_mgr = SimpleNamespace(get_pipeline_by_uuid=AsyncMock(return_value=None))
+    bot.ap.pipeline_service.get_pipeline = AsyncMock(return_value={'uuid': 'reloading-pipeline'})
+    bot._dispatch_eba_message_to_pipeline = AsyncMock()
+
+    await bot._handle_platform_event(message_received_event(), FakeAdapter())
+
+    bot._dispatch_eba_message_to_pipeline.assert_awaited_once()
+    assert bot.logger.info.await_args.kwargs['metadata']['status'] == 'delivered'
+    await counters.shutdown()
