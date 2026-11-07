@@ -490,17 +490,31 @@ class QueryEntryAdapter:
     ) -> list[dict[str, typing.Any]]:
         """Extract attachments from query."""
         attachments: list[dict[str, typing.Any]] = []
-        seen_keys: dict[tuple[str, str, str], set[str]] = {}
+        # Each entry tracks the identity keys of an emitted attachment and the
+        # other sources already merged into it.
+        entries: list[tuple[dict[str, typing.Any], set[tuple[str, str, str]], set[str]]] = []
 
         def add_attachment(attachment: dict[str, typing.Any]) -> None:
-            key = cls._attachment_dedupe_key(attachment)
-            if key is not None:
-                source = str(attachment.get('source') or '')
-                sources = seen_keys.setdefault(key, set())
-                if source and sources and source not in sources:
+            keys = cls._attachment_dedupe_keys(attachment)
+            source = str(attachment.get('source') or '')
+            if keys and source:
+                for existing, existing_keys, merged_sources in entries:
+                    # Repeats within one source are distinct user inputs; only a
+                    # different source describing the same media is merged, once.
+                    if source == existing.get('source') or source in merged_sources:
+                        continue
+                    if not keys & existing_keys:
+                        continue
+                    # Platforms often describe one image by both URL and inline
+                    # bytes, while contents carry only one of them. Merge instead
+                    # of emitting a second descriptor for the same media.
+                    for field, value in attachment.items():
+                        if value and not existing.get(field):
+                            existing[field] = value
+                    existing_keys.update(keys)
+                    merged_sources.add(source)
                     return
-                if source:
-                    sources.add(source)
+            entries.append((attachment, set(keys), set()))
             attachments.append(attachment)
 
         for elem in contents:
@@ -588,14 +602,22 @@ class QueryEntryAdapter:
         return attachments
 
     @classmethod
-    def _attachment_dedupe_key(
+    def _attachment_dedupe_keys(
         cls,
         attachment: dict[str, typing.Any],
-    ) -> tuple[str, str, str] | None:
-        """Return a stable key for the same attachment across content sources."""
+    ) -> set[tuple[str, str, str]]:
+        """Return every identity of an attachment that can match another source."""
         attachment_type = attachment.get('type')
         if not attachment_type:
-            return None
+            return set()
+        keys = set()
+        for field in ('id', 'url', 'content'):
+            value = attachment.get(field)
+            if value:
+                if field == 'content':
+                    value = hashlib.sha256(str(value).encode('utf-8')).hexdigest()
+                keys.add((str(attachment_type), field, str(value)))
+        return keys
         for field in ('id', 'url', 'content'):
             value = attachment.get(field)
             if value:
