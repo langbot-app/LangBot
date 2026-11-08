@@ -293,25 +293,25 @@ class StorageTests(unittest.IsolatedAsyncioTestCase):
         restarted = await open_plugin(host)
         self.assertEqual((restarted.sessions, restarted.messages), expected)
 
-    async def test_large_individual_session_rejected_without_truncating_history(self):
+    async def test_large_individual_session_truncates_history_instead_of_failing(self):
+        """A 300-message cap cannot bound bytes; a big image must evict, not fail."""
         await record(self.plugin, content="previous history")
-        before = copy.deepcopy((self.plugin.sessions, self.plugin.messages))
-        stored = dict(self.host.data)
-        writes = len(self.host.writes)
-        with self.assertRaisesRegex(ValueError, "session.*limit"):
-            await record(self.plugin, content="界" * (4 * 1024 * 1024))
-        self.assertEqual((self.plugin.sessions, self.plugin.messages), before)
-        self.assertEqual(self.host.data, stored)
-        self.assertEqual(len(self.host.writes), writes)
+        await record(self.plugin, content="界" * (4 * 1024 * 1024))
+        # the oversized message is dropped, so the session still persists
+        self.assertLessEqual(len(self.plugin.messages.get("group_1", [])), 1)
+        raw = max(self.host.data.values(), key=len)
+        self.assertIn("group_1", raw.decode("utf-8", "ignore"))
+        self.assertLessEqual(len(raw), 8 * 1024 * 1024)
 
-    async def test_oversized_legacy_session_fails_without_discarding_backup(self):
+    async def test_oversized_legacy_session_truncates_on_load(self):
         host = StorageHost()
         seed_legacy(host, count=1, content="x" * (9 * 1024 * 1024))
-        original = dict(host.data)
-        with self.assertRaisesRegex(ValueError, "session.*limit"):
-            await open_plugin(host)
-        for key, value in original.items():
-            self.assertEqual(host.data[key], value)
+        plugin = await open_plugin(host)
+        # loading then persisting must succeed by dropping the oversized row
+        await record(plugin, content="after")
+        raw = [v for k, v in host.data.items() if "after" in v.decode("utf-8", "ignore")]
+        self.assertTrue(raw)
+        self.assertLessEqual(len(raw[0]), 8 * 1024 * 1024)
 
     async def test_clear_removes_legacy_and_new_data_without_resurrection(self):
         host = StorageHost()

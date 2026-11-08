@@ -6,6 +6,19 @@
   <title>Human Takeover</title>
   <style>
     * { box-sizing: border-box; }
+    /* ===== 与宿主 LangBot(shadcn/ui)一致的基础 token =====
+       宿主 WebUI 用 --radius / --muted / --border / --primary 这套；iframe 里只拿到
+       --langbot-*,所以按 shadcn 的形态在本页重建:10px 圆角、低对比描边、
+       次要按钮走 muted、主按钮走实心 primary。 */
+    :root {
+      --radius: 0.625rem;
+      --r-sm: 6px;
+      --r-md: 8px;
+      --r-lg: var(--radius);
+      --muted: color-mix(in srgb, var(--langbot-text, #0a0a0a) 7%, transparent);
+      --muted-hover: color-mix(in srgb, var(--langbot-text, #0a0a0a) 11%, transparent);
+      --ring: color-mix(in srgb, var(--langbot-accent, #2563eb) 40%, transparent);
+    }
     html, body { height: 100%; margin: 0; }
 
     /* ===== 自定义滚动条(符合 LangBot 设计语言) ===== */
@@ -59,53 +72,72 @@
     }
 
     /* ===== 左栏:会话列表 ===== */
+    /* 左栏走 muted 面(和宿主 sidebar 一样比主区暗一档),主区才是卡片白,
+       否则输入框与底板同色,看上去像几个抠出来的洞。 */
     .sidebar {
       width: 300px;
       flex-shrink: 0;
       border-right: 1px solid var(--langbot-border, #e5e7eb);
-      background: var(--langbot-bg-card, #ffffff);
+      background: var(--muted);
       display: flex;
       flex-direction: column;
+      min-height: 0;
     }
     .sidebar-header {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+      padding: 12px 12px 10px 16px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 8px;
     }
-    .sidebar-title { font-size: 15px; font-weight: 600; }
+    .sidebar-title { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+    /* 分段控件按 shadcn TabsList 的形态:凹陷底槽 + 白色活动块 + 细投影 */
     .tabs {
       display: flex;
-      padding: 8px 12px 0;
-      gap: 6px;
+      margin: 0 12px 10px;
+      padding: 3px;
+      gap: 2px;
+      border-radius: var(--r-md);
+      background: color-mix(in srgb, var(--langbot-text, #0a0a0a) 6%, transparent);
     }
     .tab {
       flex: 1;
-      padding: 7px 0;
+      padding: 5px 0;
       text-align: center;
-      border-radius: 8px 8px 0 0;
+      border-radius: var(--r-sm);
+      border: 1px solid transparent;
       cursor: pointer;
-      color: var(--langbot-text-muted, #6b7280);
-      font-size: 13px;
-      transition: background .15s, color .15s;
+      color: var(--langbot-text-muted, #71717a);
+      font-size: 12.5px;
+      font-weight: 500;
+      transition: background .15s, color .15s, box-shadow .15s;
     }
+    .tab:hover { color: var(--langbot-text, #0a0a0a); }
     .tab.active {
-      color: var(--langbot-accent, #2563eb);
+      color: var(--langbot-text, #0a0a0a);
       font-weight: 600;
-      background: var(--langbot-bg, #f3f4f6);
+      background: var(--langbot-bg, #ffffff);
+      border-color: var(--langbot-border, #e5e7eb);
+      box-shadow: 0 1px 2px rgba(0,0,0,.05);
     }
-    .search-box { padding: 8px 12px; }
+    .filters { padding: 0 12px 8px; display: flex; flex-direction: column; gap: 6px; }
+    .search-box { position: relative; }
+    .search-box .search-icon {
+      position: absolute; left: 9px; top: 50%; transform: translateY(-50%);
+      display: flex; color: var(--langbot-text-muted, #a1a1aa); pointer-events: none;
+    }
+    .search-box input:focus { border-color: var(--langbot-accent, #2563eb); box-shadow: 0 0 0 3px var(--ring); }
     .search-box input {
       width: 100%;
-      padding: 7px 10px;
+      padding: 6px 10px 6px 28px;
       border: 1px solid var(--langbot-border, #e5e7eb);
-      border-radius: 8px;
-      background: var(--langbot-bg, #f7f8fa);
+      border-radius: var(--r-md);
+      /* 不写 background 会落回浏览器默认白底,暗色下就是一块白板 */
+      background: var(--langbot-bg-card, #ffffff);
       color: var(--langbot-text, #0a0a0a);
       outline: none;
-      font-size: 13px;
+      transition: border-color .15s, box-shadow .15s;
+      font-size: 12.5px;
     }
     .session-list { flex: 1; overflow-y: auto; padding: 4px 8px; }
     .session-item {
@@ -175,7 +207,7 @@
     }
 
     /* ===== 中区:聊天 ===== */
-    .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
     .chat-header {
       padding: 12px 18px;
       border-bottom: 1px solid var(--langbot-border, #e5e7eb);
@@ -207,43 +239,65 @@
       animation: spin 1.2s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+    /* shadcn 按钮:sm 尺寸、10px 圆角、focus ring;次要态用 muted 而非透明 */
     .btn {
-      border: none;
-      border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+      border: 1px solid transparent;
+      border-radius: var(--r-md);
       padding: 7px 14px;
       font-size: 13px;
       cursor: pointer;
       font-weight: 500;
-      transition: opacity .15s, background .15s;
+      line-height: 1.2;
+      transition: background .15s, border-color .15s, box-shadow .15s;
     }
+    .btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
     .btn:disabled { opacity: .5; cursor: not-allowed; }
     .btn-primary { background: var(--langbot-accent, #2563eb); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--langbot-accent, #2563eb) 88%, #000); }
     .btn-danger { background: #ef4444; color: #fff; }
-    .btn-ghost {
-      background: transparent;
-      color: var(--langbot-text-muted, #6b7280);
-      border: 1px solid var(--langbot-border, #e5e7eb);
+    .btn-danger:hover:not(:disabled) { background: #dc2626; }
+    /* 「取消接管」不是破坏性操作,实心红在标题栏里太抢;静止跟次要按钮同色,
+       悬停才转红,和 StickerHub 的删除按钮保持同一套语言。 */
+    .btn-quiet-danger {
+      background: var(--muted);
+      color: var(--destructive, #dc2626);
+      border-color: var(--langbot-border, #e5e7eb);
     }
+    .btn-quiet-danger:hover:not(:disabled) { background: var(--muted-hover); }
+    .btn-ghost {
+      background: var(--muted);
+      color: var(--langbot-text, #0a0a0a);
+      border-color: var(--langbot-border, #e5e7eb);
+    }
+    .btn-ghost:hover:not(:disabled) { background: var(--muted-hover); }
     .icon-btn {
       background: transparent;
       border: none;
       cursor: pointer;
       color: var(--langbot-text-muted, #6b7280);
       padding: 6px;
-      border-radius: 8px;
+      border-radius: var(--r-sm);
       font-size: 18px;
       line-height: 1;
     }
+    .icon-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring); }
     .icon-btn:hover { background: var(--langbot-bg, #f3f4f6); }
 
     .messages {
       flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding: 18px;
       display: flex;
       flex-direction: column;
       gap: 14px;
     }
+    .chat-hint {
+      margin: auto; text-align: center; color: var(--langbot-text-muted, #9ca3af);
+      font-size: 13px; display: flex; flex-direction: column; gap: 6px; padding: 24px;
+    }
+    .chat-hint-title { font-size: 14px; font-weight: 600; color: var(--langbot-text, #0a0a0a); }
     .msg-row { display: flex; gap: 10px; max-width: 78%; }
     .msg-row.user { align-self: flex-start; }
     .msg-row.ai { align-self: flex-end; flex-direction: row-reverse; }
@@ -266,16 +320,23 @@
       white-space: pre-wrap;
       line-height: 1.5;
     }
+    /* 气泡按宿主 DebugDialog 的分法:来消息是描边卡、AI 是 muted、人工回复用
+       强调色淡底。三块实心色并排会互相抢,长文本也难读。 */
     .user .bubble { background: var(--langbot-bg-card, #fff); border: 1px solid var(--langbot-border, #e5e7eb); }
-    .ai .bubble { background: var(--langbot-accent, #2563eb); color: #fff; }
-    .human .bubble { background: #10b981; color: #fff; }
+    .ai .bubble { background: var(--muted); border: 1px solid transparent; }
+    .human .bubble {
+      background: color-mix(in srgb, var(--langbot-accent, #2563eb) 13%, transparent);
+      border: 1px solid color-mix(in srgb, var(--langbot-accent, #2563eb) 28%, transparent);
+    }
     .bubble img { max-width: 220px; border-radius: 8px; display: block; }
     .msg-time { font-size: 10px; color: var(--langbot-text-muted, #c0c4cc); margin-top: 3px; }
 
     /* ===== 输入区 ===== */
     .composer {
+      flex-shrink: 0;
       border-top: 1px solid var(--langbot-border, #e5e7eb);
-      padding: 12px 16px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      min-height: 0;
       background: var(--langbot-bg-card, #ffffff);
     }
     .composer-tip {
@@ -301,22 +362,46 @@
       font-size: 11px; line-height: 16px; text-align: center;
       cursor: pointer;
     }
-    .composer-row { display: flex; align-items: flex-end; gap: 8px; }
-    .composer textarea {
-      flex: 1;
-      resize: none;
+    /* 输入组:一个带边框的壳包住 textarea 和工具条,焦点环画在壳上 */
+    .composer-shell {
       border: 1px solid var(--langbot-border, #e5e7eb);
-      border-radius: 10px;
-      padding: 9px 12px;
+      border-radius: var(--r-lg);
+      background: var(--langbot-bg-card, #ffffff);
+      transition: border-color .15s, box-shadow .15s;
+      overflow: hidden;
+    }
+    .composer-shell:focus-within {
+      border-color: var(--langbot-accent, #2563eb);
+      box-shadow: 0 0 0 3px var(--ring);
+    }
+    .composer-tools {
+      display: flex; align-items: center; gap: 2px;
+      padding: 6px; border-top: 1px solid var(--langbot-border, #e5e7eb);
+    }
+    .composer-tools .icon-btn { padding: 5px; border-radius: var(--r-sm); }
+    .composer-tools .btn-send { margin-left: auto; padding: 6px 12px; font-size: 12.5px; }
+    .composer-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
+    .composer textarea {
+      width: 100%;
+      flex: 1 1 160px;
+      /* 给一个真实下限:窗口窄到放不下时换行,而不是把输入框挤成一条 */
+      min-width: 140px;
+      min-height: 40px;   /* 约两行,保证 placeholder 完整可见 */
+      resize: none;
+      border: none;
+      border-radius: 0;
+      padding: 11px 13px 4px;
+      background: transparent;
       font-family: inherit;
       font-size: 14px;
-      background: var(--langbot-bg, #f7f8fa);
       color: var(--langbot-text, #0a0a0a);
       outline: none;
+      transition: border-color .15s, box-shadow .15s;
       max-height: 98px;
       line-height: 1.5;
       overflow-y: auto;
     }
+    .composer textarea:focus { outline: none; box-shadow: none; }
     .composer textarea:disabled { opacity: .6; }
 
     /* ===== 右栏:信息面板 ===== */
@@ -330,10 +415,14 @@
     }
     .info-panel.collapsed { width: 0; opacity: 0; overflow: hidden; border: none; }
     .info-header {
-      padding: 16px;
+      padding: 18px 16px 16px;
       text-align: center;
       border-bottom: 1px solid var(--langbot-border, #e5e7eb);
     }
+    .info-rows { display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; margin: 0; font-size: 12px; }
+    .info-rows dt { color: var(--langbot-text-muted, #71717a); white-space: nowrap; }
+    .info-rows dd { margin: 0; text-align: right; min-width: 0; overflow-wrap: anywhere; }
+    .btn-block { width: 100%; }
     .info-avatar {
       width: 64px; height: 64px; margin: 0 auto 10px;
       border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -347,12 +436,12 @@
       margin: 0 0 10px; font-size: 12px; font-weight: 600;
       color: var(--langbot-text-muted, #9ca3af); text-transform: uppercase;
     }
-    .info-row { display: flex; justify-content: space-between; padding: 5px 0; font-size: 13px; }
-    .info-row .k { color: var(--langbot-text-muted, #9ca3af); }
     .member-item {
       display: flex; align-items: center; gap: 8px;
-      padding: 6px 0; cursor: pointer; border-radius: 8px;
+      padding: 5px 6px; margin: 0 -6px; cursor: pointer; border-radius: 8px;
+      min-width: 0;
     }
+    .member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
     .member-item:hover { background: var(--langbot-bg, #f3f4f6); }
     .member-avatar {
       width: 28px; height: 28px; border-radius: 50%;
@@ -360,13 +449,46 @@
       color: #fff; font-size: 12px; font-weight: 600; flex-shrink: 0;
     }
 
+    /* ===== 空态(中区 / 左栏) =====
+       宿主(shadcn)的空态不是一个飘着的图标:浅底圆形托住图标、标题走正文色、
+       说明走 muted。原来的半透明描边图标 + 一行灰字在窄高里显得又小又散。 */
     .empty {
       flex: 1; display: flex; align-items: center; justify-content: center;
-      color: var(--langbot-text-muted, #9ca3af); flex-direction: column; gap: 12px;
+      padding: 24px; text-align: center;
+    }
+    .empty-inner {
+      display: flex; flex-direction: column; align-items: center; gap: 4px;
+      max-width: 320px;
+    }
+    .empty-badge {
+      width: 48px; height: 48px; margin-bottom: 12px;
+      border-radius: 999px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--muted);
+      color: var(--langbot-text-muted, #71717a);
+    }
+    .empty-badge svg { width: 22px; height: 22px; display: block; }
+    .empty-title { font-size: 14px; font-weight: 600; color: var(--langbot-text, #0a0a0a); }
+    .empty-sub { font-size: 12px; line-height: 1.6; color: var(--langbot-text-muted, #71717a); max-width: 46ch; }
+    .empty-kbd {
+      display: inline-flex; align-items: center; gap: 6px; margin-top: 14px;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px dashed var(--langbot-border, #e4e4e7);
+      font-size: 11px; color: var(--langbot-text-muted, #71717a);
+    }
+    .empty-kbd .dot { width: 6px; height: 6px; border-radius: 50%; background: #ef4444; flex-shrink: 0; }
+    /* 左栏无会话:同样语气,但压进列表宽度,不做整栏居中 */
+    .list-empty {
+      margin: 18px 8px; padding: 20px 10px;
+      border: 1px dashed var(--langbot-border, #e4e4e7);
+      border-radius: var(--r-lg);
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
       text-align: center;
     }
-    .empty-icon { width: 56px; height: 56px; opacity: .35; }
-    .empty-icon svg { width: 100%; height: 100%; display: block; }
+    .list-empty .empty-badge { width: 40px; height: 40px; margin-bottom: 6px; }
+    .list-empty .empty-badge svg { width: 18px; height: 18px; }
+    .list-empty .empty-title { font-size: 13px; }
+    .list-empty .empty-sub { font-size: 11.5px; max-width: 26ch; }
 
     /* ===== 信息卡片浮层 ===== */
     .card-overlay {
@@ -377,26 +499,207 @@
       z-index: 50;
     }
     .card-overlay.show { display: flex; }
+    /* 卡片按宿主 Dialog 的骨架:标题区 + 分隔线 + 主体 + 底部操作,
+       键值行用两列网格对齐,不再靠 space-between 让每一行各飘各的。 */
     .info-card {
       background: var(--langbot-bg-card, #fff);
-      border-radius: 16px;
-      padding: 22px;
-      width: 300px;
-      box-shadow: 0 12px 40px rgba(0,0,0,.2);
+      border: 1px solid var(--langbot-border, #e5e7eb);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      width: min(340px, calc(100vw - 32px));
+      max-height: calc(100vh - 48px);
+      overflow-y: auto;
+      box-shadow: 0 18px 48px rgba(0,0,0,.18);
     }
     .info-card .card-avatar {
-      width: 72px; height: 72px; margin: 0 auto 12px;
-      border-radius: 50%; display: flex; align-items: center; justify-content: center;
-      color: #fff; font-size: 30px; font-weight: 600;
+      width: 64px; height: 64px; margin: 0 auto 10px;
+      border-radius: 999px; display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 26px; font-weight: 600;
+      background-size: cover; background-position: center;
     }
-    .info-card.group-card .card-avatar { border-radius: 20px; }
+    .info-card.group-card .card-avatar { border-radius: 18px; }
+    .info-card .card-head {
+      padding-bottom: 14px; margin-bottom: 12px;
+      border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+      text-align: center;
+    }
+    .card-rows { display: grid; grid-template-columns: auto 1fr; gap: 7px 12px; font-size: 12.5px; }
+    .card-rows dt { color: var(--langbot-text-muted, #71717a); white-space: nowrap; }
+    .card-rows dd {
+      margin: 0; text-align: right; min-width: 0;
+      overflow-wrap: anywhere; color: var(--langbot-text, #0a0a0a);
+    }
+    .card-actions { margin-top: 16px; display: flex; gap: 8px; }
+    .card-actions .btn { flex: 1; }
     .toast {
-      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-      background: rgba(0,0,0,.82); color: #fff;
-      padding: 10px 18px; border-radius: 10px; font-size: 13px;
-      opacity: 0; transition: opacity .25s; z-index: 100; pointer-events: none;
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(6px);
+      background: var(--langbot-text, #18181b); color: var(--langbot-bg, #fff);
+      padding: 8px 14px; border-radius: var(--r-md); font-size: 12.5px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.22);
+      opacity: 0; transition: opacity .18s, transform .18s; z-index: 100; pointer-events: none;
+      max-width: min(420px, calc(100vw - 32px));
     }
-    .toast.show { opacity: 1; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    .confirm-card { width: min(360px, calc(100vw - 32px)); }
+    .confirm-msg { text-align: center; padding-bottom: 4px; font-size: 13px; }
+    /* ===== 标签 ===== */
+    .label-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 8px;
+      margin: 0 4px 4px 0;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 500;
+      line-height: 17px;
+      border: 1px solid color-mix(in srgb, currentColor 45%, transparent);
+      background: color-mix(in srgb, currentColor 12%, transparent);
+      white-space: nowrap;
+    }
+    .label-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .label-editor {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid var(--langbot-border, #e5e7eb);
+    }
+    .label-editor h5 {
+      margin: 0 0 6px;
+      font-size: 12px;
+      color: var(--langbot-text-muted, #6b7280);
+      font-weight: 600;
+    }
+    .label-editor-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .label-editor input {
+      flex: 1;
+      padding: 5px 8px;
+      border: 1px solid var(--langbot-border, #e5e7eb);
+      border-radius: 6px;
+      background: var(--langbot-bg, #f7f8fa);
+      color: var(--langbot-text, #0a0a0a);
+      font-size: 12px;
+      outline: none;
+    }
+    .label-editor .btn {
+      padding: 5px 10px;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+    .label-chip .remove {
+      cursor: pointer;
+      padding: 0 1px;
+      font-size: 12px;
+      opacity: .55;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .label-chip .remove:hover { opacity: 1; }
+
+    /* ===== 消息操作 / 撤回 / 引用 ===== */
+    .think { margin: 0 0 6px; font-size: 12px; opacity: .85; }
+    .think summary { cursor: pointer; color: var(--langbot-text-muted, #6b7280); user-select: none; }
+    .think pre {
+      margin: 6px 0 0; padding: 8px; border-radius: 6px; max-height: 220px; overflow: auto;
+      white-space: pre-wrap; word-break: break-word; font-size: 11px;
+      background: color-mix(in srgb, currentColor 8%, transparent);
+    }
+    .msg-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+      opacity: 0;
+      transition: opacity .12s;
+    }
+    .msg-row:hover .msg-actions { opacity: 1; }
+    .msg-action {
+      border: none;
+      background: transparent;
+      color: var(--langbot-text-muted, #6b7280);
+      font-size: 11px;
+      cursor: pointer;
+      padding: 1px 6px;
+      border-radius: 5px;
+    }
+    .msg-action:hover { background: var(--langbot-bg, #f3f4f6); }
+    .msg-action.danger { color: #dc2626; }
+    .recalled-tag {
+      display: inline-block;
+      margin-left: 6px;
+      font-size: 11px;
+      color: var(--langbot-text-muted, #9ca3af);
+      border: 1px dashed var(--langbot-border, #d4d4d8);
+      padding: 0 6px;
+      border-radius: 4px;
+    }
+    .msg-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    /* 引用条挂一条左侧强调色竖线,和宿主 Blockquote 一致 */
+    .quote-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      padding: 6px 10px;
+      border-radius: var(--r-sm);
+      border-left: 3px solid var(--langbot-accent, #2563eb);
+      background: var(--muted);
+      color: var(--langbot-text-muted, #71717a);
+      font-size: 12px;
+    }
+    .quote-bar .quote-text {
+      flex: 1; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .quote-bar .remove {
+      cursor: pointer; font-weight: 700; opacity: .6; flex-shrink: 0;
+      background: none; border: none; color: inherit; padding: 0 2px;
+    }
+    .card-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: inherit;
+    }
+    .label-empty { font-size: 12px; color: var(--langbot-text-muted, #71717a); }
+    .label-list { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+
+    /* ===== 窄宽度 =====
+       页面是塞进 iframe 的,宿主侧栏展开时可用宽度可能只有 400 出头。
+       此时固定 300px 左栏会把聊天气泡压成竖排单字。 */
+    @media (max-width: 720px) {
+      .sidebar { width: 232px; }
+      .tab { font-size: 12px; }
+    }
+    @media (max-width: 560px) {
+      .app { flex-direction: column; }
+      .sidebar {
+        width: 100%; max-height: 40%; min-height: 0;
+        border-right: none;
+        border-bottom: 1px solid var(--langbot-border, #e5e7eb);
+      }
+      .chat { flex: 1; min-height: 160px; }
+      .messages { min-height: 80px; }
+      .msg-row { max-width: 92%; }
+      .messages { padding: 12px; gap: 10px; }
+      .chat-header { padding: 10px 12px; gap: 8px; }
+      .chat-title { font-size: 14px; }
+      .composer { padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px)); }
+      /* 竖排时右栏成了第三个整高 flex 子项,收起来必须同时归零宽高,
+         否则它按内容高度占位,把聊天区挤成一条 */
+      .info-panel { width: 0; height: 0; }
+      .info-panel:not(.collapsed) {
+        position: absolute; right: 0; top: 0; bottom: 0;
+        width: 240px; height: auto; z-index: 20;
+      }
+    }
   </style>
 </head>
 <body>
@@ -412,8 +715,20 @@
         <div class="tab" data-tab="person" data-i18n="tabPerson">私聊</div>
         <div class="tab" data-tab="group" data-i18n="tabGroup">群聊</div>
       </div>
-      <div class="search-box">
-        <input type="text" id="searchInput" data-i18n="searchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索会话...">
+      <div class="filters">
+        <div class="search-box">
+          <span class="search-icon">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/></svg>
+          </span>
+          <input type="text" id="searchInput" data-i18n="searchPlaceholder" data-i18n-attr="placeholder" placeholder="搜索会话...">
+        </div>
+        <div class="search-box">
+          <span class="search-icon">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 12 22l-8-8V4h10z"/><circle cx="8" cy="8" r="1.4"/></svg>
+          </span>
+          <input type="text" id="labelFilterInput" list="labelOptions" data-i18n="labelFilter" data-i18n-attr="placeholder" placeholder="按标签筛选...">
+          <datalist id="labelOptions"></datalist>
+        </div>
       </div>
       <div class="session-list" id="sessionList"></div>
     </div>
@@ -427,36 +742,48 @@
           <span id="countdownText">10:00</span>
         </div>
         <button class="btn btn-primary" id="takeoverBtn" data-i18n="takeover">接管</button>
-        <button class="icon-btn" id="toggleInfoBtn" title="信息">
+        <button class="icon-btn" id="toggleInfoBtn" title="信息" data-i18n="infoPanel" data-i18n-attr="title">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="8" r="0.6" fill="currentColor"/></svg>
         </button>
       </div>
       <div class="messages" id="messages" style="display:none;"></div>
       <div class="empty" id="chatEmpty">
-        <div class="empty-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
-          </svg>
+        <div class="empty-inner">
+          <div class="empty-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+            </svg>
+          </div>
+          <div class="empty-title" data-i18n="selectSessionTitle">选择一个会话来开始</div>
+          <div class="empty-sub" data-i18n="selectSession">从左侧列表挑一个私聊或群聊，接管后即可代 AI 回复。</div>
+          <span class="empty-kbd"><span class="dot"></span><span data-i18n="selectSessionHint">会话有未处理消息时会显示红点</span></span>
         </div>
-        <div data-i18n="selectSession">请选择一个会话开始</div>
       </div>
       <div class="composer" id="composer" style="display:none;">
         <div class="composer-tip" id="composerTip" data-i18n="takeoverTip">已接管,消息将以人工身份发送,AI 已被阻断。</div>
         <div class="preview-strip" id="previewStrip"></div>
-        <div class="composer-row">
-          <button class="icon-btn" id="imageBtn" title="图片">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-          </button>
-          <input type="file" id="imageInput" accept="image/*" style="display:none;">
-          <button class="icon-btn" id="fileBtn" title="文件">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-          </button>
-          <input type="file" id="fileInput" style="display:none;">
+        <div class="quote-bar" id="quoteBar" style="display:none;"></div>
+        <!-- 附件按钮收进输入框内部做成一组(宿主 Textarea 组件的形态),
+             而不是四个方块跟输入框并排站队 -->
+        <div class="composer-shell">
           <textarea id="msgInput" rows="1" data-i18n="inputPlaceholder" data-i18n-attr="placeholder" placeholder="输入消息..."></textarea>
-          <button class="btn btn-primary" id="sendBtn" title="发送">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            <span data-i18n="send" style="vertical-align:middle;margin-left:4px">发送</span>
-          </button>
+          <div class="composer-tools">
+            <button class="icon-btn" id="imageBtn" title="图片" data-i18n="attachImage" data-i18n-attr="title">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+            </button>
+            <input type="file" id="imageInput" accept="image/*" style="display:none;">
+            <button class="icon-btn" id="fileBtn" title="文件" data-i18n="attachFile" data-i18n-attr="title">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+            </button>
+            <input type="file" id="fileInput" style="display:none;">
+            <button class="icon-btn" id="imagePluginBtn" title="图传插件" data-i18n="attachSticker" data-i18n-attr="title">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><path d="m8 17 4-4 4 4"/><path d="M20 16.7A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/></svg>
+            </button>
+            <button class="btn btn-primary btn-send" id="sendBtn" title="发送">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              <span data-i18n="send">发送</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -472,12 +799,14 @@
 
   <!-- 确认对话框 -->
   <div class="card-overlay" id="confirmOverlay">
-    <div class="info-card">
-      <div class="info-name" style="text-align:center;margin-bottom:8px" data-i18n="confirmTitle">确认操作</div>
-      <div class="info-sub" id="confirmMsg" style="text-align:center;margin-bottom:16px"></div>
-      <div style="display:flex;gap:10px">
-        <button class="btn btn-ghost" id="confirmCancel" style="flex:1" data-i18n="cancel">取消</button>
-        <button class="btn btn-danger" id="confirmOk" style="flex:1" data-i18n="confirm">确认</button>
+    <div class="info-card confirm-card">
+      <div class="card-head">
+        <div class="info-name" data-i18n="confirmTitle">确认操作</div>
+      </div>
+      <div class="info-sub confirm-msg" id="confirmMsg"></div>
+      <div class="card-actions">
+        <button class="btn btn-ghost" id="confirmCancel" data-i18n="cancel">取消</button>
+        <button class="btn btn-danger" id="confirmOk" data-i18n="confirm">确认</button>
       </div>
     </div>
   </div>
@@ -504,6 +833,12 @@
       remaining: 0,
       timeout: 600,
       pollTimer: null,
+      labelFilter: '',      // 会话列表标签筛选
+      labels: [],           // 已收集到的标签名(用于筛选下拉)
+      quoted: null,         // 引用的消息 {session_key, message_id, content}
+      messages: [],         // 当前会话已展示的消息(用于滚动加载)
+      hasMore: false,       // 是否还有更早的历史页
+      loadingEarlier: false,// 是否正在加载更早的历史页
     };
 
     function t(key, fb) { return langbot.t(key, fb); }
@@ -531,6 +866,17 @@
       var p = function(n){ return n < 10 ? '0'+n : n; };
       return p(m) + ':' + p(s);
     }
+    // 把任意错误变成可读文本:Error/字符串直接取,对象取 message/msg 字段。
+    // 否则拼接到 toast 里就成了 "error[object Object]"。
+    function errorText(e) {
+      if (!e) return '';
+      if (typeof e === 'string') return e;
+      if (e.message) return String(e.message);
+      if (e.msg) return String(e.msg);
+      if (e.error) return errorText(e.error);
+      try { return JSON.stringify(e); } catch (_) { return String(e); }
+    }
+
     function showToast(msg) {
       var el = document.getElementById('toast');
       el.textContent = msg;
@@ -559,7 +905,49 @@
         });
         state.sessions = newSessions;
         renderSessions();
+        refreshLabelOptions();
       } catch (e) { showToast('加载会话失败: ' + e); }
+    }
+
+    // 标签列表用于筛选下拉;非关键路径,失败静默。
+    async function refreshLabelOptions() {
+      try {
+        var res = await langbot.api('/label_users', null, 'GET');
+        var names = [];
+        ((res && res.users) || []).forEach(function(u) {
+          (u.labels || []).forEach(function(lb) {
+            var n = lb.name || lb;
+            if (n && names.indexOf(n) < 0) names.push(n);
+          });
+        });
+        state.labels = names;
+        var options = document.getElementById('labelOptions');
+        if (options) {
+          options.innerHTML = names.map(function(n) {
+            return '<option value="' + escapeAttr(n) + '"></option>';
+          }).join('');
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    function labelNamesOf(session) {
+      var out = [];
+      (session.labels || []).forEach(function(lb) {
+        var n = lb.name || lb;
+        if (n && out.indexOf(n) < 0) out.push(n);
+      });
+      return out;
+    }
+
+    function labelsHtml(labels, withRemove) {
+      return (labels || []).map(function(lb) {
+        var color = lb.color || 'var(--langbot-text-muted,#6b7280)';
+        var name = escapeHtml(lb.name || lb);
+        if (withRemove) {
+          name += '<span class="remove" data-remove-label="' + escapeAttr(lb.name || lb) + '">×</span>';
+        }
+        return '<span class="label-chip" style="color:' + escapeAttr(color) + '">' + name + '</span>';
+      }).join(' ');
     }
 
     function renderSessions() {
@@ -567,11 +955,26 @@
       var items = state.sessions.filter(function(s) {
         if (state.filter !== 'all' && s.type !== state.filter) return false;
         if (state.search && (s.name || '').toLowerCase().indexOf(state.search) < 0) return false;
+        if (state.labelFilter && labelNamesOf(s).indexOf(state.labelFilter) < 0) return false;
         return true;
       });
       list.innerHTML = '';
       if (!items.length) {
-        list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--langbot-text-muted,#9ca3af);font-size:13px;">' + t('noSessions','暂无会话') + '</div>';
+        // 空态要区分"真的没有会话"和"筛掉了":前者告诉人怎么开始,
+        // 后者给一句可执行的动作,否则筛空了只看到"暂无会话"很茫然。
+        var filtered = !!(state.search || state.labelFilter || state.filter !== 'all');
+        list.innerHTML =
+          '<div class="list-empty">' +
+            '<div class="empty-badge">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' +
+                (filtered
+                  ? '<circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.2" y2="16.2"/>'
+                  : '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>') +
+              '</svg>' +
+            '</div>' +
+            '<div class="empty-title">' + escapeHtml(t(filtered ? 'noMatch' : 'noSessionsTitle', filtered ? '没有匹配的会话' : '还没有会话')) + '</div>' +
+            '<div class="empty-sub">' + escapeHtml(t(filtered ? 'noMatchHint' : 'noSessions', filtered ? '换个关键词或切回"全部"' : '有人给 Bot 发消息后会出现在这里')) + '</div>' +
+          '</div>';
         return;
       }
       items.forEach(function(s) {
@@ -587,6 +990,7 @@
             '<div class="session-name">' + escapeHtml(s.name) +
               (isGroup ? ' <span class="badge-group">' + t('group','群') + '</span>' : '') +
               (s.takeover_active ? ' <span class="dot" title="' + t('takenOver','已接管') + '"></span>' : '') +
+              (s.has_labels ? ' ' + labelsHtml(s.labels) : '') +
             '</div>' +
             '<div class="session-preview">' + escapeHtml(s.last_msg_preview || '') + '</div>' +
           '</div>';
@@ -743,6 +1147,7 @@
       } else {
         draftSlot(key);
       }
+      clearQuote();   // 引用属于上一个会话,切换即作废
       clearConversationUI();
       updateComposerEnabled();
       renderSessions();
@@ -805,44 +1210,249 @@
       }
     }
 
-    function renderMessages(data) {
-      document.getElementById('chatTitle').textContent = data.name || data.session_key;
-      var box = document.getElementById('messages');
-      box.innerHTML = '';
-      var isGroup = data.type === 'group';
-      (data.messages || []).forEach(function(m) {
+    function messageContentHtml(m) {
+      if (m.content_type === 'image') {
+        return '<img src="' + escapeAttr(m.content) + '" alt="image" style="max-width:260px;max-height:200px;border-radius:8px;display:block">';
+      }
+      if (m.content_type === 'voice') {
+        var src = String(m.content || '');
+        var usable = /^(data:|https?:)/i.test(src);
+        return usable
+          ? '<audio controls src="' + escapeAttr(src) + '" style="height:32px"></audio>'
+          : escapeHtml(src || t('voice', '[语音]'));
+      }
+      if (m.content_type === 'file') {
+        return '<span style="display:inline-flex;align-items:center;gap:6px">' +
+          '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
+          escapeHtml(m.content) + '</span>';
+      }
+      return textWithThinking(m.content);
+    }
+
+    // 模型常把推理过程以  thinking…</think> 夹在正文里。原样铺开会把气泡撑爆、
+    // 挤压布局；这里抽出来折进可展开块，正文只留回答本身。
+    function textWithThinking(raw) {
+      var text = String(raw == null ? '' : raw);
+      var blocks = [];
+      text = text.replace(/<think(?:ing)?>([\s\S]*?)(?:<\/think(?:ing)?>|$)/gi, function (_m, inner) {
+        if (String(inner).trim()) blocks.push(String(inner).trim());
+        return '';
+      });
+      var html = '';
+      if (blocks.length) {
+        html += '<details class="think"><summary>' + escapeHtml(t('thinking','思考过程')) +
+          ' (' + blocks.join('\n\n').length + ')</summary><pre>' +
+          escapeHtml(blocks.join('\n\n')) + '</pre></details>';
+      }
+      var body = text.trim();
+      return html + (body ? escapeHtml(body) : '');
+    }
+
+    function messageActionsHtml(m) {
+      return '<div class="msg-actions">' +
+        '<button class="msg-action" data-act="copy">' + escapeHtml(t('messageCopy', '复制')) + '</button>' +
+        '<button class="msg-action" data-act="quote">' + escapeHtml(t('messageQuote', '引用')) + '</button>' +
+        (m.message_id ? '<button class="msg-action danger" data-act="recall">' + escapeHtml(t('messageRecall', '撤回')) + '</button>' : '') +
+        '</div>';
+    }
+
+    function messageTextFor(m) {
+      return m.content || '';
+    }
+
+    function copyText(text) {
+      var value = String(text || '');
+      if (!value) return;
+      function done() { showToast(t('copied', '已复制')); }
+      function fail() { showToast(t('copyFailed', '复制失败')); }
+      try {
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(value).then(done, fail);
+        } else if (document.body && document.execCommand) {
+          var ta = document.createElement('textarea');
+          ta.value = value;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          var ok = document.execCommand('copy');
+          ta.remove();
+          ok ? done() : fail();
+        } else {
+          fail();
+        }
+      } catch (e) { fail(); }
+    }
+
+    function messageQuote(m, sessionKey) {
+      var text = messageTextFor(m);
+      if (!text && !m.message_id) { showToast(t('messageQuote', '引用')); return; }
+      state.quoted = {
+        session_key: sessionKey,
+        message_id: m.message_id || '',
+        content: text,
+        name: m.sender_name || ''
+      };
+      renderQuoteBar();
+      showToast(t('quoted', '已引用'));
+    }
+
+    async function recallMessage(m, sessionKey) {
+      if (!m.message_id) { showToast(t('messageRecall', '撤回')); return; }
+      try {
+        await langbot.api('/recall', { session_key: sessionKey, message_id: m.message_id }, 'POST');
+        m.recalled = true;
+        if (state.current === sessionKey && state.currentData) renderMessages(state.currentData);
+        showToast(t('messageRecalled', '已撤回'));
+      } catch (e) { showToast(t('messageRecall', '撤回') + ': ' + e); }
+    }
+
+    function renderQuoteBar() {
+      var bar = document.getElementById('quoteBar');
+      if (!bar) return;
+      if (state.quoted && state.quoted.session_key === state.current) {
+        bar.style.display = 'flex';
+        bar.innerHTML = '<span class="quote-text">' +
+          escapeHtml(t('quotedPrefix', '引用: ')) + escapeHtml((state.quoted.content || '').slice(0, 80)) + '</span>' +
+          '<button class="remove" title="' + escapeAttr(t('cancel', '取消')) + '">×</button>';
+        bar.querySelector('.remove').addEventListener('click', clearQuote);
+      } else {
+        bar.style.display = 'none';
+        bar.innerHTML = '';
+      }
+    }
+
+    function clearQuote() {
+      state.quoted = null;
+      renderQuoteBar();
+    }
+
+    function paintMessages(box, messages, isGroup) {
+      (messages || []).forEach(function(m) {
         var row = document.createElement('div');
-        row.className = 'msg-row ' + m.role;
+        row.className = 'msg-row ' + m.role + (m.recalled ? ' recalled' : '');
+        var data = state.currentData || {};
         var avatarSeed = m.role === 'user' ? (m.sender_id || data.name) : m.role;
         var avatarName = m.role === 'ai' ? 'AI' : (m.role === 'human' ? (t('agent','人工')) : (m.sender_name || data.name));
         var showSender = isGroup && m.role === 'user';
-        var content;
-        if (m.content_type === 'image') {
-          content = '<img src="' + escapeAttr(m.content) + '" alt="image">';
-        } else if (m.content_type === 'file') {
-          content = '<span style="display:inline-flex;align-items:center;gap:6px">' +
-            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>' +
-            escapeHtml(m.content) + '</span>';
-        } else {
-          content = escapeHtml(m.content);
+        var avatarHtml = m.avatar ? '<img src="' + escapeAttr(m.avatar) + '" alt="avatar">' : initial(avatarName);
+        var content = messageContentHtml(m);
+        if (m.recalled) {
+          content += '<span class="recalled-tag">' + escapeHtml(t('messageRecalled', '已撤回')) + '</span>';
         }
         row.innerHTML =
-          '<div class="msg-avatar" style="background:' + colorOf(avatarSeed) + '">' + initial(avatarName) + '</div>' +
+          '<div class="msg-avatar" style="background:' + colorOf(avatarSeed) + '">' + avatarHtml + '</div>' +
           '<div class="msg-body">' +
             (showSender ? '<div class="msg-sender">' + escapeHtml(m.sender_name || m.sender_id) + '</div>' : '') +
             '<div class="bubble">' + content + '</div>' +
             '<div class="msg-time">' + fmtTime(m.ts) + '</div>' +
+            messageActionsHtml(m) +
           '</div>';
+        row.addEventListener('click', function(ev) {
+          var target = ev && ev.target;
+          var btn = target && target.closest ? target.closest('[data-act]') : null;
+          if (!btn) return;
+          var act = btn.getAttribute('data-act');
+          var sessionKey = (state.currentData && state.currentData.session_key) || state.current;
+          if (act === 'copy') copyText(messageTextFor(m));
+          else if (act === 'quote') messageQuote(m, sessionKey);
+          else if (act === 'recall') recallMessage(m, sessionKey);
+        });
         if (m.role === 'user' && m.sender_id) {
-          row.querySelector('.msg-avatar').style.cursor = 'pointer';
-          row.querySelector('.msg-avatar').addEventListener('click', function() {
-            if (isGroup) showUserCard(data.session_key, m.sender_id);
-            else showUserCard(data.session_key, null);
+          var av = row.querySelector('.msg-avatar');
+          av.style.cursor = 'pointer';
+          av.addEventListener('click', function(ev) {
+            if (ev && ev.stopPropagation) ev.stopPropagation();
+            if (isGroup) showUserCard(state.currentData.session_key, m.sender_id);
+            else showUserCard(state.currentData.session_key, null);
           });
         }
         box.appendChild(row);
       });
+    }
+
+    // 静默刷新:轮询里只补新消息,不置 loading(否则发送按钮每 5 秒闪一次),
+    // 不整段重绘(否则正在上翻的人会被拽回底部)。
+    async function silentRefresh() {
+      var target = state.current;
+      if (!target || state.loading || state.sending || state.loadingEarlier) return;
+      var seq = state.loadSeq;
+      var data;
+      try {
+        data = await langbot.api('/messages', { session_key: target }, 'GET');
+      } catch (e) { return; }
+      // 过期:期间切了会话或已有别的加载
+      if (seq !== state.loadSeq || state.current !== target) return;
+      var incoming = (data && data.messages) || [];
+      var before = state.messages || [];
+      if (incoming.length === before.length) {
+        var lastA = before.length ? JSON.stringify(before[before.length - 1]) : '';
+        var lastB = incoming.length ? JSON.stringify(incoming[incoming.length - 1]) : '';
+        if (lastA === lastB) {
+          // 条数和末条都没变,但流式文本可能在原地增长
+          if (lastA === '') return;
+        }
+      }
+      var box = document.getElementById('messages');
+      var atBottom = box ? box.scrollHeight - box.scrollTop - box.clientHeight < 40 : true;
+      var prevTop = box ? box.scrollTop : 0;
+      state.currentData = data;
+      renderMessages(data);
+      if (box && !atBottom) box.scrollTop = prevTop;
+    }
+
+    function renderMessages(data) {
+      document.getElementById('chatTitle').textContent = data.name || data.session_key;
+      var box = document.getElementById('messages');
+      box.innerHTML = '';
+      state.messages = (data.messages || []).slice();
+      state.hasMore = !!data.has_more;
+      var isGroup = data.type === 'group';
+      paintMessages(box, state.messages, isGroup);
+      if (!state.messages.length) {
+        // 已选中会话但历史为空:给一条说明,否则整块中区是纯黑,像没加载出来
+        var hint = document.createElement('div');
+        hint.className = 'chat-hint';
+        hint.innerHTML =
+          '<div class="chat-hint-title">' +
+          escapeHtml(t('noMessagesTitle', '还没有消息')) + '</div>' +
+          '<div>' + escapeHtml(t('noMessagesHint', '该会话暂无历史记录。接管后可直接在下方发送。')) + '</div>';
+        box.appendChild(hint);
+      }
       box.scrollTop = box.scrollHeight;
+    }
+
+    // 游标分页:滚动到顶部时向前加载更早的历史页。
+    async function loadEarlierMessages() {
+      if (!state.current || !state.currentData || !state.hasMore || state.loadingEarlier) return;
+      if (!state.messages.length) return;
+      var target = state.current;
+      var seq = state.loadSeq;
+      state.loadingEarlier = true;
+      try {
+        var oldest = state.messages[0].ts;
+        var box = document.getElementById('messages');
+        var prevHeight = box.scrollHeight;
+        var data = await langbot.api('/messages', {
+          session_key: target,
+          limit: 200,
+          before_ts: oldest
+        }, 'GET');
+        if (state.current !== target || state.loadSeq !== seq ||
+            !state.currentData || state.currentKey !== target) return;
+        var older = (data && data.messages) || [];
+        var combined = older.concat(state.messages);
+        var isGroup = state.currentData.type === 'group';
+        box.innerHTML = '';
+        state.messages = combined;
+        state.hasMore = !!data.has_more;
+        paintMessages(box, combined, isGroup);
+        box.scrollTop = box.scrollHeight - prevHeight;
+      } catch (e) {
+        showToast(t('loadEarlierFailed', '加载更早消息失败') + ': ' + e);
+      } finally {
+        state.loadingEarlier = false;
+      }
     }
 
     function escapeAttr(s) { return escapeHtml(s).replace(/'/g, '&#39;'); }
@@ -854,7 +1464,7 @@
       var tip = document.getElementById('composerTip');
       if (active) {
         btn.textContent = t('cancelTakeover', '取消接管');
-        btn.className = 'btn btn-danger';
+        btn.className = 'btn btn-quiet-danger';
         cd.classList.add('show');
         tip.classList.add('show');
         startCountdown(remaining);
@@ -931,6 +1541,8 @@
       // 发送前再次校验归属:只带出确实属于本次目标会话的附件
       var ownedImage = state.attachmentOwner.image === target ? (state.pendingImage || '') : '';
       var ownedFile = state.attachmentOwner.file === target ? state.pendingFile : null;
+      // 引用只允许来自当前会话,避免把 A 的引用投给 B。
+      var quoted = (state.quoted && state.quoted.session_key === target) ? state.quoted : null;
       if (!text && !ownedImage && !ownedFile) return;
       var sendGen = state.draftGen;  // 本次发送的草稿代次
       var sentImage = ownedImage || null;
@@ -945,7 +1557,9 @@
           text: text,
           image_base64: ownedImage,
           file_base64: ownedFile ? ownedFile.base64 : '',
-          file_name: ownedFile ? ownedFile.name : ''
+          file_name: ownedFile ? ownedFile.name : '',
+          quote_message_id: quoted ? (quoted.message_id || '') : '',
+          quoted_content: quoted ? (quoted.content || '') : ''
         }, 'POST');
         // 回复结果、输入清理与附件清理都绑定发送时会话与草稿代次:
         // 期间切到了 B,A 的结果既不能把 B 显示成已接管,也不能清掉操作员
@@ -960,10 +1574,14 @@
           state.currentData.takeover_active = res.takeover_active;
           updateTakeoverUI(res.takeover_active, res.takeover_remaining);
         }
+        if (state.current === target && quoted) {
+          state.quoted = null;  // 引用已随这次回复发出
+          renderQuoteBar();
+        }
         if (state.current === target) await loadMessages(target);
         loadSessions();
       } catch (e) {
-        showToast(t('sendFailed','发送失败') + ': ' + e);
+        showToast(t('sendFailed','发送失败') + ': ' + errorText(e));
       } finally {
         state.sending = false;
         updateComposerEnabled();
@@ -1037,33 +1655,82 @@
       el.style.height = Math.min(el.scrollHeight, 98) + 'px';
     }
 
+    // 图传插件预留接口:把待发送图片 POST 给已配置的图传插件,成功后用其稳定 URL
+    // 替换本地 data URL,人工回复与 AI 回复都能复用该 URL。
+    // 负载与 StickerHub Page `/add` 的契约一致:{"name", "data_url"};同时携带
+    // image_base64 以兼容其他图传插件。响应取稳定 url 字段。
+    async function uploadImageToPlugin() {
+      if (!state.pendingImage) { showToast(t('attachmentRequired','请先选择图片')); return; }
+      try {
+        var meta = await langbot.api('/image_plugin_upload', null, 'GET');
+        if (!meta || !meta.enabled) { showToast(t('imagePluginUnavailable','未配置图传插件')); return; }
+        var name = 'human-takeover';
+        if (state.current) name = 'human-takeover-' + state.current;
+        var res = await fetch(meta.url, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            name: name,
+            data_url: state.pendingImage,
+            image_base64: state.pendingImage
+          })
+        });
+        var data = await res.json();
+        var url = data && (data.url || (data.data && data.data.url) || data.image_url);
+        if (!url) { showToast(t('imagePluginFailed','图传插件上传失败')); return; }
+        state.pendingImage = url;
+        if (state.current) state.attachmentOwner.image = state.current;
+        renderPreview();
+        showToast(t('imagePluginUploaded','已上传到图传插件'));
+      } catch (e) { showToast(t('imagePluginFailed','图传插件上传失败') + ': ' + errorText(e)); }
+    }
+
     // ====== 信息面板 / 卡片 ======
     function renderInfoPanel(data) {
       var panel = document.getElementById('infoPanel');
       var isGroup = data.type === 'group';
+      // 头像/名称块 + 属性行;以前只有头像块,右栏下面一大片空白。
       var html =
         '<div class="info-header">' +
           '<div class="info-avatar ' + (isGroup ? 'group' : '') + '" style="background:' + colorOf(data.session_key) + '">' + initial(data.name) + '</div>' +
           '<div class="info-name">' + escapeHtml(data.name) + '</div>' +
-          '<div class="info-sub">' + (isGroup ? t('group','群聊') : t('person','私聊')) + ' · ' + escapeHtml(data.session_key) + '</div>' +
+          '<div class="info-sub">' + (isGroup ? t('group','群聊') : t('person','私聊')) + '</div>' +
+        '</div>' +
+        '<div class="info-section"><h4>' + t('sessionInfo','会话') + '</h4>' +
+          '<dl class="info-rows">' +
+            '<dt>' + t('sessionKey','会话标识') + '</dt><dd>' + escapeHtml(data.session_key) + '</dd>' +
+            (data.bot_name ? '<dt>Bot</dt><dd>' + escapeHtml(data.bot_name) + '</dd>' : '') +
+            (data.adapter ? '<dt>' + t('adapter','适配器') + '</dt><dd>' + escapeHtml(data.adapter) + '</dd>' : '') +
+            '<dt>' + t('status','状态') + '</dt><dd>' +
+              (data.takeover_active ? t('takenOver','已接管') : t('idle','AI 接待中')) + '</dd>' +
+          '</dl>' +
         '</div>';
       if (isGroup) {
         var members = data.members || {};
+        var labelMap = data.member_labels || {};
         var ids = Object.keys(members);
         html += '<div class="info-section"><h4>' + t('members','成员') + ' (' + ids.length + ')</h4>';
         ids.forEach(function(id) {
           html += '<div class="member-item" data-mid="' + escapeAttr(id) + '">' +
             '<div class="member-avatar" style="background:' + colorOf(id) + '">' + initial(members[id]) + '</div>' +
-            '<span>' + escapeHtml(members[id]) + '</span></div>';
+            '<span class="member-name">' + escapeHtml(members[id]) + '</span>' +
+            (labelMap[id] ? ' ' + labelsHtml(labelMap[id]) : '') + '</div>';
         });
         html += '</div>';
+      } else {
+        html += '<div class="info-section"><button class="btn btn-ghost btn-block" id="panelUserBtn">' +
+          t('userCard','用户信息') + '</button></div>';
       }
       panel.innerHTML = html;
       panel.querySelectorAll('.member-item').forEach(function(el) {
         el.addEventListener('click', function() {
-          showUserCard(data.session_key, el.getAttribute('data-mid'));
+          var mid = el.getAttribute('data-mid');
+          if (isGroup && mid) showUserCard(data.session_key, mid);
+          else showGroupCard(data.session_key);
         });
       });
+      var ub = panel.querySelector('#panelUserBtn');
+      if (ub) ub.addEventListener('click', function() { showUserCard(data.session_key, null); });
     }
 
     async function showUserCard(sessionKey, memberId) {
@@ -1071,40 +1738,113 @@
         var body = { session_key: sessionKey };
         if (memberId) body.member_id = memberId;
         var info = await langbot.api('/user_info', body, 'GET');
+        var avatarInner = info.avatar
+          ? '<img src="' + escapeAttr(info.avatar) + '" alt="avatar">'
+          : initial(info.name);
+        // 有头像就直接贴图,不再压一层字母在下面
+        if (info.avatar) avatarInner = '';
+        var avatarStyle = 'background:' + colorOf(info.id) +
+          (info.avatar ? ';background-image:url(\'' + escapeAttr(info.avatar) + '\');background-size:cover;background-position:center' : '');
         var html =
-          '<div class="card-avatar" style="background:' + colorOf(info.id) + '">' + initial(info.name) + '</div>' +
-          '<div class="info-name" style="text-align:center">' + escapeHtml(info.name) + '</div>' +
-          '<div class="info-sub" style="text-align:center;margin-bottom:12px">' + t('userCard','用户信息') + '</div>' +
-          '<div class="info-row"><span class="k">' + t('userId','ID') + '</span><span>' + escapeHtml(info.id) + '</span></div>';
-        if (info.from_group) {
-          html += '<div class="info-row"><span class="k">' + t('fromGroup','所在群') + '</span><span>' + escapeHtml(info.from_group) + '</span></div>';
-        }
-        if (info.bot_name) {
-          html += '<div class="info-row"><span class="k">Bot</span><span>' + escapeHtml(info.bot_name) + '</span></div>';
-        }
-        if (info.adapter) {
-          html += '<div class="info-row"><span class="k">' + t('adapter','适配器') + '</span><span>' + escapeHtml(info.adapter) + '</span></div>';
-        }
-        html += '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeCard()">' + t('close','关闭') + '</button>';
+          '<div class="card-head">' +
+            '<div class="card-avatar" style="' + avatarStyle + '">' + avatarInner + '</div>' +
+            '<div class="info-name">' + escapeHtml(info.name || info.id) + '</div>' +
+            '<div class="info-sub">' + t('userCard','用户信息') + '</div>' +
+          '</div>' +
+          '<dl class="card-rows">';
+        html += '<dt>' + t('userId','ID') + '</dt><dd>' + escapeHtml(info.id) + '</dd>';
+        if (info.username) html += '<dt>' + t('username','用户名') + '</dt><dd>' + escapeHtml(info.username) + '</dd>';
+        if (info.remark) html += '<dt>' + t('remark','备注') + '</dt><dd>' + escapeHtml(info.remark) + '</dd>';
+        if (info.from_group) html += '<dt>' + t('fromGroup','所在群') + '</dt><dd>' + escapeHtml(info.from_group) + '</dd>';
+        if (info.source_im) html += '<dt>' + t('sourceIM','来源IM') + '</dt><dd>' + escapeHtml(info.source_im) + '</dd>';
+        if (info.bot_name) html += '<dt>Bot</dt><dd>' + escapeHtml(info.bot_name) + '</dd>';
+        if (info.adapter) html += '<dt>' + t('adapter','适配器') + '</dt><dd>' + escapeHtml(info.adapter) + '</dd>';
+        html += '</dl>';
+        html += '<div class="label-editor"><h5>' + t('labelsSection','用户标签') + '</h5>';
+        html += '<div class="label-list">' + ((info.labels || []).length
+          ? labelsHtml(info.labels, true)
+          : '<span class="label-empty">' + escapeHtml(t('labelsEmpty','暂无标签')) + '</span>') + '</div>';
+        html += '<div class="label-editor-row">' +
+          '<input type="text" id="labelInput" data-i18n="labelPlaceholder" data-i18n-attr="placeholder" placeholder="输入标签名">' +
+          '<button class="btn btn-primary" id="labelAddBtn" data-i18n="addLabel">添加标签</button>' +
+          '</div></div>';
+        html += '<div class="card-actions">' +
+          '<button class="btn btn-ghost" onclick="closeCard()">' + t('close','关闭') + '</button>' +
+          '</div>';
         var card = document.getElementById('infoCard');
         card.className = 'info-card';
         card.innerHTML = html;
         document.getElementById('cardOverlay').classList.add('show');
-      } catch (e) { showToast('获取用户信息失败: ' + e); }
+        bindLabelEditor(card, sessionKey, memberId, info);
+      } catch (e) { showToast('获取用户信息失败: ' + errorText(e)); }
+    }
+
+    // 标签编辑绑定在卡片内,避免全局 id 冲突;操作成功后重拉卡片。
+    function bindLabelEditor(card, sessionKey, memberId, info) {
+      var input = card.querySelector('#labelInput');
+      var addBtn = card.querySelector('#labelAddBtn');
+      var submit = function() {
+        var label = (input && input.value ? input.value : '').trim();
+        if (!label) return;
+        var body = { session_key: sessionKey, label: label };
+        if (memberId) body.member_id = memberId;
+        if (info.id) body.user_id = info.id;
+        langbot.api('/labels', body, 'POST').then(function() {
+          showToast(t('labelAdded','已添加'));
+          showUserCard(sessionKey, memberId);
+        }).catch(function(e) { showToast(t('labelFailed','标签操作失败') + ': ' + errorText(e)); });
+      };
+      if (addBtn && addBtn.addEventListener) addBtn.addEventListener('click', submit);
+      if (input && input.addEventListener) {
+        input.addEventListener('keydown', function(e) {
+          if (e && e.key === 'Enter') { if (e.preventDefault) e.preventDefault(); submit(); }
+        });
+      }
+      var removes = card.querySelectorAll('[data-remove-label]');
+      if (removes && removes.forEach) {
+        removes.forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var label = btn.getAttribute('data-remove-label');
+            var body = { session_key: sessionKey, label: label };
+            if (memberId) body.member_id = memberId;
+            if (info.id) body.user_id = info.id;
+            langbot.api('/labels', body, 'DELETE').then(function() {
+              showToast(t('labelRemoved','已删除'));
+              showUserCard(sessionKey, memberId);
+            }).catch(function(e) { showToast(t('labelFailed','标签操作失败') + ': ' + errorText(e)); });
+          });
+        });
+      }
     }
 
     async function showGroupCard(sessionKey) {
       try {
         var info = await langbot.api('/group_info', { session_key: sessionKey }, 'GET');
         var html =
-          '<div class="card-avatar" style="background:' + colorOf(info.id) + '">' + initial(info.name) + '</div>' +
-          '<div class="info-name" style="text-align:center">' + escapeHtml(info.name) + '</div>' +
-          '<div class="info-sub" style="text-align:center;margin-bottom:12px">' + t('groupCard','群聊信息') + '</div>' +
-          '<div class="info-row"><span class="k">' + t('groupId','群号') + '</span><span>' + escapeHtml(info.id) + '</span></div>' +
-          '<div class="info-row"><span class="k">' + t('memberCount','成员数') + '</span><span>' + info.member_count + '</span></div>';
-        if (info.bot_name) html += '<div class="info-row"><span class="k">Bot</span><span>' + escapeHtml(info.bot_name) + '</span></div>';
-        if (info.adapter) html += '<div class="info-row"><span class="k">' + t('adapter','适配器') + '</span><span>' + escapeHtml(info.adapter) + '</span></div>';
-        html += '<button class="btn btn-ghost" style="width:100%;margin-top:14px" onclick="closeCard()">' + t('close','关闭') + '</button>';
+          '<div class="card-head">' +
+            '<div class="card-avatar" style="background:' + colorOf(info.id) + '">' + initial(info.name) + '</div>' +
+            '<div class="info-name">' + escapeHtml(info.name) + '</div>' +
+            '<div class="info-sub">' + t('groupCard','群聊信息') + '</div>' +
+          '</div>' +
+          '<dl class="card-rows">' +
+            '<dt>' + t('groupId','群号') + '</dt><dd>' + escapeHtml(info.id) + '</dd>' +
+            '<dt>' + t('memberCount','成员数') + '</dt><dd>' + escapeHtml(String(info.member_count || 0)) + '</dd>';
+        if (info.bot_name) html += '<dt>Bot</dt><dd>' + escapeHtml(info.bot_name) + '</dd>';
+        if (info.adapter) html += '<dt>' + t('adapter','适配器') + '</dt><dd>' + escapeHtml(info.adapter) + '</dd>';
+        html += '</dl>';
+        if (info.members && info.members.length) {
+          html += '<div class="label-editor"><h5>' + t('members','成员') + '</h5>';
+          info.members.forEach(function(m) {
+            html += '<div class="member-item">' +
+              '<div class="member-avatar" style="background:' + colorOf(m.id || m.name) + '">' + initial(m.name) + '</div>' +
+              '<span class="member-name">' + escapeHtml(m.name) + '</span>' +
+              (m.labels && m.labels.length ? ' ' + labelsHtml(m.labels) : '') + '</div>';
+          });
+          html += '</div>';
+        }
+        html += '<div class="card-actions">' +
+          '<button class="btn btn-ghost" onclick="closeCard()">' + t('close','关闭') + '</button>' +
+          '</div>';
         var card = document.getElementById('infoCard');
         card.className = 'info-card group-card';
         card.innerHTML = html;
@@ -1141,7 +1881,12 @@
         state.loadSeq++;
         state.loading = false;
         state.drafts = {};   // 草稿随会话数据一起清除
+        state.quoted = null;
+        state.labelFilter = '';
+        var lf = document.getElementById('labelFilterInput');
+        if (lf) lf.value = '';
         clearComposer();     // 并作废仍在读取中的附件
+        renderQuoteBar();
         updateComposerEnabled();
         document.getElementById('chatHeader').style.display = 'none';
         document.getElementById('composer').style.display = 'none';
@@ -1169,6 +1914,11 @@
       });
       document.getElementById('searchInput').addEventListener('input', function(e) {
         state.search = e.target.value.toLowerCase();
+        renderSessions();
+      });
+      var labelInput = document.getElementById('labelFilterInput');
+      labelInput.addEventListener('input', function(e) {
+        state.labelFilter = (e.target.value || '').trim();
         renderSessions();
       });
       document.getElementById('clearBtn').addEventListener('click', clearStorage);
@@ -1199,6 +1949,11 @@
       });
       document.getElementById('fileInput').addEventListener('change', function(e) {
         handleFileSelected(e.target.files[0]);
+      });
+      document.getElementById('imagePluginBtn').addEventListener('click', uploadImageToPlugin);
+      var messagesBox = document.getElementById('messages');
+      messagesBox.addEventListener('scroll', function() {
+        if (messagesBox.scrollTop < 40) loadEarlierMessages();
       });
       document.getElementById('cardOverlay').addEventListener('click', function(e) {
         if (e.target.id === 'cardOverlay') closeCard();
@@ -1234,6 +1989,8 @@
             updateTakeoverUI(st.takeover_active, st.takeover_remaining);
           }
         } catch (e) { /* ignore */ }
+        // 让 AI/对方的新消息自己冒出来,不用手动切会话
+        await silentRefresh();
       }, 5000);
     }
 
