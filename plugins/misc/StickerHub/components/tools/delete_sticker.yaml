@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: stickerhub_delete_sticker
+  label:
+    en_US: Delete Sticker
+    zh_Hans: 删除表情包
+  description:
+    en_US: Delete a stored sticker by name.
+    zh_Hans: 按名称删除已存储的表情包。
+spec:
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+        description: 'Name of the sticker to delete.'
+    required:
+      - name
+  llm_prompt: 'Delete a stored sticker by name.'
+execution:
+  python:
+    path: delete_sticker.py
+    attr: DeleteSticker

@@ -60,6 +60,7 @@ publication. Plugins are not included in Core release artifacts.
 - [PowerContext](misc/PowerContext/README.md)
 - [QWeather](misc/QWeather/README.md)
 - [ScheNotify](misc/ScheNotify/README.md)
+- [StickerHub](misc/StickerHub/README.md)
 - [SysStatPlugin](misc/SysStatPlugin/README.md)
 - [TavilySearch](misc/TavilySearch/README.md)
 - [URLSummary](misc/URLSummary/README.md)

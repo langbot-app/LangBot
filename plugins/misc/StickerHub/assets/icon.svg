@@ -1,0 +1,14 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    StickerHub — photo frame + stacked plate.
+    Translated so the combined bbox centres on (32,32); inside 12..52,
+    transparent canvas. Mid-slate frame reads on a white card; the image glyph is
+    the single blue accent.
+  -->
+  <g transform="translate(-1.5 0)">
+    <rect x="17" y="15" width="29" height="29" rx="6.5" stroke="#64748B" stroke-width="3.2"/>
+    <circle cx="25.5" cy="24.5" r="3" fill="#64748B"/>
+    <path d="M19.5 39.5l8-10 6.5 7.5 3.5-4.5 7 7" stroke="#2563EB" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="24.5" y="41" width="26" height="7" rx="3.5" fill="#94A3B8" fill-opacity=".8"/>
+  </g>
+</svg>

@@ -4,19 +4,25 @@ metadata:
   author: langbot-team
   name: HumanTakeover
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HumanTakeover
-  version: 0.1.7
+  version: 0.2.8
   description:
-    en_US: 人工接管与人工回复插件,可阻断AI消息处理
-    zh_Hans: 人工接管与人工回复插件,可阻断AI消息处理
-    th_TH: 人工接管与人工回复插件,可阻断AI消息处理
-    vi_VN: 人工接管与人工回复插件,可阻断AI消息处理
-    es_ES: 人工接管与人工回复插件,可阻断AI消息处理
+    en_US: Human takeover and manual reply plugin; can block AI message processing.
+    zh_Hans: 人工接管与人工回复插件,可阻断 AI 消息处理。
+    zh_Hant: 人工接管與人工回覆插件,可阻斷 AI 訊息處理。
+    ja_JP: 人工接管と手動返信プラグイン。AI のメッセージ処理をブロックできます。
+    es_ES: Plugin de toma de control humano y respuesta manual; puede bloquear el procesamiento de mensajes de IA.
+    th_TH: ปลั๊กอินจัดการโดยมนุษย์และตอบกลับด้วยตนเอง สามารถบล็อกการประมวลผลข้อความ AI
+    vi_VN: Plugin quản lý và trả lời thủ công; có thể chặn xử lý tin nhắn AI.
+    ru_RU: Плагин ручного управления и ответов; может блокировать обработку сообщений ИИ.
   label:
-    en_US: HumanTakeover
-    zh_Hans: HumanTakeover
-    th_TH: HumanTakeover
-    vi_VN: HumanTakeover
-    es_ES: HumanTakeover
+    en_US: Human Takeover
+    zh_Hans: 人工接管
+    zh_Hant: 人工接管
+    ja_JP: 有人接管
+    es_ES: Atención humana
+    th_TH: รับช่วงโดยมนุษย์
+    vi_VN: Người tiếp quản
+    ru_RU: Перехват человеком
   icon: assets/icon.svg
 spec:
   config:
@@ -50,6 +56,42 @@ spec:
         zh_Hans: 命中触发词时是否自动接管该会话(关闭则仅标记未处理提醒)。
       default: true
       required: false
+    - name: max_labels_per_user
+      type: integer
+      label:
+        en_US: Max labels per user
+        zh_Hans: 单用户标签上限
+      description:
+        en_US: Maximum number of labels an operator may attach to one user. Default 10.
+        zh_Hans: 操作员可为单个用户添加的标签数量上限。默认 10。
+      default: 10
+      required: false
+    - name: label_colors
+      type: array[string]
+      label:
+        en_US: Label colors
+        zh_Hans: 标签颜色
+      description:
+        en_US: Color palette cycled for labels when no color is given. Max 8 entries.
+        zh_Hans: 未指定颜色时标签循环使用的调色板。最多 8 项。
+      default: ["#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1"]
+      required: false
+    - name: image_plugin_upload_url
+      type: string
+      label:
+        en_US: Image plugin upload URL
+        zh_Hans: 图传插件上传地址
+      description:
+        en_US: Optional HTTP endpoint of the image/emoji plugin. Empty disables the console upload button.
+        zh_Hans: 可选的「表情包/图传」插件上传地址。留空则控制台不显示上传按钮。
+      default: ""
+      required: false
+  permissions:
+    capabilities:
+      - storage.plugin
+      - bot.read
+      - bot.message.send
+      - bot.platform_api
   components:
     EventListener:
       fromDirs:

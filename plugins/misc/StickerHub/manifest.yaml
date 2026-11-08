@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: Plugin
+metadata:
+  author: langbot-team
+  name: StickerHub
+  repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/StickerHub
+  version: 0.1.8
+  description:
+    en_US: Serverless sticker and image host backed by plugin storage; returns stable
+      URLs for human and AI replies.
+    zh_Hans: 基于插件存储的无服务器表情包与图片图床，为人工回复和 AI 回复返回稳定地址。
+    zh_Hant: 基於插件儲存的無伺服器表情貼圖與圖片圖床，為人工回覆和 AI 回覆返回穩定地址。
+    ja_JP: プラグインストレージで実行されるサーバーレスのステッカー／画像ホスト。人間と AI の両方の返信に安定した URL を返します。
+    vi_VN: Máy chủ hình ảnh và biểu tượng cảm xúc không cần máy chủ, lưu trên plugin
+      storage và trả URL ổn định cho cả phản hồi của người và AI.
+    th_TH: โฮสต์สติกเกอร์และรูปภาพแบบ serverless บน plugin storage พร้อม URL คงที่สำหรับทั้งการตอบกลับแบบมนุษย์และ
+      AI
+    es_ES: Hospedaje de imágenes y stickers sin servidor basado en el almacenamiento
+      del plugin; devuelve URL estables para respuestas humanas y de IA.
+    ru_RU: Серверный хостинг стикеров и изображений в plugin storage; возвращает стабильные
+      URL для ответов человека и ИИ.
+  label:
+    en_US: StickerHub
+    zh_Hans: 表情包图床
+    zh_Hant: 表情貼圖圖床
+    ja_JP: スタンプ図床
+    vi_VN: Kho nhãn dán
+    th_TH: คลังสติกเกอร์
+    es_ES: Almacén de stickers
+    ru_RU: Хранилище стикеров
+  icon: assets/icon.svg
+spec:
+  permissions:
+    capabilities:
+    - storage.plugin
+    workspace_operations: []
+  config:
+  - name: public_base_url
+    type: string
+    label:
+      en_US: Public base URL
+      zh_Hans: 对外基础地址
+    description:
+      en_US: Optional public base URL of this LangBot instance, e.g. https://bot.example.com.
+        When set, media URLs are absolute. Leave empty to return relative /api/plugin
+        paths.
+      zh_Hans: 可选：本 LangBot 实例的对外基础地址，如 https://bot.example.com。填写后返回绝对 URL；留空则返回相对的
+        /api/plugin 路径。
+    default: ''
+    required: false
+  - name: max_sticker_mb
+    type: integer
+    label:
+      en_US: Max sticker size (MB)
+      zh_Hans: 单张表情包上限（MB）
+    description:
+      en_US: Reject images larger than this. Default 8 MB, matching the HumanTakeover
+        message budget.
+      zh_Hans: 超过该大小的图片将被拒绝。默认 8 MB，与 HumanTakeover 的消息预算一致。
+    default: 8
+    required: false
+  - name: max_stickers
+    type: integer
+    label:
+      en_US: Max stored stickers
+      zh_Hans: 最多存储表情包数量
+    description:
+      en_US: Oldest stickers are evicted once this count is exceeded. Bounds plugin
+        storage growth.
+      zh_Hans: 超过该数量后自动淘汰最早的表情包，用于限制插件存储增长。
+    default: 2000
+    required: false
+  - name: materialize_to_assets
+    type: boolean
+    label:
+      en_US: Materialize files under assets/
+      zh_Hans: 将文件写入 assets/ 目录
+    description:
+      en_US: When enabled, new stickers are also written to the plugin assets directory
+        so the LangBot asset route can serve them. The writer restores the owner
+        write bit on read-only installed artifacts, so this works on normal installs.
+      zh_Hans: 启用后，新表情包会同时写入插件 assets 目录，以便 LangBot 的 asset 路由对外提供访问。写入前会为只读的安装产物补上属主写权限，因此正常安装下即可生效。
+    default: true
+    required: false
+  components:
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 2
+    Tool:
+      fromDirs:
+      - path: components/tools/
+  pages:
+  - id: hub
+    label:
+      en_US: StickerHub
+      zh_Hans: 表情包图床
+      ja_JP: StickerHub
+      vi_VN: StickerHub
+      th_TH: StickerHub
+      es_ES: StickerHub
+    path: components/pages/hub/index.html
+execution:
+  python:
+    path: main.py
+    attr: StickerHub
+  sharedRuntime: shared-runtime-v1
+  componentModel: stateless-v1

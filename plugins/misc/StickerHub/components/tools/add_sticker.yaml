@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: Tool
+metadata:
+  name: stickerhub_add_sticker
+  label:
+    en_US: Store Sticker
+    zh_Hans: 存入表情包
+  description:
+    en_US: Store an image as a named sticker so a stable URL can be retrieved later.
+    zh_Hans: 将一张图片存为命名表情包，之后可用其名称获取稳定地址。
+spec:
+  parameters:
+    type: object
+    properties:
+      name:
+        type: string
+        description: 'Sticker name to use when the image is stored and fetched later.'
+      url:
+        type: string
+        description: 'Optional http(s) image URL to download and store.'
+      data_url:
+        type: string
+        description: 'Optional data: URL (or raw base64) of an image to store.'
+    required:
+      - name
+  llm_prompt: 'Store an image as a named sticker in StickerHub.'
+execution:
+  python:
+    path: add_sticker.py
+    attr: AddSticker

@@ -1,0 +1,18 @@
+# Runtime-generated stickers (do not commit)
+#
+# These are extension patterns, not `assets/stickers/*`, because the `lbp`
+# packager honours glob patterns but not gitignore `!` negation. A wildcard
+# therefore also drops `.gitkeep`, the package loses its empty assets/stickers
+# directory, and every materialised sticker 404s on a fresh install.
+assets/stickers/*.png
+assets/stickers/*.jpg
+assets/stickers/*.jpeg
+assets/stickers/*.gif
+assets/stickers/*.webp
+assets/stickers/*.bmp
+assets/stickers/*.tmp
+!assets/stickers/.gitkeep
+
+__pycache__/
+*.pyc
+.pytest_cache/
