@@ -2167,6 +2167,11 @@ const ruRU = {
       installCompletePlugin: 'Плагин успешно установлен',
       installCompleteMCP: 'Сервер MCP успешно установлен',
       installCompleteSkill: 'Навык успешно установлен',
+      followUp: {
+        agents: 'Далее: создайте Agent или обработчик плагина для этого плагина',
+        pipelines: 'Далее: создайте конвейер, чтобы использовать этот плагин',
+        knowledge: 'Далее: создайте базу знаний для этого плагина',
+      },
       dismiss: 'Закрыть',
       background: 'В фоновом режиме',
       taskQueue: 'Задачи установки',
