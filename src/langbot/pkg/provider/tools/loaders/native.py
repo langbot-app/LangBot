@@ -1181,7 +1181,6 @@ else:
         path = parameters['path']
         content = parameters['content']
         self.ap.logger.info(f'write tool invoked: query_id={query.query_id} path={path} length={len(content)}')
-        self._write_options(parameters)
         skill_request = self._resolve_skill_relative_path(
             query,
             path,
@@ -1189,12 +1188,16 @@ else:
             include_activated=True,
         )
         if skill_request is not None:
+            selected_skill, relative = skill_request
+            encoding, mode = self._write_options(parameters)
             return {
                 'ok': False,
                 'error': (
-                    'Published Skill revisions are immutable. Copy the package to a writable '
-                    'directory under /workspace/skill-drafts, edit it there, then call register_skill '
-                    'with the activated revision as base_revision.'
+                    f'"{path}" resolves to activated skill "{selected_skill.get("name", "")}" '
+                    f'(package path "{relative}"). Activated skills are immutable published revisions, '
+                    f'so "{encoding}" encoding and "{mode}" mode do not apply: copy the package to a '
+                    'writable directory under /workspace/skill-drafts, edit it there, then call '
+                    'register_skill with the activated revision as base_revision.'
                 ),
             }
 
@@ -1384,8 +1387,10 @@ else:
             human_desc='Write a file to the workspace',
             description=(
                 'Create or overwrite a file at the given path under /workspace with the provided content. '
-                'Activated skill packages can be modified through /workspace/.skills/<skill-name>/... . '
-                'For new skills, write files under /workspace and then call register_skill.'
+                'Paths under /workspace/.skills/<skill-name>/... resolve to an activated skill package, '
+                'which is an immutable published revision: writes there are rejected, so copy the package '
+                'to /workspace/skill-drafts instead, edit it there, and call register_skill with the activated '
+                'revision as base_revision. For new skills, write files under /workspace and then call register_skill.'
             ),
             parameters={
                 'type': 'object',
@@ -1400,13 +1405,19 @@ else:
                     },
                     'encoding': {
                         'type': 'string',
-                        'description': 'Write content as text by default, or decode it from base64 for binary files.',
+                        'description': (
+                            'Write content as text by default, or decode it from base64 for binary files. '
+                            'Only applies outside /workspace/.skills/<skill-name>/... .'
+                        ),
                         'enum': ['text', 'base64'],
                         'default': 'text',
                     },
                     'mode': {
                         'type': 'string',
-                        'description': 'Overwrite the file by default, or append to it.',
+                        'description': (
+                            'Overwrite the file by default, or append to it. '
+                            'Only applies outside /workspace/.skills/<skill-name>/... .'
+                        ),
                         'enum': ['overwrite', 'append'],
                         'default': 'overwrite',
                     },
@@ -1423,8 +1434,9 @@ else:
             human_desc='Edit a file in the workspace',
             description=(
                 'Perform an exact string replacement in a file under /workspace. '
-                'The old_string must appear exactly once in the file. Activated skill packages '
-                'can be edited through /workspace/.skills/<skill-name>/... . '
+                'The old_string must appear exactly once in the file. Paths under '
+                '/workspace/.skills/<skill-name>/... resolve to an immutable published skill revision, '
+                'so edit the copy under /workspace/skill-drafts instead and call register_skill. '
                 'For new skills, edit files under /workspace and then call register_skill.'
             ),
             parameters={
