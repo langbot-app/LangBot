@@ -9,9 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from pkg import daemon_relay
 
-INVOCATION_MARKER: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "invocation_marker", default=None
-)
+INVOCATION_MARKER: contextvars.ContextVar[str | None] = contextvars.ContextVar("invocation_marker", default=None)
 
 
 @pytest.mark.asyncio
