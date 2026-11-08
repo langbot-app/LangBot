@@ -434,3 +434,33 @@ async def test_websocket_controller_receives_control_headers(monkeypatch: pytest
         BOX_INSTANCE_HEADER: 'instance-a',
     }
     assert _CONTROL_TOKEN not in captured['ws_url']
+
+
+def test_box_runtime_connector_uses_ws_on_windows(monkeypatch: pytest.MonkeyPatch):
+    """Windows cannot use the async stdio pipe transport (WinError 6 /
+    _ProactorReadPipeTransport). A local Windows install must launch the
+    managed runtime and reach it over WebSocket instead of stdio."""
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+
+    assert connector._uses_websocket() is True
+    assert connector.shares_filesystem_with_box() is True
+
+
+@pytest.mark.asyncio
+async def test_box_runtime_connector_start_uses_managed_ws_on_windows(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+    connector._start_subprocess_then_ws = AsyncMock()
+    connector._start_local_stdio = AsyncMock()
+    connector._stop_transport = AsyncMock()
+
+    await connector.initialize()
+
+    connector._start_subprocess_then_ws.assert_awaited_once()
+    connector._start_local_stdio.assert_not_awaited()
+    await connector.aclose()

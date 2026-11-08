@@ -145,13 +145,30 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
           - Running inside Docker (Box runtime is a separate container)
           - The ``--standalone-box`` CLI flag was passed
           - An explicit ``runtime.endpoint`` was configured
+          - Running on Windows, whose Proactor event loop cannot drive the
+            asyncio stdio pipe transport (``WinError 6`` plus the missing
+            ``_ProactorReadPipeTransport._empty_waiter``); the runtime is then
+            launched as a managed child process and reached over WebSocket.
 
-        When this is True the Box runtime lives in a separate process with its
-        own filesystem view (container, pod sidecar, or remote host), so only
-        explicitly shared paths are usable on both sides. When False, Box runs
-        as a stdio child process that shares LangBot's filesystem.
+        WebSocket does not by itself imply a separated filesystem: a Windows
+        managed child still shares LangBot's filesystem. Use
+        ``shares_filesystem_with_box`` for that question.
         """
         return bool(
+            self.configured_runtime_endpoint
+            or platform.get_platform() in ('docker', 'win32')
+            or platform.use_websocket_to_connect_box_runtime()
+        )
+
+    def shares_filesystem_with_box(self) -> bool:
+        """Whether Box runs as a local child process sharing this filesystem.
+
+        True for the local stdio transport on Unix and for the managed Windows
+        child process. False for every separated deployment (Docker, sidecar,
+        ``--standalone-box``, or an explicit ``runtime.endpoint``), where only
+        explicitly shared and identically mounted roots cross the boundary.
+        """
+        return not (
             self.configured_runtime_endpoint
             or platform.get_platform() == 'docker'
             or platform.use_websocket_to_connect_box_runtime()
@@ -168,13 +185,13 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             self._generation += 1
             await self._stop_transport()
             try:
-                if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
-                else:
+                if not self._uses_websocket():
                     await self._start_local_stdio()
+                elif self.shares_filesystem_with_box():
+                    # Local Windows child process: WebSocket transport, shared filesystem.
+                    await self._start_subprocess_then_ws()
+                else:
+                    await self._connect_remote_ws()
             except BaseException:
                 await self._stop_transport()
                 await self._close_managed_subprocess()
@@ -190,13 +207,13 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             self._generation += 1
             await self._stop_transport()
             try:
-                if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
-                else:
+                if not self._uses_websocket():
                     await self._start_local_stdio()
+                elif self.shares_filesystem_with_box():
+                    # Local Windows child process: WebSocket transport, shared filesystem.
+                    await self._start_subprocess_then_ws()
+                else:
+                    await self._connect_remote_ws()
             except BaseException:
                 await self._stop_transport()
                 await self._close_managed_subprocess()

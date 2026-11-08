@@ -343,6 +343,18 @@ class TestSharesFilesystemWithBox:
 
         assert service.shares_filesystem_with_box is False
 
+    def test_true_for_windows_managed_ws_connector(self, monkeypatch: pytest.MonkeyPatch):
+        # Windows uses the WebSocket transport but launches Box as a local
+        # child process, so the filesystem is still shared.
+        monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+        monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+
+        service = BoxService(make_app(Mock()))
+
+        assert service._runtime_connector is not None
+        assert service._runtime_connector.uses_websocket() is True
+        assert service.shares_filesystem_with_box is True
+
     def test_false_when_client_injected_without_connector(self):
         # Injected client (no connector) → unknown topology → conservative False
         # so LangBot does not assume a shared local filesystem.

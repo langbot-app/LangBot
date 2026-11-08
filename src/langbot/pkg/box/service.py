@@ -375,7 +375,7 @@ class BoxService:
             return self._shares_filesystem_with_box_override
         if self._runtime_connector is None:
             return False
-        return not self._runtime_connector.uses_websocket()
+        return self._runtime_connector.shares_filesystem_with_box()
 
     @staticmethod
     def _execution_context(context: TenantContext) -> ExecutionContext:
