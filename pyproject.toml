@@ -54,7 +54,7 @@ dependencies = [
     "pre-commit>=4.2.0",
     "uv>=0.13.4",
     "mypy>=1.16.0",
-    "pypdf>=6.0.0",
+    "pypdf>=6.21.4", # GHSA-5849-834g-hvw5, GHSA-cggf-277g-3q54
     "python-docx>=1.1.0",
     "pandas>=2.2.2",
     "chardet>=5.2.0",
@@ -80,9 +80,12 @@ dependencies = [
     "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
-    "litellm>=1.88.6",
+    "litellm>=1.108.3", # filelock<5, so filelock advisories can be cleared
     "valkey-glide>=2.5.2,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
     "webauthn>=3.0.0",
+    "pyasn1>=0.6.5", # GHSA-2qm8-x737-gmw5, GHSA-mm57-4v3p-rchx
+    "oauthlib>=4.0.1", # GHSA-3jp2-3mrg-2vxc
+    "filelock>=4.2.1", # GHSA-v4x8-3wr5-3wq8 and the rest of the 4.2.0 set
     "httpx[socks]>=0.28.1",
 ]
 keywords = [
