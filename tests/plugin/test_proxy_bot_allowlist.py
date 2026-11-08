@@ -18,9 +18,16 @@ def _code(path: Path) -> str:
 
 
 def _action(path: Path, name: str) -> str:
+    """One action's body, ending at the next @self.action decorator.
+
+    Slicing to end-of-file would let a later action's guard satisfy an earlier
+    action's test.
+    """
     src = _code(path)
-    start = src.index(f'PluginToRuntimeAction.{name}')
-    return src[start:]
+    marker = f'PluginToRuntimeAction.{name}'
+    start = src.index(marker)
+    following = src.find('@self.action(', start + len(marker))
+    return src[start:] if following == -1 else src[start:following]
 
 
 def test_constant_is_declared():
