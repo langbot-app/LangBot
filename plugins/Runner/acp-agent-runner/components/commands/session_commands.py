@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from langbot_plugin.api.definition.components.command.command import Command
 from langbot_plugin.api.entities.builtin.command.context import CommandReturn, ExecuteContext
@@ -16,6 +19,35 @@ from pkg.session_management import (
     storage_key,
     write_json,
 )
+
+
+def _display_timezone() -> ZoneInfo | None:
+    """Resolve the zone used for human-readable ACP timestamps.
+
+    Plugin worker processes run with a trimmed environment that usually does
+    not inherit ``TZ``, so ``datetime.astimezone()`` falls back to UTC there.
+    Prefer the configured ``TZ`` value and otherwise use the deployment zone.
+    """
+    name = (os.environ.get("TZ") or "Asia/Shanghai").strip()
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return None
+
+
+def _format_session_time(value: str) -> str:
+    """Render an ACP timestamp in the deployment time zone."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return raw.replace("T", " ").replace("Z", "")[:16]
+    if parsed.tzinfo is not None:
+        zone = _display_timezone()
+        parsed = parsed.astimezone(zone) if zone is not None else parsed.astimezone()
+    return parsed.strftime("%Y-%m-%d %H:%M")
 
 
 def _language(component: Command) -> str:
@@ -148,7 +180,7 @@ class ListSessions(Command):
             lines = [_text(self, "ACP 会话：", "ACP sessions:")]
             for index, item in enumerate(sessions[:20], start=1):
                 marker = " ★" if item["session_id"] == current_id else ""
-                updated = item["updated_at"].replace("T", " ").replace("Z", "")[:16]
+                updated = _format_session_time(item["updated_at"])
                 lines.append(f"{index}. {updated}  {item['title']}{marker}")
             lines.append(
                 _text(

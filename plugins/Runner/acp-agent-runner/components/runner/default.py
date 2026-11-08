@@ -863,6 +863,15 @@ class DefaultRunner(Runner):
         prompt_text: str,
         stored_session_id: str,
     ) -> typing.AsyncGenerator[RunnerResult, None]:
+        # Emit an immediate placeholder so the platform creates its streaming
+        # card (and shows a waiting indicator) before the agent produces any
+        # text. Later deltas carry full snapshots in ``all_content`` and
+        # replace this value, so the final answer is unaffected.
+        if config.get("streaming", True):
+            yield RunnerResult.message_delta(
+                ctx.run_id,
+                MessageChunk(role="assistant", content="⏳", all_content="⏳", msg_sequence=0),
+            )
         hub = get_agent_runtime_daemon_hub("acp", error_code_prefix="acp")
         await hub.start(
             host=config["daemon_hub"]["host"],
