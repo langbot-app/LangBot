@@ -42,6 +42,7 @@ from ....agent.runner.platform_tools import (
     validate_debug_mock_options,
 )
 from ....entity.persistence import agent as persistence_agent
+from ....provider.modelmgr import reasoning as model_reasoning
 from ....workspace.errors import WorkspaceNotFoundError
 from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
 from ...application.plugin_permissions import workspace_operation_grants
@@ -463,6 +464,9 @@ class AgentService:
                     descriptor.config_schema,
                     config['runner_config'][runner_id],
                 )
+                await model_reasoning.validate_runner_reasoning_levels(
+                    self.ap, context, config['runner_config'][runner_id]
+                )
             patterns = agent_data.get('supported_event_patterns', AGENT_DEFAULT_EVENT_PATTERNS)
             if isinstance(config, dict) and 'allowed_platform_tools' not in config:
                 config['allowed_platform_tools'] = default_agent_platform_tools()
@@ -507,13 +511,19 @@ class AgentService:
             config, runner_id, patterns = await self._prepare_event_processor(context, agent_data, existing_agent)
             update_data.update(config=config, component_ref=runner_id, supported_event_patterns=patterns)
         if 'config' in update_data:
-            config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(update_data['config'])
+            config, runner_id, runner_config = RunnerConfigResolver.resolve_agent_config(update_data['config'])
             update_data['config'] = config
         else:
-            _, runner_id, _ = RunnerConfigResolver.resolve_agent_config(existing_agent.config)
+            _, runner_id, runner_config = RunnerConfigResolver.resolve_agent_config(existing_agent.config)
         update_data['component_ref'] = runner_id
         if existing_agent.kind == AGENT_KIND_AGENT:
             await self._validate_runner_for_agent(context, runner_id)
+            # As for Pipelines, only a changed Runner section can introduce a bad level, and
+            # saving anything else must not fail on a level stored earlier.
+            if 'config' in update_data and any(
+                update_data['config'][key] != old_config.get(key) for key in ('runner', 'runner_config')
+            ):
+                await model_reasoning.validate_runner_reasoning_levels(self.ap, context, runner_config)
 
         if 'config' in update_data and isinstance(update_data['config'], dict):
             new_config = update_data['config']

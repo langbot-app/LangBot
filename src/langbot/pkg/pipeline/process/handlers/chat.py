@@ -21,6 +21,7 @@ from ....agent.runner.errors import (
     RunnerNotFoundError,
     RunnerNotAuthorizedError,
 )
+from ....provider.modelmgr import reasoning as model_reasoning
 from ....utils import runner as runner_utils
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -266,10 +267,20 @@ class ChatMessageHandler(handler.MessageHandler):
                         query, 'runner-not-authorized-hint', 'Agent runner not authorized for this pipeline.'
                     )
                 elif isinstance(e, RunnerExecutionError):
+                    misc_config = query.pipeline_config.get('output', {}).get('misc', {})
+                    exception_handling = misc_config.get('exception-handling', 'show-hint')
                     if e.retryable:
                         user_notice = pipeline_notice(
                             query, 'runner-unavailable-hint', 'Agent runner temporarily unavailable. Please try again.'
                         )
+                    elif exception_handling == 'show-error':
+                        # Static config errors end here too; retrying cannot help, so show the reason.
+                        user_notice = f'{e}'
+                    elif exception_handling == 'show-hint' and (
+                        level_error := await self._get_reasoning_level_error(query, e.runner_id)
+                    ):
+                        # The generic hint would hide a mistake that no retry can fix.
+                        user_notice = level_error
                     else:
                         user_notice = pipeline_notice(query, 'failure-hint', 'Agent runner execution failed.')
                 else:
@@ -396,3 +407,21 @@ class ChatMessageHandler(handler.MessageHandler):
         except Exception as e:
             self.ap.logger.debug(f'Unable to load Runner descriptor for {runner_id}: {e}')
             return None
+
+    async def _get_reasoning_level_error(self, query: pipeline_query.Query, runner_id: str) -> str | None:
+        """Explain a stored reasoning level that the Runner's models cannot honor, if any.
+
+        A failed run cannot report that a level caused it, because the requester's
+        error code does not survive the plugin boundary. So repeat the save-time check.
+        """
+        try:
+            context = get_query_execution_context(query)
+            runner_config = RunnerConfigResolver.resolve_runner_config(query.pipeline_config, runner_id)
+            try:
+                await model_reasoning.validate_runner_reasoning_levels(self.ap, context, runner_config)
+            except ValueError as level_error:
+                return str(level_error)
+        except Exception as e:
+            # The run has already failed, so a failed check must not change how that is reported.
+            self.ap.logger.warning(f'Unable to check reasoning levels for Runner {runner_id}: {e}')
+        return None
