@@ -31,6 +31,28 @@ STORAGE_SESSION_PREFIX = "ht_session_v2_"
 # Leave ample room for SDK base64 encoding and the 16 MiB transport envelope.
 MAX_SESSION_STORAGE_BYTES = 8 * 1024 * 1024
 
+# 同一次流式回复的增量事件在这个时间窗内就地合并,而不是各成一条消息。
+STREAM_COALESCE_WINDOW = 5.0
+
+# 用户标签:按 installation 持久化进同一 scoped plugin_storage 家族。
+# 标签是 user 维度的数据(同一用户可能出现在多个会话),因此独立存储而不是
+# 复制进每个会话记录,避免把标签数据摊进 300 条消息/8 MiB 的消息预算。
+STORAGE_KEY_LABELS = "ht_user_labels_v2"
+
+# 默认标签调色板(用户不指定颜色时循环取用)。
+DEFAULT_LABEL_COLORS = [
+    "#ef4444",
+    "#f59e0b",
+    "#10b981",
+    "#3b82f6",
+    "#8b5cf6",
+    "#ec4899",
+    "#14b8a6",
+    "#6366f1",
+]
+# 单用户标签数量上限,防止 console 误操作写入海量标签。
+DEFAULT_MAX_LABELS_PER_USER = 10
+
 # Process-cache slot used when no installation binding is available (dedicated
 # placement). It maps to the legacy storage keys so existing dedicated installs
 # keep reading their own rows.
@@ -66,6 +88,83 @@ def scoped_storage_key(scope: str, key: str) -> str:
     return f"{scope}:{key}"
 
 
+def normalize_label_store(data: Any) -> dict[str, dict[str, Any]]:
+    """Coerce a stored/untrusted labels payload into a safe shape.
+
+    Never raises on malformed input: a bad row is skipped rather than blocking
+    the whole plugin. Keeps only plain-text labels with an optional color.
+    """
+
+    if not isinstance(data, dict):
+        return {}
+    users = data.get("users")
+    if users is None and isinstance(data.get("labels"), dict):
+        # Accept a flat ``{user_id: [label, ...]}`` shape for forward tolerance.
+        users = data.get("labels")
+    if not isinstance(users, dict):
+        return {}
+    store: dict[str, dict[str, Any]] = {}
+    for raw_id, record in users.items():
+        if not raw_id:
+            continue
+        if isinstance(record, dict):
+            labels_any = record.get("labels") or []
+            display_name = record.get("name")
+        elif isinstance(record, list):
+            labels_any = record
+            display_name = ""
+        else:
+            continue
+        if isinstance(labels_any, str):
+            labels_any = [labels_any]
+        if not isinstance(labels_any, list):
+            continue
+        labels: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in labels_any:
+            if isinstance(item, str):
+                name, color, created_at = item.strip(), None, None
+            elif isinstance(item, dict) and item.get("name"):
+                name = str(item.get("name")).strip()
+                color = item.get("color") if item.get("color") else None
+                created_at = item.get("created_at")
+            else:
+                continue
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            entry: dict[str, Any] = {"name": name, "color": color}
+            if created_at:
+                entry["created_at"] = created_at
+            labels.append(entry)
+        if not labels:
+            continue
+        store[str(raw_id)] = {
+            "name": str(display_name or raw_id),
+            "labels": labels,
+        }
+    return store
+
+
+# Display fields carried on recorded messages (avatar/source IM), whitelisted so
+# no arbitrary event payload reaches persistent storage.
+_MESSAGE_EXTRA_KEYS = ("avatar", "remark", "username", "source_im", "platform")
+
+
+def _preview_of(content_type: str, content: str) -> str:
+    """Return the single-line preview shown in the session list."""
+
+    if content_type == "text":
+        return content or ""
+    if content_type == "image":
+        return "[图片]"
+    if content_type == "voice":
+        return "[语音]"
+    if content_type == "file":
+        return "[文件]"
+    return f"[{content_type or '消息'}]"
+
+
 class _InstallationState:
     """Process-local sessions/messages belonging to exactly one installation.
 
@@ -77,6 +176,8 @@ class _InstallationState:
         "scope",
         "sessions",
         "messages",
+        "labels",
+        "labels_loaded",
         "lock",
         "loaded",
         "storage_uncertain",
@@ -87,6 +188,8 @@ class _InstallationState:
         self.scope = scope
         self.sessions: dict[str, dict[str, Any]] = {}
         self.messages: dict[str, list[dict[str, Any]]] = {}
+        self.labels: dict[str, dict[str, Any]] = {}
+        self.labels_loaded = False
         self.lock = asyncio.Lock()
         self.loaded = False
         self.storage_uncertain = False
@@ -380,9 +483,33 @@ class HumanTakeover(BasePlugin):
             ensure_ascii=False,
         ).encode("utf-8")
         if len(raw) > MAX_SESSION_STORAGE_BYTES:
-            raise ValueError(
-                f"HumanTakeover session {session_key!r} exceeds the storage limit "
-                f"of {MAX_SESSION_STORAGE_BYTES} bytes; history has not been truncated"
+            # A 300-message cap alone cannot bound bytes: a few inline images
+            # (each stored as a data: URL) blow past 8 MiB long before the
+            # count cap bites. Drop oldest messages until the payload fits,
+            # keeping the newest ones (the ones the operator is looking at).
+            msgs = st.messages.get(session_key) or []
+            dropped = 0
+            while msgs and len(raw) > MAX_SESSION_STORAGE_BYTES:
+                msgs.pop(0)
+                dropped += 1
+                raw = json.dumps(
+                    {
+                        "session_key": session_key,
+                        "session": st.sessions.get(session_key),
+                        "messages": msgs,
+                    },
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            if len(raw) > MAX_SESSION_STORAGE_BYTES:
+                raise ValueError(
+                    f"HumanTakeover session {session_key!r} still exceeds the storage "
+                    f"limit of {MAX_SESSION_STORAGE_BYTES} bytes after dropping "
+                    f"{dropped} message(s)"
+                )
+            logger.warning(
+                "HumanTakeover session %s exceeded the storage limit; "
+                "dropped %d oldest message(s) to fit",
+                session_key, dropped,
             )
         await self._storage_mutation(
             st,
@@ -399,8 +526,14 @@ class HumanTakeover(BasePlugin):
             # operation failed while it waited for the lock; an ambiguous remote
             # outcome must never be crossed by a queued writer.
             self._check_failure_fence(st)
+            # Session metadata is small; snapshotting it deeply keeps rollback exact.
             old_session = deepcopy(st.sessions.get(session_key))
-            old_messages = deepcopy(st.messages.get(session_key))
+            # Message buckets can reach the 300-entry retention budget, so a deep
+            # snapshot here is the one large copy the red line bans. Entries are
+            # append-only (only the list is truncated), so a shallow list copy is an
+            # exact restore: nothing mutates an existing message dict in place.
+            old_bucket = st.messages.get(session_key)
+            old_messages = list(old_bucket) if old_bucket is not None else None
             committed = False
 
             async def commit():
@@ -410,9 +543,13 @@ class HumanTakeover(BasePlugin):
 
             try:
                 yield
-                if (st.sessions.get(session_key), st.messages.get(session_key)) != (
-                    old_session,
-                    old_messages,
+                messages_changed = (
+                    len(st.messages.get(session_key) or [])
+                    != len(old_messages or [])
+                )
+                if (
+                    st.sessions.get(session_key) != old_session
+                    or messages_changed
                 ):
                     await self._finish_operation(commit())
             except BaseException:
@@ -448,12 +585,232 @@ class HumanTakeover(BasePlugin):
             scoped_storage_key(st.scope, STORAGE_KEY_MESSAGES),
         }
         prefix = scoped_storage_key(st.scope, STORAGE_SESSION_PREFIX)
+        labels_key = scoped_storage_key(st.scope, STORAGE_KEY_LABELS)
         for key in keys:
-            if key in legacy or key.startswith(prefix):
+            if key in legacy or key.startswith(prefix) or key == labels_key:
                 await self._storage_mutation(st, self.delete_plugin_storage(key))
         st.sessions = {}
         st.messages = {}
+        st.labels = {}
+        st.labels_loaded = True
         logger.info("HumanTakeover storage cleared for scope %s by user", st.scope)
+
+    # ==================== 用户标签 ====================
+
+    def get_label_colors(self) -> list[str]:
+        """读取标签调色板配置,默认使用内置八色。"""
+        try:
+            cfg = self.get_config() or {}
+            colors = cfg.get("label_colors")
+            if isinstance(colors, (list, tuple)) and colors:
+                clean = [str(c).strip() for c in colors if str(c).strip()]
+                return clean[:8] if clean else list(DEFAULT_LABEL_COLORS)
+        except Exception:  # noqa: BLE001
+            pass
+        return list(DEFAULT_LABEL_COLORS)
+
+    def get_max_labels_per_user(self) -> int:
+        """读取单用户标签上限,非法值回退默认 10。"""
+        try:
+            cfg = self.get_config() or {}
+            val = int(cfg.get("max_labels_per_user") or DEFAULT_MAX_LABELS_PER_USER)
+            return val if 0 <= val <= 50 else DEFAULT_MAX_LABELS_PER_USER
+        except Exception:  # noqa: BLE001
+            return DEFAULT_MAX_LABELS_PER_USER
+
+    async def _ensure_labels_loaded(self) -> dict[str, dict[str, Any]]:
+        """Load the labels store once, degrading to empty on a bad payload."""
+
+        st = self._current_state()
+        if st.labels_loaded:
+            return st.labels
+        await self._ensure_loaded(st)
+        key = scoped_storage_key(st.scope, STORAGE_KEY_LABELS)
+        try:
+            raw = await self.get_plugin_storage(key)
+        except Exception as e:  # noqa: BLE001
+            # A missing label row is normal on a fresh install; other errors must
+            # not take the message features down with them.
+            logger.warning("HumanTakeover cannot read user labels: %s", e)
+            raw = b"{}"
+        try:
+            data = json.loads(raw)
+        except (ValueError, TypeError):
+            logger.warning("HumanTakeover labels payload is not JSON; ignoring")
+            data = {}
+        st.labels = normalize_label_store(data)
+        st.labels_loaded = True
+        return st.labels
+
+    async def _persist_labels(self, st: _InstallationState, store) -> None:
+        raw = json.dumps({"version": 1, "users": store}, ensure_ascii=False).encode(
+            "utf-8"
+        )
+        if len(raw) > MAX_SESSION_STORAGE_BYTES:
+            raise ValueError(
+                "HumanTakeover user-label store exceeds the storage limit "
+                f"of {MAX_SESSION_STORAGE_BYTES} bytes"
+            )
+        await self._storage_mutation(
+            st,
+            self.set_plugin_storage(scoped_storage_key(st.scope, STORAGE_KEY_LABELS), raw),
+        )
+
+    async def labels_store(self) -> dict[str, dict[str, Any]]:
+        """Return the current installation's user-label store."""
+
+        return await self._ensure_labels_loaded()
+
+    def _pick_label_color(self, store, user_id: str) -> str:
+        colors = self.get_label_colors()
+        count = len(store.get(user_id, {}).get("labels", []))
+        return colors[count % len(colors)]
+
+    async def get_user_labels(self, user_id: str) -> dict[str, Any]:
+        store = await self.labels_store()
+        record = store.get(str(user_id), {})
+        return {
+            "id": str(user_id),
+            "name": record.get("name", ""),
+            "labels": list(record.get("labels", [])),
+        }
+
+    async def list_labeled_users(self) -> list[dict[str, Any]]:
+        store = await self.labels_store()
+        return [
+            {
+                "id": uid,
+                "name": record.get("name", ""),
+                "labels": list(record.get("labels", [])),
+            }
+            for uid, record in store.items()
+            if record.get("labels")
+        ]
+
+    async def assign_label(
+        self, user_id: str, label: str, name: str | None = None, color: str | None = None
+    ) -> tuple[bool, str]:
+        """Add (or refresh) a label for one user."""
+
+        store = await self.labels_store()
+        st = self._current_state()
+        uid = str(user_id)
+        label = (label or "").strip()
+        if not label:
+            return False, "label is required"
+        if len(label) > 64:
+            return False, "label must be at most 64 characters"
+        record = store.setdefault(uid, {"name": "", "labels": []})
+        if name or not record.get("name"):
+            record["name"] = (name or record.get("name") or uid).strip()
+        labels = record.setdefault("labels", [])
+        for existing in labels:
+            if existing.get("name") == label:
+                if color and not existing.get("color"):
+                    existing["color"] = color
+                return True, ""
+        if len(labels) >= self.get_max_labels_per_user():
+            return (
+                False,
+                f"at most {self.get_max_labels_per_user()} labels per user",
+            )
+        labels.append(
+            {
+                "name": label,
+                "color": (color or self._pick_label_color(store, uid)),
+                "created_at": time.time(),
+            }
+        )
+        await self._persist_labels(st, store)
+        return True, ""
+
+    async def unassign_label(self, user_id: str, label: str) -> tuple[bool, str]:
+        store = await self.labels_store()
+        st = self._current_state()
+        uid = str(user_id)
+        label = (label or "").strip()
+        record = store.get(uid)
+        if not record:
+            return False, "user has no labels"
+        before = list(record.get("labels", []))
+        record["labels"] = [lb for lb in before if lb.get("name") != label]
+        if record["labels"] != before:
+            if record["labels"]:
+                await self._persist_labels(st, store)
+            else:
+                store.pop(uid, None)
+                await self._persist_labels(st, store)
+        else:
+            return False, "label not found"
+        return True, ""
+
+    async def rename_label(
+        self,
+        user_id: str,
+        old_label: str,
+        new_label: str,
+        color: str | None = None,
+    ) -> tuple[bool, str]:
+        """Rename a label only for the given user."""
+
+        store = await self.labels_store()
+        st = self._current_state()
+        uid = str(user_id)
+        new_label = (new_label or "").strip()
+        if not new_label:
+            return False, "new label is required"
+        record = store.get(uid)
+        if not record:
+            return False, "user has no labels"
+        changed = False
+        for existing in record.get("labels", []):
+            if existing.get("name") == old_label:
+                existing["name"] = new_label
+                if color:
+                    existing["color"] = color
+                changed = True
+        if changed:
+            await self._persist_labels(st, store)
+        else:
+            return False, "label not found"
+        return True, ""
+
+    async def delete_label_everywhere(self, label: str) -> int:
+        """Remove one label from every user; returns how many users changed."""
+
+        store = await self.labels_store()
+        st = self._current_state()
+        label = (label or "").strip()
+        removed = 0
+        for record in store.values():
+            labels = record.get("labels") or []
+            kept = [lb for lb in labels if lb.get("name") != label]
+            if len(kept) != len(labels):
+                record["labels"] = kept
+                removed += 1
+        if removed:
+            await self._persist_labels(st, store)
+        if not store:
+            st.labels = {}
+        return removed
+
+    async def sessions_with_label(self, label: str) -> list[str]:
+        """Return loaded session keys having at least one member with this label."""
+
+        store = await self.labels_store()
+        st = await self._state_for_update()
+        label = (label or "").strip()
+        if not label:
+            return []
+        result: list[str] = []
+        for key, sess in st.sessions.items():
+            members = sess.get("members") or {}
+            for member_id in members:
+                tags = store.get(str(member_id), {}).get("labels") or []
+                if any(lb.get("name") == label for lb in tags):
+                    result.append(key)
+                    break
+        return result
 
     # ==================== 会话与消息 ====================
 
@@ -565,6 +922,34 @@ class HumanTakeover(BasePlugin):
             sess["adapter"] = adapter
         return sess
 
+    def _coalesce_streamed(self, bucket: list[dict[str, Any]], entry: dict[str, Any]) -> bool:
+        """把流式增量合并进上一条 AI 记录，返回 True 表示已合并(不必再 append)。
+
+        只处理 AI 文本，且要求与上一条同角色、在很短的时间窗内、内容互为前缀关系
+        （流式增量要么把上一条延长，要么重发同一段）。窗口外的独立回复仍各自成条，
+        因此连续两次真实回复不会被误并。
+        """
+        if entry.get("role") != "ai" or entry.get("content_type") != "text":
+            return False
+        if not bucket:
+            return False
+        last = bucket[-1]
+        if last.get("role") != "ai" or last.get("content_type") != "text":
+            return False
+        if entry.get("ts", 0) - last.get("ts", 0) > STREAM_COALESCE_WINDOW:
+            return False
+        new_text = entry.get("content") or ""
+        old_text = last.get("content") or ""
+        if new_text == old_text:
+            return True
+        # 增量通常是"上一条的严格延伸"；也兼容平台重发更短前缀后继续。
+        if not (new_text.startswith(old_text) or old_text.startswith(new_text)):
+            return False
+        if len(new_text) >= len(old_text):
+            last["content"] = new_text
+            last["ts"] = entry.get("ts", last.get("ts"))
+        return True
+
     async def record_message(
         self,
         *,
@@ -579,36 +964,52 @@ class HumanTakeover(BasePlugin):
         content_type: str,
         content: str,
         adapter: str = "",
+        message_id: str | None = None,
+        extra: dict[str, Any] | None = None,
     ) -> None:
-        """记录一条消息(用户/AI/人工)并更新会话元数据。"""
+        """记录一条消息(用户/AI/人工)并更新会话元数据。
+
+        ``message_id`` 为平台返回的消息标识(人工发送时来自发送结果,用户消息时
+        尽可能从事件中取得),用于撤回与引用。``extra`` 可携带头像/来源 IM 等
+        展示字段,只保留白名单键,避免把任意数据写进存储。
+        """
         async with self._session_update(session_key):
             sess = self._ensure_session(
                 session_key, session_type, target_id, bot_uuid, session_name, adapter
             )
             # 群聊记录发言用户
             if session_type == "group" and sender_id:
-                sess.setdefault("members", {})[str(sender_id)] = sender_name or str(
-                    sender_id
-                )
+                members = sess.setdefault("members", {})
+                members[str(sender_id)] = sender_name or str(sender_id)
 
             now = time.time()
             entry = {
                 "role": role,  # user / ai / human
                 "sender_id": str(sender_id) if sender_id else "",
                 "sender_name": sender_name or "",
-                "content_type": content_type,  # text / image
+                "content_type": content_type,  # text / image / voice / file
                 "content": content,
                 "ts": now,
             }
+            if message_id:
+                entry["message_id"] = str(message_id)
+            if extra:
+                for key in _MESSAGE_EXTRA_KEYS:
+                    value = extra.get(key)
+                    if value:
+                        entry[key] = value
             bucket = self.messages.setdefault(session_key, [])
-            bucket.append(entry)
+            # 流式回复：平台在生成过程中会反复推送"当前完整文本"的增量事件。
+            # 若每次都 append，一次回复就会在面板里堆成一长串越长越多的重复气泡。
+            # 这里把同一个流式片段收敛到同一条记录上（就地增长）。
+            if not self._coalesce_streamed(bucket, entry):
+                bucket.append(entry)
             # 截断,避免无限增长
             if len(bucket) > MAX_MESSAGES_PER_SESSION:
                 del bucket[: len(bucket) - MAX_MESSAGES_PER_SESSION]
 
             sess["last_msg_at"] = now
-            preview = content if content_type == "text" else "[图片]"
-            sess["last_msg_preview"] = (preview or "")[:50]
+            sess["last_msg_preview"] = _preview_of(content_type, content)[:50]
 
     # ==================== 接管状态 ====================
 
@@ -710,19 +1111,162 @@ class HumanTakeover(BasePlugin):
                             session_key,
                         )
 
+    # ==================== 消息历史游标 / 撤回 ====================
+
+    def message_page(
+        self,
+        session_key: str,
+        limit: int = 300,
+        before_ts: float | None = None,
+    ) -> dict[str, Any]:
+        """Return a cursor window of a session's retained messages.
+
+        The 300-entry retention budget is unchanged; the cursor lets the console
+        request older pages in a bounded response instead of carrying the whole
+        window (and freezing) on every load. ``before_ts`` returns the oldest
+        ``limit`` messages strictly older than the cursor.
+        """
+
+        st = self._current_state()
+        bucket = st.messages.get(session_key) or []
+        cursor = before_ts
+        if cursor is not None:
+            try:
+                cursor = float(cursor)
+            except (TypeError, ValueError):
+                cursor = None
+        filtered = bucket
+        if cursor is not None:
+            filtered = [m for m in bucket if (m.get("ts") or 0) < cursor]
+        total = len(filtered)
+        if limit is not None and limit > 0 and limit < total:
+            page = filtered[-limit:]
+        else:
+            page = filtered
+        return {
+            "session_key": session_key,
+            "messages": page,
+            "has_more": total - len(page) > 0,
+            "next_cursor": page[0].get("ts") if page else None,
+            "before_ts": cursor,
+            "total": total,
+        }
+
+    async def history_page(
+        self, session_key: str, limit: int = 300, before_ts: float | None = None
+    ) -> dict[str, Any]:
+        """Cursor page with the normal load/failure fences applied."""
+
+        st = await self._state_for_update()
+        return self.message_page(session_key, limit=limit, before_ts=before_ts)
+
+    @staticmethod
+    def _mark_recalled(
+        st: _InstallationState, session_key: str, message_id: str, actor: str = "unknown"
+    ) -> bool:
+        """Flag a retained message as recalled; returns True if it changed."""
+
+        changed = False
+        for entry in st.messages.get(session_key) or []:
+            if str(entry.get("message_id") or "") == str(message_id):
+                if not entry.get("recalled"):
+                    entry["recalled"] = True
+                    entry["recalled_by"] = actor
+                    entry["recalled_at"] = time.time()
+                    changed = True
+        if changed:
+            sess = st.sessions.get(session_key)
+            if sess is not None:
+                recalled = sess.setdefault("recalled_messages", [])
+                if len(recalled) < 50 and not any(
+                    item.get("message_id") == str(message_id) for item in recalled
+                ):
+                    recalled.append(
+                        {"message_id": str(message_id), "actor": actor, "at": time.time()}
+                    )
+        return changed
+
+    async def recall_message(
+        self, session_key: str, message_id: str, actor: str = "human"
+    ) -> tuple[bool, str]:
+        """Call the platform's standard delete_message on a sent message."""
+
+        st = await self._state_for_update()
+        sess = st.sessions.get(session_key)
+        if not sess:
+            return False, "session not found"
+        bot_uuid = sess.get("bot_uuid") or ""
+        target_type = sess.get("type") or "person"
+        target_id = str(sess.get("target_id") or "")
+        message_id = str(message_id or "").strip()
+        if not message_id:
+            return False, "message_id is required"
+        if not bot_uuid:
+            return False, "bot_uuid unknown for this session"
+        try:
+            await self.call_platform_api(
+                bot_uuid,
+                "delete_message",
+                {
+                    "chat_type": target_type,
+                    "chat_id": target_id,
+                    "message_id": message_id,
+                },
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.error("HumanTakeover recall failed for %s: %s", session_key, e)
+            return False, str(e)
+        async with self._session_update(session_key):
+            self._mark_recalled(st, session_key, message_id, actor=actor)
+        logger.info("HumanTakeover recalled message %s in %s", message_id, session_key)
+        return True, ""
+
+    def image_plugin_upload_url(self) -> str:
+        """Return the configured image-plugin upload endpoint, if any."""
+
+        try:
+            cfg = self.get_config() or {}
+            return str(cfg.get("image_plugin_upload_url") or "").strip()
+        except Exception:  # noqa: BLE001
+            return ""
+
     # ==================== 人工发送消息 ====================
+
+    @staticmethod
+    def _send_error_text(exc: Exception) -> str:
+        """把发送异常翻成操作员看得懂的原因。
+
+        最常见的是宿主在 ``send_message`` 前校验 bot 归属:调试/临时实例里 bots 表
+        可能是空的,原来只回一句 ``Bot is not available in this Workspace``,
+        面板上还显示成 ``error[object Object]``,看不出该怎么办。
+        """
+        raw = str(exc)
+        low = raw.lower()
+        if "bot is not available" in low or "bot with bot_uuid" in low:
+            return (
+                "宿主在发送前拒绝了该 Bot 归属校验。注意:流水线「会话测试」用的是内置"
+                " websocket-proxy-bot(内存对象,不落 bots 表),需要宿主放行;"
+                "若是真实 Bot 则确认它没被删除且属于当前 Workspace。原始信息: " + raw
+            )
+        if "not enabled" in low:
+            return "插件未启用,无法发送。原始信息: " + raw
+        return raw or exc.__class__.__name__
 
     async def human_send(
         self,
         session_key: str,
         text: str | None = None,
         image_base64: str | None = None,
+        voice_base64: str | None = None,
         file_base64: str | None = None,
         file_name: str | None = None,
+        quote_message_id: str | None = None,
+        quoted_content: str | None = None,
     ) -> tuple[bool, str]:
-        """人工通过 Web 面板发送消息(文本 / base64 图片 / base64 文件)到目标会话。
+        """人工通过 Web 面板发送消息(文本/图片/语音/文件)到目标会话。
 
-        返回 (是否成功, 错误信息)。
+        ``quote_message_id`` 为被引用消息的平台标识,``quoted_content`` 为引用的
+        文本预览,二者组合成标准 ``Quote`` 组件。返回 (是否成功, 错误信息)。
         """
         await self._state_for_update()
         sess = self.sessions.get(session_key)
@@ -745,22 +1289,38 @@ class HumanTakeover(BasePlugin):
             # 期望前端传入完整 data URL: data:image/png;base64,xxxx
             components.append(platform_message.Image(base64=image_base64))
 
+        if voice_base64:
+            # 期望前端传入完整 data URL 或裸 base64
+            components.append(platform_message.Voice(base64=voice_base64))
+
         if file_base64:
             components.append(
                 platform_message.File(base64=file_base64, name=file_name or "file")
             )
 
+        if quote_message_id:
+            origin = (
+                platform_message.MessageChain([platform_message.Plain(text=quoted_content or "")])
+                if quoted_content
+                else platform_message.MessageChain()
+            )
+            components.append(platform_message.Quote(id=quote_message_id, origin=origin))
+
         if not components:
             return False, "empty message"
 
-        # 组装可读的发送内容描述:文本输出内容,图片标注,文件仅输出文件名
+        # 组装可读的发送内容描述:文本输出内容,图片/语音标注,文件仅输出文件名
         parts = []
         if text:
             parts.append("文本: " + text)
         if image_base64:
             parts.append("[图片]")
+        if voice_base64:
+            parts.append("[语音]")
         if file_base64:
             parts.append("[文件] " + (file_name or "file"))
+        if quote_message_id:
+            parts.append("[引用]")
         content_log = " | ".join(parts)
 
         # 目标用户名与适配器(适配器优先用收消息时缓存的值,避免发送时反复请求)
@@ -776,7 +1336,7 @@ class HumanTakeover(BasePlugin):
         )
 
         try:
-            await self.send_message(
+            submitted = await self.send_message(
                 bot_uuid=bot_uuid,
                 target_type=target_type,
                 target_id=str(target_id),
@@ -784,13 +1344,22 @@ class HumanTakeover(BasePlugin):
             )
         except Exception as e:  # noqa: BLE001
             logger.error("HumanTakeover human_send failed for %s: %s", session_key, e)
-            return False, str(e)
+            return False, self._send_error_text(e)
+
+        # send_message 返回序列化字典;部分平台不返回 message_id。
+        message_id = None
+        if isinstance(submitted, dict):
+            message_id = submitted.get("message_id")
+        elif submitted is not None:
+            message_id = getattr(submitted, "message_id", None)
+        message_id = str(message_id) if message_id not in (None, "") else None
 
         # Delivery already succeeded. Never report a storage failure as a failed send.
         try:
             for kind, content in (
                 ("text", text),
                 ("image", image_base64),
+                ("voice", voice_base64),
                 ("file", (file_name or "file") if file_base64 else None),
             ):
                 if content:
@@ -805,6 +1374,7 @@ class HumanTakeover(BasePlugin):
                         sender_name="人工客服",
                         content_type=kind,
                         content=content,
+                        message_id=message_id,
                     )
             await self.touch_human_response(session_key)
         except Exception as e:  # noqa: BLE001

@@ -218,7 +218,7 @@
   },
   {
     "id": "langbot-team/HumanTakeover",
-    "version": "0.1.7",
+    "version": "0.2.8",
     "category": "misc",
     "path": "misc/HumanTakeover",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HumanTakeover"

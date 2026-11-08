@@ -2,18 +2,24 @@
 
 [简体中文](readme/README_zh_Hans.md) | [日本語](readme/README_ja_JP.md)
 
-A human-takeover & manual-reply plugin for LangBot. It lets a human operator take over any private or group conversation through a built-in Web console, block the AI from responding, and reply manually with text, images, or files.
+A human-takeover & manual-reply plugin for LangBot. It lets a human operator take over any private or group conversation through a built-in Web console, block the AI from responding, and reply manually with text, images, voice, or files.
 
 ## Features
 
 - **Block AI on takeover**: When a conversation is taken over, the AI pipeline is stopped (`prevent_default`).
 - **Web console (single Page component)**: Two-column layout with a collapsible info panel, following the LangBot design language and dark/light themes.
 - **All conversations**: Lists every private chat and group chat; group messages distinguish individual senders.
-- **Manual reply**: Send plain text, images (base64), and files (base64) from the console.
+- **Manual reply**: Send plain text, images (base64), voice (base64), and files (base64) from the console.
+- **Copy & quote**: Each message has copy and quote actions; quoting adds a standard `Quote` component to the next reply.
+- **Recall & anti-recall**: Recall a message you sent through the platform's standard `delete_message` API. When a peer deletes a retained message, the console marks it as recalled instead of losing it.
+- **Voice/image rendering**: Voice messages render an inline player; images render inline.
+- **Cursor history**: Messages are paged with a `before_ts` cursor, so long histories load in bounded pages instead of one giant response. The 300-entry / 8 MiB retention budget is unchanged.
 - **Per-conversation drafts**: The text box and a staged image/file belong to the conversation they were entered in; switching conversations saves and restores them, and a reply only carries attachments chosen for the conversation it is sent to.
 - **10-minute auto-release**: If there is no human response within the configured timeout, the takeover is released automatically. A live countdown is shown during human silence.
 - **Trigger words**: When a user message contains a configured trigger word, the conversation is flagged as unhandled (WeChat-style red dot on the avatar), an alert toast is shown, and (optionally) the conversation is auto-taken-over.
-- **Profile cards**: Click a user/group avatar to view available info (ID, group, bot, adapter).
+- **User labels**: Tag users from their profile card; the console filters conversations by label, lists tagged users, and shows labels in profile and group cards. Labels are user-scoped and persisted per installation.
+- **Profile cards**: Click a user/group avatar to view available info (ID, username, remark, source IM, avatar, bot, adapter).
+- **Image plugin hook**: An optional upload URL lets the console hand a staged image to an image/emoji plugin and send the returned stable URL.
 - **Persistence**: Conversations and messages are stored via LangBot `plugin_storage` (database-backed) and survive restarts.
 - **Clear storage**: One-click button (with a custom confirm dialog) to wipe all stored data.
 - **i18n**: Full Simplified Chinese / English interface.
@@ -25,6 +31,40 @@ A human-takeover & manual-reply plugin for LangBot. It lets a human operator tak
 | `takeover_timeout` | integer | 600 | Auto-release takeover if no human response within this many seconds. |
 | `trigger_words` | array[string] | `[]` | Messages containing any of these words flag the session as unhandled and auto take over. |
 | `auto_takeover_on_trigger` | boolean | true | Whether to automatically take over when a trigger word is matched. |
+| `max_labels_per_user` | integer | 10 | Maximum labels an operator may attach to one user. |
+| `label_colors` | array[string] | eight default colors | Colors cycled for labels when no color is given (max 8). |
+| `image_plugin_upload_url` | string | `""` | Optional image/emoji plugin upload endpoint; empty disables the console upload button. |
+
+## Permissions
+
+`manifest.yaml` declares the minimal capabilities the plugin uses:
+`storage.plugin` (plugin-scoped storage), `bot.read` (bot lookup),
+`bot.message.send` (manual replies), and `bot.platform_api` (standard
+`delete_message` for recall). Declaring these moves the plugin from
+compatibility mode into strict mode: an existing installation keeps working,
+while a fresh install (or an upgrade) asks a Workspace member to confirm the
+list before the plugin runs.
+
+## User labels
+
+Labels are attached to a user (identified by their platform id) and stored in
+the installation-scoped `ht_user_labels_v2` row, so a label follows a user across
+conversations without duplicating it into every session record. The console can
+add, remove, and rename a label on a user, list all tagged users, filter the
+conversation list by label, and render labels in profile and group cards. A
+malformed label payload degrades to "no labels" without disabling messages.
+
+## Image plugin interface
+
+Set `image_plugin_upload_url` to the HTTP endpoint of the image/emoji plugin
+(StickerHub's Page `/add`, for example). When a staged image is uploaded, the
+console POSTs `{"name": ..., "data_url": ...}` (plus `image_base64` for
+compatibility) and expects a JSON response carrying the stable `url`, e.g.
+StickerHub returns `{"name", "url", ...}`. The console replaces the local data
+URL with that URL before the operator sends, so both human and AI replies can
+reference it. The SDK-level contract is StickerHub's
+`stickerhub_get_sticker_url` Tool (usable inside a Runner execution; requires
+the `plugin_tools` capability).
 
 ## Usage
 
@@ -54,7 +94,9 @@ A session record is limited to **8 MiB of UTF-8 JSON**, leaving room for SDK
 base64 encoding within the 16 MiB transport frame. Exceeding this limit raises an
 explicit error before sending the storage request; it does not trim message
 content or discard previously saved history. New messages still use the existing
-300-message retention policy. A failed save restores the last acknowledged cache;
+300-message retention policy. The console pages history with a `before_ts`
+cursor (at most `limit` entries per request), so a long conversation loads in
+bounded responses instead of one large payload. A failed save restores the last acknowledged cache;
 this is not evidence that a remotely dispatched write was rejected.
 A legacy session exceeding the limit stops initialization and leaves the original
 snapshots intact; it requires export/recovery rather than automatic truncation.
@@ -108,7 +150,9 @@ python -m pytest tests -q
 
 Tests cover migration/readback, bounded per-session writes, concurrent updates,
 failure-barrier handling, rollback/error reporting, bot-identity scoping,
-retention and clearing. The stdio test uses the real SDK and an OS subprocess,
+retention and clearing, plus the SDK compatibility contract, user labels,
+recall/anti-recall, voice/image extraction, cursor pagination and the no-deepcopy
+invariant. The stdio test uses the real SDK and an OS subprocess,
 with a synthetic Host KV sink; it is not a full LangBot deployment or a live
 database test, and it needs a host that can spawn that child process (it fails on
 Windows with `WinError 10106`).
