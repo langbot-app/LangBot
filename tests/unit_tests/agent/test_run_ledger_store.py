@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import asyncio
 import json
+import sqlite3
 
 import pytest
 import sqlalchemy
@@ -12,7 +13,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 
-from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore, _epoch_to_datetime
+from langbot.pkg.agent.runner.run_ledger_store import (
+    BUSY_RETRY_ATTEMPTS,
+    RunLedgerStore,
+    _epoch_to_datetime,
+)
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.entity.persistence.base import Base
 
@@ -725,3 +730,177 @@ async def test_activation_uses_new_revision_only_for_new_run(store, db_engine, t
     revoked.variables['_pipeline_bound_skills'] = []
     with pytest.raises(ValueError, match='not authorized'):
         await loader._invoke_activate_skill({'skill_name': 'demo'}, revoked)
+
+
+def _busy_error() -> sqlalchemy.exc.OperationalError:
+    """Build the sqlite3 busy failure SQLAlchemy raises for a contended write."""
+    original = sqlite3.OperationalError('database is locked')
+    original.sqlite_errorcode = sqlite3.SQLITE_BUSY
+    return sqlalchemy.exc.OperationalError('INSERT INTO agent_run_event', {}, original)
+
+
+@pytest.mark.asyncio
+async def test_append_event_retries_sqlite_busy(store, db_engine, monkeypatch):
+    """A contended write retries instead of failing the run event. #2747"""
+    await store.create_run(run_id='run-busy', event_id=None, binding_id=None, runner_id='runner')
+    real_append = store._append_event_once
+    calls = {'n': 0}
+
+    async def flaky(**kwargs):
+        calls['n'] += 1
+        if calls['n'] <= 3:
+            raise _busy_error()
+        return await real_append(**kwargs)
+
+    monkeypatch.setattr(store, '_append_event_once', flaky)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    event = await store.append_event(
+        run_id='run-busy', sequence=None, event_type='tool.call.completed', data={'ok': True}
+    )
+
+    assert calls['n'] == 4
+    assert event['sequence'] == 1
+    persisted, *_ = await store.page_run_events(run_id='run-busy', limit=10)
+    assert [e['type'] for e in persisted] == ['tool.call.completed']
+
+
+@pytest.mark.asyncio
+async def test_append_event_gives_up_after_bounded_busy_retries(store, monkeypatch):
+    """The retry stays bounded so a Runner budget is not consumed indefinitely."""
+    await store.create_run(run_id='run-busy-hard', event_id=None, binding_id=None, runner_id='runner')
+    calls = {'n': 0}
+
+    async def always_busy(**_kwargs):
+        calls['n'] += 1
+        raise _busy_error()
+
+    monkeypatch.setattr(store, '_append_event_once', always_busy)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    with pytest.raises(sqlalchemy.exc.OperationalError):
+        await store.append_event(run_id='run-busy-hard', sequence=None, event_type='message.completed')
+
+    assert calls['n'] == BUSY_RETRY_ATTEMPTS
+
+
+@pytest.mark.asyncio
+async def test_append_event_does_not_retry_unrelated_operational_error(store, monkeypatch):
+    """Only contention retries; a broken statement must fail immediately."""
+    await store.create_run(run_id='run-broken', event_id=None, binding_id=None, runner_id='runner')
+    calls = {'n': 0}
+
+    async def broken(**_kwargs):
+        calls['n'] += 1
+        raise sqlalchemy.exc.OperationalError('SELECT nope', {}, sqlite3.OperationalError('no such column: nope'))
+
+    monkeypatch.setattr(store, '_append_event_once', broken)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    with pytest.raises(sqlalchemy.exc.OperationalError):
+        await store.append_event(run_id='run-broken', sequence=None, event_type='message.completed')
+
+    assert calls['n'] == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_sequence_duplicate_returns_existing_event(store):
+    """A replay of an already stored (run_id, sequence) stays idempotent."""
+    await store.create_run(run_id='run-dupe', event_id=None, binding_id=None, runner_id='runner')
+    first = await store.append_event(run_id='run-dupe', sequence=1, event_type='message.completed', data={'n': 1})
+    second = await store.append_event(run_id='run-dupe', sequence=1, event_type='message.completed', data={'n': 1})
+    assert first['id'] == second['id']
+
+
+@pytest.mark.asyncio
+async def test_replayed_sequence_race_returns_the_winner(store, monkeypatch):
+    """Two deliveries of the same explicit sequence both resolve to one row."""
+    await store.create_run(run_id='run-dupe-race', event_id=None, binding_id=None, runner_id='runner')
+    real_append = store._append_event_once
+    calls = {'n': 0}
+
+    async def race(**kwargs):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            # The competing delivery wins the unique index first.
+            await real_append(**kwargs)
+            raise sqlalchemy.exc.IntegrityError(
+                'INSERT INTO agent_run_event',
+                {},
+                sqlite3.IntegrityError('UNIQUE constraint failed: agent_run_event.run_id, agent_run_event.sequence'),
+            )
+        return await real_append(**kwargs)
+
+    monkeypatch.setattr(store, '_append_event_once', race)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    event = await store.append_event(run_id='run-dupe-race', sequence=1, event_type='message.completed')
+
+    assert event['sequence'] == 1
+    persisted, *_ = await store.page_run_events(run_id='run-dupe-race', limit=10)
+    assert [event['sequence'] for event in persisted] == [1]
+
+
+@pytest.mark.asyncio
+async def test_finalize_run_retries_sqlite_busy(store, monkeypatch):
+    """A busy terminal write must not leave a delivered reply recorded as failed."""
+    await store.create_run(run_id='run-finalize-busy', event_id=None, binding_id=None, runner_id='runner')
+    real_finalize = store._finalize_run_once
+    calls = {'n': 0}
+
+    async def flaky(**kwargs):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            raise _busy_error()
+        return await real_finalize(**kwargs)
+
+    monkeypatch.setattr(store, '_finalize_run_once', flaky)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    final = await store.finalize_run(run_id='run-finalize-busy', status='completed')
+
+    assert calls['n'] == 2
+    assert final['status'] == 'completed'
+    assert (await store.get_run('run-finalize-busy'))['status'] == 'completed'
+
+
+@pytest.mark.asyncio
+async def test_finalize_run_busy_retry_keeps_terminal_transition_rules(store, db_engine, monkeypatch):
+    """The retry reruns the whole transaction, so terminal guards still apply."""
+    await store.create_run(run_id='run-finalize-guard', event_id=None, binding_id=None, runner_id='runner')
+    await store.finalize_run(run_id='run-finalize-guard', status='completed')
+    real_finalize = store._finalize_run_once
+    calls = {'n': 0}
+
+    async def flaky(**kwargs):
+        calls['n'] += 1
+        if calls['n'] == 1:
+            raise _busy_error()
+        return await real_finalize(**kwargs)
+
+    monkeypatch.setattr(store, '_finalize_run_once', flaky)
+    monkeypatch.setattr('langbot.pkg.agent.runner.run_ledger_store.BUSY_RETRY_BASE_DELAY', 0)
+
+    with pytest.raises(ValueError):
+        await store.finalize_run(run_id='run-finalize-guard', status='failed')
+
+
+@pytest.mark.parametrize(
+    'message',
+    [
+        'UNIQUE constraint failed: agent_run_event.run_id, agent_run_event.sequence',
+        'duplicate key value violates unique constraint "uq_agent_run_event_run_sequence"',
+    ],
+    ids=['sqlite-columns', 'postgres-constraint'],
+)
+def test_duplicate_sequence_detection_covers_both_backends(message):
+    """SQLite names the columns, PostgreSQL names the constraint. (#2747)"""
+    from langbot.pkg.agent.runner.run_ledger_store import _is_duplicate_sequence
+
+    exc = sqlalchemy.exc.IntegrityError('INSERT', {}, sqlite3.IntegrityError(message))
+    assert _is_duplicate_sequence(exc)
+
+    unrelated = sqlalchemy.exc.IntegrityError(
+        'INSERT', {}, sqlite3.IntegrityError('UNIQUE constraint failed: agent_run.run_id')
+    )
+    assert not _is_duplicate_sequence(unrelated)
