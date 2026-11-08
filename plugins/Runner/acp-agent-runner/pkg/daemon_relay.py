@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import hashlib
 import hmac
 import json
@@ -31,6 +32,22 @@ DEFAULT_DAEMON_HUB_HOST = "127.0.0.1"
 DEFAULT_DAEMON_HUB_PORT = 8766
 DEFAULT_DAEMON_CONNECT_TIMEOUT = 30.0
 DAEMON_MCP_SERVER_INFO = {"name": "langbot-agent-daemon", "version": "0.1.0"}
+
+
+async def _create_tenant_free_daemon_server(handler, host: str, port: int):
+    """Create the shared listener without retaining one run invocation.
+
+    ``websockets.serve`` creates connection tasks from the Context active when
+    the listener starts. The daemon hub outlives the Runner invocation that
+    first starts it, so inheriting that Context would leave every later MCP
+    request bound to a revoked invocation. Per-run authority is restored only
+    when an MCP request is dispatched below.
+    """
+
+    async def create_server():
+        return await websockets.serve(handler, host, port)
+
+    return await asyncio.create_task(create_server(), context=contextvars.Context())
 
 
 class AgentRuntimeDaemonError(Exception):
@@ -184,7 +201,7 @@ class AgentRuntimeDaemonHub:
                     "daemon_hub_conflict",
                 )
             try:
-                server = await websockets.serve(self._handle_connection, host, port)
+                server = await _create_tenant_free_daemon_server(self._handle_connection, host, port)
             except OSError as exc:
                 raise self._error(
                     f"cannot bind daemon listener {host}:{port}; configure a unique daemon-port "
@@ -253,6 +270,7 @@ class AgentRuntimeDaemonHub:
             owner=owner,
             queue=asyncio.Queue(),
             tools=tools,
+            tool_context=contextvars.copy_context(),
             done=asyncio.Event(),
             cancelling=False,
         )
@@ -416,7 +434,16 @@ class AgentRuntimeDaemonHub:
                 payload = jsonrpc_error(None, -32000, "Run tools revoked")
             else:
                 try:
-                    payload = await handle_agent_runtime_mcp_payload(tools, message.get("payload"))
+                    tool_task = session["tool_context"].run(
+                        asyncio.create_task,
+                        handle_agent_runtime_mcp_payload(tools, message.get("payload")),
+                    )
+                    try:
+                        payload = await tool_task
+                    except asyncio.CancelledError:
+                        tool_task.cancel()
+                        await asyncio.gather(tool_task, return_exceptions=True)
+                        raise
                 except Exception as exc:
                     payload = jsonrpc_error(None, -32000, str(exc))
             await self._send(
@@ -543,7 +570,12 @@ class LocalMCPProxy:
         )
 
     def server_config(self) -> dict[str, typing.Any]:
-        return self.mcp_server().to_dict(include_type=True)
+        config = self.mcp_server().to_dict(include_type=True)
+        # ACP clients such as OpenCode require ``headers`` to be an array even
+        # when empty. Omitting the field makes them silently skip this server,
+        # which hides every LangBot tool from the agent.
+        config.setdefault("headers", [])
+        return config
 
 
 class AgentRuntimeDaemonClient:
