@@ -252,6 +252,9 @@ class AgentRunOrchestrator:
         assistant_transcript_written = False
         terminal_status: str | None = None
         terminal_reason: str | None = None
+        # Latest usage any result carried, not only a terminal one: a cancel,
+        # timeout, or broken stream must not drop usage already spent. Snapshots
+        # are cumulative, so replacing (never summing) keeps replays idempotent.
         terminal_usage: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
@@ -440,6 +443,12 @@ class AgentRunOrchestrator:
                                 f'journal_ms={journal_ms:.1f} observer_ms={observer_ms:.1f}'
                             )
 
+                        # Capture usage before any branch can `continue`, so a
+                        # snapshot carried by state.updated is not dropped.
+                        result_usage = result_dict.get('usage')
+                        if isinstance(result_usage, dict) and result_usage:
+                            terminal_usage = result_usage
+
                         if result_type == 'state.updated':
                             await self.journal.handle_state_updated_event(
                                 result_dict,
@@ -458,16 +467,10 @@ class AgentRunOrchestrator:
                                 if isinstance(result_dict.get('data'), dict)
                                 else None
                             )
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
                         elif result_type == 'run.failed':
                             data = result_dict.get('data') if isinstance(result_dict.get('data'), dict) else {}
                             terminal_status = 'cancelled' if data.get('code') == 'cancelled' else 'failed'
                             terminal_reason = data.get('error') or data.get('code')
-                            usage = result_dict.get('usage')
-                            if isinstance(usage, dict):
-                                terminal_usage = usage
 
                         has_completed_message = result_type == 'message.completed' or (
                             result_type == 'run.completed'

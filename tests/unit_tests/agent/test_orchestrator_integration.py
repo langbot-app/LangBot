@@ -2066,3 +2066,202 @@ async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent
             )
         ]
     assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_failed_run_retains_last_usage_snapshot(clean_agent_state):
+    """A failing run keeps the usage it already reported. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'tool.call.completed',
+                'data': {'tool_name': 'noop', 'parameters': {}, 'result': 'ok'},
+                'usage': {'prompt_tokens': 7, 'completion_tokens': 1, 'total_tokens': 8},
+            },
+            {
+                'type': 'run.failed',
+                'data': {'code': 'runner_error', 'error': 'boom', 'retryable': False},
+                'usage': {'prompt_tokens': 9, 'completion_tokens': 2, 'total_tokens': 11},
+            },
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    with pytest.raises(Exception):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    # The terminal snapshot wins over the earlier one.
+    assert run['usage'] == {'prompt_tokens': 9, 'completion_tokens': 2, 'total_tokens': 11}
+
+
+@pytest.mark.asyncio
+async def test_disconnected_stream_keeps_usage_from_earlier_results(clean_agent_state):
+    """A stream that dies mid-flight keeps the last cumulative snapshot. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+
+    class DisconnectingConnector(FakePluginConnector):
+        async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+            self.contexts.append(context)
+            yield {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'partial'}},
+                'usage': {'prompt_tokens': 5, 'completion_tokens': 3, 'total_tokens': 8},
+            }
+            raise RunnerExecutionError(RUNNER_ID, 'transport closed')
+
+    plugin_connector = DisconnectingConnector()
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    with pytest.raises(Exception):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    assert run['usage'] == {'prompt_tokens': 5, 'completion_tokens': 3, 'total_tokens': 8}
+
+
+@pytest.mark.asyncio
+async def test_repeated_usage_snapshots_replace_instead_of_summing(clean_agent_state):
+    """Cumulative snapshots must not double-count across events. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    snapshot = {'prompt_tokens': 4, 'completion_tokens': 2, 'total_tokens': 6}
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'a'}},
+                'usage': snapshot,
+            },
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'b'}},
+                'usage': snapshot,
+            },
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}, 'usage': snapshot},
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['usage'] == snapshot
+
+
+@pytest.mark.asyncio
+async def test_run_without_any_usage_stays_unknown(clean_agent_state):
+    """Missing usage is unknown, not zero. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(results=[{'type': 'run.completed', 'data': {'finish_reason': 'stop'}}])
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['usage'] is None
+
+
+@pytest.mark.asyncio
+async def test_timed_out_run_retains_usage_seen_before_the_deadline(clean_agent_state):
+    """A deadline-exhausted run keeps the usage it already reported. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+
+    class StallingConnector(FakePluginConnector):
+        """Yields one usage-bearing result, then stalls past the deadline."""
+
+        async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+            self.contexts.append(context)
+            yield {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'partial'}},
+                'usage': {'prompt_tokens': 6, 'completion_tokens': 2, 'total_tokens': 8},
+            }
+            await asyncio.sleep(1.0)
+
+    plugin_connector = StallingConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+    query = make_query()
+    query.pipeline_config['ai']['runner_config'][RUNNER_ID]['timeout'] = 0.2
+
+    with pytest.raises(RunnerExecutionError) as exc_info:
+        [message async for message in orchestrator.run_from_query(query)]
+    assert exc_info.value.error_code == 'runner.timeout'
+
+    # The deadline can fire before the connector records a context, so read the
+    # single run back from the ledger instead of from the fake.
+    store = RunLedgerStore(db_engine)
+    runs, _next, _prev, _more = await store.list_runs(limit=5)
+    assert len(runs) == 1
+    assert runs[0]['status'] == 'timeout'
+    assert runs[0]['usage'] == {'prompt_tokens': 6, 'completion_tokens': 2, 'total_tokens': 8}
+
+
+@pytest.mark.asyncio
+async def test_usage_on_state_updated_is_not_dropped(clean_agent_state):
+    """state.updated takes an early `continue`; its usage must still land. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'state.updated',
+                'data': {'scope': 'conversation', 'key': 'k', 'value': 'v'},
+                'usage': {'prompt_tokens': 3, 'completion_tokens': 1, 'total_tokens': 4},
+            },
+            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+        ]
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(descriptor))
+
+    [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['usage'] == {'prompt_tokens': 3, 'completion_tokens': 1, 'total_tokens': 4}
+
+
+async def test_cancelled_run_retains_usage_seen_before_cancel(clean_agent_state):
+    """Usage observed before a non-terminal exit must survive. (#2878)"""
+    db_engine = clean_agent_state
+    descriptor = make_descriptor()
+    plugin_connector = FakePluginConnector(
+        results=[
+            {
+                'type': 'message.completed',
+                'data': {'message': {'role': 'assistant', 'content': 'partial'}},
+                'usage': {'prompt_tokens': 10, 'completion_tokens': 4, 'total_tokens': 14},
+            },
+        ]
+    )
+    ap = FakeApplication(plugin_connector, db_engine)
+    orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
+
+    seen = []
+
+    async def consume():
+        async for message in orchestrator.run_from_query(make_query()):
+            seen.append(message)
+
+    task = asyncio.create_task(consume())
+    while not plugin_connector.contexts:
+        await asyncio.sleep(0)
+    run_id = plugin_connector.contexts[0]['run_id']
+    store = RunLedgerStore(db_engine)
+    await store.request_cancel(run_id=run_id, status_reason='user cancel')
+    with pytest.raises(Exception):
+        await task
+
+    run = await store.get_run(run_id)
+    assert run['status'] == 'cancelled'
+    assert run['usage'] == {'prompt_tokens': 10, 'completion_tokens': 4, 'total_tokens': 14}
