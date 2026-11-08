@@ -814,6 +814,67 @@ async def test_all_mode_installs_missing_plugin_once_then_migrates_both(env):
     )
 
 
+def _late_registration(env, *, visible_after):
+    """Runners become visible only some polls after install, like a real worker launch."""
+    runners = env.ap.runner_registry.list_runners.return_value
+    state = {'installed': False, 'polls': 0}
+
+    async def install(source, info, task_context):
+        async with env.engine.begin() as conn:
+            await conn.execute(
+                sa.insert(PluginSetting).values(
+                    workspace_uuid=WS,
+                    plugin_author='langbot-team',
+                    plugin_name='TestAgent',
+                    enabled=False,
+                    permission_declaration={'workspace_operations': [], 'capabilities': ['models.invoke']},
+                    permission_grants={},
+                )
+            )
+        state['installed'] = True
+
+    async def list_runners(*args, **kwargs):
+        if not state['installed']:
+            return []
+        state['polls'] += 1
+        return runners if visible_after is not None and state['polls'] > visible_after else []
+
+    env.ap.runner_registry.list_runners = AsyncMock(side_effect=list_runners)
+    env.ap.plugin_connector.install_plugin = AsyncMock(side_effect=install)
+    return state
+
+
+@pytest.mark.asyncio
+async def test_all_mode_waits_for_runner_registered_after_install(env, monkeypatch):
+    """install_plugin returns before the worker registers its Runner (LANG-355)."""
+    async with env.engine.begin() as conn:
+        await conn.execute(sa.delete(PluginSetting))
+    monkeypatch.setattr(env.m, 'RUNNER_REGISTRATION_POLL', 0)
+    state = _late_registration(env, visible_after=3)
+    _, metadata = await execute_all(env)
+    assert [r['state'] for r in metadata['results']] == ['migrated', 'migrated']
+    assert state['polls'] > 3
+    env.ap.plugin_connector.install_plugin.assert_awaited_once()
+    async with env.engine.connect() as conn:
+        setting = (await conn.execute(sa.select(PluginSetting))).mappings().one()
+    assert setting['enabled'] is True
+    assert setting['permission_grants'] == setting['permission_snapshot']
+
+
+@pytest.mark.asyncio
+async def test_all_mode_reports_runner_unavailable_when_runner_never_registers(env, monkeypatch):
+    async with env.engine.begin() as conn:
+        await conn.execute(sa.delete(PluginSetting))
+    monkeypatch.setattr(env.m, 'RUNNER_REGISTRATION_POLL', 0.01)
+    monkeypatch.setattr(env.m, 'RUNNER_REGISTRATION_TIMEOUT', 0.05)
+    _late_registration(env, visible_after=None)
+    _, metadata = await execute_all(env)
+    assert all(r['state'] == 'blocked' and r['code'] == 'runner_unavailable' for r in metadata['results'])
+    env.ap.plugin_connector.install_plugin.assert_awaited_once()
+    configs, backups = await rows(env)
+    assert configs['one'] == configs['two'] == SOURCE and not backups
+
+
 @pytest.mark.asyncio
 async def test_all_mode_confirms_pending_plugin_without_reinstalling(env):
     async with env.engine.begin() as conn:

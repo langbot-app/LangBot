@@ -169,6 +169,9 @@ def _json(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), ensure_ascii=False, default=str)
 
 
+# Same window the WebUI Runner installer waits for a new Runner to register.
+RUNNER_REGISTRATION_TIMEOUT = 60.0
+RUNNER_REGISTRATION_POLL = 1.0
 _SKIPPED_STATES = ('already_current', 'not_legacy', 'unsupported_runner')
 
 
@@ -551,18 +554,17 @@ class PipelineMigrationService:
                         key = (target['author'], target['name'], target['version'])
                         if key not in installed:
                             if facts:
+                                was_enabled = facts['enabled']
                                 await self._confirm_plugin(ctx, facts)
                                 facts = await self._plugin(ctx, plan)
-                            runners = await self.ap.runner_registry.list_runners(
-                                execution, use_cache=False, usage='agent'
-                            )
-                            descriptor = next((r for r in runners if r.id == plan['target_runner_id']), None)
-                            ready = (
-                                facts
-                                and facts['enabled']
-                                and descriptor
-                                and _version_at_least(descriptor.plugin_version, target['version'])
-                            )
+                                # Confirming activates a disabled installation; its
+                                # Runner registers only once the worker is up.
+                                descriptor = await self._wait_for_runner(
+                                    execution, plan, timeout=0 if was_enabled else RUNNER_REGISTRATION_TIMEOUT
+                                )
+                            else:
+                                descriptor = await self._wait_for_runner(execution, plan, timeout=0)
+                            ready = facts and facts['enabled'] and descriptor is not None
                             if not ready:
                                 task_context.metadata['phase'] = 'installing'
                                 install_context = MigrationInstallContext(target)
@@ -589,6 +591,10 @@ class PipelineMigrationService:
                                             PluginInstallSource.MARKETPLACE, spec, task_context=install_context
                                         )
                                     await self._confirm_plugin(ctx, await self._plugin(ctx, plan))
+                                    # install_plugin returns once the package is installed;
+                                    # the worker registers its Runner a moment later.
+                                    if await self._wait_for_runner(execution, plan) is None:
+                                        raise MigrationError('runner_unavailable')
                                     install_code = None
                                 except MigrationError as exc:
                                     install_code = exc.code
@@ -658,6 +664,22 @@ class PipelineMigrationService:
             task_context.metadata['phase'] = 'finished'
             self._all_tasks.discard(ctx.workspace_uuid)
         return task_context.metadata
+
+    async def _wait_for_runner(self, execution, plan, *, timeout: float | None = None):
+        """Return the target Runner once it is registered at the planned version, else None."""
+        timeout = RUNNER_REGISTRATION_TIMEOUT if timeout is None else timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while True:
+            runners = await self.ap.runner_registry.list_runners(execution, use_cache=False, usage='agent')
+            descriptor = next((r for r in runners if r.id == plan['target_runner_id']), None)
+            if descriptor is not None and _version_at_least(
+                descriptor.plugin_version, plan['target_plugin']['version']
+            ):
+                return descriptor
+            if loop.time() >= deadline:
+                return None
+            await asyncio.sleep(min(RUNNER_REGISTRATION_POLL, max(deadline - loop.time(), 0)))
 
     async def _verify_runtime(self, execution, plan):
         runners = await self.ap.runner_registry.list_runners(execution, use_cache=False, usage='agent')
