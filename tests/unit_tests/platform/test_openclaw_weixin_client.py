@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 
 import pytest
 
@@ -73,7 +74,6 @@ def test_voice_item_serialization_includes_encode_type_and_playtime():
 
 @pytest.mark.asyncio
 async def test_inbound_voice_conversion_to_voice_component():
-    import base64
     import langbot_plugin.api.entities.builtin.platform.message as platform_message
     from langbot.libs.openclaw_weixin_api.types import CDNMedia, MessageItem, VoiceItem, WeixinMessage
     from langbot.pkg.platform.sources.openclaw_weixin import OpenClawWeixinMessageConverter
@@ -273,3 +273,54 @@ async def test_upload_media_does_not_log_signed_url_or_keys(monkeypatch, caplog)
 
     assert 'SECRET-SIGNATURE' not in caplog.text
     assert media.aes_key not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_inbound_file_conversion_to_file_component():
+    """#2835: file messages were collapsed to a `[File: name]` placeholder so
+    the Runner received no attachment at all."""
+
+    import langbot_plugin.api.entities.builtin.platform.message as platform_message
+    from langbot.libs.openclaw_weixin_api.types import CDNMedia, FileItem, MessageItem, WeixinMessage
+    from langbot.pkg.platform.sources.openclaw_weixin import OpenClawWeixinMessageConverter
+
+    payload = b'%PDF-1.4\nplaintext\n'
+    item = MessageItem(
+        type=MessageItem.FILE,
+        file_item=FileItem(
+            media=CDNMedia(encrypt_query_param='param', aes_key='key'),
+            file_name='report.pdf',
+            len=str(len(payload)),
+            _downloaded_bytes=payload,
+        ),
+    )
+    msg = WeixinMessage(message_id=1, from_user_id='user1', to_user_id='bot1', item_list=[item])
+
+    chain = await OpenClawWeixinMessageConverter().target2yiri(msg)
+
+    assert len(chain) == 1
+    file_component = chain[0]
+    assert isinstance(file_component, platform_message.File)
+    assert file_component.name == 'report.pdf'
+    assert file_component.size == len(payload)
+    assert base64.b64decode(file_component.base64) == payload
+
+
+@pytest.mark.asyncio
+async def test_inbound_file_without_download_keeps_the_name():
+    import langbot_plugin.api.entities.builtin.platform.message as platform_message
+    from langbot.libs.openclaw_weixin_api.types import FileItem, MessageItem, WeixinMessage
+    from langbot.pkg.platform.sources.openclaw_weixin import OpenClawWeixinMessageConverter
+
+    item = MessageItem(
+        type=MessageItem.FILE,
+        file_item=FileItem(file_name='report.pdf', len='2048'),
+    )
+    msg = WeixinMessage(message_id=1, from_user_id='user1', to_user_id='bot1', item_list=[item])
+
+    chain = await OpenClawWeixinMessageConverter().target2yiri(msg)
+
+    assert isinstance(chain[0], platform_message.File)
+    assert chain[0].name == 'report.pdf'
+    assert chain[0].size == 2048
+    assert not chain[0].base64

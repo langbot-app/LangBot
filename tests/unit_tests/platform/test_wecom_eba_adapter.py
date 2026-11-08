@@ -233,3 +233,51 @@ async def test_wecom_send_reply_and_platform_api_use_underlying_client():
     assert token_status == {'valid': True}
     assert user_info['name'] == 'Alice'
     assert sent_all == {'ok': True}
+
+
+@pytest.mark.asyncio
+async def test_wecom_event_converter_maps_file_message_to_eba():
+    """A WeCom self-built app `MsgType=file` callback carries MediaId and
+    FileName, but the converter only mapped text/image, so the message fell
+    through to a `platform_specific` event no pipeline subscribes to."""
+
+    adapter = make_adapter()
+    payload = {
+        'ToUserName': 'corp-id',
+        'FromUserName': 'user-1',
+        'CreateTime': 1_714_000_000,
+        'MsgType': 'file',
+        'Content': None,
+        'MsgId': 12346,
+        'AgentID': 1000002,
+        'MediaId': 'file-media-id',
+        'FileName': 'report.pdf',
+    }
+
+    event = await WecomEventConverter.target2yiri(WecomEvent.from_payload(payload), adapter.bot)
+
+    assert isinstance(event, platform_events.MessageReceivedEvent)
+    file_component = next(component for component in event.message_chain if isinstance(component, platform_message.File))
+    assert file_component.id == 'file-media-id'
+    assert file_component.name == 'report.pdf'
+
+
+@pytest.mark.asyncio
+async def test_wecom_get_message_parses_file_media_id():
+    payload = """<xml>
+    <ToUserName>corp-id</ToUserName>
+    <FromUserName>user-1</FromUserName>
+    <CreateTime>1714000000</CreateTime>
+    <MsgType>file</MsgType>
+    <MediaId>file-media-id</MediaId>
+    <FileName>report.pdf</FileName>
+    <MsgId>12346</MsgId>
+    <AgentID>1000002</AgentID>
+    </xml>"""
+
+    client = make_adapter().bot
+    message_data = await client.get_message(payload)
+
+    assert message_data['MsgType'] == 'file'
+    assert message_data['MediaId'] == 'file-media-id'
+    assert message_data['FileName'] == 'report.pdf'

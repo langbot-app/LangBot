@@ -11,6 +11,13 @@ from langbot_plugin.api.entities.builtin.platform import entities as platform_en
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 
 
+# Inbound message types this adapter turns into `message.received`. Anything
+# else (events, unsupported message kinds) stays a `platform_specific` event.
+# `file` belongs here: self-built apps deliver files as message callbacks with
+# a MediaId, and a `platform_specific` event has no pipeline subscriber.
+_MESSAGE_TYPES = frozenset({'text', 'image', 'file'})
+
+
 class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
     @staticmethod
     async def yiri2target(event: platform_events.Event) -> WecomEvent | None:
@@ -21,7 +28,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         eba_event = await WecomEventConverter.target2yiri(event, bot)
         if hasattr(eba_event, 'to_legacy_event'):
             return eba_event.to_legacy_event()
-        if event.type in {'text', 'image'} and eba_event is not None:
+        if event.type in _MESSAGE_TYPES and eba_event is not None:
             friend = platform_entities.Friend(
                 id=f'u{event.user_id}',
                 nickname=getattr(getattr(eba_event, 'sender', None), 'nickname', str(event.user_id or '')),
@@ -37,7 +44,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
 
     @staticmethod
     async def target2yiri(event: WecomEvent, bot: WecomClient | None = None) -> platform_events.Event | None:
-        if event.type in {'text', 'image'}:
+        if event.type in _MESSAGE_TYPES:
             return await WecomEventConverter.message_to_eba(event, bot)
         return WecomEventConverter.platform_specific(event, f'message.{event.detail_type or event.type or "unknown"}')
 
@@ -45,6 +52,8 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
     async def message_to_eba(event: WecomEvent, bot: WecomClient | None = None) -> platform_events.MessageReceivedEvent:
         if event.type == 'image':
             message_chain = await WecomMessageConverter.target2yiri_image(event.picurl, event.message_id)
+        elif event.type == 'file':
+            message_chain = await WecomMessageConverter.target2yiri_file(event)
         else:
             message_chain = await WecomMessageConverter.target2yiri_text(event.message, event.message_id)
 

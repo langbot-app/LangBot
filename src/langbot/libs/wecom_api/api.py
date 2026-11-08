@@ -445,9 +445,14 @@ class WecomClient:
             'MsgId': int(root.find('MsgId').text) if root.find('MsgId') is not None else None,
             'AgentID': int(root.find('AgentID').text) if root.find('AgentID') is not None else None,
         }
-        if message_data['MsgType'] == 'image':
+        if message_data['MsgType'] in ('image', 'voice', 'file'):
             message_data['MediaId'] = root.find('MediaId').text if root.find('MediaId') is not None else None
+        if message_data['MsgType'] == 'image':
             message_data['PicUrl'] = root.find('PicUrl').text if root.find('PicUrl') is not None else None
+        if message_data['MsgType'] == 'file':
+            # Self-built apps only ever send a MediaId for files; without the
+            # name the adapter cannot describe the component to the pipeline.
+            message_data['FileName'] = root.find('FileName').text if root.find('FileName') is not None else None
 
         return message_data
 

@@ -72,6 +72,28 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         )
 
     @staticmethod
+    async def target2yiri_file(event) -> platform_message.MessageChain:
+        media_id = event.media_id
+        if not media_id:
+            # Nothing to download: say so instead of emitting an empty chain.
+            return platform_message.MessageChain(
+                [
+                    platform_message.Source(id=event.message_id, time=datetime.datetime.now()),
+                    platform_message.Unknown(text=f'[File: {event.get("FileName") or ""}]'),
+                ]
+            )
+        return platform_message.MessageChain(
+            [
+                platform_message.Source(id=event.message_id, time=datetime.datetime.now()),
+                platform_message.File(
+                    id=media_id,
+                    name=event.get('FileName') or '',
+                    size=0,
+                ),
+            ]
+        )
+
+    @staticmethod
     async def target2yiri_image(picurl: str, message_id: int | str | None = -1) -> platform_message.MessageChain:
         image_base64, image_format = await image.get_wecom_image_base64(pic_url=picurl)
         return platform_message.MessageChain(
