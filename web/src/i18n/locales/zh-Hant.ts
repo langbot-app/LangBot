@@ -2016,6 +2016,11 @@ const zhHant = {
       installCompletePlugin: '外掛安裝成功',
       installCompleteMCP: 'MCP 伺服器安裝成功',
       installCompleteSkill: '技能安裝成功',
+      followUp: {
+        agents: '下一步：為這個外掛建立 Agent 或外掛處理器',
+        pipelines: '下一步：建立一條流水線來使用這個外掛',
+        knowledge: '下一步：為這個外掛建立知識庫',
+      },
       dismiss: '關閉',
       background: '背景執行',
       taskQueue: '安裝任務',
