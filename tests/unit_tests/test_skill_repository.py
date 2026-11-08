@@ -1,10 +1,16 @@
+import base64
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.skill.repository import SkillRepository, SkillRevisionConflictError
+from langbot.pkg.skill.repository import (
+    SkillRepository,
+    SkillRevisionConflictError,
+    SkillRevisionMismatchError,
+)
 
 
 _CONTEXT = ExecutionContext(
@@ -297,3 +303,137 @@ async def test_deleted_skill_can_restore_exact_recoverable_run_revision(tmp_path
     restored = await repository.get_skill(_CONTEXT, 'recoverable', snapshot=True, revision=published['revision'])
     assert restored['revision'] == published['revision']
     assert restored['instructions'] == 'Pinned instructions'
+
+
+_PNG = (
+    b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
+    b'\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+)
+
+
+async def _package_with_binary(repository, tmp_path) -> tuple[str, str]:
+    """Publish a skill holding a real PNG and a PDF, return (revision, skill)."""
+
+    source = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'pkg'
+    (source / 'assets').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('---\nname: media\ndescription: d\n---\n\nUse the assets.\n')
+    (source / 'assets' / 'diagram.png').write_bytes(_PNG)
+    (source / 'assets' / 'spec.pdf').write_bytes(b'%PDF-1.4\n%%EOF\n')
+    skill = await repository.import_skill_directory(
+        _CONTEXT,
+        str(source),
+        {'name': 'media', 'description': 'd'},
+    )
+    return skill['revision'], skill
+
+
+@pytest.mark.asyncio
+async def test_binary_resources_are_read_only_when_generated(tmp_path):
+    """The UTF-8 gap from #2775: reading a PNG must not be a UTF-8 error."""
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(ValueError, match='not valid UTF-8'):
+        await repository._call(_CONTEXT, 'read_skill_resource', 'media', 'assets/diagram.png')
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=revision,
+    )
+
+    assert resource['encoding'] == 'base64'
+    assert base64.b64decode(resource['content']) == _PNG
+    assert resource['size'] == len(_PNG)
+    assert resource['mime_type'] == 'image/png'
+    assert resource['revision'] == revision
+    assert resource['sha256'] == hashlib.sha256(_PNG).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_binary_resource_requires_activation_and_pins_revision(tmp_path):
+    repository = _repository(tmp_path)
+    first_revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(SkillRevisionMismatchError):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            'assets/diagram.png',
+            expected_revision='sha256:not-a-revision',
+        )
+
+    # A later publication must not change the bytes an existing run resolves.
+    rewritten = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'pkg2'
+    (rewritten / 'assets').mkdir(parents=True)
+    (rewritten / 'SKILL.md').write_text('---\nname: media\ndescription: d\n---\n\nUse the assets.\n')
+    (rewritten / 'assets' / 'diagram.png').write_bytes(_PNG + b'tail')
+    updated = await repository.import_skill_directory(
+        _CONTEXT,
+        str(rewritten),
+        {'name': 'media', 'description': 'd'},
+        base_revision=first_revision,
+    )
+
+    pinned = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=first_revision,
+    )
+    current = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=updated['revision'],
+    )
+
+    assert base64.b64decode(pinned['content']) == _PNG
+    assert base64.b64decode(current['content']) == _PNG + b'tail'
+
+
+@pytest.mark.asyncio
+async def test_binary_resource_rejects_escape_missing_and_oversized(tmp_path):
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(ValueError, match='stay within'):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            '../secret.png',
+            expected_revision=revision,
+        )
+    with pytest.raises(ValueError, match='not found'):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            'assets/missing.png',
+            expected_revision=revision,
+        )
+    with pytest.raises(ValueError, match='read limit'):
+        await repository.read_skill_resource_bytes(
+            _CONTEXT,
+            'media',
+            'assets/diagram.png',
+            expected_revision=revision,
+            max_bytes=4,
+        )
+
+
+@pytest.mark.asyncio
+async def test_text_resources_keep_the_string_contract(tmp_path):
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    text = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'SKILL.md',
+        expected_revision=revision,
+    )
+
+    assert text['content'].startswith('---')
+    assert 'encoding' not in text

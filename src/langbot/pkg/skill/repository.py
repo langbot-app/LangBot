@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import mimetypes
 import os
 import weakref
 
@@ -15,6 +18,55 @@ from langbot_plugin.skill_store import (
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
 from ..utils.bounded_executor import blocking_work_scope, run_blocking_atomic
+
+
+# Per-file ceiling for a binary resource handed back as base64. Kept well under
+# the SDK's 1 MiB UTF-8 ceiling so an image/PDF never degrades into a huge
+# inline string.
+_MAX_SKILL_RESOURCE_BYTES = 256 * 1024
+
+# MIME types a model can consume as tool text. Everything else (images, PDFs,
+# archives, office documents) goes back as base64 instead of a mojibake string.
+_TEXT_SKILL_MIME_TYPES = frozenset(
+    {
+        'application/javascript',
+        'application/json',
+        'application/sql',
+        'application/toml',
+        'application/x-httpd-php',
+        'application/x-sh',
+        'application/x-yaml',
+        'application/xml',
+    }
+)
+
+
+def is_text_skill_resource(path: str) -> bool:
+    """Whether a Skill resource should be delivered as UTF-8 tool text."""
+
+    mime_type = mimetypes.guess_type(str(path or ''))[0] or ''
+    return mime_type.startswith('text/') or mime_type in _TEXT_SKILL_MIME_TYPES
+
+
+def _resolve_resource_under(package_root: str, path: str) -> tuple[str, str]:
+    """Resolve a Skill-relative path, refusing escapes and symlinked files.
+
+    Mirrors the SDK guard so the binary path enforces exactly the protections
+    the UTF-8 path already had: relative, non-escaping, regular file, and a
+    realpath that stays inside the pinned package root.
+    """
+
+    relative = str(path or '').strip() or '.'
+    if os.path.isabs(relative):
+        raise ValueError('path must be relative to the skill package root')
+    normalized = os.path.normpath(relative)
+    if normalized == '..' or normalized.startswith('..' + os.sep):
+        raise ValueError('path must stay within the skill package root')
+    root = os.path.realpath(package_root)
+    absolute = os.path.realpath(os.path.join(root, normalized))
+    if absolute != root and not absolute.startswith(root + os.sep):
+        raise ValueError('path must stay within the skill package root')
+    return normalized.replace(os.sep, '/'), absolute
 
 
 class SkillRepository:
@@ -220,14 +272,86 @@ class SkillRepository:
         path: str,
         *,
         expected_revision: str | None = None,
+        max_bytes: int | None = None,
     ) -> dict:
-        return await self._call(
+        """Read one activated Skill resource, text or binary.
+
+        Text resources keep the SDK's UTF-8 contract and `content` stays a
+        string. Image/PDF and other binary resources are returned with
+        `encoding='base64'` plus mime type, size and pinned revision, so a
+        caller can hand them to an attachment consumer without a sandbox.
+        """
+
+        if is_text_skill_resource(path):
+            try:
+                return await self._call(
+                    context,
+                    'read_skill_resource',
+                    name,
+                    path,
+                    expected_revision=expected_revision,
+                )
+            except ValueError as exc:
+                if 'not valid UTF-8' not in str(exc):
+                    raise
+        return await self.read_skill_resource_bytes(
             context,
-            'read_skill_resource',
             name,
             path,
             expected_revision=expected_revision,
+            max_bytes=max_bytes,
         )
+
+    async def read_skill_resource_bytes(
+        self,
+        context: TenantContext,
+        name: str,
+        path: str,
+        *,
+        expected_revision: str | None = None,
+        max_bytes: int | None = None,
+    ) -> dict:
+        """Read the exact pinned bytes of one Skill resource as base64."""
+
+        limit = _MAX_SKILL_RESOURCE_BYTES if max_bytes is None else int(max_bytes)
+        if limit <= 0:
+            raise ValueError('Skill resource read limit must be positive')
+
+        def invoke():
+            execution_context = self._execution_context(context)
+            store = self._store.scoped(self._namespace(execution_context))
+            package_root = store.resolve_skill_package_root(name, expected_revision)
+            skill = store.get_skill_snapshot(name, expected_revision)
+            revision = str((skill or {}).get('revision') or '')
+            relative, absolute = _resolve_resource_under(package_root, path)
+            if not os.path.isfile(absolute):
+                raise ValueError(f'Skill file not found: {relative}')
+            size = os.path.getsize(absolute)
+            if size > limit:
+                raise ValueError(
+                    f'Skill file {relative} is {size} bytes and exceeds the {limit}-byte read limit'
+                )
+            with open(absolute, 'rb') as file:
+                data = file.read(limit + 1)
+            if len(data) > limit:
+                raise ValueError(
+                    f'Skill file {relative} exceeds the {limit}-byte read limit'
+                )
+            return {
+                'skill': {'name': name},
+                'path': relative,
+                'content': base64.b64encode(data).decode('ascii'),
+                'encoding': 'base64',
+                'size': len(data),
+                'sha256': hashlib.sha256(data).hexdigest(),
+                'mime_type': mimetypes.guess_type(relative)[0] or 'application/octet-stream',
+                'revision': revision,
+            }
+
+        namespace = self._namespace(context)
+        async with self._workspace_lock(namespace):
+            with blocking_work_scope(f'skill:{namespace}'):
+                return await run_blocking_atomic(invoke)
 
     async def write_skill_file(
         self,

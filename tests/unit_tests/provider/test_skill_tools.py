@@ -649,8 +649,53 @@ class TestSkillToolLoader:
             'demo',
             'references/a.md',
             expected_revision='sha256:demo',
+            max_bytes=256 * 1024,
         )
 
+
+    @pytest.mark.asyncio
+    async def test_binary_resource_returns_attachment_and_counts_bytes(self):
+        from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+        from langbot.pkg.provider.tools.loaders.skill_authoring import SkillToolLoader
+
+        skill = _make_skill_data(name='demo', instructions='Read the diagram')
+        skill['revision'] = 'sha256:demo'
+        ap = _make_ap()
+        ap.skill_mgr = _make_skill_manager({'demo': skill})
+        ap.skill_repository = SimpleNamespace(
+            read_skill_resource=AsyncMock(
+                return_value={
+                    'skill': {'name': 'demo'},
+                    'path': 'assets/diagram.png',
+                    'content': 'iVBORw0KGgo=',
+                    'encoding': 'base64',
+                    'size': 8,
+                    'mime_type': 'image/png',
+                    'revision': 'sha256:demo',
+                }
+            ),
+        )
+        loader = SkillToolLoader(ap)
+        query = _make_query()
+        register_activated_skill(query, skill)
+
+        result = await loader.invoke_tool(
+            'read_skill_resource',
+            {'skill_name': 'demo', 'path': 'assets/diagram.png'},
+            query,
+        )
+
+        assert result['encoding'] == 'base64'
+        assert result['size'] == 8
+        assert result['attachment'] == {
+            'type': 'file',
+            'source': 'base64',
+            'name': 'demo/assets/diagram.png',
+            'mime_type': 'image/png',
+            'content': 'iVBORw0KGgo=',
+            'revision': 'sha256:demo',
+        }
+        assert query.variables['_skill_resource_bytes_read'] == 8
 
 class TestNativeToolLoaderSkillPaths:
     @pytest.mark.asyncio

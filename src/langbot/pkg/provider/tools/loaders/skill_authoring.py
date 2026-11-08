@@ -293,9 +293,10 @@ class SkillToolLoader(loader.ToolLoader):
             skill_data['name'],
             path,
             expected_revision=skill_data.get('revision'),
+            max_bytes=_MAX_SKILL_RESOURCE_FILE_BYTES,
         )
-        content = str(result.get('content', ''))
-        size = len(content.encode('utf-8'))
+        binary = str(result.get('encoding') or '') == 'base64'
+        size = int(result.get('size') or 0) if binary else len(str(result.get('content', '')).encode('utf-8'))
         if size > _MAX_SKILL_RESOURCE_FILE_BYTES:
             raise ValueError('Skill resource exceeds the per-file read limit')
         variables = getattr(query, 'variables', None)
@@ -307,7 +308,28 @@ class SkillToolLoader(loader.ToolLoader):
             raise ValueError('Skill resource reads exceed the per-run limit')
         variables[_SKILL_RESOURCE_BYTES_READ_KEY] = total
         result['size'] = size
+        if binary:
+            result['attachment'] = self._binary_resource_attachment(result)
         return result
+
+    @staticmethod
+    def _binary_resource_attachment(result: dict) -> dict:
+        """Describe the base64 payload to the attachment consumer.
+
+        The opaque reference is the pinned package path plus revision; the
+        attachment carries the exact bytes so an image/PDF reaches the model
+        without a Box session and without switching on a later revision.
+        """
+
+        mime_type = str(result.get('mime_type') or 'application/octet-stream')
+        return {
+            'type': 'file',
+            'source': 'base64',
+            'name': f"{result['skill']['name']}/{result['path']}",
+            'mime_type': mime_type,
+            'content': result.get('content'),
+            'revision': result.get('revision'),
+        }
 
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
@@ -442,7 +464,11 @@ class SkillToolLoader(loader.ToolLoader):
         return resource_tool.LLMTool(
             name=READ_SKILL_RESOURCE_TOOL_NAME,
             human_desc='Read an activated skill resource',
-            description='Read a UTF-8 text resource from an activated skill package without starting a sandbox.',
+            description=(
+                'Read a resource from an activated skill package without starting a sandbox. '
+                'Text is returned as text; images, PDFs and other binary files are returned as '
+                'base64 with mime type, size and the pinned revision.'
+            ),
             parameters={
                 'type': 'object',
                 'properties': {
