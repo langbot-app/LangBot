@@ -1476,7 +1476,8 @@ class RuntimeConnectionHandler(handler.Handler):
             action_context, _ = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
-            if not await self._resource_exists(
+            # 流水线"会话测试"的内置代理 Bot 是内存对象，不在 bots 表里。
+            if bot_uuid != constants.WEBSOCKET_PROXY_BOT_UUID and not await self._resource_exists(
                 persistence_bot.Bot,
                 persistence_bot.Bot.uuid,
                 bot_uuid,
@@ -1553,7 +1554,8 @@ class RuntimeConnectionHandler(handler.Handler):
             target_id = data['target_id']
             message_chain = data['message_chain']
 
-            if not await self._resource_exists(
+            # 流水线"会话测试"的内置代理 Bot 是内存对象，不在 bots 表里。
+            if bot_uuid != constants.WEBSOCKET_PROXY_BOT_UUID and not await self._resource_exists(
                 persistence_bot.Bot,
                 persistence_bot.Bot.uuid,
                 bot_uuid,

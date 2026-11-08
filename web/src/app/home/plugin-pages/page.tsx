@@ -221,7 +221,9 @@ function PluginPageIframe({
             setLoadedAssetUrl(assetUrl);
             sendContext();
           }}
-          sandbox="allow-scripts allow-forms"
+          // allow-modals: without it alert/prompt/confirm are silently
+          // ignored, so a page calling one shows nothing at all.
+          sandbox="allow-scripts allow-forms allow-modals"
           title={`${author}/${pluginName} - ${pagePath}`}
         />
       )}

@@ -32,6 +32,8 @@ export class WebSocketClient {
   private connectionId: string | null = null;
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
+  /** Backoff ceiling; retries continue past maxReconnectAttempts at this pace. */
+  private maxReconnectDelay = 30000;
   private reconnectDelay = 3000; // 3秒重连间隔
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
@@ -189,31 +191,37 @@ export class WebSocketClient {
         // 连接关闭
         socket.onclose = () => {
           reject(new Error('WebSocket connection closed'));
-          if (this.ws !== socket) return;
-          this.clearHandshakeTimeout();
-          if (this.ws === socket) {
-            this.ws = null;
-            this.connectionId = null;
+          // A superseded socket must still report the drop: otherwise the UI
+          // keeps showing "connected" while every send goes nowhere.
+          if (this.ws !== socket) {
+            this.onCloseCallback?.();
+            return;
           }
+          this.clearHandshakeTimeout();
+          this.ws = null;
+          this.connectionId = null;
           this.isConnecting = false;
           this.stopHeartbeat();
           if (this.disconnectedByUser) return;
           this.onCloseCallback?.();
 
-          // 自动重连
+          // Reconnect forever with a capped backoff. The old code clamped the
+          // *counter* with Math.min, so once it reached the cap every retry used
+          // the same delay, and the give-up left a dead tab with no way back.
           if (
             this.shouldReconnect &&
             getActiveWorkspaceUuid() === this.workspaceUuid
           ) {
-            this.reconnectAttempts = Math.min(
-              this.reconnectAttempts + 1,
-              this.maxReconnectAttempts,
+            this.reconnectAttempts += 1;
+            const delay = Math.min(
+              this.reconnectDelay * this.reconnectAttempts,
+              this.maxReconnectDelay,
             );
             this.reconnectTimeout = setTimeout(() => {
               this.reconnectTimeout = null;
               if (!this.shouldReconnect || this.disconnectedByUser) return;
               this.connect().catch(console.error);
-            }, this.reconnectDelay * this.reconnectAttempts);
+            }, delay);
           }
         };
 

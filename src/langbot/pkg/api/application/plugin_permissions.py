@@ -9,6 +9,7 @@ import sqlalchemy
 from langbot_plugin.api.entities.permissions import PluginPermissions
 
 from ...entity.persistence.plugin import PluginSetting
+from ...utils import constants
 from ..authz import Permission, has_permission, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .contracts import ApplicationAPIError, ApplicationAPIException
@@ -167,7 +168,7 @@ async def authorize_action(ap, binding, action: str, data: dict) -> None:
         fail('permission_denied', 'Plugin installation is not enabled')
     if action in CONTEXT_ACTIONS or action in APPLICATION_ACTIONS:
         return
-    if data.get('bot_uuid'):
+    if data.get('bot_uuid') and data['bot_uuid'] != constants.WEBSOCKET_PROXY_BOT_UUID:
         from ...entity.persistence.bot import Bot
 
         result = await ap.persistence_mgr.execute_async(
