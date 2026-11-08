@@ -76,6 +76,28 @@ synthetic, and this endpoint does not evaluate answer quality or embedding model
 dimensions (default 384). It tests the embedding protocol and RAG plumbing;
 token hashes do not establish semantic retrieval quality.
 
+## GC baseline
+
+`entrypoints/gc_baseline.py` measures GC pressure so a performance claim can be
+re-run instead of trusted. It reports the GC-tracked object count, full-generation
+scan cost, and the share of that cost attributable to the pre-existing heap via
+`gc.freeze()`. Only scalars are kept between phases; holding references would
+shift the counters being measured.
+
+```sh
+uv run --no-sync python -m tools.entrypoints.gc_baseline measure --samples 5 --json --load langbot.pkg.core.app
+```
+
+`--load` imports modules before measuring and is repeatable; the module sets live
+in `profiles/gc-baseline.json`. Without it the run only sees interpreter
+boilerplate. `--saveall` additionally names unreachable-object types, but it
+changes collector behavior, so its timing is reported apart; a freshly imported,
+cycle-free heap legitimately reports zero there.
+
+Compare two outputs on the same host rather than gating a single run: RSS, CPU and
+machine differ per host. GC pauses are also not the only latency source — overlap
+with a request does not prove that request's time came from GC.
+
 ## Normal traffic and resource collection
 
 `entrypoints/regression_traffic.py` executes a JSON list of normal `lbctl` cases at a selected

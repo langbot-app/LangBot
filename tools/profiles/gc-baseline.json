@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "description": "Module sets for tools.entrypoints.gc_baseline --load. Use 'bare' for interpreter boilerplate only, and 'core' to compare against the #2852 baseline population.",
+  "profiles": {
+    "bare": {
+      "description": "No preload; only interpreter startup objects. Compare runs on one host only.",
+      "modules": []
+    },
+    "core": {
+      "description": "Loads the Core application import chain, which is where the tracked-object population comes from. Matches the #2852 'complete load' condition.",
+      "modules": [
+        "langbot.pkg.core.app"
+      ]
+    },
+    "http-adapters": {
+      "description": "Core plus the inbound HTTP adapter stack, for comparing adapter-disabled runs against the full set.",
+      "modules": [
+        "langbot.pkg.core.app",
+        "langbot.pkg.api.http.controller.main"
+      ]
+    }
+  }
+}
