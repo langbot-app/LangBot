@@ -90,7 +90,10 @@ uv run --no-sync python -m tools.entrypoints.gc_baseline measure --samples 5 --j
 
 `--load` imports modules before measuring and is repeatable; the module sets live
 in `profiles/gc-baseline.json`. Without it the run only sees interpreter
-boilerplate. `--saveall` additionally names unreachable-object types, but it
+boilerplate. Profiles differ by an order of magnitude — `bare` ~10k, `core` ~240k,
+`load-complete` ~730k on Linux/3.12 — so quote the profile next to any number and
+do not compare a `core` run against the ~1.04M figure in #2852.
+`--saveall` additionally names unreachable-object types, but it
 changes collector behavior, so its timing is reported apart; a freshly imported,
 cycle-free heap legitimately reports zero there.
 
