@@ -36,6 +36,33 @@ Resolve caps rather than fighting them. `litellm` pinned
 `filelock>=3.16.1,<4.0`, so `filelock` advisories could not be cleared until
 `litellm` moved to a release with `filelock<5`.
 
+A floor also has to fit the current major. `pypdf` carries
+`>=6.21.4,<7` rather than a bare `>=6.21.4`, because nothing in `src/` or
+`plugins/` imports it: a bare `uv lock --upgrade` would jump to 7.0 and no test
+would notice. Drop the cap in the PR that adds a real importer and validates it.
+
+## Accepting an alert, worked through
+
+`chromadb` 1.5.9 has two open criticals from the same root and no patched
+version published, so neither "fixed" nor "not reachable" applies. What the
+acceptance has to record, concretely:
+
+- **What is reachable.** Both are in the *server* path: pre-auth code injection
+  in the collection API, and SimpleRBAC not checking the tenant/database on a
+  permission. Core uses the embedded `PersistentClient`
+  (`src/langbot/pkg/vector/vdbs/chroma.py`), so no collection HTTP surface is
+  exposed by a stock install.
+- **The exposure window.** Anyone running chromadb as a standalone service
+  beside LangBot is exposed today; embedded users are not.
+- **The compensating control.** Embedded-only stays the documented shape, and a
+  standalone deployment note points the operator at the chromadb release that
+  fixes it once one exists.
+- **The recheck.** These stay open with the `dependencies` label; they are not
+  closed by the lock bump, because there is nothing to bump to.
+
+"Accepted" with just the word in a PR body is what this section exists to
+replace.
+
 ## Evidence to collect
 
 1. The current resolved version and the advisory's vulnerable range, from the
