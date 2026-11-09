@@ -472,12 +472,11 @@ def test_off_mode_sends_only_the_answer():
     assert "message.delta" not in kinds(results)
 
 
-@pytest.mark.parametrize(("timeout", "interval"), [(300, 30), (600, 5), (120, 60)])
+@pytest.mark.parametrize(("timeout", "interval"), [(300, 30), (60, 5), (120, 60)])
 def test_progress_interval_caps_message_count(timeout, interval):
     fake = FakeMultica(reply_after_polls=10**9)
-    ctx = make_ctx(
-        "hi", timeout=timeout, **{"progress-mode": "messages", "poll-interval": 1, "progress-interval": interval}
-    )
+    config = {"progress-mode": "messages", "poll-interval": 1, "progress-interval": interval}
+    ctx = make_ctx("hi", timeout=timeout, **config, **{"progress-max-messages": 20})
     results = run(make_runner(fake), ctx)
     texts = completed_texts(results)
     heartbeats = [t for t in texts if t.startswith("⏱")]
@@ -532,7 +531,7 @@ SAME_IN_EN_AND_ZH: set[str] = set()
 
 def test_manifest_language_option_matches_supported_locales():
     manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
-    assert manifest["metadata"]["version"] == "0.2.0"
+    assert manifest["metadata"]["version"] == "0.2.1"
     (language,) = [c for c in manifest["spec"]["config"] if c["name"] == "language"]
     assert language["type"] == "select" and language["default"] == "en_US"
     assert [o["name"] for o in language["options"]] == LOCALES
@@ -633,3 +632,49 @@ def test_find_without_keyword_shows_usage():
     assert (
         text_of(run(make_runner(FakeMultica(), "zh_Hans"), make_ctx("/multica find"))) == "用法：/multica find <关键词>"
     )
+
+
+# ------------------------------------------------------------ 0.2.1: progress message cap
+
+
+@pytest.mark.parametrize("cap", [1, 2, 4])
+def test_progress_max_messages_leaves_room_for_the_answer(cap):
+    fake = FakeMultica(reply_after_polls=60)
+    config = {"progress-mode": "messages", "poll-interval": 2, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=600, **config, **{"progress-max-messages": cap}))
+    texts = completed_texts(results)
+    assert len(texts) == cap + 1
+    assert texts[-1] == "echo:agent-1"
+    assert kinds(results)[-1] == "run.completed"
+
+
+def test_progress_max_messages_defaults_to_qq_official_budget():
+    fake = FakeMultica(reply_after_polls=200)
+    config = {"progress-mode": "messages", "poll-interval": 2, "progress-interval": 5}
+    texts = completed_texts(run(make_runner(fake), make_ctx("hi", timeout=600, **config)))
+    # QQ Official accepts 5 passive replies per user message: 4 progress + the answer.
+    assert len(texts) == 5
+    assert texts[-1] == "echo:agent-1"
+
+
+def test_closing_line_counts_toward_the_cap():
+    fake = FakeMultica(reply_after_polls=10**9)
+    config = {"progress-mode": "messages", "poll-interval": 1, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=60, **config, **{"progress-max-messages": 3}))
+    assert len(completed_texts(results)) == 3
+    assert results[-1].data["code"] == "multica.timeout"
+
+
+def test_cap_does_not_limit_stream_mode():
+    fake = FakeMultica(reply_after_polls=30)
+    config = {"progress-mode": "stream", "poll-interval": 2, "progress-interval": 5}
+    results = run(make_runner(fake), make_ctx("hi", timeout=600, **config, **{"progress-max-messages": 1}))
+    chunks = [r.data["chunk"] for r in results if kinds([r])[0] == "message.delta"]
+    assert len(chunks) > 3
+    assert chunks[-1]["is_final"] is True
+
+
+@pytest.mark.parametrize("value", [0, 21, "many"])
+def test_invalid_progress_max_messages_is_rejected(value):
+    results = run(make_runner(FakeMultica()), make_ctx("hi", **{"progress-max-messages": value}))
+    assert results[-1].data["code"] == "multica.config_invalid"
