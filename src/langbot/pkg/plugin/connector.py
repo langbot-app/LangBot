@@ -1565,6 +1565,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 persistence_plugin.PluginSetting.enabled,
                 persistence_plugin.PluginSetting.permission_grants,
                 persistence_plugin.PluginSetting.permission_snapshot,
+                persistence_plugin.PluginSetting.permission_declaration,
             )
             .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
             .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
@@ -1609,6 +1610,20 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     isinstance(setting.install_info, dict)
                     and setting.install_info.get('_artifact_storage') == _PLUGIN_ARTIFACT_STORAGE_MARKER
                 )
+                legacy = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+                grants = setting.permission_grants if setting.permission_grants is not None else legacy
+                if declaration is not None:
+                    enabled = setting.enabled
+                    snapshot = setting.permission_snapshot
+                elif setting.permission_declaration is None and setting.permission_snapshot is not None:
+                    # A confirmed compatibility-mode installation upgraded to another
+                    # compatibility-mode package keeps running with the full legacy
+                    # grant set; no new permission surface is introduced.
+                    enabled = setting.enabled
+                    grants = legacy
+                    snapshot = legacy
+                else:
+                    enabled, snapshot = False, None
                 await execute(
                     sqlalchemy.update(persistence_plugin.PluginSetting)
                     .where(persistence_plugin.PluginSetting.workspace_uuid == execution_context.workspace_uuid)
@@ -1619,15 +1634,10 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                         runtime_revision=runtime_revision,
                         install_source=install_source.value,
                         install_info=safe_install_info,
-                        enabled=setting.enabled if declaration is not None else False,
+                        enabled=enabled,
                         permission_declaration=declaration,
-                        permission_grants=setting.permission_grants
-                        if setting.permission_grants is not None
-                        else {
-                            'workspace_operations': [],
-                            'capabilities': sorted(LEGACY_CAPABILITIES),
-                        },
-                        permission_snapshot=setting.permission_snapshot if declaration is not None else None,
+                        permission_grants=grants,
+                        permission_snapshot=snapshot,
                     )
                 )
             return (

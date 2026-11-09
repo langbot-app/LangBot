@@ -98,7 +98,9 @@ Calls that act only on the event or run your plugin is currently handling need n
 
 ## Confirming an installation
 
-A newly installed or upgraded plugin that needs confirmation shows **Needs approval** in the plugin list and on its detail page, and stays disabled. A member opens **Plugin permissions** on the detail page, reviews the requested permissions, unchecks anything they do not want to grant, and selects **Grant**. Dangerous capabilities and the ability to send messages are highlighted in the confirmation dialog.
+The following paths are started by the signed-in member and confirm every declared permission right after installing, so they never stop at **Needs approval**: the setup wizard (when automatic approval is checked), installing a Runner or event processor directly from an Agent or Pipeline form, installing a knowledge engine directly from a knowledge base form, and the Pipeline and knowledge base migrations. Automatic confirmation follows the same "who may confirm" rules below; if the member lacks a required permission, the install task fails and says why.
+
+On any other path, a newly installed or upgraded plugin that needs confirmation shows **Needs approval** in the plugin list and on its detail page, and stays disabled. A member opens **Plugin permissions** on the detail page, reviews the requested permissions, unchecks anything they do not want to grant, and selects **Grant**. Dangerous capabilities and the ability to send messages are highlighted in the confirmation dialog.
 
 Who may confirm:
 
@@ -150,7 +152,7 @@ Plugins written before installation permissions existed have no `spec.permission
 - Confirming requires `resource.view`, `resource.manage` and `runtime.operate`.
 - Capabilities added in future LangBot versions are not added to an already confirmed set.
 
-Installations that existed before you upgraded LangBot are migrated with this set already confirmed and keep their enabled state. Installing a compatibility-mode plugin afresh, or upgrading one (including to a version that drops its previous declaration), disables it until a member confirms again.
+Installations that existed before you upgraded LangBot are migrated with this set already confirmed and keep their enabled state. A confirmed compatibility-mode installation that is upgraded to another compatibility-mode version receives the full legacy set automatically and keeps its enabled state. Installing a compatibility-mode plugin afresh, upgrading an installation that was never confirmed, or upgrading to a version that drops its previous declaration disables it until a member confirms again.
 
 ## Handling a denied call
 
