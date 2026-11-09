@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.8",
+    "version": "0.2.9",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
@@ -50,7 +50,7 @@
   },
   {
     "id": "langbot-team/ACPAgentRunner",
-    "version": "0.1.20",
+    "version": "0.1.21",
     "category": "Runner",
     "path": "Runner/acp-agent-runner",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"
@@ -71,7 +71,7 @@
   },
   {
     "id": "langbot-team/CozeAgent",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "category": "Runner",
     "path": "Runner/coze-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent"
@@ -85,14 +85,14 @@
   },
   {
     "id": "langbot-team/DeerFlowAgent",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "category": "Runner",
     "path": "Runner/deerflow-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/deerflow-agent"
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.6",
+    "version": "0.2.7",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"
@@ -113,14 +113,14 @@
   },
   {
     "id": "langbot-team/N8nAgent",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "category": "Runner",
     "path": "Runner/n8n-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/n8n-agent"
   },
   {
     "id": "langbot-team/TboxAgent",
-    "version": "0.2.3",
+    "version": "0.2.4",
     "category": "Runner",
     "path": "Runner/tbox-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/tbox-agent"

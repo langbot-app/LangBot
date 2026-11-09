@@ -132,6 +132,27 @@ def _decode_content(value: typing.Any) -> bytes | None:
     return None
 
 
+def _host_reads_attachments(ctx: typing.Any) -> bool:
+    """Whether the Host serves attachment bytes by ref (SDK and Host support both)."""
+    available_apis = getattr(getattr(ctx, "context", None), "available_apis", None)
+    return (
+        hasattr(ctx, "read_input_attachment")
+        and bool(getattr(available_apis, "input_attachments", False))
+        and any(_attachment_get(attachment, "ref") for attachment in ctx.input.attachments or [])
+    )
+
+
+def _ref_file_name(attachment: typing.Any, name: str | None, mime_type: str | None) -> str:
+    """File name that keeps the attachment ref, so it matches [attachment att-N: ...] in the text."""
+    ref = _attachment_get(attachment, "ref")
+    base = os.path.basename(name or _attachment_get(attachment, "name") or "") or (
+        _attachment_get(attachment, "type") or "file"
+    )
+    if not os.path.splitext(base)[1] and mime_type:
+        base += mimetypes.guess_extension(mime_type) or ""
+    return f"{ref}_{base}" if ref else base
+
+
 def _attachments_from_contents(contents: list[typing.Any]) -> list[dict[str, typing.Any]]:
     attachments: list[dict[str, typing.Any]] = []
     for item in contents or []:
@@ -512,19 +533,28 @@ class DefaultRunner(Runner):
         inputs[config["asset_gateway_input_name"]] = registration.token
         return registration, inputs
 
-    async def _upload_input_files(
+    async def _read_host_input_files(self, ctx: RunnerContext) -> list[tuple[str, bytes, str | None]]:
+        """Read every input attachment by ref from a Host that supports it."""
+        files: list[tuple[str, bytes, str | None]] = []
+        for attachment in ctx.input.attachments or []:
+            try:
+                data = await ctx.read_input_attachment(attachment)
+            except Exception as e:
+                # The text still marks the attachment; one unreadable file must not fail the run.
+                logger.warning(f"Skipping input attachment {_attachment_get(attachment, 'ref')}: {e}")
+                continue
+            if data is None or not data.data:
+                continue
+            files.append((_ref_file_name(attachment, data.name, data.mime_type), data.data, data.mime_type))
+        return files
+
+    async def _read_legacy_input_files(
         self,
         ctx: RunnerContext,
         client: AsyncDifyClient,
-        user: str,
-    ) -> list[dict[str, typing.Any]]:
-        """Upload files from input attachments to Dify.
-
-        Returns list of Dify file references.
-        """
-        uploaded_files: list[dict[str, typing.Any]] = []
-
-        # The Host strips image payloads already inlined in contents and keeps only the ref.
+    ) -> list[tuple[str, bytes, str | None]]:
+        """Resolve attachments from inline content, URLs and contents on older Hosts."""
+        # Older Hosts strip image payloads already inlined in contents and keep only the ref.
         attachments = [
             attachment
             for attachment in ctx.input.attachments or []
@@ -539,55 +569,13 @@ class DefaultRunner(Runner):
             if (attachment.get("content") or attachment.get("url")) not in payloads
         )
 
+        files: list[tuple[str, bytes, str | None]] = []
         for attachment in attachments:
             try:
                 file_bytes = _decode_content(_attachment_get(attachment, "content"))
                 downloaded_type = None
                 if file_bytes is None and _attachment_get(attachment, "url"):
                     file_bytes, downloaded_type = await client.download_file(_attachment_get(attachment, "url"))
-                if not file_bytes:
-                    raise DifyAPIError(
-                        f"Input attachment {_attachment_get(attachment, 'name', 'file')} has no uploadable content",
-                        code="dify.input_error",
-                    )
-
-                file_name = _attachment_get(attachment, "name") or "file"
-                content_type = (
-                    _attachment_get(attachment, "content_type")
-                    or _attachment_get(attachment, "mime_type")
-                    or downloaded_type
-                    or "application/octet-stream"
-                )
-                if not os.path.splitext(file_name)[1]:
-                    # Dify derives the image format from the file extension and rejects an empty one.
-                    file_name += mimetypes.guess_extension(content_type) or ""
-
-                # Determine Dify file type from content type
-                if content_type.startswith("image/"):
-                    file_type = "image"
-                elif content_type.startswith("audio/"):
-                    file_type = "audio"
-                elif content_type.startswith("video/"):
-                    file_type = "video"
-                else:
-                    file_type = "document"
-
-                result = await client.upload_file(file_name, file_bytes, content_type, user)
-                file_id = result.get("id")
-
-                if file_id:
-                    uploaded_files.append(
-                        {
-                            "type": file_type,
-                            "transfer_method": "local_file",
-                            "upload_file_id": file_id,
-                        }
-                    )
-                else:
-                    raise DifyAPIError(
-                        f"Dify file upload response missing file id for {file_name}",
-                        code="dify.input_error",
-                    )
             except DifyAPIError as e:
                 if e.code == "dify.input_error":
                     raise
@@ -600,6 +588,76 @@ class DefaultRunner(Runner):
                     f"Failed to upload input attachment {_attachment_get(attachment, 'name', 'file')}: {e}",
                     code="dify.input_error",
                 ) from None
+            if not file_bytes:
+                raise DifyAPIError(
+                    f"Input attachment {_attachment_get(attachment, 'name', 'file')} has no uploadable content",
+                    code="dify.input_error",
+                )
+            content_type = (
+                _attachment_get(attachment, "content_type")
+                or _attachment_get(attachment, "mime_type")
+                or downloaded_type
+            )
+            files.append((_attachment_get(attachment, "name") or "file", file_bytes, content_type))
+        return files
+
+    async def _upload_input_files(
+        self,
+        ctx: RunnerContext,
+        client: AsyncDifyClient,
+        user: str,
+    ) -> list[dict[str, typing.Any]]:
+        """Upload files from input attachments to Dify.
+
+        Returns list of Dify file references.
+        """
+        if _host_reads_attachments(ctx):
+            files = await self._read_host_input_files(ctx)
+        else:
+            files = await self._read_legacy_input_files(ctx, client)
+
+        uploaded_files: list[dict[str, typing.Any]] = []
+        for file_name, file_bytes, content_type in files:
+            content_type = content_type or "application/octet-stream"
+            if not os.path.splitext(file_name)[1]:
+                # Dify derives the image format from the file extension and rejects an empty one.
+                file_name += mimetypes.guess_extension(content_type) or ""
+
+            # Determine Dify file type from content type
+            if content_type.startswith("image/"):
+                file_type = "image"
+            elif content_type.startswith("audio/"):
+                file_type = "audio"
+            elif content_type.startswith("video/"):
+                file_type = "video"
+            else:
+                file_type = "document"
+
+            try:
+                result = await client.upload_file(file_name, file_bytes, content_type, user)
+            except DifyAPIError as e:
+                raise DifyAPIError(
+                    f"Failed to upload input attachment {file_name}: {e.message}",
+                    code="dify.input_error",
+                ) from None
+            except Exception as e:
+                raise DifyAPIError(
+                    f"Failed to upload input attachment {file_name}: {e}",
+                    code="dify.input_error",
+                ) from None
+            file_id = result.get("id")
+            if not file_id:
+                raise DifyAPIError(
+                    f"Dify file upload response missing file id for {file_name}",
+                    code="dify.input_error",
+                )
+            uploaded_files.append(
+                {
+                    "type": file_type,
+                    "transfer_method": "local_file",
+                    "upload_file_id": file_id,
+                }
+            )
 
         return uploaded_files
 

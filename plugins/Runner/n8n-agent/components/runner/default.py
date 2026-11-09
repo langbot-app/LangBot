@@ -243,10 +243,24 @@ class DefaultRunner(Runner):
             "msg_create_time": params.get("msg_create_time", ""),
         }
 
+        # Attachment metadata; each ref matches an [attachment ref: ...] marker in
+        # chatInput. Workflows read bytes through the LangBot asset gateway tool
+        # langbot_read_input_attachment when assets are enabled.
+        attachments = [
+            {
+                key: value
+                for key in ("ref", "type", "source", "name", "mime_type", "size", "url")
+                if (value := getattr(attachment, key, None)) is not None
+            }
+            for attachment in ctx.input.attachments or []
+        ]
+        if attachments:
+            payload["attachments"] = attachments
+
         # Add optional fields from adapter params
         if params:
             # Merge other params (excluding reserved keys)
-            reserved_keys = {"msg_create_time", "conversation_id", "session_id", "user_id"}
+            reserved_keys = {"msg_create_time", "conversation_id", "session_id", "user_id", "attachments"}
             for key, value in params.items():
                 if key not in reserved_keys:
                     payload[key] = value
