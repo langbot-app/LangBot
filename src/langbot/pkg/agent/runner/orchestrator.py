@@ -918,8 +918,10 @@ class AgentRunOrchestrator:
                     c.model_dump(mode='json') if hasattr(c, 'model_dump') else c
                     for c in (event.input.contents if event.input else [])
                 ],
+                # Refs address the claimed run's own input; a steering message's
+                # media are described as metadata only.
                 'attachments': [
-                    a.model_dump(mode='json') if hasattr(a, 'model_dump') else a
+                    {**(a.model_dump(mode='json') if hasattr(a, 'model_dump') else dict(a)), 'ref': None}
                     for a in (event.input.attachments if event.input else [])
                 ],
             },

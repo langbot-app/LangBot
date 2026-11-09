@@ -260,8 +260,9 @@ storage:
         # Retention for CAS files and historical inline images (defaults to 30 days).
         # Inline images expire by record creation time; message text is retained.
         retention_days: 30
-        # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
-        max_size_mb: 0
+        # Maximum disk storage for cached media in MB; the oldest files are removed first
+        # (0 means unlimited, defaults to 1024)
+        max_size_mb: 1024
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true

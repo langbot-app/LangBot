@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from . import mgr as storage_mgr
 
 DEFAULT_RETENTION_DAYS = 30
-DEFAULT_MAX_SIZE_MB = 0
+DEFAULT_MAX_SIZE_MB = 1024
 MEDIA_DIR = 'media_cache'
 SAFE_MEDIA_FILENAME = re.compile(r'^[a-f0-9]{32,64}(\.[a-zA-Z0-9]{1,10})?$')
 
