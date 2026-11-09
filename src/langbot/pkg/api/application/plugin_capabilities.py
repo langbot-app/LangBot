@@ -121,6 +121,7 @@ CONTEXT_ACTIONS = frozenset(
         PluginAction.REQUEST_INTERACTION,
         PluginAction.BIND_BOX,
         PluginAction.IMPORT_BOX_ATTACHMENTS,
+        PluginAction.READ_INPUT_ATTACHMENT,
         PluginAction.EXPORT_BOX_FILES,
         PluginAction.GET_PROMPT,
         PluginAction.HISTORY_PAGE,

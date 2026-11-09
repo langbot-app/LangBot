@@ -3080,9 +3080,10 @@ class RuntimeConnectionHandler(handler.Handler):
 
         agent_pull_actions.register(self)
         runner_actions.register(self)
-        from . import box_actions
+        from . import box_actions, input_attachment_actions
 
         box_actions.register(self)
+        input_attachment_actions.register(self)
         agent_state_actions.register(self)
 
         @self.action(CommonAction.PING)

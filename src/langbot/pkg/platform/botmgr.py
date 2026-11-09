@@ -34,7 +34,7 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
-from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+from ..agent.runner import input_media
 from ..agent.runner.interaction_store import InteractionAlreadySubmittedError, InteractionExpiredError
 from langbot_plugin.api.entities.builtin.runner.interaction import InteractionHandle
 from ..entity.persistence import workspace as persistence_workspace
@@ -765,28 +765,23 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = platform_events.event_summary(event)
-        contents: list[dict[str, typing.Any]] = []
-
+        rendered = None
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            try:
-                for component in message_chain:
-                    if isinstance(component, platform_message.Image):
-                        if component.url:
-                            contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
-                        elif component.base64:
-                            contents.append({'type': 'image_base64', 'image_base64': component.base64})
-            except TypeError:
-                pass
+            rendered = input_media.render_input(message_chain, include_quotes=True, include_other_text=True)
 
-        if text:
-            contents.insert(0, {'type': 'text', 'text': text})
+        text = (rendered.text if rendered else '') or platform_events.event_summary(event)
+        if rendered and rendered.contents:
+            contents = [item.model_dump(mode='json') for item in rendered.contents]
+        else:
+            contents = [{'type': 'text', 'text': text}] if text else []
 
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=QueryEntryAdapter._build_attachments(event, contents),
+            # The envelope is Host-internal: inline payloads ride along until
+            # prepare_input_files registers them and clears the descriptors.
+            attachments=rendered.attachments(include_content=True) if rendered else [],
         )
 
     def _eba_event_to_agent_envelope(

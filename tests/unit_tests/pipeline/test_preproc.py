@@ -314,14 +314,19 @@ class TestPreProcessorImageSegment:
             if image_source == 'base64'
             else ContentElement.from_image_url('https://cdn.example/image.png')
         )
-        assert result.new_query.user_message.content == [ContentElement.from_text('look at this'), expected_image]
-        contents = [part.model_dump() for part in result.new_query.user_message.content]
-        attachments = QueryEntryAdapter._build_attachments(result.new_query, contents)
+        assert result.new_query.user_message.content == [
+            ContentElement.from_text('look at this'),
+            ContentElement.from_text('[attachment att-1: image]'),
+            expected_image,
+        ]
+        attachments = QueryEntryAdapter._build_input(result.new_query).attachments
         assert len(attachments) == 1
+        assert attachments[0].ref == 'att-1'
+        assert attachments[0].content is None
         if image_source == 'url':
-            assert attachments[0]['url'] == 'https://cdn.example/image.png'
+            assert attachments[0].url == 'https://cdn.example/image.png'
         else:
-            assert attachments[0]['content'] == 'data:image/png;base64,abc123'
+            assert attachments[0].mime_type == 'image/png'
 
     @pytest.mark.asyncio
     async def test_image_without_vision_model(self):
@@ -359,7 +364,7 @@ class TestPreProcessorImageSegment:
         assert result.new_query.use_llm_model_uuid == 'text-only-model'
         assert [(part.type, part.text) for part in result.new_query.user_message.content] == [
             ('text', 'describe this'),
-            ('text', '[Image]'),
+            ('text', '[attachment att-1: image]'),
         ]
         assert result.new_query.variables['user_message_text'] == 'describe this[Image]'
 

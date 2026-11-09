@@ -248,6 +248,7 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
                 'steering_pull': True,
                 'state': True,
                 'reply_stream': True,
+                'input_attachments': True,
             }
         },
         state={},
@@ -333,6 +334,7 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(runner.get_prompt())
     await try_call(runner.history_page())
     await try_call(runner.history_search('query'))
+    await try_call(runner.read_input_attachment('att-1'))
     await try_call(runner.event_get('evt-1'))
     await try_call(runner.event_page())
     await try_call(runner.steering_pull())
@@ -382,8 +384,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 75
-    assert len(test_host.api.catalog()) == 75
+    assert len(operations) == 76
+    assert len(test_host.api.catalog()) == 76
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())
@@ -414,7 +416,7 @@ async def test_all_operations_route_through_execution_api(test_host):
     """Drive all operations through handler with real SDK payloads and verify raw dispatch."""
     sdk_payloads = await _capture_sdk_payloads()
     operations = test_host.api.operations()
-    assert len(sdk_payloads) == 75, f'Expected 75 SDK payloads, got {len(sdk_payloads)}'
+    assert len(sdk_payloads) == 76, f'Expected 76 SDK payloads, got {len(sdk_payloads)}'
 
     for op in operations:
         raw_called = False

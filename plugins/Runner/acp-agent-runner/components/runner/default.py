@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import logging
@@ -350,6 +351,32 @@ def _mcp_headers_to_acp(headers: typing.Any) -> list[dict[str, str]]:
                 converted.append({"name": str(item["name"]), "value": str(item["value"])})
         return converted
     return []
+
+
+async def _hydrate_input_attachments(ctx: RunnerContext) -> None:
+    """Fill attachment content from a Host that serves bytes by ref.
+
+    Current Hosts send attachments as metadata only; the ACP prompt embeds
+    images, audio and files from inline content, so read them once up front.
+    Older SDKs or Hosts keep the previous inline/URL behavior.
+    """
+    reader = getattr(ctx, "read_input_attachment", None)
+    if reader is None:
+        return
+    for attachment in ctx.input.attachments or []:
+        if attachment.content or not attachment.ref:
+            continue
+        try:
+            data = await reader(attachment)
+        except Exception as exc:
+            logger.warning("Skipping input attachment %s: %s", attachment.ref, exc)
+            continue
+        if data is None:
+            return
+        mime_type = data.mime_type or attachment.mime_type or "application/octet-stream"
+        attachment.mime_type = mime_type
+        attachment.name = attachment.name or data.name
+        attachment.content = f"data:{mime_type};base64,{base64.b64encode(data.data).decode('ascii')}"
 
 
 class DefaultRunner(Runner):
@@ -913,6 +940,7 @@ class DefaultRunner(Runner):
             yield RunnerResult.run_failed(ctx.run_id, error=exc.message, code=exc.code, retryable=exc.retryable)
             return
 
+        await _hydrate_input_attachments(ctx)
         input_text = self._input_text(ctx)
         if not has_acp_prompt_input(input_text, ctx.input):
             yield RunnerResult.run_failed(ctx.run_id, error="input text is required", code="acp.empty_input")

@@ -274,8 +274,10 @@ def make_query():
     return query
 
 
-def test_context_builder_includes_consumable_base64_attachments():
+def test_context_builder_attachments_follow_platform_media_only():
     query = make_query()
+    # Contents altered by a plugin keep their media for the model, but only the
+    # platform message's own media become attachments.
     query.user_message = provider_message.Message(
         role='user',
         content=[
@@ -293,13 +295,12 @@ def test_context_builder_includes_consumable_base64_attachments():
     assert input_data.contents[0].text == 'see attached'
     assert input_data.contents[1].image_base64 == 'data:image/png;base64,aGVsbG8='
     assert input_data.contents[2].file_base64 == 'data:text/plain;base64,aGVsbG8='
+    assert [(item.ref, item.type, item.mime_type, item.content) for item in input_data.attachments] == [
+        ('att-1', 'image', 'image/jpeg', None)
+    ]
 
-    attachment_types = [attachment.type for attachment in input_data.attachments]
-    assert attachment_types == ['image', 'file', 'image']
-    assert input_data.attachments[1].name == 'hello.txt'
 
-
-def test_context_builder_deduplicates_message_chain_attachments():
+def test_context_builder_renders_message_chain_without_preprocessing():
     query = make_query()
     query.user_message = None
     query.message_chain = platform_message.MessageChain(
@@ -308,26 +309,29 @@ def test_context_builder_deduplicates_message_chain_attachments():
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [content.type for content in input_data.contents] == ['image_base64']
+    assert [content.type for content in input_data.contents] == ['text', 'image_base64']
+    assert input_data.text == '[attachment att-1: image]'
     assert len(input_data.attachments) == 1
     assert input_data.attachments[0].type == 'image'
-    assert input_data.attachments[0].content == 'data:image/jpeg;base64,aGVsbG8='
+    assert input_data.attachments[0].content is None
 
 
-def test_context_builder_preserves_same_source_duplicate_attachments():
+def test_context_builder_keeps_repeated_platform_media():
     query = make_query()
-    query.user_message = provider_message.Message(
-        role='user',
-        content=[
-            provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
-            provider_message.ContentElement.from_image_base64('data:image/png;base64,aGVsbG8='),
-        ],
+    query.user_message = None
+    query.message_chain = platform_message.MessageChain(
+        [
+            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
+            platform_message.Image(base64='data:image/png;base64,aGVsbG8='),
+        ]
     )
-    query.message_chain = platform_message.MessageChain([])
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [attachment.type for attachment in input_data.attachments] == ['image', 'image']
+    assert [(attachment.ref, attachment.type) for attachment in input_data.attachments] == [
+        ('att-1', 'image'),
+        ('att-2', 'image'),
+    ]
 
 
 @pytest.fixture(autouse=True)

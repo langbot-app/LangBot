@@ -188,6 +188,28 @@ Each `reply_stream().update(text)` call supplies the complete current text. If t
 
 Each item returned by `get_available_tools()` contains `name`, `description`, `parameters`, `type`, and `operations`. The result is already filtered by the current Agent or plugin-processor configuration and the event's capabilities. `ctx.call_tool()` cannot call a tool absent from this list.
 
+### Input attachments
+
+`ctx.input.attachments` describes each image, voice and file of the current message in order of appearance, as metadata only: `ref` (such as `att-1`), `type`, `source` (`message` for the current message, `quote` for a quoted message), `name`, `mime_type`, `size`, the platform `id`, and a directly downloadable `url`. Attachments do not carry file content; the `content` field is deprecated and always empty in current versions.
+
+`ctx.input.text` and `ctx.input.contents` place a marker at the position of each media, such as `[attachment att-1: image photo.jpg]`. A quoted message is wrapped in `[quoted message from <sender>]` and `[/quoted message]`. Images still follow their marker as `image_base64` or `image_url` so models can see them.
+
+| Method | Returns | Description |
+| --- | --- | --- |
+| `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | Reads attachment bytes by `ref` and returns `data`, `name`, `mime_type` and `size`. The argument may also be a `ref` string. Returns `None` when LangBot does not offer this API |
+
+Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. LangBot neither caches the bytes nor writes them to logs. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
+
+The method requires `langbot-plugin` 0.7.23 or later. To support older LangBot or SDK versions, check that the method exists and fall back to the previous logic:
+
+```python
+data = None
+if hasattr(ctx, "read_input_attachment"):
+    data = await ctx.read_input_attachment(attachment)
+if data is None:
+    ...  # Older LangBot: use attachment.content, attachment.url or ctx.input.contents
+```
+
 ### Box and attachments
 
 The Runner owns enablement, acquisition, and reuse policy. Use the [LangBot Box APIs](/en/plugin/dev/apis/common#box-sandbox) for resources and these context methods for the current run.
@@ -199,7 +221,7 @@ The Runner owns enablement, acquisition, and reuse policy. Use the [LangBot Box 
 | `await ctx.export_box_files()` | `list[BoxFile]` | Export this run's outbox as file handles; sends no message |
 | `await ctx.reply_files(file_ids)` | `Any` | Reply with exported IDs, subject to event reply authorization |
 
-`BoxFile` contains `id`, `name`, `type`, `size`, and optional `path`. Original attachment URLs and content remain available. Files are staged only on explicit import. Output handles belong to this run and cannot be sent twice.
+`BoxFile` contains `id`, `name`, `type`, `size`, and optional `path`. Input attachment metadata stays unchanged. Files are staged only on explicit import. Output handles belong to this run and cannot be sent twice.
 
 Bind before native sandbox tools or file operations. Runs sharing a Box still have separate attachment directories. `ctx.variables` contains public request variables for computing reuse keys.
 
@@ -207,7 +229,7 @@ Bind before native sandbox tools or file operations. Runs sharing a Box still ha
 
 With automatic replies, every `RunnerResult.message_completed` is sent as its own message, so a Runner can post progress before its answer. `RunnerResult.message_delta` chunks update one streamed message on platforms that support streaming; elsewhere only completed messages are sent, and a run that ends with deltas alone sends its last result once.
 
-External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, and `langbot_export_box_files`. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization.
+External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, and `langbot_export_box_files`. `langbot_read_input_attachment` is available when input attachments can be read. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization.
 
 ### Prompt, history, and events
 

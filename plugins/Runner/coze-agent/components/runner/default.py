@@ -8,6 +8,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
+import os
 import typing
 from urllib.parse import urlsplit
 
@@ -104,6 +106,46 @@ def _decode_content(value: typing.Any) -> bytes | None:
         check_size(len(decoded))
         return decoded
     return None
+
+
+def _host_reads_attachments(ctx: typing.Any) -> bool:
+    """Whether the Host serves attachment bytes by ref (SDK and Host support both)."""
+    available_apis = getattr(getattr(ctx, "context", None), "available_apis", None)
+    return (
+        hasattr(ctx, "read_input_attachment")
+        and bool(getattr(available_apis, "input_attachments", False))
+        and any(_attachment_get(attachment, "ref") for attachment in ctx.input.attachments or [])
+    )
+
+
+async def _read_host_attachments(ctx: typing.Any) -> list[dict[str, typing.Any]]:
+    """Read every input attachment by ref; unreadable ones are skipped, not fatal."""
+    attachments: list[dict[str, typing.Any]] = []
+    for attachment in ctx.input.attachments or []:
+        ref = _attachment_get(attachment, "ref")
+        try:
+            data = await ctx.read_input_attachment(attachment)
+        except Exception as e:
+            logger.warning(f"Skipping input attachment {ref}: {e}")
+            continue
+        if data is None or not data.data:
+            continue
+        mime_type = data.mime_type or _attachment_get(attachment, "mime_type") or "application/octet-stream"
+        base = os.path.basename(data.name or _attachment_get(attachment, "name") or "") or (
+            _attachment_get(attachment, "type") or "file"
+        )
+        if not os.path.splitext(base)[1]:
+            base += mimetypes.guess_extension(mime_type) or ""
+        attachments.append(
+            {
+                "type": "image" if mime_type.startswith("image/") else "file",
+                # Keep the ref in the name so it matches [attachment att-N: ...] in the text.
+                "name": f"{ref}_{base}" if ref else base,
+                "content": data.data,
+                "content_type": mime_type,
+            }
+        )
+    return attachments
 
 
 def _attachments_from_contents(contents: list[typing.Any]) -> list[dict[str, typing.Any]]:
@@ -344,20 +386,24 @@ class DefaultRunner(Runner):
         content_parts: list[dict[str, typing.Any]] = []
 
         # Process attachments first
-        # The Host strips image payloads already inlined in contents and keeps only the ref.
-        attachments = [
-            attachment
-            for attachment in ctx.input.attachments or []
-            if _attachment_get(attachment, "content") or _attachment_get(attachment, "url")
-        ]
-        payloads = [
-            _attachment_get(attachment, "content") or _attachment_get(attachment, "url") for attachment in attachments
-        ]
-        attachments.extend(
-            attachment
-            for attachment in _attachments_from_contents(ctx.input.contents)
-            if (attachment.get("content") or attachment.get("url")) not in payloads
-        )
+        if _host_reads_attachments(ctx):
+            attachments = await _read_host_attachments(ctx)
+        else:
+            # Older Hosts strip image payloads already inlined in contents and keep only the ref.
+            attachments = [
+                attachment
+                for attachment in ctx.input.attachments or []
+                if _attachment_get(attachment, "content") or _attachment_get(attachment, "url")
+            ]
+            payloads = [
+                _attachment_get(attachment, "content") or _attachment_get(attachment, "url")
+                for attachment in attachments
+            ]
+            attachments.extend(
+                attachment
+                for attachment in _attachments_from_contents(ctx.input.contents)
+                if (attachment.get("content") or attachment.get("url")) not in payloads
+            )
 
         for attachment in attachments:
             try:

@@ -188,6 +188,28 @@ event_type = ctx.event.event_type
 
 `get_available_tools()` の各項目には `name`、`description`、`parameters`、`type`、`operations` が含まれます。結果は現在の Agent またはプラグインプロセッサーの設定とイベント機能で絞り込まれています。一覧にないツールは `ctx.call_tool()` で呼び出せません。
 
+### 入力添付ファイル
+
+`ctx.input.attachments` は、現在のメッセージに含まれる画像・音声・ファイルを出現順に 1 件ずつメタデータとして表します：`ref`（例：`att-1`）、`type`、`source`（現在のメッセージは `message`、引用されたメッセージは `quote`）、`name`、`mime_type`、`size`、プラットフォームの `id`、直接ダウンロードできる `url`。添付ファイルは内容を含みません。`content` フィールドは非推奨で、現行バージョンでは常に空です。
+
+`ctx.input.text` と `ctx.input.contents` には、各メディアの位置に `[attachment att-1: image photo.jpg]` のようなマーカーが入ります。引用されたメッセージは `[quoted message from <送信者>]` と `[/quoted message]` で囲まれます。画像は引き続きマーカーの直後に `image_base64` または `image_url` として置かれ、モデルが直接参照できます。
+
+| メソッド | 戻り値 | 説明 |
+| --- | --- | --- |
+| `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | `ref` で添付ファイルのバイト列を読み取り、`data`、`name`、`mime_type`、`size` を返します。引数には `ref` 文字列も指定できます。LangBot がこの API を提供しない場合は `None` を返します |
+
+添付ファイル 1 件あたりの上限は 10 MiB、1 回の実行で読み取れる合計は 50 MiB です。LangBot は読み取った内容をキャッシュせず、ログにも書き込みません。この API が使えるかどうかは `ctx.context.available_apis.input_attachments` で確認できます。steering で現在の実行に取り込まれた後続メッセージの添付ファイルはメタデータのみで、`ref` を持ちません。
+
+このメソッドには `langbot-plugin` 0.7.23 以降が必要です。古い LangBot や SDK にも対応する場合は、メソッドの有無を確認してから従来の処理にフォールバックします：
+
+```python
+data = None
+if hasattr(ctx, "read_input_attachment"):
+    data = await ctx.read_input_attachment(attachment)
+if data is None:
+    ...  # 古い LangBot：attachment.content、attachment.url、ctx.input.contents を使用
+```
+
 ### Box と添付ファイル
 
 Box の有効化、取得、再利用方針は Runner が決めます。リソースの取得には [LangBot API](/ja/plugin/dev/apis/common#box-サンドボックス)、実行中の操作には以下を使います。
@@ -199,7 +221,7 @@ Box の有効化、取得、再利用方針は Runner が決めます。リソ�
 | `await ctx.export_box_files()` | `list[BoxFile]` | 現在の実行の outbox をファイルハンドルとしてエクスポート。メッセージは送信しない |
 | `await ctx.reply_files(file_ids)` | `Any` | エクスポートした ID で返信。返信ツールの権限制限が適用される |
 
-`BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。入力の元 URL と内容は保持され、明示的にインポートして初めてファイルパスが生成されます。ハンドルは今回の実行でのみ有効で、重複送信できません。
+`BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。入力添付ファイルのメタデータは変わらず、明示的にインポートして初めてファイルパスが生成されます。ハンドルは今回の実行でのみ有効で、重複送信できません。
 
 ネイティブツールやファイル操作の前に Box をバインドします。Box を共有しても添付ディレクトリは実行ごとに分かれます。`ctx.variables` の公開リクエスト変数で再利用キーを計算できます。
 
@@ -207,7 +229,7 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 
 自動返信では、`RunnerResult.message_completed` はそれぞれ独立したメッセージとして送信されるため、Runner は回答の前に進捗メッセージを送れます。`RunnerResult.message_delta` はストリーミング対応プラットフォームでは 1 つのストリーミングメッセージを更新します。それ以外では完了したメッセージだけが送信され、delta だけで終わる実行は最後の結果を 1 回送信します。
 
-外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。
+外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。入力添付ファイルを読み取れる場合は `langbot_read_input_attachment` も利用できます。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。
 
 ### プロンプト、履歴、イベント
 
