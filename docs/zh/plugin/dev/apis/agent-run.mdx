@@ -202,7 +202,7 @@ event_type = ctx.event.event_type
 
 单个附件最大 10 MiB，每次运行累计最多读取 50 MiB；LangBot 不缓存读取结果，也不把内容写入日志。`ctx.context.available_apis.input_attachments` 表示该接口是否可用。通过 steering 转入当前运行的后续消息，其附件只有元数据，没有 `ref`。
 
-需要兼容旧版 LangBot 或旧版 SDK 时，先判断方法是否存在，再回退到原有逻辑：
+该方法需要 `langbot-plugin` 0.7.23 或更高版本。需要兼容旧版 LangBot 或旧版 SDK 时，先判断方法是否存在，再回退到原有逻辑：
 
 ```python
 data = None

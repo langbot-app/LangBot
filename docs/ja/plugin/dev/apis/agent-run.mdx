@@ -200,7 +200,7 @@ event_type = ctx.event.event_type
 
 添付ファイル 1 件あたりの上限は 10 MiB、1 回の実行で読み取れる合計は 50 MiB です。LangBot は読み取った内容をキャッシュせず、ログにも書き込みません。この API が使えるかどうかは `ctx.context.available_apis.input_attachments` で確認できます。steering で現在の実行に取り込まれた後続メッセージの添付ファイルはメタデータのみで、`ref` を持ちません。
 
-古い LangBot や SDK にも対応する場合は、メソッドの有無を確認してから従来の処理にフォールバックします：
+このメソッドには `langbot-plugin` 0.7.23 以降が必要です。古い LangBot や SDK にも対応する場合は、メソッドの有無を確認してから従来の処理にフォールバックします：
 
 ```python
 data = None

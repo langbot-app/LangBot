@@ -200,7 +200,7 @@ Each item returned by `get_available_tools()` contains `name`, `description`, `p
 
 Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. LangBot neither caches the bytes nor writes them to logs. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
 
-To support older LangBot or SDK versions, check that the method exists and fall back to the previous logic:
+The method requires `langbot-plugin` 0.7.23 or later. To support older LangBot or SDK versions, check that the method exists and fall back to the previous logic:
 
 ```python
 data = None
