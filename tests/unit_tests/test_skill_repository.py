@@ -203,6 +203,38 @@ async def test_repository_rejects_stale_workspace_placement(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_binary_resource_reads_also_reject_a_stale_placement(tmp_path):
+    """The binary path must hold the same fence as the text path.
+
+    The text read goes through ``_call`` and therefore checks the binding; the
+    byte path reads the store directly. A stale placement let ``a.png`` through
+    while ``a.txt`` was rejected for the same context.
+    """
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    async def stale_binding(workspace_uuid, *, expected_generation):
+        return SimpleNamespace(
+            instance_uuid=_CONTEXT.instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=expected_generation + 1,
+        )
+
+    repository.ap.workspace_service.get_execution_binding = stale_binding
+
+    with pytest.raises(ValueError, match='stale Workspace placement'):
+        await repository.read_skill_resource(_CONTEXT, 'media', 'assets/diagram.png')
+    with pytest.raises(ValueError, match='stale Workspace placement'):
+        await repository.read_skill_resource_bytes(
+            _CONTEXT,
+            'media',
+            'assets/diagram.png',
+            expected_revision=revision,
+        )
+
+
+@pytest.mark.asyncio
 async def test_repository_imports_only_from_the_fenced_workspace(tmp_path):
     repository = _repository(tmp_path)
     namespace = repository._namespace(_CONTEXT)
@@ -437,3 +469,62 @@ async def test_text_resources_keep_the_string_contract(tmp_path):
 
     assert text['content'].startswith('---')
     assert 'encoding' not in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('resource_path', 'body'),
+    [
+        ('assets/cfg.yaml', 'name: cfg\nport: 8080\n'),
+        # Python 3.12 reports "application/yaml" for .yaml while the classifier
+        # listed only the older "application/x-yaml".
+        ('LICENSE', 'Apache License\nVersion 2.0\n'),
+        # No extension and no mime type at all.
+        ('Makefile', 'test:\n\tpytest -q\n'),
+        ('Dockerfile', 'FROM python:3.12\n'),
+        # An extension that lies: text bytes under a binary-ish name.
+        ('assets/data.png', 'just text, not a png\n'),
+    ],
+)
+async def test_text_with_unknown_or_wrong_mime_stays_text(tmp_path, resource_path, body):
+    """Decode as text first; only fall back to base64 when the bytes are not UTF-8.
+
+    Guessing from the extension alone mis-delivered YAML on 3.12 and anything
+    without a known mime type, handing back base64 for plain text.
+    """
+
+    repository = _repository(tmp_path)
+    source = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'mixed'
+    (source / 'assets').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('---\nname: mixed\ndescription: d\n---\n')
+    (source / resource_path).write_text(body)
+    skill = await repository.import_skill_directory(_CONTEXT, str(source), {'name': 'mixed', 'description': 'd'})
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'mixed',
+        resource_path,
+        expected_revision=skill['revision'],
+    )
+
+    assert 'encoding' not in resource
+    assert resource['content'] == body
+
+
+@pytest.mark.asyncio
+async def test_real_binary_still_falls_back_to_base64(tmp_path):
+    """The text-first attempt must not turn a real PNG into mojibake."""
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=revision,
+    )
+
+    assert resource['encoding'] == 'base64'
+    assert base64.b64decode(resource['content']) == _PNG
+

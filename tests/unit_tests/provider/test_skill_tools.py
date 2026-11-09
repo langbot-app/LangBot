@@ -652,7 +652,6 @@ class TestSkillToolLoader:
             max_bytes=256 * 1024,
         )
 
-
     @pytest.mark.asyncio
     async def test_binary_resource_returns_attachment_and_counts_bytes(self):
         from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
@@ -696,6 +695,7 @@ class TestSkillToolLoader:
             'revision': 'sha256:demo',
         }
         assert query.variables['_skill_resource_bytes_read'] == 8
+
 
 class TestNativeToolLoaderSkillPaths:
     @pytest.mark.asyncio

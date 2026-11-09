@@ -25,28 +25,6 @@ from ..utils.bounded_executor import blocking_work_scope, run_blocking_atomic
 # inline string.
 _MAX_SKILL_RESOURCE_BYTES = 256 * 1024
 
-# MIME types a model can consume as tool text. Everything else (images, PDFs,
-# archives, office documents) goes back as base64 instead of a mojibake string.
-_TEXT_SKILL_MIME_TYPES = frozenset(
-    {
-        'application/javascript',
-        'application/json',
-        'application/sql',
-        'application/toml',
-        'application/x-httpd-php',
-        'application/x-sh',
-        'application/x-yaml',
-        'application/xml',
-    }
-)
-
-
-def is_text_skill_resource(path: str) -> bool:
-    """Whether a Skill resource should be delivered as UTF-8 tool text."""
-
-    mime_type = mimetypes.guess_type(str(path or ''))[0] or ''
-    return mime_type.startswith('text/') or mime_type in _TEXT_SKILL_MIME_TYPES
-
 
 def _resolve_resource_under(package_root: str, path: str) -> tuple[str, str]:
     """Resolve a Skill-relative path, refusing escapes and symlinked files.
@@ -280,20 +258,26 @@ class SkillRepository:
         string. Image/PDF and other binary resources are returned with
         `encoding='base64'` plus mime type, size and pinned revision, so a
         caller can hand them to an attachment consumer without a sandbox.
+
+        The extension is only a fast path, never the decision. Unknown mime
+        types (`LICENSE`, `Makefile`), types the local mimetypes table spells
+        differently (Python 3.12 answers `application/yaml` where the table says
+        `application/x-yaml`), and files whose extension lies all have to reach
+        text. So the binary branch still attempts UTF-8 once and only falls back
+        to bytes when the content genuinely is not text.
         """
 
-        if is_text_skill_resource(path):
-            try:
-                return await self._call(
-                    context,
-                    'read_skill_resource',
-                    name,
-                    path,
-                    expected_revision=expected_revision,
-                )
-            except ValueError as exc:
-                if 'not valid UTF-8' not in str(exc):
-                    raise
+        try:
+            return await self._call(
+                context,
+                'read_skill_resource',
+                name,
+                path,
+                expected_revision=expected_revision,
+            )
+        except ValueError as exc:
+            if 'not valid UTF-8' not in str(exc):
+                raise
         return await self.read_skill_resource_bytes(
             context,
             name,
@@ -317,9 +301,14 @@ class SkillRepository:
         if limit <= 0:
             raise ValueError('Skill resource read limit must be positive')
 
+        # Hold the same placement fence as the text path. `_call` validates the
+        # binding before touching the store; this path reads it directly, so an
+        # unvalidated read would serve bytes from a stale placement.
+        execution_context = await self._validated_execution_context(context)
+        namespace = self._namespace(execution_context)
+
         def invoke():
-            execution_context = self._execution_context(context)
-            store = self._store.scoped(self._namespace(execution_context))
+            store = self._store.scoped(namespace)
             package_root = store.resolve_skill_package_root(name, expected_revision)
             skill = store.get_skill_snapshot(name, expected_revision)
             revision = str((skill or {}).get('revision') or '')
@@ -328,15 +317,11 @@ class SkillRepository:
                 raise ValueError(f'Skill file not found: {relative}')
             size = os.path.getsize(absolute)
             if size > limit:
-                raise ValueError(
-                    f'Skill file {relative} is {size} bytes and exceeds the {limit}-byte read limit'
-                )
+                raise ValueError(f'Skill file {relative} is {size} bytes and exceeds the {limit}-byte read limit')
             with open(absolute, 'rb') as file:
                 data = file.read(limit + 1)
             if len(data) > limit:
-                raise ValueError(
-                    f'Skill file {relative} exceeds the {limit}-byte read limit'
-                )
+                raise ValueError(f'Skill file {relative} exceeds the {limit}-byte read limit')
             return {
                 'skill': {'name': name},
                 'path': relative,

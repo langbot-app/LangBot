@@ -325,7 +325,7 @@ class SkillToolLoader(loader.ToolLoader):
         return {
             'type': 'file',
             'source': 'base64',
-            'name': f"{result['skill']['name']}/{result['path']}",
+            'name': f'{result["skill"]["name"]}/{result["path"]}',
             'mime_type': mime_type,
             'content': result.get('content'),
             'revision': result.get('revision'),
