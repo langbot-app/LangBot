@@ -366,7 +366,7 @@ test('completed installation remains pending instead of claiming activation', as
                 current_action: 'Permission confirmation required',
                 metadata: {
                   plugin_name: 'qa/permissions',
-                  pending_confirmation: true,
+                  pending_permission_confirmation: true,
                 },
               },
             },

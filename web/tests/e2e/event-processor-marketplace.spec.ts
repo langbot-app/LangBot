@@ -97,6 +97,7 @@ for (const scenario of ['install', 'retry', 'reload'] as const) {
         plugin_author: 'qa',
         plugin_name: 'events',
         plugin_version: '1.0.0',
+        auto_confirm_permissions: true,
       });
       await route.fulfill({ json: { code: 0, data: { task_id: installs } } });
     });
