@@ -205,6 +205,8 @@ Box の有効化、取得、再利用方針は Runner が決めます。リソ�
 
 Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` で添付を返せます。Agent とプラグインプロセッサーは `ctx.reply_files()` で明示的に送信します。
 
+自動返信では、`RunnerResult.message_completed` はそれぞれ独立したメッセージとして送信されるため、Runner は回答の前に進捗メッセージを送れます。`RunnerResult.message_delta` はストリーミング対応プラットフォームでは 1 つのストリーミングメッセージを更新します。それ以外では完了したメッセージだけが送信され、delta だけで終わる実行は最後の結果を 1 回送信します。
+
 外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。
 
 ### プロンプト、履歴、イベント

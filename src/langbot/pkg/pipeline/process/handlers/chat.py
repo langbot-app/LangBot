@@ -156,7 +156,8 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Create a single resp_message_id for the entire streaming response
                 resp_message_id = uuid.uuid4()
                 chunk_count = 0
-                has_result = False
+                # Non-streaming: a result appended since the last downstream send.
+                pending_send = False
 
                 # Use AgentRunOrchestrator to run the agent
                 # This replaces direct runner lookup and PluginRunnerWrapper
@@ -164,7 +165,6 @@ class ChatMessageHandler(handler.MessageHandler):
                 if is_stream:
                     results = coalesce_stream_results(results)
                 async for result in results:
-                    has_result = True
                     self._check_response_size(result)
 
                     if is_stream and isinstance(result, provider_message.MessageChunk):
@@ -233,6 +233,15 @@ class ChatMessageHandler(handler.MessageHandler):
                             # A distinct later message needs a fresh card identity.
                             is_create_card = False
                             resp_message_id = uuid.uuid4()
+                    elif isinstance(result, provider_message.Message) and not result.tool_calls:
+                        # Each completed runner message is its own reply, matching Agent
+                        # bindings (e.g. progress messages before the answer). Deltas and
+                        # tool-call rounds stay aggregated into the turn's single send.
+                        yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
+                        pending_send = False
+                        resp_message_id = uuid.uuid4()
+                    else:
+                        pending_send = True
 
                 # Log final summary after streaming completes
                 if is_stream:
@@ -246,10 +255,10 @@ class ChatMessageHandler(handler.MessageHandler):
                 # history source for this path.
                 await self._ensure_conversation_for_history(query)
 
-                # Non-streaming adapters should receive only the completed runner turn.
-                # Keep every normalized result on the query for diagnostics and history,
-                # while running downstream response stages once with the final result.
-                if not is_stream and has_result:
+                # Non-streaming adapters receive completed runner messages, never partial
+                # deltas. Every normalized result stays on the query for diagnostics and
+                # history; a turn ending without a completed message sends its last result.
+                if not is_stream and pending_send:
                     yield entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             except Exception as e:
