@@ -168,6 +168,10 @@ seq=3 is_final=true   "Fixed — please try again."
 Stitch by `session_id` + `sequence`; the turn is complete when
 `is_final: true` arrives.
 
+Streamed replies (`stream: true`) are cumulative snapshots: every chunk the
+pipeline or an Agent reply stream emits carries the reply's full text so far.
+Callers replace the previous `stream: true` part instead of appending it.
+
 ---
 
 ## 7. Reset a session
@@ -190,7 +194,9 @@ Signed exactly like an inbound message.
 
 If you don't need streaming/multi-part and just want one reply back on the same
 HTTP call, POST to `/sync`. LangBot waits for the turn to finish and returns all
-parts **collapsed** into one array:
+parts **collapsed** into one array. The collector keys streamed chunks by the
+reply's `resp_message_id` and keeps only the latest snapshot, so each reply
+appears once with its final content:
 
 ```
 POST /bots/{bot_uuid}/sync
