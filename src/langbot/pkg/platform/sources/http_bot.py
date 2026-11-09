@@ -89,11 +89,35 @@ class _SessionOutbound:
 
 
 class _SyncCollector:
-    """Collects reply parts and signals receipt of a final message."""
+    """Collects reply parts and signals receipt of a final message.
+
+    Streamed chunks carry the accumulated content of one reply so far, so a
+    chunk replaces the earlier snapshot of the same reply instead of being
+    appended; every distinct reply is kept once, in delivery order.
+    """
 
     def __init__(self) -> None:
-        self.parts: list = []
+        self.replies: list[list] = []
+        # stream key -> index in ``replies`` while that streamed reply is open
+        self.open_streams: dict[str, int] = {}
         self.done: asyncio.Event = asyncio.Event()
+
+    @property
+    def parts(self) -> list:
+        return [part for reply in self.replies for part in reply]
+
+    def add(self, parts: list, *, stream_key: str | None, closes_stream: bool) -> None:
+        if stream_key is None:
+            self.replies.append(list(parts))
+            return
+        index = self.open_streams.get(stream_key)
+        if index is None:
+            index = len(self.replies)
+            self.replies.append([])
+            self.open_streams[stream_key] = index
+        self.replies[index] = list(parts)
+        if closes_stream:
+            self.open_streams.pop(stream_key, None)
 
 
 class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
@@ -531,6 +555,8 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         message: platform_message.MessageChain,
         is_final: bool,
         stream: bool,
+        stream_key: str | None = None,
+        closes_stream: bool = False,
     ) -> dict:
         session_id = self._extract_session_id(message_source)
         reply_to = self._extract_reply_to(message_source)
@@ -549,7 +575,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         # If a /sync request is awaiting this session, collect instead of POSTing.
         collector = self.sync_waiters.get(session_id)
         if collector is not None:
-            collector.parts.extend(parts)
+            collector.add(parts, stream_key=stream_key if stream else None, closes_stream=closes_stream)
             if is_final:
                 collector.done.set()
             return payload
@@ -571,7 +597,7 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         }
         collector = self.sync_waiters.get(str(target_id))
         if collector is not None:
-            collector.parts.extend(payload['message'])
+            collector.add(payload['message'], stream_key=None, closes_stream=False)
             collector.done.set()
             return payload
 
@@ -595,7 +621,16 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         is_final: bool = False,
     ) -> dict:
         message_is_final = is_final and getattr(bot_message, 'tool_calls', None) is None
-        return await self._emit_reply(message_source, message, is_final=message_is_final, stream=True)
+        # Chunks of one reply share ``resp_message_id`` and each carries the
+        # reply's accumulated content, so /sync keeps only the latest snapshot.
+        return await self._emit_reply(
+            message_source,
+            message,
+            is_final=message_is_final,
+            stream=True,
+            stream_key=str(getattr(bot_message, 'resp_message_id', None) or ''),
+            closes_stream=is_final,
+        )
 
     # -- sync convenience mode ------------------------------------------------
 
