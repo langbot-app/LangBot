@@ -260,8 +260,9 @@ storage:
         # Retention for CAS files and historical inline images (defaults to 30 days).
         # Inline images expire by record creation time; message text is retained.
         retention_days: 30
-        # Maximum disk storage for cached media in MB (0 means unlimited, defaults to 0)
-        max_size_mb: 0
+        # Maximum disk storage for cached media in MB; the oldest files are removed first
+        # (0 means unlimited, defaults to 1024)
+        max_size_mb: 1024
     cleanup:
         # Enable periodic cleanup of local/S3 uploaded files and old log files
         enabled: true
@@ -289,8 +290,8 @@ plugin:
     connect_timeout_seconds: 180.0
     runtime_ws_url: 'ws://langbot_plugin_runtime:5400/control/ws'
     enable_marketplace: true
-    # Console debug endpoint; its port is also passed to managed Runtime
-    # subprocesses (stdio / Windows) as --ws-debug-port so a second Core
+    # Console debug endpoint; its port is also passed to Core-managed Runtime
+    # subprocesses as --ws-debug-port so a second Core
     # instance can listen elsewhere without Address already in use.
     display_plugin_debug_url: 'ws://localhost:5401/plugin/debug/ws'
     certification:

@@ -34,7 +34,7 @@ from ..agent.runner.host_models import (
 )
 from ..agent.runner.resource_policy import ResourcePolicyProjector
 from ..agent.runner.platform_tools import resolve_agent_platform_tool_names
-from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+from ..agent.runner import input_media
 from ..agent.runner.interaction_store import InteractionAlreadySubmittedError, InteractionExpiredError
 from langbot_plugin.api.entities.builtin.runner.interaction import InteractionHandle
 from ..entity.persistence import workspace as persistence_workspace
@@ -44,6 +44,7 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from ..utils import constants
 from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -764,28 +765,23 @@ class RuntimeBot:
 
     @classmethod
     def _build_agent_input(cls, event: platform_events.EBAEvent) -> AgentInput:
-        text = platform_events.event_summary(event)
-        contents: list[dict[str, typing.Any]] = []
-
+        rendered = None
         message_chain = getattr(event, 'message_chain', None)
         if message_chain:
-            try:
-                for component in message_chain:
-                    if isinstance(component, platform_message.Image):
-                        if component.url:
-                            contents.append({'type': 'image_url', 'image_url': {'url': component.url}})
-                        elif component.base64:
-                            contents.append({'type': 'image_base64', 'image_base64': component.base64})
-            except TypeError:
-                pass
+            rendered = input_media.render_input(message_chain, include_quotes=True, include_other_text=True)
 
-        if text:
-            contents.insert(0, {'type': 'text', 'text': text})
+        text = (rendered.text if rendered else '') or platform_events.event_summary(event)
+        if rendered and rendered.contents:
+            contents = [item.model_dump(mode='json') for item in rendered.contents]
+        else:
+            contents = [{'type': 'text', 'text': text}] if text else []
 
         return AgentInput(
             text=text,
             contents=contents,
-            attachments=QueryEntryAdapter._build_attachments(event, contents),
+            # The envelope is Host-internal: inline payloads ride along until
+            # prepare_input_files registers them and clears the descriptors.
+            attachments=rendered.attachments(include_content=True) if rendered else [],
         )
 
     def _eba_event_to_agent_envelope(
@@ -2073,6 +2069,15 @@ class PlatformManager:
             updates['pipeline_uuid'] = pipeline_uuid
         return dataclasses.replace(context, **updates) if updates else context
 
+    def has_websocket_proxy_bot(self, workspace_uuid: str) -> bool:
+        """Whether this Workspace currently has a live WebSocket debug proxy.
+
+        Never creates one. The proxy is in-memory only, so callers that would
+        otherwise look a bot up in the ``bots`` table use this for its reserved
+        UUID instead.
+        """
+        return workspace_uuid in self.websocket_proxy_bots
+
     async def get_websocket_proxy_bot(
         self,
         context: ExecutionContext | RequestContext,
@@ -2105,18 +2110,18 @@ class PlatformManager:
                 name='websocket-adapter',
                 ap=self.ap,
                 execution_context=execution_context,
-                owner='websocket-proxy-bot',
+                owner=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             websocket_adapter_inst = websocket_adapter_class({}, websocket_logger, ap=self.ap)
             proxy_context = dataclasses.replace(
                 execution_context,
                 instance_uuid=binding.instance_uuid,
-                bot_uuid='websocket-proxy-bot',
+                bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             runtime_bot = RuntimeBot(
                 ap=self.ap,
                 bot_entity=persistence_bot.Bot(
-                    uuid='websocket-proxy-bot',
+                    uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
                     workspace_uuid=binding.workspace_uuid,
                     name='WebSocket',
                     description='',

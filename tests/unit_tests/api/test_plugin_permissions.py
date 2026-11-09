@@ -367,3 +367,51 @@ def test_described_operations_carry_domain_metadata(app):
     assert 'domain' not in capability
     assert [domain['domain'] for domain in described['domains']] == ['stats']
     assert described['domains'][0]['label']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('live', [True, False])
+async def test_websocket_proxy_bot_is_authorized_by_live_runtime_not_bots_table(app, monkeypatch, live):
+    from langbot.pkg.api.application import plugin_permissions
+    from unittest.mock import Mock
+
+    declaration = {'workspace_operations': [], 'capabilities': ['bot.read', 'bot.message.send']}
+    monkeypatch.setattr(
+        plugin_permissions, 'load_installation', AsyncMock(return_value=installation(declaration, declaration))
+    )
+    app.persistence_mgr.execute_async = AsyncMock(side_effect=AssertionError('proxy bot has no bots row'))
+    app.platform_mgr = SimpleNamespace(has_websocket_proxy_bot=Mock(return_value=live))
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    for action, data in [
+        (PluginToRuntimeAction.GET_BOT_INFO.value, {'bot_uuid': 'websocket-proxy-bot'}),
+        (PluginToRuntimeAction.SEND_MESSAGE.value, {'bot_uuid': 'websocket-proxy-bot'}),
+        (
+            PluginToRuntimeAction.CALL_PLATFORM_API.value,
+            {'bot_uuid': 'websocket-proxy-bot', 'action': 'send_message'},
+        ),
+    ]:
+        if live:
+            await plugin_permissions.authorize_action(app, binding, action, data)
+        else:
+            with pytest.raises(ApplicationAPIException) as error:
+                await plugin_permissions.authorize_action(app, binding, action, data)
+            assert error.value.error.code == 'permission_denied'
+    app.platform_mgr.has_websocket_proxy_bot.assert_called_with('workspace')
+    app.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_websocket_proxy_bot_still_requires_the_send_capability(app, monkeypatch):
+    from langbot.pkg.api.application import plugin_permissions
+
+    declaration = {'workspace_operations': [], 'capabilities': []}
+    monkeypatch.setattr(
+        plugin_permissions, 'load_installation', AsyncMock(return_value=installation(declaration, declaration))
+    )
+    app.platform_mgr = SimpleNamespace(has_websocket_proxy_bot=lambda workspace_uuid: True)
+    binding = SimpleNamespace(workspace_uuid='workspace', installation_uuid='install')
+    with pytest.raises(ApplicationAPIException) as error:
+        await plugin_permissions.authorize_action(
+            app, binding, PluginToRuntimeAction.SEND_MESSAGE.value, {'bot_uuid': 'websocket-proxy-bot'}
+        )
+    assert error.value.error.details['denied_capabilities'] == ['bot.message.send']

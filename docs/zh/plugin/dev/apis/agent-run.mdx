@@ -190,6 +190,28 @@ event_type = ctx.event.event_type
 
 `get_available_tools()` 的每一项包含 `name`、`description`、`parameters`、`type` 和 `operations`。返回结果已经按当前 Agent 或插件处理器的配置和事件能力过滤；不在列表中的工具不能通过 `ctx.call_tool()` 调用。
 
+### 输入附件
+
+`ctx.input.attachments` 按出现顺序逐一描述当前消息中的图片、语音和文件，只包含元数据：`ref`（如 `att-1`）、`type`、`source`（`message` 为当前消息，`quote` 为被引用的消息）、`name`、`mime_type`、`size`、平台 `id` 和可直接下载的 `url`。附件不携带文件内容，`content` 字段已弃用，当前版本始终为空。
+
+`ctx.input.text` 和 `ctx.input.contents` 会在每个媒体的原位置插入标记，例如 `[attachment att-1: image photo.jpg]`；被引用的消息包裹在 `[quoted message from <发送者>]` 与 `[/quoted message]` 之间。图片仍以 `image_base64` 或 `image_url` 紧跟在标记之后，供模型直接查看。
+
+| 方法 | 返回值 | 说明 |
+| --- | --- | --- |
+| `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | 按 `ref` 读取附件内容，返回 `data`、`name`、`mime_type` 和 `size`；参数也可以是 `ref` 字符串。LangBot 不提供该接口时返回 `None` |
+
+单个附件最大 10 MiB，每次运行累计最多读取 50 MiB；LangBot 不缓存读取结果，也不把内容写入日志。`ctx.context.available_apis.input_attachments` 表示该接口是否可用。通过 steering 转入当前运行的后续消息，其附件只有元数据，没有 `ref`。
+
+该方法需要 `langbot-plugin` 0.7.23 或更高版本。需要兼容旧版 LangBot 或旧版 SDK 时，先判断方法是否存在，再回退到原有逻辑：
+
+```python
+data = None
+if hasattr(ctx, "read_input_attachment"):
+    data = await ctx.read_input_attachment(attachment)
+if data is None:
+    ...  # 旧版 LangBot：使用 attachment.content、attachment.url 或 ctx.input.contents
+```
+
 ### Box 与附件
 
 Box 是否启用、何时创建以及如何复用，由运行器决定。获取状态和申请 Box 使用 [LangBot API](/zh/plugin/dev/apis/common#box-沙箱)；当前运行的绑定和附件操作使用下列方法。
@@ -201,13 +223,15 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 | `await ctx.export_box_files()` | `list[BoxFile]` | 导出本次运行 outbox 中的文件，返回文件句柄，不发送消息 |
 | `await ctx.reply_files(file_ids)` | `Any` | 使用导出的 `id` 回复当前事件，受回复工具权限约束 |
 
-`BoxFile` 包含 `id`、`name`、`type`、`size` 和可选的 `path`。输入的 `url`、`content` 等原始信息仍保留，只有显式导入才产生沙箱文件路径。文件句柄仅在本次运行有效，不能重复发送。
+`BoxFile` 包含 `id`、`name`、`type`、`size` 和可选的 `path`。输入附件的元数据保持不变，只有显式导入才产生沙箱文件路径。文件句柄仅在本次运行有效，不能重复发送。
 
 先绑定 Box，再使用原生执行、文件工具和附件方法。复用同一 Box 时，各次运行的附件目录仍独立。`ctx.variables` 提供公开的请求变量，运行器可据此计算复用键。
 
 通过流水线运行时，`ctx.delivery.automatic_reply` 为 `True`，可以在 `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` 返回附件；Agent 和插件处理器使用 `ctx.reply_files()` 显式发送。
 
-外部运行器通过 `AgentRunExternalTools` 工具网关使用相同流程：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。具有当前事件回复权限时还可使用 `langbot_reply_files`；这些调用均携带当前运行的授权。
+自动回复时，每个 `RunnerResult.message_completed` 都作为一条独立消息发送，因此 Runner 可以在答案之前先发进度消息。`RunnerResult.message_delta` 在支持流式的平台上更新同一条流式消息；其他平台只发送完成的消息，只产出 delta 的运行在结束时发送最后一个结果。
+
+外部运行器通过 `AgentRunExternalTools` 工具网关使用相同流程：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`；可读取输入附件时还提供 `langbot_read_input_attachment`。具有当前事件回复权限时还可使用 `langbot_reply_files`；这些调用均携带当前运行的授权。
 
 ### 提示词、历史与事件
 

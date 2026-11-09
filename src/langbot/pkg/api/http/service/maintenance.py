@@ -10,6 +10,8 @@ from typing import Any
 
 import sqlalchemy
 
+from ....storage.media import DEFAULT_MAX_SIZE_MB
+
 from ....core import app
 from ....entity.persistence import bstorage as persistence_bstorage
 from ....entity.persistence import monitoring as persistence_monitoring
@@ -89,7 +91,7 @@ class MaintenanceService:
         )
         media_max_size_mb = self._non_negative_int(
             media_cfg.get('max_size_mb'),
-            0,
+            DEFAULT_MAX_SIZE_MB,
             'storage.media_cache.max_size_mb',
         )
         media_cache = getattr(getattr(self.ap, 'storage_mgr', None), 'media_cache', None)

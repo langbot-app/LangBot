@@ -171,7 +171,7 @@ In `langbot-plugin-sdk`:
 - `src/langbot_plugin/runtime/` implements `lbp rt`, plugin discovery, dependency installation, process launching, and control/debug connections.
 - `src/langbot_plugin/entities/io/` defines the action protocol shared by LangBot, runtime, and plugin processes.
 
-The Plugin Runtime supports stdio and WebSocket control transports. Direct local LangBot runs usually spawn the runtime over stdio. Containerized/standalone deployments connect over WebSocket using `plugin.runtime_ws_url` and `--standalone-runtime`.
+The Plugin Runtime supports stdio and WebSocket control transports. Direct local LangBot runs spawn the runtime over stdio on every OS, Windows included. Containerized/standalone deployments connect over WebSocket using `plugin.runtime_ws_url` and `--standalone-runtime`.
 
 ## Box Runtime and Skills
 
@@ -203,7 +203,7 @@ In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
 - [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
-- `pkg/box/connector.py` connects to the Box Runtime over stdio, Windows subprocess+WebSocket, or remote WebSocket.
+- `pkg/box/connector.py` connects to the Box Runtime over stdio when Core launches it (Windows, Linux and macOS alike), or over WebSocket for Docker, `--standalone-box`, or an explicit `box.runtime.endpoint`. The rule is shared with the Plugin Runtime connector through `ManagedRuntimeConnector.select_runtime_transport()`.
 - Core-launched Box subprocesses receive a stable `LANGBOT_BOX_INSTANCE_ID`:
   explicit `box.instance_id`, then the environment override, then Core's instance
   UUID. Standalone Box identity is fixed before RPC initialization; configure it

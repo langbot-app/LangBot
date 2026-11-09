@@ -105,6 +105,7 @@ class DefaultRunner(Runner):
         if progress_mode not in PROGRESS_MODES:
             raise MulticaConfigError(get_text(lang, "config.progress_mode_invalid", options=", ".join(PROGRESS_MODES)))
         progress_interval = _number(lang, config.get("progress-interval", 15), "progress-interval", 5, 300)
+        progress_max = int(_number(lang, config.get("progress-max-messages", 4), "progress-max-messages", 1, 20))
 
         return {
             "language": lang,
@@ -121,6 +122,7 @@ class DefaultRunner(Runner):
             "request_timeout": request_timeout,
             "progress_mode": progress_mode,
             "progress_interval": progress_interval,
+            "progress_max_messages": progress_max,
         }
 
     def _make_client(self, config: dict[str, typing.Any]) -> AsyncMulticaClient:
@@ -204,7 +206,9 @@ class DefaultRunner(Runner):
                 yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION, session_id, scope="conversation")
                 yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION_AGENT, agent_id, scope="conversation")
 
-            progress = _Progress(ctx.run_id, config["progress_mode"], config["progress_interval"])
+            progress = _Progress(
+                ctx.run_id, config["progress_mode"], config["progress_interval"], config["progress_max_messages"]
+            )
             label = agent_name or short_id(agent_id)
             for result in progress.emit(get_text(lang, "progress.submitted", agent=label, task_id=short_id(task_id))):
                 yield result
@@ -445,25 +449,37 @@ class _Progress:
     """Turn task lifecycle lines into results for the chosen progress mode.
 
     ``messages`` sends each line as its own completed message and the answer as the
-    last one, unprefixed. ``stream`` appends every line, then the answer, to one
-    streamed message. ``off`` sends only the answer, as 0.1.x did.
+    last one, unprefixed. At most ``max_messages`` progress lines are sent, so
+    platforms that cap replies per user message (QQ Official: 5) keep room for the
+    answer. ``stream`` appends every line, then the answer, to one streamed message.
+    ``off`` sends only the answer, as 0.1.x did.
     """
 
-    def __init__(self, run_id: str, mode: str, interval: float):
+    def __init__(self, run_id: str, mode: str, interval: float, max_messages: int = 4):
         self.run_id = run_id
         self.mode = mode
         self.interval = interval
+        self.max_messages = max_messages
+        self.sent = 0
         self.text = ""
         self.last_emit: float | None = None
 
+    def _exhausted(self) -> bool:
+        return self.mode == "messages" and self.sent >= self.max_messages
+
     def due(self, now: float) -> bool:
-        return self.mode != "off" and (self.last_emit is None or now - self.last_emit >= self.interval)
+        return (
+            self.mode != "off"
+            and not self._exhausted()
+            and (self.last_emit is None or now - self.last_emit >= self.interval)
+        )
 
     def emit(self, line: str) -> list[RunnerResult]:
-        if self.mode == "off":
+        if self.mode == "off" or self._exhausted():
             return []
         self.last_emit = _monotonic()
         if self.mode == "messages":
+            self.sent += 1
             return [RunnerResult.message_completed(self.run_id, Message(role="assistant", content=line))]
         return [self._delta(f"{line}\n", final=False)]
 

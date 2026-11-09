@@ -549,6 +549,7 @@ class RunnerContextBuilder:
             },
             'available_apis': {
                 'box': True,
+                'input_attachments': True,
                 'prompt_get': False,
                 'history_page': history_page_enabled,
                 'history_search': history_search_enabled,

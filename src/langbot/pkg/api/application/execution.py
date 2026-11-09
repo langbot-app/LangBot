@@ -35,12 +35,12 @@ class Output(BaseModel):
     __pydantic_extra__: dict[str, JsonValue] = Field(init=False)
 
 
-def _input(name: str, **fields: Any) -> type[Input]:
-    return create_model(name, __base__=Input, **fields)
+def _input(model_name: str, /, **fields: Any) -> type[Input]:
+    return create_model(model_name, __base__=Input, **fields)
 
 
-def _output(name: str, **fields: Any) -> type[Output]:
-    return create_model(name, __base__=Output, **fields)
+def _output(model_name: str, /, **fields: Any) -> type[Output]:
+    return create_model(model_name, __base__=Output, **fields)
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +212,9 @@ EXECUTION_OPERATIONS = (
             target_id=(Text, ...),
             message_chain=(list[Object], ...),
             origin_query_uuid=(Text | None, None),
+            # SDK 0.7.23+ sends the plugin's wait budget; the Runtime strips it,
+            # but an older Runtime forwards it unchanged. The Host ignores it.
+            timeout=(float | None, None),
         ),
         ResultOutput,
         'plugin_or_run',
@@ -505,6 +508,19 @@ EXECUTION_OPERATIONS = (
         ItemsOutput,
         'run',
         True,
+    ),
+    ExecutionOperation(
+        'read_input_attachment',
+        _input('ExecutionReadInputAttachmentInput', ref=(Text, ...)),
+        _output(
+            'ExecutionInputAttachmentOutput',
+            ref=(str, ...),
+            name=(str | None, None),
+            mime_type=(str | None, None),
+            size=(int, ...),
+            content=(str, ...),
+        ),
+        'run',
     ),
     ExecutionOperation(
         'export_box_files', _input('ExecutionExportBoxInput', paths=(list[str] | None, None)), ItemsOutput, 'run', True

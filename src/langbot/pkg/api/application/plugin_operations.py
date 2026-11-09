@@ -546,6 +546,7 @@ async def install_marketplace_task(ap, context, data, task):
         _, setting = await ap.plugin_connector._setting_for_plugin(payload.plugin_author, payload.plugin_name)
         try:
             await auto_confirm_declared(ap, context, setting)
+            task.metadata['pending_permission_confirmation'] = False
         except ApplicationAPIException as exc:
             task.metadata['permission_confirmation_error'] = {'code': exc.error.code, 'details': exc.error.details}
             raise

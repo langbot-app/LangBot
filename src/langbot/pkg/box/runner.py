@@ -30,78 +30,80 @@ class RunBoxBinding:
 
 
 def prepare_input_files(query, agent_input):
-    """Retain provider inputs and issue references without downloading files.
+    """Register the media a Runner may read or import by ref, without any I/O.
 
-    Only platform-origin components may carry a Host-local path. A path in an
+    Platform media keep the refs they were rendered with. Attachments supplied
+    by an event envelope are registered from their own payload under their ref,
+    or a fresh one. Descriptors never carry inline bytes to Runners.
+    Only platform-origin components may carry a Host-local path; a path in an
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+    from ..agent.runner import input_media
 
-    originals = input_files(query)
-    # References are scoped to this query's previous preparation, not to the
-    # platform message order or to any caller-supplied filesystem path.
-    prepared = getattr(query, '_box_inputs', None)
-    previous_refs = {f'attachment-{i}': item for i, item in enumerate(prepared or [])}
+    # Pipeline queries pin the media they rendered; only bare event envelopes
+    # may describe media in contents alone.
+    envelope_only = input_media.remembered_media(query) is None
+    media = input_media.media_by_ref(query)
+    components = {ref: item.component for ref, item in media.items()}
+    # Envelope attachments registered by an earlier preparation of this query.
+    previous = getattr(query, '_input_components', None)
+    components.update(previous if isinstance(previous, dict) else {})
     if not agent_input.attachments:
-        from ..agent.runner.query_entry_adapter import QueryEntryAdapter
+        agent_input.attachments = [InputAttachment.model_validate(item.to_attachment()) for item in media.values()]
+        if not agent_input.attachments and envelope_only:
+            agent_input.attachments = _attachments_from_contents(agent_input.contents)
 
-        agent_input.attachments = [
-            InputAttachment.model_validate(item)
-            for item in QueryEntryAdapter._build_attachments(query, [c.model_dump() for c in agent_input.contents])
-        ]
-    inline_images = {
-        content.image_base64
-        for content in (agent_input.contents or [])
-        if content.type == 'image_base64' and content.image_base64
-    }
-    components = []
-    for i, attachment in enumerate(agent_input.attachments):
+    for attachment in agent_input.attachments:
+        attachment.path = None
+        if attachment.ref and attachment.ref in components:
+            attachment.content = None
+            continue
         kind = (attachment.type or 'file').lower()
-        fields = {'url': attachment.url or '', 'base64': attachment.content or ''}
         cls = {'image': pm.Image, 'voice': pm.Voice}.get(kind, pm.File)
+        fields = {'url': attachment.url or '', 'base64': attachment.content or ''}
         if cls is pm.File:
             fields.update(name=attachment.name or '', id=attachment.id or '')
-        component = cls(**fields)
-        referenced = previous_refs.get(attachment.ref)
-        if type(referenced) is cls and not attachment.content and not attachment.url:
-            components.append(referenced)
-            attachment.ref, attachment.path = f'attachment-{i}', None
-            continue
-        # Match by payload, never by list position (contents and message chains
-        # can describe attachments in different orders).
-        for original in originals:
-            if type(original) is not cls:
-                continue
-            if (
-                (attachment.url and attachment.url == original.url)
-                or (attachment.content and attachment.content == original.base64)
-                or (
-                    attachment.id
-                    and attachment.id
-                    == getattr(original, 'id', getattr(original, 'image_id', getattr(original, 'voice_id', None)))
-                )
-                or (
-                    not attachment.url
-                    and not attachment.content
-                    and not attachment.id
-                    and attachment.name
-                    and attachment.name == getattr(original, 'name', None)
-                )
-            ):
-                component = original
-                break
-        components.append(component)
-        attachment.ref, attachment.path = f'attachment-{i}', None
-        if kind == 'image' and attachment.content in inline_images:
-            attachment.content = None
-    object.__setattr__(query, '_box_inputs', components)
+        elif cls is pm.Image:
+            fields.update(image_id=attachment.id or '')
+        else:
+            fields.update(voice_id=attachment.id or '')
+        ref = attachment.ref
+        if not ref:
+            index = len(components) + 1
+            while f'att-{index}' in components:
+                index += 1
+            ref = f'att-{index}'
+        components[ref] = cls(**fields)
+        attachment.ref, attachment.content = ref, None
+    object.__setattr__(query, '_input_components', components)
 
 
-def input_files(query):
-    prepared = getattr(query, '_box_inputs', None)
-    if prepared is not None:
+def _attachments_from_contents(contents):
+    """Describe media that an event envelope carried only in its contents."""
+    from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+
+    attachments = []
+    for content in contents or []:
+        if content.type == 'image_url' and content.image_url and content.image_url.url:
+            attachments.append(InputAttachment(type='image', url=content.image_url.url))
+        elif content.type == 'image_base64' and content.image_base64:
+            attachments.append(InputAttachment(type='image', content=content.image_base64))
+        elif content.type == 'file_url' and content.file_url:
+            attachments.append(InputAttachment(type='file', url=content.file_url, name=content.file_name))
+        elif content.type == 'file_base64' and content.file_base64:
+            attachments.append(InputAttachment(type='file', content=content.file_base64, name=content.file_name))
+    return attachments
+
+
+def input_files(query) -> dict:
+    """Components addressable by attachment ref for this query."""
+    prepared = getattr(query, '_input_components', None)
+    if isinstance(prepared, dict):
         return prepared
-    return [c for c in query.message_chain or [] if isinstance(c, (pm.Image, pm.Voice, pm.File))]
+    from ..agent.runner import input_media
+
+    return {ref: item.component for ref, item in input_media.media_by_ref(query).items()}
 
 
 def binding_for(query) -> RunBoxBinding:
@@ -212,7 +214,7 @@ class RunnerBoxService:
 
     async def import_attachments(self, query, attachment_ids):
         binding = binding_for(query)
-        available = {f'attachment-{i}': c for i, c in enumerate(input_files(query))}
+        available = input_files(query)
         ids = list(available) if attachment_ids is None else attachment_ids
         if not isinstance(ids, list) or any(type(key) is not str or key not in available for key in ids):
             raise BoxValidationError('Unknown input attachment reference')

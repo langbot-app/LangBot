@@ -11,6 +11,7 @@ from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
 
 from ..authz import Permission, require_permission
 from ..context import ExecutionContext, RequestContext
+from ....utils import constants
 from ....workspace.errors import WorkspaceNotFoundError
 
 
@@ -32,9 +33,11 @@ async def run_pipeline(ap, context: RequestContext, pipeline_uuid: str, text: st
         message_chain=chain,
         time=time.time(),
     )
-    execution = ExecutionContext.from_request(context, bot_uuid='websocket-proxy-bot', pipeline_uuid=pipeline_uuid)
+    execution = ExecutionContext.from_request(
+        context, bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID, pipeline_uuid=pipeline_uuid
+    )
     query = await ap.query_pool.add_query(
-        bot_uuid='websocket-proxy-bot',
+        bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
         launcher_type=LauncherTypes.PERSON,
         launcher_id=launcher_id,
         sender_id=launcher_id,

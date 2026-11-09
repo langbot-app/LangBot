@@ -21,7 +21,6 @@ from .admission import SandboxAdmissionController, require_cloud_admission_polic
 from .connector import BoxRuntimeConnector, _get_box_config
 from . import secure_fs
 from .export_errors import export_error, script_export_error, transport_export_error
-from ..utils import httpclient
 from ..telemetry import features as telemetry_features
 from ..api.http.context import ExecutionContext
 from ..api.http.service.tenant import TenantContext, require_workspace_uuid
@@ -885,71 +884,9 @@ class BoxService:
         Handles base64, http(s) url and local path sources. Returns None when
         no payload can be resolved.
         """
-        import base64 as _b64
+        from ..agent.runner.input_media import read_component_bytes
 
-        b64 = getattr(component, 'base64', None)
-        if b64:
-            data = b64
-            mime = 'application/octet-stream'
-            if isinstance(data, str) and data.startswith('data:'):
-                split_index = data.find(';base64,')
-                if split_index != -1:
-                    mime = data[5:split_index]
-                    data = data[split_index + 8 :]
-            try:
-                max_encoded_bytes = 4 * ((BoxService._ATTACHMENT_MAX_BYTES + 2) // 3)
-                if not isinstance(data, (str, bytes)) or len(data) > max_encoded_bytes:
-                    return None
-                decoded = _b64.b64decode(data)
-                if len(decoded) > BoxService._ATTACHMENT_MAX_BYTES:
-                    return None
-                return decoded, mime
-            except Exception:
-                return None
-
-        url = getattr(component, 'url', None)
-        if url:
-            try:
-                import httpx
-
-                async with httpx.AsyncClient(
-                    timeout=30,
-                    event_hooks=httpclient.httpx_response_limit_hooks(BoxService._ATTACHMENT_MAX_BYTES),
-                ) as client:
-                    async with client.stream('GET', url) as resp:
-                        resp.raise_for_status()
-                        declared_size = resp.headers.get('content-length')
-                        if declared_size is not None:
-                            try:
-                                if int(declared_size) > BoxService._ATTACHMENT_MAX_BYTES:
-                                    return None
-                            except ValueError:
-                                pass
-                        body = bytearray()
-                        async for chunk in resp.aiter_bytes(chunk_size=64 * 1024):
-                            body.extend(chunk)
-                            if len(body) > BoxService._ATTACHMENT_MAX_BYTES:
-                                return None
-                        return bytes(body), resp.headers.get('Content-Type', 'application/octet-stream')
-            except Exception:
-                return None
-
-        path = getattr(component, 'path', None)
-        if path:
-            try:
-                import aiofiles
-
-                if await asyncio.to_thread(os.path.getsize, path) > BoxService._ATTACHMENT_MAX_BYTES:
-                    return None
-                async with aiofiles.open(path, 'rb') as f:
-                    data = await f.read(BoxService._ATTACHMENT_MAX_BYTES + 1)
-                if len(data) > BoxService._ATTACHMENT_MAX_BYTES:
-                    return None
-                return data, 'application/octet-stream'
-            except Exception:
-                return None
-
-        return None
+        return await read_component_bytes(component, max_bytes=BoxService._ATTACHMENT_MAX_BYTES)
 
     async def _write_files_into_sandbox(
         self,

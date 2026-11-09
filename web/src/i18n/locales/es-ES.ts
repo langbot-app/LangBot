@@ -506,6 +506,11 @@ const esES = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Actualizar',
+    clickToCopy: 'Clic para copiar',
+    finish: 'Finalizar',
+    operationFailed: 'La operación ha fallado',
+    optional: 'Opcional',
     failureReasonNotRecorded:
       'No se registró el motivo del fallo. Consulta los registros del bot o vuelve a enviar el mensaje para obtener más detalles.',
     loadFailedTitle: 'No se pudo cargar el contenido',

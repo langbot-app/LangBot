@@ -505,6 +505,11 @@ const enUS = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Refresh',
+    clickToCopy: 'Click to copy',
+    finish: 'Finish',
+    operationFailed: 'Operation failed',
+    optional: 'Optional',
     failureReasonNotRecorded:
       'The failure reason was not recorded. Check the bot logs or retry to capture more details.',
     loadFailedTitle: 'Unable to load this content',

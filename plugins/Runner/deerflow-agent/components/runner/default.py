@@ -202,6 +202,12 @@ class DefaultRunner(Runner):
                 if value:
                     image_urls.append(value)
 
+        available_apis = getattr(getattr(ctx, "context", None), "available_apis", None)
+        if getattr(available_apis, "input_attachments", False):
+            # Current Hosts put every image in contents at its [attachment att-N] marker;
+            # attachments describe the same media and would duplicate them.
+            return image_urls
+
         for attachment in ctx.input.attachments or []:
             url = _attachment_get(attachment, "url")
             if isinstance(url, str) and url:

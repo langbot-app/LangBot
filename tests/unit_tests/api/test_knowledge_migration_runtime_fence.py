@@ -291,3 +291,48 @@ async def test_legacy_restore_accepts_sqlite_string_dates_and_text_json_columns(
             assert json.loads(restored[1].retrieval_settings) == {'top_k': 5}
     finally:
         await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('pending', [True, False])
+async def test_migration_install_confirms_pending_plugin_permissions(monkeypatch, pending: bool):
+    from langbot.pkg.api.application import plugin_permissions
+
+    setting = SimpleNamespace(plugin_author='langbot-team', plugin_name='LangRAG')
+    connector = SimpleNamespace(
+        require_workspace_context=AsyncMock(return_value=CONTEXT),
+        install_plugin=AsyncMock(),
+        _setting_for_plugin=AsyncMock(return_value=(CONTEXT, setting)),
+    )
+    confirm = AsyncMock()
+    monkeypatch.setattr(plugin_permissions, 'permission_status', lambda ap, s: {'pending_confirmation': pending})
+    monkeypatch.setattr(plugin_permissions, 'auto_confirm_declared', confirm)
+    router = object.__new__(KnowledgeMigrationRouterGroup)
+    router.ap = SimpleNamespace(plugin_connector=connector, logger=Mock())
+    request_context = object()
+
+    await router._confirm_plugin_permissions(request_context, 'langbot-team', 'LangRAG')
+
+    if pending:
+        confirm.assert_awaited_once_with(router.ap, request_context, setting)
+    else:
+        confirm.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_migration_install_reports_unconfirmable_plugin_permissions(monkeypatch):
+    from langbot.pkg.api.application import plugin_permissions
+    from langbot.pkg.api.application.contracts import ApplicationAPIError, ApplicationAPIException
+
+    connector = SimpleNamespace(_setting_for_plugin=AsyncMock(return_value=(CONTEXT, SimpleNamespace())))
+    monkeypatch.setattr(plugin_permissions, 'permission_status', lambda ap, s: {'pending_confirmation': True})
+    monkeypatch.setattr(
+        plugin_permissions,
+        'auto_confirm_declared',
+        AsyncMock(side_effect=ApplicationAPIException(ApplicationAPIError('permission_denied', 'denied', 403))),
+    )
+    router = object.__new__(KnowledgeMigrationRouterGroup)
+    router.ap = SimpleNamespace(plugin_connector=connector, logger=Mock())
+
+    with pytest.raises(RuntimeError, match='plugin_permission_confirmation_required'):
+        await router._confirm_plugin_permissions(object(), 'langbot-team', 'LangRAG')

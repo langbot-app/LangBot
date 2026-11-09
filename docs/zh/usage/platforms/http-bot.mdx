@@ -143,6 +143,8 @@ seq=3 is_final=true   "已修复，请重试。"
 
 用 `session_id` + `sequence` 拼接；收到 `is_final: true` 表示本轮结束。
 
+流式回复（`stream: true`）会分多次回调送达，每次携带的是**这条回复截至当前的完整文本**，而不是增量。请用最新一条 `stream: true` 回调替换上一条，而不是追加；最后一条（`is_final: true`）就是完整回复。
+
 ## 重置会话
 
 为某个 `session_id` 开启全新会话（清空历史）：
@@ -157,7 +159,7 @@ POST /bots/{bot_uuid}/reset
 
 ## 同步便利模式
 
-若你不需要流式/多段，只想在同一次 HTTP 调用里拿回复，可 POST 到 `/sync`。LangBot 会等待本轮结束，把所有回复段**折叠**成一个数组返回：
+若你不需要流式/多段，只想在同一次 HTTP 调用里拿回复，可 POST 到 `/sync`。LangBot 会等待本轮结束，把所有回复段**折叠**成一个数组返回。每条回复只出现一次，内容为最终文本（流式过程中的中间快照不会重复返回）：
 
 ```
 POST /bots/{bot_uuid}/sync

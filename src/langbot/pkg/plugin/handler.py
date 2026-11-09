@@ -1082,6 +1082,49 @@ class RuntimeConnectionHandler(handler.Handler):
         )
         return result.first() is not None
 
+    async def _bot_available(self, bot_uuid: str, workspace_uuid: str) -> bool:
+        """Whether a plugin may address ``bot_uuid`` in this Workspace.
+
+        Persisted bots are checked against the ``bots`` table. The WebSocket
+        debug proxy is in-memory only and never has a row, so it is available
+        exactly when this Workspace has a live proxy runtime.
+        """
+        if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+            return self.ap.platform_mgr.has_websocket_proxy_bot(workspace_uuid)
+        return await self._resource_exists(
+            persistence_bot.Bot,
+            persistence_bot.Bot.uuid,
+            bot_uuid,
+            workspace_uuid,
+        )
+
+    async def _websocket_proxy_bot_info(self, execution_context: ExecutionContext, bot_uuid: str) -> dict | None:
+        """Bot info for the in-memory debug proxy, shaped like ``get_runtime_bot_info``.
+
+        Built from the live runtime object because the proxy has no ``bots``
+        row. It carries no adapter config and no webhook.
+        """
+        runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(execution_context, bot_uuid)
+        if runtime_bot is None:
+            return None
+        entity = runtime_bot.bot_entity
+        return {
+            'uuid': entity.uuid,
+            'workspace_uuid': entity.workspace_uuid,
+            'name': entity.name,
+            'description': entity.description or '',
+            'adapter': entity.adapter,
+            'enable': bool(entity.enable),
+            'event_bindings': [],
+            'plugin_processors': [],
+            'adapter_runtime_values': {
+                'bot_account_id': getattr(runtime_bot.adapter, 'bot_account_id', None),
+                'webhook_url': None,
+                'webhook_full_url': None,
+                'extra_webhook_full_url': None,
+            },
+        }
+
     @staticmethod
     def _config_contains_file_key(value: Any, file_key: str) -> bool:
         if isinstance(value, dict):
@@ -1476,20 +1519,22 @@ class RuntimeConnectionHandler(handler.Handler):
             action_context, _ = await self._require_plugin_action_context()
             execution_context = self._execution_context(action_context)
             bot_uuid = data['bot_uuid']
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
-            bot = await self.ap.bot_service.get_runtime_bot_info(
-                execution_context,
-                bot_uuid,
-                include_secret=False,
-            )
+            if bot_uuid == constants.WEBSOCKET_PROXY_BOT_UUID:
+                bot = await self._websocket_proxy_bot_info(execution_context, bot_uuid)
+                if bot is None:
+                    return handler.ActionResponse.error(
+                        message=f'Bot with bot_uuid {bot_uuid} not found',
+                    )
+            else:
+                bot = await self.ap.bot_service.get_runtime_bot_info(
+                    execution_context,
+                    bot_uuid,
+                    include_secret=False,
+                )
             return handler.ActionResponse.success(
                 data={
                     'bot': bot,
@@ -1553,12 +1598,7 @@ class RuntimeConnectionHandler(handler.Handler):
             target_id = data['target_id']
             message_chain = data['message_chain']
 
-            if not await self._resource_exists(
-                persistence_bot.Bot,
-                persistence_bot.Bot.uuid,
-                bot_uuid,
-                action_context.workspace_uuid,
-            ):
+            if not await self._bot_available(bot_uuid, action_context.workspace_uuid):
                 return handler.ActionResponse.error(
                     message=f'Bot with bot_uuid {bot_uuid} not found',
                 )
@@ -3040,9 +3080,10 @@ class RuntimeConnectionHandler(handler.Handler):
 
         agent_pull_actions.register(self)
         runner_actions.register(self)
-        from . import box_actions
+        from . import box_actions, input_attachment_actions
 
         box_actions.register(self)
+        input_attachment_actions.register(self)
         agent_state_actions.register(self)
 
         @self.action(CommonAction.PING)

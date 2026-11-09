@@ -6,14 +6,13 @@ import typing
 from .. import stage, entities
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 import langbot_plugin.api.entities.events as events
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 from ...pipeline.pool import get_query_execution_context
 
 from ...agent.runner.descriptor import RunnerDescriptor
 from ...agent.runner.config_resolver import RunnerConfigResolver
-from ...agent.runner import config_schema
+from ...agent.runner import config_schema, input_media
 from ...agent.runner.resource_policy import ResourcePolicyProjector
 from ...provider.tools.toolmgr import ToolManager
 from ..extension_preferences import normalize_extension_preferences
@@ -343,60 +342,16 @@ class PreProcessor(stage.PipelineStage):
         if not keep_image_inputs:
             self._strip_images_from_history(query)
 
-        content_list: list[provider_message.ContentElement] = []
-
-        plain_text = ''
         quote_msg = query.pipeline_config['trigger'].get('misc', {}).get('combine-quote-message', False)
-
-        for me in query.message_chain:
-            if isinstance(me, platform_message.Plain):
-                content_list.append(provider_message.ContentElement.from_text(me.text))
-                plain_text += me.text
-            elif isinstance(me, platform_message.Image):
-                if keep_image_inputs:
-                    if me.base64:
-                        content_list.append(provider_message.ContentElement.from_image_base64(me.base64))
-                    elif me.url:
-                        content_list.append(provider_message.ContentElement.from_image_url(me.url))
-                else:
-                    content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                    plain_text += '[Image]'
-            elif isinstance(me, platform_message.Voice):
-                # Convert voice input into file content for downstream model upload.
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, 'voice.silk'))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, 'voice'))
-            elif isinstance(me, platform_message.File):
-                if me.base64:
-                    content_list.append(provider_message.ContentElement.from_file_base64(me.base64, me.name))
-                elif me.url:
-                    content_list.append(provider_message.ContentElement.from_file_url(me.url, me.name))
-            elif isinstance(me, platform_message.Quote) and quote_msg:
-                for msg in me.origin:
-                    if isinstance(msg, platform_message.Plain):
-                        content_list.append(provider_message.ContentElement.from_text(msg.text))
-                    elif isinstance(msg, platform_message.Image):
-                        if keep_image_inputs:
-                            if msg.base64:
-                                content_list.append(provider_message.ContentElement.from_image_base64(msg.base64))
-                            elif msg.url:
-                                content_list.append(provider_message.ContentElement.from_image_url(msg.url))
-                        else:
-                            content_list.append(provider_message.ContentElement.from_text('[Image]'))
-                            plain_text += '[Image]'
-                    elif isinstance(msg, platform_message.File):
-                        if msg.base64:
-                            content_list.append(provider_message.ContentElement.from_file_base64(msg.base64, msg.name))
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, msg.name))
-                    elif isinstance(msg, platform_message.Voice):
-                        if msg.base64:
-                            content_list.append(
-                                provider_message.ContentElement.from_file_base64(msg.base64, 'voice.silk')
-                            )
-                        elif msg.url:
-                            content_list.append(provider_message.ContentElement.from_file_url(msg.url, 'voice'))
+        rendered = input_media.render_input(
+            query.message_chain,
+            include_quotes=bool(quote_msg),
+            keep_images=keep_image_inputs,
+        )
+        # Runner attachments and Box imports address exactly the media rendered here.
+        input_media.remember_media(query, rendered.media)
+        content_list = rendered.contents
+        plain_text = rendered.plain_text
 
         query.variables['user_message_text'] = plain_text
 

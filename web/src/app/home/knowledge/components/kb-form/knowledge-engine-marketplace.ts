@@ -201,6 +201,8 @@ export async function installMarketplaceKnowledgeEngine(
     plugin.author,
     plugin.name,
     plugin.latest_version,
+    // Inline installs confirm the declared permissions for the member.
+    true,
   );
   const pending: PendingKnowledgeEngineInstall = {
     taskId,

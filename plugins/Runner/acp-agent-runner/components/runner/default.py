@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
 import json
 import logging
@@ -350,6 +351,32 @@ def _mcp_headers_to_acp(headers: typing.Any) -> list[dict[str, str]]:
                 converted.append({"name": str(item["name"]), "value": str(item["value"])})
         return converted
     return []
+
+
+async def _hydrate_input_attachments(ctx: RunnerContext) -> None:
+    """Fill attachment content from a Host that serves bytes by ref.
+
+    Current Hosts send attachments as metadata only; the ACP prompt embeds
+    images, audio and files from inline content, so read them once up front.
+    Older SDKs or Hosts keep the previous inline/URL behavior.
+    """
+    reader = getattr(ctx, "read_input_attachment", None)
+    if reader is None:
+        return
+    for attachment in ctx.input.attachments or []:
+        if attachment.content or not attachment.ref:
+            continue
+        try:
+            data = await reader(attachment)
+        except Exception as exc:
+            logger.warning("Skipping input attachment %s: %s", attachment.ref, exc)
+            continue
+        if data is None:
+            return
+        mime_type = data.mime_type or attachment.mime_type or "application/octet-stream"
+        attachment.mime_type = mime_type
+        attachment.name = attachment.name or data.name
+        attachment.content = f"data:{mime_type};base64,{base64.b64encode(data.data).decode('ascii')}"
 
 
 class DefaultRunner(Runner):
@@ -871,6 +898,17 @@ class DefaultRunner(Runner):
         )
 
         await hub.wait_for_daemon(config["daemon_id"], config["daemon_connect_timeout"])
+        # Emit a placeholder once the daemon is reachable so the platform
+        # creates its streaming card (a waiting indicator) before the agent
+        # produces any text. Later deltas carry full snapshots in
+        # ``all_content`` and replace this value, so the final answer is
+        # unaffected. Waiting for the daemon first avoids leaving an orphaned
+        # placeholder card when the daemon is offline.
+        if config.get("streaming", True):
+            yield RunnerResult.message_delta(
+                ctx.run_id,
+                MessageChunk(role="assistant", content="⏳", all_content="⏳", msg_sequence=0),
+            )
         tools = AgentRunExternalTools(self.get_run_api(ctx), ctx) if config["mcp_bridge_enabled"] else None
         payload = self._daemon_payload(ctx, config, prompt_text, stored_session_id)
         async with contextlib.aclosing(
@@ -902,6 +940,7 @@ class DefaultRunner(Runner):
             yield RunnerResult.run_failed(ctx.run_id, error=exc.message, code=exc.code, retryable=exc.retryable)
             return
 
+        await _hydrate_input_attachments(ctx)
         input_text = self._input_text(ctx)
         if not has_acp_prompt_input(input_text, ctx.input):
             yield RunnerResult.run_failed(ctx.run_id, error="input text is required", code="acp.empty_input")

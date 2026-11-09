@@ -285,7 +285,12 @@ class AgentInput(BaseModel):
 ```
 
 - 文本、多模态、附件都属于当前 event input。
-- 大文件、图片、音频、工具大结果应进入授权 sandbox/workspace，input attachment 只携带轻量 metadata/path/url/content。
+- 大文件、图片、音频、工具大结果应进入授权 sandbox/workspace，input attachment 只携带轻量 metadata/path/url。
+- 输入媒体只有一个来源：Host 用 `agent/runner/input_media.py` 的 `render_input()` 按出现顺序遍历一次平台消息链（被引用消息仅在其内容进入输入时计入），得到 `att-1`、`att-2`… 的媒体列表。
+  - `contents`：给模型的视图，在每个媒体原位置插入 `[attachment att-N: <type> <name>]` 文本标记，随后是图片/文件内容元素；被引用消息包在 `[quoted message from <sender>]` … `[/quoted message]` 中。
+  - `attachments`：与媒体一一对应的元数据（`ref`/`type`/`source`=`message|quote`/`name`/`mime_type`/`size`/`id`/仅 http(s) 的 `url`），**不携带 `content`**（字段已弃用）。插件经 `user_message_alter` 新增的媒体不进入 attachments。
+  - 字节按需读取：`read_input_attachment(ref)`（`ExecutionAPI` run scope，`available_apis.input_attachments`），依次尝试 base64、http(s) URL、平台本地路径、适配器 `get_file_url(id)`；单个 10 MiB、每 run 累计 50 MiB，不缓存、不落盘、不记录内容。Box 导入使用同一 ref。
+  - 事件直连入口的信封在 Host 内部携带 inline 内容，`prepare_input_files()` 将其登记到本 run 的 ref 表并清空后才交给 Runner；steering 消息的附件去掉 `ref`，因为 ref 只指向被认领 run 自身的输入。
 - 平台原始消息链不属于 SDK `AgentInput`；需要诊断时放在 Host 内部 envelope 或 `ctx.adapter.extra` 的一次性兼容字段中，不作为长期 runner 合同。
 - `interaction` 只在 `event.event_type == "interaction.submitted"` 时出现，承载经过 Host 校验和归一化的用户提交；平台原始 callback payload 不进入该字段。
 
