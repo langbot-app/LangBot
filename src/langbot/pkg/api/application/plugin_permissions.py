@@ -9,6 +9,7 @@ import sqlalchemy
 from langbot_plugin.api.entities.permissions import PluginPermissions
 
 from ...entity.persistence.plugin import PluginSetting
+from ...utils import constants
 from ..authz import Permission, has_permission, require_permission
 from ..context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from .contracts import ApplicationAPIError, ApplicationAPIException
@@ -167,7 +168,12 @@ async def authorize_action(ap, binding, action: str, data: dict) -> None:
         fail('permission_denied', 'Plugin installation is not enabled')
     if action in CONTEXT_ACTIONS or action in APPLICATION_ACTIONS:
         return
-    if data.get('bot_uuid'):
+    if data.get('bot_uuid') == constants.WEBSOCKET_PROXY_BOT_UUID:
+        # The debug proxy bot is in-memory only and never has a ``bots`` row;
+        # it is available exactly when this Workspace has a live proxy.
+        if not ap.platform_mgr.has_websocket_proxy_bot(binding.workspace_uuid):
+            fail('permission_denied', 'Bot is not available in this Workspace')
+    elif data.get('bot_uuid'):
         from ...entity.persistence.bot import Bot
 
         result = await ap.persistence_mgr.execute_async(

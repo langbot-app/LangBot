@@ -17,6 +17,7 @@ from ....entity.persistence import agent_run as persistence_agent_run
 from ....entity.persistence import agent_interaction as persistence_agent_interaction
 from ....entity.persistence.event_log import EventLog
 from ....storage.media import MediaCache
+from ....utils import constants
 from ..authz import WorkspaceRequiredError
 from ..context import ExecutionContext
 from .tenant import TenantContext, require_workspace_uuid
@@ -1046,14 +1047,14 @@ class MonitoringService(ExecutionDetailsMixin):
         return sqlalchemy.or_(
             model.binding_id.like('debug:%'),
             model.conversation_id.like('debug:%'),
-            model.bot_id == 'websocket-proxy-bot',
+            model.bot_id == constants.WEBSOCKET_PROXY_BOT_UUID,
         )
 
     @staticmethod
     def _debug_pipeline_condition(model):
         # Dashboard/API pipeline debug uses this reserved proxy identity.
         # Real Web Page bots have their own bot UUID, even on the same adapter.
-        return sqlalchemy.func.coalesce(model.bot_id == 'websocket-proxy-bot', False)
+        return sqlalchemy.func.coalesce(model.bot_id == constants.WEBSOCKET_PROXY_BOT_UUID, False)
 
     def _monitoring_execution_condition(self, model, workspace_uuid, statuses=None, mode='all'):
         """Filter telemetry by its owning execution, not by the call's outcome."""
@@ -1264,7 +1265,7 @@ class MonitoringService(ExecutionDetailsMixin):
         is_debug = (
             str(row.binding_id or '').startswith('debug:')
             or str(row.conversation_id or '').startswith('debug:')
-            or row.bot_id == 'websocket-proxy-bot'
+            or row.bot_id == constants.WEBSOCKET_PROXY_BOT_UUID
         )
         return {
             'source': 'agent',
@@ -1326,7 +1327,7 @@ class MonitoringService(ExecutionDetailsMixin):
             'usage': None,
             'cost': None,
             'queue_name': None,
-            'debug': row.bot_id == 'websocket-proxy-bot',
+            'debug': row.bot_id == constants.WEBSOCKET_PROXY_BOT_UUID,
             'has_error': row.status == 'error',
             'input_preview': preview,
             'platform': row.platform,

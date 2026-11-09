@@ -44,6 +44,7 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from ..utils import constants
 from .adapter_names import canonical_adapter_name
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -2073,6 +2074,15 @@ class PlatformManager:
             updates['pipeline_uuid'] = pipeline_uuid
         return dataclasses.replace(context, **updates) if updates else context
 
+    def has_websocket_proxy_bot(self, workspace_uuid: str) -> bool:
+        """Whether this Workspace currently has a live WebSocket debug proxy.
+
+        Never creates one. The proxy is in-memory only, so callers that would
+        otherwise look a bot up in the ``bots`` table use this for its reserved
+        UUID instead.
+        """
+        return workspace_uuid in self.websocket_proxy_bots
+
     async def get_websocket_proxy_bot(
         self,
         context: ExecutionContext | RequestContext,
@@ -2105,18 +2115,18 @@ class PlatformManager:
                 name='websocket-adapter',
                 ap=self.ap,
                 execution_context=execution_context,
-                owner='websocket-proxy-bot',
+                owner=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             websocket_adapter_inst = websocket_adapter_class({}, websocket_logger, ap=self.ap)
             proxy_context = dataclasses.replace(
                 execution_context,
                 instance_uuid=binding.instance_uuid,
-                bot_uuid='websocket-proxy-bot',
+                bot_uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
             )
             runtime_bot = RuntimeBot(
                 ap=self.ap,
                 bot_entity=persistence_bot.Bot(
-                    uuid='websocket-proxy-bot',
+                    uuid=constants.WEBSOCKET_PROXY_BOT_UUID,
                     workspace_uuid=binding.workspace_uuid,
                     name='WebSocket',
                     description='',
