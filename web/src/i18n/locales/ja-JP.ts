@@ -2162,7 +2162,8 @@ const jaJP = {
       installCompleteMCP: 'MCP サーバーをインストールしました',
       installCompleteSkill: 'スキルをインストールしました',
       followUp: {
-        agents: '次へ: このプラグイン用の Agent またはプラグインプロセッサを作成',
+        agents:
+          '次へ: このプラグイン用の Agent またはプラグインプロセッサを作成',
         pipelines: '次へ: このプラグインを使うパイプラインを作成',
         knowledge: '次へ: このプラグイン用のナレッジベースを作成',
       },
