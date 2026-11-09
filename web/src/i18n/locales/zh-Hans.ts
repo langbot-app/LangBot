@@ -478,6 +478,11 @@ const zhHans = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: '刷新',
+    clickToCopy: '点击复制',
+    finish: '完成',
+    operationFailed: '操作失败',
+    optional: '可选',
     failureReasonNotRecorded:
       '这条历史记录未保存失败原因，请查看机器人日志，或重新发送消息获取详细错误。',
     loadFailedTitle: '暂时无法加载',

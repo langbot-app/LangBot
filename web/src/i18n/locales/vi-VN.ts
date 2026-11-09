@@ -501,6 +501,11 @@ const viVN = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Làm mới',
+    clickToCopy: 'Nhấp để sao chép',
+    finish: 'Hoàn tất',
+    operationFailed: 'Thao tác thất bại',
+    optional: 'Không bắt buộc',
     failureReasonNotRecorded:
       'Chưa lưu nguyên nhân lỗi. Hãy kiểm tra nhật ký bot hoặc gửi lại tin nhắn để biết thêm chi tiết.',
     loadFailedTitle: 'Không thể tải nội dung',

@@ -505,6 +505,11 @@ const ruRU = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'Обновить',
+    clickToCopy: 'Нажмите, чтобы скопировать',
+    finish: 'Готово',
+    operationFailed: 'Не удалось выполнить операцию',
+    optional: 'Необязательно',
     failureReasonNotRecorded:
       'Причина сбоя не сохранена. Проверьте журнал бота или отправьте сообщение повторно для получения подробностей.',
     loadFailedTitle: 'Не удалось загрузить данные',
