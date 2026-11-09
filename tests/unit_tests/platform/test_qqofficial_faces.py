@@ -6,6 +6,7 @@ import pytest
 
 from langbot.libs.qq_official_api.qqofficialevent import QQOfficialEvent
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
+from langbot.pkg.platform.face_text import face_to_model_text
 from langbot.pkg.platform.qqofficial_faces import parse_qqofficial_face_components
 from langbot.pkg.platform.adapters.qqofficial.message_converter import QQOfficialMessageConverter as EBAConverter
 from langbot.pkg.platform.sources.qqofficial import QQOfficialMessageConverter as LegacyConverter
@@ -70,3 +71,23 @@ def test_direct_runner_fallback_exposes_face_label_as_text():
 
     assert model_input.text == '收到[表情]胖三斤'
     assert model_input.attachments == []
+
+
+@pytest.mark.parametrize(
+    ('face', 'expected'),
+    [
+        (platform_message.Face(face_id=300, face_name='胖三斤'), '[表情]胖三斤'),
+        (platform_message.Face(face_type='rps', face_id=2, face_name='猜拳'), '[表情]猜拳(剪刀)'),
+        (platform_message.Face(face_type='rps', face_id=0, face_name='猜拳'), '[表情]猜拳'),
+        (platform_message.Face(face_type='unknown', face_name='x'), '[表情]x'),
+    ],
+)
+def test_face_model_text_never_raises(face, expected):
+    assert face_to_model_text(face) == expected
+
+
+def test_direct_runner_fallback_tolerates_unknown_rps_gesture():
+    message_chain = platform_message.MessageChain([platform_message.Face(face_type='rps', face_id=0, face_name='猜拳')])
+    event = SimpleNamespace(message_chain=message_chain, user_message=None, variables={})
+
+    assert QueryEntryAdapter._build_input(event).text == '[表情]猜拳'
