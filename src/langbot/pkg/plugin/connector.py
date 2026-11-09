@@ -1142,38 +1142,6 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     additional_headers=control_headers,
                 )
                 task_coro = self.ctrl.run(new_connection_callback)
-            elif platform.get_platform() == 'win32':
-                # Windows cannot use the stdio subprocess transport, so launch
-                # a managed runtime and authenticate its WebSocket controller.
-                self.ap.logger.info('(windows) use cmd to launch plugin runtime and communicate via ws')
-                control_headers = self._control_headers(allow_generate=True)
-                control_port, debug_port = self._managed_runtime_ports()
-                await self._start_runtime_subprocess(
-                    '-m',
-                    'langbot_plugin.cli.__init__',
-                    'rt',
-                    '--ws-control-port',
-                    str(control_port),
-                    '--ws-debug-port',
-                    str(debug_port),
-                    env_overrides={PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: self._control_token},
-                )
-                ws_url = f'ws://localhost:{control_port}/control/ws'
-
-                async def connection_failed(
-                    ctrl: ws_client_controller.WebSocketClientController,
-                    exc: Exception | None = None,
-                ) -> None:
-                    del ctrl
-                    connect_errors.append(exc or RuntimeError('WebSocket connection failed'))
-                    self._connected.set()
-
-                self.ctrl = ws_client_controller.WebSocketClientController(
-                    ws_url=ws_url,
-                    make_connection_failed_callback=connection_failed,
-                    additional_headers=control_headers,
-                )
-                task_coro = self.ctrl.run(new_connection_callback)
             else:
                 self.ap.logger.info('use stdio to connect to plugin runtime')
                 _, debug_port = self._managed_runtime_ports()

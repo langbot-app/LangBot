@@ -141,15 +141,26 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     def uses_websocket(self) -> bool:
         """Whether the connector should use WebSocket to reach the Box runtime.
 
-        True when:
+        One rule for every OS: a runtime Core launches itself is always a stdio
+        child, and only a runtime Core does *not* launch is reached over
+        WebSocket. So this is True for exactly:
+
           - Running inside Docker (Box runtime is a separate container)
           - The ``--standalone-box`` CLI flag was passed
           - An explicit ``runtime.endpoint`` was configured
 
-        When this is True the Box runtime lives in a separate process with its
-        own filesystem view (container, pod sidecar, or remote host), so only
+        In those cases the Box runtime lives in a separate process with its own
+        filesystem view (container, pod sidecar, or remote host), so only
         explicitly shared paths are usable on both sides. When False, Box runs
         as a stdio child process that shares LangBot's filesystem.
+
+        Windows is deliberately *not* special-cased. It used to spawn the child
+        and then dial its own loopback port, which raced the child's startup: a
+        refused loopback connect takes seconds to surface on Windows, so every
+        attempt killed the child before it listened (#2545, #2938). The stdio
+        pipe crash that motivated the special case was fixed in the SDK instead
+        (langbot-plugin-sdk f5a079811, shipped in 0.6.0-beta.1 and adopted by
+        LangBot 4.11.0-beta.1).
         """
         return bool(
             self.configured_runtime_endpoint
@@ -169,10 +180,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             await self._stop_transport()
             try:
                 if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
+                    await self._connect_remote_ws()
                 else:
                     await self._start_local_stdio()
             except BaseException:
@@ -191,10 +199,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             await self._stop_transport()
             try:
                 if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
+                    await self._connect_remote_ws()
                 else:
                     await self._start_local_stdio()
             except BaseException:
@@ -277,39 +282,6 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
 
         self._subprocess = ctrl.process
-
-    async def _start_subprocess_then_ws(self) -> None:
-        """Launch box server as detached subprocess, then connect via WS (Windows)."""
-        self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
-
-        self._ensure_control_token(allow_generate=True)
-        env = os.environ.copy()
-        env[BOX_CONTROL_TOKEN_ENV] = self._control_token
-        env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
-        env['LANGBOT_BOX_INSTANCE_ID'] = str(
-            self._filtered_box_config.get('instance_id')
-            or env.get('LANGBOT_BOX_INSTANCE_ID')
-            or self._trusted_instance_uuid
-        )
-        if self._filtered_box_config:
-            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
-
-        python_path = sys.executable
-        # Launched through the same CLI entry point as the plugin runtime
-        # (cli.__init__ <subcommand>); no flag => WebSocket transport.
-        self.runtime_subprocess = await asyncio.create_subprocess_exec(
-            python_path,
-            '-m',
-            'langbot_plugin.cli.__init__',
-            'box',
-            '--ws-control-port',
-            str(self._relay_port),
-            env=env,
-        )
-        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
-
-        ws_url = f'ws://localhost:{self._relay_port}/rpc/ws'
-        await self._connect_ws(ws_url, '(windows) WebSocket')
 
     async def _connect_remote_ws(self) -> None:
         """Connect to a remote (or Docker) box server via WebSocket."""

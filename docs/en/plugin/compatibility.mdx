@@ -2,16 +2,17 @@
 title: "System Compatibility"
 ---
 
-LangBot's plugin system utilizes mechanisms such as `Asyncio` and `Subprocess`, which work well on Unix-like systems (such as Linux, macOS), but have some issues on Windows, preventing plugins from running properly.
+LangBot's plugin system uses `Asyncio` and `Subprocess`. Windows' default `ProactorEventLoop` does not support the stdio transport on the *passing pipes* side, and `SelectorEventLoop` — which does not support `Subprocess` either — is no alternative. Historically that made the normal stdio transport unusable on Windows.
 
-Python's asynchronous event loop on Windows defaults to using `ProactorEventLoop`, but this event loop lacks support for Stdio, while LangBot in non-Docker environments relies on Stdio to communicate with Plugin Runtime, and Plugin Runtime also depends on Stdio to communicate with plugins.
+For background, see the [Python documentation](https://docs.python.org/3.13/library/asyncio-platforms.html).
 
-If we switch to using `SelectorEventLoop`, it would prevent Plugin Runtime and plugins from starting properly, as `SelectorEventLoop` does not support `Subprocess`.
+## How Windows is handled today
 
-For detailed information about these issues, please refer to: [Python Official Documentation](https://docs.python.org/3.13/library/asyncio-platforms.html)
+Windows is no longer special-cased at the transport level. The rule is the same on every OS:
 
-## Solution
+- **a runtime that LangBot launches itself always uses stdio**;
+- **only a runtime LangBot does not launch uses WebSocket** — Docker Compose, a `--standalone-*` process, or an explicit `runtime.endpoint`.
 
-Unlike the tight coupling between subprocess management and Stdio communication on Unix-like systems, LangBot and the Plugin Runtime automatically switch to a hybrid subprocess + WebSocket communication strategy on Windows. LangBot still launches the Plugin Runtime via a subprocess, but communicates with it over WebSocket; similarly, the Plugin Runtime starts each installed plugin via subprocesses while communicating with them through WebSocket.
+The Windows stdio problem is solved inside the runtime itself: the stdio server runs its pipes on worker threads instead of registering them with the Proactor IOCP (`langbot-plugin-sdk` `f5a079811`, shipped from SDK `0.6.0-beta.1` and adopted by LangBot 4.11.0-beta.1). Pinning an older SDK reintroduces the original `WinError 6` / `_ProactorReadPipeTransport` failures.
 
-This behavior is automatically selected based on the OS, so no manual configuration is required.
+Nothing needs to be configured; the transport follows who launches the runtime, not which OS you are on.

@@ -86,6 +86,32 @@ def test_box_runtime_connector_ws_with_standalone_flag(monkeypatch: pytest.Monke
     assert connector._uses_websocket() is True
 
 
+def test_box_runtime_connector_stdio_on_windows(monkeypatch: pytest.MonkeyPatch):
+    """Windows is no longer special: a locally launched runtime uses stdio. (#2545)"""
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+
+    assert connector._uses_websocket() is False
+
+
+def test_box_runtime_connector_ws_on_windows_with_explicit_endpoint(monkeypatch: pytest.MonkeyPatch):
+    """The rule is about who launches the runtime, not about the OS. (#2545)"""
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
+    connector = BoxRuntimeConnector(make_app(Mock(), runtime_endpoint='http://box-runtime:5410'))
+
+    assert connector._uses_websocket() is True
+
+
+def test_box_runtime_connector_ws_on_windows_with_standalone_flag(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'win32')
+    monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', True)
+    connector = BoxRuntimeConnector(make_app(Mock()))
+
+    assert connector._uses_websocket() is True
+
+
 def test_box_runtime_connector_ws_relay_url_default(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr('langbot.pkg.utils.platform.get_platform', lambda: 'linux')
     monkeypatch.setattr('langbot.pkg.utils.platform.standalone_box', False)
@@ -386,20 +412,6 @@ async def test_local_stdio_injects_generated_token_and_trusted_instance(
     assert len(captured['env'][BOX_CONTROL_TOKEN_ENV]) >= 32
     assert captured['env'][BOX_TRUSTED_INSTANCE_ENV] == core_id
     assert captured['env']['LANGBOT_BOX_INSTANCE_ID'] == expected_id
-
-
-async def test_windows_subprocess_receives_stable_identity(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv('LANGBOT_BOX_INSTANCE_ID', raising=False)
-    process = Mock(wait=AsyncMock(return_value=0))
-    spawn = AsyncMock(return_value=process)
-    monkeypatch.setattr(asyncio, 'create_subprocess_exec', spawn)
-    connector = BoxRuntimeConnector(make_app(Mock()))
-    monkeypatch.setattr(connector, '_connect_ws', AsyncMock())
-
-    await connector._start_subprocess_then_ws()
-    await connector.runtime_subprocess_task
-
-    assert spawn.await_args.kwargs['env']['LANGBOT_BOX_INSTANCE_ID'] == 'instance-a'
 
 
 async def test_websocket_controller_receives_control_headers(monkeypatch: pytest.MonkeyPatch):

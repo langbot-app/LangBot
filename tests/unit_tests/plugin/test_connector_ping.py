@@ -554,14 +554,13 @@ async def test_stdio_runtime_passes_debug_port_from_display_url(
 
 
 @pytest.mark.asyncio
-async def test_windows_runtime_passes_control_and_debug_ports(
+async def test_windows_runtime_uses_stdio_like_every_other_os(
     monkeypatch: pytest.MonkeyPatch,
 ):
+    """Windows is no longer special: a locally launched runtime uses stdio. (#2545)"""
     connector = make_connector()
-    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = 'ws://localhost:5500/control/ws'
     connector.ap.instance_config.data['plugin']['display_plugin_debug_url'] = 'ws://localhost:5411/plugin/debug/ws'
     connector._prepare_connected_runtime = AsyncMock()
-    start_args: list[object] = []
     created = {}
     monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
 
@@ -591,10 +590,6 @@ async def test_windows_runtime_passes_control_and_debug_ports(
         async def close(self):
             return None
 
-    async def fake_start(*args, env_overrides=None):
-        start_args.extend(args)
-        start_args.append(env_overrides)
-
     monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: 'win32')
     monkeypatch.setattr(
         connector_module.platform,
@@ -606,25 +601,94 @@ async def test_windows_runtime_passes_control_and_debug_ports(
         'RuntimeConnectionHandler',
         FakeRuntimeHandler,
     )
+    # Only the stdio controller must be used: no WebSocket controller, and no
+    # managed subprocess with --ws-control-port.
+    monkeypatch.setattr(
+        connector_module.stdio_client_controller,
+        'StdioClientController',
+        FakeController,
+    )
+    monkeypatch.setattr(
+        connector_module.ws_client_controller,
+        'WebSocketClientController',
+        Mock(side_effect=AssertionError('WebSocket controller must not be used')),
+    )
+    monkeypatch.setattr(
+        connector,
+        '_start_runtime_subprocess',
+        AsyncMock(side_effect=AssertionError('must not spawn a WS runtime')),
+    )
+
+    await connector.initialize()
+
+    assert created['args'] == [
+        '-m',
+        'langbot_plugin.cli.__init__',
+        'rt',
+        '-s',
+        '--ws-debug-port',
+        '5411',
+    ]
+    assert connector._connected.is_set()
+    await connector.aclose()
+
+
+@pytest.mark.asyncio
+async def test_windows_runtime_still_uses_websocket_when_external(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The rule is about who launches the runtime, not the OS. (#2545)"""
+    connector = make_connector()
+    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = 'ws://localhost:5500/control/ws'
+    connector._prepare_connected_runtime = AsyncMock()
+    created = {}
+    monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
+
+    class FakeRuntimeHandler:
+        def __init__(self, connection, disconnect_callback, ap):
+            self.release = asyncio.Event()
+
+        async def ping(self):
+            return None
+
+        async def set_runtime_config(self, **kwargs):
+            return None
+
+        async def run(self):
+            await self.release.wait()
+
+        async def close(self):
+            self.release.set()
+
+    class FakeController:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+
+        async def run(self, callback):
+            await callback(object())
+
+        async def close(self):
+            return None
+
+    monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: 'win32')
+    monkeypatch.setattr(
+        connector_module.platform,
+        'use_websocket_to_connect_plugin_runtime',
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        connector_module.handler,
+        'RuntimeConnectionHandler',
+        FakeRuntimeHandler,
+    )
     monkeypatch.setattr(
         connector_module.ws_client_controller,
         'WebSocketClientController',
         FakeController,
     )
-    monkeypatch.setattr(connector, '_start_runtime_subprocess', fake_start)
 
     await connector.initialize()
 
-    assert start_args[:-1] == [
-        '-m',
-        'langbot_plugin.cli.__init__',
-        'rt',
-        '--ws-control-port',
-        '5500',
-        '--ws-debug-port',
-        '5411',
-    ]
-    assert start_args[-1] == {PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: connector._control_token}
     assert created['ws_url'] == 'ws://localhost:5500/control/ws'
     assert connector._connected.is_set()
     await connector.aclose()
