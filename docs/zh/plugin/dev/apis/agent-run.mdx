@@ -207,6 +207,8 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 通过流水线运行时，`ctx.delivery.automatic_reply` 为 `True`，可以在 `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])` 返回附件；Agent 和插件处理器使用 `ctx.reply_files()` 显式发送。
 
+自动回复时，每个 `RunnerResult.message_completed` 都作为一条独立消息发送，因此 Runner 可以在答案之前先发进度消息。`RunnerResult.message_delta` 在支持流式的平台上更新同一条流式消息；其他平台只发送完成的消息，只产出 delta 的运行在结束时发送最后一个结果。
+
 外部运行器通过 `AgentRunExternalTools` 工具网关使用相同流程：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。具有当前事件回复权限时还可使用 `langbot_reply_files`；这些调用均携带当前运行的授权。
 
 ### 提示词、历史与事件

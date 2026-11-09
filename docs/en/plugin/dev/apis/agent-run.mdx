@@ -205,6 +205,8 @@ Bind before native sandbox tools or file operations. Runs sharing a Box still ha
 
 `ctx.delivery.automatic_reply` is `True` for Pipeline execution: return files using `RunnerResult.message_completed(ctx.run_id, message, file_ids=[...])`. Agents and plugin processors explicitly call `ctx.reply_files()`.
 
+With automatic replies, every `RunnerResult.message_completed` is sent as its own message, so a Runner can post progress before its answer. `RunnerResult.message_delta` chunks update one streamed message on platforms that support streaming; elsewhere only completed messages are sent, and a run that ends with deltas alone sends its last result once.
+
 External runners use the same flow through `AgentRunExternalTools`: `langbot_get_box_status`, `langbot_list_boxes`, `langbot_acquire_box`, `langbot_bind_box`, `langbot_import_box_attachments`, and `langbot_export_box_files`. `langbot_reply_files` is available when the run has event reply permission. All calls retain the current run authorization.
 
 ### Prompt, history, and events
