@@ -38,6 +38,7 @@ The output `misc` section accepts these optional string settings:
 | `content-filter-hint` | Message rejected by content filter | none |
 | `content-filter-error-hint` | Content check failed | none |
 | `tool-call-hint` | Tool call notification | `{tools}` |
+| `knowledge-retrieval-hint` | Knowledge retrieval activity notification | `{name}` |
 | `runner-not-found-hint` | Configured runner missing | `{runner}` |
 | `runner-not-authorized-hint` | Runner authorization failure | none |
 | `runner-unavailable-hint` | Runner temporarily unavailable | none |
@@ -49,6 +50,18 @@ migration. Existing output switches (including tool-call visibility and exceptio
 handling) retain their behavior.
 
 ## Adding messages
+
+Pipeline output `misc.activity-enabled` enables sequential Host activity notices.
+`activity-show-source` optionally includes the translated origin category and known
+source name. `activity-knowledge` and `activity-tool` default to true and independently
+control notices without changing execution. Tool calls and nested knowledge retrieval
+emit separate notices without plugin-specific suppression. Defaults use 🛠️ for tools
+and 🔍 for retrieval; custom text stays literal. Each real
+operation emits a separate notice, including repeated names. A query-owned lock
+serializes delivery; awaited sends have a bounded timeout and cancellation propagates.
+Notices never enter model history or final answer chunks. When enabled this replaces
+legacy `track-function-calls` output. An explicit false disables notices; legacy
+behavior remains only for configurations without the new master switch.
 
 Use `pkg.i18n.t()` with a stable English template and named parameters. Add the
 same key and placeholders to all eight JSON catalogs. The catalog parity test

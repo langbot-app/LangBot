@@ -2082,6 +2082,10 @@ class RuntimeConnectionHandler(handler.Handler):
             # For now, we'll call the tool manager's execute method
             try:
                 if source_ref is not None and source_ref['source'] == 'platform':
+                    from ..pipeline.activity import notify_activity
+
+                    activity_query = _resolve_action_query(data, session, self.ap, action_context)
+                    await notify_activity(self.ap, activity_query, 'tool', tool_name, source='platform')
                     result = await execute_platform_tool(
                         self.ap,
                         self._execution_context(action_context),
@@ -2864,6 +2868,17 @@ class RuntimeConnectionHandler(handler.Handler):
 
             try:
                 telemetry_features.increment(self.ap, 'kb', 'retrievals', execution_id=run_id or '')
+                from ..pipeline.activity import notify_activity
+
+                activity_query = _resolve_action_query(data, session if run_id else None, self.ap, action_context)
+                await notify_activity(
+                    self.ap,
+                    activity_query,
+                    'knowledge',
+                    kb.get_name(),
+                    source='plugin',
+                    source_name=kb.get_knowledge_engine_plugin_id(),
+                )
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,
@@ -2985,6 +3000,16 @@ class RuntimeConnectionHandler(handler.Handler):
                         }
                     )
                 telemetry_features.increment(self.ap, 'kb', 'retrievals', query=query, execution_id=run_id or '')
+                from ..pipeline.activity import notify_activity
+
+                await notify_activity(
+                    self.ap,
+                    query,
+                    'knowledge',
+                    kb.get_name(),
+                    source='plugin',
+                    source_name=kb.get_knowledge_engine_plugin_id(),
+                )
                 entries = await kb.retrieve(
                     execution_context,
                     query_text,

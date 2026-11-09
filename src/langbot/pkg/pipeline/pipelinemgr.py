@@ -266,7 +266,10 @@ class RuntimePipeline:
                     bot_message=query.resp_messages[-1],
                     message=result.user_notice,
                     quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=query.resp_messages[-1].is_final,
+                    is_final=(
+                        result.result_type == pipeline_entities.ResultType.INTERRUPT
+                        or getattr(query.resp_messages[-1], 'is_final', True)
+                    ),
                 )
             else:
                 await query.adapter.reply_message(

@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "Agent 正在呼叫工具：{name}",
+  "Agent is searching knowledge base: {name}": "Agent 正在查詢知識庫：{name}",
+  "Plugin": "外掛",
+  "MCP": "MCP",
+  "Built-in": "內建",
+  "Skill": "技能",
+  "Platform": "平台",
+  "Knowledge base": "知識庫",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "外掛 {plugin} 未宣告權限。請在外掛設定中確認相容模式存取權限。",
   "Request failed.": "請求失敗。",
   "Too many requests. Please try again later.": "請求過於頻繁，請稍後重試。",
