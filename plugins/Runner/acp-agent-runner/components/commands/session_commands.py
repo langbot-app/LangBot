@@ -22,13 +22,10 @@ from pkg.session_management import (
 
 
 def _display_timezone() -> ZoneInfo | None:
-    """Resolve the zone used for human-readable ACP timestamps.
-
-    Plugin worker processes run with a trimmed environment that usually does
-    not inherit ``TZ``, so ``datetime.astimezone()`` falls back to UTC there.
-    Prefer the configured ``TZ`` value and otherwise use the deployment zone.
-    """
-    name = (os.environ.get("TZ") or "Asia/Shanghai").strip()
+    """Return the zone named by ``TZ``, or ``None`` to use the host local zone."""
+    name = (os.environ.get("TZ") or "").strip().lstrip(":")
+    if not name:
+        return None
     try:
         return ZoneInfo(name)
     except Exception:
@@ -36,7 +33,11 @@ def _display_timezone() -> ZoneInfo | None:
 
 
 def _format_session_time(value: str) -> str:
-    """Render an ACP timestamp in the deployment time zone."""
+    """Render an ACP timestamp in the host time zone, labelled with that zone.
+
+    Plugin workers may not inherit ``TZ`` and containers often run in UTC, so
+    the zone abbreviation is appended to keep the displayed time unambiguous.
+    """
     raw = str(value or "").strip()
     if not raw:
         return ""
@@ -44,10 +45,12 @@ def _format_session_time(value: str) -> str:
         parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
     except ValueError:
         return raw.replace("T", " ").replace("Z", "")[:16]
-    if parsed.tzinfo is not None:
-        zone = _display_timezone()
-        parsed = parsed.astimezone(zone) if zone is not None else parsed.astimezone()
-    return parsed.strftime("%Y-%m-%d %H:%M")
+    if parsed.tzinfo is None:
+        return parsed.strftime("%Y-%m-%d %H:%M")
+    zone = _display_timezone()
+    parsed = parsed.astimezone(zone) if zone is not None else parsed.astimezone()
+    label = parsed.tzname() or ""
+    return f"{parsed.strftime('%Y-%m-%d %H:%M')} {label}".rstrip()
 
 
 def _language(component: Command) -> str:

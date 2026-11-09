@@ -863,15 +863,6 @@ class DefaultRunner(Runner):
         prompt_text: str,
         stored_session_id: str,
     ) -> typing.AsyncGenerator[RunnerResult, None]:
-        # Emit an immediate placeholder so the platform creates its streaming
-        # card (and shows a waiting indicator) before the agent produces any
-        # text. Later deltas carry full snapshots in ``all_content`` and
-        # replace this value, so the final answer is unaffected.
-        if config.get("streaming", True):
-            yield RunnerResult.message_delta(
-                ctx.run_id,
-                MessageChunk(role="assistant", content="⏳", all_content="⏳", msg_sequence=0),
-            )
         hub = get_agent_runtime_daemon_hub("acp", error_code_prefix="acp")
         await hub.start(
             host=config["daemon_hub"]["host"],
@@ -880,6 +871,17 @@ class DefaultRunner(Runner):
         )
 
         await hub.wait_for_daemon(config["daemon_id"], config["daemon_connect_timeout"])
+        # Emit a placeholder once the daemon is reachable so the platform
+        # creates its streaming card (a waiting indicator) before the agent
+        # produces any text. Later deltas carry full snapshots in
+        # ``all_content`` and replace this value, so the final answer is
+        # unaffected. Waiting for the daemon first avoids leaving an orphaned
+        # placeholder card when the daemon is offline.
+        if config.get("streaming", True):
+            yield RunnerResult.message_delta(
+                ctx.run_id,
+                MessageChunk(role="assistant", content="⏳", all_content="⏳", msg_sequence=0),
+            )
         tools = AgentRunExternalTools(self.get_run_api(ctx), ctx) if config["mcp_bridge_enabled"] else None
         payload = self._daemon_payload(ctx, config, prompt_text, stored_session_id)
         async with contextlib.aclosing(
