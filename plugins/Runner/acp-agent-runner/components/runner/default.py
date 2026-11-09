@@ -29,7 +29,7 @@ from pkg.daemon_relay import (
 )
 from pkg.prompt import acp_prompt_blocks, has_acp_prompt_input, prompt_capabilities
 from pkg.runtime_support import local_workspace
-from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params
+from pkg.session import CLAUDE_ENV_VARS_TO_UNSET, build_session_params, mcp_server_to_acp
 from pkg.session_management import read_json, runner_session_identity, storage_key, write_json
 from pkg.steering import run_with_steering
 
@@ -329,30 +329,6 @@ def _tool_update_name(payload: dict[str, typing.Any]) -> str:
     return str(payload.get("name") or payload.get("title") or "acp_tool")
 
 
-def _mcp_env_to_acp(env: typing.Any) -> list[dict[str, str]]:
-    if isinstance(env, dict):
-        return [{"name": str(key), "value": str(value)} for key, value in env.items()]
-    if isinstance(env, list):
-        converted = []
-        for item in env:
-            if isinstance(item, dict) and "name" in item and "value" in item:
-                converted.append({"name": str(item["name"]), "value": str(item["value"])})
-        return converted
-    return []
-
-
-def _mcp_headers_to_acp(headers: typing.Any) -> list[dict[str, str]]:
-    if isinstance(headers, dict):
-        return [{"name": str(key), "value": str(value)} for key, value in headers.items()]
-    if isinstance(headers, list):
-        converted = []
-        for item in headers:
-            if isinstance(item, dict) and "name" in item and "value" in item:
-                converted.append({"name": str(item["name"]), "value": str(item["value"])})
-        return converted
-    return []
-
-
 async def _hydrate_input_attachments(ctx: RunnerContext) -> None:
     """Fill attachment content from a Host that serves bytes by ref.
 
@@ -604,22 +580,10 @@ class DefaultRunner(Runner):
             logger.warning("Failed to persist ACP session capabilities: %s", exc)
 
     def _mcp_server_to_acp(self, server: AgentMCPServerConfig) -> dict[str, typing.Any]:
-        if server.transport == "http":
-            return {
-                "name": server.name,
-                "type": "http",
-                "url": server.url,
-                "headers": _mcp_headers_to_acp(server.headers),
-            }
-        if server.transport != "stdio":
-            raise AcpError(f"unsupported MCP transport: {server.transport}", code="acp.mcp_bridge_invalid")
-        return {
-            "name": server.name,
-            "type": "stdio",
-            "command": server.command,
-            "args": list(server.args),
-            "env": _mcp_env_to_acp(server.env),
-        }
+        try:
+            return mcp_server_to_acp(server)
+        except ValueError as exc:
+            raise AcpError(str(exc), code="acp.mcp_bridge_invalid") from exc
 
     def _mcp_servers(
         self,

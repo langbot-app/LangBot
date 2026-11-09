@@ -292,4 +292,4 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 ACP daemon 复用 LangBot 现有的 run-scoped MCP 桥。Box 可用且已授权 `event_reply` 时，先绑定 Box，在其中生成文件，通过 `langbot_export_box_files` 导出选定的绝对路径，再调用 `langbot_reply_files` 发送返回的文件 ID。媒体上传与投递由平台适配器负责，ACP Agent 无需获取平台凭据。
 
-文件 ID 属于导出它的 run。即使 Pipeline 过滤器改写了处理中的文本，回复目标仍保留原始入站消息 ID。长驻 MCP 监听器不能继承首次 invocation 的上下文；每次工具调用都应恢复所属 run 的上下文，并保留正常的授权撤销检查。
+文件 ID 只在导出它的 run 内有效。即使 Pipeline 过滤器改写了处理中的文本，回复目标仍是原始入站消息。

@@ -26,6 +26,8 @@ from langbot_plugin.api.agent_tools.mcp_protocol import (
     jsonrpc_error,
 )
 
+from pkg.session import mcp_server_to_acp
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DAEMON_HUB_HOST = "127.0.0.1"
@@ -402,6 +404,13 @@ class AgentRuntimeDaemonHub:
                             )
                         )
                         session["queue"].put_nowait(None)
+                # Cancel in-flight tool calls last so a call that is slow to
+                # unwind cannot keep this daemon ID registered.
+                pending = list(connection.get("mcp_tasks") or ())
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.wait(pending, timeout=self.cancel_timeout)
 
     async def _handle_message(self, connection, raw_message):
         try:
@@ -429,23 +438,27 @@ class AgentRuntimeDaemonHub:
             if isinstance(message.get("event"), dict):
                 session["queue"].put_nowait(message["event"])
         elif kind == "mcp.request":
-            tools = session["tools"]
-            if tools is None:
-                payload = jsonrpc_error(None, -32000, "Run tools revoked")
-            else:
-                try:
-                    tool_task = session["tool_context"].run(
-                        asyncio.create_task,
-                        handle_agent_runtime_mcp_payload(tools, message.get("payload")),
-                    )
-                    try:
-                        payload = await tool_task
-                    except asyncio.CancelledError:
-                        tool_task.cancel()
-                        await asyncio.gather(tool_task, return_exceptions=True)
-                        raise
-                except Exception as exc:
-                    payload = jsonrpc_error(None, -32000, str(exc))
+            # Dispatch concurrently: a slow tool call must not block pings, run
+            # events or other jobs multiplexed on the same daemon socket.
+            task = session["tool_context"].run(
+                asyncio.create_task,
+                self._answer_mcp_request(connection, session, message),
+            )
+            pending = connection.setdefault("mcp_tasks", set())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+
+    async def _answer_mcp_request(self, connection, session, message):
+        """Run one MCP request inside the owning job's captured Context."""
+        tools = session["tools"]
+        if tools is None:
+            payload = jsonrpc_error(None, -32000, "Run tools revoked")
+        else:
+            try:
+                payload = await handle_agent_runtime_mcp_payload(tools, message.get("payload"))
+            except Exception as exc:
+                payload = jsonrpc_error(None, -32000, str(exc))
+        with contextlib.suppress(websockets.exceptions.ConnectionClosed):
             await self._send(
                 connection,
                 dict(
@@ -570,12 +583,7 @@ class LocalMCPProxy:
         )
 
     def server_config(self) -> dict[str, typing.Any]:
-        config = self.mcp_server().to_dict(include_type=True)
-        # ACP clients such as OpenCode require ``headers`` to be an array even
-        # when empty. Omitting the field makes them silently skip this server,
-        # which hides every LangBot tool from the agent.
-        config.setdefault("headers", [])
-        return config
+        return mcp_server_to_acp(self.mcp_server())
 
 
 class AgentRuntimeDaemonClient:

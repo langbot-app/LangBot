@@ -290,4 +290,4 @@ The following components receive task input rather than an EventListener or Runn
 
 The ACP daemon uses the existing LangBot run-scoped MCP bridge. With Box available and `event_reply` authorized, bind a Box, generate the file there, export the selected absolute paths with `langbot_export_box_files`, and send the returned IDs with `langbot_reply_files`. The platform adapter owns media upload and delivery; the ACP agent does not need platform credentials.
 
-File IDs belong to the exporting run. Reply targets retain the original inbound message ID even when Pipeline filters rewrite the working text. Long-lived MCP listeners must not inherit the first invocation's context: restore the owning run's context for each tool call and retain the normal revocation checks.
+File IDs are valid only within the run that exported them. Replies still target the original inbound message even when Pipeline filters rewrite the working text.
