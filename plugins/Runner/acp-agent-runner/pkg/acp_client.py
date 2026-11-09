@@ -19,6 +19,12 @@ _SECRET_ASSIGNMENT_RE = re.compile(
     r"[\"']?\s*[:=]\s*[\"']?)[^\"'\s,}\]]+"
 )
 
+# ACP frames are line-delimited JSON, and a single frame can legitimately
+# carry large tool results (file contents, diffs, base64 media). The asyncio
+# default of 64 KiB is far too small and raises LimitOverrunError, which used
+# to abort the reader task and make cleanup look unconfirmed.
+_STDOUT_LINE_LIMIT = 32 * 1024 * 1024
+
 
 def _redact_secrets(text: str) -> str:
     redacted = _AUTH_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}[REDACTED]", str(text))
@@ -137,6 +143,7 @@ class AcpStdioClient:
                     stdin=asyncio.subprocess.PIPE,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    limit=_STDOUT_LINE_LIMIT,
                     start_new_session=os.name != "nt",
                 ),
                 timeout=self.startup_timeout,
@@ -278,7 +285,14 @@ class AcpStdioClient:
         assert self.process.stdout is not None
 
         while True:
-            raw_line = await self.process.stdout.readline()
+            try:
+                raw_line = await self.process.stdout.readline()
+            except (ValueError, asyncio.LimitOverrunError) as exc:
+                # Even with a raised limit an oversized frame must fail this
+                # request as a protocol error. Letting the reader task die
+                # would surface as "cleanup unconfirmed" and fence the daemon.
+                self._fail_pending(AcpProtocolError(f"ACP agent wrote an oversized stdout frame: {exc}"))
+                return
             if not raw_line:
                 self._fail_pending(AcpProcessError(self._process_exit_message(), code="acp.process_exited"))
                 return
