@@ -193,8 +193,8 @@ export function asyncTaskToPluginInstallTask(
     stageStartedAt: Date.now(),
     currentAction: action,
     pendingConfirmation:
-      typeof md.pending_confirmation === 'boolean'
-        ? md.pending_confirmation
+      typeof md.pending_permission_confirmation === 'boolean'
+        ? md.pending_permission_confirmation
         : undefined,
   };
 }
@@ -282,8 +282,8 @@ export function PluginInstallTaskProvider({
 
                 const progressFields = {
                   pendingConfirmation:
-                    typeof md.pending_confirmation === 'boolean'
-                      ? md.pending_confirmation
+                    typeof md.pending_permission_confirmation === 'boolean'
+                      ? md.pending_permission_confirmation
                       : undefined,
                   downloadCurrent: downloadCurrent ?? t.downloadCurrent,
                   downloadTotal: downloadTotal ?? t.downloadTotal,

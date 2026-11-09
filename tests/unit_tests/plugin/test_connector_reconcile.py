@@ -745,6 +745,7 @@ async def test_installation_update_accepts_connection_row_result(strict):
         enabled=True,
         permission_grants={'workspace_operations': [], 'capabilities': ['models.invoke']},
         permission_snapshot={'workspace_operations': [], 'capabilities': ['models.invoke']},
+        permission_declaration={'workspace_operations': [], 'capabilities': ['models.invoke']},
     )
     execute_async = AsyncMock(
         side_effect=[
@@ -777,6 +778,53 @@ async def test_installation_update_accepts_connection_row_result(strict):
     assert updated['enabled'] is strict
     assert updated['permission_grants'] == existing.permission_grants
     assert updated['permission_snapshot'] == (existing.permission_snapshot if strict else None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('enabled', 'snapshot', 'expected_enabled', 'expected_confirmed'),
+    [
+        (True, 'legacy', True, True),
+        (False, 'legacy', False, True),
+        (False, None, False, False),
+    ],
+)
+async def test_compatibility_upgrade_keeps_confirmed_installation_with_all_legacy_grants(
+    enabled, snapshot, expected_enabled, expected_confirmed
+):
+    legacy = {'workspace_operations': [], 'capabilities': sorted(LEGACY_CAPABILITIES)}
+    existing = SimpleNamespace(
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=2,
+        artifact_digest='a' * 64,
+        install_info={'_artifact_storage': 'tenant_binary_storage_v1'},
+        enabled=enabled,
+        permission_grants={'workspace_operations': [], 'capabilities': ['models.invoke']},
+        permission_snapshot=legacy if snapshot == 'legacy' else None,
+        permission_declaration=None,
+    )
+    execute_async = AsyncMock(side_effect=[SimpleNamespace(first=lambda: existing), SimpleNamespace(rowcount=1)])
+    connector = connection_result_connector(execute_async)
+    context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+
+    await connector._persist_installation_package(
+        context,
+        plugin_author='author',
+        plugin_name='plugin',
+        install_source=PluginInstallSource.MARKETPLACE,
+        install_info={'_manifest': {'spec': {}}},
+        artifact_digest='b' * 64,
+    )
+
+    updated = execute_async.await_args.args[0].compile().params
+    assert updated['enabled'] is expected_enabled
+    assert updated['permission_declaration'] is None
+    if expected_confirmed:
+        assert updated['permission_grants'] == legacy
+        assert updated['permission_snapshot'] == legacy
+    else:
+        assert updated['permission_grants'] == existing.permission_grants
+        assert updated['permission_snapshot'] is None
 
 
 @pytest.mark.asyncio

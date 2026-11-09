@@ -178,7 +178,7 @@ test('installation persists a scoped task before polling and waits for component
   assert.equal(installed, engine);
   assert.equal(created, 42);
   assert.deepEqual(calls, [
-    ['install', 'qa', 'engine', '2.0.0'],
+    ['install', 'qa', 'engine', '2.0.0', true],
     ['task', 42],
     ['task', 42],
     ['engines'],
@@ -221,7 +221,7 @@ test('failed tasks clear their intent and never query component registration', a
     /Package invalid/,
   );
   assert.deepEqual(calls, [
-    ['install', 'qa', 'engine', '2.0.0'],
+    ['install', 'qa', 'engine', '2.0.0', true],
     ['task', 42],
   ]);
   assert.equal(storage.size, 0);

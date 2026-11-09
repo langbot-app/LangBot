@@ -53,6 +53,7 @@ for (const reload of [false, true]) {
         plugin_author: 'qa',
         plugin_name: 'engine',
         plugin_version: '2.0.0',
+        auto_confirm_permissions: true,
       });
       await route.fulfill({ json: { code: 0, data: { task_id: 42 } } });
     });
