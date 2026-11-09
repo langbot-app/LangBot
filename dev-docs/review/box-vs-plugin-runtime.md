@@ -10,8 +10,8 @@
 
 | 维度 | Plugin Runtime | Box Runtime |
 |------|---------------|-------------|
-| **继承关系** | `PluginRuntimeConnector(ManagedRuntimeConnector)` | `BoxRuntimeConnector`（独立类） |
-| **传输分支** | 3 条 (Docker/WS, Win32/subprocess+WS, Unix/stdio) | 3 条 (本地 stdio, Win32/subprocess+WS, 远程 WS) |
+| **继承关系** | `PluginRuntimeConnector(ManagedRuntimeConnector)` | `BoxRuntimeConnector(ManagedRuntimeConnector)` |
+| **传输分支** | 2 条 (外部 WS, 本地 stdio)，共用 `select_runtime_transport()` | 2 条 (外部 WS, 本地 stdio)，共用 `select_runtime_transport()` |
 | **心跳** | 20s ping loop | 20s ping loop（`_heartbeat_loop`） |
 | **重连** | WS 模式: sleep 3s → re-initialize | 由 BoxService `_reconnect_loop` 处理，指数退避 |
 | **Handler 类型** | `RuntimeConnectionHandler` (1132 行, 25+ action) | 基础 `Handler` + `BoxServerHandler`（SDK 端 25 action） |
@@ -24,41 +24,46 @@
 
 ## 2. 传输决策
 
-### Plugin: 3-路决策
+两个 connector 共用 `ManagedRuntimeConnector.select_runtime_transport()`：显式 endpoint、Docker、`--standalone-*` → WebSocket；其余（Core 自己拉起子进程，Windows / Linux / macOS 相同）→ stdio。
 
 ```python
-# pkg/plugin/connector.py:106-165
-if get_platform() == 'docker' or use_websocket_to_connect_plugin_runtime():
-    # Docker/WS → ws://langbot_plugin_runtime:5400/control/ws
-elif get_platform() == 'win32':
-    # Windows → 起子进程(无 pipe) + ws://localhost:5400/control/ws
-else:
-    # Unix/Mac → StdioClientController(python -m langbot_plugin.cli rt -s)
+# pkg/utils/managed_runtime.py
+def select_runtime_transport(*, standalone: bool, endpoint: str = '') -> RuntimeTransport:
+    if endpoint or standalone or platform.get_platform() == 'docker':
+        return 'websocket'
+    return 'stdio'
 ```
 
-### Box: 3-路决策
+### Plugin
+
+```python
+# pkg/plugin/connector.py
+transport = self.select_runtime_transport(standalone=platform.use_websocket_to_connect_plugin_runtime())
+if transport == 'websocket':
+    # ws://langbot_plugin_runtime:5400/control/ws（plugin.runtime_ws_url）
+else:
+    # StdioClientController(python -m langbot_plugin.cli.__init__ rt -s)
+```
+
+### Box
 
 ```python
 # pkg/box/connector.py
-if self._uses_websocket():
-    if platform.get_platform() == 'win32' and not self.configured_runtime_url:
-        await self._start_subprocess_then_ws()  # subprocess + ws://localhost:5410/rpc/ws
-    else:
-        await self._connect_remote_ws()         # ws://{host}:5410/rpc/ws
+if self._uses_websocket():  # select_runtime_transport(standalone=..., endpoint=box.runtime.endpoint)
+    await self._connect_remote_ws()         # ws://{host}:5410/rpc/ws
 else:
-    await self._start_local_stdio()             # StdioClientController
+    await self._start_local_stdio()         # StdioClientController
 ```
 
-> 历史：2026-04-16 版本本文档曾把 Box 描述为 2 路决策（缺 Windows 分支）。现已对齐 Plugin 的 3 路设计。
+> 历史：早期版本在 Windows 上走"子进程 + WS"第三条分支，原因是 runtime 子进程侧用 `connect_read_pipe` 注册继承来的匿名管道会报 `WinError 6`。SDK 0.6.0 起子进程侧在 Windows 上改为线程阻塞读写 stdio，该分支已删除（Refs langbot-app/LangBot#2545）。
 
 ### 决策矩阵
 
 | 环境 | Plugin | Box |
 |------|--------|-----|
 | Docker | WS → `:5400` | WS → `:5410/rpc/ws` |
-| `--standalone-box` | N/A | WS → `localhost:5410/rpc/ws` |
-| Windows 非 Docker | subprocess + WS (`:5400`) | subprocess + WS (`localhost:5410/rpc/ws`) |
-| Unix/Mac 非 Docker | stdio | stdio |
+| `--standalone-runtime` / `--standalone-box` | WS → `plugin.runtime_ws_url` | WS → `localhost:5410/rpc/ws` |
+| 本机非 Docker（Windows / Linux / macOS） | stdio | stdio |
 | 手动配置 URL | 通过配置项 | WS → 用户配置的 URL |
 
 ---
@@ -182,7 +187,6 @@ Controller ← ABC
 ```python
 dispose():
   if stdio: ctrl.process.terminate()
-  _dispose_subprocess()         # Windows 子进程
   heartbeat_task.cancel()
 ```
 
@@ -211,7 +215,7 @@ Box 的 RPC SHUTDOWN 确保容器被正确停止，不会成为孤儿。Plugin �
 
 ### P1
 
-2. **考虑 Box 继承 ManagedRuntimeConnector**: 复用 `_start_runtime_subprocess` / `_wait_until_ready` / `_dispose_subprocess`，减少重复代码
+2. ~~**考虑 Box 继承 ManagedRuntimeConnector**~~: 已继承；两者共用 `select_runtime_transport()`。只服务 Windows 子进程 + WS 路径的 `_start_runtime_subprocess` / `_wait_until_ready` / `_dispose_subprocess` 已随该路径删除
 3. **Plugin 重连加退避**: 固定 3s 无 backoff 可能造成日志洪水，建议向 Box 的指数退避看齐
 4. **统一连接管理模式**: Event-based (Box) vs direct-await (Plugin)，考虑收敛为一种
 
@@ -219,4 +223,4 @@ Box 的 RPC SHUTDOWN 确保容器被正确停止，不会成为孤儿。Plugin �
 
 - ~~Box 加重连~~（commit `2dfd9d5d`）
 - ~~Box 加心跳~~（20s loop 与 Plugin 一致）
-- ~~Box 加 Windows 支持~~（commit `120817a` / `fafb7a4`）
+- ~~Box 加 Windows 支持~~（commit `120817a` / `fafb7a4`）；之后 Plugin / Box 在 Windows 本机统一改走 stdio（Refs #2545）

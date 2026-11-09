@@ -2,16 +2,31 @@
 title: "System Compatibility"
 ---
 
-LangBot's plugin system utilizes mechanisms such as `Asyncio` and `Subprocess`, which work well on Unix-like systems (such as Linux, macOS), but have some issues on Windows, preventing plugins from running properly.
+The LangBot plugin system consists of three layers of processes: the LangBot main program, the Plugin Runtime, and one worker process per plugin. This page explains how these layers communicate on each operating system.
 
-Python's asynchronous event loop on Windows defaults to using `ProactorEventLoop`, but this event loop lacks support for Stdio, while LangBot in non-Docker environments relies on Stdio to communicate with Plugin Runtime, and Plugin Runtime also depends on Stdio to communicate with plugins.
+## LangBot and the Plugin Runtime
 
-If we switch to using `SelectorEventLoop`, it would prevent Plugin Runtime and plugins from starting properly, as `SelectorEventLoop` does not support `Subprocess`.
+The transport between LangBot and the Plugin Runtime depends only on who starts the Runtime, not on the operating system:
 
-For detailed information about these issues, please refer to: [Python Official Documentation](https://docs.python.org/3.13/library/asyncio-platforms.html)
+| Deployment | Transport |
+|---|---|
+| Running LangBot directly (Windows / Linux / macOS) | LangBot launches the Plugin Runtime as a subprocess and communicates over the subprocess's stdio |
+| Docker | WebSocket to `plugin.runtime_ws_url` (default Compose service `langbot_plugin_runtime:5400`) |
+| Started with `--standalone-runtime` | WebSocket to `plugin.runtime_ws_url`; you start the Runtime yourself |
 
-## Solution
+The Box Runtime follows the same rule: stdio when LangBot runs directly; WebSocket under Docker, with `--standalone-box`, or when `box.runtime.endpoint` is configured.
 
-Unlike the tight coupling between subprocess management and Stdio communication on Unix-like systems, LangBot and the Plugin Runtime automatically switch to a hybrid subprocess + WebSocket communication strategy on Windows. LangBot still launches the Plugin Runtime via a subprocess, but communicates with it over WebSocket; similarly, the Plugin Runtime starts each installed plugin via subprocesses while communicating with them through WebSocket.
+<Note>
+On Windows, asyncio's `ProactorEventLoop` cannot register the anonymous pipes a subprocess inherits with IOCP, so calling `connect_read_pipe` / `connect_write_pipe` on them fails with `WinError 6`. Since `langbot-plugin` 0.6.0 the Runtime reads and writes stdio from blocking background threads on Windows, so LangBot uses stdio on Windows just as it does on Linux / macOS, with no extra configuration.
+</Note>
 
-This behavior is automatically selected based on the OS, so no manual configuration is required.
+## The Plugin Runtime and plugin workers
+
+The Plugin Runtime launches one worker subprocess for each installed plugin:
+
+- **Linux / macOS**: communicates over the worker subprocess's stdio.
+- **Windows**: the Runtime launches the worker as a subprocess, and the worker connects back to the Runtime's plugin debug port over WebSocket (`ws://localhost:<port>/plugin/ws`).
+
+The debug port defaults to `5401` and follows the port in `plugin.display_plugin_debug_url`. On Windows, make sure this port is free and that loopback connections are not blocked by a firewall. When running several LangBot instances on the same machine, give each instance a different `display_plugin_debug_url` port.
+
+LangBot selects all of the above automatically from the deployment and the operating system; you do not need to configure the transport manually.

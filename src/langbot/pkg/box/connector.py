@@ -103,10 +103,10 @@ def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
 class BoxRuntimeConnector(ManagedRuntimeConnector):
     """Connect to the Box runtime via action RPC.
 
-    Transport decision (mirrors Plugin runtime logic):
-      1. Docker / --standalone-box / explicit runtime.endpoint -> WebSocket to external Box process
-      2. Windows (non-Docker)                              -> subprocess + WebSocket (Windows lacks async stdio pipe)
-      3. Unix / macOS                                      -> subprocess + stdio pipe
+    Transport decision (shared with the Plugin runtime through
+    ``ManagedRuntimeConnector.select_runtime_transport``):
+      1. Explicit runtime.endpoint / Docker / --standalone-box -> WebSocket to external Box process
+      2. Otherwise (Windows, Linux and macOS alike)            -> Core-launched subprocess + stdio pipe
     """
 
     def __init__(
@@ -151,11 +151,11 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         explicitly shared paths are usable on both sides. When False, Box runs
         as a stdio child process that shares LangBot's filesystem.
         """
-        return bool(
-            self.configured_runtime_endpoint
-            or platform.get_platform() == 'docker'
-            or platform.use_websocket_to_connect_box_runtime()
+        transport = self.select_runtime_transport(
+            standalone=platform.use_websocket_to_connect_box_runtime(),
+            endpoint=self.configured_runtime_endpoint,
         )
+        return transport == 'websocket'
 
     # Backwards-compatible private alias.
     def _uses_websocket(self) -> bool:
@@ -169,15 +169,12 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             await self._stop_transport()
             try:
                 if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
+                    await self._connect_remote_ws()
                 else:
                     await self._start_local_stdio()
             except BaseException:
                 await self._stop_transport()
-                await self._close_managed_subprocess()
+                await self._close_local_subprocess()
                 raise
 
             if self._heartbeat_task is None or self._heartbeat_task.done():
@@ -191,15 +188,12 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             await self._stop_transport()
             try:
                 if self._uses_websocket():
-                    if platform.get_platform() == 'win32' and not self.configured_runtime_endpoint:
-                        await self._start_subprocess_then_ws()
-                    else:
-                        await self._connect_remote_ws()
+                    await self._connect_remote_ws()
                 else:
                     await self._start_local_stdio()
             except BaseException:
                 await self._stop_transport()
-                await self._close_managed_subprocess()
+                await self._close_local_subprocess()
                 raise
 
             if self._heartbeat_task is None or self._heartbeat_task.done():
@@ -234,7 +228,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
     # -- transport paths -----------------------------------------------------
 
     async def _start_local_stdio(self) -> None:
-        """Launch box server as subprocess and connect via stdio (Unix/macOS)."""
+        """Launch box server as a subprocess and connect via its stdio pipes."""
         from langbot_plugin.runtime.io.controllers.stdio.client import StdioClientController
 
         self.ap.logger.info('Use stdio to connect to box runtime')
@@ -277,39 +271,6 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
 
         self._subprocess = ctrl.process
-
-    async def _start_subprocess_then_ws(self) -> None:
-        """Launch box server as detached subprocess, then connect via WS (Windows)."""
-        self.ap.logger.info('(windows) Use cmd to launch box runtime and communicate via ws')
-
-        self._ensure_control_token(allow_generate=True)
-        env = os.environ.copy()
-        env[BOX_CONTROL_TOKEN_ENV] = self._control_token
-        env[BOX_TRUSTED_INSTANCE_ENV] = self._trusted_instance_uuid
-        env['LANGBOT_BOX_INSTANCE_ID'] = str(
-            self._filtered_box_config.get('instance_id')
-            or env.get('LANGBOT_BOX_INSTANCE_ID')
-            or self._trusted_instance_uuid
-        )
-        if self._filtered_box_config:
-            env['LANGBOT_BOX_CONFIG'] = json.dumps(self._filtered_box_config)
-
-        python_path = sys.executable
-        # Launched through the same CLI entry point as the plugin runtime
-        # (cli.__init__ <subcommand>); no flag => WebSocket transport.
-        self.runtime_subprocess = await asyncio.create_subprocess_exec(
-            python_path,
-            '-m',
-            'langbot_plugin.cli.__init__',
-            'box',
-            '--ws-control-port',
-            str(self._relay_port),
-            env=env,
-        )
-        self.runtime_subprocess_task = asyncio.create_task(self.runtime_subprocess.wait())
-
-        ws_url = f'ws://localhost:{self._relay_port}/rpc/ws'
-        await self._connect_ws(ws_url, '(windows) WebSocket')
 
     async def _connect_remote_ws(self) -> None:
         """Connect to a remote (or Docker) box server via WebSocket."""
@@ -504,7 +465,10 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             await asyncio.gather(self._heartbeat_task, return_exceptions=True)
             self._heartbeat_task = None
         await self._stop_transport()
+        await self._close_local_subprocess()
 
+    async def _close_local_subprocess(self) -> None:
+        """Terminate, escalate, and reap the stdio-launched Box subprocess, if any."""
         process = getattr(self, '_subprocess', None)
         if process is not None and process.returncode is None:
             with contextlib.suppress(ProcessLookupError):
@@ -516,7 +480,6 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
                     process.kill()
                 await process.wait()
         self._subprocess = None
-        await self._close_managed_subprocess()
 
     def dispose(self) -> None:
         """Best-effort synchronous compatibility wrapper; prefer ``aclose``."""
@@ -537,9 +500,6 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
         if hasattr(self, '_subprocess') and self._subprocess is not None and self._subprocess.returncode is None:
             self.ap.logger.info('Terminating managed box runtime process...')
             self._subprocess.terminate()
-
-        # Subprocess launched by ManagedRuntimeConnector._start_runtime_subprocess (Windows path)
-        self._dispose_subprocess()
 
     # -- config helpers ------------------------------------------------------
 
