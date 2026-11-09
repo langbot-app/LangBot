@@ -23,7 +23,7 @@ LangBot's plugin system consists of three cooperating process layers:
 
 1. **LangBot Main Process**: Runs business logic (message pipelines, platform adapters, model invocations), connects to Runtime via `PluginRuntimeConnector`.
 2. **Plugin Runtime**: The orchestration layer — discovers, launches, and manages all plugin subprocesses, routes requests from the main process to the appropriate plugin.
-3. **Plugin Subprocesses**: Each plugin runs in its own Python process, communicating with Runtime via stdio pipes.
+3. **Plugin Subprocesses**: Each plugin runs in its own Python process, communicating with Runtime via stdio pipes on Linux / macOS; on Windows, the Runtime launches it as a subprocess and it connects back to the Runtime over WebSocket.
 
 ### Why Three Layers Instead of Two?
 
@@ -31,7 +31,9 @@ The intuitive design would have the main process manage plugin processes directl
 
 - **Local development**: Main process spawns Runtime as a child via stdio (zero config)
 - **Docker production**: Runtime runs as a separate container, connected via WebSocket
-- **Windows compatibility**: Since Windows asyncio has incomplete stdio subprocess support, it automatically falls back to WebSocket
+- **Standalone**: With `--standalone-runtime`, the developer starts the Runtime separately and the main process also connects via WebSocket
+
+The transport between the main process and the Runtime depends only on who starts the Runtime: a child process launched by the main process always uses stdio (the same on Windows, Linux and macOS), and an external process always uses WebSocket.
 
 The same codebase — no config changes — adapts from development to production.
 
@@ -444,7 +446,7 @@ In practice, LangBot natively supports MCP — users can configure MCP servers d
 
 - stdio requires no network stack — lower latency
 - Simpler process lifecycle management (child processes auto-cleanup when parent exits)
-- WebSocket is only used where stdio isn't supported (Docker, Windows)
+- WebSocket is only used when the Runtime is an external process (Docker, `--standalone-runtime`); on Windows, the Runtime and plugin workers also communicate over WebSocket
 
 ## Conclusion
 

@@ -154,7 +154,6 @@ async def test_invalid_connect_timeout_is_rejected_before_transport_startup(
     create_task = Mock()
     get_platform = Mock(return_value='linux')
     use_websocket = Mock(return_value=False)
-    connector._start_runtime_subprocess = AsyncMock()
     monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
     monkeypatch.setattr(connector_module.asyncio, 'create_task', create_task)
     monkeypatch.setattr(connector_module.platform, 'get_platform', get_platform)
@@ -181,7 +180,6 @@ async def test_invalid_connect_timeout_is_rejected_before_transport_startup(
     use_websocket.assert_not_called()
     stdio_controller.assert_not_called()
     websocket_controller.assert_not_called()
-    connector._start_runtime_subprocess.assert_not_awaited()
     create_task.assert_not_called()
     assert connector._transport_task is None
 
@@ -340,7 +338,7 @@ def test_external_runtime_control_headers_are_empty_when_secret_is_unset(monkeyp
     monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
     connector = make_connector()
 
-    assert connector._control_headers(allow_generate=False) == {}
+    assert connector._control_headers() == {}
 
 
 def test_cloud_runtime_rejects_missing_control_secret(monkeypatch):
@@ -348,16 +346,7 @@ def test_cloud_runtime_rejects_missing_control_secret(monkeypatch):
     connector = make_connector(cloud=True)
 
     with pytest.raises(PluginRuntimeNotConnectedError, match=PLUGIN_RUNTIME_CONTROL_TOKEN_ENV):
-        connector._control_headers(allow_generate=False)
-
-
-def test_local_runtime_control_headers_generate_ephemeral_secret(monkeypatch):
-    monkeypatch.delenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, raising=False)
-    connector = make_connector()
-
-    headers = connector._control_headers(allow_generate=True)
-
-    assert len(headers[PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER]) >= 32
+        connector._control_headers()
 
 
 @pytest.mark.asyncio
@@ -466,24 +455,20 @@ def test_runtime_debug_port_from_url_defaults_and_parses():
     assert PluginRuntimeConnector._runtime_debug_port_from_url('') == 5401
     assert PluginRuntimeConnector._runtime_debug_port_from_url('ws://localhost:5411/plugin/debug/ws') == 5411
     assert PluginRuntimeConnector._runtime_debug_port_from_url('localhost:5412/plugin/debug/ws') == 5412
-    assert PluginRuntimeConnector._runtime_control_port_from_url('ws://langbot_plugin_runtime:5500/control/ws') == 5500
-    assert PluginRuntimeConnector._runtime_control_port_from_url('') == 5400
 
 
-def test_managed_runtime_ports_follow_plugin_config_urls():
+def test_managed_runtime_debug_port_follows_plugin_config_url():
     connector = make_connector()
-    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = 'ws://127.0.0.1:5500/control/ws'
     connector.ap.instance_config.data['plugin']['display_plugin_debug_url'] = 'ws://127.0.0.1:5411/plugin/debug/ws'
 
-    assert connector._managed_runtime_ports() == (5500, 5411)
+    assert connector._managed_runtime_debug_port() == 5411
 
 
-def test_managed_runtime_ports_default_when_urls_empty():
+def test_managed_runtime_debug_port_defaults_when_url_empty():
     connector = make_connector()
-    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = ''
     connector.ap.instance_config.data['plugin']['display_plugin_debug_url'] = ''
 
-    assert connector._managed_runtime_ports() == (5400, 5401)
+    assert connector._managed_runtime_debug_port() == 5401
 
 
 @pytest.mark.asyncio
@@ -553,78 +538,88 @@ async def test_stdio_runtime_passes_debug_port_from_display_url(
     await connector.aclose()
 
 
+class _FakeRuntimeHandler:
+    def __init__(self, connection, disconnect_callback, ap):
+        self.release = asyncio.Event()
+
+    async def ping(self):
+        return None
+
+    async def set_runtime_config(self, **kwargs):
+        return None
+
+    async def run(self):
+        await self.release.wait()
+
+    async def close(self):
+        self.release.set()
+
+
+def _install_fake_transports(monkeypatch: pytest.MonkeyPatch, platform_name: str, standalone: bool):
+    created: dict[str, dict] = {}
+
+    def make_controller(kind: str):
+        class FakeController:
+            def __init__(self, **kwargs):
+                created[kind] = kwargs
+
+            async def run(self, callback):
+                await callback(object())
+
+            async def close(self):
+                return None
+
+        return FakeController
+
+    monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
+    monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: platform_name)
+    monkeypatch.setattr(connector_module.platform, 'use_websocket_to_connect_plugin_runtime', lambda: standalone)
+    monkeypatch.setattr(connector_module.handler, 'RuntimeConnectionHandler', _FakeRuntimeHandler)
+    monkeypatch.setattr(connector_module.stdio_client_controller, 'StdioClientController', make_controller('stdio'))
+    monkeypatch.setattr(connector_module.ws_client_controller, 'WebSocketClientController', make_controller('ws'))
+    return created
+
+
 @pytest.mark.asyncio
-async def test_windows_runtime_passes_control_and_debug_ports(
-    monkeypatch: pytest.MonkeyPatch,
-):
+async def test_windows_local_runtime_uses_stdio(monkeypatch: pytest.MonkeyPatch):
+    """A Core-launched Runtime on Windows uses stdio, the same as Linux/macOS."""
     connector = make_connector()
-    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = 'ws://localhost:5500/control/ws'
     connector.ap.instance_config.data['plugin']['display_plugin_debug_url'] = 'ws://localhost:5411/plugin/debug/ws'
     connector._prepare_connected_runtime = AsyncMock()
-    start_args: list[object] = []
-    created = {}
-    monkeypatch.setattr(connector_module.constants, 'instance_id', 'instance-a')
-
-    class FakeRuntimeHandler:
-        def __init__(self, connection, disconnect_callback, ap):
-            self.release = asyncio.Event()
-
-        async def ping(self):
-            return None
-
-        async def set_runtime_config(self, **kwargs):
-            return None
-
-        async def run(self):
-            await self.release.wait()
-
-        async def close(self):
-            self.release.set()
-
-    class FakeController:
-        def __init__(self, **kwargs):
-            created.update(kwargs)
-
-        async def run(self, callback):
-            await callback(object())
-
-        async def close(self):
-            return None
-
-    async def fake_start(*args, env_overrides=None):
-        start_args.extend(args)
-        start_args.append(env_overrides)
-
-    monkeypatch.setattr(connector_module.platform, 'get_platform', lambda: 'win32')
-    monkeypatch.setattr(
-        connector_module.platform,
-        'use_websocket_to_connect_plugin_runtime',
-        lambda: False,
-    )
-    monkeypatch.setattr(
-        connector_module.handler,
-        'RuntimeConnectionHandler',
-        FakeRuntimeHandler,
-    )
-    monkeypatch.setattr(
-        connector_module.ws_client_controller,
-        'WebSocketClientController',
-        FakeController,
-    )
-    monkeypatch.setattr(connector, '_start_runtime_subprocess', fake_start)
+    created = _install_fake_transports(monkeypatch, 'win32', standalone=False)
 
     await connector.initialize()
 
-    assert start_args[:-1] == [
+    assert 'ws' not in created
+    assert created['stdio']['args'] == [
         '-m',
         'langbot_plugin.cli.__init__',
         'rt',
-        '--ws-control-port',
-        '5500',
+        '-s',
         '--ws-debug-port',
         '5411',
     ]
-    assert start_args[-1] == {PLUGIN_RUNTIME_CONTROL_TOKEN_ENV: connector._control_token}
-    assert created['ws_url'] == 'ws://localhost:5500/control/ws'
+    assert connector._connected.is_set()
+    await connector.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('platform_name', 'standalone'),
+    [('docker', False), ('win32', True), ('linux', True)],
+)
+async def test_external_runtime_uses_websocket(monkeypatch: pytest.MonkeyPatch, platform_name, standalone):
+    token = 'plugin-control-token-that-is-longer-than-32-bytes'
+    monkeypatch.setenv(PLUGIN_RUNTIME_CONTROL_TOKEN_ENV, token)
+    connector = make_connector()
+    connector.ap.instance_config.data['plugin']['runtime_ws_url'] = 'ws://127.0.0.1:5500/control/ws'
+    connector._prepare_connected_runtime = AsyncMock()
+    created = _install_fake_transports(monkeypatch, platform_name, standalone=standalone)
+
+    await connector.initialize()
+
+    assert 'stdio' not in created
+    assert created['ws']['ws_url'] == 'ws://127.0.0.1:5500/control/ws'
+    assert created['ws']['additional_headers'] == {PLUGIN_RUNTIME_CONTROL_TOKEN_HEADER: token}
     assert connector._connected.is_set()
     await connector.aclose()
