@@ -503,6 +503,11 @@ const jaJP = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: '更新',
+    clickToCopy: 'クリックしてコピー',
+    finish: '完了',
+    operationFailed: '操作に失敗しました',
+    optional: '任意',
     failureReasonNotRecorded:
       'この記録には失敗の理由が保存されていません。ボットのログを確認するか、再送信して詳細を確認してください。',
     loadFailedTitle: '読み込めませんでした',

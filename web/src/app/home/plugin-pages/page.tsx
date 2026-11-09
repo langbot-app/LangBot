@@ -221,7 +221,7 @@ function PluginPageIframe({
             setLoadedAssetUrl(assetUrl);
             sendContext();
           }}
-          sandbox="allow-scripts allow-forms"
+          sandbox="allow-scripts allow-forms allow-modals"
           title={`${author}/${pluginName} - ${pagePath}`}
         />
       )}

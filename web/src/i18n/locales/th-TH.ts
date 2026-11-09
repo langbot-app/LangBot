@@ -494,6 +494,11 @@ const thTH = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: 'รีเฟรช',
+    clickToCopy: 'คลิกเพื่อคัดลอก',
+    finish: 'เสร็จสิ้น',
+    operationFailed: 'ดำเนินการไม่สำเร็จ',
+    optional: 'ไม่บังคับ',
     failureReasonNotRecorded:
       'ไม่ได้บันทึกสาเหตุของข้อผิดพลาด โปรดตรวจสอบบันทึกของบอตหรือส่งข้อความอีกครั้งเพื่อดูรายละเอียด',
     loadFailedTitle: 'ไม่สามารถโหลดเนื้อหาได้',

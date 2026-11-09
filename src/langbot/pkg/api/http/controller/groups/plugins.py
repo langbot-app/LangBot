@@ -787,7 +787,15 @@ class PluginsRouterGroup(group.RouterGroup):
             )
             if result.get('error'):
                 return self.http_status(400, -1, result['error'])
-            return self.success(data=result.get('data'))
+            response = self.success(data=result.get('data'))
+            # Page reads ride this POST transport, so a browser will not reuse
+            # them on its own. Mark reads briefly re-servable and writes
+            # one-shot so intermediaries (and any future GET form) behave.
+            if method.upper() == 'GET':
+                response.headers['Cache-Control'] = 'private, max-age=5'
+            else:
+                response.headers['Cache-Control'] = 'private, no-store'
+            return response
 
         @self.route(
             '/github/releases',

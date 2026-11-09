@@ -473,6 +473,11 @@ const zhHant = {
     editionCloud: 'Cloud',
   },
   common: {
+    refresh: '重新整理',
+    clickToCopy: '點擊複製',
+    finish: '完成',
+    operationFailed: '操作失敗',
+    optional: '選填',
     failureReasonNotRecorded:
       '這筆歷史記錄未儲存失敗原因，請查看機器人日誌，或重新傳送訊息取得詳細錯誤。',
     loadFailedTitle: '暫時無法載入',
