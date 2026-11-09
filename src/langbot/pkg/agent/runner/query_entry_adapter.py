@@ -35,6 +35,7 @@ from .platform_tools import resolve_agent_platform_tool_names
 from . import events as runner_events
 from ...pipeline.pool import get_query_execution_context
 from ...provider.tools.toolmgr import TOOL_SOURCE_REFS_QUERY_KEY
+from ...platform.face_text import face_to_model_text
 
 
 class QueryEntryAdapter:
@@ -462,6 +463,10 @@ class QueryEntryAdapter:
                     if component_text:
                         text_parts.append(component_text)
                         contents.append({'type': 'text', 'text': component_text})
+                elif isinstance(component, platform_message.Face):
+                    face_text = face_to_model_text(component)
+                    text_parts.append(face_text)
+                    contents.append({'type': 'text', 'text': face_text})
                 elif isinstance(component, platform_message.Image):
                     image_base64 = getattr(component, 'base64', None)
                     image_url = getattr(component, 'url', None)

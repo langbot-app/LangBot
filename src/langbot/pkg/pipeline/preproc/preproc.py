@@ -17,6 +17,7 @@ from ...agent.runner import config_schema
 from ...agent.runner.resource_policy import ResourcePolicyProjector
 from ...provider.tools.toolmgr import ToolManager
 from ..extension_preferences import normalize_extension_preferences
+from ...platform.face_text import face_to_model_text
 
 
 DEFAULT_PROMPT_CONFIG = [
@@ -352,6 +353,10 @@ class PreProcessor(stage.PipelineStage):
             if isinstance(me, platform_message.Plain):
                 content_list.append(provider_message.ContentElement.from_text(me.text))
                 plain_text += me.text
+            elif isinstance(me, platform_message.Face):
+                face_text = face_to_model_text(me)
+                content_list.append(provider_message.ContentElement.from_text(face_text))
+                plain_text += face_text
             elif isinstance(me, platform_message.Image):
                 if keep_image_inputs:
                     if me.base64:
@@ -376,6 +381,8 @@ class PreProcessor(stage.PipelineStage):
                 for msg in me.origin:
                     if isinstance(msg, platform_message.Plain):
                         content_list.append(provider_message.ContentElement.from_text(msg.text))
+                    elif isinstance(msg, platform_message.Face):
+                        content_list.append(provider_message.ContentElement.from_text(face_to_model_text(msg)))
                     elif isinstance(msg, platform_message.Image):
                         if keep_image_inputs:
                             if msg.base64:

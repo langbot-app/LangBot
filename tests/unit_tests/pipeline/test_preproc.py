@@ -611,3 +611,39 @@ class TestPreProcessorToolSelection:
         result = await stage.process(query, 'PreProcessor')
 
         assert [tool.name for tool in result.new_query.use_funcs] == ['plugin_tool']
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('face_kwargs', 'expected'),
+    [
+        ({'face_id': 300, 'face_name': '胖三斤'}, '[表情]胖三斤'),
+        # aiocqhttp emits rps with face_id=0 when the result is missing; SDK str() raises for it.
+        ({'face_type': 'rps', 'face_id': 0, 'face_name': '猜拳'}, '[表情]猜拳'),
+    ],
+)
+async def test_face_component_is_visible_to_preprocessor_model_text(face_kwargs, expected):
+    """Structured QQ/OneBot faces must not disappear from model context."""
+    from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+    app = FakeApp()
+    app.sess_mgr.get_session = AsyncMock(return_value=make_session())
+    conversation = Mock()
+    conversation.prompt = Mock(messages=[])
+    conversation.prompt.copy = Mock(return_value=Mock(messages=[]))
+    conversation.messages = []
+    conversation.uuid = None
+    app.sess_mgr.get_conversation = AsyncMock(return_value=conversation)
+    model = Mock()
+    model.model_entity = Mock(uuid='test-model', abilities=['func_call'])
+    app.model_mgr.get_model_by_uuid = AsyncMock(return_value=model)
+    app.plugin_connector.emit_event = AsyncMock(return_value=Mock(event=Mock(default_prompt=[], prompt=[])))
+
+    query = text_query('hello')
+    query.message_chain.append(platform_message.Face(**face_kwargs))
+    await get_preproc_module().PreProcessor(app).process(query, 'PreProcessor')
+
+    assert [(part.type, part.text) for part in query.user_message.content] == [
+        ('text', 'hello'),
+        ('text', expected),
+    ]
