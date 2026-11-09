@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import datetime
+import mimetypes
 
 from langbot.libs.wecom_api.api import WecomClient
 from langbot.pkg.utils import image
@@ -72,7 +74,7 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
         )
 
     @staticmethod
-    async def target2yiri_file(event) -> platform_message.MessageChain:
+    async def target2yiri_file(event, bot: WecomClient | None = None) -> platform_message.MessageChain:
         media_id = event.media_id
         if not media_id:
             # Nothing to download: say so instead of emitting an empty chain.
@@ -82,16 +84,41 @@ class WecomMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
                     platform_message.Unknown(text=f'[File: {event.get("FileName") or ""}]'),
                 ]
             )
+        name = event.get('FileName') or ''
+        try:
+            size = int(event.get('FileSize') or 0)
+        except (TypeError, ValueError):
+            size = 0
+        # Inline the bytes the way images inline their PicUrl. Nothing
+        # downstream resolves a bare MediaId: `get_file_url` is not exposed by
+        # this adapter, and the Runner upload path only reads base64/url/path,
+        # so an id-only File reaches the model as "no uploadable content".
+        file_base64 = await WecomMessageConverter._download_media_base64(bot, media_id, name)
         return platform_message.MessageChain(
             [
                 platform_message.Source(id=event.message_id, time=datetime.datetime.now()),
                 platform_message.File(
                     id=media_id,
-                    name=event.get('FileName') or '',
-                    size=0,
+                    name=name,
+                    size=size,
+                    base64=file_base64 or '',
                 ),
             ]
         )
+
+    @staticmethod
+    async def _download_media_base64(bot: WecomClient | None, media_id: str, name: str) -> str | None:
+        """Fetch a `MediaId` and wrap it as a data URI, or None on failure."""
+        if bot is None:
+            return None
+        try:
+            media_bytes = await bot.download_media_id_to_bytes(media_id)
+        except Exception:
+            return None
+        if not media_bytes:
+            return None
+        mime = mimetypes.guess_type(name)[0] or 'application/octet-stream'
+        return f'data:{mime};base64,' + base64.b64encode(media_bytes).decode('ascii')
 
     @staticmethod
     async def target2yiri_image(picurl: str, message_id: int | str | None = -1) -> platform_message.MessageChain:

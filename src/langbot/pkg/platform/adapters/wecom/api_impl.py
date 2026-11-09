@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import typing
+from urllib.parse import quote
 
 from langbot.libs.wecom_api.api import WecomClient
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
@@ -43,7 +44,19 @@ class WecomAPIMixin:
         raise NotSupportedError('upload_file')
 
     async def get_file_url(self, file_id: str) -> str:
-        raise NotSupportedError('get_file_url')
+        """Return a downloadable URL for an inbound `MediaId`.
+
+        WeCom media is not public: the only way in is `media/get` with the app
+        access token. Consumers that can only follow a URL (Runner attachment
+        import) get one with the token already attached.
+        """
+        media_id = str(file_id or '').strip()
+        if not media_id:
+            raise ValueError('file_id is required')
+        if not await self.bot.check_access_token():
+            self.bot.access_token = await self.bot.get_access_token(self.bot.secret)
+        quoted = quote(media_id, safe='')
+        return f'{self.bot.base_url}/media/get?access_token={self.bot.access_token}&media_id={quoted}'
 
     async def get_group_info(self, group_id: typing.Union[int, str]) -> platform_entities.UserGroup:
         raise NotSupportedError('get_group_info')

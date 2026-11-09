@@ -53,7 +53,7 @@ class WecomEventConverter(abstract_platform_adapter.AbstractEventConverter):
         if event.type == 'image':
             message_chain = await WecomMessageConverter.target2yiri_image(event.picurl, event.message_id)
         elif event.type == 'file':
-            message_chain = await WecomMessageConverter.target2yiri_file(event)
+            message_chain = await WecomMessageConverter.target2yiri_file(event, bot)
         else:
             message_chain = await WecomMessageConverter.target2yiri_text(event.message, event.message_id)
 

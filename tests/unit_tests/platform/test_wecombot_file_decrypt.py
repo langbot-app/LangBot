@@ -59,9 +59,7 @@ async def test_single_file_message_is_downloaded_and_decrypted(monkeypatch):
 
     assert calls == [('https://example.test/encrypted.bin', 'per-message-key')]
     # The data URI type is sniffed from the decrypted bytes, so extractors see a PDF.
-    assert parsed['file']['base64'] == 'data:application/pdf;base64,' + base64.b64encode(
-        b'%PDF-1.4 plaintext'
-    ).decode()
+    assert parsed['file']['base64'] == 'data:application/pdf;base64,' + base64.b64encode(b'%PDF-1.4 plaintext').decode()
     assert parsed['file']['filename'] == 'report.pdf'
 
 
