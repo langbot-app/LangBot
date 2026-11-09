@@ -212,6 +212,9 @@ EXECUTION_OPERATIONS = (
             target_id=(Text, ...),
             message_chain=(list[Object], ...),
             origin_query_uuid=(Text | None, None),
+            # SDK 0.7.23+ sends the plugin's wait budget; the Runtime strips it,
+            # but an older Runtime forwards it unchanged. The Host ignores it.
+            timeout=(float | None, None),
         ),
         ResultOutput,
         'plugin_or_run',
