@@ -159,6 +159,24 @@ class ReportTests(unittest.TestCase):
         self.assertIn('FAILED nope', text)
 
 
+class ProfileTests(unittest.TestCase):
+    def test_shipped_profiles_are_valid_and_documented(self):
+        import json
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[1] / 'profiles' / 'gc-baseline.json'
+        data = json.loads(path.read_text())
+
+        self.assertEqual(data['version'], 1)
+        for name, profile in data['profiles'].items():
+            self.assertIsInstance(profile['modules'], list, name)
+            self.assertTrue(profile['description'].strip(), name)
+        # Every profile must say what population it represents; comparing a
+        # `core` run against the #2852 baseline is the mistake this guards.
+        self.assertIn('load-complete', data['profiles'])
+        self.assertIn('Not the #2852 baseline', data['profiles']['core']['description'])
+
+
 class MainTests(unittest.TestCase):
     def test_samples_must_be_positive(self):
         with self.assertRaises(SystemExit):
