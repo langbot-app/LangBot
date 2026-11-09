@@ -41,6 +41,7 @@
 | poll-interval | number | 否 | 2 | 查询回复的间隔秒数 |
 | progress-mode | select | 否 | messages | `messages`：每条进度单独一条消息，最后一条是答案；`stream`：同一条消息持续更新；`off`：只发答案（0.1.x 行为） |
 | progress-interval | number | 否 | 15 | “仍在执行”进度的最小间隔秒数（5-300） |
+| progress-max-messages | integer | 否 | 4 | `messages` 模式下每次运行最多发送的进度消息条数（1-20），不含答案 |
 
 ### 按名称选择智能体
 
@@ -73,7 +74,9 @@ Multica 没有任务事件流：运行器只能观察到任务生命周期（排
 <智能体的答案，不带前缀>
 ```
 
-任务排队时显示 `⏱ 排队中 · 已等待 Ns`。“仍在执行”每个 `progress-interval` 最多发一条，一次运行最多 `3 + timeout / progress-interval` 条消息。超时、取消或失败时，会先发一条 `⚠️ ...` 收尾，再结束本次运行。
+任务排队时显示 `⏱ 排队中 · 已等待 Ns`。“仍在执行”每个 `progress-interval` 最多发一条；一次运行最多发 `progress-max-messages` 条进度消息（含超时、取消或失败时的 `⚠️ ...` 收尾行），再加答案。部分平台限制每条用户消息能收到的回复数（QQ 官方机器人为 5 条），所以 `progress-max-messages` 要小于该上限，默认 4 保证答案一定能发出。
+
+在流水线中、且平台不支持流式回复（QQ、OneBot 等）时，需要 LangBot Core 包含 langbot-app/LangBot#2954，进度才会作为单独的回复送达；更早的 Core 只发送答案。
 
 `progress-mode: stream` 把同样的进度行写在同一条消息里，最后把答案接在末尾。不支持流式回复的平台会在运行结束时一次性收到这条消息，这类平台建议用 `messages`。
 
