@@ -380,6 +380,36 @@ def extract_text_from_output(value: typing.Any) -> str:
     return str(value)
 
 
+def extract_workflow_outputs(outputs: typing.Any) -> str:
+    """Extract text output from workflow outputs dict or value."""
+    if not outputs:
+        return ""
+    if isinstance(outputs, str):
+        return extract_text_from_output(outputs)
+    if not isinstance(outputs, dict):
+        return str(outputs)
+
+    # Check common output variable names in order of preference
+    for key in ("summary", "answer", "result", "text", "output", "response", "content"):
+        if key in outputs and outputs[key]:
+            extracted = extract_text_from_output(outputs[key])
+            if extracted:
+                return extracted
+
+    # If exactly one output field exists, return it
+    if len(outputs) == 1:
+        val = next(iter(outputs.values()))
+        return extract_text_from_output(val)
+
+    # If multiple custom fields exist, look for any non-empty string value
+    for val in outputs.values():
+        if isinstance(val, str) and val.strip():
+            return extract_text_from_output(val)
+
+    # Fallback to JSON-encoded outputs
+    return json.dumps(outputs, ensure_ascii=False)
+
+
 def process_thinking_content(content: str, remove_think: bool = False) -> tuple[str, str]:
     """Process thinking content (reasoning tags) in Dify responses.
 

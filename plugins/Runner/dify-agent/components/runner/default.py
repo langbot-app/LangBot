@@ -30,6 +30,7 @@ from pkg.dify_client import (
     DifyAPIError,
     DifyConfigError,
     extract_text_from_output,
+    extract_workflow_outputs,
     process_thinking_content,
 )
 from pkg.scoped_identity import scoped_identity
@@ -1104,6 +1105,10 @@ class DefaultRunner(Runner):
                 data = event.get("data", {})
                 if data.get("error"):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
+                if not has_response and not pending_content:
+                    wf_output = extract_workflow_outputs(data.get("outputs"))
+                    if wf_output:
+                        pending_content = wf_output
 
         # Handle any remaining pending content
         if pending_content:
@@ -1272,7 +1277,7 @@ class DefaultRunner(Runner):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
 
                 # Get final output
-                summary = extract_text_from_output(data.get("outputs", {}).get("summary", ""))
+                summary = extract_workflow_outputs(data.get("outputs", {}))
                 if summary:
                     content, _ = process_thinking_content(summary, remove_think)
                     has_response = True
@@ -1424,7 +1429,7 @@ class DefaultRunner(Runner):
                 data = event.get("data", {})
                 if data.get("error"):
                     raise DifyAPIError(f"Dify workflow error: {data['error']}", code="dify.api_error")
-                summary = extract_text_from_output(data.get("outputs", {}).get("summary", ""))
+                summary = extract_workflow_outputs(data.get("outputs", {}))
                 if summary:
                     content, _ = process_thinking_content(summary, remove_think)
                     final_response = bool(content)

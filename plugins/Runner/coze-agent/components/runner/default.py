@@ -576,6 +576,22 @@ class DefaultRunner(Runner):
                             full_content += text_filter.feed(content_delta)
                             has_response = True
 
+                elif event_type == "conversation.message.completed":
+                    budget.add(data.get("reasoning_content", ""), data.get("content", ""))
+                    msg_type = data.get("type")
+                    if msg_type in ("answer", None) or data.get("role") == "assistant":
+                        completed_content = data.get("content", "")
+                        if not has_response and completed_content:
+                            full_content += text_filter.feed(completed_content)
+                            has_response = True
+                        completed_reasoning = data.get("reasoning_content", "")
+                        if not full_reasoning and completed_reasoning:
+                            if not config["remove_think"]:
+                                full_reasoning += completed_reasoning
+                            has_response = True
+                    if data.get("conversation_id"):
+                        final_conversation_id = data["conversation_id"]
+
                 elif event_type.endswith(".done") or event_type == "conversation.chat.completed":
                     # Track conversation_id for stateful session
                     if data.get("conversation_id"):

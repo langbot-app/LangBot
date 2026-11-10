@@ -130,6 +130,46 @@ def test_coze_does_not_reuse_langbot_conversation_id_as_external_id() -> None:
     assert runner._get_external_conversation_id(ctx) == "coze-conv-1"
 
 
+def test_coze_message_completed_without_deltas_extracts_response() -> None:
+    module = _load_runner_module("coze-agent")
+    runner = object.__new__(module.DefaultRunner)
+
+    class FakeClient:
+        async def close(self):
+            pass
+
+        async def chat_messages(self, **kwargs):
+            yield {
+                "event": "conversation.message.completed",
+                "data": {
+                    "role": "assistant",
+                    "type": "answer",
+                    "content": "completed answer",
+                    "conversation_id": "coze-conv-123",
+                },
+            }
+            yield {"event": "conversation.chat.completed", "data": {"conversation_id": "coze-conv-123"}}
+
+    module.AsyncCozeClient = lambda **kwargs: FakeClient()
+    ctx = _ctx(
+        config={
+            "api-key": "test-key",
+            "bot-id": "bot-1",
+            "api-base": "https://api.coze.com",
+            "timeout": 30,
+            "auto-save-history": False,
+            "remove-think": False,
+            "langbot-assets-enabled": False,
+        }
+    )
+
+    results = asyncio.run(_collect_async(runner.run(ctx)))
+    assert [_type(item) for item in results] == ["message.delta", "state.updated", "run.completed"]
+    assert results[0].data["chunk"]["content"] == "completed answer"
+    assert results[1].data["key"] == "external.conversation_id"
+    assert results[1].data["value"] == "coze-conv-123"
+
+
 def test_n8n_uses_runner_owned_conversation_and_session_ids() -> None:
     module = _load_runner_module("n8n-agent")
     runner = object.__new__(module.DefaultRunner)
