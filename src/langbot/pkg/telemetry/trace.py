@@ -77,6 +77,7 @@ class TraceState:
         'last_outcome',
         'first_error',
         'failure_reason',
+        'cancelled',
         'runner_failed',
         'closed',
         'adapter',
@@ -117,6 +118,8 @@ class TraceState:
         self.last_outcome = ''
         self.first_error = ''
         self.failure_reason = ''
+        # Set when the boundary of this chain was cancelled rather than broken.
+        self.cancelled = False
         # Set when a runner node already reported a non-success outcome.
         self.runner_failed = False
         self.closed = False
@@ -192,10 +195,17 @@ class TraceState:
         if not self.failure_reason:
             self.failure_reason = reason
 
+    def mark_cancelled(self) -> None:
+        """Remember that this chain was cancelled: a cancellation is not a failure."""
+        self.cancelled = True
+
     def outcome(self) -> str:
         """Terminal outcome of this chain; a broken chain never reports success."""
-        if self.failure_reason and self.last_outcome in ('', 'success', 'skipped', 'unknown'):
-            return 'failed'
+        if self.last_outcome in ('', 'success', 'skipped', 'unknown'):
+            if self.failure_reason:
+                return 'failed'
+            if self.cancelled:
+                return 'cancelled'
         return self.last_outcome or 'unknown'
 
 

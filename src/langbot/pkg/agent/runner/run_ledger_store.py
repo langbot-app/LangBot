@@ -29,6 +29,10 @@ RUN_STATUSES = {'created', 'queued', 'claimed', 'running', 'completed', 'failed'
 TERMINAL_STATUSES = {'completed', 'failed', 'cancelled', 'timeout'}
 
 
+class TerminalRunTransitionError(ValueError):
+    """A run already in a terminal status was asked to move to another one."""
+
+
 def _utc_now() -> datetime.datetime:
     return datetime.datetime.now(UTC)
 
@@ -439,7 +443,9 @@ class RunLedgerStore:
                 and status in TERMINAL_STATUSES
             )
             if run.status in TERMINAL_STATUSES and run.status != status and not reclaim_interrupted:
-                raise ValueError(f'Cannot transition terminal run {run_id} from {run.status} to {status}')
+                raise TerminalRunTransitionError(
+                    f'Cannot transition terminal run {run_id} from {run.status} to {status}'
+                )
             if reclaim_interrupted:
                 run.finished_at = None
                 run.status_reason = None
