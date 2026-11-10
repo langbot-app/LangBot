@@ -162,7 +162,7 @@
   },
   {
     "id": "langbot-team/EssentialCommands",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "category": "misc",
     "path": "misc/EssentialCommands",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/EssentialCommands"
@@ -211,7 +211,7 @@
   },
   {
     "id": "RockChinQ/HelloPlugin",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "category": "misc",
     "path": "misc/HelloPlugin",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HelloPlugin"

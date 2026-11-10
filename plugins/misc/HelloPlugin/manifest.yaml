@@ -4,7 +4,7 @@ metadata:
   author: RockChinQ
   name: HelloPlugin
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/HelloPlugin
-  version: 0.1.5
+  version: 0.1.6
   icon: assets/icon.svg
   description:
     en_US: This plugin is an experimental plugin that provides demos on `EventListener`,
