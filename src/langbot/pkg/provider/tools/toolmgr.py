@@ -462,7 +462,22 @@ class ToolManager:
         parameters: dict,
         query: pipeline_query.Query,
         invoke: typing.Callable[[], typing.Awaitable[typing.Any]],
+        source_id: str | None = None,
     ) -> typing.Any:
+        from ...pipeline.activity import notify_activity
+
+        catalog = getattr(query, '_host_tool_catalog', ())
+        matches = [
+            entry
+            for entry in catalog
+            if entry.get('name') == name
+            and entry.get('source') == source
+            and (source_id is None or entry.get('source_id') == source_id)
+        ]
+        source_name = str(matches[0].get('source_name') or '') if len(matches) == 1 else ''
+        if not source_name and source == 'plugin' and source_id:
+            source_name = source_id
+        await notify_activity(self.ap, query, 'tool', name, source=source, source_name=source_name)
         start_time = time.perf_counter()
         telemetry_features.increment(self.ap, 'tool_calls', source, query=query)
         try:
@@ -633,6 +648,7 @@ class ToolManager:
                 parameters=parameters,
                 query=query,
                 invoke=invoke_selected_tool,
+                source_id=source_id,
             )
 
         execution_context = get_query_execution_context(query)

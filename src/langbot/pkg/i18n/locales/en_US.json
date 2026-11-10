@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "Agent is calling tool: {name}",
+  "Agent is searching knowledge base: {name}": "Agent is searching knowledge base: {name}",
+  "Plugin": "Plugin",
+  "MCP": "MCP",
+  "Built-in": "Built-in",
+  "Skill": "Skill",
+  "Platform": "Platform",
+  "Knowledge base": "Knowledge base",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.",
   "Request failed.": "Request failed.",
   "Too many requests. Please try again later.": "Too many requests. Please try again later.",

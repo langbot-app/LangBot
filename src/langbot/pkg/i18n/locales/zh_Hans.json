@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "Agent 正在调用工具：{name}",
+  "Agent is searching knowledge base: {name}": "Agent 正在查询知识库：{name}",
+  "Plugin": "插件",
+  "MCP": "MCP",
+  "Built-in": "内置",
+  "Skill": "技能",
+  "Platform": "平台",
+  "Knowledge base": "知识库",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "插件 {plugin} 未声明权限。请在插件设置中确认兼容模式访问权限。",
   "Request failed.": "请求失败。",
   "Too many requests. Please try again later.": "请求过于频繁，请稍后重试。",

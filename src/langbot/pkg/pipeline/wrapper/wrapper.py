@@ -121,7 +121,10 @@ class ResponseWrapper(stage.PipelineStage):
                         # is enabled. Emitting it unconditionally would become the
                         # final streaming chunk, closing the stream early and pushing
                         # the real answer into a separate message.
-                        if query.pipeline_config['output']['misc']['track-function-calls']:
+                        if (
+                            query.pipeline_config['output']['misc']['track-function-calls']
+                            and 'activity-enabled' not in query.pipeline_config['output']['misc']
+                        ):
                             query.resp_message_chain.append(
                                 platform_message.MessageChain([platform_message.Plain(text=reply_text)])
                             )

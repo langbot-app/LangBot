@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "エージェントがツールを実行中：{name}",
+  "Agent is searching knowledge base: {name}": "エージェントがナレッジベースを検索中：{name}",
+  "Plugin": "プラグイン",
+  "MCP": "MCP",
+  "Built-in": "組み込み",
+  "Skill": "スキル",
+  "Platform": "プラットフォーム",
+  "Knowledge base": "ナレッジベース",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "プラグイン {plugin} に権限宣言がありません。プラグイン設定で互換モードのアクセス権を確認してください。",
   "Request failed.": "リクエストに失敗しました。",
   "Too many requests. Please try again later.": "リクエストが多すぎます。しばらくしてから再試行してください。",

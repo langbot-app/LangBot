@@ -486,7 +486,16 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
-            description='Update a pipeline by UUID. `pipeline_data` matches the PUT body. Fetch the pipeline first: config merges top-level sections, preserving omitted sections and replacing each supplied section in full. Supplied sections must be objects. Invalid config is rejected before writing.'
+            description=(
+                'Update a pipeline by UUID. `pipeline_data` matches the PUT body. '
+                'Fetch the pipeline first: config merges top-level sections, preserving omitted sections '
+                'and replacing each supplied section in full. Supplied sections must be objects. '
+                'Invalid config is rejected before writing. '
+                'output.misc supports activity-enabled and activity-show-source (both default false), '
+                'activity-knowledge and activity-tool (both default true; notification filters only), '
+                'knowledge-retrieval-hint ({name}) and tool-call-hint ({tools}). '
+                'Activity notices are sequential and replace legacy track-function-calls output while enabled.'
+            )
         )
         async def update_pipeline(pipeline_uuid: str, pipeline_data: dict) -> str:
             context = _authorized(Permission.RESOURCE_MANAGE)

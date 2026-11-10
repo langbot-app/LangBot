@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "เอเจนต์กำลังเรียกใช้เครื่องมือ: {name}",
+  "Agent is searching knowledge base: {name}": "เอเจนต์กำลังค้นหาฐานความรู้: {name}",
+  "Plugin": "ปลั๊กอิน",
+  "MCP": "MCP",
+  "Built-in": "ในตัว",
+  "Skill": "ทักษะ",
+  "Platform": "แพลตฟอร์ม",
+  "Knowledge base": "ฐานความรู้",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "ปลั๊กอิน {plugin} ไม่ได้ประกาศสิทธิ์ โปรดตรวจสอบการเข้าถึงในโหมดความเข้ากันได้ในการตั้งค่าปลั๊กอิน",
   "Request failed.": "คำขอล้มเหลว",
   "Too many requests. Please try again later.": "มีคำขอมากเกินไป โปรดลองอีกครั้งภายหลัง",

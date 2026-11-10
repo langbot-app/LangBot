@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "El agente está ejecutando la herramienta: {name}",
+  "Agent is searching knowledge base: {name}": "El agente está consultando la base de conocimiento: {name}",
+  "Plugin": "Complemento",
+  "MCP": "MCP",
+  "Built-in": "Integrado",
+  "Skill": "Habilidad",
+  "Platform": "Plataforma",
+  "Knowledge base": "Base de conocimiento",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "El complemento {plugin} no declara permisos. Revise el acceso de compatibilidad en sus ajustes.",
   "Request failed.": "La solicitud ha fallado.",
   "Too many requests. Please try again later.": "Demasiadas solicitudes. Inténtalo más tarde.",

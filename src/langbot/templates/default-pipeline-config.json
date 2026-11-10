@@ -77,6 +77,11 @@
             "at-sender": true,
             "quote-origin": true,
             "track-function-calls": false,
+            "activity-enabled": false,
+            "activity-knowledge": true,
+            "activity-tool": true,
+            "activity-show-source": false,
+            "knowledge-retrieval-hint": "",
             "remove-think": false
         }
     }

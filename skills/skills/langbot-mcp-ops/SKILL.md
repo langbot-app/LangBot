@@ -205,6 +205,22 @@ state as well; it is not the same operation as disconnecting an account.
 
 ## Default message routes
 
+Pipeline `output.misc` accepts `activity-enabled` and `activity-show-source`
+(both default false), plus `activity-knowledge` and `activity-tool` (both default true).
+Category switches only control notices, not execution. Enabled pipelines
+send sequential notices before every Host retrieval/tool execution, including
+repeated calls. `knowledge-retrieval-hint` supports `{name}`; `tool-call-hint`
+retains `{tools}`. Blank text inherits Workspace language. While enabled, activity
+notices replace legacy `track-function-calls` output to avoid duplicates. The UI
+exposes the master switch and three conditional sub-switches; existing custom text remains supported.
+Every tool call is shown, including AgenticRAG's `query_knowledge`. Its actual
+Host retrieval emits a separate knowledge notice; listing emits only the tool notice.
+Default notices start with 🛠️ for tools and 🔍 for knowledge retrieval. Source
+display includes plugin, MCP, native, skill and platform origins. An explicit false
+activity-enabled disables notices; old configurations without that key retain
+legacy track-function-calls behavior. External Agent operations
+that do not use Host APIs are not observable. These are Pipeline settings, not Bot fields.
+
 `create_bot` without non-empty `event_bindings` adds two explicit message routes:
 private chat (`chat_type eq person`) and group chat (`chat_type eq group` plus
 `is_at_bot eq true`). Both use the Workspace's default Pipeline, or the first

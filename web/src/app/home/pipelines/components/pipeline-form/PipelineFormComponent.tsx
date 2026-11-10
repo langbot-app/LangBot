@@ -30,6 +30,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import EmojiPicker from '@/components/ui/emoji-picker';
 import {
   Form,
@@ -102,6 +103,119 @@ function PersistedRunnerForm(
         }
       }}
     />
+  );
+}
+
+function PipelineOutputForm(
+  props: ComponentProps<typeof DynamicFormComponent>,
+) {
+  const initial = props.initialValues || {};
+  const [activity, setActivity] = useState<Record<string, boolean>>(() => {
+    const enabled = Boolean(initial['activity-enabled']);
+    const knowledge = initial['activity-knowledge'] !== false;
+    const tool = initial['activity-tool'] !== false;
+    return {
+      'activity-enabled': enabled && (knowledge || tool),
+      'activity-knowledge': knowledge,
+      'activity-tool': tool,
+      'activity-show-source': Boolean(initial['activity-show-source']),
+    };
+  });
+  const current = useRef(initial);
+  current.current = props.initialValues || {};
+  const fields = props.itemConfigList.filter(
+    (item) =>
+      !item.name.startsWith('activity-') && item.name !== 'remove-think',
+  );
+  const trailingFields = props.itemConfigList.filter(
+    (item) => item.name === 'remove-think',
+  );
+  const emitFields = (values: Record<string, unknown>) => {
+    const next = { ...current.current, ...values, ...activity };
+    current.current = next;
+    props.onSubmit?.(next);
+  };
+  const schema = (name: string) =>
+    props.itemConfigList.find((item) => item.name === name);
+  const toggle = (name: string, checked: boolean) => {
+    const next = { ...activity, [name]: checked };
+    if (name === 'activity-enabled') {
+      next['activity-knowledge'] = checked;
+      next['activity-tool'] = checked;
+    } else if (name === 'activity-knowledge' || name === 'activity-tool') {
+      next['activity-enabled'] =
+        next['activity-knowledge'] || next['activity-tool'];
+    }
+    setActivity(next);
+    props.onSubmit?.({ ...current.current, ...next });
+  };
+  const row = (name: string) => {
+    const item = schema(name);
+    if (!item) return null;
+    const label = extractI18nObject(item.label);
+    return (
+      <label
+        key={name}
+        className="flex cursor-pointer items-center justify-between gap-4 py-3"
+      >
+        <div className="min-w-0 space-y-1.5">
+          <span className="text-base font-medium">{label}</span>
+          {item.description && (
+            <p className="text-sm leading-relaxed break-words text-muted-foreground">
+              {extractI18nObject(item.description)}
+            </p>
+          )}
+        </div>
+        <Switch
+          aria-label={label}
+          className="shrink-0"
+          checked={activity[name]}
+          onCheckedChange={(checked) => toggle(name, checked)}
+        />
+      </label>
+    );
+  };
+  return (
+    <div className="space-y-6">
+      <PersistedRunnerForm
+        {...props}
+        itemConfigList={fields}
+        onSubmit={(values) =>
+          emitFields(
+            Object.fromEntries(
+              fields.map((item) => [
+                item.name,
+                (values as Record<string, unknown>)[item.name],
+              ]),
+            ),
+          )
+        }
+      />
+      <div className="rounded-lg border px-4">
+        {row('activity-enabled')}
+        {activity['activity-enabled'] && (
+          <div className="mb-3 ml-3 border-l pl-4">
+            {row('activity-knowledge')}
+            {row('activity-tool')}
+            {row('activity-show-source')}
+          </div>
+        )}
+      </div>
+      <PersistedRunnerForm
+        {...props}
+        itemConfigList={trailingFields}
+        onSubmit={(values) =>
+          emitFields(
+            Object.fromEntries(
+              trailingFields.map((item) => [
+                item.name,
+                (values as Record<string, unknown>)[item.name],
+              ]),
+            ),
+          )
+        }
+      />
+    </div>
   );
 }
 
@@ -818,7 +932,7 @@ const PipelineFormComponent = forwardRef<
 
     const StageForm =
       formName === 'output' && stage.name === 'misc'
-        ? PersistedRunnerForm
+        ? PipelineOutputForm
         : DynamicFormComponent;
     const stageInitialValues: Record<string, any> =
       (form.getValues(formName) as Record<string, any>)?.[stage.name] || {};

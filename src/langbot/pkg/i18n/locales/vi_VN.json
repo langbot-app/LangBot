@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "Agent đang gọi công cụ: {name}",
+  "Agent is searching knowledge base: {name}": "Agent đang tìm kiếm cơ sở kiến thức: {name}",
+  "Plugin": "Plugin",
+  "MCP": "MCP",
+  "Built-in": "Tích hợp",
+  "Skill": "Kỹ năng",
+  "Platform": "Nền tảng",
+  "Knowledge base": "Cơ sở kiến thức",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} chưa khai báo quyền. Hãy xem xét quyền truy cập tương thích trong cài đặt plugin.",
   "Request failed.": "Yêu cầu thất bại.",
   "Too many requests. Please try again later.": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",

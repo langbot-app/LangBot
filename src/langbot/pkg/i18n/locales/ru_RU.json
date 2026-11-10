@@ -1,4 +1,12 @@
 {
+  "Agent is calling tool: {name}": "Агент вызывает инструмент: {name}",
+  "Agent is searching knowledge base: {name}": "Агент ищет в базе знаний: {name}",
+  "Plugin": "Плагин",
+  "MCP": "MCP",
+  "Built-in": "Встроенный",
+  "Skill": "Навык",
+  "Platform": "Платформа",
+  "Knowledge base": "База знаний",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Плагин {plugin} не объявляет разрешения. Проверьте доступ в режиме совместимости в настройках плагина.",
   "Request failed.": "Запрос не выполнен.",
   "Too many requests. Please try again later.": "Слишком много запросов. Повторите позже.",

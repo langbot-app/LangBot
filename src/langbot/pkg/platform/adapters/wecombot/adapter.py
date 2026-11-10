@@ -348,6 +348,10 @@ class WecomBotAdapter(WecomBotAPIMixin, abstract_platform_adapter.AbstractPlatfo
             raw = await self.bot.set_message(event.message_id, content)
         return platform_events.MessageResult(message_id=event.message_id, raw={'result': raw})
 
+    async def reply_progress(self, message_source, message):
+        """Update the pending reply without closing its stream."""
+        return await self.reply_message_chunk(message_source, None, message, is_final=False)
+
     async def reply_message_chunk(
         self,
         message_source: platform_events.MessageEvent,

@@ -141,16 +141,6 @@ stages:
         type: string
         required: false
         default: ''
-      - name: tool-call-hint
-        label:
-          en_US: Tool Call Hint
-          zh_Hans: 工具调用提示
-        description:
-          en_US: "Leave empty to use the Workspace language. Use {tools} for tool names. Requires Track Function Calls."
-          zh_Hans: "留空时使用工作区语言的默认提示。 可用 {tools} 插入工具名称，需开启跟踪函数调用。"
-        type: string
-        required: false
-        default: ''
       - name: runner-not-found-hint
         label:
           en_US: Runner Missing Hint
@@ -195,16 +185,58 @@ stages:
         type: boolean
         required: true
         default: false
-      - name: track-function-calls
+      - name: activity-enabled
         label:
-          en_US: Track Function Calls
-          zh_Hans: 跟踪函数调用
+          en_US: Activity visualization
+          zh_Hans: 行为可视化
         description:
-          en_US: If enabled, the function calls will be tracked and output to the user
-          zh_Hans: 启用后，Agent 每次调用工具时都会输出一个提示给用户
+          en_US: When enabled, show knowledge retrieval and tool invocation progress notices in chat.
+          zh_Hans: 启用后，在聊天中显示知识库检索和工具调用的进度提示。
         type: boolean
-        required: true
+        required: false
         default: false
+      - name: activity-show-source
+        show_if:
+          field: activity-enabled
+          operator: eq
+          value: true
+        label:
+          en_US: Show invocation source
+          zh_Hans: 展示调用来源
+        description:
+          en_US: Show the plugin or service name associated with the tool or knowledge base in each notice.
+          zh_Hans: 在提示中显示工具或知识库所属的插件、服务名称。
+        type: boolean
+        required: false
+        default: false
+      - name: activity-knowledge
+        show_if:
+          field: activity-enabled
+          operator: eq
+          value: true
+        label:
+          en_US: Knowledge retrieval notices
+          zh_Hans: 知识库检索通知
+        description:
+          en_US: Show the name of the knowledge base being searched. Retrieval continues normally when disabled.
+          zh_Hans: 显示正在查询的知识库名称。关闭后仍会正常检索。
+        type: boolean
+        required: false
+        default: true
+      - name: activity-tool
+        show_if:
+          field: activity-enabled
+          operator: eq
+          value: true
+        label:
+          en_US: Tool invocation notices
+          zh_Hans: 工具调用通知
+        description:
+          en_US: Show the name of the tool being called. Tools continue to execute normally when disabled.
+          zh_Hans: 显示正在调用的工具名称。关闭后仍会正常执行。
+        type: boolean
+        required: false
+        default: true
       - name: remove-think
         label:
           en_US: Remove CoT
@@ -215,4 +247,3 @@ stages:
         type: boolean
         required: true
         default: false
-
