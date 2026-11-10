@@ -41,6 +41,9 @@ class FakeApplication:
         class FakePluginConnector:
             is_enable_plugin = True
 
+            async def wait_for_runner_plugin(self, plugin_author, plugin_name):
+                raise ValueError('The Runner plugin is not installed in this Workspace. Open Plugins to install it.')
+
             async def require_workspace_context(self, context):
                 return context
 
@@ -192,6 +195,33 @@ class TestRegistryDiscovery:
 
 class TestRegistryGet:
     """Tests for getting specific runner."""
+
+    async def test_get_waits_then_rediscovers_without_widening_extensions(self):
+        ap = FakeApplication()
+        entries = await ap.plugin_connector.list_runners()
+        ap.plugin_connector.list_runners = AsyncMock(side_effect=[[], [], entries])
+        ap.plugin_connector.wait_for_runner_plugin = AsyncMock()
+        descriptor = await RunnerRegistry(ap).get(
+            TEST_CONTEXT, 'plugin:langbot-team/LocalAgent/default', bound_plugins=[]
+        )
+        assert descriptor.plugin_name == 'LocalAgent'
+        ap.plugin_connector.wait_for_runner_plugin.assert_awaited_once_with('langbot-team', 'LocalAgent')
+
+    async def test_get_preserves_startup_failure_detail(self):
+        ap = FakeApplication()
+        ap.plugin_connector.list_runners = AsyncMock(return_value=[])
+        ap.plugin_connector.wait_for_runner_plugin = AsyncMock(
+            side_effect=RuntimeError('dependency installation failed')
+        )
+        with pytest.raises(RunnerNotFoundError, match='dependency installation failed'):
+            await RunnerRegistry(ap).get(TEST_CONTEXT, 'plugin:langbot-team/LocalAgent/default')
+
+    async def test_initialized_plugin_missing_component_has_configuration_hint(self):
+        ap = FakeApplication()
+        ap.plugin_connector.list_runners = AsyncMock(return_value=[])
+        ap.plugin_connector.wait_for_runner_plugin = AsyncMock()
+        with pytest.raises(RunnerNotFoundError, match='pipeline AI settings'):
+            await RunnerRegistry(ap).get(TEST_CONTEXT, 'plugin:langbot-team/LocalAgent/default')
 
     @pytest.mark.asyncio
     async def test_get_existing_runner(self):

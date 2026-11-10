@@ -2792,6 +2792,31 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 yield command_context.CommandReturn.model_validate(ret)
 
     # Runner methods
+    async def wait_for_runner_plugin(self, plugin_author: str, plugin_name: str) -> None:
+        """Wait for an enabled installation, without granting or enabling it."""
+        if not self.is_enable_plugin:
+            raise ValueError('The plugin system is disabled. Enable it in the instance configuration.')
+        try:
+            _, setting = await self._setting_for_plugin(plugin_author, plugin_name)
+        except ValueError as exc:
+            if str(exc) != f'Plugin {plugin_author}/{plugin_name} is not installed in this Workspace':
+                raise
+            raise ValueError(
+                'The Runner plugin is not installed in this Workspace. Open Plugins to install it; '
+                'if installation failed, check the installation task and runtime logs, then retry.'
+            ) from None
+        if not setting.enabled:
+            from ..api.application.plugin_permissions import permission_status
+
+            if permission_status(self.ap, setting)['pending_confirmation']:
+                raise ValueError('The Runner plugin requires permission confirmation. Open Plugins to review it.')
+            raise ValueError('The Runner plugin is disabled. Open Plugins to enable it.')
+        try:
+            async with asyncio.timeout(30):
+                await self._wait_for_installed_plugin_ready(plugin_author, plugin_name, None)
+        except TimeoutError as exc:
+            raise RuntimeError(self._build_plugin_startup_failure_message(plugin_author, plugin_name, None)) from exc
+
     async def list_runners(self, bound_plugins: list[str] | None = None) -> list[dict[str, Any]]:
         """List all available Runner components.
 
