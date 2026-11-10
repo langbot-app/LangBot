@@ -482,6 +482,15 @@ class QueryEntryAdapter:
         """Build DeliveryContext from Query."""
         message_chain = getattr(query, 'message_chain', None)
         launcher_type = getattr(query, 'launcher_type', None)
+        # Pipeline filters may replace the working chain with plain text.
+        # Replies must retain the original platform message identity.
+        source_event = getattr(query, 'message_event', None)
+        source_chain = getattr(source_event, 'message_chain', None)
+        message_id = getattr(source_chain, 'message_id', None)
+        if message_id in (None, '', -1):
+            message_id = getattr(message_chain, 'message_id', None)
+        if message_id == -1:
+            message_id = None
         target_type = getattr(launcher_type, 'value', launcher_type)
         target_id = getattr(query, 'launcher_id', None)
         adapter = getattr(query, 'adapter', None)
@@ -500,7 +509,7 @@ class QueryEntryAdapter:
             'reply_target': {
                 'target_type': target_type,
                 'target_id': target_id,
-                'message_id': getattr(message_chain, 'message_id', None),
+                'message_id': message_id,
             },
             'supports_streaming': True,
             'supports_edit': 'edit_message' in supported_apis,

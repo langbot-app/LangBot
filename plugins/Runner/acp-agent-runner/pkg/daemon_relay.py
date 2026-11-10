@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import contextvars
 import hashlib
 import hmac
 import json
@@ -25,12 +26,30 @@ from langbot_plugin.api.agent_tools.mcp_protocol import (
     jsonrpc_error,
 )
 
+from pkg.session import mcp_server_to_acp
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_DAEMON_HUB_HOST = "127.0.0.1"
 DEFAULT_DAEMON_HUB_PORT = 8766
 DEFAULT_DAEMON_CONNECT_TIMEOUT = 30.0
 DAEMON_MCP_SERVER_INFO = {"name": "langbot-agent-daemon", "version": "0.1.0"}
+
+
+async def _create_tenant_free_daemon_server(handler, host: str, port: int):
+    """Create the shared listener without retaining one run invocation.
+
+    ``websockets.serve`` creates connection tasks from the Context active when
+    the listener starts. The daemon hub outlives the Runner invocation that
+    first starts it, so inheriting that Context would leave every later MCP
+    request bound to a revoked invocation. Per-run authority is restored only
+    when an MCP request is dispatched below.
+    """
+
+    async def create_server():
+        return await websockets.serve(handler, host, port)
+
+    return await asyncio.create_task(create_server(), context=contextvars.Context())
 
 
 class AgentRuntimeDaemonError(Exception):
@@ -184,7 +203,7 @@ class AgentRuntimeDaemonHub:
                     "daemon_hub_conflict",
                 )
             try:
-                server = await websockets.serve(self._handle_connection, host, port)
+                server = await _create_tenant_free_daemon_server(self._handle_connection, host, port)
             except OSError as exc:
                 raise self._error(
                     f"cannot bind daemon listener {host}:{port}; configure a unique daemon-port "
@@ -253,6 +272,7 @@ class AgentRuntimeDaemonHub:
             owner=owner,
             queue=asyncio.Queue(),
             tools=tools,
+            tool_context=contextvars.copy_context(),
             done=asyncio.Event(),
             cancelling=False,
         )
@@ -384,6 +404,13 @@ class AgentRuntimeDaemonHub:
                             )
                         )
                         session["queue"].put_nowait(None)
+                # Cancel in-flight tool calls last so a call that is slow to
+                # unwind cannot keep this daemon ID registered.
+                pending = list(connection.get("mcp_tasks") or ())
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.wait(pending, timeout=self.cancel_timeout)
 
     async def _handle_message(self, connection, raw_message):
         try:
@@ -411,14 +438,27 @@ class AgentRuntimeDaemonHub:
             if isinstance(message.get("event"), dict):
                 session["queue"].put_nowait(message["event"])
         elif kind == "mcp.request":
-            tools = session["tools"]
-            if tools is None:
-                payload = jsonrpc_error(None, -32000, "Run tools revoked")
-            else:
-                try:
-                    payload = await handle_agent_runtime_mcp_payload(tools, message.get("payload"))
-                except Exception as exc:
-                    payload = jsonrpc_error(None, -32000, str(exc))
+            # Dispatch concurrently: a slow tool call must not block pings, run
+            # events or other jobs multiplexed on the same daemon socket.
+            task = session["tool_context"].run(
+                asyncio.create_task,
+                self._answer_mcp_request(connection, session, message),
+            )
+            pending = connection.setdefault("mcp_tasks", set())
+            pending.add(task)
+            task.add_done_callback(pending.discard)
+
+    async def _answer_mcp_request(self, connection, session, message):
+        """Run one MCP request inside the owning job's captured Context."""
+        tools = session["tools"]
+        if tools is None:
+            payload = jsonrpc_error(None, -32000, "Run tools revoked")
+        else:
+            try:
+                payload = await handle_agent_runtime_mcp_payload(tools, message.get("payload"))
+            except Exception as exc:
+                payload = jsonrpc_error(None, -32000, str(exc))
+        with contextlib.suppress(websockets.exceptions.ConnectionClosed):
             await self._send(
                 connection,
                 dict(
@@ -543,7 +583,7 @@ class LocalMCPProxy:
         )
 
     def server_config(self) -> dict[str, typing.Any]:
-        return self.mcp_server().to_dict(include_type=True)
+        return mcp_server_to_acp(self.mcp_server())
 
 
 class AgentRuntimeDaemonClient:

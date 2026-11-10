@@ -287,3 +287,9 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 | `KnowledgeRetriever.retrieve(context: RetrievalContext)` | 查询和外部知识库配置 | [KnowledgeRetriever](/zh/plugin/dev/components/knowledge-retriever#检索上下文) |
 | `Parser.parse(context: ParseContext)` | 文件内容、文件名、MIME 类型和元数据 | [Parser](/zh/plugin/dev/components/parser#解析方法) |
 | `Page.handle_api(request: PageRequest)` | 接口路径、HTTP 方法、请求体和请求头 | [Page](/zh/plugin/dev/components/page#pagerequest-字段) |
+
+## ACP daemon 文件回复
+
+ACP daemon 复用 LangBot 现有的 run-scoped MCP 桥。Box 可用且已授权 `event_reply` 时，先绑定 Box，在其中生成文件，通过 `langbot_export_box_files` 导出选定的绝对路径，再调用 `langbot_reply_files` 发送返回的文件 ID。媒体上传与投递由平台适配器负责，ACP Agent 无需获取平台凭据。
+
+文件 ID 只在导出它的 run 内有效。即使 Pipeline 过滤器改写了处理中的文本，回复目标仍是原始入站消息。
