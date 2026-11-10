@@ -56,6 +56,8 @@ Authentication, invalid-request and exhausted-quota failures are not retried. Re
 
 ## Reasoning budgets
 
+For LiteLLM-backed models, `count_tokens` counts input messages and tools independently of generation reasoning capability checks. A supported reasoning level and the reasoning ability are still required when generating a response. A successful count does not validate generation settings.
+
 Existing `reasoning_level` behavior is unchanged. For a numeric budget, pass this object as `extra_args` or save it in model advanced parameters. Omitting `level` means `enabled`:
 
 ```json
