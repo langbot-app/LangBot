@@ -18,6 +18,7 @@ Official LangBot plugins, migrated from the archived `langbot-app/langbot-plugin
 - Bridges combining a Pipeline EventListener and an event Runner stay in `misc/`; Runner-only plugins belong in `Runner/`.
 - Declare the minimal `spec.permissions` (`workspace_operations`, `capabilities`) the plugin needs; Runners must expose only `ctx.resources.workspace_operations` to models. See `../docs/en/plugin/dev/permissions.mdx`.
 - Use the Workspace API (`self.plugin.workspace`), the standard platform APIs and `call_platform_api` documented in `../docs/en/plugin/dev/apis/`; plugin runtime code must not import Core (`langbot.*`) or call LangBot's own HTTP routes to bypass installation grants (test scripts may drive a test instance).
+- Never persist data on the filesystem (plugin directory, `data/`, self-managed SQLite/JSON). Persist through the storage APIs into Core's database (`set_plugin_storage`, `set_workspace_storage`, Runner `ctx.state_set`, vector APIs); only `tempfile` scratch files deleted within the same call may touch disk. See "Persistence Rules" in `../docs/en/plugin/dev/apis/common.mdx`.
 - Marketplace README convention: English root `README.md`, translations in `readme/README_{lang}.md`, eight-locale `metadata.label` / `description`, live `repository` URL.
 
 ## Checks

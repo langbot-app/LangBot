@@ -314,6 +314,28 @@ print(result)
 工具名称使用 `metadata.name`（如 `echo_tool`、`get_weather_alerts`），不需要包含作者或插件名前缀。
 </Tip>
 
+### 数据持久化约定
+
+<Warning>
+插件不要把需要保留的数据写入文件系统（插件目录、`data/`、当前工作目录、自建 SQLite / JSON 文件等）。凡是需要持久化的数据，一律通过 API 写入 LangBot Core 的持久化数据库。
+</Warning>
+
+插件运行在 Plugin Runtime 中，它的磁盘不属于持久化范围：插件升级或重装会替换插件目录，Runtime 可能运行在独立容器或其他机器上，重启、迁移、扩容后本地文件可能丢失；本地文件也不会按插件和工作空间隔离，不会随 LangBot 的数据一起备份。
+
+按数据类型选择 API：
+
+| 数据 | 使用的 API |
+| --- | --- |
+| 插件私有的状态、缓存、计数、游标等 | `set_plugin_storage` / `get_plugin_storage`（需要 `storage.plugin` 能力） |
+| 需要多个插件共享的数据 | `set_workspace_storage` / `get_workspace_storage`（需要 `storage.workspace` 能力） |
+| Runner 的会话、用户、运行器状态 | [`ctx.state_get` / `ctx.state_set`](/zh/plugin/dev/apis/agent-run) |
+| 向量与知识库数据 | [RAG API](#rag-api)：`vector_upsert` / `vector_search` / `vector_delete` |
+| 用户上传的配置文件 | `get_config_file` |
+
+存储值是字节，结构化数据请自行序列化（例如 `json.dumps(data).encode()`）。单个值默认上限为 10 MiB（实例配置 `plugin.binary_storage.max_value_bytes`），更大的数据请拆分为多个键。
+
+处理过程中确需落盘的临时文件（例如交给外部工具转换）只能写入系统临时目录（`tempfile`），用完即删，不能假设它在下一次调用时仍然存在。
+
 ### 设置插件持久化数据
 
 持久化存储插件数据。通过这个接口存储的数据，仅可被该插件访问。值需要自行转换为字节。
