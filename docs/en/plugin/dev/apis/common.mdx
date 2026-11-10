@@ -314,6 +314,28 @@ print(result)
 Tool names use `metadata.name` (e.g. `echo_tool`, `get_weather_alerts`), without author or plugin name prefix.
 </Tip>
 
+### Persistence Rules
+
+<Warning>
+Plugins must not write data they need to keep to the filesystem (the plugin directory, `data/`, the current working directory, a self-managed SQLite / JSON file, and so on). Anything that has to persist goes through the APIs into LangBot Core's persistent database.
+</Warning>
+
+A plugin runs inside the Plugin Runtime, whose disk is not persistent storage: upgrading or reinstalling a plugin replaces its directory, and the Runtime may run in a separate container or on another machine, so local files can disappear after a restart, migration or scale-out. Local files are also not isolated per plugin and Workspace, and are not backed up with LangBot's data.
+
+Choose the API by the kind of data:
+
+| Data | API |
+| --- | --- |
+| Plugin-private state, caches, counters, cursors | `set_plugin_storage` / `get_plugin_storage` (requires the `storage.plugin` capability) |
+| Data shared between plugins | `set_workspace_storage` / `get_workspace_storage` (requires the `storage.workspace` capability) |
+| Runner conversation, actor and runner state | [`ctx.state_get` / `ctx.state_set`](/en/plugin/dev/apis/agent-run) |
+| Vectors and knowledge base data | [RAG API](#rag-api): `vector_upsert` / `vector_search` / `vector_delete` |
+| Config files uploaded by users | `get_config_file` |
+
+Values are bytes; serialize structured data yourself (for example `json.dumps(data).encode()`). A single value is limited to 10 MiB by default (instance config `plugin.binary_storage.max_value_bytes`); split larger data across several keys.
+
+Scratch files that processing really needs on disk (for example, input for an external converter) may only go to the system temp directory (`tempfile`) and must be deleted when done. Never assume they still exist on the next call.
+
 ### Set Plugin Persistent Data
 
 Persistently store plugin data. Data stored through this interface can only be accessed by this plugin. Values need to be converted to bytes manually.

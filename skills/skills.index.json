@@ -77,7 +77,7 @@
     {
       "directory": "langbot-plugin-dev",
       "name": "langbot-plugin-dev",
-      "description": "Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on \"langbot plugin\", \"lbp\", \"plugin permissions\", \"workspace api\", \"call_platform_api\", \"plugin debug\".",
+      "description": "Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, persisting plugin data (storage APIs, never the filesystem), declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on \"langbot plugin\", \"lbp\", \"plugin permissions\", \"workspace api\", \"call_platform_api\", \"plugin debug\".",
       "references": [
         "references/sdk-pitfalls.md",
         "references/testing.md"

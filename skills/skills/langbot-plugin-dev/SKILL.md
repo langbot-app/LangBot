@@ -1,6 +1,6 @@
 ---
 name: langbot-plugin-dev
-description: Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on "langbot plugin", "lbp", "plugin permissions", "workspace api", "call_platform_api", "plugin debug".
+description: Develop, debug, test, and publish LangBot plugins. Use when creating or fixing a LangBot plugin or official plugin under plugins/, choosing component types (EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page), calling the Workspace API, platform API or execution APIs from a plugin, persisting plugin data (storage APIs, never the filesystem), declaring plugin permissions, debugging with lbp run, or publishing to LangBot Space. Triggers on "langbot plugin", "lbp", "plugin permissions", "workspace api", "call_platform_api", "plugin debug".
 ---
 
 # LangBot Plugin Development
@@ -42,6 +42,17 @@ Workspace API rules:
 - Operations share IDs with LangBot's HTTP API, MCP and Workspace assistant (for example `pipeline.list`, `knowledge.base.retrieve`). The full list with risk levels is in `apis/workspace.mdx`; `await self.plugin.workspace.list()` returns the operations granted to this installation at runtime.
 - Calls return `{"ok": True, "result": ...}` or `{"ok": False, "error": {"code": ...}}`; check `ok`. Treat `permission_denied` as expected and explain what is missing.
 - A Runner that offers Workspace operations to a model must offer only `ctx.resources.workspace_operations`; none when it is empty.
+
+## Persistence
+
+Plugins must not write data they need to keep to the filesystem: no files under the plugin directory, `data/` or the working directory, and no self-managed SQLite/JSON stores. The Plugin Runtime's disk is not persistent (the plugin directory is replaced on upgrade or reinstall, and the Runtime may be a separate container or host), and local files are neither isolated per Workspace nor backed up. Everything that must persist goes through the APIs into Core's persistent database:
+
+- Plugin-private state: `self.plugin.set_plugin_storage` / `get_plugin_storage` / `get_plugin_storage_keys` / `delete_plugin_storage` (capability `storage.plugin`).
+- Data shared between plugins: the `*_workspace_storage` equivalents (capability `storage.workspace`).
+- Runner state: `ctx.state_get` / `ctx.state_set` with scope `conversation`, `actor`, `subject` or `runner`.
+- Vectors: `vector_upsert` / `vector_search` / `vector_delete`. User-uploaded config files: `get_config_file`.
+
+Values are bytes (serialize JSON yourself) and limited to 10 MiB each by default. Only scratch files may touch disk, through `tempfile`, deleted within the same call. When fixing or reviewing a plugin, treat `open(..., "w")`, `Path.write_*`, `sqlite3` and similar on non-temp paths as a bug and migrate it to the storage APIs. Details: "Persistence Rules" in `apis/common.mdx`.
 
 ## Permissions
 
