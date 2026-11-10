@@ -12,6 +12,7 @@ from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, Runt
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.mgr import StorageMgr
 
 from langbot.pkg.provider.tools.errors import ToolExecutionDeniedError
@@ -370,6 +371,21 @@ class TestSetBinaryStorage:
             'test-key',
         )
         assert insert_params['value'] == b'x' * 512
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('dialect', ['sqlite', 'postgresql'])
+    async def test_storage_upsert_passes_tenant_sql_validation(self, app, dialect):
+        app.persistence_mgr.get_db_engine.return_value.dialect.name = dialect
+        runtime_handler = make_handler(app)
+        response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+            self.payload(b'value')
+        )
+
+        assert response.code == 0
+        statements = [call.args[0] for call in app.persistence_mgr.execute_async.await_args_list]
+        assert any(getattr(statement, '_post_values_clause', None) is not None for statement in statements)
+        for statement in statements:
+            _validate_scoped_statement_call((statement,), {})
 
     @pytest.mark.asyncio
     async def test_updates_existing_storage(self, app):
