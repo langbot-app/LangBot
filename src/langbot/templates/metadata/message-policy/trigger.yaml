@@ -1,7 +1,7 @@
 name: trigger
 label:
-  en_US: Trigger
-  zh_Hans: 触发条件
+  en_US: Entry
+  zh_Hans: 入口
 stages:
   - name: group-respond-rules
     label:
@@ -11,21 +11,26 @@ stages:
       en_US: The respond rule of the messages in the groups
       zh_Hans: 群内消息的响应规则
     config:
+      - name: enabled
+        label:
+          en_US: Enable Group Respond Rules
+          zh_Hans: 启用群响应规则
+        description:
+          en_US: If disabled, every group message that reaches this route is answered and the rules below are ignored
+          zh_Hans: 关闭后，到达此路由的群消息都会被响应，下方规则不生效
+        type: boolean
+        required: true
+        default: true
       - name: at
         label:
           en_US: At
           zh_Hans: '@'
         description:
           en_US: >-
-            Whether to trigger when the message @-mentions the bot (fallback filter
-            inside the pipeline). For new bots this check is handled earlier at the
-            routing layer via the is_at_bot filter — keeping it enabled here applies
-            it a second time. Use the group-filter migration assistant to move the
-            check to the routing layer and disable this option.
+            Respond to group messages that @-mention the bot. If the route already
+            filters on is_at_bot, enabling this checks the mention a second time.
           zh_Hans: >-
-            是否仅响应 @机器人 的群消息（流水线内部过滤，兜底用）。新建机器人的路由层已通过
-            is_at_bot 条件提前过滤，再启用此项会重复检查。建议使用群消息过滤迁移助手将过滤
-            前移到路由层后，再关闭此开关。
+            响应 @机器人 的群消息。若路由条件已使用 is_at_bot 过滤，再启用此项会重复检查。
         type: boolean
         required: true
         default: false

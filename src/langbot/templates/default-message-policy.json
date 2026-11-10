@@ -1,0 +1,61 @@
+{
+    "trigger": {
+        "group-respond-rules": {
+            "enabled": true,
+            "at": true,
+            "prefix": [
+                "ai"
+            ],
+            "regexp": [],
+            "random": 0.0
+        },
+        "access-control": {
+            "mode": "blacklist",
+            "blacklist": [],
+            "whitelist": []
+        },
+        "ignore-rules": {
+            "prefix": [],
+            "regexp": []
+        },
+        "message-aggregation": {
+            "enabled": false,
+            "delay": 1.5
+        },
+        "misc": {
+            "combine-quote-message": true
+        }
+    },
+    "safety": {
+        "content-filter": {
+            "scope": "all",
+            "check-sensitive-words": true
+        },
+        "rate-limit": {
+            "enabled": true,
+            "window-length": 60,
+            "limitation": 60,
+            "strategy": "drop"
+        }
+    },
+    "output": {
+        "long-text-processing": {
+            "threshold": 1000,
+            "strategy": "none",
+            "font-path": ""
+        },
+        "force-delay": {
+            "min": 0,
+            "max": 0
+        },
+        "misc": {
+            "exception-handling": "show-hint",
+            "failure-hint": "",
+            "rate-limit-hint": "",
+            "content-filter-hint": "",
+            "content-filter-error-hint": "",
+            "at-sender": true,
+            "quote-origin": true
+        }
+    }
+}
