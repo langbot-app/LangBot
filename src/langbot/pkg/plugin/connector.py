@@ -98,6 +98,7 @@ _DEFAULT_CONNECT_TIMEOUT_SECONDS = 180.0
 _HEARTBEAT_INTERVAL_SEC = 20.0
 _HEARTBEAT_FAILURE_THRESHOLD = 3
 _RECONNECT_MAX_DELAY_SEC = 60.0
+_RECONNECT_REQUEST_WAIT_SECONDS = 30.0
 
 
 def _utc_now_iso() -> str:
@@ -1290,7 +1291,21 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self._execution_context.set(execution_context)
         if not self.is_enable_plugin:
             return execution_context, None
-        if not hasattr(self, 'handler'):
+        if not self._runtime_available():
+            reconnect_task = self._reconnect_task
+            if reconnect_task is not None and not reconnect_task.done():
+                timeout = min(
+                    self._runtime_connect_timeout(self.ap.instance_config.data.get('plugin', {})),
+                    _RECONNECT_REQUEST_WAIT_SECONDS,
+                )
+                try:
+                    await asyncio.wait_for(asyncio.shield(reconnect_task), timeout=timeout)
+                except asyncio.TimeoutError as exc:
+                    raise PluginRuntimeNotConnectedError(
+                        f'Plugin runtime is reconnecting; not ready after {timeout:g} seconds. '
+                        'Please retry the message shortly.'
+                    ) from exc
+        if not self._runtime_available():
             raise PluginRuntimeNotConnectedError('Plugin runtime is not connected')
         settings = await self._synchronize_workspace(execution_context)
         return execution_context, settings
