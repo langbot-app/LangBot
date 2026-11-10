@@ -38,7 +38,10 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+from components.commands.cmd import Cmd  # noqa: E402
+from components.commands.func import Func  # noqa: E402
 from components.commands.help import Help  # noqa: E402
+from components.commands.plugin import Plugin  # noqa: E402
 from components.commands.reset import Reset  # noqa: E402
 from main import EssentialCommands  # noqa: E402
 
@@ -170,6 +173,162 @@ def test_dedicated_worker_config_is_still_honoured_without_a_binding():
 
     with bind_invocation(handler, config={"language": "en_US"}, binding=_binding("a")):
         assert plugin.get_language() == "en_US"
+
+
+def test_func_command_supports_flat_tools_and_mcp_builtin_tools():
+    handler = SimpleNamespace()
+    plugin = _shared_plugin(handler)
+    asyncio.run(plugin.initialize())
+
+    func = Func()
+    func.plugin = plugin
+    asyncio.run(func.initialize())
+
+    mock_tools = [
+        # 1. Plugin tool with flat structure
+        {
+            "name": "get_weather_alerts",
+            "label": {"en_US": "GetWeatherAlerts", "zh_Hans": "GetWeatherAlerts"},
+            "description": {
+                "en_US": "Get weather alerts for a US state.",
+                "zh_Hans": "获取美国某个州的天气预警",
+            },
+            "icon": None,
+            "spec": {
+                "parameters": {"type": "object"},
+                "llm_prompt": "Get weather alerts for a US state.",
+            },
+        },
+        # 2. Builtin / sandbox tool
+        {
+            "name": "exec",
+            "description": "Run shell commands in an isolated execution environment.",
+            "human_desc": "Execute a command in an isolated environment",
+            "parameters": {},
+            "source": "builtin",
+            "source_name": "LangBot",
+        },
+        # 3. MCP tool with only name / source / source_id
+        {
+            "name": "mcp_custom_tool",
+            "source": "mcp",
+            "source_id": "mcp-server-uuid",
+        },
+        # 4. Legacy nested manifest tool
+        {
+            "manifest": {
+                "metadata": {
+                    "name": "legacy_tool",
+                    "description": {
+                        "en_US": "Legacy tool description",
+                        "zh_Hans": "旧工具描述",
+                    },
+                },
+                "spec": {
+                    "llm_prompt": "Legacy prompt",
+                },
+            }
+        },
+    ]
+
+    async def mock_list_tools():
+        return mock_tools
+
+    plugin.list_tools = mock_list_tools
+
+    # Test under zh_Hans
+    with bind_invocation(handler, config={"language": "zh_Hans"}, binding=_binding("b")):
+        output_zh = asyncio.run(_render(func, "func"))[0]
+        assert "可用的 LLM 工具:" in output_zh
+        assert "get_weather_alerts - 获取美国某个州的天气预警" in output_zh
+        assert "提示词: Get weather alerts for a US state." in output_zh
+        assert "exec - Run shell commands in an isolated execution environment." in output_zh
+        assert "mcp_custom_tool -" in output_zh
+        assert "legacy_tool - 旧工具描述" in output_zh
+        assert "提示词: Legacy prompt" in output_zh
+
+    # Test under en_US
+    with bind_invocation(handler, config={"language": "en_US"}, binding=_binding("a")):
+        output_en = asyncio.run(_render(func, "func"))[0]
+        assert "Available LLM Tools:" in output_en
+        assert "get_weather_alerts - Get weather alerts for a US state." in output_en
+        assert "Prompt: Get weather alerts for a US state." in output_en
+        assert "exec - Run shell commands in an isolated execution environment." in output_en
+        assert "mcp_custom_tool -" in output_en
+        assert "legacy_tool - Legacy tool description" in output_en
+        assert "Prompt: Legacy prompt" in output_en
+
+
+def test_cmd_and_plugin_commands():
+    handler = SimpleNamespace()
+    plugin = _shared_plugin(handler)
+    asyncio.run(plugin.initialize())
+
+    cmd = Cmd()
+    cmd.plugin = plugin
+    asyncio.run(cmd.initialize())
+
+    plugin_cmd = Plugin()
+    plugin_cmd.plugin = plugin
+    asyncio.run(plugin_cmd.initialize())
+
+    mock_commands = [
+        {
+            "manifest": {
+                "metadata": {
+                    "name": "test_cmd",
+                    "description": {
+                        "en_US": "Test command description",
+                        "zh_Hans": "测试命令描述",
+                    },
+                }
+            }
+        }
+    ]
+
+    async def mock_list_commands():
+        return mock_commands
+
+    plugin.list_commands = mock_list_commands
+
+    mock_plugins = [
+        {
+            "manifest": {
+                "metadata": {
+                    "name": "TestPlugin",
+                    "description": {
+                        "en_US": "Test plugin description",
+                        "zh_Hans": "测试插件描述",
+                    },
+                }
+            }
+        }
+    ]
+
+    async def mock_list_plugins():
+        return mock_plugins
+
+    plugin.list_plugins_manifest = mock_list_plugins
+
+    # Test cmd under zh_Hans
+    with bind_invocation(handler, config={"language": "zh_Hans"}, binding=_binding("b")):
+        output_cmd = asyncio.run(_render(cmd, "cmd"))[0]
+        assert "可用命令:" in output_cmd
+        assert "!test_cmd - 测试命令描述" in output_cmd
+
+        output_plugin = asyncio.run(_render(plugin_cmd, "plugin"))[0]
+        assert "已加载的插件:" in output_plugin
+        assert "TestPlugin - 测试插件描述" in output_plugin
+
+        # Test cmd man
+        async def run_man():
+            ctx_man = _context("cmd man test_cmd")
+            ctx_man.params = ["man", "test_cmd"]
+            ctx_man.crt_params = ["man", "test_cmd"]
+            return [ret.text async for ret in cmd._execute(ctx_man)]
+
+        output_man = (asyncio.run(run_man()))[0]
+        assert "命令 test_cmd 手册:\n测试命令描述" in output_man
 
 
 if __name__ == "__main__":

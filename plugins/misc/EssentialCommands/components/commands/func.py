@@ -29,10 +29,28 @@ class Func(Command):
             tool_list_str = ''
 
             for tool in tools:
-                tool_manifest = tool['manifest']
-                name = tool_manifest['metadata']['name']
-                description = tool_manifest['metadata']['description'][language]
-                prompt = tool_manifest['spec']['llm_prompt']
+                if not isinstance(tool, dict):
+                    continue
+
+                manifest = tool.get('manifest') if isinstance(tool.get('manifest'), dict) else {}
+                metadata = manifest.get('metadata') if isinstance(manifest.get('metadata'), dict) else {}
+
+                name = tool.get('name') or metadata.get('name') or ''
+
+                raw_description = tool.get('description') if tool.get('description') is not None else metadata.get('description')
+                if isinstance(raw_description, dict):
+                    description = raw_description.get(language) or raw_description.get('en_US') or (next(iter(raw_description.values())) if raw_description else '')
+                elif isinstance(raw_description, str):
+                    description = raw_description
+                else:
+                    description = tool.get('human_desc') or ''
+
+                spec = tool.get('spec') if tool.get('spec') is not None else manifest.get('spec')
+                if isinstance(spec, dict):
+                    prompt = spec.get('llm_prompt') or ''
+                else:
+                    prompt = ''
+
                 tool_list_str += get_text(language, "func.tool_item", name=name, description=description, prompt=prompt) + "\n"
 
             title = get_text(language, "func.title")

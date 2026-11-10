@@ -16,6 +16,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from langbot_plugin.api.entities import events
+from langbot_plugin.api.entities.builtin.command.context import ExecuteContext
+from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes, Session
 from langbot_plugin.api.proxies.invocation import bind_invocation
 from langbot_plugin.entities.io.context import InstallationBinding
 
@@ -23,6 +25,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
 
+import components.commands.info as info_mod  # noqa: E402
 import components.event_listener.default as default_mod  # noqa: E402
 import components.tools.get_weather_alerts as weather_mod  # noqa: E402
 from main import HelloPlugin  # noqa: E402
@@ -103,6 +106,34 @@ def test_listener_handlers_mutate_only_the_per_event_context():
     assert context_a.event.user_message_alter is not context_b.event.user_message_alter
     # The listener holds only its handler registry and plugin reference.
     assert set(vars(listener)) == {"registered_handlers", "plugin"}
+
+
+def test_info_command_does_not_print_to_stdout(capsys):
+    _plugin, handler, info = _wire(info_mod.Info())
+    asyncio.run(info.initialize())
+
+    context = ExecuteContext(
+        query_id=1,
+        session=Session(launcher_type=LauncherTypes.PERSON, launcher_id="10001", sender_id="10001"),
+        command_text="info",
+        full_command_text="!info",
+        command="info",
+        crt_command="info",
+        params=[],
+        crt_params=[],
+        privilege=0,
+    )
+
+    async def run_info():
+        return [ret.text async for ret in info._execute(context)]
+
+    with bind_invocation(handler, config={}, binding=_binding("installation-a")):
+        results = asyncio.run(run_info())
+
+    assert len(results) == 1
+    assert "Query ID: 1" in results[0]
+    captured = capsys.readouterr()
+    assert captured.out == ""
 
 
 if __name__ == "__main__":
