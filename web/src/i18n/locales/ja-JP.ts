@@ -924,11 +924,59 @@ const jaJP = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'プラットフォームに登録',
+      overwrite:
+        '手動設定を含む既存の全コマンドを置き換えます。無効にすると登録済みリストを消去します。',
+      limits:
+        '最大 {{count}} コマンド、説明は {{length}} 文字まで。名前の規則：',
+      prefixWarning:
+        '/ 接頭辞がありません。Telegram のメニューコマンドは一致しませんが、Discord の操作は実行できます。',
+      failed: '同期に失敗しました',
+      synced: '最終同期：{{time}}',
+      notSynced: '未同期',
+      sync: '今すぐ同期',
+      saveFirst: '同期前にボット設定を保存してください。',
+      reasons: {
+        invalid_name: '無効なコマンド名',
+        invalid_description: '説明が空または長すぎます',
+        invalid_localized_description: '翻訳された説明が長すぎます',
+        command_limit: 'コマンド数の上限を超えています',
+        unavailable: 'コマンドは利用できません',
+      },
+    },
+    pluginCommands: {
+      missingProcessor: 'プロセッサーが見つかりません',
+      instanceHint: '設定済みプロセッサーを紐付けます。',
+      createDefault: '既定のインスタンスを作成',
+      createDefaultHint: 'コマンドの既定設定を使用します。',
+      title: 'プラグインコマンドバインド',
+      description:
+        'message.received イベントにのみ適用されます。プラグインコマンドに一致した場合、プラグインプロセッサ、ルーティングルール、パイプラインをスキップして直接実行されます。',
+      prefixes: 'コマンドプレフィックス',
+      prefixPlaceholder: 'プレフィックスを入力してEnter（例: / または !）',
+      addPrefix: 'プレフィックスを追加',
+      prefixInvalid:
+        'プレフィックスは空にできず、空白文字を含めることはできません',
+      prefixDuplicate: 'プレフィックスは既に存在します',
+      plugins: 'バインドされたプラグインコマンド',
+      empty: 'バインドされたプラグインコマンドはまだありません。',
+      addPlugin: 'プラグインを追加',
+      noAvailablePlugins:
+        'コマンドコンポーネントを含む利用可能なプラグインはありません。',
+      selectPlugins: 'バインドするプラグインを選択',
+      dragHint:
+        'ドラッグして優先順位を並べ替えます（上位のプラグインが優先されます）',
+      commandsCount: '{{count}} 個のコマンド',
+      noCommands: 'このプラグインにはコマンドが定義されていません',
+      overriddenBy: '{{plugin}} により上書き（優先度高）',
+      remove: 'バインド解除',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'このボットは監視対象の一部のイベント（{{events}}）にのみ対応しています。プロセッサーが完全には動作しない可能性があります。',
       description:
-        'プラグインが宣言したイベントを自動で受信し、上のルートとは独立して実行します。',
+        'プラグインが宣言したイベントを自動で受信し、ルートとは独立して実行します。',
       empty: 'プラグインプロセッサーは未登録です。',
       add: 'プラグインプロセッサーを追加',
       existing: '既存の設定を選択',
@@ -1037,6 +1085,15 @@ const jaJP = {
       play: '再生',
     },
     eventRouting: 'イベントルーティング',
+    routingLayers: {
+      rules: 'ルート',
+      commands: 'プラグインコマンド',
+      processors: 'プラグインプロセッサー',
+      rulesDescription:
+        'プラグインコマンドに一致しなかったイベントを順に照合し、最初に一致したルートが処理します。',
+      commandsDisabled:
+        'プラグインコマンドはオフです。メッセージはそのままルートに進みます。',
+    },
     eventRoutingDescription: 'イベントごとの処理先を設定します。',
     eventBindings: 'イベントルート',
     addEventBinding: 'ルートを追加',
@@ -1434,12 +1491,116 @@ const jaJP = {
       rawEvents: '生の実行イベント',
       inputUnavailable: 'この実行の入力は記録されていません。',
     },
+    commandProcessor: {
+      loadingCatalog: 'コマンドプラグインを読み込み中...',
+      catalogUnavailable: 'コマンドプラグインを読み込めません',
+      installFailed: 'コマンドプラグインのインストールに失敗しました',
+      installTimeout:
+        'コマンドプラグインのインストールがタイムアウトしました。拡張ページでタスクを確認してください。',
+      registrationTimeout:
+        'プラグインはインストールされましたが、コマンドの登録が間に合いませんでした。再読み込みして再試行してください。',
+      diagnosis: {
+        missing:
+          '選択したコマンドプラグインが見つかりません。プラグインをインストールまたは復元してください。',
+        disabled:
+          '選択したコマンドプラグインは無効です。プラグインページで有効にしてください。',
+        runtime:
+          'プラグインランタイムが利用できないか無効です。接続を回復してから再試行してください。',
+        draft:
+          '修復ページは新しいタブで開きます。現在の選択と未保存の下書きは保持されます。',
+      },
+      debugTitle: 'コマンドのデバッグ',
+      type: 'コマンドプロセッサー',
+      plugin: 'プラグイン',
+      selectPlugin: 'コマンドプラグインを選択',
+      unavailable: 'プラグインは利用できません',
+      noSettings: '設定項目はありません',
+      notice: 'イベントルーティングの前にコマンドを処理します。',
+      bindBot: 'ボットに紐付け',
+      description:
+        '/help や /draw のようにプレフィックスで始まるコマンドを処理します。ルートより先に照合し、一致すると直接返信します。',
+      noPlugins: 'コマンドを提供するインストール済みプラグインがありません。',
+      noMarketplace: 'マーケットにコマンドを提供するプラグインがありません。',
+      docs: 'コマンドコンポーネントのドキュメント',
+      debugCommand: 'コマンド',
+      debugArgs: '引数（任意）',
+      run: 'コマンドを実行',
+      saveAndRun: '保存して実行',
+      debugNotice:
+        '管理者としてコマンドを 1 回実行します。返信はここにだけ表示され、どのプラットフォームにも送信されません。',
+      debugEmpty: 'コマンドを選んで実行すると、ここに返信が表示されます。',
+      debugFailed: 'コマンドのデバッグに失敗しました',
+      noOutput: 'コマンドは返信を返しませんでした。',
+      outputs: '返信',
+      noRuns:
+        'コマンドの実行記録はまだありません。ボットに紐付けるか、デバッグで実行してください。',
+      sourceDebug: 'デバッグ',
+      sourcePlatform: 'ボットのメッセージ',
+    },
+    diagram: {
+      bestFor: '向いている用途：',
+      messageReceived: 'メッセージ受信',
+      anyEvent: 'ボットのあらゆるイベント',
+      anyEventCaption: 'メッセージ、メンバー参加、友達申請…',
+      model: 'モデル',
+      knowledge: 'ナレッジベース',
+      tools: 'ツール',
+      externalAgent: '外部 Agent',
+      reply: '会話に返信',
+      replyOrAction: '返信またはプラットフォーム操作',
+      pipeline: {
+        summary: 'メッセージをトリガールールと AI 生成に通して返信します。',
+        group: 'パイプラインの内部',
+        trigger: 'トリガールールと前処理',
+        generate: 'AI が返信を生成',
+        generateCaption: 'モデル・ナレッジベース・ツールを使用',
+        bestFor: 'Q&A、カスタマーサポート、ナレッジベース対話。',
+      },
+      agent: {
+        summary: '自然言語の指示に従い、各イベントの処理方法を自ら判断します。',
+        group: 'Agent の内部',
+        instructions: 'あなたの指示',
+        instructionsCaption: 'イベントごとの処理方法を記述',
+        decide: 'AI が判断して実行',
+        decideCaption: '必要に応じてツールやプラットフォーム操作を呼び出し',
+        bestFor:
+          '多様なイベントの知的な処理、外部 Agent プラットフォームとの連携。',
+      },
+      eventProcessor: {
+        summary:
+          'プラグインのコードが購読したイベントを受け取り、決まったロジックで処理します。',
+        input: '購読イベント',
+        inputCaption: 'メンバー参加、友達申請、メッセージ…',
+        group: 'プラグインの内部',
+        handle: 'プラグインのコードがイベントを処理',
+        outputCaption: '歓迎メッセージ、申請の承認、統計…',
+        branch: 'ルートと並行して実行され、互いにブロックしません。',
+        bestFor:
+          '歓迎メッセージ、申請審査、イベント記録などルールが明確な自動化。',
+      },
+      commandProcessor: {
+        hit: '一致',
+        miss: '一致しない',
+        summary:
+          'どのルートよりも先に、コマンドプレフィックスで始まるメッセージを処理します。',
+        group: 'コマンドプロセッサーの内部',
+        match: 'プレフィックスとコマンド名を照合',
+        matchCaption: 'プラグインが登録したコマンド名だけが一致',
+        run: 'プラグインがコマンドを実行',
+        runCaption: 'このインスタンスの設定を使用',
+        branch: '一致しない場合：プラグインプロセッサーとルートに進みます。',
+        bestFor: '/help、/reset、/draw など、ユーザーが明示的に入力する操作。',
+      },
+    },
+    fromPlugin: 'プラグインから',
+    fromPluginDescription:
+      'プラグインのコードで処理し、AI は使いません。処理方法を選んでください：',
     eventProcessor: {
       configurations: 'プラグインプロセッサー設定',
       configTab: '設定',
       logsTab: 'ログ',
       noSettings: 'このプラグインプロセッサーに設定項目はありません。',
-      createPageTitle: 'イベントプロセッサーを作成',
+      createPageTitle: 'プロセッサーを作成',
       processWithPlugin: 'プラグインコードで処理',
       pluginSettings: 'プラグイン設定',
       pluginSettingsDescription: 'このプラグインが定義するパラメーターです。',

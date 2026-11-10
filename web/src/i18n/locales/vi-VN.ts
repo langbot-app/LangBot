@@ -919,11 +919,56 @@ const viVN = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'Đăng ký trên nền tảng',
+      overwrite:
+        'Thay thế tất cả lệnh, bao gồm lệnh cấu hình thủ công. Tắt tính năng sẽ xóa danh sách đã đăng ký.',
+      limits: 'Tối đa {{count}} lệnh; mô tả tối đa {{length}} ký tự. Tên:',
+      prefixWarning:
+        'Không có tiền tố /: lệnh menu Telegram sẽ không khớp. Tương tác Discord vẫn hoạt động.',
+      failed: 'Đồng bộ thất bại',
+      synced: 'Đồng bộ lần cuối: {{time}}',
+      notSynced: 'Chưa đồng bộ',
+      sync: 'Đồng bộ ngay',
+      saveFirst: 'Lưu cài đặt bot trước khi đồng bộ.',
+      reasons: {
+        invalid_name: 'Tên lệnh không hợp lệ',
+        invalid_description: 'Mô tả trống hoặc quá dài',
+        invalid_localized_description: 'Mô tả bản dịch quá dài',
+        command_limit: 'Vượt giới hạn số lệnh',
+        unavailable: 'Lệnh không khả dụng',
+      },
+    },
+    pluginCommands: {
+      missingProcessor: 'Không tìm thấy bộ xử lý',
+      instanceHint: 'Liên kết bộ xử lý đã cấu hình.',
+      createDefault: 'Tạo phiên bản mặc định',
+      createDefaultHint: 'Dùng cấu hình mặc định.',
+      title: 'Ràng buộc lệnh plugin',
+      description:
+        'Chỉ áp dụng cho các sự kiện message.received; khi khớp lệnh plugin, lệnh sẽ thực thi trực tiếp tại tầng định tuyến, bỏ qua bộ xử lý plugin, quy tắc định tuyến và pipeline.',
+      prefixes: 'Tiền tố lệnh',
+      prefixPlaceholder: 'Nhập tiền tố và nhấn Enter (ví dụ: / hoặc !)',
+      addPrefix: 'Thêm tiền tố',
+      prefixInvalid: 'Tiền tố không được để trống và không chứa khoảng trắng',
+      prefixDuplicate: 'Tiền tố đã tồn tại',
+      plugins: 'Các lệnh plugin đã ràng buộc',
+      empty: 'Chưa có lệnh plugin nào được ràng buộc.',
+      addPlugin: 'Thêm plugin',
+      noAvailablePlugins:
+        'Không có plugin khả dụng nào khai báo thành phần lệnh.',
+      selectPlugins: 'Chọn plugin để ràng buộc',
+      dragHint: 'Kéo để sắp xếp lại mức ưu tiên (plugin ở trên khớp trước)',
+      commandsCount: '{{count}} lệnh',
+      noCommands: 'Không có lệnh nào được khai báo bởi plugin này',
+      overriddenBy: 'Bị ghi đè bởi {{plugin}} (ưu tiên cao hơn)',
+      remove: 'Hủy ràng buộc',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'Bot hiện chỉ hỗ trợ một số sự kiện mà bộ xử lý theo dõi ({{events}}). Bộ xử lý có thể không hoạt động đầy đủ trong mọi trường hợp.',
       description:
-        'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến ở trên.',
+        'Tự động nhận sự kiện do plugin khai báo, hoạt động độc lập với các tuyến.',
       empty: 'Chưa liên kết bộ xử lý plugin.',
       add: 'Thêm bộ xử lý plugin',
       existing: 'Chọn cấu hình',
@@ -1033,6 +1078,15 @@ const viVN = {
       play: 'Phát',
     },
     eventRouting: 'Định tuyến sự kiện',
+    routingLayers: {
+      rules: 'Tuyến',
+      commands: 'Lệnh plugin',
+      processors: 'Bộ xử lý plugin',
+      rulesDescription:
+        'Sự kiện không khớp lệnh plugin được so khớp theo thứ tự; tuyến khớp đầu tiên sẽ xử lý.',
+      commandsDisabled:
+        'Lệnh plugin đang tắt; tin nhắn đi thẳng tới các tuyến.',
+    },
     eventRoutingDescription:
       'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
     eventBindings: 'Định tuyến sự kiện',
@@ -1420,12 +1474,117 @@ const viVN = {
       rawEvents: 'Sự kiện gốc',
       inputUnavailable: 'Đầu vào của lượt chạy này chưa được ghi lại.',
     },
+    commandProcessor: {
+      loadingCatalog: 'Đang tải plugin lệnh...',
+      catalogUnavailable: 'Không thể tải plugin lệnh',
+      installFailed: 'Cài đặt plugin lệnh thất bại',
+      installTimeout:
+        'Cài đặt plugin lệnh quá thời gian. Hãy kiểm tra tác vụ ở trang Tiện ích mở rộng.',
+      registrationTimeout:
+        'Plugin đã được cài, nhưng lệnh chưa kịp đăng ký. Hãy tải lại và thử lại.',
+      diagnosis: {
+        missing:
+          'Không tìm thấy plugin lệnh đã chọn. Hãy cài đặt hoặc khôi phục plugin.',
+        disabled: 'Plugin lệnh đã chọn đang bị tắt. Hãy bật nó ở trang plugin.',
+        runtime:
+          'Runtime plugin không khả dụng hoặc đã tắt. Hãy khôi phục kết nối rồi thử lại.',
+        draft:
+          'Trang sửa lỗi sẽ mở trong tab mới; lựa chọn hiện tại và bản nháp chưa lưu được giữ lại.',
+      },
+      debugTitle: 'Gỡ lỗi lệnh',
+      type: 'Bộ xử lý lệnh',
+      plugin: 'Plugin',
+      selectPlugin: 'Chọn plugin lệnh',
+      unavailable: 'Plugin không khả dụng',
+      noSettings: 'Không có cài đặt',
+      notice: 'Xử lý lệnh trước khi định tuyến sự kiện.',
+      bindBot: 'Liên kết với bot',
+      description:
+        'Xử lý lệnh bắt đầu bằng tiền tố, như /help hoặc /draw. So khớp trước các tuyến; khớp thì trả lời ngay.',
+      noPlugins: 'Không có plugin đã cài nào cung cấp lệnh.',
+      noMarketplace: 'Chợ chưa có plugin nào cung cấp lệnh.',
+      docs: 'Tài liệu thành phần lệnh',
+      debugCommand: 'Lệnh',
+      debugArgs: 'Tham số (không bắt buộc)',
+      run: 'Chạy lệnh',
+      saveAndRun: 'Lưu và chạy',
+      debugNotice:
+        'Chạy lệnh một lần với quyền quản trị. Phản hồi chỉ hiển thị ở đây và không gửi tới nền tảng nào.',
+      debugEmpty: 'Chọn một lệnh và chạy để xem phản hồi tại đây.',
+      debugFailed: 'Gỡ lỗi lệnh thất bại',
+      noOutput: 'Lệnh không trả về phản hồi.',
+      outputs: 'Phản hồi',
+      noRuns:
+        'Chưa có lệnh nào chạy. Gắn bộ xử lý này vào bot hoặc chạy thử trong Gỡ lỗi.',
+      sourceDebug: 'Gỡ lỗi',
+      sourcePlatform: 'Tin nhắn bot',
+    },
+    diagram: {
+      bestFor: 'Phù hợp cho: ',
+      messageReceived: 'Nhận tin nhắn',
+      anyEvent: 'Mọi sự kiện của bot',
+      anyEventCaption: 'Tin nhắn, thành viên vào nhóm, lời mời kết bạn…',
+      model: 'Mô hình',
+      knowledge: 'Cơ sở tri thức',
+      tools: 'Công cụ',
+      externalAgent: 'Agent bên ngoài',
+      reply: 'Trả lời trong hội thoại',
+      replyOrAction: 'Trả lời hoặc thao tác nền tảng',
+      pipeline: {
+        summary:
+          'Tin nhắn đi qua quy tắc kích hoạt và AI tạo nội dung, rồi được trả lời.',
+        group: 'Bên trong Pipeline',
+        trigger: 'Quy tắc kích hoạt và tiền xử lý',
+        generate: 'AI tạo câu trả lời',
+        generateCaption: 'Dùng mô hình, cơ sở tri thức và công cụ',
+        bestFor: 'Hỏi đáp, chăm sóc khách hàng, trò chuyện với cơ sở tri thức.',
+      },
+      agent: {
+        summary:
+          'Làm theo hướng dẫn bằng ngôn ngữ tự nhiên của bạn và tự quyết cách xử lý từng sự kiện.',
+        group: 'Bên trong Agent',
+        instructions: 'Hướng dẫn của bạn',
+        instructionsCaption: 'Cách xử lý từng loại sự kiện',
+        decide: 'AI quyết định và hành động',
+        decideCaption: 'Gọi công cụ hoặc thao tác nền tảng khi cần',
+        bestFor:
+          'Xử lý thông minh nhiều loại sự kiện, hoặc kết nối nền tảng Agent bên ngoài.',
+      },
+      eventProcessor: {
+        summary:
+          'Mã plugin nhận các sự kiện đã đăng ký và xử lý theo logic cố định.',
+        input: 'Sự kiện đã đăng ký',
+        inputCaption: 'Thành viên vào nhóm, lời mời kết bạn, tin nhắn…',
+        group: 'Bên trong plugin',
+        handle: 'Mã plugin xử lý sự kiện',
+        outputCaption: 'Lời chào, duyệt yêu cầu, thống kê…',
+        branch: 'Chạy song song với các tuyến và không chặn nhau.',
+        bestFor:
+          'Tự động hóa theo quy tắc rõ ràng như chào mừng, duyệt yêu cầu, ghi nhận sự kiện.',
+      },
+      commandProcessor: {
+        hit: 'Khớp',
+        miss: 'Không khớp',
+        summary: 'Xử lý tin nhắn bắt đầu bằng tiền tố lệnh trước mọi tuyến.',
+        group: 'Bên trong bộ xử lý lệnh',
+        match: 'So khớp tiền tố và tên lệnh',
+        matchCaption: 'Chỉ tên lệnh plugin đã đăng ký mới khớp',
+        run: 'Plugin chạy lệnh',
+        runCaption: 'Với cấu hình của phiên bản này',
+        branch:
+          'Không khớp: tin nhắn tiếp tục tới bộ xử lý plugin và các tuyến.',
+        bestFor: 'Thao tác rõ ràng người dùng nhập, như /help, /reset, /draw.',
+      },
+    },
+    fromPlugin: 'Từ plugin',
+    fromPluginDescription:
+      'Chạy logic do plugin viết, không dùng AI. Chọn cách plugin xử lý sự kiện:',
     eventProcessor: {
       configurations: 'Cấu hình bộ xử lý plugin',
       configTab: 'Cấu hình',
       logsTab: 'Nhật ký',
       noSettings: 'Bộ xử lý plugin này không cần cấu hình.',
-      createPageTitle: 'Tạo bộ xử lý sự kiện',
+      createPageTitle: 'Tạo bộ xử lý',
       processWithPlugin: 'Xử lý bằng mã plugin',
       pluginSettings: 'Cài đặt plugin',
       pluginSettingsDescription: 'Tham số do plugin này khai báo.',

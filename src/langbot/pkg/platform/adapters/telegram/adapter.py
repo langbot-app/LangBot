@@ -49,6 +49,26 @@ from langbot_plugin.api.entities.builtin.runner.interaction import (
 class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
     """Telegram adapter (EBA version)."""
 
+    _command_sync: typing.Any = pydantic.PrivateAttr(default=None)
+
+    @staticmethod
+    def command_registration_capability():
+        from ...command_registration import TELEGRAM_COMMANDS
+
+        return TELEGRAM_COMMANDS
+
+    def configure_platform_commands(self, prefix, callback):
+        self._command_sync = callback
+
+    async def sync_platform_commands(self, specs):
+        for locale, commands in specs.items():
+            await self.bot.set_my_commands(
+                [telegram.BotCommand(command=item['name'], description=item['description']) for item in commands],
+                scope=telegram.BotCommandScopeDefault(),
+                language_code=locale,
+            )
+        return {'success': True}
+
     bot: telegram.Bot = pydantic.Field(exclude=True)
     application: telegram.ext.Application = pydantic.Field(exclude=True)
 
@@ -620,6 +640,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         self.bot_account_id = (await self.bot.get_me()).username
         await self.application.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         await self.application.start()
+        if self._command_sync is not None:
+            await self._command_sync()
         await self.logger.info('Telegram adapter running')
 
     async def kill(self) -> bool:

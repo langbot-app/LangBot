@@ -4,10 +4,12 @@ import uuid
 import typing
 import json
 import asyncio
+import datetime
 import sqlalchemy
 
 from ....core import app
 from ....discover import engine
+from ....command import processor as command_processor
 from ....entity.persistence import agent as persistence_agent
 from ....entity.persistence import bot as persistence_bot
 from ....entity.persistence import pipeline as persistence_pipeline
@@ -19,8 +21,16 @@ from ....platform.sources import http_bot_signing
 from ....platform.adapter_names import canonical_adapter_name
 from ....cloud.plan_policy import require_workspace_platform
 from ....agent.runner.errors import RunnerNotFoundError
-from ....i18n import t
+
 from ...application.contracts import ApplicationAPIError, ApplicationAPIException
+from ....i18n import t, language_scope
+from ....i18n.workspace import get_workspace_language
+from ....platform.command_registration import (
+    PlatformCommandRegistrar,
+    build_command_plan,
+    command_sets,
+    command_set_hash,
+)
 
 
 class BotService:
@@ -42,6 +52,7 @@ class BotService:
         'enable',
         'event_bindings',
         'plugin_processors',
+        'command_settings',
     }
 
     def __init__(self, ap: app.Application) -> None:
@@ -660,6 +671,70 @@ class BotService:
             normalized.append({'processor_uuid': processor_uuid, 'enabled': enabled})
         return normalized
 
+    async def _normalize_command_settings(self, context: TenantContext, settings: typing.Any) -> dict:
+        """Validate command settings for a bot."""
+        if not isinstance(settings, dict):
+            raise ValueError('command_settings must be an object')
+        enabled = settings.get('enabled', True)
+        if not isinstance(enabled, bool):
+            raise ValueError('command_settings.enabled must be a boolean')
+
+        prefixes = settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or len(prefixes) == 0:
+            raise ValueError('command_settings.prefixes must be a non-empty list')
+        normalized_prefixes = []
+        for p in prefixes:
+            if not isinstance(p, str) or not p.strip() or any(c.isspace() for c in p):
+                raise ValueError('Each prefix must be a non-empty string without whitespace')
+            if p not in normalized_prefixes:
+                normalized_prefixes.append(p)
+
+        processors = settings.get('processors', [])
+        if not isinstance(processors, list):
+            raise ValueError('command_settings.processors must be a list')
+
+        normalized_processors = []
+        seen_processors: set[str] = set()
+        seen_plugins: set[str] = set()
+        for item in processors:
+            if not isinstance(item, dict):
+                raise ValueError('Each command processor binding must be an object')
+            processor_uuid = item.get('processor_uuid')
+            if not isinstance(processor_uuid, str) or not processor_uuid.strip():
+                raise ValueError('Command processor UUID is required')
+            processor_uuid = processor_uuid.strip()
+            if processor_uuid in seen_processors:
+                raise ValueError('A command processor can only be bound once per bot')
+            processor_enabled = item.get('enabled', True)
+            if not isinstance(processor_enabled, bool):
+                raise ValueError('Command processor enabled must be a boolean')
+            agent = await self._get_agent_entity(context, processor_uuid)
+            if agent is None or agent.kind != command_processor.COMMAND_PROCESSOR_KIND:
+                raise ValueError('Command processor not found')
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+            if plugin_id is None:
+                raise ValueError('Command processor has no plugin')
+            if plugin_id in seen_plugins:
+                # Two instances of one plugin expose the same commands; the later one could never match.
+                raise ValueError('Only one command processor per plugin can be bound to a bot')
+            seen_processors.add(processor_uuid)
+            seen_plugins.add(plugin_id)
+            normalized_processors.append({'processor_uuid': processor_uuid, 'enabled': processor_enabled})
+
+        normalized = {'enabled': enabled, 'prefixes': normalized_prefixes, 'processors': normalized_processors}
+        if 'platform_commands' in settings:
+            registration = settings['platform_commands']
+            if not isinstance(registration, dict) or not isinstance(registration.get('enabled'), bool):
+                raise ValueError(t('platform_commands.enabled must be a boolean'))
+            selected = registration.get('selected', [])
+            if not isinstance(selected, list) or any(not isinstance(name, str) or not name for name in selected):
+                raise ValueError(t('platform_commands.selected must be a list of command names'))
+            normalized['platform_commands'] = {
+                'enabled': registration['enabled'],
+                'selected': list(dict.fromkeys(selected)),
+            }
+        return normalized
+
     async def _prepare_bot_data(self, context: TenantContext, bot_data: dict, *, include_uuid: bool) -> dict:
         """Normalize Bot write payloads to the current event-routing model."""
         update_data = bot_data.copy()
@@ -676,6 +751,10 @@ class BotService:
         if 'plugin_processors' in update_data:
             update_data['plugin_processors'] = await self._normalize_plugin_processors(
                 context, update_data['plugin_processors']
+            )
+        if 'command_settings' in update_data:
+            update_data['command_settings'] = await self._normalize_command_settings(
+                context, update_data['command_settings']
             )
         return update_data
 
@@ -751,7 +830,84 @@ class BotService:
 
         serialized = self.ap.persistence_mgr.serialize_model(persistence_bot.Bot, bot, masked_columns)
         serialized['adapter'] = canonical_adapter_name(serialized['adapter'])
+        adapter_class = getattr(getattr(self.ap, 'platform_mgr', None), 'adapter_dict', {}).get(serialized['adapter'])
+        if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+            try:
+                serialized['platform_command_registration'] = await self._platform_command_plan(
+                    context, serialized, adapter_class
+                )
+            except Exception as exc:
+                serialized['platform_command_registration'] = {'error': type(exc).__name__}
         return serialized
+
+    async def _platform_command_plan(self, context, bot: dict, adapter) -> dict:
+        settings = bot.get('command_settings') or {}
+        plugin_ids = []
+        for binding in settings.get('processors', []):
+            if not binding.get('enabled', True):
+                continue
+            agent = await self._get_agent_entity(context, binding['processor_uuid'])
+            if agent is not None and agent.kind == command_processor.COMMAND_PROCESSOR_KIND:
+                plugin_id = command_processor.plugin_id_from_component_ref(agent.component_ref)
+                if plugin_id and plugin_id not in plugin_ids:
+                    plugin_ids.append(plugin_id)
+        manifests = await self.ap.plugin_connector.list_commands(plugin_ids) if plugin_ids else []
+        language = await get_workspace_language(self.ap, require_workspace_uuid(context))
+        return build_command_plan(settings, manifests, plugin_ids, adapter.command_registration_capability(), language)
+
+    async def sync_platform_commands(self, context: TenantContext, bot_uuid: str) -> dict:
+        await self.ap.plugin_connector.require_workspace_context(context)
+        runtime = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+        if runtime is None or not isinstance(runtime.adapter, PlatformCommandRegistrar):
+            raise ValueError(t('Platform command registration requires a running supported bot'))
+        async with runtime._platform_command_sync_lock:
+            await runtime.assert_execution_active()
+            bot = await self.get_bot(context, bot_uuid)
+            if bot is None:
+                raise WorkspaceNotFoundError('Bot not found')
+            previous = bot.get('platform_command_sync') or {}
+            enabled = (bot.get('command_settings') or {}).get('platform_commands', {}).get('enabled', False)
+            if not enabled and not previous:
+                return {'status': 'disabled'}
+            state = dict(previous)
+            try:
+                plan = bot['platform_command_registration']
+                if plan.get('error'):
+                    raise RuntimeError(plan['error'])
+                language = await get_workspace_language(self.ap, require_workspace_uuid(context))
+                specs = command_sets(plan, bot['adapter'], language)
+                digest = command_set_hash({'language': language, 'adapter': bot['adapter'], 'commands': specs})
+                if digest == previous.get('hash') and not previous.get('error'):
+                    return {**previous, 'skipped': True}
+                for locale in previous.get('locales', []):
+                    specs.setdefault(locale, [])
+                state['locales'] = list(specs)
+                with language_scope(language):
+                    result = await runtime.adapter.sync_platform_commands(specs)
+                if not result.get('success', False):
+                    raise RuntimeError(result.get('error') or 'Platform command synchronization failed')
+                state = {
+                    'hash': digest,
+                    'synced_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    'error': None,
+                    'locales': list(specs),
+                    'rejected': plan['rejected'],
+                }
+            except Exception as exc:
+                state['error'] = bot_error_message(exc, {'adapter_config': getattr(runtime.adapter, 'config', {})})
+                state['attempted_at'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            await runtime.assert_execution_active()
+            await self.ap.persistence_mgr.execute_async(
+                scope_statement(
+                    sqlalchemy.update(persistence_bot.Bot)
+                    .where(persistence_bot.Bot.uuid == bot_uuid)
+                    .values(platform_command_sync=state),
+                    persistence_bot.Bot,
+                    context,
+                )
+            )
+            runtime.bot_entity.platform_command_sync = state
+            return state
 
     async def get_runtime_bot_info(
         self,
@@ -820,6 +976,7 @@ class BotService:
         else:
             bot_data['event_bindings'] = await self._normalize_event_bindings(context, bot_data['event_bindings'])
         bot_data.setdefault('plugin_processors', [])
+        bot_data.setdefault('command_settings', {'enabled': True, 'prefixes': ['/'], 'processors': []})
         # The column is NOT NULL; a caller that omits the optional description
         # must not get a 500 from the database constraint.
         bot_data.setdefault('description', '')
@@ -841,6 +998,12 @@ class BotService:
         workspace_uuid = require_workspace_uuid(context)
         update_data = await self._prepare_bot_data(context, bot_data, include_uuid=False)
         update_data.pop('workspace_uuid', None)
+        if 'adapter' in update_data or 'adapter_config' in update_data:
+            current = await self.get_bot(context, bot_uuid, include_secret=True)
+            if current is not None and any(
+                key in update_data and update_data[key] != current.get(key) for key in ('adapter', 'adapter_config')
+            ):
+                update_data['platform_command_sync'] = {}
         if 'adapter' in update_data or update_data.get('enable'):
             current = await self.get_bot(context, bot_uuid, include_secret=True)
             await require_workspace_platform(self.ap, workspace_uuid, update_data.get('adapter', current['adapter']))
@@ -855,7 +1018,14 @@ class BotService:
         if getattr(result, 'rowcount', None) == 0:
             raise WorkspaceNotFoundError('Bot not found')
 
-        runtime_fields = {'adapter', 'adapter_config', 'enable', 'event_bindings', 'plugin_processors'}
+        runtime_fields = {
+            'adapter',
+            'adapter_config',
+            'enable',
+            'event_bindings',
+            'plugin_processors',
+            'command_settings',
+        }
         if not runtime_fields.intersection(update_data):
             runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
             if runtime_bot is not None:
@@ -867,6 +1037,10 @@ class BotService:
 
         # Persisted configuration is distinct from applying it to the running adapter.
         bot = await self.get_bot(context, bot_uuid, include_secret=True)
+        if update_data.get('command_settings', {}).get('platform_commands', {}).get('enabled') is False:
+            runtime_bot = await self.ap.platform_mgr.get_bot_by_uuid(context, bot_uuid)
+            if runtime_bot is not None and isinstance(runtime_bot.adapter, PlatformCommandRegistrar):
+                await self.sync_platform_commands(context, bot_uuid)
         try:
             await self.ap.platform_mgr.remove_bot(context, bot_uuid)
             if bot.get('enable'):

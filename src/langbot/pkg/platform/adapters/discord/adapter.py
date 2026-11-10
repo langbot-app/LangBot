@@ -8,6 +8,7 @@ import typing
 
 import discord
 import pydantic
+from langbot.pkg.i18n import t
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
@@ -28,9 +29,76 @@ from langbot_plugin.api.entities.builtin.runner.interaction import (
     InteractionRequest,
     InteractionSubmission,
 )
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 
 
 class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatformAdapter):
+    _command_sync: typing.Any = pydantic.PrivateAttr(default=None)
+    _command_prefix: str = pydantic.PrivateAttr(default='/')
+
+    @staticmethod
+    def command_registration_capability():
+        from ...command_registration import DISCORD_COMMANDS
+
+        return DISCORD_COMMANDS
+
+    def configure_platform_commands(self, prefix, callback):
+        self._command_prefix = prefix
+        self._command_sync = callback
+
+    async def sync_platform_commands(self, specs):
+        payload = []
+        for item in specs.get('', []):
+            localized = {
+                locale: next(command['description'] for command in commands if command['name'] == item['name'])
+                for locale, commands in specs.items()
+                if locale and any(command['name'] == item['name'] for command in commands)
+            }
+            payload.append(
+                {
+                    'type': 1,
+                    'name': item['name'],
+                    'description': item['description'],
+                    'description_localizations': localized,
+                    'options': [{'type': 3, 'name': 'args', 'description': t('Command arguments'), 'required': False}],
+                }
+            )
+        await self.bot.http.bulk_upsert_global_commands(int(self.config['client_id']), payload=payload)
+        return {'success': True}
+
+    async def _receive_platform_command(self, interaction):
+        from ...command_registration import PlatformCommandEvent
+
+        if (
+            interaction.type != discord.InteractionType.application_command
+            or (interaction.data or {}).get('type', 1) != 1
+        ):
+            return
+        await interaction.response.defer(thinking=True)
+        data = interaction.data or {}
+        name = data['name']
+        args = next(
+            (str(option.get('value', '')) for option in data.get('options', []) if option['name'] == 'args'), ''
+        )
+        event = PlatformCommandEvent(
+            command_name=name,
+            command_args=args,
+            message_id=str(interaction.id),
+            message_chain=platform_message.MessageChain(
+                [platform_message.Plain(text=f'{self._command_prefix}{name} {args}'.rstrip())]
+            ),
+            sender=platform_entities.User(id=str(interaction.user.id), nickname=interaction.user.name),
+            chat_type=platform_entities.ChatType.GROUP if interaction.guild_id else platform_entities.ChatType.PRIVATE,
+            chat_id=str(interaction.channel_id),
+            timestamp=interaction.created_at.timestamp(),
+            source_platform_object=interaction,
+        )
+        if interaction.guild_id:
+            event.group = platform_entities.UserGroup(
+                id=str(interaction.channel_id), name=getattr(interaction.channel, 'name', '')
+            )
+        await self._dispatch_eba_event(event)
+
     bot: discord.Client = pydantic.Field(exclude=True)
 
     message_converter: DiscordMessageConverter = DiscordMessageConverter()
@@ -61,6 +129,8 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
             async def on_ready(self: discord.Client):
                 adapter_self.bot_account_id = str(self.user.id) if self.user else ''
                 await adapter_self.logger.info(f'Discord adapter running as {self.user}')
+                if adapter_self._command_sync is not None:
+                    await adapter_self._command_sync()
 
             async def on_message(self: discord.Client, message: discord.Message):
                 if self.user and message.author.id == self.user.id:
@@ -87,6 +157,9 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
                     await adapter_self.logger.error(f'Error in discord on_message: {traceback.format_exc()}')
 
             async def on_interaction(self: discord.Client, interaction: discord.Interaction):
+                if interaction.type == discord.InteractionType.application_command:
+                    await adapter_self._receive_platform_command(interaction)
+                    return
                 custom_id = (interaction.data or {}).get('custom_id') if isinstance(interaction.data, dict) else None
                 try:
                     parsed = parse_interaction_custom_id(custom_id)
@@ -313,8 +386,13 @@ class DiscordAdapter(DiscordAPIMixin, abstract_platform_adapter.AbstractPlatform
         message: platform_message.MessageChain,
         quote_origin: bool = False,
     ):
-        assert isinstance(message_source.source_platform_object, discord.Message)
         content, files = await self.message_converter.yiri2target(message)
+        if isinstance(message_source.source_platform_object, discord.Interaction):
+            sent = await message_source.source_platform_object.followup.send(
+                content=content or None, files=files, wait=True
+            )
+            return platform_events.MessageResult(message_id=sent.id, raw={'message_id': sent.id})
+        assert isinstance(message_source.source_platform_object, discord.Message)
         kwargs = {'content': content}
         if files:
             kwargs['files'] = files

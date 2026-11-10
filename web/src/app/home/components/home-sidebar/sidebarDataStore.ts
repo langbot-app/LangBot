@@ -21,7 +21,7 @@ export interface SidebarEntityItem {
   // Set when this item appears in the unified extensions list
   extensionType?: 'plugin' | 'mcp' | 'skill';
   // Agent-specific: distinguishes Agent processors from Pipelines
-  kind?: 'agent' | 'pipeline' | 'event_processor';
+  kind?: 'agent' | 'pipeline' | 'event_processor' | 'command_processor';
 }
 
 // Plugin page registered by a plugin

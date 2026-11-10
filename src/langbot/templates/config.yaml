@@ -40,10 +40,6 @@ workspace:
                 starttls: true
                 ssl: false
 command:
-    enable: true
-    prefix:
-    - '!'
-    - ！
     privilege: {}
 concurrency:
     pipeline: 20

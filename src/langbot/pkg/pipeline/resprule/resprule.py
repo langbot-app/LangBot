@@ -39,10 +39,12 @@ class GroupRespondRuleCheckStage(stage.PipelineStage):
 
         text_parts = [str(getattr(component, 'text', '')) for component in query.message_chain or []]
         message_text = ''.join(text_parts).strip() or str(query.message_chain or '').strip()
-        command_config = self.ap.instance_config.data.get('command', {})
+        from ..process.command_settings import get_bot_command_settings
+
+        cmd_enable, cmd_prefixes = await get_bot_command_settings(self.ap, query)
         is_stop_command = False
-        if command_config.get('enable', True):
-            for prefix in command_config.get('prefix', []):
+        if cmd_enable:
+            for prefix in sorted(cmd_prefixes, key=len, reverse=True):
                 if not message_text.startswith(prefix):
                     continue
                 command_text = message_text[len(prefix) :].strip()

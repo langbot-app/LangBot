@@ -10,6 +10,7 @@ from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 from .pool import get_query_execution_context
+from .process.command_settings import get_bot_command_settings
 
 
 class Controller:
@@ -24,11 +25,11 @@ class Controller:
         self.ap = ap
         self.semaphore = asyncio.Semaphore(self.ap.instance_config.data['concurrency']['pipeline'])
 
-    def _command_name(self, query: pipeline_query.Query) -> str | None:
+    async def _command_name(self, query: pipeline_query.Query) -> str | None:
         """Return a command name while ignoring non-text platform components."""
 
-        command_config = self.ap.instance_config.data.get('command', {})
-        if not command_config.get('enable', True):
+        cmd_enable, cmd_prefixes = await get_bot_command_settings(self.ap, query)
+        if not cmd_enable:
             return None
         message_chain = getattr(query, 'message_chain', None)
         try:
@@ -37,7 +38,7 @@ class Controller:
             components = []
         text_parts = [str(getattr(component, 'text', '')) for component in components]
         message_text = ''.join(text_parts).strip() or str(message_chain or '').strip()
-        for prefix in command_config.get('prefix', []):
+        for prefix in sorted(cmd_prefixes, key=len, reverse=True):
             if message_text.startswith(prefix):
                 command_text = message_text[len(prefix) :].strip()
                 return command_text.split(maxsplit=1)[0].lower() if command_text else None
@@ -106,7 +107,7 @@ class Controller:
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
             query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
             query.variables['_pipeline_allowed_platform_tools'] = getattr(pipeline, 'allowed_platform_tools', [])
-            command = self._command_name(query)
+            command = await self._command_name(query)
             if command == 'stop':
                 await self._handle_stop_command(query, original_query)
                 # Control commands bypass ordinary group response rules while a
@@ -128,7 +129,7 @@ class Controller:
                 if result.result_type == ResultType.INTERRUPT:
                     return False
                 query = candidate
-                command = self._command_name(query)
+                command = await self._command_name(query)
                 if command == 'stop':
                     await self._handle_stop_command(query, original_query)
                     return False
@@ -256,7 +257,9 @@ class Controller:
                         # session has spare capacity (for example, concurrency=2).
                         # Otherwise it would occupy the second slot as a normal
                         # Pipeline query and never reach the cancellation branch.
-                        if self._command_name(query) == 'stop' and not query.variables.get('_stop_command_attempted'):
+                        if await self._command_name(query) == 'stop' and not query.variables.get(
+                            '_stop_command_attempted'
+                        ):
                             await self._try_claim_steering_before_session_slot(query)
 
                         if not session._semaphore.locked():

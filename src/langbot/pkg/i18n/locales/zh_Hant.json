@@ -1,5 +1,9 @@
 {
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "外掛 {plugin} 未宣告權限。請在外掛設定中確認相容模式存取權限。",
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled 必須是布林值",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected 必須是命令名稱清單",
+  "Platform command registration requires a running supported bot": "平台註冊需要支援此功能且正在執行的機器人",
+  "Command arguments": "命令參數",
   "Request failed.": "請求失敗。",
   "Too many requests. Please try again later.": "請求過於頻繁，請稍後重試。",
   "Your message contains inappropriate content. Please revise it.": "訊息中存在不適當的內容，請修改。",

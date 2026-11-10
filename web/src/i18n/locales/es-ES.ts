@@ -935,11 +935,59 @@ const esES = {
     },
   },
   bots: {
+    platformCommands: {
+      title: 'Registrar en la plataforma',
+      overwrite:
+        'Reemplaza todos los comandos, incluidos los configurados manualmente. Al desactivar, se borra la lista registrada.',
+      limits:
+        'Hasta {{count}} comandos; descripciones de hasta {{length}} caracteres. Nombres:',
+      prefixWarning:
+        'Sin prefijo /: los comandos del menú de Telegram no coincidirán. Las interacciones de Discord siguen funcionando.',
+      failed: 'Error de sincronización',
+      synced: 'Última sincronización: {{time}}',
+      notSynced: 'Sin sincronizar',
+      sync: 'Sincronizar ahora',
+      saveFirst: 'Guarda los ajustes del bot antes de sincronizar.',
+      reasons: {
+        invalid_name: 'Nombre de comando no válido',
+        invalid_description: 'Descripción vacía o demasiado larga',
+        invalid_localized_description: 'Descripción traducida demasiado larga',
+        command_limit: 'Se excede el límite de comandos',
+        unavailable: 'Comando no disponible',
+      },
+    },
+    pluginCommands: {
+      missingProcessor: 'Procesador no disponible',
+      instanceHint: 'Vincula un procesador configurado.',
+      createDefault: 'Crear instancia predeterminada',
+      createDefaultHint: 'Usa los valores predeterminados.',
+      title: 'Vinculaciones de comandos de complementos',
+      description:
+        'Solo se aplica a eventos message.received; al coincidir con un comando de complemento, se ejecuta directamente en la capa de enrutamiento omitiendo procesadores de complementos, reglas de enrutamiento y pipelines.',
+      prefixes: 'Prefijos de comando',
+      prefixPlaceholder: 'Ingrese prefijo y presione Enter (ej. / o !)',
+      addPrefix: 'Agregar prefijo',
+      prefixInvalid:
+        'El prefijo no puede estar vacío ni contener espacios en blanco',
+      prefixDuplicate: 'El prefijo ya existe',
+      plugins: 'Comandos de complementos vinculados',
+      empty: 'Aún no hay comandos de complementos vinculados.',
+      addPlugin: 'Agregar complemento',
+      noAvailablePlugins:
+        'No hay complementos disponibles con componentes de comando.',
+      selectPlugins: 'Seleccionar complementos para vincular',
+      dragHint:
+        'Arrastre para reordenar la prioridad (los complementos superiores tienen prioridad)',
+      commandsCount: '{{count}} comandos',
+      noCommands: 'No hay comandos declarados por este complemento',
+      overriddenBy: 'Sobrescrito por {{plugin}} (mayor prioridad)',
+      remove: 'Desvincular',
+    },
     pluginSubscriptions: {
       incompleteEvents:
         'Este bot solo admite algunos de los eventos suscritos ({{events}}). El procesador podría no comportarse como se espera en todos los casos.',
       description:
-        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas anteriores.',
+        'Recibe automáticamente los eventos declarados por el plugin, de forma independiente de las rutas.',
       empty: 'No hay procesadores vinculados.',
       add: 'Añadir procesador de plugin',
       existing: 'Elegir configuración',
@@ -1049,6 +1097,15 @@ const esES = {
       play: 'Reproducir',
     },
     eventRouting: 'Enrutamiento de eventos',
+    routingLayers: {
+      rules: 'Rutas',
+      commands: 'Comandos de plugin',
+      processors: 'Procesadores de plugin',
+      rulesDescription:
+        'Los eventos que no coinciden con un comando de plugin se evalúan en orden; los gestiona la primera ruta que coincida.',
+      commandsDisabled:
+        'Los comandos de plugin están desactivados; los mensajes pasan directamente a las rutas.',
+    },
     eventRoutingDescription:
       'Elige qué procesador maneja cada evento recibido por este Bot. Edita la lógica en la configuración del Agent o Pipeline correspondiente. Los Pipelines solo admiten eventos de mensaje.',
     eventBindings: 'Rutas de eventos',
@@ -1447,12 +1504,123 @@ const esES = {
       rawEvents: 'Eventos sin procesar',
       inputUnavailable: 'No se registró la entrada de esta ejecución.',
     },
+    commandProcessor: {
+      loadingCatalog: 'Cargando plugins de comandos...',
+      catalogUnavailable: 'No se pudieron cargar los plugins de comandos',
+      installFailed: 'Falló la instalación del plugin de comandos',
+      installTimeout:
+        'La instalación del plugin de comandos agotó el tiempo. Revisa la tarea en la página de extensiones.',
+      registrationTimeout:
+        'El plugin se instaló, pero sus comandos no se registraron a tiempo. Actualiza e inténtalo de nuevo.',
+      diagnosis: {
+        missing:
+          'El plugin de comandos seleccionado no existe. Instala o restaura el plugin.',
+        disabled:
+          'El plugin de comandos seleccionado está desactivado. Actívalo en la página de plugins.',
+        runtime:
+          'El runtime de plugins no está disponible o está desactivado. Restablece la conexión e inténtalo de nuevo.',
+        draft:
+          'La página de reparación se abre en una pestaña nueva; se conservan tu selección actual y el borrador sin guardar.',
+      },
+      debugTitle: 'Depurar comandos',
+      type: 'Procesador de comandos',
+      plugin: 'Plugin',
+      selectPlugin: 'Seleccionar plugin de comandos',
+      unavailable: 'Plugin no disponible',
+      noSettings: 'Sin ajustes',
+      notice: 'Procesa comandos antes del enrutamiento.',
+      bindBot: 'Vincular a bot',
+      description:
+        'Gestiona comandos que empiezan con un prefijo, como /help o /draw. Se evalúa antes de las rutas y, si coincide, responde directamente.',
+      noPlugins: 'Ningún plugin instalado proporciona comandos.',
+      noMarketplace: 'No hay plugins con comandos en el marketplace.',
+      docs: 'Documentación de componentes de comando',
+      debugCommand: 'Comando',
+      debugArgs: 'Argumentos (opcional)',
+      run: 'Ejecutar comando',
+      saveAndRun: 'Guardar y ejecutar',
+      debugNotice:
+        'Ejecuta el comando una vez como administrador. Las respuestas se muestran aquí y no se envían a ninguna plataforma.',
+      debugEmpty: 'Elige un comando y ejecútalo para ver aquí sus respuestas.',
+      debugFailed: 'La depuración del comando falló',
+      noOutput: 'El comando no devolvió ninguna respuesta.',
+      outputs: 'Respuestas',
+      noRuns:
+        'Aún no se ha ejecutado ningún comando. Vincula este procesador a un bot o ejecuta uno en Depuración.',
+      sourceDebug: 'Depuración',
+      sourcePlatform: 'Mensaje del bot',
+    },
+    diagram: {
+      bestFor: 'Ideal para: ',
+      messageReceived: 'Mensaje recibido',
+      anyEvent: 'Cualquier evento del bot',
+      anyEventCaption: 'Mensajes, nuevos miembros, solicitudes de amistad…',
+      model: 'Modelo',
+      knowledge: 'Base de conocimiento',
+      tools: 'Herramientas',
+      externalAgent: 'Agent externo',
+      reply: 'Responder en la conversación',
+      replyOrAction: 'Respuesta o acción de plataforma',
+      pipeline: {
+        summary:
+          'El mensaje pasa por reglas de activación y generación con IA, y luego se responde.',
+        group: 'Dentro del pipeline',
+        trigger: 'Reglas de activación y preprocesamiento',
+        generate: 'La IA genera la respuesta',
+        generateCaption:
+          'Usa el modelo, la base de conocimiento y herramientas',
+        bestFor:
+          'Preguntas y respuestas, atención al cliente y chat con base de conocimiento.',
+      },
+      agent: {
+        summary:
+          'Sigue tus instrucciones en lenguaje natural y decide cómo manejar cada evento.',
+        group: 'Dentro del Agent',
+        instructions: 'Tus instrucciones',
+        instructionsCaption: 'Cómo manejar cada tipo de evento',
+        decide: 'La IA decide y actúa',
+        decideCaption:
+          'Llama a herramientas o acciones de plataforma según haga falta',
+        bestFor:
+          'Manejar muchos tipos de eventos de forma inteligente o conectar una plataforma de Agent externa.',
+      },
+      eventProcessor: {
+        summary:
+          'El código del plugin recibe los eventos a los que se suscribe y los maneja con lógica fija.',
+        input: 'Eventos suscritos',
+        inputCaption: 'Nuevos miembros, solicitudes de amistad, mensajes…',
+        group: 'Dentro del plugin',
+        handle: 'El código del plugin maneja el evento',
+        outputCaption: 'Bienvenida, aprobar solicitudes, estadísticas…',
+        branch: 'Se ejecuta en paralelo a las rutas y no las bloquea.',
+        bestFor:
+          'Automatización con reglas claras, como bienvenidas, revisión de solicitudes y registro de eventos.',
+      },
+      commandProcessor: {
+        hit: 'Coincide',
+        miss: 'Sin coincidencia',
+        summary:
+          'Gestiona los mensajes que empiezan con un prefijo de comando antes de cualquier ruta.',
+        group: 'Dentro del procesador de comandos',
+        match: 'Comparar prefijo y nombre del comando',
+        matchCaption: 'Solo coinciden los nombres registrados por el plugin',
+        run: 'El plugin ejecuta el comando',
+        runCaption: 'Con la configuración de esta instancia',
+        branch:
+          'Sin coincidencia: el mensaje sigue hacia los procesadores de plugin y las rutas.',
+        bestFor:
+          'Operaciones explícitas que escribe el usuario, como /help, /reset o /draw.',
+      },
+    },
+    fromPlugin: 'Desde un plugin',
+    fromPluginDescription:
+      'Ejecuta lógica escrita por un plugin, sin IA. Elige cómo maneja los eventos:',
     eventProcessor: {
       configurations: 'Configuraciones de procesadores de plugins',
       configTab: 'Configuración',
       logsTab: 'Registros',
       noSettings: 'Este procesador de plugin no requiere configuración.',
-      createPageTitle: 'Crear procesador de eventos',
+      createPageTitle: 'Crear procesador',
       processWithPlugin: 'Procesar con código del plugin',
       pluginSettings: 'Ajustes del plugin',
       pluginSettingsDescription: 'Parámetros definidos por este plugin.',

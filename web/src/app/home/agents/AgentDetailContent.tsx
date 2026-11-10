@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/dialog';
 import PipelineDetailContent from '@/app/home/pipelines/PipelineDetailContent';
 import PluginProcessorDetailContent from './PluginProcessorDetailContent';
+import CommandProcessorDetailContent from './CommandProcessorDetailContent';
 import AgentCreateContent from './components/AgentCreateContent';
 import SensitiveToolsWarning from '@/app/home/components/sensitive-tools/SensitiveToolsWarning';
 import AgentDebugPanel from './components/AgentDebugPanel';
@@ -224,7 +225,23 @@ export default function AgentDetailContent({
 
   return (
     <>
-      {agent.kind === 'event_processor' ? (
+      {agent.kind === 'command_processor' ? (
+        <CommandProcessorDetailContent
+          key={id}
+          id={id}
+          agent={agent}
+          canManage={canManage}
+          canOperate={canOperate}
+          onDelete={() => setDeleteConfirmOpen(true)}
+          onEdit={() => setBasicInfoOpen(true)}
+          onSaved={() => {
+            void httpClient
+              .getAgent(id)
+              .then((response) => setAgent(response.agent));
+            void refreshPipelines();
+          }}
+        />
+      ) : agent.kind === 'event_processor' ? (
         <PluginProcessorDetailContent
           key={id}
           id={id}
