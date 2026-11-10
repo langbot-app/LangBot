@@ -72,13 +72,20 @@ async def write_foundation(tmp_path):
         await engine.dispose()
 
 
+class SpeechRequiringStage(ContentFilterStage):
+    """A stage whose initialisation needs part of the config, as real stages may."""
+
+    async def initialize(self, pipeline_config: dict):
+        pipeline_config['speech']['speech-recognition']
+
+
 @pytest.fixture
 async def writes(write_foundation):
     api, ap, engine = write_foundation
     ap.pipeline_service = PipelineService(ap)
     ap.bot_service = BotService(ap)
     ap.pipeline_mgr = PipelineManager(ap)
-    ap.pipeline_mgr.stage_dict = {'ContentFilterStage': ContentFilterStage}
+    ap.pipeline_mgr.stage_dict = {'ContentFilterStage': SpeechRequiringStage}
     ap.sess_mgr = SimpleNamespace(session_list=[])
     with open(get_resource_path('templates/default-pipeline-config.json')) as stream:
         config = json.load(stream)
@@ -133,7 +140,8 @@ async def test_invalid_pipeline_preserves_database_and_runtime(writes, transport
     if invalid == 'non_object_section':
         config = {'ai': []}
     elif invalid == 'runtime':
-        config['safety'] = {}
+        # Passes field validation, but a stage cannot be initialised from it.
+        config['speech'] = {}
     else:
         config = None
     payload = {'name': 'Must not persist', 'config': config}

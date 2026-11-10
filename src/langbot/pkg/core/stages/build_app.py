@@ -290,6 +290,11 @@ class BuildAppStage(stage.BootingStage):
         ap.tool_mgr = llm_tool_mgr_inst
         await llm_tool_mgr_inst.initialize()
 
+        # Bot message policies are compiled lazily; routing and Messaging stages share this.
+        from ...message_policy import manager as message_policy_manager
+
+        ap.message_policy_mgr = message_policy_manager.MessagePolicyManager(ap)
+
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         ap.platform_mgr = im_mgr_inst
         await im_mgr_inst.initialize()

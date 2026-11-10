@@ -10,8 +10,7 @@ from langbot.pkg.api.http.service.pipeline import PipelineService
 @pytest.fixture
 def service():
     config = {
-        'trigger': {'keep': True},
-        'safety': {'keep': True},
+        'speech': {'keep': True},
         'ai': {'n8n': {'webhook-url': 'https://example.invalid/secret', 'timeout': 30}},
         'output': {'keep': True},
     }
@@ -77,3 +76,25 @@ async def test_non_object_config_is_rejected(service, config):
     with pytest.raises(ValueError, match='config must be an object'):
         await service.update_pipeline('workspace', 'pipeline', {'config': config})
     service.ap.persistence_mgr.execute_async.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_settings_moved_to_the_message_policy_are_accepted_and_ignored(service):
+    """A client that predates the message policy still submits these keys."""
+    original = copy.deepcopy(service.get_pipeline.return_value['config'])
+    await service.update_pipeline(
+        'workspace',
+        'pipeline',
+        {
+            'config': {
+                'trigger': {'group-respond-rules': {'at': True, 'prefix': [], 'regexp': [], 'random': 0}},
+                'safety': {'rate-limit': {'window-length': 60, 'limitation': 1, 'strategy': 'drop'}},
+                'output': {
+                    'long-text-processing': {'threshold': 10, 'strategy': 'forward', 'font-path': ''},
+                    'force-delay': {'min': 1, 'max': 2},
+                    'misc': {'at-sender': True, 'quote-origin': True, 'remove-think': True},
+                },
+            }
+        },
+    )
+    assert stored_config(service) == {**original, 'output': {'misc': {'remove-think': True}}}

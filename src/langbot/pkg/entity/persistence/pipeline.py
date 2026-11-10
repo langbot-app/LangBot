@@ -41,6 +41,9 @@ class LegacyPipeline(Base):
             'mcp_resource_agent_read_enabled': True,
         },
     )
+    # Settings that moved to the bot message policy, exactly as this row held
+    # them before the move. Only the schema downgrade reads it; never served.
+    message_policy_backup = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
 
     __table_args__ = (
         sqlalchemy.UniqueConstraint(

@@ -10,6 +10,7 @@ from ....core import app
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner.errors import RunnerNotFoundError
 from ....entity.persistence import pipeline as persistence_pipeline
+from ....message_policy import schema as message_policy_schema
 from ....pipeline.extension_preferences import (
     normalize_extension_preferences,
     validate_extension_preferences,
@@ -41,6 +42,9 @@ default_stage_order = [
 
 class PipelineService:
     ap: app.Application
+
+    # Columns that exist for schema migrations only.
+    _INTERNAL_COLUMNS = ['message_policy_backup']
 
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
@@ -118,8 +122,6 @@ class PipelineService:
                 except Exception as exc:
                     self.ap.logger.warning(f'Failed to load Runner pipeline metadata: {exc}')
         return [
-            self.ap.pipeline_config_meta_trigger,
-            self.ap.pipeline_config_meta_safety,
             ai_metadata,
             self.ap.pipeline_config_meta_speech,
             self.ap.pipeline_config_meta_output,
@@ -153,7 +155,9 @@ class PipelineService:
         result = await self.ap.persistence_mgr.execute_async(query)
         pipelines = result.all()
         serialized = [
-            self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+            self.ap.persistence_mgr.serialize_model(
+                persistence_pipeline.LegacyPipeline, pipeline, self._INTERNAL_COLUMNS
+            )
             for pipeline in pipelines
         ]
         return serialized if include_secret else [redact_secrets(pipeline) for pipeline in serialized]
@@ -180,7 +184,9 @@ class PipelineService:
         if pipeline is None:
             return None
 
-        serialized = self.ap.persistence_mgr.serialize_model(persistence_pipeline.LegacyPipeline, pipeline)
+        serialized = self.ap.persistence_mgr.serialize_model(
+            persistence_pipeline.LegacyPipeline, pipeline, self._INTERNAL_COLUMNS
+        )
         return serialized if include_secret else redact_secrets(serialized)
 
     async def create_pipeline(
@@ -218,6 +224,8 @@ class PipelineService:
 
         if 'config' not in pipeline_data or pipeline_data['config'] == {}:
             pipeline_data['config'] = await self.get_default_pipeline_config(context, runner_id)
+        else:
+            pipeline_data['config'] = self._messaging_config(pipeline_data['config'])
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
@@ -266,7 +274,7 @@ class PipelineService:
                 if not isinstance(value, dict):
                     raise ValueError(f'config.{section} must be an object')
             current_config = current_pipeline.get('config', {})
-            pipeline_data['config'] = {**(current_config or {}), **config}
+            pipeline_data['config'] = self._messaging_config({**(current_config or {}), **config})
             old_ai = current_config.get('ai', {}) if isinstance(current_config, dict) else {}
             old_runner = old_ai.get('runner') if isinstance(old_ai, dict) else None
             legacy_binding = (
@@ -388,7 +396,7 @@ class PipelineService:
             'description': original_pipeline.description,
             'for_version': self.ap.ver_mgr.get_current_version(),
             'stages': original_pipeline.stages.copy() if original_pipeline.stages else default_stage_order.copy(),
-            'config': original_pipeline.config.copy() if original_pipeline.config else {},
+            'config': self._messaging_config(original_pipeline.config),
             'is_default': False,
             'extensions_preferences': new_prefs,
         }
@@ -544,6 +552,18 @@ class PipelineService:
         await self.ap.pipeline_mgr.remove_pipeline(context, pipeline_uuid)
         pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
         await self.ap.pipeline_mgr.load_pipeline(context, pipeline)
+
+    @staticmethod
+    def _messaging_config(config: typing.Any) -> typing.Any:
+        """Drop the settings that moved to the bot message policy.
+
+        Clients and exports that predate the message policy still submit
+        ``trigger`` / ``safety`` and the general ``output`` settings. They are
+        accepted and ignored here; a bot's policy is edited on the bot.
+        """
+        if not isinstance(config, dict):
+            return config
+        return message_policy_schema.split_legacy_config(config)[0]
 
     @staticmethod
     def _validate_extension_preferences(

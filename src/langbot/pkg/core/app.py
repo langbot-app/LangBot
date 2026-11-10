@@ -20,6 +20,7 @@ from ..plugin import connector as plugin_connector
 from ..pipeline import pool
 from ..pipeline import controller, pipelinemgr
 from ..pipeline import aggregator as message_aggregator
+from ..message_policy import manager as message_policy_manager
 from ..utils import version as version_mgr, proxy as proxy_mgr, httpclient
 from ..persistence import mgr as persistencemgr
 from ..api.http.controller import main as http_controller
@@ -115,8 +116,7 @@ class Application:
 
     sensitive_meta: config_mgr.ConfigManager = None
 
-    pipeline_config_meta_trigger: config_mgr.ConfigManager = None
-    pipeline_config_meta_safety: config_mgr.ConfigManager = None
+    message_policy_meta: list[dict] = None
     pipeline_config_meta_ai: config_mgr.ConfigManager = None
     pipeline_config_meta_output: config_mgr.ConfigManager = None
     pipeline_config_meta_speech: config_mgr.ConfigManager = None
@@ -128,6 +128,8 @@ class Application:
     query_pool: pool.QueryPool = None
 
     msg_aggregator: message_aggregator.MessageAggregator = None
+
+    message_policy_mgr: message_policy_manager.MessagePolicyManager = None
 
     ctrl: controller.Controller = None
 

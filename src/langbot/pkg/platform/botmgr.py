@@ -1595,6 +1595,7 @@ class RuntimeBot:
                         adapter,
                         pipeline_uuid=event_binding.get('target_uuid'),
                         routed_by_event_binding=True,
+                        route_id=str(event_binding.get('id') or '') or None,
                     )
                 return await self._record_event_route_trace(
                     event_type=event_type,
@@ -1815,6 +1816,7 @@ class RuntimeBot:
         pipeline_uuid_override: str | None = None,
         routed_by_event_binding: bool = False,
         variables: dict[str, typing.Any] | None = None,
+        route_id: str | None = None,
     ) -> None:
         await self.assert_execution_active()
         is_group_message = isinstance(event, platform_events.GroupMessage)
@@ -1891,6 +1893,7 @@ class RuntimeBot:
             routed_by_rule=routed_by_rule,
             variables=variables,
             execution_context=self.execution_context,
+            route_id=route_id,
         )
 
     async def _handle_interaction_submission(
@@ -1971,6 +1974,7 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: str | None = None,
         routed_by_event_binding: bool = False,
+        route_id: str | None = None,
     ) -> None:
         if not isinstance(event, platform_events.MessageReceivedEvent):
             event_type = getattr(event, 'type', None) or event.__class__.__name__
@@ -1982,6 +1986,7 @@ class RuntimeBot:
             adapter,
             pipeline_uuid_override=pipeline_uuid,
             routed_by_event_binding=routed_by_event_binding,
+            route_id=route_id,
         )
 
     async def initialize(self):
@@ -2210,10 +2215,34 @@ class PlatformManager:
         )
         return instance_uuid, workspace_uuid, bot_uuid
 
+    def _invalidate_message_policy(self, key: tuple[str, str, str]) -> None:
+        """Drop compiled message policies of a bot whose runtime was replaced or removed."""
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is not None:
+            policy_mgr.invalidate_bot(key[1], key[2])
+
+    def find_runtime_bot(
+        self,
+        context: ExecutionContext | None,
+        bot_uuid: str,
+    ) -> RuntimeBot | None:
+        """Return a loaded bot of the caller's placement without touching the database.
+
+        For hot paths that already hold a validated execution scope. The
+        WebSocket proxy bot is not a stored bot and is never returned.
+        """
+        if context is None:
+            return None
+        bot = self._bots_by_key.get((context.instance_uuid, context.workspace_uuid, bot_uuid))
+        if bot is None or bot.placement_generation != context.placement_generation:
+            return None
+        return bot
+
     def _register_runtime_bot(self, bot: RuntimeBot) -> RuntimeBot | None:
         key = self._runtime_bot_key(bot)
         previous = self._bots_by_key.get(key)
         self._bots_by_key[key] = bot
+        self._invalidate_message_policy(key)
         self._bot_keys_by_workspace.setdefault(key[1], set()).add(key)
         self._bot_keys_by_uuid.setdefault(key[2], set()).add(key)
         return previous
@@ -2225,6 +2254,7 @@ class PlatformManager:
         bot = self._bots_by_key.pop(key, None)
         if bot is None:
             return None
+        self._invalidate_message_policy(key)
         workspace_keys = self._bot_keys_by_workspace.get(key[1])
         if workspace_keys is not None:
             workspace_keys.discard(key)

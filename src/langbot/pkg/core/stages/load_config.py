@@ -351,8 +351,11 @@ class LoadConfigStage(stage.BootingStage):
             with resources.files('langbot.templates').joinpath(resource_name).open('r', encoding='utf-8') as f:
                 return yaml.load(f, Loader=yaml.FullLoader)
 
-        ap.pipeline_config_meta_trigger = await load_resource_yaml_template_data('metadata/pipeline/trigger.yaml')
-        ap.pipeline_config_meta_safety = await load_resource_yaml_template_data('metadata/pipeline/safety.yaml')
+        # Form metadata of the bot message policy: entry, safety, reply.
+        ap.message_policy_meta = [
+            await load_resource_yaml_template_data(f'metadata/message-policy/{name}.yaml')
+            for name in ('trigger', 'safety', 'output')
+        ]
         ap.pipeline_config_meta_ai = await load_resource_yaml_template_data('metadata/pipeline/ai.yaml')
         ap.pipeline_config_meta_speech = await load_resource_yaml_template_data('metadata/pipeline/speech.yaml')
         ap.pipeline_config_meta_output = await load_resource_yaml_template_data('metadata/pipeline/output.yaml')
