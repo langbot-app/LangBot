@@ -48,6 +48,7 @@ class PendingMessage:
     pipeline_uuid: str | None
     routed_by_rule: bool = False
     variables: dict[str, typing.Any] | None = None
+    route_id: str | None = None
     timestamp: float = field(default_factory=time.time)
 
 
@@ -108,8 +109,14 @@ class MessageAggregator:
         self,
         execution_context: ExecutionContext,
         pipeline_uuid: str | None,
+        bot_uuid: str | None = None,
+        route_id: str | None = None,
     ) -> tuple[bool, float]:
-        """Return aggregation enablement and a clamped debounce delay."""
+        """Return aggregation enablement and a clamped debounce delay.
+
+        Aggregation is part of the message policy of the route the message
+        matched; a message with no Messaging target is never aggregated.
+        """
 
         default_enabled = False
         default_delay = 1.5
@@ -117,16 +124,16 @@ class MessageAggregator:
         if pipeline_uuid is None:
             return default_enabled, default_delay
 
-        pipeline = await self.ap.pipeline_mgr.get_pipeline_by_uuid(
-            execution_context,
-            pipeline_uuid,
-        )
-        if pipeline is None:
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is None:
             return default_enabled, default_delay
-
-        config = pipeline.pipeline_entity.config or {}
-        trigger_config = config.get('trigger', {})
-        aggregation_config = trigger_config.get('message-aggregation', {})
+        policy = policy_mgr.effective_policy(
+            execution_context,
+            bot_uuid,
+            route_id=route_id,
+            pipeline_uuid=pipeline_uuid,
+        )
+        aggregation_config = policy.get('trigger', {}).get('message-aggregation', {})
         enabled = aggregation_config.get('enabled', default_enabled)
 
         delay_raw = aggregation_config.get('delay', default_delay)
@@ -150,6 +157,7 @@ class MessageAggregator:
         routed_by_rule: bool = False,
         execution_context: ExecutionContext | None = None,
         variables: dict[str, typing.Any] | None = None,
+        route_id: str | None = None,
     ) -> None:
         """Buffer or directly enqueue a message in its trusted Workspace."""
 
@@ -158,7 +166,12 @@ class MessageAggregator:
             bot_uuid=bot_uuid,
             pipeline_uuid=pipeline_uuid,
         )
-        enabled, delay = await self._get_aggregation_config(execution_context, pipeline_uuid)
+        enabled, delay = await self._get_aggregation_config(
+            execution_context,
+            pipeline_uuid,
+            bot_uuid=bot_uuid,
+            route_id=route_id,
+        )
         if variables:
             enabled = False
 
@@ -185,6 +198,7 @@ class MessageAggregator:
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
                 variables=variables,
+                route_id=route_id,
             )
             return
 
@@ -207,6 +221,7 @@ class MessageAggregator:
             pipeline_uuid=pipeline_uuid,
             routed_by_rule=routed_by_rule,
             variables=variables,
+            route_id=route_id,
         )
 
         force_flush = False
@@ -265,6 +280,7 @@ class MessageAggregator:
                 routed_by_rule=routed_by_rule,
                 execution_context=execution_context,
                 variables=variables,
+                route_id=route_id,
             )
             return
 
@@ -350,6 +366,7 @@ class MessageAggregator:
             routed_by_rule=message.routed_by_rule,
             execution_context=message.execution_context,
             variables=message.variables,
+            route_id=message.route_id,
         )
 
     async def _enqueue_or_release(self, handoff, **query) -> None:
@@ -408,6 +425,7 @@ class MessageAggregator:
             pipeline_uuid=base_msg.pipeline_uuid,
             routed_by_rule=any(message.routed_by_rule for message in messages),
             variables=base_msg.variables,
+            route_id=base_msg.route_id,
         )
 
     async def flush_all(self) -> None:

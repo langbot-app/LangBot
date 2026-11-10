@@ -13,7 +13,6 @@ from . import entities as pipeline_entities
 from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
 import langbot_plugin.api.entities.events as events
 from ..utils import importutil
@@ -196,7 +195,9 @@ class RuntimePipeline:
         ):
             raise WorkspaceRequiredError('Query execution scope does not match RuntimePipeline')
         await self._assert_execution_active(query)
-        query.pipeline_config = self.pipeline_entity.config
+        # The message policy of the route this message matched is laid over the
+        # Messaging config, so stages and plugins read it under the legacy keys.
+        await self.ap.message_policy_mgr.bind_query(query, self.pipeline_entity.config)
         # Store bound plugins and MCP servers in query for filtering
         query.variables['_pipeline_bound_plugins'] = self.bound_plugins
         query.variables['_pipeline_bound_mcp_servers'] = self.bound_mcp_servers
@@ -247,33 +248,13 @@ class RuntimePipeline:
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:
             await self._assert_execution_active(query)
         if result.user_notice:
-            # 处理str类型
+            policy = await self.ap.message_policy_mgr.for_query(query)
+            result.user_notice = policy.build_notice(query.message_event, result.user_notice)
 
-            if isinstance(result.user_notice, str):
-                result.user_notice = platform_message.MessageChain([platform_message.Plain(text=result.user_notice)])
-            elif isinstance(result.user_notice, list):
-                result.user_notice = platform_message.MessageChain(*result.user_notice)
+            async def before_send() -> None:
+                await self._assert_execution_active(query)
 
-            if query.pipeline_config['output']['misc']['at-sender'] and isinstance(
-                query.message_event, platform_events.GroupMessage
-            ):
-                result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            stream_output_supported = await query.adapter.is_stream_output_supported()
-            await self._assert_execution_active(query)
-            if stream_output_supported and query.resp_messages:
-                await query.adapter.reply_message_chunk(
-                    message_source=query.message_event,
-                    bot_message=query.resp_messages[-1],
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                    is_final=query.resp_messages[-1].is_final,
-                )
-            else:
-                await query.adapter.reply_message(
-                    message_source=query.message_event,
-                    message=result.user_notice,
-                    quote_origin=query.pipeline_config['output']['misc']['quote-origin'],
-                )
+            await policy.send_notice(query, result.user_notice, before_send=before_send)
         if result.debug_notice:
             self.ap.logger.debug(result.debug_notice)
         if result.console_notice:
@@ -960,8 +941,6 @@ class PipelineManager:
             )
         coerce_pipeline_config(
             pipeline_entity.config,
-            getattr(self.ap, 'pipeline_config_meta_trigger', {'name': 'trigger', 'stages': []}),
-            getattr(self.ap, 'pipeline_config_meta_safety', {'name': 'safety', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_ai', {'name': 'ai', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_speech', {'name': 'speech', 'stages': []}),
             getattr(self.ap, 'pipeline_config_meta_output', {'name': 'output', 'stages': []}),

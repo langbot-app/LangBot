@@ -13,9 +13,12 @@ import copy
 import json
 import typing
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import langbot.pkg.pipeline.pipelinemgr as pipelinemgr
+from langbot.pkg.message_policy import manager as policy_manager
+from langbot.pkg.message_policy import schema as policy_schema
 from langbot.pkg.pipeline import aggregator as aggregator_module
 from langbot.pkg.pipeline import stage as stage_module
 
@@ -106,16 +109,70 @@ def prepare_app(app) -> None:
     )
 
 
+async def bind_policy(app, query, config: dict | None = None):
+    """Bind the message policy stated by a legacy-shaped config to a query.
+
+    Stage tests describe their setup as one config holding both Messaging and
+    policy keys. This splits it the way stored configs are split and attaches
+    the compiled policy, leaving ``query.pipeline_config`` as a stage sees it.
+    """
+    config = query.pipeline_config if config is None else config
+    messaging_config, override = policy_schema.split_legacy_config(config or {})
+    runtime = await app.message_policy_mgr.compile(policy_schema.resolve_policy(None, override))
+    runtime.attach(query, messaging_config)
+    return runtime
+
+
+ROUTE_ID = 'route-1'
+
+
+def migrated_bot(query, config: dict) -> tuple[dict, SimpleNamespace]:
+    """Return (Messaging config, bot) as the schema migration leaves a legacy setup.
+
+    The bot existed before message policies, so its own policy is neutral and
+    the route to the Messaging processor carries the legacy settings as its
+    override.
+    """
+    messaging_config, override = policy_schema.split_legacy_config(config)
+    bot_entity = SimpleNamespace(
+        uuid=query.bot_uuid,
+        message_policy=policy_schema.neutral_policy(),
+        event_bindings=[
+            {
+                'id': ROUTE_ID,
+                'event_pattern': 'message.received',
+                'target_type': 'pipeline',
+                'target_uuid': query.pipeline_uuid,
+                'enabled': True,
+                'policy': override,
+            }
+        ],
+    )
+    return messaging_config, bot_entity
+
+
 async def apply_legacy_config(app, query, config: dict) -> None:
-    """Make ``config`` the configuration in effect for ``query``."""
-    query.pipeline_config = config
+    """Make ``config`` the configuration in effect for ``query``.
+
+    The legacy config goes through the one conversion function; the query then
+    resolves its policy the way a routed message does.
+    """
+    messaging_config, bot_entity = migrated_bot(query, config)
+    app.platform_mgr = Mock()
+    app.platform_mgr.find_runtime_bot = Mock(return_value=SimpleNamespace(bot_entity=bot_entity))
+    app.platform_mgr.get_bot_by_uuid = AsyncMock(
+        return_value=SimpleNamespace(bot_entity=SimpleNamespace(command_settings={'enabled': True, 'prefixes': ['/']}))
+    )
+    query.variables[policy_manager.ROUTE_VARIABLE] = ROUTE_ID
+    object.__setattr__(query, '_message_policy', None)
+    await app.message_policy_mgr.bind_query(query, messaging_config)
 
 
 async def build_stage(app, query, stage_name: str, config: dict):
     """Return an initialised stage that processes ``query`` under ``config``."""
     await apply_legacy_config(app, query, config)
     inst = stage_module.preregistered_stages[stage_name](app)
-    await inst.initialize(config)
+    await inst.initialize(query.pipeline_config)
     return inst
 
 
@@ -148,8 +205,12 @@ async def deliver_notice(app, query, config: dict, notice) -> None:
 
 async def aggregation_settings(app, query, config: dict) -> tuple[bool, float]:
     """Return (enabled, delay) the aggregator would use for this message."""
-    app.pipeline_mgr = Mock()
-    app.pipeline_mgr.get_pipeline_by_uuid = AsyncMock(return_value=Mock(pipeline_entity=Mock(config=config)))
+    await apply_legacy_config(app, query, config)
     app.instance_config.data.setdefault('concurrency', {})
     aggregator = aggregator_module.MessageAggregator(app)
-    return await aggregator._get_aggregation_config(query._execution_context, query.pipeline_uuid)
+    return await aggregator._get_aggregation_config(
+        query._execution_context,
+        query.pipeline_uuid,
+        bot_uuid=query.bot_uuid,
+        route_id=ROUTE_ID,
+    )

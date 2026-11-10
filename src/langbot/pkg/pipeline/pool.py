@@ -261,8 +261,13 @@ class QueryPool:
         routed_by_rule: bool = False,
         variables: dict[str, typing.Any] | None = None,
         execution_context: ExecutionContext | None = None,
+        route_id: str | None = None,
     ) -> pipeline_query.Query:
-        """Create a query and cache it under an opaque, Workspace-scoped key."""
+        """Create a query and cache it under an opaque, Workspace-scoped key.
+
+        ``route_id`` names the bot route the message matched; it selects the
+        message policy override the query runs under.
+        """
 
         query_uuid = str(uuid.uuid4())
         execution_context = await self.resolve_execution_context(
@@ -278,6 +283,8 @@ class QueryPool:
             initial_variables: dict[str, typing.Any] = {'_routed_by_rule': routed_by_rule}
             if variables:
                 initial_variables.update(variables)
+            if route_id:
+                initial_variables['_message_route_id'] = route_id
             query = pipeline_query.Query(
                 instance_uuid=execution_context.instance_uuid,
                 workspace_uuid=execution_context.workspace_uuid,

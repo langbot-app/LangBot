@@ -9,6 +9,7 @@ that configuration lives.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -385,14 +386,13 @@ async def test_send_applies_at_sender_and_quote(app, sample_query, group, at_sen
 
 @pytest.mark.asyncio
 async def test_send_waits_for_the_forced_delay(app, sample_query, monkeypatch):
-    from langbot.pkg.pipeline.respback import respback
-
     slept: list[float] = []
 
     async def fake_sleep(seconds):
         slept.append(seconds)
 
-    monkeypatch.setattr(respback.asyncio, 'sleep', fake_sleep)
+    # Patch the module itself: the wait is behaviour, wherever it is implemented.
+    monkeypatch.setattr(asyncio, 'sleep', fake_sleep)
     _reply_chain(sample_query, 'reply')
     config = harness.legacy_config({'output.force-delay': {'min': 2, 'max': 2}})
 

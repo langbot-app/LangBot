@@ -90,6 +90,7 @@ _HOST_RESERVED_QUERY_VAR_KEYS = frozenset(
         '_activated_skills',
         '_fallback_model_uuids',
         '_routed_by_rule',
+        '_message_route_id',
     }
 )
 

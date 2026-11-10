@@ -22,6 +22,8 @@ from tests.factories import (
 
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
+from .outer_stage_harness import bind_policy
+
 
 def get_longtext_module():
     """Lazy import to avoid circular import issues."""
@@ -53,42 +55,29 @@ def make_longtext_config(strategy: str = 'none', threshold: int = 1000):
     }
 
 
-class TestLongTextProcessStageInit:
-    """Tests for LongTextProcessStage initialization."""
+class TestLongTextStrategySelection:
+    """The long-text strategy a message policy compiles from its settings."""
 
     @pytest.mark.asyncio
-    async def test_initialize_none_strategy(self):
-        """Initialize with strategy='none' should set strategy_impl to None."""
-        longtext = get_longtext_module()
+    async def test_none_strategy(self):
+        """strategy='none' compiles to no strategy at all."""
+        policy = await bind_policy(FakeApp(), text_query('hello'), make_longtext_config(strategy='none'))
 
-        app = FakeApp()
-        stage = longtext.LongTextProcessStage(app)
-
-        pipeline_config = make_longtext_config(strategy='none')
-
-        await stage.initialize(pipeline_config)
-
-        assert stage.strategy_impl is None
+        assert policy.long_text_strategy is None
 
     @pytest.mark.asyncio
-    async def test_initialize_forward_strategy(self):
-        """Initialize with strategy='forward' should use ForwardComponentStrategy."""
-        longtext = get_longtext_module()
+    async def test_forward_strategy(self):
+        """strategy='forward' compiles to ForwardComponentStrategy."""
         forward = import_module('langbot.pkg.pipeline.longtext.strategies.forward')
 
-        app = FakeApp()
-        stage = longtext.LongTextProcessStage(app)
+        policy = await bind_policy(FakeApp(), text_query('hello'), make_longtext_config(strategy='forward'))
 
-        pipeline_config = make_longtext_config(strategy='forward')
-
-        await stage.initialize(pipeline_config)
-
-        assert isinstance(stage.strategy_impl, forward.ForwardComponentStrategy)
+        assert isinstance(policy.long_text_strategy, forward.ForwardComponentStrategy)
 
     @pytest.mark.asyncio
-    async def test_initialize_unknown_strategy_raises(self):
-        """Initialize with unknown strategy should raise ValueError."""
-        longtext = get_longtext_module()
+    async def test_unknown_strategy_raises(self):
+        """A strategy that is not registered cannot be compiled."""
+        get_longtext_module()
         strategy = get_strategy_module()
 
         # Save original preregistered_strategies
@@ -98,13 +87,8 @@ class TestLongTextProcessStageInit:
             # Clear registered strategies to simulate unknown
             strategy.preregistered_strategies = []
 
-            app = FakeApp()
-            stage = longtext.LongTextProcessStage(app)
-
-            pipeline_config = make_longtext_config(strategy='unknown')
-
             with pytest.raises(ValueError, match='Long message processing strategy not found'):
-                await stage.initialize(pipeline_config)
+                await bind_policy(FakeApp(), text_query('hello'), make_longtext_config(strategy='unknown'))
         finally:
             # Restore original strategies
             strategy.preregistered_strategies = original_strategies
@@ -128,6 +112,7 @@ class TestLongTextProcessStageProcess:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='very long response')])]
 
         result = await stage.process(query, 'LongTextProcessStage')
@@ -151,6 +136,7 @@ class TestLongTextProcessStageProcess:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         query.resp_message_chain = [platform_message.MessageChain([platform_message.Plain(text='short response')])]
 
         result = await stage.process(query, 'LongTextProcessStage')
@@ -177,6 +163,7 @@ class TestLongTextProcessStageProcess:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         # Non-Plain component (Image)
         query.resp_message_chain = [
             platform_message.MessageChain(
@@ -210,6 +197,7 @@ class TestLongTextProcessStageProcess:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         query.resp_message_chain = []
 
         result = await stage.process(query, 'LongTextProcessStage')
@@ -225,17 +213,17 @@ class TestLongTextProcessStageProcess:
 
         app = FakeApp()
         stage = longtext.LongTextProcessStage(app)
-        stage.strategy_impl = AsyncMock()
 
         query = text_query('hello')
-        query.pipeline_config = make_longtext_config(strategy='forward', threshold=1)
+        policy = await bind_policy(app, query, make_longtext_config(strategy='forward', threshold=1))
+        policy.long_text_strategy = AsyncMock()
         query.resp_message_chain = []
 
         result = await stage.process(query, 'LongTextProcessStage')
 
         assert result.result_type == entities.ResultType.CONTINUE
         assert result.new_query is query
-        stage.strategy_impl.process.assert_not_called()
+        policy.long_text_strategy.process.assert_not_called()
 
 
 class TestForwardStrategy:
@@ -258,6 +246,7 @@ class TestForwardStrategy:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
         # Create a mock adapter with bot_account_id
         mock_adapter = Mock()
         mock_adapter.bot_account_id = '12345'
@@ -322,6 +311,7 @@ class TestLongTextThreshold:
 
         query = text_query('hello')
         query.pipeline_config = pipeline_config
+        await bind_policy(app, query)
 
         # Text below threshold
         short_text = 'x' * (threshold - 1)
@@ -342,18 +332,17 @@ class TestLongTextProcessStageImageStrategy:
     @pytest.mark.asyncio
     async def test_image_strategy_missing_font_fallback(self, monkeypatch):
         """Missing font should fallback to forward strategy."""
-        longtext = get_longtext_module()
+        get_longtext_module()
         forward = import_module('langbot.pkg.pipeline.longtext.strategies.forward')
-        monkeypatch.setattr(longtext, 'os', SimpleNamespace(name='posix', path=SimpleNamespace(exists=lambda _: False)))
+        policy_runtime = import_module('langbot.pkg.message_policy.runtime')
+        monkeypatch.setattr(
+            policy_runtime, 'os', SimpleNamespace(name='posix', path=SimpleNamespace(exists=lambda _: False))
+        )
 
-        app = FakeApp()
-        stage = longtext.LongTextProcessStage(app)
-
-        # Use non-existent font path
-        pipeline_config = make_longtext_config(strategy='image')
+        query = text_query('hello')
 
         # On non-Windows without font, should fallback to forward
-        await stage.initialize(pipeline_config)
+        policy = await bind_policy(FakeApp(), query, make_longtext_config(strategy='image'))
 
-        assert pipeline_config['output']['long-text-processing']['strategy'] == 'forward'
-        assert isinstance(stage.strategy_impl, forward.ForwardComponentStrategy)
+        assert query.pipeline_config['output']['long-text-processing']['strategy'] == 'forward'
+        assert isinstance(policy.long_text_strategy, forward.ForwardComponentStrategy)

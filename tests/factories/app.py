@@ -42,6 +42,11 @@ class FakeApp:
         self.cmd_mgr = self._create_mock_cmd_mgr()
         self.skill_mgr = self._create_mock_skill_mgr()
         self.pipeline_service = self._create_mock_pipeline_service()
+        # Stages resolve the message policy of a query through the manager; with
+        # no platform manager it yields the neutral policy unless a test binds one.
+        from langbot.pkg.message_policy.manager import MessagePolicyManager
+
+        self.message_policy_mgr = MessagePolicyManager(self)
 
         # Apply any extra attributes for specific test scenarios
         for name, value in extra_attrs.items():

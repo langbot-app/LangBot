@@ -102,7 +102,9 @@ class Controller:
             if pipeline is None:
                 return False
             query.session = await self.ap.sess_mgr.get_session(query)
-            query.pipeline_config = pipeline.pipeline_entity.config
+            # Same view the stage chain gets: Messaging config with the message
+            # policy of the matched route laid over it.
+            await self.ap.message_policy_mgr.bind_query(query, pipeline.pipeline_entity.config)
             query.variables['_pipeline_bound_plugins'] = pipeline.bound_plugins
             query.variables['_pipeline_bound_mcp_servers'] = pipeline.bound_mcp_servers
             query.variables['_pipeline_workspace_operations'] = getattr(pipeline, 'workspace_operations', [])
