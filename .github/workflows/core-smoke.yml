@@ -31,7 +31,8 @@ jobs:
         run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
 
   smoke:
-    name: Core smoke with plugins (5m)
+    # Preserve the status context required by the master branch rules.
+    name: Core smoke (60s)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
