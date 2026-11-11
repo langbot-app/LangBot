@@ -214,6 +214,11 @@ def main():
     parser.add_argument('--rps', type=float, default=2)
     parser.add_argument('--workers', type=int, default=4)
     parser.add_argument(
+        '--max-requests',
+        type=int,
+        help='Require this many requests, including enabled per-request ledger checks, to finish within --duration',
+    )
+    parser.add_argument(
         '--groups', type=int, default=0, help='Stable group sessions; zero uses independent CLI requests'
     )
     parser.add_argument('--members-per-group', type=int, default=3)
@@ -242,6 +247,8 @@ def main():
         parser.error('duration/rps must be positive, workers 1..32, cooldown nonnegative')
     if not 0 <= args.groups <= 4096 or not 1 <= args.members_per_group <= 1000:
         parser.error('groups must be 0..4096 (0 selects CLI mode), members-per-group 1..1000')
+    if args.max_requests is not None and args.max_requests < 1:
+        parser.error('max-requests must be positive')
     cases = json.loads(args.cases.read_text())
     if (
         not isinstance(cases, list)
@@ -294,8 +301,10 @@ def main():
     lock = threading.Lock()
     group_condition = threading.Condition(lock)
     stop = threading.Event()
+    admission_closed = threading.Event()
     phase = ['load']
     next_case = 0
+    admitted_requests = 0
     phase_start_id = 0
     if args.ledger_db:
         with sqlite3.connect(args.ledger_db.resolve().as_uri() + '?mode=ro', uri=True) as db:
@@ -430,18 +439,28 @@ def main():
                 stop.wait(3)
 
     def worker(index):
-        nonlocal next_case
+        nonlocal next_case, admitted_requests
         iteration = 0
         due = started + index / args.rps
         while due < deadline:
-            if stop.wait(max(0, due - time.monotonic())) or time.monotonic() >= deadline:
+            pacing_stop = stop if args.max_requests is None else admission_closed
+            if pacing_stop.wait(max(0, due - time.monotonic())) or stop.is_set() or time.monotonic() >= deadline:
                 break
-            if args.shared_case_sequence:
-                with lock:
+            with lock:
+                if (
+                    stop.is_set()
+                    or time.monotonic() >= deadline
+                    or (args.max_requests is not None and admitted_requests >= args.max_requests)
+                ):
+                    break
+                admitted_requests += 1
+                if admitted_requests == args.max_requests:
+                    admission_closed.set()
+                if args.shared_case_sequence:
                     case = cases[next_case % len(cases)]
                     next_case += 1
-            else:
-                case = cases[(iteration * args.workers + index) % len(cases)]
+                else:
+                    case = cases[(iteration * args.workers + index) % len(cases)]
             before = time.monotonic()
             row = {
                 'case': case['name'],
@@ -496,11 +515,16 @@ def main():
             due = max(due + args.workers / args.rps, time.monotonic())
 
     def group_worker(_index):
+        nonlocal admitted_requests
         while not stop.is_set():
             with group_condition:
                 while True:
                     now = time.monotonic()
-                    if stop.is_set() or now >= deadline:
+                    if (
+                        stop.is_set()
+                        or now >= deadline
+                        or (args.max_requests is not None and admitted_requests >= args.max_requests)
+                    ):
                         return
                     available = [group for group in groups if not group['busy'] and not group['failed']]
                     if not available:
@@ -513,6 +537,9 @@ def main():
                         group_condition.wait(min(1, group['due'] - now))
                         continue
                     group['busy'] = True
+                    admitted_requests += 1
+                    if admitted_requests == args.max_requests:
+                        group_condition.notify_all()
                     break
             case = cases[group['case']]
             before = time.monotonic()
@@ -575,13 +602,15 @@ def main():
         except Exception as exc:
             sampling_errors.append(f'{type(exc).__name__}: {exc}')
             stop.set()
+            admission_closed.set()
 
     sampler = threading.Thread(target=sampling_guard)
     sampler.start()
     try:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             list(pool.map(group_worker if args.groups else worker, range(args.workers)))
-        stop.wait(max(0, deadline - time.monotonic()))
+        if args.max_requests is None:
+            stop.wait(max(0, deadline - time.monotonic()))
         load_elapsed = time.monotonic() - started
         phase[0] = 'cooldown'
         stop.wait(args.cooldown)
@@ -595,12 +624,14 @@ def main():
         'workers': args.workers,
         'cooldown_seconds': args.cooldown,
         'requests': len(rows),
+        'request_limit': args.max_requests,
         'successful_requests': sum(row['status'] == 'ok' for row in rows),
         'verified_runs': len(verified_ids),
         'runner_requests': sum(row.get('requires_runner', False) for row in rows),
         'verification_enabled': bool(args.ledger_db),
-        'planned_requests': math.ceil(args.duration * args.rps),
-        'delivery_ratio': len(rows) / math.ceil(args.duration * args.rps),
+        'planned_requests': args.max_requests if args.max_requests is not None else math.ceil(args.duration * args.rps),
+        'delivery_ratio': len(rows)
+        / (args.max_requests if args.max_requests is not None else math.ceil(args.duration * args.rps)),
         'drain_seconds': max(0, load_elapsed - args.duration),
         'schedule_lag_p95_seconds': percentile([row['schedule_lag_seconds'] for row in rows], 0.95),
         'load_model': 'bounded workers; serialized groups; dispatch latency excludes verification',
@@ -664,6 +695,7 @@ def main():
     print(json.dumps(summary, indent=2), flush=True)
     if (
         not rows
+        or (args.max_requests is not None and (len(rows) != args.max_requests or load_elapsed > args.duration))
         or any(row['status'] != 'ok' for row in rows)
         or summary['health_failures']
         or sampling_errors

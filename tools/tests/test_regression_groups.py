@@ -194,6 +194,27 @@ class GroupTests(unittest.TestCase):
                     self.assertEqual(len(second[group]['members_this_phase']), 2)
                 self.assertFalse(failures)
                 self.assertNotIn(secret, state.read_text())
+                for limit in (8, 1000):
+                    output = root / f'limited-{limit}'
+                    result = subprocess.run(
+                        [*command, '--groups', '4', '--max-requests', str(limit), '--output', str(output)],
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                        timeout=15,
+                    )
+                    summary = json.loads((output / 'summary.json').read_text())
+                    self.assertEqual(result.returncode, int(limit == 1000), result.stdout + result.stderr)
+                    self.assertEqual(summary['request_limit'], limit)
+                    self.assertFalse(summary['group_failures'])
+                    if limit == 8:
+                        self.assertEqual(summary['requests'], 8)
+                        self.assertTrue(
+                            all(row['requests_this_phase'] == 2 for row in summary['groups']['sessions'].values())
+                        )
+                    else:
+                        self.assertLess(summary['requests'], limit)
+                self.assertFalse(failures)
                 bad_reply = True
                 output = root / 'failed'
                 result = subprocess.run(

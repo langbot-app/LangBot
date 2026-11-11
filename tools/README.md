@@ -110,6 +110,13 @@ recorded without retry. A command fails its business check if it returns an erro
 or omits the expected response. Health/resource collection failures also make the
 run fail. API key values are redacted from recorded CLI output.
 
+`--max-requests 96` makes `--duration` the completion budget for all 96 requests,
+including enabled per-request ledger verification. Missing, failed, or late
+requests fail the run; in-flight requests are drained without retry. Cooldown
+and final ledger closeout still run afterward and retain their checks.
+`request_limit` records the limit; `planned_requests` and `delivery_ratio` use
+this fixed count. Omit the option to retain time-based load.
+
 Latency percentiles include the entire CLI invocation and use successful
 requests only. Achieved request rate is `requests / load_elapsed_seconds`.
 `health_samples` counts sampling rounds; `health_failures` counts rounds with
@@ -143,6 +150,10 @@ python3 -m tools.entrypoints.regression_suite run \
 The output directory for `run` must be new. CLI options `--duration`, `--rps`, and
 `--workers` override those values in every phase. No additional Python dependency
 is needed.
+
+A load phase may set `max_requests` to a positive integer. It uses the same
+completion-budget semantics as `regression_traffic --max-requests`; otherwise
+the phase keeps its time-based behavior.
 
 The profile controls:
 
@@ -424,12 +435,21 @@ and exact installation/readiness readback. Build logs are preserved alongside it
 The published route remains available when `--plugins` is omitted; see
 [published plugin preparation and replay](published-plugins.md).
 
+The same job also runs `--required-suite shared_provider_concurrency` as a separate
+step, outside the smoke execution budget. Eight conversations each complete two
+turns through real Core, SDK Runtime, LocalAgent and one shared LiteLLM requester;
+only remote generation uses a loopback mock. The contract checks overlapping token
+counts, conversation history and persisted run completion, rejects token-count
+fallback, and always uploads its JUnit result.
+
 Dependency installation, service startup, sandbox image download and plugin
-installation are preparation. After readiness, the gate allows **60 seconds total**
-for API resource creation, 28 cases / 37 requests (two turns per group), verdict
-checks and API cleanup. A missing verdict, failed check or timeout fails the gate.
-The ordinary expanded profile keeps three turns / 43 requests. The entire cold
-workflow takes longer than a minute; it has a separate 15-minute timeout.
+installation are preparation. The PR job uses `--suite scenarios --scenario-groups
+plugins`, including EssentialCommands and FAQManager, under a 300-second execution
+guard. Its required status name remains `Core smoke (60s)` for branch-rule
+compatibility. The base `--suite smoke` retains its 60-second budget for 28 cases /
+37 requests (two turns per group), verdict checks and API cleanup. A missing
+verdict, failed check or timeout fails the gate. The entire cold workflow,
+including the separate concurrency contract, has a 15-minute timeout.
 
 On an existing prepared stack, use:
 
