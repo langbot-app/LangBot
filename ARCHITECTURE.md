@@ -2,7 +2,7 @@
 
 This document is a map of LangBot's moving parts. It is intentionally more stable than a feature guide and more concrete than the README: when you need to change behavior, start here, then follow the file references into the code.
 
-For agent-specific working rules, see `AGENTS.md`. For plugin-runtime and Box-runtime implementation details, also read the sibling SDK repo: [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk).
+For agent-specific working rules, see `AGENTS.md`. For plugin-runtime and Box-runtime implementation details, also read the SDK map in [`sdk/ARCHITECTURE.md`](sdk/ARCHITECTURE.md).
 
 ## What LangBot Is
 
@@ -14,20 +14,20 @@ At runtime, one LangBot process owns:
 - messaging-platform adapters such as Discord, Telegram, Slack, WeChat, QQ, WeCom, Lark, DingTalk, KOOK, LINE, Satori, Matrix, and HTTP/WebSocket bots;
 - a pipeline engine that turns inbound platform messages into LLM/tool/plugin work and replies;
 - persistence, storage, vector database, telemetry, monitoring, and configuration managers;
-- bridges to the Plugin Runtime and Box Runtime provided by `langbot-plugin-sdk`;
+- bridges to the Plugin Runtime and Box Runtime provided by the plugin SDK (`sdk/`, package `langbot-plugin`);
 - an MCP server at `/mcp` exposing a curated agent-facing subset of the service layer.
 
 ## Repository Boundary
 
-LangBot is not a single-repo system.
+LangBot is a monorepo whose parts are released independently.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
 - `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
-- `langbot-plugin-sdk/` is published as `langbot-plugin` and pinned in `LangBot/pyproject.toml`. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`).
+- `LangBot/sdk/` is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`, no GitHub Release) and pinned exactly in `LangBot/pyproject.toml`; Core installs that PyPI version, never the tree. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`). Core artifacts exclude this tree. See `sdk/RELEASING.md`. It was imported from the archived `langbot-app/langbot-plugin-sdk` repository at v0.7.24 (`sdk/SOURCE.json`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
 
-This split matters. If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, verify the sibling SDK repo and install the local SDK into LangBot's virtualenv when testing cross-repo behavior.
+This split matters. If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, change `sdk/` and the Core bridge in one PR, run the SDK tests in `sdk/`, and test Core with the in-tree SDK overlaid (`uv pip install ./sdk`, then `uv run --no-sync ...`). Core can only rely on the change after the SDK is released and the pin is bumped.
 
 ## Startup Path
 
@@ -122,7 +122,7 @@ Platform code lives under `pkg/platform/`.
 - `botmgr.py` owns runtime bots, routing rules, event logging, webhook pushing, and adapter lifecycle.
 - Bots store exclusive Agent/Pipeline routes in `event_bindings` and independent plugin subscriptions in `plugin_processors` (`processor_uuid`, `enabled`). Subscriptions resolve event patterns from the installed Runner and fan out alongside the primary route. Configuration, state, debug and run logs belong to the reusable processor instance.
 - `sources/` contains adapter implementations. Each adapter subclasses `langbot_plugin.api.definition.abstract.platform.adapter.AbstractMessagePlatformAdapter` from the SDK.
-- Platform entities such as `MessageChain`, `Image`, `At`, `Voice`, and events come from `langbot-plugin-sdk`, not from this repo.
+- Platform entities such as `MessageChain`, `Image`, `At`, `Voice`, and events come from the SDK (`sdk/`, `langbot_plugin`), not from Core.
 - `pkg/platform/image_urls.py` renews image references in authorized monitoring/history responses and before Host model attempts without downloading. The shared resource URL catalog persists renewed URLs behind stable references. OneBot connection-local state in `adapters/aiocqhttp/image_urls.py` identifies the implementation lazily and reuses NapCat credentials until their returned TTL expires. Other implementations use standard `get_msg` when the URL's creation or last successful check is at least 30 minutes old. URLs can be shared across Workspaces; bot ownership checks, credentials and original message identities remain scoped to their connection.
 
 The platform layer should translate between external platform APIs and LangBot's shared message/event model. It should not contain LLM-provider logic or pipeline business logic.
@@ -165,7 +165,7 @@ In this repo:
 - Pipeline handlers emit SDK events such as normal-message events and prompt-processing events.
 - [Certified plugin policy](dev-docs/architecture/certified-plugins.md) defines Core's archive-fact, admission, and tenant-log-visibility boundary; the SDK remains responsible for certificate verification.
 
-In `langbot-plugin-sdk`:
+In `sdk/`:
 
 - `src/langbot_plugin/api/` defines `BasePlugin`, component base classes, message/event entities, contexts, proxies, and manifests.
 - `src/langbot_plugin/runtime/` implements `lbp rt`, plugin discovery, dependency installation, process launching, and control/debug connections.
@@ -226,7 +226,7 @@ the current execution binding before an MCP stdio relay attach and sends the
 Workspace/generation binding in authenticated headers, so a placement cutover
 retires stale processes and closes already-attached relays.
 
-In `langbot-plugin-sdk`:
+In `sdk/`:
 
 - `src/langbot_plugin/box/server.py` implements `lbp box` and the WebSocket endpoints on `:5410`.
 - `src/langbot_plugin/box/runtime.py` owns sandbox sessions, generic read-only mounts, and managed processes.
@@ -350,8 +350,8 @@ When one of these changes, update the others if the behavior or contract changed
 - New pipeline behavior: add or extend a pipeline stage family under `pkg/pipeline/`; avoid putting pipeline rules in adapters.
 - New LLM provider/requester: work under `pkg/provider/modelmgr/` and related service/UI surfaces.
 - New LLM tool source: extend `pkg/provider/tools/loaders/` and `ToolManager` intentionally.
-- New plugin component/API/protocol: change `langbot-plugin-sdk` first or in lockstep, then update LangBot bridge code.
-- New Box capability: change both `pkg/box/` and `langbot-plugin-sdk/src/langbot_plugin/box/`, plus config and tests.
+- New plugin component/API/protocol: change `sdk/` in the same PR as the LangBot bridge code; release the SDK before the Core release that needs it.
+- New Box capability: change both `pkg/box/` and `sdk/src/langbot_plugin/box/`, plus config and tests.
 - New database schema: add an Alembic migration.
 
 ## Design Biases

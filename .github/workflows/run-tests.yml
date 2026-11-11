@@ -7,6 +7,7 @@ on:
       - 'src/langbot/**'
       - 'tests/**'
       - 'plugins/Runner/**'
+      - 'sdk/**'
       - '.github/workflows/run-tests.yml'
       - 'pyproject.toml'
       - 'uv.lock'
@@ -72,6 +73,29 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  in-tree-sdk:
+    # Core normally installs the PyPI-pinned SDK. This job overlays the in-tree
+    # sdk/ so a pull request that changes SDK and Core together is tested as a
+    # unit. Releases still require the SDK to be published first (see
+    # scripts/check_sdk_release_pin.py).
+    name: Core with in-tree SDK
+    runs-on: ubuntu-latest
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - name: Install dependencies with the in-tree SDK
+        run: |
+          uv sync --dev --frozen
+          uv pip install ./sdk
+          uv run --no-sync python -c "import langbot_plugin, pathlib; print(pathlib.Path(langbot_plugin.__file__).parent)"
+      - name: Run unit + smoke tests
+        run: uv run --no-sync pytest tests/unit_tests/ tests/smoke/ -q --tb=short
 
   sqlalchemy-compat:
     name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility

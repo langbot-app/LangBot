@@ -1,8 +1,8 @@
 # AGENTS.md
 
-This file guides code agents working in the `langbot-plugin-sdk` repository. `CLAUDE.md` is a symlink to this file.
+This file guides code agents working on the plugin SDK in `sdk/` of the LangBot monorepo (formerly the separate `langbot-plugin-sdk` repository, now archived). `CLAUDE.md` is a symlink to this file. The repository-wide rules in `../AGENTS.md` also apply.
 
-Read `ARCHITECTURE.md` before non-trivial SDK, CLI, Plugin Runtime, Box Runtime, protocol, or cross-repo LangBot changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
+Read `ARCHITECTURE.md` before non-trivial SDK, CLI, Plugin Runtime, Box Runtime, protocol, or SDK + Core changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
 
 ## Quick Facts
 
@@ -11,7 +11,8 @@ Read `ARCHITECTURE.md` before non-trivial SDK, CLI, Plugin Runtime, Box Runtime,
 - CLI entrypoint: `lbp = langbot_plugin.cli:main`.
 - Main consumers: LangBot main repo and third-party plugins.
 - Runtime license: `src/langbot_plugin/runtime/` is AGPL; the rest is Apache 2.0.
-- LangBot pins this package in its `pyproject.toml`; local cross-repo testing needs a local install into LangBot's venv.
+- LangBot Core pins this package exactly (`langbot-plugin==X` in `../pyproject.toml`) and installs it from PyPI; testing Core against `sdk/` needs an explicit overlay install.
+- Releases: `sdk/vX.Y.Z` tags publish to PyPI; never a GitHub Release. See `RELEASING.md`.
 
 ## Essential Commands
 
@@ -49,27 +50,20 @@ uv run python scripts/check_action_consistency.py
 - Action protocol: `src/langbot_plugin/entities/io/` and `src/langbot_plugin/runtime/io/handler.py`.
 - Plugin tutorial: https://langbot.app/docs/zh/plugin/dev/tutor.
 - Runtime/CLI/SDK debugging: https://langbot.app/docs/zh/develop/plugin-runtime.
-- LangBot main repo: `../LangBot/`.
+- LangBot Core: the repository root (`../`), Core code in `../src/langbot/`.
 
-## Cross-Repo LangBot Testing
+## Testing With LangBot Core
 
-Use sibling repos:
-
-```text
-langbot-projects/
-├── LangBot/
-└── langbot-plugin-sdk/
-```
-
-When changing shared entities, component contracts, action payloads, Plugin Runtime, or Box Runtime:
+All commands in this file run from `sdk/` unless noted. When changing shared entities, component contracts, action payloads, Plugin Runtime, or Box Runtime, change the Core bridge in the same PR and test both:
 
 ```bash
-# from langbot-plugin-sdk, with LangBot's .venv active
-uv pip install .
-
-# from LangBot; keep local SDK installed
+# from the repository root: overlay the in-tree SDK on Core's venv
+uv sync --dev
+uv pip install ./sdk
 uv run --no-sync main.py
 ```
+
+CI does the same in the `Core with in-tree SDK` job (`.github/workflows/run-tests.yml`); the SDK's own suite runs in `sdk-tests.yml`.
 
 Standalone runtime flows:
 

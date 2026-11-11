@@ -1,4 +1,6 @@
-# Contributing to langbot-plugin-sdk
+# Contributing to the LangBot plugin SDK
+
+The SDK lives in [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) of the LangBot repository; open issues and pull requests there. The former `langbot-app/langbot-plugin-sdk` repository is archived.
 
 Thank you for your interest in contributing! For general contribution guidelines, please refer to the [LangBot contribution guide](https://github.com/langbot-app/LangBot/blob/master/CONTRIBUTING.md).
 

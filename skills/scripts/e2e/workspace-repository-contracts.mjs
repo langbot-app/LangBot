@@ -68,7 +68,7 @@ function run(command, args, { cwd, processEnv, timeoutMs = 900_000 }) {
 try {
   const langbotRepo = await resolveLangBotRepo();
   const workspaceRoot = resolve(env.LANGBOT_WORKSPACE_ROOT || dirname(langbotRepo));
-  const sdkRepo = resolve(env.LANGBOT_PLUGIN_SDK_REPO || join(workspaceRoot, "langbot-plugin-sdk"));
+  const sdkRepo = resolve(env.LANGBOT_PLUGIN_SDK_REPO || join(langbotRepo, "sdk"));
   const python = join(langbotRepo, ".venv", "bin", "python");
   await access(python);
   await access(join(sdkRepo, "src", "langbot_plugin"));
@@ -86,8 +86,8 @@ try {
     ["local-agent", "langbot-local-agent", ["-m", "pytest", "tests", "-q"]],
     ["langbot-agent-provider", "LangBot", ["-m", "pytest", "tests/unit_tests/agent", "tests/unit_tests/provider", "-q"]],
     ["skills-cli", "LangBot/skills", ["--test", "test/lbs-cli.test.ts"]],
-    ["plugin-sdk-runtime", "langbot-plugin-sdk", ["-m", "pytest", "tests", "-q", "--ignore=tests/packaging/test_installed_cli_blackbox.py"]],
-    ["plugin-sdk-packaging", "langbot-plugin-sdk", ["-m", "pytest", "tests/packaging/test_installed_cli_blackbox.py", "-q"]],
+    ["plugin-sdk-runtime", "LangBot/sdk", ["-m", "pytest", "tests", "-q", "--ignore=tests/packaging/test_installed_cli_blackbox.py"]],
+    ["plugin-sdk-packaging", "LangBot/sdk", ["-m", "pytest", "tests/packaging/test_installed_cli_blackbox.py", "-q"]],
   ];
 
   for (const [id, directory, args] of specs) {

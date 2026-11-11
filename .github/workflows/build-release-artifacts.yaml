@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-artifacts:
-    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') && !startsWith(github.ref, 'refs/tags/plugins/') }}
+    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') && !startsWith(github.ref, 'refs/tags/plugins/') && (github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')) }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -38,7 +38,7 @@ jobs:
       - name: Make Temp Directory
         run: |
           mkdir -p /tmp/langbot_build_web
-          rsync -a --exclude='/plugins/' --exclude='*.lbpkg' . /tmp/langbot_build_web/
+          rsync -a --exclude='/plugins/' --exclude='/sdk/' --exclude='*.lbpkg' . /tmp/langbot_build_web/
       - name: Setup Node
         uses: actions/setup-node@v2
         with:
@@ -58,6 +58,7 @@ jobs:
           path: |
             .
             !plugins/**
+            !sdk/**
             !**/*.lbpkg
 
       - name: Upload To Release
@@ -65,6 +66,6 @@ jobs:
           GH_TOKEN: ${{ secrets.RELEASE_UPLOAD_GITHUB_TOKEN }}
         run: |
           # 本目录下所有文件打包成zip
-          zip -r "$RUNNER_TEMP/langbot-${{ steps.check_version.outputs.version }}-all.zip" . -x 'plugins/*' '*.lbpkg' '.git/*'
+          zip -r "$RUNNER_TEMP/langbot-${{ steps.check_version.outputs.version }}-all.zip" . -x 'plugins/*' '*.lbpkg' 'sdk/*' '.git/*'
           python3 scripts/check_core_artifacts.py "$RUNNER_TEMP/langbot-${{ steps.check_version.outputs.version }}-all.zip"
           gh release upload ${{ github.event.release.tag_name }} "$RUNNER_TEMP/langbot-${{ steps.check_version.outputs.version }}-all.zip"

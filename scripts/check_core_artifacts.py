@@ -7,9 +7,14 @@ import tarfile
 import zipfile
 
 
+# Official plugins (plugins/) and the plugin SDK (sdk/) share this repository but
+# are released independently; Core artifacts must never carry their sources.
+INDEPENDENT_ROOTS = ('plugins', 'sdk')
+
+
 def forbidden_member(name: str) -> bool:
     parts = PurePosixPath(name.replace('\\', '/')).parts
-    return 'plugins' in parts[:2] or name.endswith('.lbpkg')
+    return any(root in parts[:2] for root in INDEPENDENT_ROOTS) or name.endswith('.lbpkg')
 
 
 def check_artifact(path: Path) -> None:
@@ -25,8 +30,8 @@ def check_artifact(path: Path) -> None:
         raise ValueError(f'Unsupported Core artifact: {path}')
     forbidden = [name for name in names if forbidden_member(name)]
     if forbidden:
-        raise ValueError(f'Plugin content in {path}: {forbidden[:10]}')
-    print(f'Core artifact excludes official plugins: {path.name} ({len(names)} entries)')
+        raise ValueError(f'Plugin or SDK content in {path}: {forbidden[:10]}')
+    print(f'Core artifact excludes official plugins and SDK: {path.name} ({len(names)} entries)')
 
 
 def check_docker_archive(path: Path) -> None:
@@ -37,8 +42,8 @@ def check_docker_archive(path: Path) -> None:
                 with tarfile.open(fileobj=image.extractfile(layer), mode='r|*') as contents:
                     for member in contents:
                         if forbidden_member(member.name):
-                            raise ValueError(f'Plugin content in Docker layer {layer}: {member.name}')
-    print(f'Docker image layers exclude official plugins: {path.name}')
+                            raise ValueError(f'Plugin or SDK content in Docker layer {layer}: {member.name}')
+    print(f'Docker image layers exclude official plugins and SDK: {path.name}')
 
 
 def main() -> None:

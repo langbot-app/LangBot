@@ -18,8 +18,10 @@ English / [简体中文](README_CN.md)
 
 ## Overview
 
-This repository is the shared infrastructure powering LangBot's plugin and
-sandbox subsystems. It is published to PyPI as the single
+This package is the shared infrastructure powering LangBot's plugin and
+sandbox subsystems. Its source lives in
+[`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) of the LangBot
+repository. It is published to PyPI as the single
 [`langbot-plugin`](https://pypi.org/project/langbot-plugin/) package and ships
 three things:
 
@@ -33,10 +35,10 @@ three things:
   development only.
 
 LangBot depends on this package as the pinned `langbot-plugin==<x.y.z>` in its
-`pyproject.toml`; the canonical version lives in this repo's `pyproject.toml`.
+`pyproject.toml`; the canonical version lives in `sdk/pyproject.toml`.
 
 > The **Runtime** component (`src/langbot_plugin/runtime/`) is licensed
-> separately under **AGPL**; everything else in this repository is **Apache 2.0**.
+> separately under **AGPL**; everything else in this package is **Apache 2.0**.
 > See [`src/langbot_plugin/runtime/README.md`](src/langbot_plugin/runtime/README.md).
 
 ## Install

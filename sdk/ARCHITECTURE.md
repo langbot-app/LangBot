@@ -1,10 +1,10 @@
 # Architecture
 
-This document maps the `langbot-plugin-sdk` repository. It explains the durable structure and cross-process contracts. For working rules, commands, and pitfalls, see `AGENTS.md`.
+This document maps the plugin SDK in `sdk/` of the LangBot monorepo (formerly the `langbot-plugin-sdk` repository). It explains the durable structure and cross-process contracts. For working rules, commands, and pitfalls, see `AGENTS.md`.
 
-## What This Repository Is
+## What This Package Is
 
-`langbot-plugin-sdk` is the infrastructure package behind LangBot's plugin and sandbox systems. It is published to PyPI as `langbot-plugin` and pinned by the LangBot main repo.
+The plugin SDK is the infrastructure package behind LangBot's plugin and sandbox systems. It is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`) and pinned exactly by LangBot Core.
 
 The package has four roles:
 
@@ -13,22 +13,22 @@ The package has four roles:
 - **Plugin Runtime**: `lbp rt`, the host process that manages plugin packages and plugin processes.
 - **Box Runtime**: `lbp box`, the sandbox runtime used by LangBot's Box subsystem.
 
-The runtime code under `src/langbot_plugin/runtime/` is AGPL; the rest of the repo is Apache 2.0.
+The runtime code under `src/langbot_plugin/runtime/` is AGPL; the rest of the package is Apache 2.0.
 
 ## Repository Boundary
 
-This repo is coupled to LangBot but owns different things.
+The SDK shares the LangBot repository but is versioned and released separately.
 
-- The LangBot main repo owns product behavior, HTTP API, web UI, platform adapters, pipeline execution, model/tool orchestration, persistence, skills integration, and the LangBot-side runtime connectors.
-- This SDK repo owns plugin author APIs, shared message/event/context entities, the action RPC protocol, the execution-independent filesystem Skill store, `lbp`, Plugin Runtime implementation, and Box Runtime implementation.
+- LangBot Core (`../src/langbot/`) owns product behavior, HTTP API, web UI, platform adapters, pipeline execution, model/tool orchestration, persistence, skills integration, and the LangBot-side runtime connectors.
+- The SDK (`sdk/`) owns plugin author APIs, shared message/event/context entities, the action RPC protocol, the execution-independent filesystem Skill store, `lbp`, Plugin Runtime implementation, and Box Runtime implementation.
 - Plugins import this package directly; LangBot also imports it for shared entities and runtime protocols.
 
-If a change alters shared entities, component contracts, action names/payloads, runtime behavior, or Box models, update/test both repos in lockstep.
+If a change alters shared entities, component contracts, action names/payloads, runtime behavior, or Box models, change and test SDK and Core together in one PR, and release the SDK before the Core release that depends on it.
 
 ## Top-Level Layout
 
 ```text
-langbot-plugin-sdk/
+sdk/
 ├── src/langbot_plugin/
 │   ├── api/                  # Public plugin-author SDK
 │   │   ├── definition/       # BasePlugin, components, manifests

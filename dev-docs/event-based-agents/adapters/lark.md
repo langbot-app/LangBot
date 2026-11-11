@@ -107,7 +107,7 @@ The legacy `lark` adapter remains available while the EBA adapter is registered 
 Current code-level evidence:
 
 - `tests/unit_tests/platform/test_lark_eba_adapter.py`
-- `PYTHONPATH=../langbot-plugin-sdk/src uv run pytest tests/unit_tests/platform/test_lark_eba_adapter.py -q`
+- `PYTHONPATH=sdk/src uv run pytest tests/unit_tests/platform/test_lark_eba_adapter.py -q`
 
 Live evidence collected on May 11, 2026:
 

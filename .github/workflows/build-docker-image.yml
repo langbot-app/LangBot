@@ -5,7 +5,7 @@ on:
     types: [published]
 jobs:
   publish-docker-image:
-    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') }}
+    if: ${{ !startsWith(github.event.release.tag_name, 'plugins/') && startsWith(github.event.release.tag_name, 'v') }}
     runs-on: ubuntu-latest
     name: Build image
     
@@ -14,6 +14,11 @@ jobs:
         uses: actions/checkout@v2
         with:
           persist-credentials: false
+          # Tags are needed to compare sdk/ with the pinned SDK release tag.
+          fetch-depth: 0
+
+      - name: Check the pinned SDK matches the in-tree SDK release
+        run: python3 scripts/check_sdk_release_pin.py
 
       - name: judge has env GITHUB_REF  # 如果没有GITHUB_REF环境变量，则把github.ref变量赋值给GITHUB_REF
         run: |

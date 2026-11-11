@@ -1,2 +1,3 @@
 prune plugins
+prune sdk
 global-exclude *.lbpkg

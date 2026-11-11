@@ -1,0 +1,106 @@
+name: SDK / Tests
+
+# Plugin SDK (`langbot-plugin`, `lbp`, Plugin Runtime, Box Runtime) lives in sdk/
+# and is tested in its own environment, independent of Core's lockfile.
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk-tests.yml'
+  pull_request:
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sdk-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: sdk
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+      - name: Run tests with coverage
+        run: |
+          uv run --python ${{ matrix.python-version }} pytest \
+            --ignore=tests/packaging \
+            --cov=langbot_plugin \
+            --cov-report=term-missing \
+            --cov-fail-under=84
+
+  test-lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Ruff check
+        run: uv run ruff check src tests --output-format=concise
+      - name: Ruff format check
+        run: uv run ruff format --check src tests
+
+  package-smoke:
+    name: Package Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Installed wheel CLI smoke
+        run: uv run --python 3.12 pytest -q tests/packaging
+
+  scoped-type-check:
+    name: Scoped Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Mypy scoped modules
+        run: uv run mypy
+
+  action-consistency:
+    name: Action Protocol Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check action enum / proxy / handler consistency
+        run: python scripts/check_action_consistency.py

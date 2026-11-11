@@ -17,7 +17,7 @@ LangBot は充実した Web フロントエンドを備えており、ほぼす�
 
 - **バックエンド**：Python（`>=3.11,<4.0`）、依存関係は `uv` で管理。Web フレームワークは Quart（Flask の非同期版）。HTTP API とビルド済みフロントエンドはいずれもバックエンドが `http://127.0.0.1:5300` で提供します。
 - **フロントエンド**：`web/` は **Vite + React Router 7 + shadcn/ui + Tailwind CSS** の SPA で、`pnpm` で管理します（注意：Next.js では**ありません**。`dev` スクリプトは `vite` です）。
-- **プラグインシステム**：プラグイン SDK、CLI（`lbp`）、プラグインランタイム、Box（サンドボックス）ランタイム、および LangBot とプラグインで共有されるエンティティ/API 定義は、すべて別リポジトリ [`langbot-plugin-sdk`](https://github.com/langbot-app/langbot-plugin-sdk) にあります。LangBot は `pyproject.toml` でバージョン固定した `langbot-plugin` パッケージを通じて依存します。
+- **プラグインシステム**：プラグイン SDK、CLI（`lbp`）、プラグインランタイム、Box（サンドボックス）ランタイム、および LangBot とプラグインで共有されるエンティティ/API 定義は、すべて LangBot リポジトリの [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) ディレクトリにあり、PyPI パッケージ `langbot-plugin` として個別にリリースされます。LangBot は `sdk/` ディレクトリを直接使わず、`pyproject.toml` でバージョン固定した `langbot-plugin` パッケージを通じて依存します。
 
 ## リポジトリ構成
 
@@ -62,7 +62,7 @@ LangBot/
 | `skill` / `rag` / `vector` | スキル、検索拡張生成、ベクトルストアの機能。 |
 | `persistence` | ORM エンティティ定義と Alembic マイグレーション。単一のスクリプトセットで SQLite と PostgreSQL の両方に対応。 |
 
-プラグイン側のコンポーネント（`langbot-plugin-sdk` で定義、`lbp comp` で生成）は 1 つの `BasePlugin` を中心に構成されます。現在 6 種類のコンポーネントに対応しています：
+プラグイン側のコンポーネント（`sdk/` の SDK で定義、`lbp comp` で生成）は 1 つの `BasePlugin` を中心に構成されます。現在 6 種類のコンポーネントに対応しています：
 
 - **Command**：ユーザーが能動的に起動するコマンド（例：`!weather tokyo`）。
 - **Tool**：LLM が Agent 実行中に呼び出す関数（例：天気取得、データベース照会）。
@@ -96,7 +96,7 @@ LangBot/
   - LangBot を**直接起動**した場合（コンテナ外）、バックエンドが自らランタイムを**起動**し、**stdio** で通信します（軽量/個人向け）。stdio は**自動再接続できません**——切断後は LangBot の再起動が必要です。よくある障害は、前のバックエンドが残した**孤児ランタイムプロセス**が `5400`/`5401` を占有しているケースで、それを kill して再起動します。
   - LangBot を**コンテナ**で実行する場合、**WebSocket** で独立したランタイムに接続します（本番向け）。制御ポートは既定 `5400`、デバッグポートは `5401`。設定：`data/config.yaml` の `plugin.runtime_ws_url`（例：`ws://langbot_plugin_runtime:5400/control/ws`）。
 - **バックエンド ↔ Box ランタイム**：Box サブシステムは制御チャネル（既定ポート `5410`）で Box ランタイムに接続し、ランタイムが Docker / nsjail / E2B でサンドボックスコードを実行します。設定（`data/config.yaml` の `box:` セクション）：`box.enabled`（マスタースイッチ）、`box.backend`（`'local'`/`'docker'`/`'nsjail'`/`'e2b'`）、`box.runtime.endpoint`（外部 Box ランタイムの URL、例：`ws://127.0.0.1:5410`、空なら ローカル自動管理）。プラグインランタイムと同様、このエンドポイントを設定し `--standalone-box` で起動すると外部 Box ランタイムに接続できます。
-- ランタイム・CLI・SDK のデバッグ方法の詳細は[「プラグインランタイム、CLI、SDK のデバッグ」](/ja/develop/plugin-runtime)を参照。詳細なフラグとアーキテクチャは `langbot-plugin-sdk` リポジトリの `AGENTS.md` にあります。
+- ランタイム・CLI・SDK のデバッグ方法の詳細は[「プラグインランタイム、CLI、SDK のデバッグ」](/ja/develop/plugin-runtime)を参照。詳細なフラグとアーキテクチャは `sdk/AGENTS.md` と `sdk/ARCHITECTURE.md` にあります。
 
 ## 開発環境のセットアップ
 

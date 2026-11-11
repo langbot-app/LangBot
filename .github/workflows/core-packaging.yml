@@ -2,9 +2,9 @@ name: Core packaging boundary
 
 on:
   push:
-    paths: ['plugins/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
+    paths: ['plugins/**', 'sdk/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
   pull_request:
-    paths: ['plugins/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
+    paths: ['plugins/**', 'sdk/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
   workflow_dispatch:
 
 permissions:

@@ -2685,7 +2685,7 @@ test("test recommend maps Runner result changes to fixture contract", () => {
         "test",
         "recommend",
         "--file",
-        "langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/runner/result.py",
+        "LangBot/sdk/src/langbot_plugin/api/entities/builtin/runner/result.py",
         "--json",
       ]),
     ),

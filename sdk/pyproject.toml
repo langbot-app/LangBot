@@ -44,8 +44,8 @@ build-backend = "hatchling.build"
 
 [project.urls]
 Homepage = "https://langbot.app"
-Repository = "https://github.com/langbot-app/langbot-plugin-sdk"
-Issues = "https://github.com/langbot-app/langbot-plugin-sdk/issues"
+Repository = "https://github.com/langbot-app/LangBot/tree/master/sdk"
+Issues = "https://github.com/langbot-app/LangBot/issues"
 
 [tool.setuptools]
 package-data = { "langbot_plugin" = ["assets/templates/*", "assets/*.js"] }

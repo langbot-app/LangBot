@@ -38,7 +38,7 @@ Standard events: `dev-docs/event-based-agents/01-event-system.md`. Standard enti
 4. Read the legacy source adapter for the target platform:
    - `LangBot/src/langbot/pkg/platform/sources/<platform>.py`
    - `LangBot/src/langbot/pkg/platform/sources/<platform>.yaml`
-5. Inspect SDK entity definitions in `langbot-plugin-sdk/src/langbot_plugin/api/entities/builtin/platform/`.
+5. Inspect SDK entity definitions in `LangBot/sdk/src/langbot_plugin/api/entities/builtin/platform/`.
 6. Search before assuming APIs. Platform SDKs change often.
 
 ## Adapter Layout
@@ -196,17 +196,17 @@ Real platform / simulator UI
 Typical shape:
 
 ```bash
-# Terminal 1, SDK repo
-cd langbot-plugin-sdk
+# Terminal 1, SDK (in-tree)
+cd LangBot/sdk
 uv run python -m langbot_plugin.cli.__init__ rt \
   --debug-only \
   --ws-control-port 5400 \
   --ws-debug-port 5401 \
   --skip-deps-check
 
-# Terminal 2, LangBot repo
+# Terminal 2, LangBot repo root
 cd LangBot
-export PYTHONPATH=/absolute/path/to/langbot-plugin-sdk/src:${PYTHONPATH:-}
+export PYTHONPATH=/absolute/path/to/LangBot/sdk/src:${PYTHONPATH:-}
 uv run main.py --standalone-runtime
 
 # Terminal 3, plugin directory
@@ -215,7 +215,7 @@ export EBA_PROBE_LOG=/absolute/path/to/LangBot/data/temp/<platform>_eba_plugin_p
 export EBA_PROBE_API=1
 export EBA_PROBE_COMPONENT_SWEEP=1
 export EBA_PROBE_PLATFORM_API=1
-uv --project /absolute/path/to/langbot-plugin-sdk run python -m langbot_plugin.cli.__init__ run
+uv --project /absolute/path/to/LangBot/sdk run python -m langbot_plugin.cli.__init__ run
 ```
 
 Use an EBA probe plugin that subscribes to all relevant EBA event classes and runs SDK API calls after the first `MessageReceived`.

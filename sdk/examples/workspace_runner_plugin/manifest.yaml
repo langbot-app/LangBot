@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: LangBot
   name: WorkspaceRunnerExample
-  repository: https://github.com/langbot-app/langbot-plugin-sdk
+  repository: https://github.com/langbot-app/LangBot/tree/master/sdk/examples/workspace_runner_plugin
   version: 0.1.0
   description:
     en_US: Minimal runner plugin that calls workspace operations.

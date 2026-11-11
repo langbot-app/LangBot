@@ -22,12 +22,12 @@ from langbot_plugin.entities.io.errors import ActionCallError
 
 @pytest.fixture
 def generator():
+    # sdk/ lives inside the LangBot monorepo; the generator is Core's script.
     path = (
-        Path(__file__).resolve().parents[3]
-        / "LangBot/scripts/generate_plugin_workspace_api.py"
+        Path(__file__).resolve().parents[3] / "scripts/generate_plugin_workspace_api.py"
     )
     if not path.exists():
-        pytest.skip("Generation tests require the sibling Core checkout")
+        pytest.skip("Generation tests require the LangBot repository checkout")
     spec = importlib.util.spec_from_file_location("workspace_generator", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

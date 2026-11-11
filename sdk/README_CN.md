@@ -18,7 +18,8 @@
 
 ## 简介
 
-此仓库是支撑 LangBot **插件系统**与**代码沙箱**的共享基础设施，以单一的
+此包是支撑 LangBot **插件系统**与**代码沙箱**的共享基础设施，源码位于 LangBot 仓库的
+[`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) 目录，以单一的
 [`langbot-plugin`](https://pypi.org/project/langbot-plugin/) 包发布到 PyPI，包含三部分：
 
 - **插件 SDK 与 CLI**（`lbp`）—— 插件开发的 Python API、基类，以及用于脚手架、
@@ -30,10 +31,10 @@
   不具备沙箱隔离能力的 `host` 后端。
 
 LangBot 通过 `pyproject.toml` 中固定的 `langbot-plugin==<x.y.z>` 依赖此包；
-版本号以本仓库的 `pyproject.toml` 为准。
+版本号以 `sdk/pyproject.toml` 为准。
 
 > **运行时**组件（`src/langbot_plugin/runtime/`）单独采用 **AGPL** 许可证，
-> 本仓库其余部分采用 **Apache 2.0**，详见
+> 其余部分采用 **Apache 2.0**，详见
 > [`src/langbot_plugin/runtime/README.md`](src/langbot_plugin/runtime/README.md)。
 
 ## 安装
@@ -88,6 +89,6 @@ LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 69 项核心业务能�
 
 ## 许可证
 
-本仓库采用 Apache 2.0，但插件运行时（`src/langbot_plugin/runtime/`）单独采用
+本包采用 Apache 2.0，但插件运行时（`src/langbot_plugin/runtime/`）单独采用
 AGPL。详见 [LICENSE](LICENSE) 与
 [运行时 README](src/langbot_plugin/runtime/README.md)。

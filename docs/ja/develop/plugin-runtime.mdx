@@ -3,15 +3,19 @@ title: "プラグインランタイム、CLI、SDKのデバッグ"
 ---
 
 <Info>
-  プラグインランタイム、CLI、SDKはこちらでオープンソース化されています: https://github.com/langbot-app/langbot-plugin-sdk
+  プラグインランタイム、CLI、SDK は LangBot リポジトリの `sdk/` ディレクトリでオープンソース化されています: https://github.com/langbot-app/LangBot/tree/master/sdk 。PyPI には `langbot-plugin` パッケージとして公開されています。
 </Info>
 
-LangBotはlangbot-plugin-sdkで定義されたエンティティに依存するため、新しいディレクトリでVS Codeを開き、LangBotとlangbot-plugin-sdk（git clone https://github.com/langbot-app/langbot-plugin-sdk）をサブディレクトリとして配置することをお勧めします。ディレクトリ構造は以下の通りです：
+LangBot リポジトリをクローンするだけで、本体と SDK のソースコードの両方が手に入ります。SDK リポジトリを別途クローンする必要はありません：
 
 ```bash
-langbot-projects
-├── LangBot
-├── langbot-plugin-sdk
+git clone https://github.com/langbot-app/LangBot
+```
+
+```text
+LangBot
+├── src/langbot   # LangBot 本体
+└── sdk           # プラグイン SDK、CLI（lbp）、プラグインランタイム、Box ランタイム
 ```
 
 LangBotディレクトリに移動し、依存関係をインストールします：
@@ -53,17 +57,17 @@ python -m langbot_plugin.cli.__init__ rt
 - `-s`: `stdio`を使用して制御接続を受け入れます。**本番環境でのみ使用してください**。
 - `--skip-deps-check`: すべてのプラグイン依存関係がインストールされていることを確認するため、ランタイムは起動時に毎回すべてのインストール済みプラグインの依存関係をチェックしてインストールします。このパラメーターを使用してこのチェックを無効にします。
 
-### LangBotでローカル修正したlangbot-plugin-sdkを使用する
+### LangBotでローカル修正したSDKを使用する
 
-メッセージエンティティやプラグインデータ定義などを変更した場合、実行時のデータ形式の互換性を確保するために、LangBot環境に更新する必要があります。
+`uv sync` は既定で `pyproject.toml` に固定された PyPI 版の `langbot-plugin` をインストールし、リポジトリ内の `sdk/` ディレクトリは使用しません。メッセージエンティティやプラグインデータ定義などを変更した場合、実行時のデータ形式の互換性を確保するために、SDK を LangBot 環境にインストールする必要があります。
 
-**LangBotディレクトリの仮想環境（.venv）がアクティブ化されたターミナル**で、langbot-plugin-sdkディレクトリに移動し、以下を実行します：
+**LangBotディレクトリの仮想環境（.venv）がアクティブ化されたターミナル**で、LangBot リポジトリのルートから以下を実行します：
 
 ```bash
-uv pip install .
+uv pip install ./sdk
 ```
 
-これにより、修正したlangbot-plugin-sdkがLangBotの環境にインストールされます。
+これにより、修正したSDKがLangBotの環境にインストールされます。
 
 ### LangBotをこのランタイムに接続する
 
@@ -74,7 +78,7 @@ plugin:
   runtime_ws_url: ws://localhost:5400/control/ws
 ```
 
-LangBot の仮想環境を有効にしたターミナルで、Python を直接使用してメインプログラムを起動し、`--standalone-runtime` を追加します（例：`python main.py --standalone-runtime`）。現在の仮想環境の Python を直接呼び出す場合、依存関係は再同期されないため、インストールしたローカルの langbot-plugin-sdk がリモート版で上書きされることはありません。\
+LangBot の仮想環境を有効にしたターミナルで、Python を直接使用してメインプログラムを起動し、`--standalone-runtime` を追加します（例：`python main.py --standalone-runtime`）。現在の仮想環境の Python を直接呼び出す場合、依存関係は再同期されないため、インストールしたローカルの SDK が PyPI 版で上書きされることはありません。\
 LangBotを再起動すると、WebSocketを使用してこのランタイムに接続されます。
 
 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN` は既定では省略可能です。LangBot と Runtime の両方で未設定の場合、ローカル OSS の制御接続はトークンなしで確立されます。公開された 5400 ポートを保護する場合は、両側に同じ 32 文字以上の高エントロピー値を設定してください。Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Runtime 側の認証は有効になりません。
@@ -105,7 +109,7 @@ python -m langbot_plugin.cli.__init__ run
 Box Runtime の制御接続ルールは Plugin Runtime と同じです。OSS standalone 開発では token は省略可能で、両側で `LANGBOT_BOX_CONTROL_TOKEN` が未設定の場合も接続できます：
 
 ```bash
-# ターミナル 1：langbot-plugin-sdk ディレクトリ
+# ターミナル 1：LangBot ディレクトリ（仮想環境を有効化済み）
 python -m langbot_plugin.cli.__init__ box
 ```
 
@@ -132,9 +136,9 @@ export LANGBOT_BOX_CONTROL_TOKEN='<両側で完全に同じ高エントロピー
 
 Box Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Box Runtime 側の認証は有効になりません。明示的に設定した値が 32 文字未満の場合は、引き続き両側で拒否されます。実際の値を設定ファイルや Git にコミットしないでください。
 
-## langbot-plugin-sdkアーキテクチャ
+## SDK（`sdk/`）アーキテクチャ
 
-このコードベースには以下が含まれています:
+`sdk/src/langbot_plugin` には以下が含まれています:
 
 - `langbot_plugin.api`: プラグイン関連のエンティティとAPI定義。
 - `langbot_plugin.assets`: プラグインテンプレート。
@@ -146,4 +150,4 @@ Box Runtime 側に token を設定すると、同じ値を送信しない LangBo
 
 CLIツールは、ランタイムの起動、プラグインの初期化、プラグインコンポーネント管理、Marketplaceとのインタラクションなどの機能を提供します。
 
-詳細なプログラムエントリポイントについては、[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/cli/__init__.py)を参照してください。
+詳細なプログラムエントリポイントについては、[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/cli/__init__.py)を参照してください。

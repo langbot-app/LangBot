@@ -58,7 +58,7 @@ class AgentRunState(typing.TypedDict):
     runner: dict[str, typing.Any]
 
 
-# Resource payload models matching langbot-plugin-sdk/resources.py.
+# Resource payload models matching sdk/src/langbot_plugin/api/entities/builtin/runner/resources.py.
 
 
 class ModelResource(typing.TypedDict):

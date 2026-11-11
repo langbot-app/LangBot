@@ -50,7 +50,9 @@ const repositories = [
   },
   {
     id: "plugin-sdk",
-    directory: "langbot-plugin-sdk",
+    // The SDK lives in the LangBot monorepo at sdk/; the env var may still
+    // point at another SDK checkout.
+    inTree: "sdk",
     envKey: "LANGBOT_PLUGIN_SDK_REPO",
     manifest: false,
   },
@@ -138,9 +140,23 @@ try {
       env[repository.envKey] ||
         (repository.id === "langbot"
           ? langbotRepo
-          : join(workspaceRoot, repository.directory)),
+          : repository.inTree
+            ? join(langbotRepo, repository.inTree)
+            : join(workspaceRoot, repository.directory)),
     );
     resolved[repository.id] = path;
+    if (repository.inTree && !env[repository.envKey]) {
+      try {
+        await access(join(path, "pyproject.toml"));
+        addCheck(`repo:${repository.id}`, "pass", { path, in_tree: true });
+      } catch {
+        addCheck(`repo:${repository.id}`, "fail", {
+          path,
+          reason: `In-tree ${repository.inTree}/ project is missing from the LangBot checkout.`,
+        });
+      }
+      continue;
+    }
     try {
       await access(join(path, ".git"));
     } catch {

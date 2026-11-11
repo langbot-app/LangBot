@@ -9,7 +9,7 @@
 本仓库跟随 LangBot 4.11.x Runner 集成工作。联合测试时使用：
 
 - `langbot-app/LangBot` 分支 `dev/4.11.x`
-- `langbot-app/langbot-plugin-sdk` 分支 `dev/4.11.x`
+- 插件 SDK：本仓库 `sdk/` 目录（PyPI 包 `langbot-plugin`），与 Core 同一提交联调
 - 本仓库 `plugins/Runner/LocalAgent` 目录，与 Core 同一提交联调
 - `langbot-app/langbot-agent-control-plane` 分支 `main`
 
@@ -152,6 +152,6 @@ uv run ruff check .
 
 ## 相关仓库
 
-- [LangBot Plugin SDK](https://github.com/langbot-app/langbot-plugin-sdk)：插件开发 SDK 和运行时。
+- [LangBot Plugin SDK](../../sdk/)：插件开发 SDK 和运行时（LangBot 仓库 `sdk/`，PyPI 包 `langbot-plugin`）。
 - [LangBot](https://github.com/langbot-app/LangBot)：LangBot 主应用和 Host 实现。
 - Runner Protocol v1：见 LangBot 仓库中的 `LangBot/docs/agent-runner-pluginization/PROTOCOL_V1.md`。
