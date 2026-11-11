@@ -124,6 +124,11 @@ def main():
     # We'll create data directory in current working directory if not exists
     os.makedirs(paths.get_data_root(), exist_ok=True)
 
+    # Must run before anything imports LiteLLM; see tiktoken_cache for why.
+    from langbot.pkg.utils import tiktoken_cache
+
+    tiktoken_cache.ensure_offline_tiktoken_cache(paths.get_data_path('tiktoken_cache'))
+
     loop = asyncio.new_event_loop()
 
     try:
