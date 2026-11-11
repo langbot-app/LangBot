@@ -5,15 +5,18 @@ This module provides a minimal Dify API client that doesn't depend on LangBot in
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import mimetypes
 import typing
+from urllib.parse import urlsplit
 
 import httpx
 from pkg.deadline import deadline
 from pkg.endpoint import endpoint
 from pkg.http_limits import MAX_LINE_CHARS, MAX_STREAM_BYTES, limited_body, limited_bytes, limited_lines, limited_post
+from pkg.request_log import redact, redacted_target
 
 logger = logging.getLogger(__name__)
 
@@ -238,12 +241,18 @@ class AsyncDifyClient:
                 timeout=self.timeout,
                 trust_env=False,
             ) as client:
-                async with client.stream(
-                    "POST",
-                    f"/form/human_input/{form_token}",
-                    headers=headers,
-                    json={"inputs": inputs, "user": user, "action": action},
-                ) as response:
+                async with contextlib.AsyncExitStack() as stack:
+                    # The form token alone submits the form through Dify's web API.
+                    form_target = redact(self.base_url, urlsplit(self.base_url).path + "/form/human_input/[redacted]")
+                    with redacted_target(form_target):
+                        response = await stack.enter_async_context(
+                            client.stream(
+                                "POST",
+                                f"/form/human_input/{form_token}",
+                                headers=headers,
+                                json={"inputs": inputs, "user": user, "action": action},
+                            )
+                        )
                     if not response.is_success:
                         body = await limited_body(response, DifyAPIError)
                         raise DifyAPIError(
@@ -287,7 +296,10 @@ class AsyncDifyClient:
         endpoint(url, query=True)
         try:
             async with httpx.AsyncClient(timeout=self.timeout, trust_env=False, follow_redirects=False) as client:
-                async with client.stream("GET", url) as response:
+                async with contextlib.AsyncExitStack() as stack:
+                    # Input file URLs may be signed in their path or query.
+                    with redacted_target(redact(url)):
+                        response = await stack.enter_async_context(client.stream("GET", url))
                     response.raise_for_status()
                     body = bytearray()
                     async for chunk in limited_bytes(response, DifyAPIError):

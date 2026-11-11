@@ -67,8 +67,8 @@ support a single select or an action-only confirmation.
 
 Provider continuation data is not included in the interaction payload. The
 runner keeps `form_token`, `workflow_run_id`, the Dify user tag, and field/action
-mappings in the active run. Previously issued interactions can still resume
-through their stored continuation records during migration.
+mappings in the active run only; they are not stored, so an expired or
+interrupted interaction must be restarted.
 
 The selected Runner binding must allow interactions, and the delivery
 adapter must support the requested field/action shape. Adapters with a smaller
