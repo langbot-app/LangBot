@@ -5,6 +5,12 @@ name: Build Dev Image
 # agent, experiment and test branches had each accumulated dozens of Docker Hub
 # tags (678 live tags, 467 of them `sha-*`). Only `master` now builds on push;
 # any other branch can still be built through workflow_dispatch.
+#
+# Master pushes alone still added ~10 `sha-*` tags a day (LANG-417), so a push
+# now only moves the `master` tag. The immutable `sha-<sha>` tag that Cloud
+# promotion pins is opt-in: dispatch this workflow on the commit's branch with
+# `immutable_tag` checked (the default). Every run records the pushed index
+# digest in the job summary.
 on:
   push:
     branches:
@@ -13,6 +19,11 @@ on:
       - "plugins/**"
       - ".github/workflows/plugins-*.yml"
   workflow_dispatch:
+    inputs:
+      immutable_tag:
+        description: "Also publish the immutable rockchin/langbot:sha-<commit> tag"
+        type: boolean
+        default: true
 
 jobs:
   build-dev-image:
@@ -36,8 +47,17 @@ jobs:
           set -euo pipefail
           branch_tag="${GITHUB_REF#refs/heads/}"
           branch_tag="${branch_tag//\//-}"
-          echo "branch_tag=${branch_tag}" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=sha-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          tags="rockchin/langbot:${branch_tag}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "${IMMUTABLE_TAG}" == "true" ]]; then
+            tags+=$'\n'"rockchin/langbot:sha-${GITHUB_SHA}"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "${tags}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          IMMUTABLE_TAG: ${{ inputs.immutable_tag }}
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -45,16 +65,29 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push immutable Core image
+      - name: Build and push Core image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           build-args: |
             LANGBOT_BUILD_REVISION=${{ github.sha }}
-          tags: |
-            rockchin/langbot:${{ steps.image.outputs.branch_tag }}
-            rockchin/langbot:${{ steps.image.outputs.sha_tag }}
+          tags: ${{ steps.image.outputs.tags }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Record image digest
+        shell: bash
+        env:
+          TAGS: ${{ steps.image.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### rockchin/langbot"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- digest: \`rockchin/langbot@${DIGEST}\`"
+            while IFS= read -r tag; do echo "- tag: \`${tag}\`"; done <<< "${TAGS}"
+          } >> "$GITHUB_STEP_SUMMARY"
