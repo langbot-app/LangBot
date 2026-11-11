@@ -28,6 +28,7 @@ def add_cases(profile):
     pipeline['body']['name'] = 'regression plugin commands'
     pipeline['body']['extensions_preferences'] = {
         'enable_all_plugins': False,
+        'workspace_operations': [],
         'plugins': copy.deepcopy(COMMAND_PLUGINS),
     }
     profile['resources'].append(pipeline)

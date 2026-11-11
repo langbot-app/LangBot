@@ -31,7 +31,7 @@ jobs:
         run: timeout 60s python -m unittest discover -s tools/tests -p 'test_*.py' -v
 
   smoke:
-    name: Core smoke (60s)
+    name: Core smoke with plugins (5m)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -57,9 +57,11 @@ jobs:
           sha256sum --check --ignore-missing checksums.txt
           chmod +x lbctl_linux_amd64
           docker pull python:3.12-alpine
-      - name: Prepare real services and run the 60-second smoke
+      - name: Prepare real services and run smoke with plugin scenarios
         run: |
           uv run --no-sync python -m tools.entrypoints.regression_ci \
+            --suite scenarios --scenario-groups plugins \
+            --extra-plugins misc/EssentialCommands misc/FAQManager \
             --lbctl .smoke-bin/lbctl_linux_amd64 --plugins plugins --output .qa/core-smoke
       - name: Publish gate result
         if: always()
@@ -77,12 +79,12 @@ jobs:
               if path.exists():
                   data = json.loads(path.read_text())
                   out.write(f"Core smoke: {'PASS' if data['passed'] else 'FAIL'}; "
-                            f"{data.get('elapsed_seconds', 0):.2f}/60 seconds; {data.get('requests', 0)} requests.\n")
+                            f"{data.get('elapsed_seconds', 0):.2f}/300 seconds; {data.get('requests', 0)} requests.\n")
                   if data.get('infrastructure_error'):
                       out.write('Preparation or teardown failed; inspect service logs.\n')
                   for error in data.get('coverage_errors', []):
                       out.write(f"Coverage evidence error: {error}\n")
-                  out.write('Service/dependency preparation is outside the 60-second execution budget.\n')
+                  out.write('Service/dependency preparation is outside the 300-second execution budget.\n')
               else:
                   out.write('Core smoke did not produce a verdict; inspect preparation failure.\n')
           PY
