@@ -1,0 +1,66 @@
+name: Changelog Sync
+
+# Notifies the Multica "LangBot 发版" agent when a stable release is published,
+# so it updates the multilingual changelog on https://langbot.app/changelog.
+# The agent writes user-facing zh/en/ja entries (not a copy of the release
+# notes) and is idempotent: a version already in the changelog is skipped.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Stable release tag to sync, e.g. v4.11.6'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-sync-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    if: >-
+      github.repository == 'langbot-app/LangBot' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.release.prerelease == false && github.event.release.draft == false))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Notify release agent
+        env:
+          WEBHOOK_URL: ${{ secrets.MULTICA_CHANGELOG_WEBHOOK_URL }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -z "${WEBHOOK_URL}" ]; then
+            echo "::warning::MULTICA_CHANGELOG_WEBHOOK_URL is not set; skipping."
+            exit 0
+          fi
+          if ! printf '%s' "${TAG}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Not a stable tag: ${TAG}; skipping."
+            exit 0
+          fi
+          release_json="$(gh api "repos/${REPO}/releases/tags/${TAG}")"
+          if [ "$(jq -r '.prerelease or .draft' <<<"${release_json}")" = "true" ]; then
+            echo "${TAG} is a draft or pre-release; skipping."
+            exit 0
+          fi
+          payload="$(jq -c --arg repo "${REPO}" '{
+            schema: "langbot-release-published-v1",
+            repository: $repo,
+            tag: .tag_name,
+            name: .name,
+            html_url: .html_url,
+            published_at: .published_at,
+            prerelease: .prerelease
+          }' <<<"${release_json}")"
+          curl --fail-with-body --silent --show-error --max-time 30 \
+            -X POST -H 'Content-Type: application/json' \
+            --data "${payload}" "${WEBHOOK_URL}" > /dev/null
+          echo "Changelog sync requested for ${TAG}."
