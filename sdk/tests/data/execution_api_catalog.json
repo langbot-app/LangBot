@@ -1,0 +1,5489 @@
+[
+  {
+    "id": "execution.reply_message",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "message_chain": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Message Chain",
+          "type": "array"
+        },
+        "quote_origin": {
+          "default": false,
+          "title": "Quote Origin",
+          "type": "boolean"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id",
+        "message_chain"
+      ],
+      "title": "ExecutionReplyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_bot_uuid",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id"
+      ],
+      "title": "ExecutionQueryInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "bot_uuid": {
+          "title": "Bot Uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bot_uuid"
+      ],
+      "title": "ExecutionBotIDOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.set_query_var",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id",
+        "key",
+        "value"
+      ],
+      "title": "ExecutionSetQueryVariableInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_query_var",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id",
+        "key"
+      ],
+      "title": "ExecutionQueryKeyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "ExecutionValueOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_query_vars",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id"
+      ],
+      "title": "ExecutionQueryInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "vars": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Vars",
+          "type": "object"
+        }
+      },
+      "required": [
+        "vars"
+      ],
+      "title": "ExecutionVariablesOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.create_new_conversation",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id"
+      ],
+      "title": "ExecutionQueryInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_langbot_version",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version"
+      ],
+      "title": "ExecutionVersionOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_bots",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "bots": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Bots",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bots"
+      ],
+      "title": "ExecutionBotsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_bot_info",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "bot_uuid": {
+          "minLength": 1,
+          "title": "Bot Uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bot_uuid"
+      ],
+      "title": "ExecutionBotInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "bot": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Bot",
+          "type": "object"
+        }
+      },
+      "required": [
+        "bot"
+      ],
+      "title": "ExecutionBotOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.send_message",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "bot_uuid": {
+          "minLength": 1,
+          "title": "Bot Uuid",
+          "type": "string"
+        },
+        "target_type": {
+          "enum": [
+            "person",
+            "group"
+          ],
+          "title": "Target Type",
+          "type": "string"
+        },
+        "target_id": {
+          "minLength": 1,
+          "title": "Target Id",
+          "type": "string"
+        },
+        "message_chain": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Message Chain",
+          "type": "array"
+        }
+      },
+      "required": [
+        "bot_uuid",
+        "target_type",
+        "target_id",
+        "message_chain"
+      ],
+      "title": "ExecutionSendInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "ExecutionResultOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.call_platform_api",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "bot_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bot Uuid"
+        },
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Params",
+          "type": "object"
+        },
+        "context_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Context Tool"
+        },
+        "file_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Ids"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "title": "ExecutionPlatformInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "ExecutionResultOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.reply_stream",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "stream_id": {
+          "minLength": 1,
+          "title": "Stream Id",
+          "type": "string"
+        },
+        "operation": {
+          "enum": [
+            "update",
+            "finish",
+            "abort"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stream_id",
+        "operation",
+        "text"
+      ],
+      "title": "ExecutionReplyStreamInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "result": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "result"
+      ],
+      "title": "ExecutionResultOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.request_interaction",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "request": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Request",
+          "type": "object"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "default": 600,
+          "gt": 0,
+          "le": 86400,
+          "title": "Timeout"
+        },
+        "on_unsupported": {
+          "default": "error",
+          "enum": [
+            "error",
+            "degrade"
+          ],
+          "title": "On Unsupported",
+          "type": "string"
+        },
+        "responders": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "actor",
+          "title": "Responders"
+        },
+        "target_type": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Type"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Id"
+        }
+      },
+      "required": [
+        "request"
+      ],
+      "title": "ExecutionInteractionInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionInteractionOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_llm_models",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "llm_models": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Llm Models",
+          "type": "array"
+        }
+      },
+      "required": [
+        "llm_models"
+      ],
+      "title": "ExecutionModelsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.count_tokens",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "llm_model_uuid": {
+          "minLength": 1,
+          "title": "Llm Model Uuid",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "funcs": {
+          "default": [],
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Funcs",
+          "type": "array"
+        },
+        "extra_args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Extra Args",
+          "type": "object"
+        },
+        "reasoning_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Level"
+        },
+        "remove_think": {
+          "default": false,
+          "title": "Remove Think",
+          "type": "boolean"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
+        },
+        "model_reasoning_overrides": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Reasoning Overrides"
+        },
+        "reasoning_config_override": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Config Override"
+        }
+      },
+      "required": [
+        "llm_model_uuid",
+        "messages"
+      ],
+      "title": "ExecutionModelInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "tokens": {
+          "title": "Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "tokens"
+      ],
+      "title": "ExecutionTokensOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.invoke_llm",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "llm_model_uuid": {
+          "minLength": 1,
+          "title": "Llm Model Uuid",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "funcs": {
+          "default": [],
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Funcs",
+          "type": "array"
+        },
+        "extra_args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Extra Args",
+          "type": "object"
+        },
+        "reasoning_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Level"
+        },
+        "remove_think": {
+          "default": false,
+          "title": "Remove Think",
+          "type": "boolean"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
+        },
+        "model_reasoning_overrides": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Reasoning Overrides"
+        },
+        "reasoning_config_override": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Config Override"
+        }
+      },
+      "required": [
+        "llm_model_uuid",
+        "messages"
+      ],
+      "title": "ExecutionModelInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "message": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Message",
+          "type": "object"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "title": "ExecutionModelOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.invoke_llm_stream",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": true,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "llm_model_uuid": {
+          "minLength": 1,
+          "title": "Llm Model Uuid",
+          "type": "string"
+        },
+        "messages": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Messages",
+          "type": "array"
+        },
+        "funcs": {
+          "default": [],
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Funcs",
+          "type": "array"
+        },
+        "extra_args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Extra Args",
+          "type": "object"
+        },
+        "reasoning_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Level"
+        },
+        "remove_think": {
+          "default": false,
+          "title": "Remove Think",
+          "type": "boolean"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
+        },
+        "model_reasoning_overrides": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model Reasoning Overrides"
+        },
+        "reasoning_config_override": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reasoning Config Override"
+        }
+      },
+      "required": [
+        "llm_model_uuid",
+        "messages"
+      ],
+      "title": "ExecutionModelInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "ExecutionModelChunkOutput": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "properties": {
+            "chunk": {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "title": "Chunk",
+              "type": "object"
+            }
+          },
+          "required": [
+            "chunk"
+          ],
+          "title": "ExecutionModelChunkOutput",
+          "type": "object"
+        },
+        "ExecutionModelUsageOutput": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "properties": {
+            "usage": {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "title": "Usage",
+              "type": "object"
+            }
+          },
+          "required": [
+            "usage"
+          ],
+          "title": "ExecutionModelUsageOutput",
+          "type": "object"
+        },
+        "JsonValue": {}
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionModelChunkOutput"
+        },
+        {
+          "$ref": "#/$defs/ExecutionModelUsageOutput"
+        }
+      ]
+    }
+  },
+  {
+    "id": "execution.call_tool",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "tool_name": {
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Parameters",
+          "type": "object"
+        },
+        "tool_parameters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Tool Parameters"
+        },
+        "session": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "tool_name"
+      ],
+      "title": "ExecutionCallToolInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "ExecutionResultOutput": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "properties": {
+            "result": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "required": [
+            "result"
+          ],
+          "title": "ExecutionResultOutput",
+          "type": "object"
+        },
+        "ExecutionToolResultOutput": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "properties": {
+            "tool_response": {
+              "$ref": "#/$defs/JsonValue"
+            }
+          },
+          "required": [
+            "tool_response"
+          ],
+          "title": "ExecutionToolResultOutput",
+          "type": "object"
+        },
+        "JsonValue": {}
+      },
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ExecutionToolResultOutput"
+        },
+        {
+          "$ref": "#/$defs/ExecutionResultOutput"
+        }
+      ]
+    }
+  },
+  {
+    "id": "execution.get_tool_detail",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "tool_name": {
+          "minLength": 1,
+          "title": "Tool Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_name"
+      ],
+      "title": "ExecutionToolInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "tool": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Tool",
+          "type": "object"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "title": "ExecutionToolOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.set_binary_storage",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_type": {
+          "enum": [
+            "plugin",
+            "workspace"
+          ],
+          "title": "Owner Type",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "value_base64": {
+          "title": "Value Base64",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        }
+      },
+      "required": [
+        "owner_type",
+        "key",
+        "value_base64"
+      ],
+      "title": "ExecutionSetStorageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_binary_storage",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_type": {
+          "enum": [
+            "plugin",
+            "workspace"
+          ],
+          "title": "Owner Type",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        }
+      },
+      "required": [
+        "owner_type",
+        "key"
+      ],
+      "title": "ExecutionStorageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "value_base64": {
+          "title": "Value Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value_base64"
+      ],
+      "title": "ExecutionStorageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.delete_binary_storage",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_type": {
+          "enum": [
+            "plugin",
+            "workspace"
+          ],
+          "title": "Owner Type",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        }
+      },
+      "required": [
+        "owner_type",
+        "key"
+      ],
+      "title": "ExecutionStorageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_binary_storage_keys",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "owner_type": {
+          "enum": [
+            "plugin",
+            "workspace"
+          ],
+          "title": "Owner Type",
+          "type": "string"
+        },
+        "owner": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Owner"
+        }
+      },
+      "required": [
+        "owner_type"
+      ],
+      "title": "ExecutionStorageKeysInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "title": "ExecutionKeysOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_config_file",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "file_key": {
+          "minLength": 1,
+          "title": "File Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_key"
+      ],
+      "title": "ExecutionConfigFileInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "file_base64": {
+          "title": "File Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_base64"
+      ],
+      "title": "ExecutionConfigFileOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.invoke_embedding",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "embedding_model_uuid": {
+          "minLength": 1,
+          "title": "Embedding Model Uuid",
+          "type": "string"
+        },
+        "texts": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Texts",
+          "type": "array"
+        }
+      },
+      "required": [
+        "embedding_model_uuid",
+        "texts"
+      ],
+      "title": "ExecutionEmbeddingInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "vectors": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "Vectors",
+          "type": "array"
+        }
+      },
+      "required": [
+        "vectors"
+      ],
+      "title": "ExecutionEmbeddingOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.invoke_rerank",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "rerank_model_uuid": {
+          "minLength": 1,
+          "title": "Rerank Model Uuid",
+          "type": "string"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        },
+        "documents": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Documents",
+          "type": "array"
+        },
+        "top_k": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Top K"
+        },
+        "extra_args": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Extra Args",
+          "type": "object"
+        }
+      },
+      "required": [
+        "rerank_model_uuid",
+        "query",
+        "documents"
+      ],
+      "title": "ExecutionRerankInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "ExecutionResultsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.vector_upsert",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "minLength": 1,
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ids",
+          "type": "array"
+        },
+        "vectors": {
+          "items": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "title": "Vectors",
+          "type": "array"
+        },
+        "documents": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Documents"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "items": {
+                "additionalProperties": {
+                  "$ref": "#/$defs/JsonValue"
+                },
+                "type": "object"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        }
+      },
+      "required": [
+        "collection_id",
+        "ids",
+        "vectors"
+      ],
+      "title": "ExecutionVectorUpsertInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {},
+      "title": "ExecutionEmptyOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.vector_search",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "minLength": 1,
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "query_vector": {
+          "items": {
+            "type": "number"
+          },
+          "title": "Query Vector",
+          "type": "array"
+        },
+        "top_k": {
+          "exclusiveMinimum": 0,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        },
+        "query_text": {
+          "default": "",
+          "title": "Query Text",
+          "type": "string"
+        },
+        "search_type": {
+          "default": "vector",
+          "title": "Search Type",
+          "type": "string"
+        },
+        "vector_weight": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": 0.5,
+          "title": "Vector Weight"
+        }
+      },
+      "required": [
+        "collection_id",
+        "query_vector",
+        "top_k"
+      ],
+      "title": "ExecutionVectorSearchInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "ExecutionResultsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.vector_delete",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "minLength": 1,
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "file_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File Ids"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "ExecutionVectorDeleteInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "count"
+      ],
+      "title": "ExecutionVectorDeleteOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.vector_list",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "collection_id": {
+          "minLength": 1,
+          "title": "Collection Id",
+          "type": "string"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        },
+        "limit": {
+          "default": 20,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id"
+      ],
+      "title": "ExecutionVectorListInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total": {
+          "title": "Total",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "total"
+      ],
+      "title": "ExecutionVectorListOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_knowledge_file_stream",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "storage_path": {
+          "minLength": 1,
+          "title": "Storage Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "storage_path"
+      ],
+      "title": "ExecutionKnowledgeFileInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "file_key": {
+          "title": "File Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_key"
+      ],
+      "title": "ExecutionKnowledgeFileOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_parsers",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime Type"
+        }
+      },
+      "title": "ExecutionParsersInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "parsers": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parsers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "parsers"
+      ],
+      "title": "ExecutionParsersOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.invoke_parser",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "plugin_author": {
+          "minLength": 1,
+          "title": "Plugin Author",
+          "type": "string"
+        },
+        "plugin_name": {
+          "minLength": 1,
+          "title": "Plugin Name",
+          "type": "string"
+        },
+        "storage_path": {
+          "minLength": 1,
+          "title": "Storage Path",
+          "type": "string"
+        },
+        "filename": {
+          "default": "",
+          "title": "Filename",
+          "type": "string"
+        },
+        "mime_type": {
+          "default": "application/octet-stream",
+          "title": "Mime Type",
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "plugin_author",
+        "plugin_name",
+        "storage_path"
+      ],
+      "title": "ExecutionParserInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_knowledge_bases",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "knowledge_bases": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Knowledge Bases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "knowledge_bases"
+      ],
+      "title": "ExecutionKnowledgeBasesOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.retrieve_knowledge",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "kb_id": {
+          "minLength": 1,
+          "title": "Kb Id",
+          "type": "string"
+        },
+        "query_text": {
+          "title": "Query Text",
+          "type": "string"
+        },
+        "top_k": {
+          "default": 5,
+          "exclusiveMinimum": 0,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        }
+      },
+      "required": [
+        "kb_id",
+        "query_text"
+      ],
+      "title": "ExecutionRetrievalInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "ExecutionResultsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_pipeline_knowledge_bases",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        }
+      },
+      "required": [
+        "query_id"
+      ],
+      "title": "ExecutionQueryInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "knowledge_bases": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Knowledge Bases",
+          "type": "array"
+        }
+      },
+      "required": [
+        "knowledge_bases"
+      ],
+      "title": "ExecutionPipelineKnowledgeBasesOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.retrieve_knowledge_base",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "kb_id": {
+          "minLength": 1,
+          "title": "Kb Id",
+          "type": "string"
+        },
+        "query_text": {
+          "title": "Query Text",
+          "type": "string"
+        },
+        "query_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Id"
+        },
+        "query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Query Uuid"
+        },
+        "top_k": {
+          "default": 5,
+          "exclusiveMinimum": 0,
+          "title": "Top K",
+          "type": "integer"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        }
+      },
+      "required": [
+        "kb_id",
+        "query_text"
+      ],
+      "title": "ExecutionPipelineRetrievalInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "results": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "results"
+      ],
+      "title": "ExecutionResultsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_prompt",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "prompt": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Prompt",
+          "type": "array"
+        }
+      },
+      "required": [
+        "prompt"
+      ],
+      "title": "ExecutionPromptOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.history_page",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "before_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Cursor"
+        },
+        "after_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Cursor"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "direction": {
+          "default": "backward",
+          "enum": [
+            "forward",
+            "backward"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "include_attachments": {
+          "default": false,
+          "title": "Include Attachments",
+          "type": "boolean"
+        }
+      },
+      "title": "ExecutionPageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "prev_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prev Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "prev_cursor",
+        "has_more"
+      ],
+      "title": "ExecutionPageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.history_search",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "query": {
+          "default": "",
+          "title": "Query",
+          "type": "string"
+        },
+        "filters": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filters"
+        },
+        "top_k": {
+          "default": 10,
+          "exclusiveMinimum": 0,
+          "title": "Top K",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionHistorySearchInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "total_count": {
+          "title": "Total Count",
+          "type": "integer"
+        },
+        "query": {
+          "title": "Query",
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "total_count",
+        "query"
+      ],
+      "title": "ExecutionHistorySearchOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.event_get",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "event_id": {
+          "minLength": 1,
+          "title": "Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id"
+      ],
+      "title": "ExecutionEventInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "event_id": {
+          "title": "Event Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id"
+      ],
+      "title": "ExecutionEventOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.event_page",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "before_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Cursor"
+        },
+        "event_types": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Types"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionEventPageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "prev_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prev Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "prev_cursor",
+        "has_more"
+      ],
+      "title": "ExecutionPageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.steering_pull",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "default": "all",
+          "title": "Mode",
+          "type": "string"
+        },
+        "limit": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Limit"
+        }
+      },
+      "title": "ExecutionSteeringInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.state_get",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "key"
+      ],
+      "title": "ExecutionStateInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "ExecutionValueOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.state_set",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/JsonValue"
+        }
+      },
+      "required": [
+        "scope",
+        "key",
+        "value"
+      ],
+      "title": "ExecutionSetStateInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ExecutionSuccessOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.state_delete",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "key": {
+          "minLength": 1,
+          "title": "Key",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "key"
+      ],
+      "title": "ExecutionStateInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "success": {
+          "title": "Success",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "title": "ExecutionSuccessOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.state_list",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "prefix": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prefix"
+        },
+        "limit": {
+          "default": 100,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "scope"
+      ],
+      "title": "ExecutionStateListInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Keys",
+          "type": "array"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "keys",
+        "has_more"
+      ],
+      "title": "ExecutionStateKeysOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.get_box_status",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "available",
+        "enabled"
+      ],
+      "title": "ExecutionBoxStatusOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_boxes",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.acquire_box",
+    "version": "1",
+    "scope": "plugin_or_run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "reuse_key": {
+          "minLength": 1,
+          "title": "Reuse Key",
+          "type": "string"
+        },
+        "options": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Options",
+          "type": "object"
+        }
+      },
+      "required": [
+        "reuse_key"
+      ],
+      "title": "ExecutionAcquireBoxInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "status"
+      ],
+      "title": "ExecutionBoxOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.bind_box",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "box_id": {
+          "minLength": 1,
+          "title": "Box Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "box_id"
+      ],
+      "title": "ExecutionBindBoxInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "box_id": {
+          "title": "Box Id",
+          "type": "string"
+        },
+        "outbox": {
+          "title": "Outbox",
+          "type": "string"
+        }
+      },
+      "required": [
+        "box_id",
+        "outbox"
+      ],
+      "title": "ExecutionBoxBindingOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.import_box_attachments",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "attachment_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Attachment Ids"
+        }
+      },
+      "title": "ExecutionImportAttachmentsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.read_input_attachment",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "minLength": 1,
+          "title": "Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "title": "ExecutionReadInputAttachmentInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "ref": {
+          "title": "Ref",
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "mime_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mime Type"
+        },
+        "size": {
+          "title": "Size",
+          "type": "integer"
+        },
+        "content": {
+          "title": "Content",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref",
+        "size",
+        "content"
+      ],
+      "title": "ExecutionInputAttachmentOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.export_box_files",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Paths"
+        }
+      },
+      "title": "ExecutionExportBoxInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_get",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        }
+      },
+      "title": "ExecutionTargetRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_list",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "conversation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversation Id"
+        },
+        "statuses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statuses"
+        },
+        "before_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Cursor"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionRunsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "prev_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prev Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "prev_cursor",
+        "has_more"
+      ],
+      "title": "ExecutionPageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_events_page",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "before_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before Cursor"
+        },
+        "after_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After Cursor"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        },
+        "direction": {
+          "default": "forward",
+          "enum": [
+            "forward",
+            "backward"
+          ],
+          "title": "Direction",
+          "type": "string"
+        }
+      },
+      "title": "ExecutionTargetPageInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "prev_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prev Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "prev_cursor",
+        "has_more"
+      ],
+      "title": "ExecutionPageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_cancel",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Reason"
+        }
+      },
+      "title": "ExecutionCancelRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_append_result",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "sequence": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence"
+        },
+        "event_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Event Type"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Type"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Data"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usage"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source"
+        },
+        "runtime_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Id"
+        },
+        "claim_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Token"
+        }
+      },
+      "title": "ExecutionAppendResultInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_finalize",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "status": {
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Reason"
+        },
+        "usage": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Usage"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "runtime_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Id"
+        },
+        "claim_token": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Claim Token"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "title": "ExecutionFinalizeRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runner_list",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "include_plugins": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Include Plugins"
+        },
+        "use_cache": {
+          "default": true,
+          "title": "Use Cache",
+          "type": "boolean"
+        }
+      },
+      "title": "ExecutionRunnersInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runtime_register",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "capabilities": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capabilities"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Labels"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "heartbeat_deadline_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heartbeat Deadline At"
+        },
+        "heartbeat_ttl_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Heartbeat Ttl Seconds",
+          "type": "integer"
+        },
+        "display_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Display Name"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Endpoint"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Version"
+        }
+      },
+      "required": [
+        "runtime_id"
+      ],
+      "title": "ExecutionRegisterRuntimeInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "runtime_id": {
+          "title": "Runtime Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id"
+      ],
+      "title": "ExecutionRuntimeOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runtime_heartbeat",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status"
+        },
+        "capabilities": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Capabilities"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Labels"
+        },
+        "metadata": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metadata"
+        },
+        "heartbeat_deadline_at": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Heartbeat Deadline At"
+        },
+        "heartbeat_ttl_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Heartbeat Ttl Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runtime_id"
+      ],
+      "title": "ExecutionRuntimeHeartbeatInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "runtime_id": {
+          "title": "Runtime Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id"
+      ],
+      "title": "ExecutionRuntimeOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runtime_list",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "statuses": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statuses"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Labels"
+        },
+        "cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cursor"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionRuntimesInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        },
+        "next_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Cursor"
+        },
+        "prev_cursor": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Prev Cursor"
+        },
+        "has_more": {
+          "title": "Has More",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "items",
+        "next_cursor",
+        "prev_cursor",
+        "has_more"
+      ],
+      "title": "ExecutionPageOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runtime_reconcile",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "stale_after_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stale After Seconds"
+        }
+      },
+      "title": "ExecutionRuntimeReconcileInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_stats",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "runner_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runner Id"
+        },
+        "start_time": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Time"
+        },
+        "end_time": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Time"
+        }
+      },
+      "title": "ExecutionRunStatsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runtime_stats",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.runner_stats",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "start_time": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Start Time"
+        },
+        "end_time": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "End Time"
+        },
+        "limit": {
+          "default": 50,
+          "exclusiveMinimum": 0,
+          "title": "Limit",
+          "type": "integer"
+        }
+      },
+      "title": "ExecutionRunnerStatsInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Items",
+          "type": "array"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_claim",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "lease_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Lease Seconds",
+          "type": "integer"
+        },
+        "queue_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queue Name"
+        },
+        "runner_ids": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runner Ids"
+        }
+      },
+      "required": [
+        "runtime_id"
+      ],
+      "title": "ExecutionClaimRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "JSONOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_renew_claim",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "claim_token": {
+          "minLength": 1,
+          "title": "Claim Token",
+          "type": "string"
+        },
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "lease_seconds": {
+          "default": 60,
+          "exclusiveMinimum": 0,
+          "title": "Lease Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "runtime_id",
+        "claim_token"
+      ],
+      "title": "ExecutionRenewClaimInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_release_claim",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "claim_token": {
+          "minLength": 1,
+          "title": "Claim Token",
+          "type": "string"
+        },
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Reason"
+        },
+        "status": {
+          "default": "queued",
+          "minLength": 1,
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id",
+        "claim_token"
+      ],
+      "title": "ExecutionReleaseClaimInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_application_operations",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "operations": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Operations",
+          "type": "array"
+        },
+        "domains": {
+          "items": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Domains",
+          "type": "array"
+        }
+      },
+      "required": [
+        "operations",
+        "domains"
+      ],
+      "title": "ExecutionListApplicationOperationsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.call_application_operation",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "minLength": 1,
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "default": {},
+          "title": "Arguments",
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "ExecutionCallApplicationOperationInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "ok": {
+          "title": "Ok",
+          "type": "boolean"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "error": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/JsonValue"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        }
+      },
+      "required": [
+        "ok"
+      ],
+      "title": "ExecutionCallApplicationOperationOutput",
+      "type": "object"
+    }
+  }
+]

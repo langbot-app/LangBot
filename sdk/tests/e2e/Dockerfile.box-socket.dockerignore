@@ -1,0 +1,10 @@
+**
+!pyproject.toml
+!README.md
+!src/
+!src/**
+!tests/
+!tests/e2e/
+!tests/e2e/test_box_socket_mounts.py
+**/__pycache__/
+**/*.pyc

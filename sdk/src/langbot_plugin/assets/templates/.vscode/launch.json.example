@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "LangBot Plugin Debug",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "{{ lbp_path }}",
+      "console": "integratedTerminal",
+      "args": ["run"]
+    }
+  ]
+}
