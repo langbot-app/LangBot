@@ -184,6 +184,8 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
     """LiteLLM unified API requester supporting chat, embedding, and rerank."""
 
     reports_raw_timing = True
+    TOKEN_COUNT_TIMEOUT = 4.0
+    _token_count_task: asyncio.Task | None = None
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
@@ -1599,18 +1601,42 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         extra_args: dict[str, typing.Any] = {},
     ) -> int:
         """Count input tokens with LiteLLM's model-aware tokenizer."""
-        args = await self._build_completion_args(model, messages, funcs, extra_args, stream=False)
+        # Counting only needs the input representation, not generation policy,
+        # credentials, or transport parameters.
+        reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
+        req_messages = self._convert_messages(
+            messages,
+            reasoning_family=self._reasoning_family(model.model_entity.name, model),
+            include_reasoning_context=reasoning_config['level'] != 'disabled',
+        )
+        chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        self._adapt_messages_for_provider(req_messages, chat_provider)
         count_args: dict[str, typing.Any] = {
-            'model': args['model'],
-            'messages': args['messages'],
+            'model': self._build_litellm_model_name(model.model_entity.name, chat_provider),
+            'messages': req_messages,
         }
-        if 'tools' in args:
-            count_args['tools'] = args['tools']
-        if 'tool_choice' in args:
-            count_args['tool_choice'] = args['tool_choice']
+        for args in (model.model_entity.extra_args, extra_args):
+            if args:
+                for key in ('model', 'messages', 'tools', 'tool_choice'):
+                    if key in args:
+                        count_args[key] = args[key]
+        if funcs:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
+            if tools:
+                count_args['tools'] = tools
+                count_args.setdefault('tool_choice', 'auto')
 
+        # A timed-out thread cannot be stopped. Keep it until it finishes so
+        # repeated counts cannot fill the executor with stalled downloads.
+        if self._token_count_task is not None and not self._token_count_task.done():
+            raise errors.RequesterError('Token counter is still busy loading tokenizer resources')
+        task = asyncio.create_task(asyncio.to_thread(litellm.token_counter, **count_args))
+        self._token_count_task = task
+        task.add_done_callback(lambda completed: None if completed.cancelled() else completed.exception())
         try:
-            tokens = await asyncio.to_thread(litellm.token_counter, **count_args)
+            tokens = await asyncio.wait_for(asyncio.shield(task), timeout=self.TOKEN_COUNT_TIMEOUT)
+        except TimeoutError as exc:
+            raise errors.RequesterError('Token counting exceeded its time limit') from exc
         except Exception as e:
             self._handle_litellm_error(e)
 

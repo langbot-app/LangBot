@@ -1112,7 +1112,8 @@ class TestAgentRunProxyActions:
         assert model_requester.LLM_USAGE_QUERY_VARIABLE not in query.variables
 
     @pytest.mark.asyncio
-    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app):
+    @pytest.mark.parametrize('reasoning_level', [None, 'minimal'])
+    async def test_count_tokens_validates_run_authorization_and_calls_provider(self, app, reasoning_level):
         """COUNT_TOKENS is run-scoped and forwards messages/tools to the model requester."""
         from langbot.pkg.agent.runner.session_registry import get_session_registry
 
@@ -1157,6 +1158,7 @@ class TestAgentRunProxyActions:
                         }
                     ],
                     'extra_args': {'temperature': 0.7},
+                    'reasoning_level': reasoning_level,
                 }
             )
         finally:
@@ -1166,7 +1168,12 @@ class TestAgentRunProxyActions:
         assert response.data == {'tokens': 37}
         requester.count_tokens.assert_awaited_once()
         kwargs = requester.count_tokens.await_args.kwargs
-        assert kwargs['model'] is model
+        if reasoning_level is None:
+            assert kwargs['model'] is model
+        else:
+            assert kwargs['model'] is not model
+            assert kwargs['model'].reasoning_config_override == {'level': reasoning_level}
+            assert not hasattr(model, 'reasoning_config_override')
         assert kwargs['messages'][0].content == 'hello'
         assert [tool.name for tool in kwargs['funcs']] == ['search']
         assert kwargs['extra_args'] == {'temperature': 0.7}
