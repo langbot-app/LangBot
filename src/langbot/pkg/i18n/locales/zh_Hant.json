@@ -1,4 +1,5 @@
 {
+  "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "找不到 Agent 執行器：{runner}。請開啟外掛頁面，檢查是否已安裝、啟用並確認權限。如果啟動失敗，請檢查安裝工作和執行階段日誌後重試。",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "外掛 {plugin} 未宣告權限。請在外掛設定中確認相容模式存取權限。",
   "Request failed.": "請求失敗。",
   "Too many requests. Please try again later.": "請求過於頻繁，請稍後重試。",

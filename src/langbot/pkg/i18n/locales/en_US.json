@@ -1,4 +1,5 @@
 {
+  "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.",
   "Request failed.": "Request failed.",
   "Too many requests. Please try again later.": "Too many requests. Please try again later.",

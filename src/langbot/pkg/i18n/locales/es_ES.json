@@ -1,4 +1,5 @@
 {
+  "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "No se encontró el ejecutor del agente: {runner}. Abra Plugins para comprobar la instalación, la activación y los permisos. Si el inicio falló, revise la tarea de instalación y los registros del entorno de ejecución y vuelva a intentarlo.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "El complemento {plugin} no declara permisos. Revise el acceso de compatibilidad en sus ajustes.",
   "Request failed.": "La solicitud ha fallado.",
   "Too many requests. Please try again later.": "Demasiadas solicitudes. Inténtalo más tarde.",

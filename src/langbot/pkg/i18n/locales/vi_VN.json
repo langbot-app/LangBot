@@ -1,4 +1,5 @@
 {
+  "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Không tìm thấy trình chạy Agent: {runner}. Mở trang Plugin để kiểm tra cài đặt, kích hoạt và quyền. Nếu khởi động thất bại, hãy kiểm tra tác vụ cài đặt và nhật ký runtime rồi thử lại.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} chưa khai báo quyền. Hãy xem xét quyền truy cập tương thích trong cài đặt plugin.",
   "Request failed.": "Yêu cầu thất bại.",
   "Too many requests. Please try again later.": "Quá nhiều yêu cầu. Vui lòng thử lại sau.",

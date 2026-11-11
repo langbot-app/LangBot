@@ -12,6 +12,7 @@ Avoids circular imports by using proper import structure.
 from __future__ import annotations
 
 import pytest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langbot.pkg.agent.runner.errors import (
@@ -496,7 +497,8 @@ class TestChatHandlerAsyncBehavior:
         from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
         from langbot.pkg.pipeline import entities
 
-        orchestrator = MockAgentRunOrchestrator(error=RunnerNotFoundError('plugin:notexist/unknown/default'))
+        failure = RunnerNotFoundError('plugin:notexist/unknown/default', 'Plugin dependency installation failed')
+        orchestrator = MockAgentRunOrchestrator(error=failure)
         mock_ap = MockApplication(orchestrator=orchestrator)
         mock_ap.plugin_connector.emit_event = AsyncMock(return_value=MockEventContext(prevented=False))
 
@@ -511,6 +513,7 @@ class TestChatHandlerAsyncBehavior:
             return MagicMock(
                 result_type=kwargs.get('result_type'),
                 user_notice=kwargs.get('user_notice'),
+                error_notice=kwargs.get('error_notice'),
             )
 
         with (
@@ -528,6 +531,19 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.INTERRUPT
         assert 'not found' in results[0].user_notice
+        assert results[0].error_notice == str(failure)
+
+        from tests.unit_tests.telemetry.test_pipeline_lane import CONTEXT, FakeManager, build_pipeline, get_modules
+
+        pipelinemgr, execution = get_modules()
+        counters = execution.ExecutionCounters(FakeManager())
+        mock_ap.telemetry = SimpleNamespace(execution=counters)
+        pipeline = build_pipeline(pipelinemgr, mock_ap)
+        with execution.ingress(mock_ap, 'completed', CONTEXT, execution_id='missing-runner'):
+            pipeline._record_lane_failure(query, results[0].error_notice)
+        chain = next(row for row in counters.records if row['event_type'] == 'execution_chain')
+        assert chain['outcome'] == 'failed'
+        assert chain['error'] == str(failure)
 
     @pytest.mark.asyncio
     async def test_runner_not_found_during_steering_falls_back_to_normal_run(self):

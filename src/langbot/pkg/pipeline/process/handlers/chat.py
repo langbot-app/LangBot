@@ -268,7 +268,11 @@ class ChatMessageHandler(handler.MessageHandler):
                 # Handle specific runner errors with appropriate messages
                 if isinstance(e, RunnerNotFoundError):
                     user_notice = pipeline_notice(
-                        query, 'runner-not-found-hint', 'Agent runner not found: {runner}', runner=e.runner_id
+                        query,
+                        'runner-not-found-hint',
+                        'Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. '
+                        'If startup failed, check the installation task and runtime logs, then retry.',
+                        runner=e.runner_id,
                     )
                 elif isinstance(e, RunnerNotAuthorizedError):
                     user_notice = pipeline_notice(

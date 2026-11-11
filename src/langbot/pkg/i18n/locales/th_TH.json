@@ -1,4 +1,5 @@
 {
+  "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "ไม่พบตัวรัน Agent: {runner} เปิดหน้าปลั๊กอินเพื่อตรวจสอบการติดตั้ง การเปิดใช้งาน และสิทธิ์ หากเริ่มทำงานไม่สำเร็จ ให้ตรวจสอบงานติดตั้งและบันทึกรันไทม์แล้วลองอีกครั้ง",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "ปลั๊กอิน {plugin} ไม่ได้ประกาศสิทธิ์ โปรดตรวจสอบการเข้าถึงในโหมดความเข้ากันได้ในการตั้งค่าปลั๊กอิน",
   "Request failed.": "คำขอล้มเหลว",
   "Too many requests. Please try again later.": "มีคำขอมากเกินไป โปรดลองอีกครั้งภายหลัง",
