@@ -66,7 +66,7 @@ async def test_stalled_counter_is_bounded_and_does_not_queue_more_threads(monkey
         assert len(calls) == 1
     finally:
         release.set()
-        await request._token_count_task
+        await request._stalled_count_task
     assert await request.count_tokens(model, []) == 8
 
 
@@ -93,4 +93,31 @@ async def test_cancelled_count_does_not_release_busy_worker(monkeypatch):
             await request.count_tokens(model, [])
     finally:
         release.set()
-        await request._token_count_task
+        await request._stalled_count_task
+
+
+@pytest.mark.asyncio
+async def test_concurrent_counts_on_one_requester_all_succeed(monkeypatch):
+    request = _requester('openai')
+    model = _runtime_model(request, name='gpt-4o')
+    inside = 0
+    peak = 0
+    lock = threading.Lock()
+
+    def slow(**kwargs):
+        nonlocal inside, peak
+        with lock:
+            inside += 1
+            peak = max(peak, inside)
+        threading.Event().wait(0.05)
+        with lock:
+            inside -= 1
+        return 21
+
+    monkeypatch.setattr(litellmchat.litellm, 'token_counter', slow)
+
+    results = await asyncio.gather(*(request.count_tokens(model, []) for _ in range(8)))
+
+    assert results == [21] * 8
+    assert peak > 1
+    assert request._stalled_count_task is None
