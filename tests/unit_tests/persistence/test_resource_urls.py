@@ -1,6 +1,7 @@
 """URL catalog storage, transactional refresh and migration contracts."""
 
 import asyncio
+import contextlib
 import datetime as dt
 import importlib
 import json
@@ -18,8 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from langbot.pkg.entity.persistence.resource_url import ResourceURL
 from langbot.pkg.entity.persistence.event_log import EventLog
 from langbot.pkg.entity.persistence.monitoring import MonitoringLLMCall
+from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.agent_run import AgentRun, AgentRunEvent
+from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
+from langbot.pkg.persistence.databases.sqlite import SQLiteDatabaseManager
 from langbot.pkg.persistence.media import MediaReferenceText, MediaReferenceJSON
-from langbot.pkg.persistence.resource_urls import digest, refresh_images
+from langbot.pkg.persistence.resource_urls import digest, install, refresh_images
 from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
 
 
@@ -29,6 +34,83 @@ NEW = OLD.replace('rkey=old', 'rkey=new')
 
 def chain(url=OLD, message_id=42):
     return [{'type': 'Source', 'id': message_id}, {'type': 'Image', 'image_id': 'one.jpg', 'url': url}]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('waiting_action', ['get_version_info', 'get_msg'])
+@pytest.mark.parametrize('conversations', [4, 16])
+async def test_sqlite_agent_writes_continue_during_image_refresh(tmp_path, waiting_action, conversations):
+    manager = SQLiteDatabaseManager(
+        SimpleNamespace(
+            instance_config=SimpleNamespace(data={'database': {'sqlite': {'path': str(tmp_path / 'runs.db')}}})
+        )
+    )
+    await manager.initialize()
+    engine = manager.engine
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def action(name, **params):
+        if name == waiting_action:
+            entered.set()
+            await release.wait()
+        if name == 'get_version_info':
+            return {'app_name': 'standard'}
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': NEW}}]}
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    refresh = None
+    try:
+        async with engine.begin() as db:
+            await db.run_sync(Base.metadata.create_all)
+            await append(db, 'image-event')
+            await db.execute(sa.update(ResourceURL).values(created_at=dt.datetime(2000, 1, 1)))
+        store = RunLedgerStore(engine)
+        for index in range(conversations):
+            await store.create_run(
+                run_id=f'run-{index}',
+                event_id=f'event-{index}',
+                binding_id='binding',
+                runner_id='runner',
+                conversation_id=f'conversation-{index}',
+            )
+
+        async def conversation(index):
+            run_id = f'run-{index}'
+            if index % 2:
+                await store.finalize_run(run_id=run_id, status='completed')
+            else:
+                event_types = ('tool_call.started', 'tool_call.completed', 'text.delta') * 8
+                for sequence, event_type in enumerate(event_types, 1):
+                    await store.append_event(
+                        run_id=run_id,
+                        sequence=sequence,
+                        event_type=event_type,
+                        data={'text': 'ok', 'tool_name': 'test_tool'},
+                    )
+                await store.finalize_run(run_id=run_id, status='completed')
+
+        async with contextlib.AsyncExitStack() as connections:
+            for _ in range(4):
+                await connections.enter_async_context(engine.connect())
+        refresh = asyncio.create_task(refresh_images(engine, peer, chain()))
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.wait_for(refresh_images(engine, peer, [{'type': 'Plain', 'text': 'hello'}]), 1)
+        results = await asyncio.wait_for(
+            asyncio.gather(*(conversation(index) for index in range(conversations)), return_exceptions=True),
+            120,
+        )
+        failures = [str(result) for result in results if isinstance(result, BaseException)]
+        assert not failures, failures
+        async with engine.connect() as db:
+            assert await db.scalar(sa.select(sa.func.count()).select_from(AgentRunEvent)) == conversations // 2 * 24
+            assert set((await db.execute(sa.select(AgentRun.status))).scalars()) == {'completed'}
+    finally:
+        release.set()
+        if refresh is not None:
+            await refresh
+        await engine.dispose()
 
 
 @pytest.fixture(params=['sqlite', 'postgresql'])
@@ -262,6 +344,80 @@ async def test_distinct_urls_can_converge_concurrently(database):
         assert (await db.execute(sa.select(ResourceURL.url).where(ResourceURL.url.is_not(None)))).scalars().all() == [
             NEW
         ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('converge', [False, True])
+async def test_sqlite_refresh_preserves_another_engines_newer_result(database, converge):
+    if database.dialect.name != 'sqlite':
+        pytest.skip('SQLite releases the transaction during upstream calls')
+    async with database.begin() as db:
+        await append(db, 'a')
+        if converge:
+            await append(db, 'b', NEW)
+        await db.execute(sa.update(ResourceURL).values(created_at=dt.datetime(2000, 1, 1)))
+
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def stale_action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'standard'}
+        entered.set()
+        await release.wait()
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': NEW + '&stale=1'}}]}
+
+    async def current_action(name, **params):
+        if name == 'get_version_info':
+            return {'app_name': 'standard'}
+        return {'message': [{'type': 'image', 'data': {'file': 'one.jpg', 'url': NEW}}]}
+
+    stale_peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=stale_action))
+    stale_peer.image_urls = OneBotImageURLs(stale_peer)
+    current_peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=current_action))
+    current_peer.image_urls = OneBotImageURLs(current_peer)
+    other_engine = create_async_engine(database.url)
+    install(other_engine.sync_engine)
+    payload = chain()
+    refresh = asyncio.create_task(refresh_images(database, stale_peer, payload))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+        await asyncio.wait_for(refresh_images(other_engine, current_peer, chain()), 5)
+    finally:
+        release.set()
+        await refresh
+        await other_engine.dispose()
+    assert payload[1]['url'] == NEW
+    async with database.connect() as db:
+        assert (await db.execute(sa.select(ResourceURL.url).where(ResourceURL.url.is_not(None)))).scalars().all() == [
+            NEW
+        ]
+        assert NEW in await db.scalar(sa.select(EventLog.input_json).where(EventLog.event_id == 'a'))
+
+
+@pytest.mark.asyncio
+async def test_sqlite_cancelled_refresh_releases_writer_and_refresh_lock(database):
+    if database.dialect.name != 'sqlite':
+        pytest.skip('SQLite refresh serialization is per engine')
+    entered = asyncio.Event()
+
+    async def action(name, **params):
+        entered.set()
+        await asyncio.Event().wait()
+
+    peer = SimpleNamespace(closed=False, call_action=AsyncMock(side_effect=action))
+    peer.image_urls = OneBotImageURLs(peer)
+    refresh = asyncio.create_task(refresh_images(database, peer, chain()))
+    try:
+        await asyncio.wait_for(entered.wait(), 5)
+    finally:
+        refresh.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await refresh
+    peer.call_action = AsyncMock(return_value={'app_name': 'standard'})
+    await asyncio.wait_for(refresh_images(database, peer, chain()), 5)
+    async with database.begin() as db:
+        await append(db, 'after-cancellation')
 
 
 @pytest.mark.asyncio

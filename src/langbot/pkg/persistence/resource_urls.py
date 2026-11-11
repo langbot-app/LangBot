@@ -5,6 +5,7 @@ ORM and Core callers retain their existing string/JSON contracts. The catalog
 is shared; authorization continues to belong to the enclosing business record.
 """
 
+import asyncio
 import datetime
 import hashlib
 import json
@@ -137,6 +138,7 @@ def install(engine):
     engine.dialect._langbot_resource_urls = True
     if not hasattr(engine, '_langbot_resource_aliases'):
         engine._langbot_resource_aliases = OrderedDict()
+        engine._langbot_resource_refresh_lock = asyncio.Lock()
     engine.clear_compiled_cache()
     if not sa.event.contains(engine, 'before_cursor_execute', normalize_parameters):
         sa.event.listen(engine, 'before_cursor_execute', normalize_parameters, retval=True)
@@ -258,13 +260,20 @@ def create_postgres_expansion(connection):
 
 
 async def refresh_images(engine, peer, payload, *, is_current=None):
-    """Serialize refreshes on catalog identities and overwrite current URLs atomically."""
+    """Serialize SQLite refreshes without holding the database writer during network I/O."""
     from ..platform.adapters.aiocqhttp.image_urls import image_nodes
 
     nodes = list(image_nodes(payload))
     if not nodes:
         return
+    if engine.dialect.name == 'sqlite':
+        async with engine.sync_engine._langbot_resource_refresh_lock:
+            await _refresh_images(engine, peer, payload, nodes, is_current=is_current)
+    else:
+        await _refresh_images(engine, peer, payload, nodes, is_current=is_current)
 
+
+async def _refresh_images(engine, peer, payload, nodes, *, is_current=None):
     def connected():
         return not peer.closed and (is_current is None or is_current())
 
@@ -304,6 +313,8 @@ async def refresh_images(engine, peer, payload, *, is_current=None):
             # Capture origins even when renewal is not due or identification fails.
             for node, message_id, image_id in nodes:
                 peer.image_urls.remember(by_url[node['url']]['url'], message_id, image_id)
+            if engine.dialect.name == 'sqlite':
+                await db.commit()
             # Identification and upstream credential handling remain connection-local.
             if not connected() or not await peer.image_urls.identify():
                 return
@@ -330,11 +341,24 @@ async def refresh_images(engine, peer, payload, *, is_current=None):
                     return
                 if not connected():
                     return
+                if engine.dialect.name == 'sqlite':
+                    await db.exec_driver_sql('BEGIN IMMEDIATE')
                 stamp = now()
                 updated = set()
                 for (node, _, _, row), entry, previous in zip(due, batch, old):
                     if previous not in completed:
                         continue
+                    if engine.dialect.name == 'sqlite':
+                        current = (await db.execute(sa.select(table).where(table.c.id == row['id']))).mappings().one()
+                        while current['canonical_id'] is not None:
+                            current = (
+                                (await db.execute(sa.select(table).where(table.c.id == current['canonical_id'])))
+                                .mappings()
+                                .one()
+                            )
+                        if any(current[field] != row[field] for field in ('id', 'url', 'last_checked_at')):
+                            node['url'] = current['url']
+                            continue
                     fresh = entry['image']['url']
                     node['url'] = fresh
                     if napcat and fresh == previous:

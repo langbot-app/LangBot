@@ -8,6 +8,7 @@ that must cross Host run-scoped APIs without calling any external provider.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import shutil
@@ -646,6 +647,83 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         assert transcript_rows[1][3] == LOCAL_RUNNER_ID
     finally:
         conn.close()
+
+
+@pytest.mark.contract('agent_tools')
+def test_local_runner_concurrent_tools_during_sqlite_image_refresh(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+):
+    del local_agent_e2e_config_path, local_agent_runtime_process
+
+    async def probe(ap):
+        from langbot.pkg.persistence.resource_urls import refresh_images
+        from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
+
+        fake = await _inject_fake_llm_model(ap)
+
+        def respond(*, messages, **kwargs):
+            if any(message.role == 'tool' for message in messages):
+                return 'Concurrent tool loop completed'
+            return _scripted_tool_call()
+
+        fake.queue_llm_responses(*([respond] * 8))
+        manager = _FakeToolManager()
+        ap.tool_mgr = manager
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def action(name, **params):
+            assert name == 'get_version_info'
+            entered.set()
+            await release.wait()
+            return {'app_name': 'standard'}
+
+        peer = SimpleNamespace(closed=False, call_action=action)
+        peer.image_urls = OneBotImageURLs(peer)
+        engine = ap.persistence_mgr.get_db_engine()
+        refresh = asyncio.create_task(
+            refresh_images(
+                engine, peer, [{'type': 'Image', 'image_id': 'image.jpg', 'url': 'https://example.com/image.jpg'}]
+            )
+        )
+
+        async def conversation(index):
+            return await _run_runner(
+                ap,
+                _event(
+                    event_id=f'e2e-sqlite-concurrent-{index}',
+                    conversation_id=f'e2e-sqlite-conversation-{index}',
+                    text='Use the lookup tool before answering.',
+                ),
+                _binding(
+                    binding_id=f'e2e-sqlite-binding-{index}',
+                    allowed_tool_names=[E2E_TOOL_NAME],
+                    runner_config={'max-tool-iterations': 2, 'tool-execution-mode': 'serial'},
+                ),
+            )
+
+        try:
+            await asyncio.wait_for(entered.wait(), 5)
+            results = await asyncio.wait_for(asyncio.gather(*(conversation(index) for index in range(4))), 120)
+            assert len(manager.calls) == 4
+            assert all(len(messages) == 1 for messages in results)
+            assert all(_content_text(messages[0].content) == 'Concurrent tool loop completed' for messages in results)
+        finally:
+            release.set()
+            await refresh
+
+    _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+    with contextlib.closing(sqlite3.connect(str(local_agent_e2e_tmpdir / 'data' / 'langbot.db'))) as connection:
+        runs = connection.execute(
+            "SELECT status FROM agent_run WHERE event_id LIKE 'e2e-sqlite-concurrent-%'"
+        ).fetchall()
+        assert runs == [('completed',)] * 4
+        assert connection.execute(
+            'SELECT count(*) FROM agent_run_event JOIN agent_run USING (run_id) '
+            "WHERE event_id LIKE 'e2e-sqlite-concurrent-%' AND type = 'tool.call.completed'"
+        ).fetchone() == (4,)
 
 
 @pytest.mark.contract('agent_tools')
