@@ -564,6 +564,12 @@ class Suite:
                 ):
                     return data
             error = result.stdout + result.stderr
+            try:
+                response = json.loads(result.stdout)
+            except ValueError:
+                response = None
+            if isinstance(response, dict) and response.get('error'):
+                error = json.dumps(response['error'], ensure_ascii=False) + '\n' + error
             for secret in self.secrets:
                 error = error.replace(secret, '[REDACTED]')
             raise RuntimeError(error[:3000])
