@@ -9,6 +9,7 @@ from typing import Any, Union
 import base64
 import contextlib
 import contextvars
+import copy
 import traceback
 import uuid
 from dataclasses import dataclass
@@ -1801,7 +1802,11 @@ class RuntimeConnectionHandler(handler.Handler):
 
             if getattr(llm_model.model_entity, 'workspace_uuid', None) not in (None, action_context.workspace_uuid):
                 return handler.ActionResponse.error(message='LLM model belongs to another Workspace')
-            llm_model = model_with_reasoning_level(llm_model, data.get('reasoning_level'))
+            # Token counting preserves the requested input representation without
+            # validating whether a generation reasoning level is supported.
+            if data.get('reasoning_level') is not None:
+                llm_model = copy.copy(llm_model)
+                llm_model.reasoning_config_override = {'level': data['reasoning_level']}
             messages_obj = [provider_message.Message.model_validate(message) for message in messages]
 
             async def _placeholder_func(**kwargs):

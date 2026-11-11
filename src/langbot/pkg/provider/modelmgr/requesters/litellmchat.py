@@ -1599,15 +1599,30 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         extra_args: dict[str, typing.Any] = {},
     ) -> int:
         """Count input tokens with LiteLLM's model-aware tokenizer."""
-        args = await self._build_completion_args(model, messages, funcs, extra_args, stream=False)
+        # Counting only needs the input representation, not generation policy,
+        # credentials, or transport parameters.
+        reasoning_config = reasoning.resolve_reasoning_config(model, extra_args)
+        req_messages = self._convert_messages(
+            messages,
+            reasoning_family=self._reasoning_family(model.model_entity.name, model),
+            include_reasoning_context=reasoning_config['level'] != 'disabled',
+        )
+        chat_provider = 'openrouter' if self._uses_openrouter_protocol() else self._get_custom_llm_provider()
+        self._adapt_messages_for_provider(req_messages, chat_provider)
         count_args: dict[str, typing.Any] = {
-            'model': args['model'],
-            'messages': args['messages'],
+            'model': self._build_litellm_model_name(model.model_entity.name, chat_provider),
+            'messages': req_messages,
         }
-        if 'tools' in args:
-            count_args['tools'] = args['tools']
-        if 'tool_choice' in args:
-            count_args['tool_choice'] = args['tool_choice']
+        for args in (model.model_entity.extra_args, extra_args):
+            if args:
+                for key in ('model', 'messages', 'tools', 'tool_choice'):
+                    if key in args:
+                        count_args[key] = args[key]
+        if funcs:
+            tools = await self.ap.tool_mgr.generate_tools_for_openai(funcs)
+            if tools:
+                count_args['tools'] = tools
+                count_args.setdefault('tool_choice', 'auto')
 
         try:
             tokens = await asyncio.to_thread(litellm.token_counter, **count_args)

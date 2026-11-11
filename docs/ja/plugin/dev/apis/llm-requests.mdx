@@ -56,6 +56,8 @@ Runner の `ctx.api.invoke_llm*` でも同じ `extra_args` を使えますが、
 
 ## 思考予算
 
+LiteLLM を使用するモデルの `count_tokens` は、生成時の思考能力の検証とは独立して入力メッセージとツールを数えます。応答の生成時には reasoning 能力と対応するレベルが引き続き検証されます。計数の成功は生成設定の有効性を保証しません。
+
 既存の `reasoning_level` は変わりません。数値予算は以下を `extra_args` またはモデルの詳細パラメーターに指定します。`level` を省略すると `enabled` です：
 
 ```json
