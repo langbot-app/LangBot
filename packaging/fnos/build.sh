@@ -49,6 +49,7 @@ cd "${SRC_ROOT}"
 rsync -a \
     --exclude='.git' \
     --exclude='/plugins/' \
+    --exclude='/sdk/' \
     --exclude='*.lbpkg' \
     --exclude='.venv' \
     --exclude='__pycache__' \

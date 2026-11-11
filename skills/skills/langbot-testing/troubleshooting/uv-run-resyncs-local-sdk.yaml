@@ -14,7 +14,7 @@ likely_causes:
   - "Plain uv run synchronizes the environment to uv.lock before executing the command."
   - "The editable local SDK was installed with uv pip install -e, but the next uv run reverted it."
 fix_steps:
-  - "Install the local SDK into the LangBot worktree with uv pip install -e /absolute/path/to/langbot-plugin-sdk-test-build."
+  - "Install the local SDK into the LangBot worktree with uv pip install -e ./sdk (or the path of another SDK build under test)."
   - "Run validation and startup commands with uv run --no-sync."
   - "Before trusting results, print pathlib.Path(langbot_plugin.__file__).resolve() and confirm it points to the local SDK source tree."
 verification: "uv run --no-sync python -c import inspection prints the local SDK source path, and plugin-e2e-smoke passes with that same process environment."

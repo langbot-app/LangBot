@@ -1,0 +1,70 @@
+"""Runner implementation for Protocol v1."""
+from __future__ import annotations
+
+from typing import AsyncGenerator
+
+from langbot_plugin.api.definition.components.runner.runner import Runner
+from langbot_plugin.api.entities.builtin.runner import (
+    RunnerContext,
+    RunnerResult,
+    InteractionAction,
+    InteractionRequest,
+)
+from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+
+
+class {{ runner_attr }}(Runner):
+    """{{ runner_description }}"""
+
+    async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
+        """Process user input and generate response.
+
+        Args:
+            ctx: Agent run context containing:
+                - run_id: Unique ID for this run
+                - event: Required event metadata for this trigger
+                - input: Current event input (use ctx.input.to_text() for plain text)
+                - delivery: Host delivery surface and output capabilities
+                - resources: Run-scoped authorized resources
+                - context: Inline policy and available pull APIs
+                - state: Host-managed scoped state snapshot
+                - runtime: Host/runtime metadata
+                - config: Current Agent/runner binding configuration
+
+            Conversation history is not embedded in ctx. Pull it through the
+            run-scoped history APIs when ctx.context.available_apis allows it.
+
+        Yields:
+            RunnerResult events (message.delta, message.completed, run.completed, etc.)
+        """
+        # Example: get user input text
+        user_text = ctx.input.to_text()
+
+        # Example: return a simple response
+        # For streaming, use RunnerResult.message_delta(ctx.run_id, chunk)
+        # For final response, use RunnerResult.run_completed(ctx.run_id, message)
+        # For human input, declare interactions in the component manifest and use:
+        # result = await ctx.request_interaction(
+        #     InteractionRequest(
+        #         interaction_id="confirm-1",
+        #         kind="confirmation",
+        #         title="Continue?",
+        #         actions=[InteractionAction(id="continue", label="Continue", style="primary")],
+        #         fallback_text="Reply continue to proceed.",
+        #     ),
+        #     timeout=600,
+        #     on_unsupported="degrade",
+        # )
+        # if result.submission:
+        #     user_text = str(result.submission.action_id)
+
+        final_message = Message(
+            role="assistant",
+            content=f"Received: {user_text}",
+        )
+
+        yield RunnerResult.run_completed(
+            run_id=ctx.run_id,
+            message=final_message,
+            finish_reason="stop",
+        )

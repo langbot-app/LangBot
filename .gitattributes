@@ -1,2 +1,3 @@
 /plugins export-ignore
+/sdk export-ignore
 *.lbpkg export-ignore

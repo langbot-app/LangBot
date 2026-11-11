@@ -111,7 +111,7 @@ Outgoing `MessageChain` components are converted back into `aiocqhttp.Message` s
 The direct live probe is:
 
 ```bash
-PYTHONPATH=/Users/qinjunyan/code/projects/langbot/langbot-plugin-sdk/src \
+PYTHONPATH=/path/to/LangBot/sdk/src \
 uv run python tests/e2e/live_aiocqhttp_eba_probe.py --host 127.0.0.1 --port 2280
 ```
 

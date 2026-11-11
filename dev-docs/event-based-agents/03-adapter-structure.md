@@ -108,7 +108,7 @@ pkg/platform/
 
 ### 3.1 AbstractPlatformAdapter
 
-新基类继承自现有 `AbstractMessagePlatformAdapter` 并扩展，位于 `langbot-plugin-sdk` 中：
+新基类继承自现有 `AbstractMessagePlatformAdapter` 并扩展，位于 SDK（`sdk/`）中：
 
 ```python
 # langbot_plugin/api/definition/abstract/platform/adapter.py

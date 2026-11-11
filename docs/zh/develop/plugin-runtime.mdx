@@ -3,15 +3,19 @@ title: "调试插件运行时、CLI、SDK"
 ---
 
 <Info>
-  插件运行时、CLI、SDK 开源在: https://github.com/langbot-app/langbot-plugin-sdk
+  插件运行时、CLI、SDK 开源在 LangBot 仓库的 `sdk/` 目录：https://github.com/langbot-app/LangBot/tree/master/sdk ，以 `langbot-plugin` 包发布到 PyPI。
 </Info>
 
-由于 LangBot 需要依赖 langbot-plugin-sdk 中定义的实体，我们推荐您在一个新建目录下打开 VS Code，将 LangBot 和 langbot-plugin-sdk（git clone https://github.com/langbot-app/langbot-plugin-sdk） 作为子目录放入其中，目录结构如下：
+克隆 LangBot 仓库即可同时获得主程序与 SDK 源码，无需再单独克隆 SDK 仓库：
 
 ```bash
-langbot-projects
-├── LangBot
-├── langbot-plugin-sdk
+git clone https://github.com/langbot-app/LangBot
+```
+
+```text
+LangBot
+├── src/langbot   # LangBot 主程序
+└── sdk           # 插件 SDK、CLI（lbp）、插件运行时、Box 运行时
 ```
 
 进入 LangBot 目录，安装依赖：
@@ -53,17 +57,17 @@ Plugin Runtime 接受以下参数：
 - `-s`: 使用`stdio`接受控制连接。**仅在生产环境使用**。
 - `--skip-deps-check`: 为了确保插件依赖均已安装，Runtime 会在每次启动时检查并安装所有已安装插件的依赖。携带此参数可禁用此检查。
 
-### 使 LangBot 使用您本地修改过的 langbot-plugin-sdk
+### 使 LangBot 使用您本地修改过的 SDK
 
-若您修改了诸如消息实体、插件数据定义等内容，需要将其更新到 LangBot 环境，以确保运行期间数据格式兼容。
+`uv sync` 默认为 LangBot 安装 `pyproject.toml` 中固定的 PyPI 版本 `langbot-plugin`，而不是仓库里的 `sdk/` 目录。若您修改了诸如消息实体、插件数据定义等内容，需要将其安装到 LangBot 环境，以确保运行期间数据格式兼容。
 
-请在**确保已激活 LangBot 目录下的虚拟环境（.venv）的终端**中，切换目录到 langbot-plugin-sdk 目录下，执行：
+请在**确保已激活 LangBot 目录下的虚拟环境（.venv）的终端**中，于 LangBot 仓库根目录执行：
 
 ```bash
-uv pip install .
+uv pip install ./sdk
 ```
 
-这将把您修改后的 langbot-plugin-sdk 安装到 LangBot 的环境。
+这将把您修改后的 SDK 安装到 LangBot 的环境。
 
 ### 使 LangBot 连接到此运行时
 
@@ -74,7 +78,7 @@ plugin:
   runtime_ws_url: ws://localhost:5400/control/ws
 ```
 
-并在已激活 LangBot 虚拟环境的终端中，直接使用 Python 启动主程序并携带参数`--standalone-runtime`（如：`python main.py --standalone-runtime`）。直接调用当前虚拟环境的 Python 不会再次同步依赖，因此不会把刚刚安装的本地 langbot-plugin-sdk 覆盖为远程版本。\
+并在已激活 LangBot 虚拟环境的终端中，直接使用 Python 启动主程序并携带参数`--standalone-runtime`（如：`python main.py --standalone-runtime`）。直接调用当前虚拟环境的 Python 不会再次同步依赖，因此不会把刚刚安装的本地 SDK 覆盖为 PyPI 版本。\
 重启 LangBot，将会使用 WebSocket 连接到此运行时。
 
 默认情况下无需配置 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN`：当 LangBot 与 Runtime 两端都未设置时，OSS 的本地控制连接直接建立。若部署环境需要为 5400 控制端口增加共享密钥，则应在两端配置同一个至少 32 位的高熵值。Runtime 端配置后，未携带相同密钥的 LangBot 会被拒绝；只在 LangBot 端配置并不会启用 Runtime 端的认证。
@@ -105,7 +109,7 @@ python -m langbot_plugin.cli.__init__ run
 Box Runtime 与 Plugin Runtime 的控制连接规则一致：OSS standalone 开发环境默认不强制配置 token，两端都未设置 `LANGBOT_BOX_CONTROL_TOKEN` 时可以直接连接：
 
 ```bash
-# 终端 1：langbot-plugin-sdk 目录
+# 终端 1：LangBot 目录（已激活虚拟环境）
 python -m langbot_plugin.cli.__init__ box
 ```
 
@@ -132,9 +136,9 @@ export LANGBOT_BOX_CONTROL_TOKEN='<两端完全相同的高熵密钥>'
 
 Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBot。只在 LangBot 端设置不会启用 Box Runtime 端认证；显式配置但不足 32 位的值仍会被两端拒绝。不要把真实密钥提交到配置文件或 Git。
 
-## langbot-plugin-sdk 架构
+## SDK（`sdk/`）架构
 
-本代码库中包含以下内容：
+`sdk/src/langbot_plugin` 中包含以下内容：
 
 - `langbot_plugin.api`：插件相关实体和 API 定义。
 - `langbot_plugin.assets`：插件模板。
@@ -146,4 +150,4 @@ Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBo
 
 CLI 工具提供 Runtime 启动、插件初始化、插件组件管理、Marketplace 交互等功能。
 
-详细的程序入口请查看[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/langbot-plugin-sdk/blob/main/src/langbot_plugin/cli/__init__.py)。
+详细的程序入口请查看[`langbot_plugin.cli.__init__`](https://github.com/langbot-app/LangBot/blob/master/sdk/src/langbot_plugin/cli/__init__.py)。

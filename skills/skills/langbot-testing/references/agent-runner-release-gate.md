@@ -98,7 +98,7 @@ also hangs, classify the run with troubleshooting id
 `aiosqlite-connect-hangs` instead of treating it as a browser E2E failure.
 
 `agent-runner-runtime-chaos` runs SDK Runner runtime and pull API handler
-tests from `LANGBOT_PLUGIN_SDK_REPO` or `../langbot-plugin-sdk`.
+tests from `LANGBOT_PLUGIN_SDK_REPO` or the in-tree `LangBot/sdk`.
 Each probe writes `automation-result.json` and probe logs under
 `LBS_EVIDENCE_DIR`.
 
@@ -146,8 +146,8 @@ Before a browser release run, also keep the code-level gate green in the repos t
 # langbot-agent-runner
 rtk uv run pytest -q
 
-# langbot-plugin-sdk
-rtk uv run pytest -q
+# LangBot/sdk (plugin SDK)
+(cd sdk && rtk uv run pytest -q)
 
 # langbot-skills saved Runner probes
 rtk bin/lbs test run agent-runner-behavior-matrix --dry-run

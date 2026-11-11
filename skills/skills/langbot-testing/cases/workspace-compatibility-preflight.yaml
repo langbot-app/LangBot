@@ -21,7 +21,7 @@ steps:
   - "Use the LangBot virtualenv to import langbot_plugin and Runner Protocol entities from the workspace SDK source tree."
 checks:
   - "workspace-preflight.json contains no failed checks."
-  - "The langbot_plugin import path is inside the discovered langbot-plugin-sdk/src directory."
+  - "The langbot_plugin import path is inside the discovered SDK src directory (LangBot/sdk/src by default)."
   - "Dirty worktrees are visible as warnings and do not hide compatibility failures."
 evidence_required:
   - filesystem

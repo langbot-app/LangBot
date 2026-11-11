@@ -10,7 +10,7 @@ description: Develop, debug, test, and publish LangBot plugins. Use when creatin
 | Need | Where |
 | --- | --- |
 | Author docs (canonical) | `docs/en/plugin/dev/` (also `zh`, `ja`): `tutor`, `basic-info`, `directory-structure`, `permissions`, `components/*`, `apis/*`, `publish/*` |
-| SDK, `lbp` CLI, Plugin Runtime | `langbot-plugin-sdk` repo (`langbot_plugin`) |
+| SDK, `lbp` CLI, Plugin Runtime | `sdk/` in the LangBot repo (`langbot_plugin`, PyPI `langbot-plugin`); release rules in `sdk/RELEASING.md` |
 | Working examples | `plugins/` in the LangBot repo, indexed by `plugins/catalog.json`; minimal: `plugins/misc/HelloPlugin`; full Runner: `plugins/Runner/LocalAgent` |
 | Official plugin rules | `plugins/AGENTS.md`, `plugins/RELEASING.md` |
 | Runtime debugging | `docs/en/develop/plugin-runtime.mdx` |

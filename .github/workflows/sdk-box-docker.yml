@@ -1,0 +1,41 @@
+name: SDK / Box Docker Acceptance
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'sdk/**'
+      - '.github/workflows/sdk-box-docker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: sdk
+
+jobs:
+  box-docker:
+    name: Real Docker socket mounts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build acceptance image
+        run: |
+          docker build -f tests/e2e/Dockerfile.box-socket \
+            -t langbot-box-socket-test .
+          docker pull alpine:3.21
+      - name: Verify private tmp and shared artifact cache
+        shell: bash
+        run: |
+          shared_root=$(mktemp -d "${RUNNER_TEMP}/box-socket.XXXXXX")
+          docker run --rm --init --name langbot-box-socket-test \
+            --volume /var/run/docker.sock:/var/run/docker.sock \
+            --volume "$shared_root:$shared_root" \
+            --env LANGBOT_TEST_BOX_SHARED_ROOT="$shared_root" \
+            langbot-box-socket-test

@@ -1,0 +1,8 @@
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends docker.io && rm -rf /var/lib/apt/lists/*
+WORKDIR /sdk
+COPY pyproject.toml README.md ./
+COPY src ./src
+COPY tests/e2e/test_box_socket_mounts.py ./tests/e2e/test_box_socket_mounts.py
+RUN uv sync --dev
+CMD ["uv", "run", "--no-sync", "pytest", "-q", "tests/e2e/test_box_socket_mounts.py"]

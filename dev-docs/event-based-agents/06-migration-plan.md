@@ -19,7 +19,7 @@ EBA 跨越 SDK、平台适配器、LangBot Host、WebUI 与插件生态，按可
 
 | 阶段 | 目标 | 主要仓库 | 完成条件 |
 | --- | --- | --- | --- |
-| P0 | SDK 事件、能力与 Runner 协议 | `langbot-plugin-sdk` | typed entities、manifest、proxy、runtime action 通过测试 |
+| P0 | SDK 事件、能力与 Runner 协议 | SDK（`sdk/`） | typed entities、manifest、proxy、runtime action 通过测试 |
 | P1 | 平台适配器 EBA 化 | LangBot + SDK | 事件转换、能力声明、通用/透传 API 通过 adapter checklist |
 | P2 | Host 观察者与响应者路由 | LangBot backend | observer 广播 + Pipeline/Agent/discard 单目标仲裁可运行 |
 | P3 | 独立 Agent 与 Runner 注册 | LangBot backend + plugins | Agent CRUD、registry、run authorization、delivery 可运行 |

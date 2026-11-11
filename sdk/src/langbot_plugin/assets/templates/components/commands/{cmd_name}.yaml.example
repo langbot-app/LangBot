@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Command
+metadata:
+  name: {{ cmd_name }}
+  label:
+    en_US: {{ cmd_label }}
+    zh_Hans: {{ cmd_label }}
+    th_TH: {{ cmd_label }}
+    vi_VN: {{ cmd_label }}
+    es_ES: {{ cmd_label }}
+  description:
+    en_US: '{{ cmd_description }}'
+    zh_Hans: '{{ cmd_description }}'
+    th_TH: '{{ cmd_description }}'
+    vi_VN: '{{ cmd_description }}'
+    es_ES: '{{ cmd_description }}'
+spec:
+execution:
+  python:
+    path: {{ cmd_name }}.py
+    attr: {{ cmd_attr }}

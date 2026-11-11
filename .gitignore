@@ -74,3 +74,6 @@ r.ps1
 
 *.log
 *.pid
+
+# SDK project template (sdk/) ships an editor config example
+!sdk/src/langbot_plugin/assets/templates/.vscode

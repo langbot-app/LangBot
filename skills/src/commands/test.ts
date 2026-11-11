@@ -703,8 +703,9 @@ function repoCandidates(
       prefix: "LangBot",
     },
     {
-      path:
-        env.LANGBOT_PLUGIN_SDK_REPO || resolve(root, "../langbot-plugin-sdk"),
+      // The SDK is in-tree at LangBot/sdk and covered by the LangBot diff;
+      // only scan a separate SDK checkout when one is configured explicitly.
+      path: env.LANGBOT_PLUGIN_SDK_REPO || "",
       prefix: "langbot-plugin-sdk",
     },
     {

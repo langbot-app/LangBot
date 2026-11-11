@@ -7,7 +7,7 @@ await runPytestProbe({
   repoEnvKey: "LANGBOT_REPO",
   defaultRepo: "..",
   pythonPathEnvKeys: ["LANGBOT_PLUGIN_SDK_REPO"],
-  defaultPythonPaths: ["../../langbot-plugin-sdk/src"],
+  defaultPythonPaths: ["../sdk/src"],
   description:
     "LangBot Runner run ledger claim, lease, authorization, and runtime-admin pytest probe.",
   testTargets: [

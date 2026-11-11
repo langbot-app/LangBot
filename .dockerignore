@@ -23,4 +23,6 @@ docs/content/
 docs/public/
 
 plugins/
+# Plugin SDK sources: Core installs the PyPI-pinned langbot-plugin.
+sdk/
 **/*.lbpkg

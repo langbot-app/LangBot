@@ -85,7 +85,7 @@ WeComBot declares these EBA events:
 Covered by:
 
 ```bash
-PYTHONPATH=/Users/wangqiang/code/python/langbot-plugin-sdk/src uv run pytest tests/unit_tests/platform/test_wecombot_eba_adapter.py
+PYTHONPATH=/path/to/LangBot/sdk/src uv run pytest tests/unit_tests/platform/test_wecombot_eba_adapter.py
 ```
 
 The unit tests cover:
@@ -102,7 +102,7 @@ The unit tests cover:
 The direct adapter probe is:
 
 ```bash
-PYTHONPATH=/absolute/path/to/langbot-plugin-sdk/src uv run python tests/e2e/live_wecombot_eba_probe.py --help
+PYTHONPATH=/absolute/path/to/LangBot/sdk/src uv run python tests/e2e/live_wecombot_eba_probe.py --help
 ```
 
 Default mode is WebSocket long connection and requires:

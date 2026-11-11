@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_label }}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--langbot-bg, #ffffff);
+      color: var(--langbot-text, #0a0a0a);
+      padding: 24px;
+      transition: background 0.2s, color 0.2s;
+    }
+    h1 { font-size: 24px; font-weight: 700; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <h1 data-i18n="title">{{ page_label }}</h1>
+  <p data-i18n="description">This is the {{ page_label }} page.</p>
+
+  <!-- Load the LangBot Page SDK -->
+  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script>
+    langbot.onReady(function(ctx) {
+      console.log('Page SDK ready');
+    });
+  </script>
+</body>
+</html>

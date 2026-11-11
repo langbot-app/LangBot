@@ -2,11 +2,11 @@
 
 This file guides code agents working in the LangBot main repository. `CLAUDE.md` is a symlink to this file; edit `AGENTS.md`.
 
-Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or cross-repo SDK changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
+Read `ARCHITECTURE.md` before non-trivial backend, frontend, runtime, plugin, Box, MCP, persistence, or SDK (`sdk/`) changes. This file is the working checklist; `ARCHITECTURE.md` is the system map.
 
 ## Repository Layout
 
-This is a monorepo: Core, WebUI, public docs, official plugins and agent skills share one checkout but not one release.
+This is a monorepo: Core, WebUI, public docs, the plugin SDK, official plugins and agent skills share one checkout but not one release.
 
 | Path | Contents | Notes |
 | --- | --- | --- |
@@ -14,6 +14,7 @@ This is a monorepo: Core, WebUI, public docs, official plugins and agent skills 
 | `web/` | WebUI: Vite + React Router 7 + shadcn/ui + Tailwind | `pnpm`; dev server `3000`, backend `5300`. |
 | `docs/` | **Public user/developer documentation**, published at https://langbot.app/docs/ | Fumapress, Node.js 24, `zh`/`en`/`ja` trees. Write for users and plugin authors; keep the three languages in step. |
 | `dev-docs/` | **Internal design notes, contracts, reviews and test reports** for maintainers and agents | Not published. `architecture/` (Application API, i18n, ...), `event-based-agents/` (standard events/platform APIs and per-adapter records), `review/`, OpenAPI snapshots. |
+| `sdk/` | Plugin SDK, `lbp` CLI, Plugin Runtime (`lbp rt`) and Box Runtime (`lbp box`), published to PyPI as `langbot-plugin` | Independent package (Python `>=3.10`, hatchling), own tests/CI (`sdk-*.yml`) and releases via `sdk/vX.Y.Z` tags. Core installs the PyPI pin, never `sdk/` directly. See `sdk/AGENTS.md` and `sdk/RELEASING.md`. |
 | `plugins/` | Official plugins (`Runner/`, `KnowledgeEngine/`, `misc/`), indexed by `plugins/catalog.json` | Independent packages, CI and Marketplace releases; never bundled in Core artifacts. See `plugins/AGENTS.md`. |
 | `skills/` | Agent skills (`skills/skills/<name>/SKILL.md`) and the `lbs` QA harness | Single source of truth for LangBot agent skills. See `skills/AGENTS.md`. |
 | `tests/` | Core unit, integration, e2e and manual tests | |
@@ -21,9 +22,9 @@ This is a monorepo: Core, WebUI, public docs, official plugins and agent skills 
 | `scripts/` | Maintenance scripts, including catalog export and SDK code generation | |
 | `docker/`, `packaging/`, `examples/`, `res/` | Deployment manifests, distro packages, integration examples, static resources | |
 
-Choose `docs/` or `dev-docs/` by reader: anything a user or plugin author needs goes in `docs/`; design rationale, internal contracts and evidence go in `dev-docs/`. Do not duplicate content between them; link instead. The former `langbot-app/langbot-docs` and `langbot-app/langbot-plugins` repositories are archives: never edit or target them.
+Choose `docs/` or `dev-docs/` by reader: anything a user or plugin author needs goes in `docs/`; design rationale, internal contracts and evidence go in `dev-docs/`. Do not duplicate content between them; link instead. The former `langbot-app/langbot-docs`, `langbot-app/langbot-plugins` and `langbot-app/langbot-plugin-sdk` repositories are archives: never edit or target them.
 
-Related repositories: `langbot-plugin-sdk` (SDK, `lbp` CLI, Plugin Runtime, Box; usually at `../langbot-plugin-sdk/`, pinned as `langbot-plugin`) and [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`, the Service API client).
+Related repository: [`langbot-cli`](https://github.com/langbot-app/langbot-cli) (`lbctl`, the Service API client).
 
 Other references: dev environment `docs/zh/develop/dev-config.mdx`, Plugin Runtime debugging `docs/zh/develop/plugin-runtime.mdx`, API-key auth `dev-docs/API_KEY_AUTH.md`, Box internals `dev-docs/review/box-architecture.md`.
 
@@ -47,18 +48,19 @@ uv run pytest tests/integration/persistence -q
 uv run pytest tests/manual/mcp_smoke.py
 ```
 
-## Cross-Repo SDK Work
+## SDK Work (`sdk/`)
 
-When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`):
+Core depends on the exact PyPI pin `langbot-plugin==X` in `pyproject.toml`; `uv sync` never installs `sdk/`. When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`), change `sdk/` and the Core bridge in the same PR and test them together:
 
 ```bash
-# from langbot-plugin-sdk, with LangBot's .venv active
-uv pip install .
-# from LangBot, keep the locally installed SDK
+uv sync --dev
+uv pip install ./sdk                           # overlay the in-tree SDK on Core's venv
 uv run --no-sync main.py                       # add --standalone-runtime / --standalone-box
-# in langbot-plugin-sdk for standalone debugging
-uv run --no-sync lbp rt                        # or: lbp box
+uv run --no-sync lbp rt                        # or: lbp box, for standalone debugging
+cd sdk && uv run pytest -q                     # SDK's own environment (Python >=3.10)
 ```
+
+CI mirrors this: `sdk-tests.yml` tests the SDK alone and the `Core with in-tree SDK` job in `run-tests.yml` runs Core tests over `sdk/`. Release order is always SDK first (`sdk/vX.Y.Z` tag → PyPI), then bump the Core pin, then release Core; `scripts/check_sdk_release_pin.py` blocks a Core release whose pin does not match the released `sdk/`. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
 
 Config keys in `data/config.yaml` / `src/langbot/templates/config.yaml`: `plugin.runtime_ws_url` (Docker default `langbot_plugin_runtime:5400/control/ws`), `box.enabled` / `box.backend` / `box.runtime.endpoint` (Docker default `langbot_box:5410`), `api.global_api_key`.
 
@@ -89,7 +91,7 @@ When adding or changing a Workspace capability:
    - **Plugins**: exposure, principals, risk, wildcard eligibility, and the manifest permission a plugin must declare;
    - **`lbctl`** compatibility in `langbot-cli`.
    Existing HTTP/MCP entrypoints are still being migrated onto this boundary; do not add a second implementation beside it.
-3. If the plugin-visible catalog changed, regenerate the SDK typed proxy with `uv run python scripts/generate_plugin_workspace_api.py` (writes `../langbot-plugin-sdk/src/langbot_plugin/api/proxies/workspace_domains.py`; `--check` detects drift) and ship it in the SDK.
+3. If the plugin-visible catalog changed, regenerate the SDK typed proxy with `uv run python scripts/generate_plugin_workspace_api.py` (writes `sdk/src/langbot_plugin/api/proxies/workspace_domains.py`; `--check` detects drift) and ship it in an SDK release.
 4. Update `docs/*/plugin/dev/apis/workspace.mdx` and `permissions.mdx` when operations, risks or permissions change.
 5. Verify through every adopted transport: denied access, missing resources, invalid input, cancellation and secret handling.
 
@@ -107,7 +109,7 @@ EBA adapters live in `src/langbot/pkg/platform/adapters/<platform>/` (legacy one
 
 ## Plugin Development
 
-- SDK, `lbp` CLI and Plugin Runtime: `langbot-plugin-sdk`. Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
+- SDK, `lbp` CLI and Plugin Runtime: `sdk/` (package `langbot-plugin`). Author docs: `docs/en/plugin/dev/` (`basic-info`, `permissions`, `components/*` for EventListener, Command, Tool, Runner, KnowledgeEngine, KnowledgeRetriever, Parser, Page, and `apis/*` for common, messages, platform, workspace, agent-run, llm-requests, pipeline-events).
 - API catalogs: plugins call Workspace operations through `self.plugin.workspace.<domain>.<op>()` (runners: `ctx.api.workspace`), limited to operations declared in `spec.permissions` and granted by a member. `self.plugin.workspace.list()` returns the granted catalog at runtime; the full catalogs come from `ApplicationAPI.operation_catalog()` and `scripts/export_execution_catalog.py`. Runners expose only `ctx.resources.workspace_operations` to models.
 - Reference implementations: `plugins/` (start from `plugins/catalog.json`; `misc/HelloPlugin` is the minimal example, `Runner/LocalAgent` the full Runner).
 - Workflow and pitfalls: the `langbot-plugin-dev` skill. Release rules: `plugins/RELEASING.md`.
