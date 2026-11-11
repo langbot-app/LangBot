@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import sys
 import uuid
 
@@ -22,9 +23,31 @@ class VectorDBManager:
         self.ap = ap
         self.vector_db = None
         self._closed = False
+        self._init_lock = asyncio.Lock()
 
     async def initialize(self):
-        self._get_backend()
+        await self._ensure_backend()
+
+    async def _ensure_backend(self) -> VectorDatabase:
+        """Create the backend off the event loop on first use.
+
+        Importing a backend and opening its client (Chroma in particular) can
+        block for tens of seconds on slow hosts. Doing that on the loop stalls
+        every connection Core owns, and the plugin Runtime WebSocket drops in
+        the middle of the first knowledge-base ingestion.
+        """
+        if self.vector_db is not None:
+            return self.vector_db
+        async with self._init_lock:
+            if self._closed:
+                raise RuntimeError('Vector database manager is closed')
+            if self.vector_db is None:
+                await asyncio.to_thread(self._initialize_backend)
+            if self._closed and self.vector_db is not None:
+                vector_db, self.vector_db = self.vector_db, None
+                await vector_db.close()
+                raise RuntimeError('Vector database manager is closed')
+        return self.vector_db
 
     def _get_backend(self) -> VectorDatabase:
         if self._closed:
@@ -239,8 +262,8 @@ class VectorDBManager:
 
         return self.physical_collection_name(execution_context, knowledge_base_uuid)
 
-    def _pgvector_database(self):
-        backend = self._get_backend()
+    async def _pgvector_database(self):
+        backend = await self._ensure_backend()
         pgvector_module = sys.modules.get(f'{__package__}.vdbs.pgvector_db')
         if pgvector_module is None:
             return None
@@ -258,7 +281,7 @@ class VectorDBManager:
 
         from .vdbs.pgvector_db import PgVectorScope
 
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is None:  # pragma: no cover - private call invariant
             raise RuntimeError('pgvector scope requested for another vector backend')
         if expected_dimension is not None and expected_dimension not in pgvector.allowed_dimensions:
@@ -318,7 +341,7 @@ class VectorDBManager:
             }
             for item in source_metadata
         ]
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             if not vectors:
                 return
@@ -366,7 +389,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -437,7 +460,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         scope = None
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
@@ -463,7 +486,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -490,7 +513,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
@@ -518,7 +541,7 @@ class VectorDBManager:
             execution_context,
             knowledge_base_uuid,
         )
-        pgvector = self._pgvector_database()
+        pgvector = await self._pgvector_database()
         if pgvector is not None:
             scope = await self._resolve_pgvector_scope(
                 execution_context,
