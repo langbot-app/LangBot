@@ -73,6 +73,33 @@ jobs:
           echo "Python Version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+  sqlalchemy-compat:
+    name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sqlalchemy-version: ['2.0.*', '2.1.*']
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - name: Install dependencies
+        run: |
+          uv sync --dev --frozen
+          uv pip install 'sqlalchemy[asyncio]==${{ matrix.sqlalchemy-version }}' 'sqlmodel>=0.0.24'
+          uv pip check
+      - name: Run tenant SQL and plugin storage regressions
+        run: |
+          uv run --no-sync pytest \
+            tests/unit_tests/persistence/test_tenant_uow.py \
+            tests/unit_tests/persistence/test_tenant_uow_failed_commit.py \
+            tests/unit_tests/plugin/test_handler_actions.py -q --tb=short
+
   integration:
     name: Fast Integration Tests
     runs-on: ubuntu-latest

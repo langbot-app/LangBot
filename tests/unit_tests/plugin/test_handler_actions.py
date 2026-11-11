@@ -7,11 +7,15 @@ from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, Mock
 
 import pytest
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import create_async_engine
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction, RuntimeToLangBotAction
 from langbot_plugin.entities.io.context import ActionContext, InstallationBinding
 
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.entity.persistence.bstorage import BinaryStorage
+from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import _validate_scoped_statement_call
 from langbot.pkg.storage.mgr import StorageMgr
 
@@ -386,6 +390,31 @@ class TestSetBinaryStorage:
         assert any(getattr(statement, '_post_values_clause', None) is not None for statement in statements)
         for statement in statements:
             _validate_scoped_statement_call((statement,), {})
+
+    @pytest.mark.asyncio
+    async def test_storage_new_key_persists_through_tenant_uow(self, app, tmp_path):
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "binary-storage.db"}')
+        manager = PersistenceManager(app, mode=PersistenceMode.CLOUD_RUNTIME)
+        manager.db = SimpleNamespace(get_engine=lambda: engine)
+        app.persistence_mgr = manager
+        runtime_handler = make_handler(app)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(BinaryStorage.__table__.create)
+
+            for value in (b'first value', b'updated value'):
+                response = await runtime_handler.actions[RuntimeToLangBotAction.SET_BINARY_STORAGE.value](
+                    self.payload(value)
+                )
+                assert response.code == 0, response.message
+                async with engine.connect() as connection:
+                    rows = (await connection.execute(sa.select(BinaryStorage.__table__))).mappings().all()
+                assert len(rows) == 1
+                assert rows[0]['workspace_uuid'] == 'workspace-a'
+                assert rows[0]['unique_key'] == canonical_binary_key('plugin', 'test-author/test-plugin', 'test-key')
+                assert rows[0]['value'] == value
+        finally:
+            await engine.dispose()
 
     @pytest.mark.asyncio
     async def test_updates_existing_storage(self, app):

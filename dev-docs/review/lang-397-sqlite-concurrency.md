@@ -91,23 +91,35 @@ suppression is added.
 
 ## Tenant upserts
 
-The current `SET_BINARY_STORAGE` Host action produces an upsert accepted by the
-unchanged tenant SQL guard for both SQLite and PostgreSQL. The added test runs
-the real action's statement construction and validates every generated
-statement, including its conflict clause. Existing tenant validation tests
-cover allowed and rejected conflict expressions.
+SQLAlchemy 2.0 stores `OnConflictDoUpdate.update_values_to_set` as a list of
+key/value tuples; SQLAlchemy 2.1 uses a mapping. Iterating the mapping directly
+feeds keys into the tuple-shape check, causing `unknown ON CONFLICT update shape`
+for both SQLite and PostgreSQL. The `SET_BINARY_STORAGE` Host action uses this
+upsert for a new key, while an existing key uses an ordinary update.
 
-The truncated `unknown ON CONFLICT` error does not identify the action, conflict
-target, update-column shape or complete call chain. The reported failure has
-not been reproduced or assigned to a specific API. The SQL guard is not relaxed
-without that evidence.
+The guard converts mappings to `.items()` before iterating. Pair-shape,
+identifier and embedded-expression validation remain unchanged. The supported
+dependency range is `sqlalchemy[asyncio]>=2.0.40,<2.2`; the lock retains its
+SQLAlchemy 2.0.46 pin. CI explicitly installs both 2.0.x and 2.1.x and uses
+`uv run --no-sync` so the lock cannot conceal compatibility failures.
+
+Against master `c17b065bf`, the real Host action through `PersistenceManager`
+and `TenantUnitOfWork` reproduces the new-key failure with SQLAlchemy 2.1.8 and
+succeeds with 2.0.49. Regression coverage verifies the committed bytes and
+Workspace/key identity for both a new key and its subsequent update, plus
+SQLite/PostgreSQL statement validation and the tenant SQL rejection tests.
+SQLAlchemy 2.0.49 and 2.1.8 each pass all 239 tenant UOW, failed-commit and
+plugin-action regression cases on Linux/Python 3.12.13. Both environments use
+isolated temporary SQLite databases and disable telemetry. The 2.0.49 run uses
+SQLModel 0.0.31; the 2.1.8 run uses SQLModel 0.0.48. CI resolves SQLModel together
+with SQLAlchemy and checks dependency consistency: the locked SQLModel 0.0.31
+requires SQLAlchemy below 2.1, whereas 0.0.48 supports 2.1.
 
 ## Remaining evidence
 
-For the upsert records, obtain the full exception suffix, action/API name,
-Core/SDK/SQLAlchemy versions and complete call chain. For open/I/O failures,
-obtain the affected OS, SQLite extended error code, directory/mount status and
-descriptor counts around failure. Redact credentials and user payloads.
+For open/I/O failures, obtain the affected OS, SQLite extended error code,
+directory/mount status and descriptor counts around failure. Redact credentials
+and user payloads.
 
 PostgreSQL-specific resource URL tests require `TEST_POSTGRES_URL` and are
 skipped in this environment. The incremental reclamation tests have a

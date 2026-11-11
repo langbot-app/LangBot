@@ -396,7 +396,10 @@ def _iter_scoped_statement_elements(
                 children.extend(_validate_opaque_identifier(target, label='ON CONFLICT target'))
             children.extend(_collect_embedded_clause_elements(getattr(element, 'inferred_target_whereclause', None)))
             children.extend(_collect_embedded_clause_elements(getattr(element, 'update_whereclause', None)))
-            for update_pair in getattr(element, 'update_values_to_set', ()):
+            update_values = getattr(element, 'update_values_to_set', ())
+            if isinstance(update_values, collections.abc.Mapping):
+                update_values = update_values.items()
+            for update_pair in update_values:
                 if not isinstance(update_pair, (list, tuple)) or len(update_pair) != 2:
                     raise ScopedSessionTransactionError(
                         'TenantUnitOfWork does not allow an unknown ON CONFLICT update shape'
