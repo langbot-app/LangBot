@@ -241,6 +241,11 @@ class AsyncN8nClient:
                             }
                         elif obj.get("type") == "end":
                             yield {"type": "end"}
+                        elif obj.get("type") == "error":
+                            raise N8nAPIError(
+                                f"n8n workflow error: {obj.get('content') or 'unknown error'}",
+                                code="n8n.workflow_error",
+                            )
 
                     except json.JSONDecodeError:
                         # Incomplete JSON, wait for more data
@@ -267,6 +272,13 @@ class AsyncN8nClient:
                             }
                         elif obj.get("type") == "end":
                             yield {"type": "end"}
+                        elif obj.get("type") == "error":
+                            raise N8nAPIError(
+                                f"n8n workflow error: {obj.get('content') or 'unknown error'}",
+                                code="n8n.workflow_error",
+                            )
+            except N8nAPIError:
+                raise
             except Exception as e:
                 logger.warning(f"Failed to parse remaining buffer: {e}")
 
