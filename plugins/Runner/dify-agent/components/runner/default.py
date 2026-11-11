@@ -19,8 +19,10 @@ from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 from langbot_plugin.api.entities.builtin.runner import (
     InteractionAction,
     InteractionField,
+    InteractionNotSupportedError,
     InteractionOption,
     InteractionRequest,
+    InteractionSubmission,
     RunnerContext,
     RunnerResult,
 )
@@ -823,6 +825,49 @@ class DefaultRunner(Runner):
         request = self._request_from_continuation(continuation)
         return request, continuation
 
+    @staticmethod
+    async def _ask_fields_one_by_one(
+        ctx: RunnerContext,
+        continuation: dict[str, typing.Any],
+    ) -> InteractionSubmission:
+        """Collect a multi-field Dify form through single-field interactions."""
+        base_id = str(continuation["interaction_id"])
+        title = str(continuation.get("title") or "Human input required")
+        description = continuation.get("description") or None
+        field_descriptions = continuation.get("field_descriptions") or {}
+        values: dict[str, typing.Any] = {}
+        fields = [InteractionField.model_validate(item) for item in continuation.get("current_fields") or []]
+        for index, field in enumerate(fields, start=1):
+            if field.id == "_dify_action":
+                step_description = continuation.get("action_description") or description
+                step = InteractionRequest(
+                    interaction_id=f"{base_id}-action",
+                    kind="confirmation",
+                    title=title,
+                    description=step_description,
+                    actions=[InteractionAction(id=option.value, label=option.label) for option in field.options],
+                    fallback_text="\n".join(filter(None, [f"[Human Input Required] {title}", step_description])),
+                )
+            else:
+                step_description = field_descriptions.get(field.id) or description
+                step = InteractionRequest(
+                    interaction_id=f"{base_id}-{index}",
+                    kind="choice" if field.type == "select" else "form",
+                    title=title,
+                    description=step_description,
+                    fields=[field],
+                    actions=[],
+                    fallback_text="\n".join(filter(None, [f"[Human Input Required] {title}", step_description])),
+                )
+            result = await ctx.request_interaction(step, timeout=3600, on_unsupported="degrade")
+            if result.status != "submitted" or result.submission is None:
+                raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+            if field.id == "_dify_action":
+                values["_dify_action"] = result.submission.action_id
+            elif field.id in result.submission.values:
+                values[field.id] = result.submission.values[field.id]
+        return InteractionSubmission(interaction_id=base_id, values=values)
+
     async def _wait_and_resume_workflow(
         self,
         ctx: RunnerContext,
@@ -835,13 +880,23 @@ class DefaultRunner(Runner):
         if reason is None:
             raise DifyAPIError("Dify paused without a supported human-input reason", code="dify.response_invalid")
         request, continuation = self._build_interaction_request(reason, _workflow_run_id(event), user)
-        result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
-        if result.status != "submitted" or result.submission is None:
-            raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+        try:
+            result = await ctx.request_interaction(request, timeout=3600, on_unsupported="degrade")
+        except InteractionNotSupportedError:
+            # Most platforms render at most one field per card, and text-only
+            # platforms never split a multi-field form themselves. Ask each
+            # field (and then the action) as its own interaction instead.
+            if len(request.fields) <= 1:
+                raise
+            submission = await self._ask_fields_one_by_one(ctx, continuation)
+        else:
+            if result.status != "submitted" or result.submission is None:
+                raise DifyAPIError(f"Dify human input {result.status}", code="dify.interaction_expired")
+            submission = result.submission
         async for item in self._resume_workflow_once(
             ctx,
             client,
-            result.submission,
+            submission,
             remove_think,
             continuation=continuation,
         ):
