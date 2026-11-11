@@ -2289,7 +2289,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.33.0" },
     { name = "ruff", specifier = ">=0.11.9" },
     { name = "slack-sdk", specifier = ">=3.35.0" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.40" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.40,<2.2" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
     { name = "tboxsdk", specifier = ">=0.0.10" },
     { name = "telegramify-markdown", specifier = ">=0.5.1" },
