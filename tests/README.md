@@ -55,8 +55,9 @@ This is a conservative baseline to prevent coverage regression. It does NOT repr
 
 ### Source quality reports
 
-The CI Coverage Gate records line and branch coverage separately and retains
-its 18% **line** threshold. The `source-quality-reports` artifact contains
+The Python 3.12 CI unit + smoke run also records line and branch coverage and
+enforces the 18% **line** threshold. Coverage Gate only checks the prerequisite
+job results; it does not rerun tests. The `source-quality-reports` artifact contains
 coverage JSON/XML and Ruff C901 complexity JSON/Markdown, including changes
 against the PR base. Complexity is reported without a pass/fail threshold.
 

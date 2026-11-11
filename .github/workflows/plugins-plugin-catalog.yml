@@ -2,6 +2,7 @@ name: Plugins / Plugin catalog
 
 on:
   push:
+    branches: [master, develop]
     paths: ["plugins/**", ".github/workflows/plugins-*.yml"]
   pull_request:
     paths: ["plugins/**", ".github/workflows/plugins-*.yml"]

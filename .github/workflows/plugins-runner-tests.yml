@@ -2,6 +2,7 @@ name: Plugins / Runner tests
 
 on:
   push:
+    branches: [master, develop]
     paths:
       - "plugins/pytest.ini"
       - "plugins/Runner/**"
