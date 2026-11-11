@@ -58,6 +58,8 @@ Runner 的 `ctx.api.invoke_llm*` 同样接受 `extra_args`，并受当前运行�
 
 使用 LiteLLM 的模型调用 `count_tokens` 时，输入消息和工具的计数独立于生成阶段的思考能力校验。生成回复时仍会检查模型的 reasoning 能力和支持的档位；计数成功不代表生成参数有效。
 
+LiteLLM tokenizer 计数最多等待 4 秒。LocalAgent 等待 Host 计数最多 5 秒；计数异常、超时或结果无效时会记录告警，并在本轮剩余调用中使用保守的本地文本估算。估算包含序列化消息、工具定义和格式开销，因此可能更早压缩上下文。取消和权限拒绝仍会向上传递。媒体 token 无法由 URL 或 base64 长度安全估算；媒体计数不可用，或固定输入无法放入预算时，会停止本轮，避免发送低估的请求。
+
 已有的 `reasoning_level` 保持不变。需要数字预算时，通过 `extra_args.reasoning_config` 设置，省略 `level` 表示 `enabled`：
 
 ```json

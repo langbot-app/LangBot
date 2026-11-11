@@ -6,7 +6,7 @@ import pytest
 from langbot_plugin.api.entities.builtin.provider.message import Message
 from langbot_plugin.api.entities.builtin.runner.resources import ModelResource
 
-from pkg.context_pipeline import ContextTokenCounterRequiredError, HostContextTokenCounter
+from pkg.context_pipeline import HostContextTokenCounter
 from pkg.run_assembly import AgentRunAssembler
 from tests.test_runner import FakeRunnerAPIProxy, make_context
 
@@ -48,15 +48,15 @@ async def test_count_reuse_tracks_message_content_model_and_reasoning():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [True, -1, "7", RuntimeError("Host unavailable")])
-async def test_failed_or_invalid_counts_are_not_reused(failure):
+async def test_failed_or_invalid_counts_switch_to_run_local_estimates(failure):
     api = FakeRunnerAPIProxy()
     api.count_tokens = AsyncMock(side_effect=[failure, 9])
     counter = HostContextTokenCounter(api, "model-1")
 
-    with pytest.raises((ContextTokenCounterRequiredError, RuntimeError)):
-        await counter.count([])
-    assert await counter.count([]) == 9
-    assert api.count_tokens.await_count == 2
+    tokens = await counter.count([])
+    assert tokens > 0
+    assert await counter.count([]) == tokens
+    assert api.count_tokens.await_count == 1
 
 
 @pytest.mark.asyncio

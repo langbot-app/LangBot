@@ -39,6 +39,7 @@ class BackendProtocolFixture:
     def __init__(self, host):
         self.calls = []
         self.fail_primary = False
+        self.fail_count = False
         self.use_tool = False
         self.opaque_provider_fields = False
         self.cancelled = False
@@ -54,6 +55,8 @@ class BackendProtocolFixture:
         async def count_tokens(data):
             self.record("count_tokens", data)
             assert isinstance(data["messages"], list)
+            if self.fail_count:
+                return ActionResponse.error(message="Token counting failed: tokenizer unavailable")
             return ActionResponse.success({"tokens": 16})
 
         @host.action(PluginToRuntimeAction.STEERING_PULL)
@@ -273,6 +276,16 @@ async def test_real_sdk_runner_round_trip(sdk_runtime, streaming, use_tool, fall
     assert model_calls[0]["llm_model_uuid"] == "primary"
     assert model_calls[-1]["llm_model_uuid"] == ("fallback" if fallback else "primary")
     assert all(data["timeout"] > 0 for data in model_calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("streaming", [False, True])
+async def test_real_sdk_count_failure_still_completes_reply(sdk_runtime, streaming):
+    sdk_runtime.fail_count = True
+    results = await sdk_runtime.run(run_context(streaming=streaming))
+    assert [item.type for item in results[-2:]] == ["message.completed", "run.completed"]
+    assert results[-2].data["message"]["content"] == "真实 SDK fixture ✓"
+    assert sum(action == "count_tokens" for action, _ in sdk_runtime.calls) == 1
 
 
 @pytest.mark.asyncio
