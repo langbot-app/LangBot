@@ -124,7 +124,7 @@ def test_local_agent_memory_tools_without_pipeline(
 
     async def write_and_read(ap):
         nonlocal memory_kb_id
-        model = await local._inject_fake_llm_model(ap)
+        model = await local._inject_llm_model(ap)
         await ap.plugin_connector.install_plugin(PluginInstallSource.LOCAL, {'plugin_file': archive.read_bytes()})
         await local._confirm_plugin_permissions(
             ap, await ap.plugin_connector._current_execution_context(), 'langbot-team', 'LongTermMemory'
@@ -217,7 +217,7 @@ def test_local_agent_memory_tools_without_pipeline(
     episode_id = local._run_local_agent_probe(local_agent_e2e_tmpdir, write_and_read)
 
     async def read_after_restart(ap):
-        model = await local._inject_fake_llm_model(ap)
+        model = await local._inject_llm_model(ap)
         result = json.loads(await call(ap, model, 'recall_memory', {'query': 'release rendezvous'}))
         assert result['episodes'][0]['id'] == episode_id
         assert 'brief technical answers' in result['speaker_profile']

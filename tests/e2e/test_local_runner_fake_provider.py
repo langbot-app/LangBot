@@ -1,4 +1,4 @@
-"""E2E coverage for the official Local Agent runner with fake Host resources.
+"""E2E coverage for the official Local Agent runner and real SDK Runtime.
 
 These tests start the real LangBot application and the real SDK Plugin Runtime,
 load the in-tree official ``plugins/Runner/LocalAgent`` plugin, and verify Local Agent paths
@@ -18,6 +18,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -360,8 +361,8 @@ def local_agent_runtime_process(local_agent_e2e_tmpdir, local_agent_runtime_port
     stderr_file.close()
 
 
-async def _inject_fake_llm_model(ap) -> Any:
-    """Register a runtime-only fake model that supports count_tokens/invoke."""
+async def _inject_llm_model(ap, api_requester=None, *, model_name=FAKE_MODEL_UUID) -> Any:
+    """Register a model backed by either the existing fake or an explicit requester."""
     import sqlalchemy
 
     from langbot.pkg.entity.persistence import model as persistence_model
@@ -373,21 +374,21 @@ async def _inject_fake_llm_model(ap) -> Any:
         uuid=FAKE_PROVIDER_UUID,
         workspace_uuid=execution_context.workspace_uuid,
         name='E2E Fake Provider',
-        requester='fake-requester',
-        base_url='https://fake.invalid',
+        requester=api_requester.requester_cfg['requester_name'] if api_requester else 'fake-requester',
+        base_url=api_requester.requester_cfg['base_url'] if api_requester else 'https://fake.invalid',
         api_keys=['fake-key'],
     )
-    fake_requester = FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
+    api_requester = api_requester or FakeProviderAPIRequester(ap, {'base_url': provider_entity.base_url})
     runtime_provider = requester.RuntimeProvider(
         execution_context=execution_context,
         provider_entity=provider_entity,
         token_mgr=token.TokenManager(name=provider_entity.uuid, tokens=provider_entity.api_keys),
-        requester=fake_requester,
+        requester=api_requester,
     )
     model_entity = persistence_model.LLMModel(
         uuid=FAKE_MODEL_UUID,
         workspace_uuid=execution_context.workspace_uuid,
-        name=FAKE_MODEL_UUID,
+        name=model_name,
         provider_uuid=provider_entity.uuid,
         abilities=['func_call'],
         context_length=8192,
@@ -421,7 +422,7 @@ async def _inject_fake_llm_model(ap) -> Any:
     )
     await ap.model_mgr.cache_provider(execution_context, runtime_provider)
     await ap.model_mgr.cache_llm_model(execution_context, runtime_model)
-    return fake_requester
+    return api_requester
 
 
 async def _run_runner(ap, event, binding) -> list[Any]:
@@ -596,7 +597,7 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         event = _event(
             event_id='e2e-local-agent-event-001',
             conversation_id='e2e-local-agent-conversation',
@@ -649,6 +650,138 @@ def test_local_runner_uses_host_fake_provider_and_persists_ledger(
         conn.close()
 
 
+@pytest.mark.shared_provider_concurrency
+@pytest.mark.contract('shared_provider_concurrency')
+def test_local_runner_shared_provider_counts_and_group_history(
+    local_agent_e2e_tmpdir,
+    local_agent_e2e_config_path,
+    local_agent_runtime_process,
+    monkeypatch,
+):
+    """Concurrent real counts must succeed without replacing the model/Host boundary."""
+    del local_agent_e2e_config_path, local_agent_runtime_process
+    monkeypatch.setenv('LITELLM_LOCAL_MODEL_COST_MAP', 'True')
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message
+    from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
+    from tools.entrypoints.mock_llm import MockServer
+
+    record_path = local_agent_e2e_tmpdir / 'shared-provider-requests.jsonl'
+    with MockServer(('127.0.0.1', 0), {'gpt-4o': {'steps': [{'content': 'CONCURRENT_OK'}]}}, record_path) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+
+        async def probe(ap):
+            real_requester = LiteLLMRequester(
+                ap,
+                {
+                    'requester_name': 'openai-chat-completions',
+                    'custom_llm_provider': 'openai',
+                    'base_url': f'http://127.0.0.1:{server.server_port}/v1',
+                },
+            )
+            await real_requester.initialize()
+            await _inject_llm_model(ap, real_requester, model_name='gpt-4o')
+            context = await ap.plugin_connector._current_execution_context()
+            model = await ap.model_mgr.get_model_by_uuid(context, FAKE_MODEL_UUID)
+            assert model.provider.requester is real_requester
+            # Prepare the local encoding before making concurrency the variable.
+            assert await real_requester.count_tokens(model, [Message(role='user', content='warm encoding')]) > 0
+            count_tokens = real_requester.count_tokens
+            barrier = asyncio.Barrier(2)
+            admissions = active = peak = 0
+            errors = []
+            counted_inputs = []
+            handle_error = real_requester._handle_litellm_error
+
+            def observed_error(error):
+                errors.append(str(error))
+                return handle_error(error)
+
+            monkeypatch.setattr(real_requester, '_handle_litellm_error', observed_error)
+
+            async def observed_count(model, messages, *args, **kwargs):
+                nonlocal admissions, active, peak
+                admissions += 1
+                active += 1
+                peak = max(peak, active)
+                counted_inputs.append(' '.join(_message_text(message) for message in messages))
+                try:
+                    # Hold the first two callers together, not the tokenizer threads.
+                    if admissions <= 2:
+                        await asyncio.wait_for(barrier.wait(), 10)
+                    return await count_tokens(model, messages, *args, **kwargs)
+                except Exception as exc:
+                    errors.append(str(exc))
+                    raise
+                finally:
+                    active -= 1
+
+            monkeypatch.setattr(real_requester, 'count_tokens', observed_count)
+
+            async def conversation(index, turn):
+                token = f'{turn * 100 + index:032x}'
+                previous = 'none' if turn == 1 else f'{100 + index:032x}'
+                text = f'LB_GROUP=shared-{index} LB_TURN={turn} LB_TOKEN={token} LB_PREVIOUS={previous}'
+                event = _event(
+                    event_id=f'e2e-shared-provider-{index}-{turn}',
+                    conversation_id=f'e2e-shared-provider-{index}',
+                    text=text,
+                )
+                # Platform ingress supplies structured text for durable history.
+                event.input.contents = [ContentElement.from_text(text)]
+                messages = await _run_runner(
+                    ap,
+                    event,
+                    _binding(binding_id=f'e2e-shared-provider-binding-{index}', allowed_tool_names=[]),
+                )
+                assert len(messages) == 1
+                assert _content_text(messages[0].content) == f'CONCURRENT_OK GROUP_ACK={token}'
+
+            for turn in (1, 2):
+                results = await asyncio.wait_for(
+                    asyncio.gather(*(conversation(index, turn) for index in range(8)), return_exceptions=True),
+                    120,
+                )
+                assert not errors, errors
+                mock_errors = (
+                    [
+                        row.get('error')
+                        for line in record_path.read_text().splitlines()
+                        if (row := json.loads(line)).get('status') != 200
+                    ]
+                    if record_path.exists()
+                    else []
+                )
+                assert not any(isinstance(result, BaseException) for result in results), (results, mock_errors)
+            assert peak >= 2
+            for turn in (1, 2):
+                for index in range(8):
+                    marker = f'LB_TOKEN={turn * 100 + index:032x} '
+                    assert any(marker in text for text in counted_inputs)
+            logs = await ap.plugin_connector.get_plugin_logs('langbot-team', 'LocalAgent', limit=1000, level='WARNING')
+            assert not any('using conservative local estimates' in entry['text'] for entry in logs), logs
+
+        try:
+            _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
+
+    with contextlib.closing(sqlite3.connect(local_agent_e2e_tmpdir / 'data/langbot.db')) as connection:
+        rows = connection.execute(
+            "SELECT event_id, run_id, status FROM agent_run WHERE event_id LIKE 'e2e-shared-provider-%'"
+        ).fetchall()
+        assert len(rows) == len({event_id for event_id, _, _ in rows}) == 16
+        assert all(status == 'completed' for _, _, status in rows)
+        for _, run_id, _ in rows:
+            assert connection.execute(
+                "SELECT count(*) FROM agent_run_event WHERE run_id=? AND type='run.completed'", (run_id,)
+            ).fetchone() == (1,)
+    requests = [json.loads(line) for line in record_path.read_text().splitlines()]
+    assert len(requests) == 16
+    assert all(row['status'] == 200 and row['response_complete'] for row in requests)
+
+
 @pytest.mark.contract('agent_tools')
 def test_local_runner_concurrent_tools_during_sqlite_image_refresh(
     local_agent_e2e_tmpdir,
@@ -661,7 +794,7 @@ def test_local_runner_concurrent_tools_during_sqlite_image_refresh(
         from langbot.pkg.persistence.resource_urls import refresh_images
         from langbot.pkg.platform.adapters.aiocqhttp.image_urls import OneBotImageURLs
 
-        fake = await _inject_fake_llm_model(ap)
+        fake = await _inject_llm_model(ap)
 
         def respond(*, messages, **kwargs):
             if any(message.role == 'tool' for message in messages):
@@ -736,7 +869,7 @@ def test_local_runner_executes_authorized_tool_loop_through_host_action(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses(
             _scripted_tool_call(),
             'Tool loop final answer after tool-result:alpha',
@@ -806,7 +939,7 @@ def test_local_runner_retrieves_authorized_rag_context_through_host_action(
     del local_agent_e2e_config_path, local_agent_runtime_process
 
     async def _run_probe(ap):
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses('RAG final answer with RAG_SENTINEL')
         fake_kb = _FakeKnowledgeBase()
         ap.rag_mgr = _FakeRagManager(fake_kb)
@@ -883,7 +1016,7 @@ def test_local_runner_compacts_history_and_persists_checkpoint(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
         fake_requester.queue_llm_responses(
             'SUMMARY_SENTINEL compacted older history including HIST_SENTINEL',
             'Compaction final answer',
@@ -977,7 +1110,7 @@ def test_local_runner_combines_rag_compaction_and_multi_turn_tool_loop(
     async def _run_probe(ap):
         from langbot.pkg.agent.runner.transcript_store import TranscriptStore
 
-        fake_requester = await _inject_fake_llm_model(ap)
+        fake_requester = await _inject_llm_model(ap)
 
         async def scripted_response(**kwargs):
             messages = kwargs['messages']
@@ -1275,7 +1408,7 @@ def test_local_runner_owns_box_reuse_and_explicit_files(
             )
         manager = ToolManager(box)
         ap.tool_mgr = manager
-        fake = await _inject_fake_llm_model(ap)
+        fake = await _inject_llm_model(ap)
         if scenario == 'streaming':
             from langbot_plugin.api.entities.builtin.provider.message import MessageChunk
 

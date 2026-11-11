@@ -47,6 +47,21 @@ jobs:
           enable-cache: true
       - name: Install locked dependencies
         run: uv sync --dev --frozen
+      - name: Check shared-provider concurrent turns
+        env:
+          LANGBOT_LEGACY_PLUGIN_ROOT: ${{ github.workspace }}/plugins
+          LITELLM_LOCAL_MODEL_COST_MAP: 'True'
+        run: |
+          uv run --no-sync pytest --required-suite shared_provider_concurrency \
+            tests/e2e/test_local_runner_fake_provider.py \
+            -q --tb=short -rs --junitxml=shared-provider-concurrency-results.xml
+      - name: Upload shared-provider concurrency results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-provider-concurrency-results
+          path: shared-provider-concurrency-results.xml
+          if-no-files-found: warn
       - name: Prepare CLI and sandbox image
         env:
           GH_TOKEN: ${{ github.token }}
