@@ -18,7 +18,7 @@ from ....authz import Permission, permissions_for_role, require_permission
 from ....context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from ... import group
 from ......core.task_boundary import run_in_workspace_uow
-from ......platform.sources.websocket_manager import WebSocketScope, ws_connection_manager
+from ......platform.sources.websocket_manager import WebSocketScope, is_valid_session_id, ws_connection_manager
 from ......utils import bounded_executor
 
 logger = logging.getLogger(__name__)
@@ -229,6 +229,12 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     json.dumps({'type': 'error', 'message': 'session_type must be person or group'})
                 )
                 return
+            # Each debug dialog owns a conversation. Without an id the legacy
+            # shared per-Pipeline conversation is used.
+            session_id = quart.websocket.args.get('session_id') or None
+            if session_id is not None and not is_valid_session_id(session_id):
+                await quart.websocket.send(json.dumps({'type': 'error', 'message': 'session_id must be a UUID4'}))
+                return
 
             try:
                 websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
@@ -241,6 +247,7 @@ class WebSocketChatRouterGroup(group.RouterGroup):
                     scope=WebSocketScope.from_context(request_context),
                     pipeline_uuid=pipeline_uuid,
                     session_type=session_type,
+                    session_id=session_id,
                     trigger_principal=request_context.principal,
                     metadata={'user_agent': quart.websocket.headers.get('User-Agent', '')},
                     send_queue_size=(
@@ -315,11 +322,14 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         ) -> str:
             if session_type not in ['person', 'group']:
                 return self.http_status(400, -1, 'session_type must be person or group')
+            session_id = quart.request.args.get('session_id') or None
+            if session_id is not None and not is_valid_session_id(session_id):
+                return self.http_status(400, -1, 'session_id must be a UUID4')
 
             websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
             if websocket_adapter is None:
                 return self.http_status(404, -1, 'Pipeline not found')
-            messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type)
+            messages = websocket_adapter.get_websocket_messages(pipeline_uuid, session_type, session_id)
             return self.success(data={'messages': messages})
 
         @self.route(
@@ -335,11 +345,14 @@ class WebSocketChatRouterGroup(group.RouterGroup):
         ) -> str:
             if session_type not in ['person', 'group']:
                 return self.http_status(400, -1, 'session_type must be person or group')
+            session_id = quart.request.args.get('session_id') or None
+            if session_id is not None and not is_valid_session_id(session_id):
+                return self.http_status(400, -1, 'session_id must be a UUID4')
 
             websocket_adapter = await self._get_scoped_adapter(request_context, pipeline_uuid)
             if websocket_adapter is None:
                 return self.http_status(404, -1, 'Pipeline not found')
-            websocket_adapter.reset_session(pipeline_uuid, session_type)
+            websocket_adapter.reset_session(pipeline_uuid, session_type, session_id)
             return self.success(data={'message': 'Session reset successfully'})
 
         @self.route(

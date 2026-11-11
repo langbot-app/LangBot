@@ -452,6 +452,7 @@ class TestMessageAggregatorAddMessage:
         chain = text_chain('hello')
         event = friend_message_event(chain)
         adapter = mock_adapter()
+        adapter.is_stream_output_supported = AsyncMock(return_value=True)
 
         await agg.add_message(
             execution_context=execution_context(),
@@ -476,7 +477,8 @@ class TestMessageAggregatorAddMessage:
             adapter=adapter,
             pipeline_uuid=None,
             routed_by_rule=False,
-            variables=None,
+            # Recorded while the adapter still answers for this inbound message.
+            variables={'_stream_output': True},
         )
 
     @pytest.mark.asyncio
@@ -533,7 +535,7 @@ class TestMessageAggregatorAddMessage:
             'adapter': adapter,
             'pipeline_uuid': 'test-pipeline',
             'routed_by_rule': False,
-            'variables': None,
+            'variables': {'_stream_output': False},
         }
         app.query_pool.add_query.assert_not_awaited()
         await agg.flush_all()
@@ -565,7 +567,10 @@ class TestMessageAggregatorAddMessage:
 
         assert agg.buffers == {}
         app.query_pool.add_query.assert_awaited_once()
-        assert app.query_pool.add_query.call_args.kwargs['variables'] == {'test_marker': {'interaction_id': 'form-1'}}
+        assert app.query_pool.add_query.call_args.kwargs['variables'] == {
+            'test_marker': {'interaction_id': 'form-1'},
+            '_stream_output': False,
+        }
 
     @pytest.mark.asyncio
     async def test_max_buffer_flushes_immediately(self):

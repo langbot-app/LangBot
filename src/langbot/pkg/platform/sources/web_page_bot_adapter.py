@@ -90,6 +90,11 @@ class WebPageBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter
             return await self._ws_adapter.is_stream_output_supported()
         return False
 
+    async def on_monitoring_message_created(self, query, monitoring_message_id: str):
+        """Delegate so replies delivered by ws_adapter can be linked to monitoring."""
+        if self._ws_adapter is not None:
+            await self._ws_adapter.on_monitoring_message_created(query, monitoring_message_id)
+
     async def create_message_card(self, message_id: str | int, event: platform_events.MessageEvent) -> bool:
         """Delegate create_message_card to ws_adapter."""
         if self._ws_adapter is not None:

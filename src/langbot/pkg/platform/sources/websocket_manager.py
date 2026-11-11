@@ -48,6 +48,12 @@ def is_valid_session_id(value: str) -> bool:
     return parsed.version == 4 and str(parsed) == value
 
 
+def session_launcher_id(session_type: str, pipeline_uuid: str, session_id: str) -> str:
+    """Return the launcher id of one client conversation (embed visitor or debug dialog)."""
+    prefix = 'websocketgroup' if session_type == 'group' else 'websocket'
+    return f'{prefix}_{pipeline_uuid}:{session_id}'
+
+
 class WebSocketConnection(pydantic.BaseModel):
     """单个WebSocket连接"""
 

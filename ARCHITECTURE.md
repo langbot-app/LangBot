@@ -137,6 +137,7 @@ Important pieces:
 - `controller.py::Controller` schedules query processing and enforces concurrency.
 - `pipelinemgr.py::RuntimePipeline` materializes database pipeline config into a runtime stage chain.
 - `process/handlers/chat.py::ChatMessageHandler` is the main LLM conversation handler.
+- `stream_output.py` fixes a query's streaming mode once: `MessageAggregator` records the adapter's answer while the inbound listener runs, and every stage reads that value instead of asking the adapter again. Adapters run one instance for many conversations, so a per-message choice (such as the WebSocket client's `stream` flag) lives in listener-task context, never on the adapter.
 - Stage families include response rules, banned sessions, content filters, preprocessors, rate limits, message truncation, long text handling, response-back, command handling, and wrappers.
 
 Pipelines are configuration-driven. Prefer adding a stage or extending an existing stage family over hard-coding behavior in platform adapters.

@@ -436,6 +436,202 @@ class TestEmbedFeedbackEndpoint:
         assert response.status_code == 400
 
 
+@pytest.fixture
+def embed_websocket_adapter(fake_embed_app, monkeypatch):
+    """Serve reply lookups from a real WebSocket adapter's conversation history."""
+    from langbot.pkg.platform.sources.websocket_adapter import WebSocketAdapter, WebSocketSession
+
+    adapter = WebSocketAdapter.model_construct(
+        websocket_person_session=WebSocketSession(id='person'),
+        websocket_group_session=WebSocketSession(id='group'),
+    )
+    proxy_adapter = fake_embed_app.platform_mgr.get_websocket_proxy_bot.return_value.adapter
+    monkeypatch.setattr(proxy_adapter, 'get_monitoring_message_id', adapter.get_monitoring_message_id)
+    return adapter
+
+
+@pytest.fixture
+async def stored_feedback(tmp_path, fake_embed_app, monkeypatch, embed_websocket_adapter):
+    """Route embed feedback into the real monitoring store on SQLite."""
+    import sqlalchemy
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.api.http.service.monitoring import MonitoringService
+    from langbot.pkg.entity.persistence.base import Base
+    from langbot.pkg.entity.persistence.monitoring import MonitoringFeedback
+    from langbot.pkg.entity.persistence.workspace import Workspace
+
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "monitoring.db"}')
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='workspace-test',
+                instance_uuid='instance-test',
+                name='Test',
+                slug='test',
+                source='cloud_projection',
+            )
+        )
+
+    async def execute_async(*args, **kwargs):
+        async with engine.connect() as connection:
+            result = await connection.execute(*args, **kwargs)
+            await connection.commit()
+            return result
+
+    service = MonitoringService(
+        SimpleNamespace(
+            persistence_mgr=SimpleNamespace(execute_async=execute_async, get_db_engine=lambda: engine),
+            instance_config=SimpleNamespace(data={'database': {'use': 'sqlite'}}),
+        )
+    )
+
+    async def record_feedback(context, **kwargs):
+        # RuntimeBot carries a real ExecutionContext; the module fixture does not.
+        context = ExecutionContext(
+            instance_uuid=context.instance_uuid,
+            workspace_uuid=context.workspace_uuid,
+            placement_generation=context.placement_generation,
+        )
+        return await service.record_feedback(context, **kwargs)
+
+    monkeypatch.setattr(fake_embed_app.monitoring_service, 'record_feedback', record_feedback)
+
+    async def rows():
+        async with engine.connect() as connection:
+            result = await connection.execute(
+                sqlalchemy.select(
+                    MonitoringFeedback.feedback_type,
+                    MonitoringFeedback.session_id,
+                    MonitoringFeedback.message_id,
+                    MonitoringFeedback.stream_id,
+                ).order_by(MonitoringFeedback.session_id)
+            )
+            return [tuple(row) for row in result]
+
+    yield rows
+    await engine.dispose()
+
+
+@pytest.mark.usefixtures('mock_circular_import_chain')
+class TestEmbedFeedbackPerVisitor:
+    """Each visitor's vote on each answer is one record that the visitor can change."""
+
+    BOT_FEEDBACK_URL = '/api/v1/embed/a1b2c3d4-5678-90ab-cdef-123456789abc/feedback'
+    OTHER_SESSION_ID = '9d3e8a41-2c7b-4f60-8e15-b4a7c2d9f031'
+
+    async def _vote(self, client, session_id, message_id, feedback_type):
+        response = await client.post(
+            self.BOT_FEEDBACK_URL,
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
+            json={
+                'message_id': message_id,
+                'feedback_type': feedback_type,
+                'session_id': session_id,
+                'session_type': 'person',
+            },
+        )
+        assert response.status_code == 200
+        return (await response.get_json())['data']['feedback_id']
+
+    @pytest.mark.asyncio
+    async def test_visitors_voting_on_the_same_bubble_id_stay_separate(self, quart_test_client, stored_feedback):
+        # Bubble ids are per conversation, so both visitors' first answer is 2.
+        first = await self._vote(quart_test_client, SESSION_ID, 2, 1)
+        second = await self._vote(quart_test_client, self.OTHER_SESSION_ID, 2, 2)
+
+        assert first != second
+        assert await stored_feedback() == [
+            (1, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '2', None),
+            (2, f'person_websocket_test-pipeline-uuid:{self.OTHER_SESSION_ID}', '2', None),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_changing_and_cancelling_a_vote_updates_the_same_record(self, quart_test_client, stored_feedback):
+        await self._vote(quart_test_client, self.OTHER_SESSION_ID, 2, 1)
+        await self._vote(quart_test_client, SESSION_ID, 2, 1)
+        await self._vote(quart_test_client, SESSION_ID, 2, 2)
+        assert await stored_feedback() == [
+            (2, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '2', None),
+            (1, f'person_websocket_test-pipeline-uuid:{self.OTHER_SESSION_ID}', '2', None),
+        ]
+
+        # The widget sends 3 when a visitor clicks their active vote again.
+        await self._vote(quart_test_client, SESSION_ID, 2, 3)
+        assert await stored_feedback() == [
+            (1, f'person_websocket_test-pipeline-uuid:{self.OTHER_SESSION_ID}', '2', None),
+        ]
+
+    @staticmethod
+    def _show(adapter, session_id, message_id, role, monitoring_message_id=None):
+        from langbot.pkg.platform.sources.websocket_adapter import WebSocketMessage
+
+        adapter.websocket_person_session.append_message(
+            adapter._conversation_key('test-pipeline-uuid', session_id),
+            WebSocketMessage(
+                id=message_id,
+                role=role,
+                content='text',
+                message_chain=[],
+                timestamp='2026-11-11T00:00:00',
+                is_final=True,
+                monitoring_message_id=monitoring_message_id,
+            ),
+        )
+
+    @pytest.mark.asyncio
+    async def test_vote_links_to_the_monitoring_record_of_the_rated_answer(
+        self, quart_test_client, stored_feedback, embed_websocket_adapter
+    ):
+        self._show(embed_websocket_adapter, SESSION_ID, 1, 'user')
+        self._show(embed_websocket_adapter, SESSION_ID, 2, 'assistant', 'monitoring-a')
+        self._show(embed_websocket_adapter, self.OTHER_SESSION_ID, 2, 'assistant', 'monitoring-b')
+        self._show(embed_websocket_adapter, self.OTHER_SESSION_ID, 3, 'assistant', 'monitoring-c')
+
+        await self._vote(quart_test_client, SESSION_ID, 2, 1)
+        await self._vote(quart_test_client, self.OTHER_SESSION_ID, 2, 2)
+        # A bubble id that only exists in another visitor's conversation, and a
+        # visitor's own question, link to nothing.
+        await self._vote(quart_test_client, SESSION_ID, 3, 1)
+        await self._vote(quart_test_client, SESSION_ID, 1, 1)
+
+        rows = await stored_feedback()
+        assert sorted(rows, key=lambda row: (row[1], row[2])) == [
+            (1, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '1', None),
+            (1, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '2', 'monitoring-a'),
+            (1, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '3', None),
+            (2, f'person_websocket_test-pipeline-uuid:{self.OTHER_SESSION_ID}', '2', 'monitoring-b'),
+        ]
+
+        # Changing the vote after the reply aged out of history keeps the link.
+        embed_websocket_adapter.websocket_person_session.clear()
+        await self._vote(quart_test_client, SESSION_ID, 2, 2)
+        assert (2, f'person_websocket_test-pipeline-uuid:{SESSION_ID}', '2', 'monitoring-a') in await stored_feedback()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        'body',
+        [
+            {'session_id': 'visitor-1', 'message_id': 2},
+            {'session_id': SESSION_ID, 'message_id': ''},
+            {'session_id': SESSION_ID, 'message_id': 'x' * 65},
+            {'session_id': SESSION_ID, 'message_id': 2, 'session_type': 'channel'},
+        ],
+        ids=['malformed-session', 'missing-message', 'oversized-message', 'unknown-session-type'],
+    )
+    async def test_conversation_vote_rejects_malformed_identity(self, quart_test_client, stored_feedback, body):
+        response = await quart_test_client.post(
+            self.BOT_FEEDBACK_URL,
+            headers={'Authorization': 'Bearer 1234567890.dummy'},
+            json={'feedback_type': 1, **body},
+        )
+
+        assert response.status_code == 400
+        assert await stored_feedback() == []
+
+
 @pytest.mark.usefixtures('mock_circular_import_chain')
 class TestEmbedWebSocketEndpoint:
     """The public socket authenticates before resolving shared runtime state."""

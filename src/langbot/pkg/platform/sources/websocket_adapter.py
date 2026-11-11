@@ -5,6 +5,7 @@ import contextvars
 import logging
 import time
 import typing
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -17,11 +18,22 @@ import langbot_plugin.api.entities.builtin.platform.entities as platform_entitie
 import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
 from ...core import app
 from ...core import entities as core_entities
-from .websocket_manager import WebSocketConnection, WebSocketScope, is_valid_session_id, ws_connection_manager
+from .websocket_manager import (
+    WebSocketConnection,
+    WebSocketScope,
+    is_valid_session_id,
+    session_launcher_id,
+    ws_connection_manager,
+)
 
 logger = logging.getLogger(__name__)
+_MAX_MONITORING_MESSAGE_IDS = 1000
 _current_pipeline_uuid: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     'websocket_pipeline_uuid',
+    default=None,
+)
+_current_stream_output: contextvars.ContextVar[bool | None] = contextvars.ContextVar(
+    'websocket_stream_output',
     default=None,
 )
 
@@ -46,6 +58,8 @@ class WebSocketMessage(pydantic.BaseModel):
     is_final: bool = False
     connection_id: str = ''
     """发送者连接ID"""
+    monitoring_message_id: str | None = pydantic.Field(default=None, exclude=True)
+    """Monitoring record of the inbound message this reply answers; never sent to clients."""
 
 
 class WebSocketSession:
@@ -158,9 +172,12 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     )
     """后端主动推送消息的队列"""
 
+    monitoring_message_ids: dict[str, str] = pydantic.Field(default_factory=dict, exclude=True)
+    """Monitoring record of each recent inbound message, keyed by its platform message id."""
+
     # 流式输出开关
     stream_enabled: bool = pydantic.Field(default=True, exclude=True)
-    """是否启用流式输出"""
+    """Default streaming choice outside an inbound message's listener task."""
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(
@@ -189,6 +206,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             outbound_queue_size = 100
         self.outbound_message_queue = asyncio.Queue(maxsize=outbound_queue_size)
         self.inbound_listener_tasks = set()
+        self.monitoring_message_ids = {}
         self.stream_enabled = True
 
     @staticmethod
@@ -285,6 +303,21 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             return pipeline_uuid, None
         raise ValueError('WebSocket reply target is not bound to this adapter scope')
 
+    def _monitoring_message_id(self, message_source) -> str | None:
+        source_id = getattr(getattr(message_source, 'message_chain', None), 'message_id', -1)
+        return self.monitoring_message_ids.get(str(source_id))
+
+    async def on_monitoring_message_created(self, query, monitoring_message_id: str):
+        """Remember an inbound message's monitoring record so feedback on its replies can link to it."""
+        source_id = getattr(getattr(query.message_event, 'message_chain', None), 'message_id', -1)
+        if source_id == -1 or not monitoring_message_id:
+            return
+        # Every reply of the query links to the record, so entries are kept
+        # rather than popped on first use and only the oldest are evicted.
+        self.monitoring_message_ids[str(source_id)] = monitoring_message_id
+        while len(self.monitoring_message_ids) > _MAX_MONITORING_MESSAGE_IDS:
+            self.monitoring_message_ids.pop(next(iter(self.monitoring_message_ids)))
+
     async def send_message(
         self,
         target_type: str,
@@ -372,6 +405,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             message_chain=[component.__dict__ for component in message],
             timestamp=datetime.now().isoformat(),
             is_final=True,
+            monitoring_message_id=self._monitoring_message_id(message_source),
         )
 
         session.append_message(conversation_key, message_data)
@@ -430,6 +464,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 message_chain=[component.__dict__ for component in message],
                 timestamp=datetime.now().isoformat(),
                 is_final=message_is_final,
+                monitoring_message_id=self._monitoring_message_id(message_source),
             )
 
             # 立即添加到历史记录（即使is_final=False），以便后续块可以更新它
@@ -448,6 +483,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 message_chain=[component.__dict__ for component in message],
                 timestamp=old_message.timestamp,  # 保持原始时间戳
                 is_final=message_is_final,
+                monitoring_message_id=self._monitoring_message_id(message_source) or old_message.monitoring_message_id,
             )
 
             # 更新历史记录中的对应消息
@@ -472,8 +508,14 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         return message_data.model_dump()
 
     async def is_stream_output_supported(self) -> bool:
-        """根据stream_enabled标志返回是否支持流式输出"""
-        return self.stream_enabled
+        """Return the streaming choice of the message whose listener is running.
+
+        Each client message carries its own ``stream`` flag. It is propagated
+        into the listener task instead of stored on this shared adapter, so one
+        browser's choice cannot change how another conversation is answered.
+        """
+        stream_output = _current_stream_output.get()
+        return self.stream_enabled if stream_output is None else stream_output
 
     def register_listener(
         self,
@@ -644,7 +686,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         session_type = connection.session_type
         conversation_key = self._conversation_key(pipeline_uuid, connection.session_id)
 
-        self.stream_enabled = message_data.get('stream', True)
+        stream_output = bool(message_data.get('stream', True))
 
         use_session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
 
@@ -680,8 +722,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             session_id=connection.session_id,
         )
 
-        # 添加消息源
-        message_chain.insert(0, platform_message.Source(id=message_id, time=datetime.now().timestamp()))
+        # The history id above only orders one conversation's bubbles and restarts
+        # at 1 for every conversation. The platform message id identifies the
+        # inbound event bot-wide (ingress, event log, monitoring), so it must be
+        # unique across conversations and restarts.
+        message_chain.insert(0, platform_message.Source(id=uuid.uuid4().hex, time=datetime.now().timestamp()))
 
         # 创建事件
         launcher_id = f'{pipeline_uuid}:{connection.session_id}' if connection.session_id else connection.connection_id
@@ -748,9 +793,11 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
 
             async def run_listener():
                 token = _current_pipeline_uuid.set(pipeline_uuid)
+                stream_token = _current_stream_output.set(stream_output)
                 try:
                     await listener(event, callback_adapter)
                 finally:
+                    _current_stream_output.reset(stream_token)
                     _current_pipeline_uuid.reset(token)
 
             listener_coro = run_listener()
@@ -784,6 +831,21 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         session = self.websocket_person_session if session_type == 'person' else self.websocket_group_session
         return [message.model_dump() for message in session.message_lists.get(conversation_key, [])]
 
+    def get_monitoring_message_id(
+        self,
+        pipeline_uuid: str,
+        session_type: str,
+        session_id: str | None,
+        message_id: str,
+    ) -> str | None:
+        """Return the monitoring record answered by one reply in a pipeline/client conversation."""
+        conversation_key = self._conversation_key(pipeline_uuid, session_id)
+        session = self.websocket_person_session if session_type == 'person' else self.websocket_group_session
+        for message in session.message_lists.get(conversation_key, []):
+            if message.role == 'assistant' and str(message.id) == message_id:
+                return message.monitoring_message_id
+        return None
+
     def reset_session(
         self,
         pipeline_uuid: str,
@@ -803,11 +865,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 session.stream_message_indexes[conversation_key] = {}
 
         if session_id:
-            launcher_id = (
-                f'websocketgroup_{pipeline_uuid}:{session_id}'
-                if session_type == 'group'
-                else f'websocket_{pipeline_uuid}:{session_id}'
-            )
+            launcher_id = session_launcher_id(session_type, pipeline_uuid, session_id)
             scope = self._scope()
             self.ap.sess_mgr.session_list = [
                 candidate_session

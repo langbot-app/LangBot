@@ -43,6 +43,44 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+const DEBUG_SESSION_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const fallbackDebugSessionIds = new Map<string, string>();
+
+function createDebugSessionId(): string {
+  // randomUUID is unavailable on plain-HTTP self-hosted dashboards.
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(
+    '',
+  );
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/**
+ * Each browser tab owns one Debug Chat conversation per Pipeline, so people
+ * debugging the same Pipeline at once never receive each other's replies.
+ */
+function getDebugSessionId(pipelineId: string): string {
+  const storageKey = `langbot_debug_session_${pipelineId}`;
+  try {
+    const stored = window.sessionStorage.getItem(storageKey);
+    if (stored && DEBUG_SESSION_ID_PATTERN.test(stored)) return stored;
+    const created = createDebugSessionId();
+    window.sessionStorage.setItem(storageKey, created);
+    return created;
+  } catch {
+    let sessionId = fallbackDebugSessionIds.get(pipelineId);
+    if (!sessionId) {
+      sessionId = createDebugSessionId();
+      fallbackDebugSessionIds.set(pipelineId, sessionId);
+    }
+    return sessionId;
+  }
+}
+
 interface DebugDialogProps {
   open: boolean;
   pipelineId: string;
@@ -180,6 +218,7 @@ export default function DebugDialog({
         const response = await httpClient.getWebSocketHistoryMessages(
           pipelineId,
           sessionType,
+          getDebugSessionId(pipelineId),
         );
         if (generation !== historyRequestGenerationRef.current) return;
         setMessages(Array.isArray(response.messages) ? response.messages : []);
@@ -193,7 +232,11 @@ export default function DebugDialog({
 
   const resetConversation = useCallback(async () => {
     try {
-      await httpClient.resetWebSocketSession(selectedPipelineId, sessionType);
+      await httpClient.resetWebSocketSession(
+        selectedPipelineId,
+        sessionType,
+        getDebugSessionId(selectedPipelineId),
+      );
       invalidateHistoryRequests();
       setMessages([]);
       setQuotedMessage(null);
@@ -223,7 +266,12 @@ export default function DebugDialog({
         previousClient?.disconnect();
 
         // Create new connection
-        wsClient = new WebSocketClient(pipelineId, sessionType);
+        wsClient = new WebSocketClient(
+          pipelineId,
+          sessionType,
+          undefined,
+          getDebugSessionId(pipelineId),
+        );
         // Store the client before awaiting connect so effect cleanup can also
         // cancel sockets that are still authenticating.
         wsClientRef.current = wsClient;

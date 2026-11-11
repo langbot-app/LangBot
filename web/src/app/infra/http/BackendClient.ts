@@ -740,9 +740,11 @@ export class BackendClient extends BaseHttpClient {
   public getWebSocketHistoryMessages(
     pipelineId: string,
     sessionType: string,
+    sessionId?: string,
   ): Promise<ApiRespWebChatMessages> {
     return this.get(
       `/api/v1/pipelines/${pipelineId}/ws/messages/${sessionType}`,
+      sessionId ? { session_id: sessionId } : undefined,
     );
   }
 
@@ -759,8 +761,13 @@ export class BackendClient extends BaseHttpClient {
   public resetWebSocketSession(
     pipelineId: string,
     sessionType: string,
+    sessionId?: string,
   ): Promise<{ message: string }> {
-    return this.post(`/api/v1/pipelines/${pipelineId}/ws/reset/${sessionType}`);
+    return this.post(
+      `/api/v1/pipelines/${pipelineId}/ws/reset/${sessionType}`,
+      undefined,
+      sessionId ? { params: { session_id: sessionId } } : undefined,
+    );
   }
 
   public getWebSocketConnections(pipelineId: string): Promise<{

@@ -577,6 +577,90 @@ class TestPipelineDashboardWebSocket:
         adapter.handle_websocket_message.assert_not_awaited()
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('query', 'expected_session_id'),
+        [
+            ('&session_id=2f6c1e5a-7b3d-4c8e-9a1f-0d2e3c4b5a69', '2f6c1e5a-7b3d-4c8e-9a1f-0d2e3c4b5a69'),
+            ('', None),
+        ],
+        ids=['own-dialog-conversation', 'legacy-shared-conversation'],
+    )
+    async def test_websocket_registers_the_dialog_conversation(
+        self,
+        quart_test_client,
+        fake_pipeline_app,
+        monkeypatch,
+        query,
+        expected_session_id,
+    ):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        add_connection = AsyncMock(wraps=chat.ws_connection_manager.add_connection)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
+        async with quart_test_client.websocket(
+            f'/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person{query}',
+            headers={'Origin': 'http://localhost'},
+        ) as websocket:
+            await websocket.send(
+                json.dumps({'type': 'authenticate', 'token': 'test_token', 'workspace_uuid': 'workspace-test'})
+            )
+            assert json.loads(await websocket.receive())['type'] == 'connected'
+            await websocket.send(json.dumps({'type': 'disconnect'}))
+
+        assert add_connection.await_args.kwargs['session_id'] == expected_session_id
+
+    @pytest.mark.asyncio
+    async def test_websocket_rejects_malformed_dialog_conversation(
+        self,
+        quart_test_client,
+        fake_pipeline_app,
+        monkeypatch,
+    ):
+        import langbot.pkg.api.http.controller.groups.pipelines.websocket_chat as chat
+
+        add_connection = AsyncMock(wraps=chat.ws_connection_manager.add_connection)
+        monkeypatch.setattr(chat.ws_connection_manager, 'add_connection', add_connection)
+        async with quart_test_client.websocket(
+            '/api/v1/pipelines/test-pipeline-uuid/ws/connect?session_type=person&session_id=other-dialog',
+            headers={'Origin': 'http://localhost'},
+        ) as websocket:
+            await websocket.send(
+                json.dumps({'type': 'authenticate', 'token': 'test_token', 'workspace_uuid': 'workspace-test'})
+            )
+            assert json.loads(await websocket.receive()) == {'type': 'error', 'message': 'session_id must be a UUID4'}
+
+        add_connection.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ('method', 'path', 'adapter_method'),
+        [('get', 'messages', 'get_websocket_messages'), ('post', 'reset', 'reset_session')],
+    )
+    async def test_dashboard_history_and_reset_use_the_dialog_conversation(
+        self,
+        quart_test_client,
+        fake_pipeline_app,
+        method,
+        path,
+        adapter_method,
+    ):
+        adapter = fake_pipeline_app.platform_mgr.get_websocket_proxy_bot.return_value.adapter
+        headers = {'Authorization': 'Bearer test_token', 'X-Workspace-Id': 'workspace-test'}
+        url = f'/api/v1/pipelines/test-pipeline-uuid/ws/{path}/person'
+        session_id = '2f6c1e5a-7b3d-4c8e-9a1f-0d2e3c4b5a69'
+        request = getattr(quart_test_client, method)
+
+        getattr(adapter, adapter_method).reset_mock()
+        assert (await request(f'{url}?session_id={session_id}', headers=headers)).status_code == 200
+        assert (await request(url, headers=headers)).status_code == 200
+        assert (await request(f'{url}?session_id=not-a-uuid', headers=headers)).status_code == 400
+
+        assert [call.args for call in getattr(adapter, adapter_method).call_args_list] == [
+            ('test-pipeline-uuid', 'person', session_id),
+            ('test-pipeline-uuid', 'person', None),
+        ]
+
+    @pytest.mark.asyncio
     async def test_dashboard_history_requires_runtime_permission(self, quart_test_client, fake_pipeline_app):
         access = fake_pipeline_app.workspace_collaboration_service.resolve_account_workspace.return_value
         original_role = access.membership.role

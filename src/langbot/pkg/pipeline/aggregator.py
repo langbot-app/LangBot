@@ -15,6 +15,7 @@ import langbot_plugin.api.entities.builtin.provider.session as provider_session
 from ..api.http.context import ExecutionContext
 from ..core.task_boundary import create_detached_task, run_in_workspace_uow
 from .pool import ExecutionContextMismatchError
+from .stream_output import STREAM_OUTPUT_KEY, adapter_stream_output
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
 if typing.TYPE_CHECKING:
@@ -161,6 +162,11 @@ class MessageAggregator:
         enabled, delay = await self._get_aggregation_config(execution_context, pipeline_uuid)
         if variables:
             enabled = False
+
+        # The adapter answers for the inbound message only while its listener
+        # runs; the queued query is processed later in another task.
+        if STREAM_OUTPUT_KEY not in (variables or {}):
+            variables = {**(variables or {}), STREAM_OUTPUT_KEY: await adapter_stream_output(adapter)}
 
         # Hand the in-flight execution chain to the queued query: the Pipeline
         # lane resumes the same chain, so one inbound event stays one chain

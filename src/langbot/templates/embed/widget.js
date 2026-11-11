@@ -976,7 +976,12 @@
     fetch(CONFIG.baseUrl + "/api/v1/embed/" + CONFIG.botUuid + "/feedback", {
       method: "POST",
       headers: headers,
-      body: JSON.stringify({ message_id: msgId, feedback_type: actualType }),
+      body: JSON.stringify({
+        message_id: msgId,
+        feedback_type: actualType,
+        session_id: state.sessionId,
+        session_type: CONFIG.sessionType,
+      }),
     }).catch(function () {});
   }
 

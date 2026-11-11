@@ -113,6 +113,7 @@ This log records implementation choices made while delivering the Workspace arch
 
 - Decision: A dashboard WebSocket sends an authentication frame immediately after upgrade. The server validates Account, Membership, permission, Pipeline ownership, instance, Workspace, and execution generation before registering the connection. Connection indexes, sessions, broadcasts, attachments, and resets include the complete execution scope.
 - Reason: Browser WebSocket APIs cannot attach the normal authorization headers, and a process-global `pipeline_uuid` or `session_type` index can collide across Workspaces.
+- Conversation scope: each debug dialog sends a random UUID4 `session_id` (kept per browser tab and Pipeline) on connect, history and reset, like embed widgets. Replies, history and the LangBot session follow that id, so members debugging one Pipeline at once never receive each other's replies, and a reconnecting tab keeps its conversation. Clients that send no `session_id` keep the legacy conversation shared by every such connection on the Pipeline.
 
 ### Read permissions never imply secret permissions
 
@@ -167,6 +168,7 @@ This log records implementation choices made while delivering the Workspace arch
 
 - Decision: Dashboard WebSockets re-authenticate the Account, Membership, permission, resource ownership, instance, Workspace, and execution generation for every inbound message, not only during the initial frame. A changed role, removed Membership, or fenced execution binding takes effect without waiting for reconnect.
 - Public embed boundary: The embed connection re-resolves its Bot before every message and rejects a Bot that was disabled, deleted, moved, or rebound. The public connection may identify a Bot, but it cannot make the initial Bot object an indefinite authorization capability.
+- Embed feedback: a vote names only its conversation `session_id` and reply bubble id. Its record id is derived from Bot, conversation and bubble, so changing or cancelling a vote reaches the same record. Its `stream_id` link to the rated question's monitoring record is looked up server-side in that conversation's reply history and never accepted from the visitor, so a vote cannot be attached to another conversation's message.
 - Reason: Authorization and resource state can change while a socket remains open. Connection-time validation alone leaves a revocation gap.
 
 ### Legacy vector migration is an OSS-local compatibility path

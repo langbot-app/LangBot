@@ -251,6 +251,52 @@ async def test_pipeline_override_survives_detached_listener_task(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_stream_choice_is_scoped_to_each_message_listener(monkeypatch):
+    manager = WebSocketConnectionManager()
+    visitor = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        session_id='31c0f2e9-b115-4ee6-8f15-3e624d6456b1',
+    )
+    dashboard = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger(), stream_enabled=True)
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+    visitor_listening = asyncio.Event()
+    dashboard_sent = asyncio.Event()
+    observed = {}
+
+    async def listener(event, callback_adapter):
+        if event.sender.id.startswith('websocket_pipeline-1:'):
+            visitor_listening.set()
+            # Another browser's message arrives while this one is still queued.
+            await dashboard_sent.wait()
+            observed['visitor'] = await callback_adapter.is_stream_output_supported()
+        else:
+            observed['dashboard'] = await callback_adapter.is_stream_output_supported()
+
+    adapter.listeners = {platform_events.FriendMessage: listener}
+    await adapter.handle_websocket_message(visitor, {'message': [{'type': 'Plain', 'text': 'hi'}], 'stream': True})
+    await visitor_listening.wait()
+    await adapter.handle_websocket_message(dashboard, {'message': [{'type': 'Plain', 'text': 'hi'}], 'stream': False})
+    dashboard_sent.set()
+    await asyncio.gather(*adapter.inbound_listener_tasks)
+
+    assert observed == {'visitor': True, 'dashboard': False}
+    # Outside a message listener the shared adapter keeps its default.
+    assert await adapter.is_stream_output_supported() is True
+
+
+@pytest.mark.asyncio
 async def test_embed_group_event_uses_stable_session_launcher(monkeypatch):
     manager = WebSocketConnectionManager()
     session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
@@ -444,6 +490,53 @@ async def test_late_final_events_update_one_stream_message(monkeypatch):
     assert messages[0]['is_final'] is True
 
 
+@pytest.mark.asyncio
+async def test_replies_keep_the_monitoring_record_of_their_message_server_side(monkeypatch):
+    manager = WebSocketConnectionManager()
+    session_id = '31c0f2e9-b115-4ee6-8f15-3e624d6456b1'
+    connection = await manager.add_connection(
+        websocket=Mock(),
+        scope=SCOPE_A,
+        pipeline_uuid='pipeline-1',
+        session_type='person',
+        session_id=session_id,
+    )
+    monkeypatch.setattr(websocket_adapter_module, 'ws_connection_manager', manager)
+    monkeypatch.setattr(websocket_adapter_module, '_MAX_MONITORING_MESSAGE_IDS', 2)
+
+    adapter = WebSocketAdapter.model_construct(ap=Mock(), logger=_adapter_logger())
+    adapter.websocket_person_session = WebSocketSession(id='person')
+    adapter.websocket_group_session = WebSocketSession(id='group')
+
+    def inbound(source_id):
+        return platform_events.FriendMessage(
+            sender=platform_entities.Friend(id=f'websocket_pipeline-1:{session_id}', nickname='User', remark='User'),
+            message_chain=platform_message.MessageChain(
+                [platform_message.Source(id=source_id, time=1), platform_message.Plain(text='hi')]
+            ),
+            time=1,
+        )
+
+    for index in range(3):
+        await adapter.on_monitoring_message_created(Mock(message_event=inbound(f'src-{index}')), f'record-{index}')
+    # Only the newest entries are kept.
+    assert adapter.monitoring_message_ids == {'src-1': 'record-1', 'src-2': 'record-2'}
+
+    reply = platform_message.MessageChain([platform_message.Plain(text='answer')])
+    sent = await adapter.reply_message(inbound('src-2'), reply)
+    unknown = await adapter.reply_message(inbound('src-0'), reply)
+
+    assert 'monitoring_message_id' not in sent
+    assert 'monitoring_message_id' not in (await connection.send_queue.get())['data']
+    assert adapter.get_monitoring_message_id('pipeline-1', 'person', session_id, str(sent['id'])) == 'record-2'
+    assert adapter.get_monitoring_message_id('pipeline-1', 'person', session_id, str(unknown['id'])) is None
+    assert adapter.get_monitoring_message_id('pipeline-1', 'person', 'other-session', str(sent['id'])) is None
+    assert all(
+        'monitoring_message_id' not in message
+        for message in adapter.get_websocket_messages('pipeline-1', 'person', session_id)
+    )
+
+
 def test_session_ids_must_be_canonical_random_uuids():
     assert is_valid_session_id('31c0f2e9-b115-4ee6-8f15-3e624d6456b1')
     assert not is_valid_session_id('session-a')
@@ -598,6 +691,8 @@ def test_widget_sends_stable_session_id_to_all_conversation_endpoints():
     assert 'session_id=' in widget
     assert widget.count('encodeURIComponent(state.sessionId)') >= 2
     assert 'endpoint.searchParams.set("session_id", state.sessionId)' in widget
+    # Feedback votes are scoped to the visitor's conversation.
+    assert 'session_id: state.sessionId,' in widget
     assert 'loadHistory(true)' in widget
     assert 'messageVersion !== state.messageVersion' in widget
     assert 'scheduleHistoryReload();' in widget

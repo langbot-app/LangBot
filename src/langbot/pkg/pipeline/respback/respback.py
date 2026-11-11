@@ -10,6 +10,7 @@ import langbot_plugin.api.entities.builtin.provider.message as provider_message
 
 from .. import stage, entities
 from .. import plugin_diagnostics
+from ..stream_output import stream_output_enabled
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 
@@ -46,7 +47,7 @@ class SendResponseBackStage(stage.PipelineStage):
         is_streaming_response = False
         is_final = False
         try:
-            is_streaming_response = await query.adapter.is_stream_output_supported() and has_chunks
+            is_streaming_response = await stream_output_enabled(query) and has_chunks
             if is_streaming_response:
                 is_final = query.resp_messages[-1].is_final
                 await query.adapter.reply_message_chunk(
