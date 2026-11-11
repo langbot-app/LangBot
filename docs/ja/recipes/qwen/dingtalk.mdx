@@ -1,0 +1,75 @@
+---
+title: "Qwen で DingTalk の AI ボットを作る"
+description: "LangBot で Qwen を使った DingTalk の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Qwen のモデルを DingTalk のボットにつなぎます。LangBot が DingTalk のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Alibaba Cloud Model Studio（DashScope）経由で、LangBot の内蔵エージェントから Qwen モデルを使います。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Qwen のアカウントまたはサーバー。
+- DingTalk アプリロボット（**Client ID** と **Client Secret**）。ワンクリック設定でスマートフォンから認可すると自動入力されます。
+
+## ネットワーク
+
+Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+## 1. Qwen のモデルを追加する
+
+1. Aliyun Bailian (DashScope) のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Aliyun Bailian (DashScope)、リクエスト URL に `https://dashscope.aliyuncs.com/compatible-mode/v1` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. モデル ID は Model Studio に表示される Qwen モデルを使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. DingTalk のボットを作成する
+
+1. **DingTalk** アダプターでボットを作成して **ワンクリック設定** を使うか、ロボットを手動で作成して認証情報を入力します。
+2. イベント配信は **Stream モード** を使います。ストリーミング返信には LangBot の `dingtalk_stream_card.json` カードテンプレートをインポートし、**カード返信を使用** を有効にしてテンプレート ID を入力します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+まずロボットと個別チャットし、次にグループへ追加してメンションします。
+
+## トラブルシューティング
+
+- 国際版アカウントは DashScope のエンドポイントが異なります。コンソールに表示される OpenAI 互換 URL を使ってください。
+- ストリーミングでなくプレーンテキストで返る場合は、カードテンプレート未インポートか **カード返信を使用** が無効です。
+- メッセージが届かない場合は、アプリのバージョンを公開し、イベント購読で Stream モードが選ばれているか確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### DingTalk には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+### DingTalk のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Qwen の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [DingTalk の詳しい設定ガイド](/ja/usage/platforms/dingtalk)
+- [モデルの設定](/ja/usage/models/readme)
+- DingTalk で使える他の AI：[Dify](/ja/recipes/dify/dingtalk) · [n8n](/ja/recipes/n8n/dingtalk) · [Coze](/ja/recipes/coze/dingtalk) · [Langflow](/ja/recipes/langflow/dingtalk) · [DeepSeek](/ja/recipes/deepseek/dingtalk)
+- Qwen を他のプラットフォームで使う：[Telegram](/ja/recipes/qwen/telegram) · [Discord](/ja/recipes/qwen/discord) · [Slack](/ja/recipes/qwen/slack) · [Lark（Feishu）](/ja/recipes/qwen/lark) · [WeCom（社内アプリ）](/ja/recipes/qwen/wecom) · [WeCom インテリジェントボット](/ja/recipes/qwen/wecombot)

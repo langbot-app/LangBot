@@ -1,0 +1,73 @@
+---
+title: "Connect Dify to KOOK"
+description: "Step-by-step guide to running your Dify app as a KOOK bot with LangBot: Dify setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your Dify app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Dify builds chat assistants, Chatflows, Agents and Workflows. LangBot calls the published app through its Service API, so prompts, tools and knowledge stay in Dify.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Dify account or instance that LangBot can reach over the network.
+- A bot created in the KOOK developer center and its **Bot Token**.
+
+## Networking
+
+The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+## 1. Prepare Dify
+
+1. Build and **publish** a Chat Assistant (including Chatflow), Agent or Workflow app in Dify.
+2. Open the app's **Access API** page and create an API key.
+3. For a Workflow app, output the answer under the key `summary`.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **Dify** (official Dify Agent runner plugin) |
+| Base URL | `https://api.dify.ai/v1` for Dify Cloud, or your own Dify address with `/v1` appended |
+| API Key | The key from the app's Access API page |
+
+## 3. Create the KOOK bot
+
+1. Create a bot with the **KOOK** adapter and enter the Bot Token.
+2. Grant the bot permissions and invite it to your server.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send a message that matches the trigger rules in a channel the bot can read.
+
+## Troubleshooting
+
+- Self-hosted Dify in Docker on the same host: put both stacks on a shared Docker network and use the container address (for example `http://dify-nginx/v1`), not `localhost`.
+- Chatflow apps only return what the Answer node outputs.
+- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for KOOK?
+
+No. The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+### Does the KOOK bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Dify setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full KOOK setup guide](/en/usage/platforms/kook)
+- [Full Dify runner guide](/en/usage/pipelines/dify)
+- Other AI back ends on KOOK: [n8n](/en/recipes/n8n/kook) · [Coze](/en/recipes/coze/kook) · [Langflow](/en/recipes/langflow/kook) · [DeepSeek](/en/recipes/deepseek/kook) · [OpenAI (ChatGPT models)](/en/recipes/openai/kook)
+- Dify on other platforms: [Telegram](/en/recipes/dify/telegram) · [Discord](/en/recipes/dify/discord) · [Slack](/en/recipes/dify/slack) · [Lark (Feishu)](/en/recipes/dify/lark) · [DingTalk](/en/recipes/dify/dingtalk) · [WeCom (internal app)](/en/recipes/dify/wecom)

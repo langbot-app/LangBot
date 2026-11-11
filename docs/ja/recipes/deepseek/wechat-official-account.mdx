@@ -1,0 +1,75 @@
+---
+title: "DeepSeek で WeChat 公式アカウント の AI ボットを作る"
+description: "LangBot で DeepSeek を使った WeChat 公式アカウント の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは DeepSeek のモデルを WeChat 公式アカウント のボットにつなぎます。LangBot が WeChat 公式アカウント のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントから DeepSeek のモデルを直接使います。別のエージェント基盤は不要で、ナレッジベース、MCP ツール、Skills も追加できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる DeepSeek のアカウントまたはサーバー。
+- WeChat 公式アカウントまたはサービスアカウント：**AppID**、**AppSecret**、サーバー設定の **Token** と **EncodingAESKey**。LangBot サーバーの IP を **IP ホワイトリスト** に追加します。
+
+## ネットワーク
+
+公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+## 1. DeepSeek のモデルを追加する
+
+1. DeepSeek のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに DeepSeek、リクエスト URL に `https://api.deepseek.com` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. 代表的なモデル ID は `deepseek-chat` と `deepseek-reasoner` です。最新の一覧は DeepSeek のドキュメントで確認してください。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. WeChat 公式アカウント のボットを作成する
+
+1. **WeChat 公式アカウント** アダプターでボットを作成し、返信モードを選びます：`drop`（5 秒のコールバック内で返信）、`passive`、または `auto`（企業認証済みアカウントならカスタマーサービス API で後から返信）。
+2. ボットのコールバック URL をアカウントのサーバー設定に貼り付けて保存します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeChat でアカウントをフォローし、メッセージを送ります。
+
+## トラブルシューティング
+
+- 401 エラーは、API キーの誤りか DeepSeek アカウントの残高不足です。
+- 読み込みメッセージだけで回答が来ない場合、`passive` モード（または `auto` のフォールバック後）は次のメッセージで回答を受け取る仕組みです。
+- カスタマーサービス API には企業認証が必要で、本人確認だけでは使えません。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeChat 公式アカウント には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+### WeChat 公式アカウント のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ DeepSeek の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeChat 公式アカウント の詳しい設定ガイド](/ja/usage/platforms/wxoa)
+- [モデルの設定](/ja/usage/models/readme)
+- WeChat 公式アカウント で使える他の AI：[Dify](/ja/recipes/dify/wechat-official-account) · [n8n](/ja/recipes/n8n/wechat-official-account) · [Coze](/ja/recipes/coze/wechat-official-account) · [Langflow](/ja/recipes/langflow/wechat-official-account) · [OpenAI (ChatGPT models)](/ja/recipes/openai/wechat-official-account)
+- DeepSeek を他のプラットフォームで使う：[Telegram](/ja/recipes/deepseek/telegram) · [Discord](/ja/recipes/deepseek/discord) · [Slack](/ja/recipes/deepseek/slack) · [Lark（Feishu）](/ja/recipes/deepseek/lark) · [DingTalk](/ja/recipes/deepseek/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/deepseek/wecom)

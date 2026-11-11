@@ -1,0 +1,74 @@
+---
+title: "Build a KOOK AI Bot with OpenAI (ChatGPT models)"
+description: "Step-by-step guide to running a OpenAI (ChatGPT models)-powered AI bot on KOOK with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a OpenAI (ChatGPT models) model behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use OpenAI's GPT models with LangBot's built-in Agent, with optional knowledge bases, MCP tools, Skills and a code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A OpenAI (ChatGPT models) account or server you can call from LangBot.
+- A bot created in the KOOK developer center and its **Bot Token**.
+
+## Networking
+
+The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+## 1. Add the OpenAI (ChatGPT models) model
+
+1. Create an API key in the OpenAI console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to OpenAI and request URL `https://api.openai.com/v1`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Use a current model ID from OpenAI's model list. Any OpenAI-compatible endpoint works the same way with its own request URL.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the KOOK bot
+
+1. Create a bot with the **KOOK** adapter and enter the Bot Token.
+2. Grant the bot permissions and invite it to your server.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send a message that matches the trigger rules in a channel the bot can read.
+
+## Troubleshooting
+
+- Region or network errors: LangBot must be able to reach the request URL. Behind a restricted network, use a compatible gateway you can reach.
+- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for KOOK?
+
+No. The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+### Does the KOOK bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same OpenAI (ChatGPT models) setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full KOOK setup guide](/en/usage/platforms/kook)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on KOOK: [Dify](/en/recipes/dify/kook) · [n8n](/en/recipes/n8n/kook) · [Coze](/en/recipes/coze/kook) · [Langflow](/en/recipes/langflow/kook) · [DeepSeek](/en/recipes/deepseek/kook)
+- OpenAI (ChatGPT models) on other platforms: [Telegram](/en/recipes/openai/telegram) · [Discord](/en/recipes/openai/discord) · [Slack](/en/recipes/openai/slack) · [Lark (Feishu)](/en/recipes/openai/lark) · [DingTalk](/en/recipes/openai/dingtalk) · [WeCom (internal app)](/en/recipes/openai/wecom)

@@ -1,0 +1,74 @@
+---
+title: "把 Dify 接入钉钉"
+description: "使用 LangBot 把 Dify 应用接入钉钉：Dify 配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把你的 Dify 应用接到钉钉机器人上。LangBot 接收钉钉消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+Dify 可以搭建聊天助手、Chatflow、Agent 和工作流。LangBot 通过 Service API 调用你发布的应用，提示词、工具和知识库都留在 Dify 里维护。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- LangBot 能通过网络访问到的 Dify 账号或实例。
+- 钉钉应用机器人（**Client ID** 与 **Client Secret**）。使用一键创建并在手机上授权后会自动填好。
+
+## 网络要求
+
+Stream 模式下由 LangBot 主动连接钉钉，不需要公网回调地址。
+
+## 1. 准备 Dify
+
+1. 在 Dify 中搭建并 **发布** 聊天助手（含 Chatflow）、Agent 或工作流应用。
+2. 进入应用的 **访问 API** 页面生成 API Key。
+3. 如果是工作流应用，请用 `summary` 作为输出变量名。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。如果列表里没有对应运行器，请先在 **插件** 或 [LangBot Space 插件市场](https://space.langbot.app/market) 安装官方运行器插件。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **Dify**（官方 Dify Agent 运行器插件） |
+| Base URL | Dify 云服务填 `https://api.dify.ai/v1`；自部署填你的 Dify 地址并加上 `/v1` |
+| API Key | 应用访问 API 页面生成的密钥 |
+
+## 3. 创建钉钉机器人
+
+1. 新建机器人，选择 **钉钉** 适配器并使用 **一键创建**，或手动创建机器人后填写凭据。
+2. 消息推送方式选择 **Stream 模式**。需要流式回复时，导入 LangBot 提供的 `dingtalk_stream_card.json` 卡片模板，开启 **使用卡片回复** 并填入卡片模板 ID。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+先单聊机器人，再把它加入群聊并 @ 它。
+
+## 常见问题排查
+
+- 自部署的 Dify 与 LangBot 在同一台机器的 Docker 中：让两边加入同一个 Docker 网络，用容器地址（例如 `http://dify-nginx/v1`），不要用 `localhost`。
+- Chatflow 应用只会返回 “直接回复” 节点输出的内容。
+- 回复不是流式而是纯文本：卡片模板未导入，或没有开启 **使用卡片回复**。
+- 收不到消息：确认应用版本已发布，并在事件订阅中选择了 Stream 模式。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入钉钉需要有公网 IP 的服务器吗？
+
+不需要。Stream 模式下由 LangBot 主动连接钉钉，不需要公网回调地址。
+
+### 钉钉机器人支持流式回复吗？
+
+支持。在机器人上开启流式输出，同时 AI 后端也要支持流式。详见[平台功能对照表](/zh/insight/platform-features)。
+
+### 同一套 Dify 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [钉钉完整接入文档](/zh/usage/platforms/dingtalk)
+- [Dify 运行器完整文档](/zh/usage/pipelines/dify)
+- 钉钉上的其他 AI 后端：[n8n](/zh/recipes/n8n/dingtalk) · [Coze](/zh/recipes/coze/dingtalk) · [Langflow](/zh/recipes/langflow/dingtalk) · [DeepSeek](/zh/recipes/deepseek/dingtalk) · [OpenAI (ChatGPT models)](/zh/recipes/openai/dingtalk)
+- Dify 接入其他平台：[Telegram](/zh/recipes/dify/telegram) · [Discord](/zh/recipes/dify/discord) · [Slack](/zh/recipes/dify/slack) · [飞书](/zh/recipes/dify/lark) · [企业微信应用](/zh/recipes/dify/wecom) · [企业微信智能机器人](/zh/recipes/dify/wecombot)

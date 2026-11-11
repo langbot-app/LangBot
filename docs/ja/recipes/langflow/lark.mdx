@@ -1,0 +1,73 @@
+---
+title: "Langflow を Lark（Feishu） に接続する"
+description: "LangBot で Langflow アプリを Lark（Feishu） のボットとして動かす手順：Langflow の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Langflow アプリを Lark（Feishu） のボットにつなぎます。LangBot が Lark（Feishu） のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Langflow はドラッグ＆ドロップでエージェントやフローを作れます。LangBot はメッセージごとに Langflow API でフローを実行します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Langflow のアカウントまたはインスタンス。
+- Feishu または Lark のカスタムアプリ（`app_id` と `app_secret`）。LangBot のワンクリック設定で作成と認可ができます。
+
+## ネットワーク
+
+既定の WebSocket 長期接続では公開 IP は不要です。長期接続が使えない場合（一部の Lark 国際版など）は Webhook モードとなり、公開 HTTPS アドレスが必要です。LangBot Cloud には最初から用意されています。
+
+## 1. Langflow を準備する
+
+1. Langflow でフローを作成します（Simple Agent テンプレートから始めると簡単です）。
+2. **Settings** で API キーを作成します。
+3. **Share → API access** のサンプルコードから **Flow ID** を取得します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Langflow**（公式 Langflow Agent ランナープラグイン） |
+| Base URL | LangBot から到達できる Langflow のアドレス |
+| API Key | Langflow の API キー |
+| Flow ID | 実行するフローの ID |
+
+## 3. Lark（Feishu） のボットを作成する
+
+1. **Lark** アダプターでボットを作成し、プラットフォームのドメイン（Feishu / Lark）を選んで **ワンクリック設定** を使うか、`app_id` と `app_secret` を手動入力します。
+2. ガイドに沿ってメッセージ権限とイベント購読（ストリーミングカードを使う場合はカード権限も）を追加し、アプリのバージョンを公開します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+Feishu/Lark でボットを検索して DM を送り、グループに追加してメンションでも試します。
+
+## トラブルシューティング
+
+- 接続が拒否される場合、`http://localhost:7860` が使えるのは Langflow と LangBot が同じホスト・同じネットワーク名前空間にあるときだけです。
+- メッセージが届かない場合は、アプリのバージョンが公開済みか、イベント購読方式（長期接続 / Webhook）が LangBot 側と一致しているかを確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Lark（Feishu） には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。既定の WebSocket 長期接続では公開 IP は不要です。長期接続が使えない場合（一部の Lark 国際版など）は Webhook モードとなり、公開 HTTPS アドレスが必要です。LangBot Cloud には最初から用意されています。
+
+### Lark（Feishu） のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Langflow の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Lark（Feishu） の詳しい設定ガイド](/ja/usage/platforms/lark)
+- [Langflow ランナーの詳しいガイド](/ja/usage/pipelines/langflow)
+- Lark（Feishu） で使える他の AI：[Dify](/ja/recipes/dify/lark) · [n8n](/ja/recipes/n8n/lark) · [Coze](/ja/recipes/coze/lark) · [DeepSeek](/ja/recipes/deepseek/lark) · [OpenAI (ChatGPT models)](/ja/recipes/openai/lark)
+- Langflow を他のプラットフォームで使う：[Telegram](/ja/recipes/langflow/telegram) · [Discord](/ja/recipes/langflow/discord) · [Slack](/ja/recipes/langflow/slack) · [DingTalk](/ja/recipes/langflow/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/langflow/wecom) · [WeCom インテリジェントボット](/ja/recipes/langflow/wecombot)

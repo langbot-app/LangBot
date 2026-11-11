@@ -1,0 +1,74 @@
+---
+title: "Gemini で Telegram の AI ボットを作る"
+description: "LangBot で Gemini を使った Telegram の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Gemini のモデルを Telegram のボットにつなぎます。LangBot が Telegram のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで Google の Gemini モデルを使います。視覚対応モデルなら画像入力も扱えます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Gemini のアカウントまたはサーバー。
+- [@BotFather](https://t.me/BotFather) で取得したボットトークン（`/newbot` を送り、`bot` で終わるユーザー名を付けます）。
+
+## ネットワーク
+
+Telegram はロングポーリングを使うため、LangBot から `api.telegram.org` へ外向きに接続できれば十分です。公開 Webhook URL は不要で、手元の PC や自宅サーバーでも動きます。
+
+## 1. Gemini のモデルを追加する
+
+1. Google Gemini のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Google Gemini を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. キーは Google AI Studio で作成します。画像を読ませたい場合はモデルの **ビジョン** を有効にします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. Telegram のボットを作成する
+
+1. **ボット** で新しいボットを作成し、**Telegram** アダプター（LangBot 4.11 の新しいアダプター。非推奨の旧版は選ばない）を選びます。
+2. トークンを貼り付け、必要に応じて Markdown とストリーミングを有効にし、ボットを有効化して保存します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+ボットとの個人チャットで **Start** を押してからメッセージを送ります。グループではパイプラインのトリガー条件（ボットへのメンションや返信など）を満たす必要があります。
+
+## トラブルシューティング
+
+- 画像が無視される場合は、モデルの **ビジョン** を有効にし、アダプターが画像を受け取れるか確認します。
+- 1 つのトークンをポーリングできるのは 1 インスタンスだけです。返信がない場合は、同じボットを別の LangBot インスタンスやスクリプトで有効にしていないか確認してください。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Telegram には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Telegram はロングポーリングを使うため、LangBot から `api.telegram.org` へ外向きに接続できれば十分です。公開 Webhook URL は不要で、手元の PC や自宅サーバーでも動きます。
+
+### Telegram のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Gemini の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Telegram の詳しい設定ガイド](/ja/usage/platforms/telegram)
+- [モデルの設定](/ja/usage/models/readme)
+- Telegram で使える他の AI：[Dify](/ja/recipes/dify/telegram) · [n8n](/ja/recipes/n8n/telegram) · [Coze](/ja/recipes/coze/telegram) · [Langflow](/ja/recipes/langflow/telegram) · [DeepSeek](/ja/recipes/deepseek/telegram)
+- Gemini を他のプラットフォームで使う：[Discord](/ja/recipes/gemini/discord) · [Slack](/ja/recipes/gemini/slack) · [Lark（Feishu）](/ja/recipes/gemini/lark) · [DingTalk](/ja/recipes/gemini/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/gemini/wecom) · [WeCom インテリジェントボット](/ja/recipes/gemini/wecombot)

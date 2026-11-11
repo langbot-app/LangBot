@@ -1,0 +1,75 @@
+---
+title: "Build a WeCom (internal app) AI Bot with Claude"
+description: "Step-by-step guide to running a Claude-powered AI bot on WeCom (internal app) with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Claude model behind a WeCom (internal app) bot. LangBot receives messages from WeCom (internal app), runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Anthropic's Claude models with LangBot's built-in Agent, including tool use with MCP servers, Skills and the code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Claude account or server you can call from LangBot.
+- A WeCom self-built app: **Corporate ID**, the app **Secret**, the **Contact Sync Secret**, and the callback **Token** and **EncodingAESKey**.
+
+## Networking
+
+WeCom delivers messages to a callback URL, so LangBot needs a public domain with HTTPS (see [reverse proxy and SSL](/en/workshop/production/proxy-and-ssl)). LangBot Cloud includes a ready-to-use public URL.
+
+## 1. Add the Claude model
+
+1. Create an API key in the Anthropic console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Anthropic, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Keep the provider's default request URL unless you use a gateway. Use a current Claude model ID from Anthropic's documentation.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the WeCom (internal app) bot
+
+1. Create a bot with the **WeCom** adapter, enter the Corporate ID, app Secret and Contact Sync Secret, enable it and copy the webhook callback URL.
+2. In the WeCom admin console, open **Receive Messages → Set API Reception**, paste the URL, generate the Token and EncodingAESKey, save them in LangBot first and then in WeCom. Add LangBot's outbound IP to **Corporate Trusted IP**.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Open the app in the WeCom client and send it a message.
+
+## Troubleshooting
+
+- The agent never calls tools: enable **Tool Use** on the model.
+- **request URL failed** when saving the callback: the URL is not publicly reachable over HTTPS, or the Token/EncodingAESKey in LangBot does not match.
+- Replies fail to send: add LangBot's outbound IP to the corporate trusted IP list.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for WeCom (internal app)?
+
+Yes, or use LangBot Cloud. WeCom delivers messages to a callback URL, so LangBot needs a public domain with HTTPS (see [reverse proxy and SSL](/en/workshop/production/proxy-and-ssl)). LangBot Cloud includes a ready-to-use public URL.
+
+### Does the WeCom (internal app) bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Claude setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full WeCom (internal app) setup guide](/en/usage/platforms/wecom/wecom)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on WeCom (internal app): [Dify](/en/recipes/dify/wecom) · [n8n](/en/recipes/n8n/wecom) · [Coze](/en/recipes/coze/wecom) · [Langflow](/en/recipes/langflow/wecom) · [DeepSeek](/en/recipes/deepseek/wecom)
+- Claude on other platforms: [Telegram](/en/recipes/claude/telegram) · [Discord](/en/recipes/claude/discord) · [Slack](/en/recipes/claude/slack) · [Lark (Feishu)](/en/recipes/claude/lark) · [DingTalk](/en/recipes/claude/dingtalk) · [WeCom Intelligent Bot](/en/recipes/claude/wecombot)

@@ -1,0 +1,74 @@
+---
+title: "用 DeepSeek 搭建微信客服 AI 机器人"
+description: "使用 LangBot 搭建由 DeepSeek 驱动的微信客服 AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 DeepSeek 模型接到微信客服机器人上。LangBot 接收微信客服消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+直接用 LangBot 内置 Agent 调用 DeepSeek 模型，不需要额外的智能体平台，还可以按需加知识库、MCP 工具和 Skills。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 DeepSeek 账号或服务。
+- 开通 API 的微信客服：**企业 ID**、**Secret**，以及回调用的 **Token** 和 **EncodingAESKey**。
+
+## 网络要求
+
+微信客服通过回调地址推送事件，LangBot 需要公网 HTTPS 地址；LangBot Cloud 自带。
+
+## 1. 添加 DeepSeek 模型
+
+1. 在 DeepSeek 控制台创建 API Key。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选择 DeepSeek，请求地址填写 `https://api.deepseek.com`，再填入 API Key 和模型名称。
+3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
+4. 常用模型名为 `deepseek-chat` 和 `deepseek-reasoner`，以 DeepSeek 官方文档的最新列表为准。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建微信客服机器人
+
+1. 在微信客服 **开发配置** 中随机生成 Token 和 EncodingAESKey，与企业 ID 一起填入 **微信客服** 适配器的机器人。
+2. 启用机器人，把 Webhook 回调地址填入管理后台，再填写 Secret 并重启机器人。最后生成用户进入会话用的客服链接或二维码。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在微信中打开客服链接或扫描二维码，发送一条消息。
+
+## 常见问题排查
+
+- 返回 401：API Key 错误，或 DeepSeek 账户余额不足。
+- 欢迎语只能在微信下发 `welcome_code` 时发送，并且在过期前只能发一次。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入微信客服需要有公网 IP 的服务器吗？
+
+需要，或者直接使用 LangBot Cloud。微信客服通过回调地址推送事件，LangBot 需要公网 HTTPS 地址；LangBot Cloud 自带。
+
+### 微信客服机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 DeepSeek 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [微信客服完整接入文档](/zh/usage/platforms/wecom/wecomcs)
+- [模型配置](/zh/usage/models/readme)
+- 微信客服上的其他 AI 后端：[Dify](/zh/recipes/dify/wecomcs) · [n8n](/zh/recipes/n8n/wecomcs) · [Coze](/zh/recipes/coze/wecomcs) · [Langflow](/zh/recipes/langflow/wecomcs) · [OpenAI (ChatGPT models)](/zh/recipes/openai/wecomcs)
+- DeepSeek 接入其他平台：[Telegram](/zh/recipes/deepseek/telegram) · [Discord](/zh/recipes/deepseek/discord) · [Slack](/zh/recipes/deepseek/slack) · [飞书](/zh/recipes/deepseek/lark) · [钉钉](/zh/recipes/deepseek/dingtalk) · [企业微信应用](/zh/recipes/deepseek/wecom)

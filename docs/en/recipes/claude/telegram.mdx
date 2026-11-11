@@ -1,0 +1,74 @@
+---
+title: "Build a Telegram AI Bot with Claude"
+description: "Step-by-step guide to running a Claude-powered AI bot on Telegram with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Claude model behind a Telegram bot. LangBot receives messages from Telegram, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Anthropic's Claude models with LangBot's built-in Agent, including tool use with MCP servers, Skills and the code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Claude account or server you can call from LangBot.
+- A bot token from [@BotFather](https://t.me/BotFather) (send `/newbot` and pick a username ending in `bot`).
+
+## Networking
+
+Telegram uses long polling: LangBot only needs outbound access to `api.telegram.org`. No public webhook URL is required, so a laptop or home server works.
+
+## 1. Add the Claude model
+
+1. Create an API key in the Anthropic console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Anthropic, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Keep the provider's default request URL unless you use a gateway. Use a current Claude model ID from Anthropic's documentation.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the Telegram bot
+
+1. Under **Bots**, create a bot and select the **Telegram** adapter (the new adapter in LangBot 4.11, not the deprecated legacy one).
+2. Paste the token, enable Markdown and streaming if you want them, then enable and save the bot.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Press **Start** in a private chat with the bot and send a message. In groups, the message must match the pipeline's trigger rules (for example, mention the bot or reply to it).
+
+## Troubleshooting
+
+- The agent never calls tools: enable **Tool Use** on the model.
+- Only one running instance may poll a token. If replies are missing, make sure the same bot is not enabled in another LangBot instance or script.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for Telegram?
+
+No. Telegram uses long polling: LangBot only needs outbound access to `api.telegram.org`. No public webhook URL is required, so a laptop or home server works.
+
+### Does the Telegram bot support streaming replies?
+
+Yes. Enable streaming on the bot; the AI back end must also stream. See the [platform feature matrix](/en/insight/platform-features) for details.
+
+### Can the same Claude setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full Telegram setup guide](/en/usage/platforms/telegram)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on Telegram: [Dify](/en/recipes/dify/telegram) · [n8n](/en/recipes/n8n/telegram) · [Coze](/en/recipes/coze/telegram) · [Langflow](/en/recipes/langflow/telegram) · [DeepSeek](/en/recipes/deepseek/telegram)
+- Claude on other platforms: [Discord](/en/recipes/claude/discord) · [Slack](/en/recipes/claude/slack) · [Lark (Feishu)](/en/recipes/claude/lark) · [DingTalk](/en/recipes/claude/dingtalk) · [WeCom (internal app)](/en/recipes/claude/wecom) · [WeCom Intelligent Bot](/en/recipes/claude/wecombot)

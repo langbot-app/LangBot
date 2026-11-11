@@ -13,7 +13,7 @@
     "href": "https://langbot.app"
   },
   "favicon": "/favicon.ico",
-  "description": "Production-grade No-code AI Bot Platform. Connect DeepSeek, Dify, GPT-4 & Claude to WeChat, Discord, Telegram, Slack, Lark & DingTalk in 5 minutes.",
+  "description": "LangBot is an open-source instant messaging AI agent bot platform. Connect Dify, n8n, Coze, OpenAI, Claude, DeepSeek, Gemini and Qwen to Discord, Slack, Telegram, LINE, WeChat, WeCom, QQ, Lark and DingTalk.",
   "seo": {
     "indexing": "all",
     "metatags": {
@@ -629,6 +629,202 @@
                 ]
               },
               {
+                "group": "Integration Recipes",
+                "pages": [
+                  "en/recipes/index",
+                  {
+                    "group": "Dify",
+                    "pages": [
+                      "en/recipes/dify/telegram",
+                      "en/recipes/dify/discord",
+                      "en/recipes/dify/slack",
+                      "en/recipes/dify/lark",
+                      "en/recipes/dify/dingtalk",
+                      "en/recipes/dify/wecom",
+                      "en/recipes/dify/wecombot",
+                      "en/recipes/dify/wecomcs",
+                      "en/recipes/dify/wechat-official-account",
+                      "en/recipes/dify/qq-official",
+                      "en/recipes/dify/line",
+                      "en/recipes/dify/kook",
+                      "en/recipes/dify/mattermost",
+                      "en/recipes/dify/web-page"
+                    ]
+                  },
+                  {
+                    "group": "n8n",
+                    "pages": [
+                      "en/recipes/n8n/telegram",
+                      "en/recipes/n8n/discord",
+                      "en/recipes/n8n/slack",
+                      "en/recipes/n8n/lark",
+                      "en/recipes/n8n/dingtalk",
+                      "en/recipes/n8n/wecom",
+                      "en/recipes/n8n/wecombot",
+                      "en/recipes/n8n/wecomcs",
+                      "en/recipes/n8n/wechat-official-account",
+                      "en/recipes/n8n/qq-official",
+                      "en/recipes/n8n/line",
+                      "en/recipes/n8n/kook",
+                      "en/recipes/n8n/mattermost",
+                      "en/recipes/n8n/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Coze",
+                    "pages": [
+                      "en/recipes/coze/telegram",
+                      "en/recipes/coze/discord",
+                      "en/recipes/coze/slack",
+                      "en/recipes/coze/lark",
+                      "en/recipes/coze/dingtalk",
+                      "en/recipes/coze/wecom",
+                      "en/recipes/coze/wecombot",
+                      "en/recipes/coze/wecomcs",
+                      "en/recipes/coze/wechat-official-account",
+                      "en/recipes/coze/qq-official",
+                      "en/recipes/coze/line",
+                      "en/recipes/coze/kook",
+                      "en/recipes/coze/mattermost",
+                      "en/recipes/coze/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Langflow",
+                    "pages": [
+                      "en/recipes/langflow/telegram",
+                      "en/recipes/langflow/discord",
+                      "en/recipes/langflow/slack",
+                      "en/recipes/langflow/lark",
+                      "en/recipes/langflow/dingtalk",
+                      "en/recipes/langflow/wecom",
+                      "en/recipes/langflow/wecombot",
+                      "en/recipes/langflow/wecomcs",
+                      "en/recipes/langflow/wechat-official-account",
+                      "en/recipes/langflow/qq-official",
+                      "en/recipes/langflow/line",
+                      "en/recipes/langflow/kook",
+                      "en/recipes/langflow/mattermost",
+                      "en/recipes/langflow/web-page"
+                    ]
+                  },
+                  {
+                    "group": "DeepSeek",
+                    "pages": [
+                      "en/recipes/deepseek/telegram",
+                      "en/recipes/deepseek/discord",
+                      "en/recipes/deepseek/slack",
+                      "en/recipes/deepseek/lark",
+                      "en/recipes/deepseek/dingtalk",
+                      "en/recipes/deepseek/wecom",
+                      "en/recipes/deepseek/wecombot",
+                      "en/recipes/deepseek/wecomcs",
+                      "en/recipes/deepseek/wechat-official-account",
+                      "en/recipes/deepseek/qq-official",
+                      "en/recipes/deepseek/line",
+                      "en/recipes/deepseek/kook",
+                      "en/recipes/deepseek/mattermost",
+                      "en/recipes/deepseek/web-page"
+                    ]
+                  },
+                  {
+                    "group": "OpenAI (ChatGPT models)",
+                    "pages": [
+                      "en/recipes/openai/telegram",
+                      "en/recipes/openai/discord",
+                      "en/recipes/openai/slack",
+                      "en/recipes/openai/lark",
+                      "en/recipes/openai/dingtalk",
+                      "en/recipes/openai/wecom",
+                      "en/recipes/openai/wecombot",
+                      "en/recipes/openai/wecomcs",
+                      "en/recipes/openai/wechat-official-account",
+                      "en/recipes/openai/qq-official",
+                      "en/recipes/openai/line",
+                      "en/recipes/openai/kook",
+                      "en/recipes/openai/mattermost",
+                      "en/recipes/openai/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Claude",
+                    "pages": [
+                      "en/recipes/claude/telegram",
+                      "en/recipes/claude/discord",
+                      "en/recipes/claude/slack",
+                      "en/recipes/claude/lark",
+                      "en/recipes/claude/dingtalk",
+                      "en/recipes/claude/wecom",
+                      "en/recipes/claude/wecombot",
+                      "en/recipes/claude/wecomcs",
+                      "en/recipes/claude/wechat-official-account",
+                      "en/recipes/claude/qq-official",
+                      "en/recipes/claude/line",
+                      "en/recipes/claude/kook",
+                      "en/recipes/claude/mattermost",
+                      "en/recipes/claude/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Gemini",
+                    "pages": [
+                      "en/recipes/gemini/telegram",
+                      "en/recipes/gemini/discord",
+                      "en/recipes/gemini/slack",
+                      "en/recipes/gemini/lark",
+                      "en/recipes/gemini/dingtalk",
+                      "en/recipes/gemini/wecom",
+                      "en/recipes/gemini/wecombot",
+                      "en/recipes/gemini/wecomcs",
+                      "en/recipes/gemini/wechat-official-account",
+                      "en/recipes/gemini/qq-official",
+                      "en/recipes/gemini/line",
+                      "en/recipes/gemini/kook",
+                      "en/recipes/gemini/mattermost",
+                      "en/recipes/gemini/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Qwen",
+                    "pages": [
+                      "en/recipes/qwen/telegram",
+                      "en/recipes/qwen/discord",
+                      "en/recipes/qwen/slack",
+                      "en/recipes/qwen/lark",
+                      "en/recipes/qwen/dingtalk",
+                      "en/recipes/qwen/wecom",
+                      "en/recipes/qwen/wecombot",
+                      "en/recipes/qwen/wecomcs",
+                      "en/recipes/qwen/wechat-official-account",
+                      "en/recipes/qwen/qq-official",
+                      "en/recipes/qwen/line",
+                      "en/recipes/qwen/kook",
+                      "en/recipes/qwen/mattermost",
+                      "en/recipes/qwen/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Ollama",
+                    "pages": [
+                      "en/recipes/ollama/telegram",
+                      "en/recipes/ollama/discord",
+                      "en/recipes/ollama/slack",
+                      "en/recipes/ollama/lark",
+                      "en/recipes/ollama/dingtalk",
+                      "en/recipes/ollama/wecom",
+                      "en/recipes/ollama/wecombot",
+                      "en/recipes/ollama/wecomcs",
+                      "en/recipes/ollama/wechat-official-account",
+                      "en/recipes/ollama/qq-official",
+                      "en/recipes/ollama/line",
+                      "en/recipes/ollama/kook",
+                      "en/recipes/ollama/mattermost",
+                      "en/recipes/ollama/web-page"
+                    ]
+                  }
+                ]
+              },
+              {
                 "group": "Advanced Operations",
                 "pages": [
                   "en/workshop/production/proxy-and-ssl",
@@ -922,6 +1118,202 @@
                     ]
                   },
                   "zh/usage/skills/readme"
+                ]
+              },
+              {
+                "group": "接入实例",
+                "pages": [
+                  "zh/recipes/index",
+                  {
+                    "group": "Dify",
+                    "pages": [
+                      "zh/recipes/dify/telegram",
+                      "zh/recipes/dify/discord",
+                      "zh/recipes/dify/slack",
+                      "zh/recipes/dify/lark",
+                      "zh/recipes/dify/dingtalk",
+                      "zh/recipes/dify/wecom",
+                      "zh/recipes/dify/wecombot",
+                      "zh/recipes/dify/wecomcs",
+                      "zh/recipes/dify/wechat-official-account",
+                      "zh/recipes/dify/qq-official",
+                      "zh/recipes/dify/line",
+                      "zh/recipes/dify/kook",
+                      "zh/recipes/dify/mattermost",
+                      "zh/recipes/dify/web-page"
+                    ]
+                  },
+                  {
+                    "group": "n8n",
+                    "pages": [
+                      "zh/recipes/n8n/telegram",
+                      "zh/recipes/n8n/discord",
+                      "zh/recipes/n8n/slack",
+                      "zh/recipes/n8n/lark",
+                      "zh/recipes/n8n/dingtalk",
+                      "zh/recipes/n8n/wecom",
+                      "zh/recipes/n8n/wecombot",
+                      "zh/recipes/n8n/wecomcs",
+                      "zh/recipes/n8n/wechat-official-account",
+                      "zh/recipes/n8n/qq-official",
+                      "zh/recipes/n8n/line",
+                      "zh/recipes/n8n/kook",
+                      "zh/recipes/n8n/mattermost",
+                      "zh/recipes/n8n/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Coze",
+                    "pages": [
+                      "zh/recipes/coze/telegram",
+                      "zh/recipes/coze/discord",
+                      "zh/recipes/coze/slack",
+                      "zh/recipes/coze/lark",
+                      "zh/recipes/coze/dingtalk",
+                      "zh/recipes/coze/wecom",
+                      "zh/recipes/coze/wecombot",
+                      "zh/recipes/coze/wecomcs",
+                      "zh/recipes/coze/wechat-official-account",
+                      "zh/recipes/coze/qq-official",
+                      "zh/recipes/coze/line",
+                      "zh/recipes/coze/kook",
+                      "zh/recipes/coze/mattermost",
+                      "zh/recipes/coze/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Langflow",
+                    "pages": [
+                      "zh/recipes/langflow/telegram",
+                      "zh/recipes/langflow/discord",
+                      "zh/recipes/langflow/slack",
+                      "zh/recipes/langflow/lark",
+                      "zh/recipes/langflow/dingtalk",
+                      "zh/recipes/langflow/wecom",
+                      "zh/recipes/langflow/wecombot",
+                      "zh/recipes/langflow/wecomcs",
+                      "zh/recipes/langflow/wechat-official-account",
+                      "zh/recipes/langflow/qq-official",
+                      "zh/recipes/langflow/line",
+                      "zh/recipes/langflow/kook",
+                      "zh/recipes/langflow/mattermost",
+                      "zh/recipes/langflow/web-page"
+                    ]
+                  },
+                  {
+                    "group": "DeepSeek",
+                    "pages": [
+                      "zh/recipes/deepseek/telegram",
+                      "zh/recipes/deepseek/discord",
+                      "zh/recipes/deepseek/slack",
+                      "zh/recipes/deepseek/lark",
+                      "zh/recipes/deepseek/dingtalk",
+                      "zh/recipes/deepseek/wecom",
+                      "zh/recipes/deepseek/wecombot",
+                      "zh/recipes/deepseek/wecomcs",
+                      "zh/recipes/deepseek/wechat-official-account",
+                      "zh/recipes/deepseek/qq-official",
+                      "zh/recipes/deepseek/line",
+                      "zh/recipes/deepseek/kook",
+                      "zh/recipes/deepseek/mattermost",
+                      "zh/recipes/deepseek/web-page"
+                    ]
+                  },
+                  {
+                    "group": "OpenAI (ChatGPT models)",
+                    "pages": [
+                      "zh/recipes/openai/telegram",
+                      "zh/recipes/openai/discord",
+                      "zh/recipes/openai/slack",
+                      "zh/recipes/openai/lark",
+                      "zh/recipes/openai/dingtalk",
+                      "zh/recipes/openai/wecom",
+                      "zh/recipes/openai/wecombot",
+                      "zh/recipes/openai/wecomcs",
+                      "zh/recipes/openai/wechat-official-account",
+                      "zh/recipes/openai/qq-official",
+                      "zh/recipes/openai/line",
+                      "zh/recipes/openai/kook",
+                      "zh/recipes/openai/mattermost",
+                      "zh/recipes/openai/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Claude",
+                    "pages": [
+                      "zh/recipes/claude/telegram",
+                      "zh/recipes/claude/discord",
+                      "zh/recipes/claude/slack",
+                      "zh/recipes/claude/lark",
+                      "zh/recipes/claude/dingtalk",
+                      "zh/recipes/claude/wecom",
+                      "zh/recipes/claude/wecombot",
+                      "zh/recipes/claude/wecomcs",
+                      "zh/recipes/claude/wechat-official-account",
+                      "zh/recipes/claude/qq-official",
+                      "zh/recipes/claude/line",
+                      "zh/recipes/claude/kook",
+                      "zh/recipes/claude/mattermost",
+                      "zh/recipes/claude/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Gemini",
+                    "pages": [
+                      "zh/recipes/gemini/telegram",
+                      "zh/recipes/gemini/discord",
+                      "zh/recipes/gemini/slack",
+                      "zh/recipes/gemini/lark",
+                      "zh/recipes/gemini/dingtalk",
+                      "zh/recipes/gemini/wecom",
+                      "zh/recipes/gemini/wecombot",
+                      "zh/recipes/gemini/wecomcs",
+                      "zh/recipes/gemini/wechat-official-account",
+                      "zh/recipes/gemini/qq-official",
+                      "zh/recipes/gemini/line",
+                      "zh/recipes/gemini/kook",
+                      "zh/recipes/gemini/mattermost",
+                      "zh/recipes/gemini/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Qwen",
+                    "pages": [
+                      "zh/recipes/qwen/telegram",
+                      "zh/recipes/qwen/discord",
+                      "zh/recipes/qwen/slack",
+                      "zh/recipes/qwen/lark",
+                      "zh/recipes/qwen/dingtalk",
+                      "zh/recipes/qwen/wecom",
+                      "zh/recipes/qwen/wecombot",
+                      "zh/recipes/qwen/wecomcs",
+                      "zh/recipes/qwen/wechat-official-account",
+                      "zh/recipes/qwen/qq-official",
+                      "zh/recipes/qwen/line",
+                      "zh/recipes/qwen/kook",
+                      "zh/recipes/qwen/mattermost",
+                      "zh/recipes/qwen/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Ollama",
+                    "pages": [
+                      "zh/recipes/ollama/telegram",
+                      "zh/recipes/ollama/discord",
+                      "zh/recipes/ollama/slack",
+                      "zh/recipes/ollama/lark",
+                      "zh/recipes/ollama/dingtalk",
+                      "zh/recipes/ollama/wecom",
+                      "zh/recipes/ollama/wecombot",
+                      "zh/recipes/ollama/wecomcs",
+                      "zh/recipes/ollama/wechat-official-account",
+                      "zh/recipes/ollama/qq-official",
+                      "zh/recipes/ollama/line",
+                      "zh/recipes/ollama/kook",
+                      "zh/recipes/ollama/mattermost",
+                      "zh/recipes/ollama/web-page"
+                    ]
+                  }
                 ]
               },
               {
@@ -1240,6 +1632,202 @@
                     ]
                   },
                   "ja/usage/skills/readme"
+                ]
+              },
+              {
+                "group": "連携レシピ",
+                "pages": [
+                  "ja/recipes/index",
+                  {
+                    "group": "Dify",
+                    "pages": [
+                      "ja/recipes/dify/telegram",
+                      "ja/recipes/dify/discord",
+                      "ja/recipes/dify/slack",
+                      "ja/recipes/dify/lark",
+                      "ja/recipes/dify/dingtalk",
+                      "ja/recipes/dify/wecom",
+                      "ja/recipes/dify/wecombot",
+                      "ja/recipes/dify/wecomcs",
+                      "ja/recipes/dify/wechat-official-account",
+                      "ja/recipes/dify/qq-official",
+                      "ja/recipes/dify/line",
+                      "ja/recipes/dify/kook",
+                      "ja/recipes/dify/mattermost",
+                      "ja/recipes/dify/web-page"
+                    ]
+                  },
+                  {
+                    "group": "n8n",
+                    "pages": [
+                      "ja/recipes/n8n/telegram",
+                      "ja/recipes/n8n/discord",
+                      "ja/recipes/n8n/slack",
+                      "ja/recipes/n8n/lark",
+                      "ja/recipes/n8n/dingtalk",
+                      "ja/recipes/n8n/wecom",
+                      "ja/recipes/n8n/wecombot",
+                      "ja/recipes/n8n/wecomcs",
+                      "ja/recipes/n8n/wechat-official-account",
+                      "ja/recipes/n8n/qq-official",
+                      "ja/recipes/n8n/line",
+                      "ja/recipes/n8n/kook",
+                      "ja/recipes/n8n/mattermost",
+                      "ja/recipes/n8n/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Coze",
+                    "pages": [
+                      "ja/recipes/coze/telegram",
+                      "ja/recipes/coze/discord",
+                      "ja/recipes/coze/slack",
+                      "ja/recipes/coze/lark",
+                      "ja/recipes/coze/dingtalk",
+                      "ja/recipes/coze/wecom",
+                      "ja/recipes/coze/wecombot",
+                      "ja/recipes/coze/wecomcs",
+                      "ja/recipes/coze/wechat-official-account",
+                      "ja/recipes/coze/qq-official",
+                      "ja/recipes/coze/line",
+                      "ja/recipes/coze/kook",
+                      "ja/recipes/coze/mattermost",
+                      "ja/recipes/coze/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Langflow",
+                    "pages": [
+                      "ja/recipes/langflow/telegram",
+                      "ja/recipes/langflow/discord",
+                      "ja/recipes/langflow/slack",
+                      "ja/recipes/langflow/lark",
+                      "ja/recipes/langflow/dingtalk",
+                      "ja/recipes/langflow/wecom",
+                      "ja/recipes/langflow/wecombot",
+                      "ja/recipes/langflow/wecomcs",
+                      "ja/recipes/langflow/wechat-official-account",
+                      "ja/recipes/langflow/qq-official",
+                      "ja/recipes/langflow/line",
+                      "ja/recipes/langflow/kook",
+                      "ja/recipes/langflow/mattermost",
+                      "ja/recipes/langflow/web-page"
+                    ]
+                  },
+                  {
+                    "group": "DeepSeek",
+                    "pages": [
+                      "ja/recipes/deepseek/telegram",
+                      "ja/recipes/deepseek/discord",
+                      "ja/recipes/deepseek/slack",
+                      "ja/recipes/deepseek/lark",
+                      "ja/recipes/deepseek/dingtalk",
+                      "ja/recipes/deepseek/wecom",
+                      "ja/recipes/deepseek/wecombot",
+                      "ja/recipes/deepseek/wecomcs",
+                      "ja/recipes/deepseek/wechat-official-account",
+                      "ja/recipes/deepseek/qq-official",
+                      "ja/recipes/deepseek/line",
+                      "ja/recipes/deepseek/kook",
+                      "ja/recipes/deepseek/mattermost",
+                      "ja/recipes/deepseek/web-page"
+                    ]
+                  },
+                  {
+                    "group": "OpenAI (ChatGPT models)",
+                    "pages": [
+                      "ja/recipes/openai/telegram",
+                      "ja/recipes/openai/discord",
+                      "ja/recipes/openai/slack",
+                      "ja/recipes/openai/lark",
+                      "ja/recipes/openai/dingtalk",
+                      "ja/recipes/openai/wecom",
+                      "ja/recipes/openai/wecombot",
+                      "ja/recipes/openai/wecomcs",
+                      "ja/recipes/openai/wechat-official-account",
+                      "ja/recipes/openai/qq-official",
+                      "ja/recipes/openai/line",
+                      "ja/recipes/openai/kook",
+                      "ja/recipes/openai/mattermost",
+                      "ja/recipes/openai/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Claude",
+                    "pages": [
+                      "ja/recipes/claude/telegram",
+                      "ja/recipes/claude/discord",
+                      "ja/recipes/claude/slack",
+                      "ja/recipes/claude/lark",
+                      "ja/recipes/claude/dingtalk",
+                      "ja/recipes/claude/wecom",
+                      "ja/recipes/claude/wecombot",
+                      "ja/recipes/claude/wecomcs",
+                      "ja/recipes/claude/wechat-official-account",
+                      "ja/recipes/claude/qq-official",
+                      "ja/recipes/claude/line",
+                      "ja/recipes/claude/kook",
+                      "ja/recipes/claude/mattermost",
+                      "ja/recipes/claude/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Gemini",
+                    "pages": [
+                      "ja/recipes/gemini/telegram",
+                      "ja/recipes/gemini/discord",
+                      "ja/recipes/gemini/slack",
+                      "ja/recipes/gemini/lark",
+                      "ja/recipes/gemini/dingtalk",
+                      "ja/recipes/gemini/wecom",
+                      "ja/recipes/gemini/wecombot",
+                      "ja/recipes/gemini/wecomcs",
+                      "ja/recipes/gemini/wechat-official-account",
+                      "ja/recipes/gemini/qq-official",
+                      "ja/recipes/gemini/line",
+                      "ja/recipes/gemini/kook",
+                      "ja/recipes/gemini/mattermost",
+                      "ja/recipes/gemini/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Qwen",
+                    "pages": [
+                      "ja/recipes/qwen/telegram",
+                      "ja/recipes/qwen/discord",
+                      "ja/recipes/qwen/slack",
+                      "ja/recipes/qwen/lark",
+                      "ja/recipes/qwen/dingtalk",
+                      "ja/recipes/qwen/wecom",
+                      "ja/recipes/qwen/wecombot",
+                      "ja/recipes/qwen/wecomcs",
+                      "ja/recipes/qwen/wechat-official-account",
+                      "ja/recipes/qwen/qq-official",
+                      "ja/recipes/qwen/line",
+                      "ja/recipes/qwen/kook",
+                      "ja/recipes/qwen/mattermost",
+                      "ja/recipes/qwen/web-page"
+                    ]
+                  },
+                  {
+                    "group": "Ollama",
+                    "pages": [
+                      "ja/recipes/ollama/telegram",
+                      "ja/recipes/ollama/discord",
+                      "ja/recipes/ollama/slack",
+                      "ja/recipes/ollama/lark",
+                      "ja/recipes/ollama/dingtalk",
+                      "ja/recipes/ollama/wecom",
+                      "ja/recipes/ollama/wecombot",
+                      "ja/recipes/ollama/wecomcs",
+                      "ja/recipes/ollama/wechat-official-account",
+                      "ja/recipes/ollama/qq-official",
+                      "ja/recipes/ollama/line",
+                      "ja/recipes/ollama/kook",
+                      "ja/recipes/ollama/mattermost",
+                      "ja/recipes/ollama/web-page"
+                    ]
+                  }
                 ]
               },
               {

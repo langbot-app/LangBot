@@ -1,0 +1,73 @@
+---
+title: "Ollama で QQ 公式ボット の AI ボットを作る"
+description: "LangBot で Ollama を使った QQ 公式ボット の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Ollama のモデルを QQ 公式ボット のボットにつなぎます。LangBot が QQ 公式ボット のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Ollama でオープンモデルをローカル実行し、LangBot の内蔵エージェントから提供します。会話データは手元のマシンから出ません。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Ollama のアカウントまたはサーバー。
+- QQ オープンプラットフォームで登録したボット：**AppID**、**Token**、**AppSecret**。LangBot サーバーの IP を IP ホワイトリストに追加します。
+
+## ネットワーク
+
+QQ 公式ボット API（Webhook）には公開 IP と HTTPS が必要です。LangBot Cloud には公開ドメインがあります。
+
+## 1. Ollama のモデルを追加する
+
+1. Ollama をインストールしてモデルを取得します（`ollama pull` にモデル名）。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Ollama、リクエスト URL に Ollama サーバー（既定ポート `11434`）を指定します。
+3. LangBot が Docker で動いている場合、`localhost` はコンテナ自身を指すため、ホストのアドレス（例：`host.docker.internal`）を使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. QQ 公式ボット のボットを作成する
+
+1. **QQ 公式** アダプターでボットを作成し、AppID、Token、AppSecret を入力します。
+2. ボットの Webhook コールバック URL をコピーし、ホストを HTTPS ドメインに置き換えて QQ 管理ポータルのリクエストアドレスに保存します。サンドボックス設定でテストユーザーを追加します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+サンドボックスのメンバーとしてボットに個別チャットするか、サンドボックスのグループでメンションします。
+
+## トラブルシューティング
+
+- 小さなローカルモデルはツール呼び出しが苦手な場合があります。関数呼び出しに対応しないモデルでは **ツール使用** をオフにします。
+- リクエストアドレスの保存に失敗する場合は、ドメインが HTTPS で到達できないか、パスが `/bots/<ボット ID>` で終わっていません。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### QQ 公式ボット には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。QQ 公式ボット API（Webhook）には公開 IP と HTTPS が必要です。LangBot Cloud には公開ドメインがあります。
+
+### QQ 公式ボット のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Ollama の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [QQ 公式ボット の詳しい設定ガイド](/ja/usage/platforms/qq/official_webhook)
+- [モデルの設定](/ja/usage/models/readme)
+- QQ 公式ボット で使える他の AI：[Dify](/ja/recipes/dify/qq-official) · [n8n](/ja/recipes/n8n/qq-official) · [Coze](/ja/recipes/coze/qq-official) · [Langflow](/ja/recipes/langflow/qq-official) · [DeepSeek](/ja/recipes/deepseek/qq-official)
+- Ollama を他のプラットフォームで使う：[Telegram](/ja/recipes/ollama/telegram) · [Discord](/ja/recipes/ollama/discord) · [Slack](/ja/recipes/ollama/slack) · [Lark（Feishu）](/ja/recipes/ollama/lark) · [DingTalk](/ja/recipes/ollama/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/ollama/wecom)

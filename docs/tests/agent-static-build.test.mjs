@@ -5,6 +5,7 @@ import test from "node:test";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import { zhOnlyArticleRoutes } from "./article-routes.mjs";
+import { LANGS, PLATFORMS, SOURCES } from "../scripts/recipes-data.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const output = process.env.AGENT_TEST_OUTPUT ?? path.join(root, "dist/public");
@@ -24,7 +25,8 @@ function links(node, result = []) {
 
 test("every sitemap page has meaningful canonical Markdown and HTML discovery", async () => {
   const manifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
-  assert.equal(urls.length, 479 + zhOnlyArticleRoutes.length + manifest.articles.length);
+  const recipes = LANGS.length * (1 + SOURCES.length * PLATFORMS.length);
+  assert.equal(urls.length, 479 + zhOnlyArticleRoutes.length + manifest.articles.length + recipes);
   for (const url of urls) {
     const route = relative(url);
     const text = await read(`${route}.md`);

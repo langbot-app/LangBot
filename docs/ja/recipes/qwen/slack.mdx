@@ -1,0 +1,75 @@
+---
+title: "Qwen で Slack の AI ボットを作る"
+description: "LangBot で Qwen を使った Slack の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Qwen のモデルを Slack のボットにつなぎます。LangBot が Slack のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Alibaba Cloud Model Studio（DashScope）経由で、LangBot の内蔵エージェントから Qwen モデルを使います。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Qwen のアカウントまたはサーバー。
+- アプリをインストールできる Slack ワークスペースと、[Slack アプリページ](https://api.slack.com/apps) で発行した **App Configuration Tokens**（クイックセットアップ用）。
+
+## ネットワーク
+
+Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+## 1. Qwen のモデルを追加する
+
+1. Aliyun Bailian (DashScope) のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Aliyun Bailian (DashScope)、リクエスト URL に `https://dashscope.aliyuncs.com/compatible-mode/v1` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. モデル ID は Model Studio に表示される Qwen モデルを使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. Slack のボットを作成する
+
+1. **Slack** アダプターでボットを作成し、**Slack クイックセットアップ** を使います。アプリ、スコープ、イベント購読が自動で作成されます。
+2. **Socket Mode**（推奨）を選んで App-Level Token（`xapp-...`）を追加するか、LangBot に公開 HTTPS アドレスがあれば **Webhook** を選びます。設定を反映してボットを有効にします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+アプリの **メッセージ** タブから話しかけるか、追加済みのチャンネルでメンションします。
+
+## トラブルシューティング
+
+- 国際版アカウントは DashScope のエンドポイントが異なります。コンソールに表示される OpenAI 互換 URL を使ってください。
+- App Configuration のアクセス/リフレッシュトークンを App-Level Token 欄に入れないでください。同じアプリの `xapp-` トークンが必要です。
+- App-Level Token のトークンローテーションは無効のままにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Slack には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+### Slack のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Qwen の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Slack の詳しい設定ガイド](/ja/usage/platforms/slack)
+- [モデルの設定](/ja/usage/models/readme)
+- Slack で使える他の AI：[Dify](/ja/recipes/dify/slack) · [n8n](/ja/recipes/n8n/slack) · [Coze](/ja/recipes/coze/slack) · [Langflow](/ja/recipes/langflow/slack) · [DeepSeek](/ja/recipes/deepseek/slack)
+- Qwen を他のプラットフォームで使う：[Telegram](/ja/recipes/qwen/telegram) · [Discord](/ja/recipes/qwen/discord) · [Lark（Feishu）](/ja/recipes/qwen/lark) · [DingTalk](/ja/recipes/qwen/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/qwen/wecom) · [WeCom インテリジェントボット](/ja/recipes/qwen/wecombot)

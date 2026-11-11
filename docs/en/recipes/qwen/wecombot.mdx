@@ -1,0 +1,74 @@
+---
+title: "Build a WeCom Intelligent Bot AI Bot with Qwen"
+description: "Step-by-step guide to running a Qwen-powered AI bot on WeCom Intelligent Bot with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Qwen model behind a WeCom Intelligent Bot bot. LangBot receives messages from WeCom Intelligent Bot, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Alibaba Cloud's Qwen models through Model Studio (DashScope) with LangBot's built-in Agent.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Qwen account or server you can call from LangBot.
+- A WeCom intelligent bot in **long connection** API mode: its **BotID** and long-connection **Secret**. One-click setup can fill both.
+
+## Networking
+
+Long connection mode needs no public callback URL. The alternative callback-URL mode does, and the two modes cannot be used at the same time.
+
+## 1. Add the Qwen model
+
+1. Create an API key in the Aliyun Bailian (DashScope) console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Aliyun Bailian (DashScope) and request URL `https://dashscope.aliyuncs.com/compatible-mode/v1`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Use a Qwen model ID listed in Model Studio.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the WeCom Intelligent Bot bot
+
+1. Create a bot with the **WeCom Intelligent Bot** adapter and use **One-Click Setup**, or create the bot in WeCom, switch its API mode to **long connection** and enter the BotID and Secret.
+2. Set the bot's visibility scope so the right people can use it, then save and enable.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Find the bot in the WeCom client, chat with it directly, then add it to a group chat and mention it.
+
+## Troubleshooting
+
+- International accounts use a different DashScope endpoint; copy the OpenAI-compatible URL shown in your console.
+- The long-connection Secret differs from the callback Token/EncodingAESKey. Switching the API mode to callback URL invalidates existing long connections.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for WeCom Intelligent Bot?
+
+No. Long connection mode needs no public callback URL. The alternative callback-URL mode does, and the two modes cannot be used at the same time.
+
+### Does the WeCom Intelligent Bot bot support streaming replies?
+
+Yes. Enable streaming on the bot; the AI back end must also stream. See the [platform feature matrix](/en/insight/platform-features) for details.
+
+### Can the same Qwen setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full WeCom Intelligent Bot setup guide](/en/usage/platforms/wecom/wecombot)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on WeCom Intelligent Bot: [Dify](/en/recipes/dify/wecombot) · [n8n](/en/recipes/n8n/wecombot) · [Coze](/en/recipes/coze/wecombot) · [Langflow](/en/recipes/langflow/wecombot) · [DeepSeek](/en/recipes/deepseek/wecombot)
+- Qwen on other platforms: [Telegram](/en/recipes/qwen/telegram) · [Discord](/en/recipes/qwen/discord) · [Slack](/en/recipes/qwen/slack) · [Lark (Feishu)](/en/recipes/qwen/lark) · [DingTalk](/en/recipes/qwen/dingtalk) · [WeCom (internal app)](/en/recipes/qwen/wecom)

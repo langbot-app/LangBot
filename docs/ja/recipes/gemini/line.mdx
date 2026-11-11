@@ -1,0 +1,75 @@
+---
+title: "Gemini で LINE の AI ボットを作る"
+description: "LangBot で Gemini を使った LINE の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Gemini のモデルを LINE のボットにつなぎます。LangBot が LINE のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで Google の Gemini モデルを使います。視覚対応モデルなら画像入力も扱えます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Gemini のアカウントまたはサーバー。
+- [LINE Developers コンソール](https://developers.line.biz/) の Messaging API チャネル：**チャネルシークレット** と **チャネルアクセストークン**（**発行** をクリック）。
+
+## ネットワーク
+
+LINE は Webhook を呼び出すため、LangBot には公開 HTTPS URL が必要です。LangBot Cloud にはドメインと HTTPS があります。
+
+## 1. Gemini のモデルを追加する
+
+1. Google Gemini のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Google Gemini を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. キーは Google AI Studio で作成します。画像を読ませたい場合はモデルの **ビジョン** を有効にします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. LINE のボットを作成する
+
+1. **LINE** アダプターでボットを作成し、チャネルシークレットとチャネルアクセストークンを入力します。
+2. LangBot の Webhook コールバック URL をチャネルの **Webhook URL** に貼って検証し、**Webhook の利用** をオンにします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+QR コードで公式アカウントを友だち追加し、メッセージを送ります。
+
+## トラブルシューティング
+
+- 画像が無視される場合は、モデルの **ビジョン** を有効にし、アダプターが画像を受け取れるか確認します。
+- Webhook の検証に失敗する場合は、URL と、インターネットから HTTPS で到達できるかを確認します。
+- 返信がない場合は、LINE Official Account Manager の応答メッセージをオフにし、ボットの代わりに自動応答しないようにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### LINE には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。LINE は Webhook を呼び出すため、LangBot には公開 HTTPS URL が必要です。LangBot Cloud にはドメインと HTTPS があります。
+
+### LINE のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Gemini の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [LINE の詳しい設定ガイド](/ja/usage/platforms/line)
+- [モデルの設定](/ja/usage/models/readme)
+- LINE で使える他の AI：[Dify](/ja/recipes/dify/line) · [n8n](/ja/recipes/n8n/line) · [Coze](/ja/recipes/coze/line) · [Langflow](/ja/recipes/langflow/line) · [DeepSeek](/ja/recipes/deepseek/line)
+- Gemini を他のプラットフォームで使う：[Telegram](/ja/recipes/gemini/telegram) · [Discord](/ja/recipes/gemini/discord) · [Slack](/ja/recipes/gemini/slack) · [Lark（Feishu）](/ja/recipes/gemini/lark) · [DingTalk](/ja/recipes/gemini/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/gemini/wecom)

@@ -1,0 +1,75 @@
+---
+title: "Qwen で LINE の AI ボットを作る"
+description: "LangBot で Qwen を使った LINE の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Qwen のモデルを LINE のボットにつなぎます。LangBot が LINE のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Alibaba Cloud Model Studio（DashScope）経由で、LangBot の内蔵エージェントから Qwen モデルを使います。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Qwen のアカウントまたはサーバー。
+- [LINE Developers コンソール](https://developers.line.biz/) の Messaging API チャネル：**チャネルシークレット** と **チャネルアクセストークン**（**発行** をクリック）。
+
+## ネットワーク
+
+LINE は Webhook を呼び出すため、LangBot には公開 HTTPS URL が必要です。LangBot Cloud にはドメインと HTTPS があります。
+
+## 1. Qwen のモデルを追加する
+
+1. Aliyun Bailian (DashScope) のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Aliyun Bailian (DashScope)、リクエスト URL に `https://dashscope.aliyuncs.com/compatible-mode/v1` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. モデル ID は Model Studio に表示される Qwen モデルを使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. LINE のボットを作成する
+
+1. **LINE** アダプターでボットを作成し、チャネルシークレットとチャネルアクセストークンを入力します。
+2. LangBot の Webhook コールバック URL をチャネルの **Webhook URL** に貼って検証し、**Webhook の利用** をオンにします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+QR コードで公式アカウントを友だち追加し、メッセージを送ります。
+
+## トラブルシューティング
+
+- 国際版アカウントは DashScope のエンドポイントが異なります。コンソールに表示される OpenAI 互換 URL を使ってください。
+- Webhook の検証に失敗する場合は、URL と、インターネットから HTTPS で到達できるかを確認します。
+- 返信がない場合は、LINE Official Account Manager の応答メッセージをオフにし、ボットの代わりに自動応答しないようにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### LINE には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。LINE は Webhook を呼び出すため、LangBot には公開 HTTPS URL が必要です。LangBot Cloud にはドメインと HTTPS があります。
+
+### LINE のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Qwen の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [LINE の詳しい設定ガイド](/ja/usage/platforms/line)
+- [モデルの設定](/ja/usage/models/readme)
+- LINE で使える他の AI：[Dify](/ja/recipes/dify/line) · [n8n](/ja/recipes/n8n/line) · [Coze](/ja/recipes/coze/line) · [Langflow](/ja/recipes/langflow/line) · [DeepSeek](/ja/recipes/deepseek/line)
+- Qwen を他のプラットフォームで使う：[Telegram](/ja/recipes/qwen/telegram) · [Discord](/ja/recipes/qwen/discord) · [Slack](/ja/recipes/qwen/slack) · [Lark（Feishu）](/ja/recipes/qwen/lark) · [DingTalk](/ja/recipes/qwen/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/qwen/wecom)

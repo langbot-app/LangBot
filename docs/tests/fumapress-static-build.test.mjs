@@ -4,11 +4,13 @@ import path from "node:path";
 import test from "node:test";
 import { collectMdxDocuments } from "../scripts/prepare-fumapress.mjs";
 import { zhOnlyArticleRoutes } from "./article-routes.mjs";
+import { LANGS, PLATFORMS, SOURCES } from "../scripts/recipes-data.mjs";
 
 const root = path.resolve(import.meta.dirname, "..");
 const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-articles-manifest.json"), "utf8"));
 // The fixed documentation baseline excludes synchronized Blog pages.
-const expectedDocuments = 305 + articleManifest.articles.length;
+const recipeDocuments = LANGS.length * (1 + SOURCES.length * PLATFORMS.length);
+const expectedDocuments = 305 + articleManifest.articles.length + recipeDocuments;
 
 const publicRoot = path.join(root, "dist/public");
 

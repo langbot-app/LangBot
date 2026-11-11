@@ -1,0 +1,72 @@
+---
+title: "Connect Coze to a website chat widget"
+description: "Step-by-step guide to running your Coze app as a a website chat widget bot with LangBot: Coze setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your Coze app behind a a website chat widget bot. LangBot receives messages from a website chat widget, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Coze builds agents visually. LangBot calls a Coze bot through the Coze API, so you can reach platforms Coze does not publish to and keep one bot across many channels.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Coze account or instance that LangBot can reach over the network.
+- Nothing from a third party. Optionally a Cloudflare Turnstile site key and secret key for anti-abuse.
+
+## Networking
+
+Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a public HTTPS address. LangBot Cloud includes one.
+
+## 1. Prepare Coze
+
+1. In the Coze developer console, create a token under **API Management** (coze.com offers Personal Access Tokens; coze.cn also supports service credentials).
+2. Publish your agent with the **API** channel selected and copy its `bot_id`.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **Coze** (official Coze Agent runner plugin) |
+| API Key | The Coze token |
+| Bot ID | The agent's `bot_id` |
+| API Base URL | `https://api.coze.cn` for coze.cn or `https://api.coze.com` for coze.com |
+
+## 3. Create the a website chat widget bot
+
+1. Create a bot with the **Web Page Bot** adapter and bind a pipeline.
+2. Copy the embed code into your site and replace `localhost:5300` with LangBot's public address.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Open the page with the widget and start a conversation.
+
+## Troubleshooting
+
+- Calls fail: check the token and `bot_id` for extra spaces, that the agent was published with the API channel, and that the base URL matches the Coze site.
+- The widget does not load: the embed code still points at `localhost`, or the LangBot address is not served over HTTPS.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for a website chat widget?
+
+Yes, or use LangBot Cloud. Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a public HTTPS address. LangBot Cloud includes one.
+
+### Does the a website chat widget bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Coze setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full a website chat widget setup guide](/en/usage/platforms/webpage)
+- [Full Coze runner guide](/en/usage/pipelines/coze)
+- Other AI back ends on a website chat widget: [Dify](/en/recipes/dify/web-page) · [n8n](/en/recipes/n8n/web-page) · [Langflow](/en/recipes/langflow/web-page) · [DeepSeek](/en/recipes/deepseek/web-page) · [OpenAI (ChatGPT models)](/en/recipes/openai/web-page)
+- Coze on other platforms: [Telegram](/en/recipes/coze/telegram) · [Discord](/en/recipes/coze/discord) · [Slack](/en/recipes/coze/slack) · [Lark (Feishu)](/en/recipes/coze/lark) · [DingTalk](/en/recipes/coze/dingtalk) · [WeCom (internal app)](/en/recipes/coze/wecom)

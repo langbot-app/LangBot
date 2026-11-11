@@ -1,0 +1,74 @@
+---
+title: "Langflow を Slack に接続する"
+description: "LangBot で Langflow アプリを Slack のボットとして動かす手順：Langflow の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Langflow アプリを Slack のボットにつなぎます。LangBot が Slack のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Langflow はドラッグ＆ドロップでエージェントやフローを作れます。LangBot はメッセージごとに Langflow API でフローを実行します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Langflow のアカウントまたはインスタンス。
+- アプリをインストールできる Slack ワークスペースと、[Slack アプリページ](https://api.slack.com/apps) で発行した **App Configuration Tokens**（クイックセットアップ用）。
+
+## ネットワーク
+
+Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+## 1. Langflow を準備する
+
+1. Langflow でフローを作成します（Simple Agent テンプレートから始めると簡単です）。
+2. **Settings** で API キーを作成します。
+3. **Share → API access** のサンプルコードから **Flow ID** を取得します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Langflow**（公式 Langflow Agent ランナープラグイン） |
+| Base URL | LangBot から到達できる Langflow のアドレス |
+| API Key | Langflow の API キー |
+| Flow ID | 実行するフローの ID |
+
+## 3. Slack のボットを作成する
+
+1. **Slack** アダプターでボットを作成し、**Slack クイックセットアップ** を使います。アプリ、スコープ、イベント購読が自動で作成されます。
+2. **Socket Mode**（推奨）を選んで App-Level Token（`xapp-...`）を追加するか、LangBot に公開 HTTPS アドレスがあれば **Webhook** を選びます。設定を反映してボットを有効にします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+アプリの **メッセージ** タブから話しかけるか、追加済みのチャンネルでメンションします。
+
+## トラブルシューティング
+
+- 接続が拒否される場合、`http://localhost:7860` が使えるのは Langflow と LangBot が同じホスト・同じネットワーク名前空間にあるときだけです。
+- App Configuration のアクセス/リフレッシュトークンを App-Level Token 欄に入れないでください。同じアプリの `xapp-` トークンが必要です。
+- App-Level Token のトークンローテーションは無効のままにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Slack には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+### Slack のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Langflow の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Slack の詳しい設定ガイド](/ja/usage/platforms/slack)
+- [Langflow ランナーの詳しいガイド](/ja/usage/pipelines/langflow)
+- Slack で使える他の AI：[Dify](/ja/recipes/dify/slack) · [n8n](/ja/recipes/n8n/slack) · [Coze](/ja/recipes/coze/slack) · [DeepSeek](/ja/recipes/deepseek/slack) · [OpenAI (ChatGPT models)](/ja/recipes/openai/slack)
+- Langflow を他のプラットフォームで使う：[Telegram](/ja/recipes/langflow/telegram) · [Discord](/ja/recipes/langflow/discord) · [Lark（Feishu）](/ja/recipes/langflow/lark) · [DingTalk](/ja/recipes/langflow/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/langflow/wecom) · [WeCom インテリジェントボット](/ja/recipes/langflow/wecombot)

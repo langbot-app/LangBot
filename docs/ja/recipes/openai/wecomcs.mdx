@@ -1,0 +1,74 @@
+---
+title: "OpenAI (ChatGPT models) で WeCom カスタマーサービス の AI ボットを作る"
+description: "LangBot で OpenAI (ChatGPT models) を使った WeCom カスタマーサービス の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは OpenAI (ChatGPT models) のモデルを WeCom カスタマーサービス のボットにつなぎます。LangBot が WeCom カスタマーサービス のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで OpenAI の GPT モデルを使います。ナレッジベース、MCP ツール、Skills、コードサンドボックスも追加できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる OpenAI (ChatGPT models) のアカウントまたはサーバー。
+- API を有効にした WeCom カスタマーサービス（WeChat Kefu）：**企業 ID**、**Secret**、コールバック用 **Token** と **EncodingAESKey**。
+
+## ネットワーク
+
+カスタマーサービスはコールバック URL にイベントを送るため、LangBot には公開 HTTPS アドレスが必要です。LangBot Cloud には用意されています。
+
+## 1. OpenAI (ChatGPT models) のモデルを追加する
+
+1. OpenAI のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに OpenAI、リクエスト URL に `https://api.openai.com/v1` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. モデル ID は OpenAI のモデル一覧にある現行のものを使います。OpenAI 互換のエンドポイントも同じ手順で、それぞれのリクエスト URL を指定します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. WeCom カスタマーサービス のボットを作成する
+
+1. WeCom カスタマーサービスの **開発者設定** で Token と EncodingAESKey を生成し、企業 ID とともに **WeCom カスタマーサービス** アダプターのボットに入力します。
+2. ボットを有効化して Webhook コールバック URL を管理画面に貼り、Secret を入力してボットを再起動します。ユーザーが会話を始めるためのリンクや QR コードを発行します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeChat でカスタマーサービスのリンクを開くか QR コードを読み取り、メッセージを送ります。
+
+## トラブルシューティング
+
+- ネットワークや地域のエラーは、LangBot からリクエスト URL に到達できないことが原因です。制限のある環境では到達可能な互換ゲートウェイを使います。
+- ウェルカムメッセージは WeChat が `welcome_code` を渡したときだけ、期限内に 1 回だけ送れます。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeCom カスタマーサービス には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。カスタマーサービスはコールバック URL にイベントを送るため、LangBot には公開 HTTPS アドレスが必要です。LangBot Cloud には用意されています。
+
+### WeCom カスタマーサービス のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ OpenAI (ChatGPT models) の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeCom カスタマーサービス の詳しい設定ガイド](/ja/usage/platforms/wecom/wecomcs)
+- [モデルの設定](/ja/usage/models/readme)
+- WeCom カスタマーサービス で使える他の AI：[Dify](/ja/recipes/dify/wecomcs) · [n8n](/ja/recipes/n8n/wecomcs) · [Coze](/ja/recipes/coze/wecomcs) · [Langflow](/ja/recipes/langflow/wecomcs) · [DeepSeek](/ja/recipes/deepseek/wecomcs)
+- OpenAI (ChatGPT models) を他のプラットフォームで使う：[Telegram](/ja/recipes/openai/telegram) · [Discord](/ja/recipes/openai/discord) · [Slack](/ja/recipes/openai/slack) · [Lark（Feishu）](/ja/recipes/openai/lark) · [DingTalk](/ja/recipes/openai/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/openai/wecom)

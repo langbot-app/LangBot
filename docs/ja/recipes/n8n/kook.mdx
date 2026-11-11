@@ -1,0 +1,73 @@
+---
+title: "n8n を KOOK に接続する"
+description: "LangBot で n8n アプリを KOOK のボットとして動かす手順：n8n の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの n8n アプリを KOOK のボットにつなぎます。LangBot が KOOK のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+n8n がワークフローを実行し、LangBot がチャットプラットフォーム、セッション、配信を担当します。メッセージごとに Webhook でワークフローを呼び出します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる n8n のアカウントまたはインスタンス。
+- KOOK 開発者センターで作成したボットとその **Bot Token**。
+
+## ネットワーク
+
+KOOK アダプターに必要なのはボットトークンだけで、LangBot から KOOK に接続します。
+
+## 1. n8n を準備する
+
+1. ワークフローを **Webhook** または **On chat message** トリガーで開始します。ストリーミング返信には **Response Mode** を **Streaming** にします。
+2. **AI Agent** ノード（ストリーミング）か **Respond to Webhook** ノードで応答し、応答キー名を LangBot の出力キー名と一致させます。
+3. **Active** でワークフローを有効にし、本番用 Webhook URL をコピーします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **n8n**（公式 n8n ワークフローランナープラグイン） |
+| Webhook URL | ワークフローの本番用 Webhook URL |
+| 認証方式 | なし、Basic Auth、JWT、Header のいずれか（トリガーノードと同じ設定） |
+
+## 3. KOOK のボットを作成する
+
+1. **KOOK** アダプターでボットを作成し、Bot Token を入力します。
+2. ボットの権限を設定し、サーバーへ招待します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+ボットが読めるチャンネルで、トリガー条件に合うメッセージを送ります。
+
+## トラブルシューティング
+
+- 返信が空の場合は、**Respond to Webhook** のキー名が LangBot の出力キー名と一致しているか確認します。
+- テスト URL はエディターが待ち受けている間しか使えません。有効化したワークフローの本番 URL を使います。
+- チャンネルで返信がない場合は、ボットのチャンネル権限とパイプラインのグループトリガー条件を確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### KOOK には公開 IP のあるサーバーが必要ですか？
+
+いいえ。KOOK アダプターに必要なのはボットトークンだけで、LangBot から KOOK に接続します。
+
+### KOOK のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ n8n の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [KOOK の詳しい設定ガイド](/ja/usage/platforms/kook)
+- [n8n ランナーの詳しいガイド](/ja/usage/pipelines/n8n)
+- KOOK で使える他の AI：[Dify](/ja/recipes/dify/kook) · [Coze](/ja/recipes/coze/kook) · [Langflow](/ja/recipes/langflow/kook) · [DeepSeek](/ja/recipes/deepseek/kook) · [OpenAI (ChatGPT models)](/ja/recipes/openai/kook)
+- n8n を他のプラットフォームで使う：[Telegram](/ja/recipes/n8n/telegram) · [Discord](/ja/recipes/n8n/discord) · [Slack](/ja/recipes/n8n/slack) · [Lark（Feishu）](/ja/recipes/n8n/lark) · [DingTalk](/ja/recipes/n8n/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/n8n/wecom)

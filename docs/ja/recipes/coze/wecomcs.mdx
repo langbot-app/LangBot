@@ -1,0 +1,72 @@
+---
+title: "Coze を WeCom カスタマーサービス に接続する"
+description: "LangBot で Coze アプリを WeCom カスタマーサービス のボットとして動かす手順：Coze の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Coze アプリを WeCom カスタマーサービス のボットにつなぎます。LangBot が WeCom カスタマーサービス のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Coze ではエージェントをビジュアルに作れます。LangBot は Coze API で Coze ボットを呼び出すため、Coze が直接公開できないプラットフォームにも同じボットを展開できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Coze のアカウントまたはインスタンス。
+- API を有効にした WeCom カスタマーサービス（WeChat Kefu）：**企業 ID**、**Secret**、コールバック用 **Token** と **EncodingAESKey**。
+
+## ネットワーク
+
+カスタマーサービスはコールバック URL にイベントを送るため、LangBot には公開 HTTPS アドレスが必要です。LangBot Cloud には用意されています。
+
+## 1. Coze を準備する
+
+1. Coze の開発者コンソールの **API 管理** でトークンを作成します（coze.com は個人アクセストークン、coze.cn はサービス資格情報にも対応）。
+2. 公開時に **API** チャネルを選んでエージェントを公開し、`bot_id` を控えます。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Coze**（公式 Coze Agent ランナープラグイン） |
+| API Key | Coze のトークン |
+| Bot ID | エージェントの `bot_id` |
+| API Base URL | coze.cn は `https://api.coze.cn`、coze.com は `https://api.coze.com` |
+
+## 3. WeCom カスタマーサービス のボットを作成する
+
+1. WeCom カスタマーサービスの **開発者設定** で Token と EncodingAESKey を生成し、企業 ID とともに **WeCom カスタマーサービス** アダプターのボットに入力します。
+2. ボットを有効化して Webhook コールバック URL を管理画面に貼り、Secret を入力してボットを再起動します。ユーザーが会話を始めるためのリンクや QR コードを発行します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeChat でカスタマーサービスのリンクを開くか QR コードを読み取り、メッセージを送ります。
+
+## トラブルシューティング
+
+- 呼び出しに失敗する場合は、トークンと `bot_id` に余分な空白がないか、API チャネルで公開したか、Base URL が利用サイトと一致しているかを確認します。
+- ウェルカムメッセージは WeChat が `welcome_code` を渡したときだけ、期限内に 1 回だけ送れます。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeCom カスタマーサービス には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。カスタマーサービスはコールバック URL にイベントを送るため、LangBot には公開 HTTPS アドレスが必要です。LangBot Cloud には用意されています。
+
+### WeCom カスタマーサービス のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Coze の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeCom カスタマーサービス の詳しい設定ガイド](/ja/usage/platforms/wecom/wecomcs)
+- [Coze ランナーの詳しいガイド](/ja/usage/pipelines/coze)
+- WeCom カスタマーサービス で使える他の AI：[Dify](/ja/recipes/dify/wecomcs) · [n8n](/ja/recipes/n8n/wecomcs) · [Langflow](/ja/recipes/langflow/wecomcs) · [DeepSeek](/ja/recipes/deepseek/wecomcs) · [OpenAI (ChatGPT models)](/ja/recipes/openai/wecomcs)
+- Coze を他のプラットフォームで使う：[Telegram](/ja/recipes/coze/telegram) · [Discord](/ja/recipes/coze/discord) · [Slack](/ja/recipes/coze/slack) · [Lark（Feishu）](/ja/recipes/coze/lark) · [DingTalk](/ja/recipes/coze/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/coze/wecom)

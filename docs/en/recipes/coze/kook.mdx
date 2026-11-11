@@ -1,0 +1,72 @@
+---
+title: "Connect Coze to KOOK"
+description: "Step-by-step guide to running your Coze app as a KOOK bot with LangBot: Coze setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your Coze app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Coze builds agents visually. LangBot calls a Coze bot through the Coze API, so you can reach platforms Coze does not publish to and keep one bot across many channels.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Coze account or instance that LangBot can reach over the network.
+- A bot created in the KOOK developer center and its **Bot Token**.
+
+## Networking
+
+The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+## 1. Prepare Coze
+
+1. In the Coze developer console, create a token under **API Management** (coze.com offers Personal Access Tokens; coze.cn also supports service credentials).
+2. Publish your agent with the **API** channel selected and copy its `bot_id`.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **Coze** (official Coze Agent runner plugin) |
+| API Key | The Coze token |
+| Bot ID | The agent's `bot_id` |
+| API Base URL | `https://api.coze.cn` for coze.cn or `https://api.coze.com` for coze.com |
+
+## 3. Create the KOOK bot
+
+1. Create a bot with the **KOOK** adapter and enter the Bot Token.
+2. Grant the bot permissions and invite it to your server.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send a message that matches the trigger rules in a channel the bot can read.
+
+## Troubleshooting
+
+- Calls fail: check the token and `bot_id` for extra spaces, that the agent was published with the API channel, and that the base URL matches the Coze site.
+- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for KOOK?
+
+No. The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+### Does the KOOK bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Coze setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full KOOK setup guide](/en/usage/platforms/kook)
+- [Full Coze runner guide](/en/usage/pipelines/coze)
+- Other AI back ends on KOOK: [Dify](/en/recipes/dify/kook) · [n8n](/en/recipes/n8n/kook) · [Langflow](/en/recipes/langflow/kook) · [DeepSeek](/en/recipes/deepseek/kook) · [OpenAI (ChatGPT models)](/en/recipes/openai/kook)
+- Coze on other platforms: [Telegram](/en/recipes/coze/telegram) · [Discord](/en/recipes/coze/discord) · [Slack](/en/recipes/coze/slack) · [Lark (Feishu)](/en/recipes/coze/lark) · [DingTalk](/en/recipes/coze/dingtalk) · [WeCom (internal app)](/en/recipes/coze/wecom)

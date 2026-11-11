@@ -1,0 +1,74 @@
+---
+title: "用 Gemini 搭建KOOK AI 机器人"
+description: "使用 LangBot 搭建由 Gemini 驱动的KOOK AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 Gemini 模型接到KOOK机器人上。LangBot 接收KOOK消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+用 LangBot 内置 Agent 调用 Google Gemini 模型；模型支持视觉时还可以识别图片。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 Gemini 账号或服务。
+- 在 KOOK 开发者中心创建的机器人及其 **Bot Token**。
+
+## 网络要求
+
+KOOK 适配器只需要 Bot Token，由 LangBot 主动连接 KOOK。
+
+## 1. 添加 Gemini 模型
+
+1. 在 Google Gemini 控制台创建 API Key。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选择 Google Gemini，再填入 API Key 和模型名称。
+3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
+4. 在 Google AI Studio 创建密钥。需要识别图片时在模型上勾选 **视觉**。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建KOOK机器人
+
+1. 新建机器人，选择 **KOOK** 适配器并填写 Bot Token。
+2. 为机器人配置权限并邀请进你的服务器。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在机器人可读的频道中发送满足触发规则的消息。
+
+## 常见问题排查
+
+- 图片被忽略：在模型上勾选 **视觉**，并确认该平台适配器支持接收图片。
+- 频道中没有回复：检查机器人的频道权限以及流水线的群聊触发规则。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入KOOK需要有公网 IP 的服务器吗？
+
+不需要。KOOK 适配器只需要 Bot Token，由 LangBot 主动连接 KOOK。
+
+### KOOK机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 Gemini 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [KOOK完整接入文档](/zh/usage/platforms/kook)
+- [模型配置](/zh/usage/models/readme)
+- KOOK上的其他 AI 后端：[Dify](/zh/recipes/dify/kook) · [n8n](/zh/recipes/n8n/kook) · [Coze](/zh/recipes/coze/kook) · [Langflow](/zh/recipes/langflow/kook) · [DeepSeek](/zh/recipes/deepseek/kook)
+- Gemini 接入其他平台：[Telegram](/zh/recipes/gemini/telegram) · [Discord](/zh/recipes/gemini/discord) · [Slack](/zh/recipes/gemini/slack) · [飞书](/zh/recipes/gemini/lark) · [钉钉](/zh/recipes/gemini/dingtalk) · [企业微信应用](/zh/recipes/gemini/wecom)
