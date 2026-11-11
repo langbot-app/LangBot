@@ -41,6 +41,7 @@ from .resource_builder import AgentResourceBuilder
 from .platform_tools import PLATFORM_TOOLS_BY_NAME, freeze_platform_context
 from .result_normalizer import AgentResultNormalizer
 from .run_journal import AgentRunJournal
+from .run_ledger_store import TerminalRunTransitionError
 from .session_registry import AgentRunSessionRegistry, get_session_registry
 from .state_scope import build_state_context
 from ...provider.tools.loaders import skill as skill_loader
@@ -589,20 +590,29 @@ class AgentRunOrchestrator:
                             if result_observer is not None:
                                 await result_observer(cancelled_result)
                             await self.result_normalizer.normalize(cancelled_result, descriptor)
-            await self.journal.finalize_run(
+            finalized = await self._finalize_run(
                 run_id=run_id,
                 status=terminal_status or 'completed',
                 status_reason=terminal_reason,
                 usage=terminal_usage,
             )
-            execution_outcome = {'completed': 'success', 'failed': 'failed', 'cancelled': 'cancelled'}.get(
-                terminal_status or '', 'unknown'
-            )
+            ledger_status = finalized.get('status') if isinstance(finalized, dict) else None
+            if isinstance(ledger_status, str) and ledger_status != (terminal_status or 'completed'):
+                # Another writer finished the run first; report what the run
+                # ledger holds instead of the status this stream would have set.
+                terminal_status = ledger_status
+                terminal_reason = finalized.get('status_reason') or terminal_reason
+            execution_outcome = {
+                'completed': 'success',
+                'failed': 'failed',
+                'cancelled': 'cancelled',
+                'timeout': 'timeout',
+            }.get(terminal_status or '', 'unknown')
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except (asyncio.CancelledError, GeneratorExit):
             execution_outcome = 'cancelled'
             execution_error = 'cancelled'
-            await self.journal.finalize_run(
+            await self._finalize_run(
                 run_id=run_id,
                 status='cancelled',
                 status_reason='consumer_cancelled',
@@ -622,7 +632,7 @@ class AgentRunOrchestrator:
 
             execution_error = describe_exception(exc)
             failed_usage = terminal_usage
-            await self.journal.finalize_run(
+            await self._finalize_run(
                 run_id=run_id,
                 status=execution_outcome,
                 status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
@@ -952,6 +962,21 @@ class AgentRunOrchestrator:
 
     def _is_deadline_exhausted(self, context: RunnerContextPayload) -> bool:
         return self.invoker._is_deadline_exhausted(context)
+
+    async def _finalize_run(self, **kwargs: typing.Any) -> dict[str, typing.Any] | None:
+        """Write this execution's terminal status unless the run already has one.
+
+        Another writer can finish the run first: the Runner finalizing its own
+        run, a cancel request, or lease recovery marking it interrupted. The
+        first terminal status stays; closing the stream afterwards must not
+        raise, which would replace the real outcome (or a pending
+        cancellation) with a second, unrelated failure.
+        """
+        try:
+            return await self.journal.finalize_run(**kwargs)
+        except TerminalRunTransitionError as exc:
+            self.ap.logger.info(f'Run already finalized, keeping its terminal status: {exc}')
+            return await self.journal.get_run(kwargs['run_id'])
 
     async def _close_generator(
         self,

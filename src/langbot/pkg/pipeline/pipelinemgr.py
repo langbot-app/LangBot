@@ -491,6 +491,7 @@ class RuntimePipeline:
                 with stage_scope() as node:
                     lane_outcome = 'success'
                     lane_error = ''
+                    self._note_adapter_on_trace(query)
                     try:
                         from ..platform.processing_indicator import processing_indicator
 
@@ -523,11 +524,7 @@ class RuntimePipeline:
                         if lane_outcome == 'failed' and not lane_error:
                             state = trace_mod.current()
                             lane_error = (state.failure_reason or state.first_error) if state is not None else ''
-                        config = getattr(query, 'pipeline_config', None)
-                        try:
-                            runner_id = (RunnerConfigResolver.resolve_runner_id(config) or '') if config else ''
-                        except Exception:
-                            runner_id = ''
+                        runner_id = self._engaged_runner()
                         record_execution(
                             self.ap,
                             getattr(self, 'execution_context', None),
@@ -761,6 +758,38 @@ class RuntimePipeline:
         finally:
             self.ap.logger.debug(f'Query {query.query_id} processed')
 
+    @staticmethod
+    def _note_adapter_on_trace(query: pipeline_query.Query) -> None:
+        """Attach the platform adapter the lane serves, whichever handler runs.
+
+        Command queries never reach the chat handler, which used to be the only
+        place that named the adapter on the chain.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            adapter = getattr(query, 'adapter', None)
+            if state is not None and adapter is not None and not state.adapter:
+                state.adapter = adapter.__class__.__name__
+        except Exception:
+            pass
+
+    @staticmethod
+    def _engaged_runner() -> str:
+        """The Runner this chain actually handed work to; '' when none ran.
+
+        The Pipeline configuration always names a Runner, but a command or a
+        lane that broke before the chat handler never engaged it.
+        """
+        try:
+            from ..telemetry.trace import current as current_trace
+
+            state = current_trace()
+            return (state.runner or '') if state is not None else ''
+        except Exception:
+            return ''
+
     def _record_lane_failure(self, query: pipeline_query.Query, reason: str) -> None:
         """Land one failed ``runner/execute`` stage on the owning execution trace."""
         try:
@@ -784,7 +813,7 @@ class RuntimePipeline:
                         family='runner',
                         operation='execute',
                         mode='pipeline',
-                        runner=(RunnerConfigResolver.resolve_runner_id(query.pipeline_config) or ''),
+                        runner=self._engaged_runner(),
                         outcome='failed',
                         error=detail,
                         node=node,

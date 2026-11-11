@@ -990,15 +990,24 @@ class RuntimeBot:
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
-        outcome = 'success'
-        error_detail = ''
-        for result in results:
-            if isinstance(result, BaseException):
-                from ..telemetry.execution import describe_exception
+        from ..telemetry.execution import describe_exception, is_cancellation
 
-                outcome = 'failed'
-                error_detail = error_detail or describe_exception(result)
-        return outcome, error_detail
+        failure_detail = ''
+        cancel_detail = ''
+        for result in results:
+            if not isinstance(result, BaseException):
+                continue
+            if is_cancellation(result):
+                # A cancelled delivery (stopped run, superseding message,
+                # shutdown) is not a failed one.
+                cancel_detail = cancel_detail or describe_exception(result)
+            else:
+                failure_detail = failure_detail or describe_exception(result)
+        if failure_detail:
+            return 'failed', failure_detail
+        if cancel_detail:
+            return 'cancelled', cancel_detail
+        return 'success', ''
 
     def _record_platform_event(self, event, adapter, outcome: str, error_detail: str, node: str = '') -> None:
         from ..telemetry.execution import record
@@ -1076,9 +1085,11 @@ class RuntimeBot:
             # another subscriber or the primary route from receiving the event.
             results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
-            from ..telemetry.execution import describe_exception
+            from ..telemetry.execution import describe_exception, is_cancellation
 
-            self._record_platform_event(event, adapter, 'failed', describe_exception(exc), node)
+            self._record_platform_event(
+                event, adapter, 'cancelled' if is_cancellation(exc) else 'failed', describe_exception(exc), node
+            )
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
 
@@ -1133,6 +1144,7 @@ class RuntimeBot:
                 return
         except Exception as exc:
             from ..telemetry import trace as trace_mod
+            from ..telemetry.execution import describe_exception
 
             # No matching declaration was resolved: log locally without
             # reporting a failed delivery for every unrelated incoming event.
@@ -1147,6 +1159,7 @@ class RuntimeBot:
                     failure_code='runner_failed',
                     reason=str(exc),
                     text=f'Plugin processor {processor_uuid} failed: {exc}',
+                    error=describe_exception(exc),
                 )
         agent = {**agent, 'supported_event_patterns': patterns}
         return await self._dispatch_eba_event_to_processor(
@@ -1329,7 +1342,9 @@ class RuntimeBot:
 
         try:
             binding = self._agent_product_to_binding(agent, event_binding, event_type, self.bot_entity.uuid)
-        except Exception:
+        except Exception as exc:
+            from ..telemetry.execution import describe_exception
+
             return await self._record_event_route_trace(
                 event_type=event_type,
                 status='failed',
@@ -1340,6 +1355,7 @@ class RuntimeBot:
                 failure_code='runner_failed',
                 reason='Agent configuration is invalid',
                 text=f'Failed to build Agent binding for EBA event {event_type}: {traceback.format_exc()}',
+                error=describe_exception(exc),
             )
         if binding is None:
             return await self._record_event_route_trace(

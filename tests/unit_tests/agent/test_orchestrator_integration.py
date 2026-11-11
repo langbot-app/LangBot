@@ -2066,3 +2066,57 @@ async def test_agent_cannot_deliver_exported_files_without_reply_api(clean_agent
             )
         ]
     assert await get_session_registry().list_active_runs() == []
+
+
+class SelfFinalizingPluginConnector(FakePluginConnector):
+    """A Runner that finalizes its own run through the ledger mid-stream."""
+
+    def __init__(self, db_engine, ledger_status: str, results=None, error: Exception | None = None):
+        super().__init__(results=results)
+        self.db_engine = db_engine
+        self.ledger_status = ledger_status
+        self.after_finalize_error = error
+
+    async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+        self.contexts.append(context)
+        await RunLedgerStore(self.db_engine).finalize_run(
+            run_id=context['run_id'], status=self.ledger_status, status_reason='runner_finalized'
+        )
+        for result in self.results:
+            yield result
+        if self.after_finalize_error is not None:
+            raise self.after_finalize_error
+
+
+@pytest.mark.asyncio
+async def test_stream_end_after_runner_finalized_run_keeps_its_terminal_status(clean_agent_state):
+    """Closing the stream of an already-terminal run must not raise a second failure."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(
+        db_engine,
+        'failed',
+        results=[{'type': 'message.completed', 'data': {'message': {'role': 'assistant', 'content': 'partial'}}}],
+    )
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    # Previously: ValueError: Cannot transition terminal run ... from failed to completed
+    messages = [message async for message in orchestrator.run_from_query(make_query())]
+
+    assert len(messages) == 1
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'failed'
+    assert run['status_reason'] == 'runner_finalized'
+
+
+@pytest.mark.asyncio
+async def test_runner_error_after_runner_finalized_run_surfaces_the_real_error(clean_agent_state):
+    """The Runner's own error propagates instead of a terminal-transition ValueError."""
+    db_engine = clean_agent_state
+    plugin_connector = SelfFinalizingPluginConnector(db_engine, 'completed', error=RuntimeError('upstream broke'))
+    orchestrator = AgentRunOrchestrator(FakeApplication(plugin_connector, db_engine), FakeRegistry(make_descriptor()))
+
+    with pytest.raises(RunnerExecutionError, match='upstream broke'):
+        [message async for message in orchestrator.run_from_query(make_query())]
+
+    run = await RunLedgerStore(db_engine).get_run(plugin_connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
