@@ -177,7 +177,10 @@ class InteractionManager:
         actor_id = actor.get('actor_id')
         if responders == 'actor' and not actor_id:
             raise ValueError('Interaction has no actor')
-        capabilities = adapter.get_interaction_capabilities()
+        # Legacy adapters (pkg/platform/sources, e.g. HTTP Bot and OneBot) predate
+        # native interactions; they deliver the text fallback.
+        get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
+        capabilities = get_capabilities() if callable(get_capabilities) else InteractionDeliveryCapabilities()
         if not isinstance(capabilities, InteractionDeliveryCapabilities):
             capabilities = InteractionDeliveryCapabilities.model_validate(capabilities)
         supported_apis = adapter.get_supported_apis() if callable(getattr(adapter, 'get_supported_apis', None)) else []
