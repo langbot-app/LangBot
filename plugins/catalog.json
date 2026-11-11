@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.9",
+    "version": "0.2.10",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
@@ -71,7 +71,7 @@
   },
   {
     "id": "langbot-team/CozeAgent",
-    "version": "0.2.4",
+    "version": "0.2.5",
     "category": "Runner",
     "path": "Runner/coze-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/coze-agent"
@@ -92,7 +92,7 @@
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.7",
+    "version": "0.2.8",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"

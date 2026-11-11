@@ -70,10 +70,10 @@ def model_reasoning_levels(config: dict[str, typing.Any]) -> dict[str, str]:
     selection = config.get("model")
     if not isinstance(selection, dict):
         return {}
-    levels = selection.get("reasoning", {})
+    levels = selection.get("reasoning")
     if not isinstance(levels, dict):
-        raise ValueError("Model reasoning settings must be an object")
-    return dict(levels)
+        return {}
+    return {str(k): str(v) for k, v in levels.items() if isinstance(v, str)}
 
 
 def _normalize_model_id(model_id: typing.Any) -> str | None:
