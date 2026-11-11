@@ -130,7 +130,8 @@ class TraceState:
         self.model_name = ''
         self.features: dict[str, int | dict[str, int]] = {}
         self.pipeline_plugins: typing.Any = None
-        # First adapter/runner seen on a node, used for the chain record.
+        # Platform adapter (inbound event first) and first runner seen on a
+        # node, used for the chain record.
         self.node_adapter = ''
         self.node_runner = ''
         # Steps currently open anywhere in this chain, in the order they were
@@ -177,7 +178,10 @@ class TraceState:
         """Remember only what the terminal chain record needs from a node."""
         self.stage_count += 1
         self.last_outcome = outcome or 'unknown'
-        if adapter and not self.node_adapter:
+        # A tool node's adapter is its tool source (native/plugin/mcp/skill),
+        # never a platform. The inbound platform event closes last, so it
+        # overrides whatever platform stage finished first.
+        if adapter and family != 'tool' and (not self.node_adapter or family == 'platform_event'):
             self.node_adapter = adapter
         if runner and not self.node_runner:
             self.node_runner = runner
