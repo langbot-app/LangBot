@@ -33,6 +33,7 @@ class WebSocketReplyContext:
     scope: WebSocketScope
     pipeline_uuid: str
     session_id: str | None
+    stream: bool = True
 
 
 class WebSocketMessage(pydantic.BaseModel):
@@ -158,10 +159,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
     )
     """后端主动推送消息的队列"""
 
-    # 流式输出开关
-    stream_enabled: bool = pydantic.Field(default=True, exclude=True)
-    """是否启用流式输出"""
-
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         super().__init__(
             config=config,
@@ -189,7 +186,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
             outbound_queue_size = 100
         self.outbound_message_queue = asyncio.Queue(maxsize=outbound_queue_size)
         self.inbound_listener_tasks = set()
-        self.stream_enabled = True
 
     @staticmethod
     def _conversation_key(pipeline_uuid: str, session_id: str | None = None) -> str:
@@ -472,8 +468,13 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         return message_data.model_dump()
 
     async def is_stream_output_supported(self) -> bool:
-        """根据stream_enabled标志返回是否支持流式输出"""
-        return self.stream_enabled
+        """Return the default; each message may opt out of streaming."""
+        return True
+
+    async def is_stream_output_supported_for(self, message_source: platform_events.MessageEvent | None) -> bool:
+        """Return the streaming choice made by the client for this message."""
+        reply_context = getattr(message_source, '_websocket_reply_context', None)
+        return reply_context.stream if isinstance(reply_context, WebSocketReplyContext) else True
 
     def register_listener(
         self,
@@ -644,8 +645,6 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
         session_type = connection.session_type
         conversation_key = self._conversation_key(pipeline_uuid, connection.session_id)
 
-        self.stream_enabled = message_data.get('stream', True)
-
         use_session = self.websocket_group_session if session_type == 'group' else self.websocket_person_session
 
         message_chain_obj = message_data.get('message', [])
@@ -715,6 +714,7 @@ class WebSocketAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter)
                 scope=connection.scope,
                 pipeline_uuid=pipeline_uuid,
                 session_id=connection.session_id,
+                stream=bool(message_data.get('stream', True)),
             ),
         )
         object.__setattr__(event, '_langbot_pipeline_uuid', pipeline_uuid)

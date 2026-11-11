@@ -89,6 +89,8 @@ async def receive_message(monkeypatch, adapter_class, transport, event_type, pay
 
             response = await app.test_client().post('/qq', json={'op': 0, 't': event_type, 'd': payload})
             assert response.status_code == 200
+            # The callback is acknowledged before the message is processed.
+            await asyncio.gather(*adapter.bot._processing_tasks)
     finally:
         await adapter.kill()
     return received, outbound

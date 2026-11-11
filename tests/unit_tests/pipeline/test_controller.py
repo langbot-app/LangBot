@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
@@ -390,3 +391,59 @@ async def test_consumer_transfers_query_from_queue_to_running_task():
     assert session._semaphore._value == 1
     assert controller.semaphore._value == 10
     app.logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('read', [True, False])
+async def test_claimed_message_is_merged_or_runs_on_its_own(read):
+    """A message the active run never read is processed, in order, instead of being lost."""
+    app = make_app()
+    app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()
+    session = SimpleNamespace(_semaphore=asyncio.Semaphore(1))
+    app.sess_mgr.get_session.return_value = session
+    await session._semaphore.acquire()
+    app.query_pool = QueryPool()
+    outcome = asyncio.get_running_loop().create_future()
+
+    async def claim(query):
+        if outcome.done() or query.query_id != 1:
+            return False
+        object.__setattr__(query, '_steering_outcome', outcome)
+        return True
+
+    app.agent_run_orchestrator.try_claim_steering_from_query.side_effect = claim
+    claimed, later = make_query(1, 'p'), make_query(2, 'p')
+    for query in (claimed, later):
+        query._execution_context = dataclasses.replace(query._execution_context, query_uuid=f'q{query.query_id}')
+        app.query_pool.queries.append(query)
+        app.query_pool.cached_queries[('workspace-test', f'q{query.query_id}')] = query
+    processed = []
+    controller = Controller(app)
+
+    async def process(query, *, selected_session, global_slot_reserved):
+        processed.append(query)
+        async with app.query_pool:
+            selected_session._semaphore.release()
+            app.query_pool.condition.notify_all()
+        controller.semaphore.release()
+
+    controller._process_query = process
+    app.task_mgr = SimpleNamespace(create_task=lambda coro, **kwargs: asyncio.create_task(coro))
+    consumer = asyncio.create_task(controller.consumer())
+    try:
+        await asyncio.sleep(0.01)
+        # Owned by the active run, but still queued and not lost.
+        assert claimed in app.query_pool.queries
+        assert processed == []
+
+        outcome.set_result(read)
+        async with app.query_pool:
+            session._semaphore.release()
+            app.query_pool.condition.notify_all()
+        await asyncio.sleep(0.01)
+    finally:
+        consumer.cancel()
+        await asyncio.gather(consumer, return_exceptions=True)
+
+    assert processed == ([later] if read else [claimed, later])
+    assert app.query_pool.queries == []

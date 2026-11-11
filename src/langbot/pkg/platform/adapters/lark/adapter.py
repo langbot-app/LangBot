@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from langbot.pkg.core.task_boundary import create_detached_task
 from langbot.pkg.i18n.adapters import adapter_t, localized_adapter
 
 from langbot.pkg.platform.sources.lark import (
@@ -796,7 +797,14 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 event_data.sender = EventSender(raw_event['sender'])
                 p2v1.event = event_data
                 p2v1.schema = data.get('schema', '2.0')
-                await self._handle_message_event(p2v1)
+                if len(self.inbound_event_tasks) >= self._MAX_INBOUND_EVENTS:
+                    # Leave the event unacknowledged so Lark redelivers it later.
+                    return {'code': 503, 'message': 'too many inbound events'}, 503
+                # Lark redelivers and drops the connection after three seconds, which
+                # would cancel this request while it is still answering.
+                task = create_detached_task(self._handle_message_event(p2v1))
+                self.inbound_event_tasks.add(task)
+                task.add_done_callback(self.inbound_event_tasks.discard)
                 return {'code': 200, 'message': 'ok'}
             if event_type == 'im.chat.member.bot.added_v1':
                 await self._handle_bot_added_event(lark_oapi.im.v1.P2ImChatMemberBotAddedV1(data))

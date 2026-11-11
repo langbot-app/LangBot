@@ -15,7 +15,12 @@ from langbot.pkg.agent.runner.errors import RunnerExecutionError
 from langbot.pkg.agent.runner.orchestrator import AgentRunOrchestrator
 from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
 from langbot.pkg.agent.runner.binding_resolver import AgentBindingResolver
-from langbot.pkg.agent.runner.session_registry import get_session_registry
+from langbot.pkg.agent.runner.transcript_store import TranscriptStore
+from langbot.pkg.agent.runner.session_registry import (
+    get_session_registry,
+    pending_steering_outcome,
+    release_steering_claim,
+)
 from langbot.pkg.agent.runner.run_ledger_store import RunLedgerStore
 from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 from langbot.pkg.api.http.context import ExecutionContext
@@ -1091,7 +1096,7 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         conversation_id=steering_query.session.using_conversation.uuid,
         limit=10,
     )
-    dropped = next(event for event in event_logs if event['event_type'] == 'steering.dropped')
+    released = next(event for event in event_logs if event['event_type'] == 'steering.released')
     queued = next(
         event
         for event in event_logs
@@ -1099,10 +1104,55 @@ async def test_unconsumed_steering_audit_does_not_persist_pinned_context(clean_a
         and event.get('metadata', {}).get('steering', {}).get('status') == 'queued'
     )
 
-    assert dropped['input_summary'] == 'Unconsumed steering input dropped'
-    assert dropped['input_json'] is None
-    assert dropped['metadata']['steering']['original_event_id'] == queued['event_id']
+    assert released['input_summary'] == 'Unconsumed steering input released'
+    assert released['input_json'] is None
+    assert released['metadata']['steering']['original_event_id'] == queued['event_id']
     assert pinned_context not in str(event_logs)
+
+    # The unread message runs on its own without entering the Transcript twice.
+    assert pending_steering_outcome(steering_query).result() is False
+    release_steering_claim(steering_query)
+    assert len([message async for message in orchestrator.run_from_query(steering_query)]) == 1
+    items, *_ = await TranscriptStore(db_engine).page_transcript(
+        conversation_id=steering_query.session.using_conversation.uuid
+    )
+    assert [item['event_id'] for item in items if item['role'] == 'user'].count(queued['event_id']) == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_run_drops_unread_steering(clean_agent_state):
+    """Stopping a turn also stops the follow-ups that were added to it."""
+
+    class HangingPluginConnector(FakePluginConnector):
+        def __init__(self):
+            super().__init__()
+            self.started = asyncio.Event()
+
+        async def run_runner(self, plugin_author, plugin_name, runner_name, context):
+            self.started.set()
+            await asyncio.Event().wait()
+            yield {}
+
+    descriptor = make_descriptor()
+    descriptor.capabilities.steering = True
+    connector = HangingPluginConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(descriptor))
+
+    async def consume_active_run():
+        return [message async for message in orchestrator.run_from_query(make_query())]
+
+    active_task = asyncio.create_task(consume_active_run())
+    await asyncio.wait_for(connector.started.wait(), timeout=1)
+    steering_query = make_query()
+    steering_query.query_id = 1002
+    steering_query.message_chain[0].id = 'msg_002'
+    assert await orchestrator.try_claim_steering_from_query(steering_query) is True
+    assert not pending_steering_outcome(steering_query).done()
+    active_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await active_task
+
+    assert pending_steering_outcome(steering_query).result() is True
 
 
 @pytest.mark.asyncio

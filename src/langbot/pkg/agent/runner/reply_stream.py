@@ -12,6 +12,8 @@ import pydantic
 from langbot_plugin.api.entities.builtin.platform import events, message
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
+from ...platform.stream_output import stream_output_supported
+
 
 logger = logging.getLogger(__name__)
 
@@ -95,9 +97,9 @@ class ReplyStreamSession:
                         and callable(getattr(self.adapter, 'create_message_card_for_target', None))
                         and callable(getattr(self.adapter, 'reply_message_chunk_for_target', None))
                     )
-                    reply.native = (
-                        self.source is not None or target_streaming
-                    ) and await self.adapter.is_stream_output_supported()
+                    reply.native = (self.source is not None or target_streaming) and await stream_output_supported(
+                        self.adapter, self.source
+                    )
                     if reply.native:
                         if self.source is not None:
                             await self.adapter.create_message_card(reply.delivery_id, self.source)

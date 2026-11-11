@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.platform.ingress_dedup import InboundDeliveries
 from langbot.pkg.api.http.context import ExecutionContext
 
 
@@ -36,6 +37,7 @@ class TestEventRouteTrace:
         from langbot.pkg.platform.botmgr import RuntimeBot
 
         bot = object.__new__(RuntimeBot)
+        bot._inbound_deliveries = InboundDeliveries()
         bot.bot_entity = SimpleNamespace(
             uuid='bot-1',
             adapter='aiocqhttp',
@@ -342,6 +344,7 @@ class TestEBAEventBindings:
         from langbot.pkg.platform.botmgr import RuntimeBot
 
         bot = object.__new__(RuntimeBot)
+        bot._inbound_deliveries = InboundDeliveries()
         bot.bot_entity = SimpleNamespace(event_bindings=bindings)
         return bot
 
@@ -492,6 +495,7 @@ def test_websocket_task_override_does_not_mutate_bot_default():
     from langbot.pkg.platform.botmgr import RuntimeBot
 
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = Mock(use_pipeline_uuid='default-uuid')
     adapter = Mock()
     adapter.get_pipeline_uuid_override.return_value = 'connection-pipeline'
@@ -519,6 +523,7 @@ async def test_interaction_callback_wakes_original_run_without_new_route():
         wake_waiter=Mock(return_value=True),
     )
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(uuid='bot-1')
     bot.ap = SimpleNamespace(agent_run_orchestrator=SimpleNamespace(interaction_manager=manager))
     adapter = SimpleNamespace(update_interaction=AsyncMock())
@@ -565,6 +570,7 @@ async def test_restart_expired_callback_invalidates_old_card():
         store=SimpleNamespace(get_by_callback_token=AsyncMock(return_value=stale)),
     )
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(uuid='bot-1')
     bot.ap = SimpleNamespace(agent_run_orchestrator=SimpleNamespace(interaction_manager=manager))
     adapter = SimpleNamespace(update_interaction=AsyncMock())

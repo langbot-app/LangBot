@@ -43,6 +43,7 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
+from .ingress_dedup import InboundDeliveries, InboundDelivery, delivery_key
 from .logger import EventLogger
 from ..utils import constants
 from .adapter_names import canonical_adapter_name
@@ -96,6 +97,7 @@ class RuntimeBot:
         if not isinstance(execution_context, ExecutionContext):
             raise WorkspaceRequiredError('RuntimeBot requires an ExecutionContext')
         self._ingress_dedup_lock = asyncio.Lock()
+        self._inbound_deliveries = InboundDeliveries()
         if not execution_context.instance_uuid.strip() or not execution_context.workspace_uuid.strip():
             raise WorkspaceRequiredError('RuntimeBot requires an instance and Workspace')
         if execution_context.placement_generation <= 0:
@@ -792,15 +794,15 @@ class RuntimeBot:
     ) -> AgentEventEnvelope:
         event_type = getattr(event, 'type', None) or event.__class__.__name__
         event_time = getattr(event, 'timestamp', None) or time.time()
+        prefix = self._platform_event_prefix(event)
         if execution_id:
             # Reuse the ingress execution identity so the run view, the journaled
             # event and the uploaded chain all share one id.
             envelope_event_id = str(execution_id)
-            prefix = f'platform:{self.bot_entity.uuid}:'
             event_id = envelope_event_id[len(prefix) :] if envelope_event_id.startswith(prefix) else envelope_event_id
         else:
             event_id = self._platform_event_raw_id(event)
-            envelope_event_id = f'platform:{self.bot_entity.uuid}:{event_id}'
+            envelope_event_id = f'{prefix}{event_id}'
         target_type, target_id, target_metadata = self._infer_reply_target(event)
         supported_apis = self._get_adapter_supported_apis(adapter)
 
@@ -929,7 +931,20 @@ class RuntimeBot:
         Matches the ``AgentEventEnvelope.event_id`` the same event produces, so
         the stored chain and the Space run view share one identity.
         """
-        return f'platform:{self.bot_entity.uuid}:{self._platform_event_raw_id(event)}'
+        return f'{self._platform_event_prefix(event)}{self._platform_event_raw_id(event)}'
+
+    def _platform_event_prefix(self, event: platform_events.EBAEvent) -> str:
+        """Scope of a native event ID inside this instance."""
+        prefix = f'platform:{self.bot_entity.uuid}:'
+        chat_id = getattr(event, 'chat_id', None)
+        # WeCom customer service IDs are globally unique and double as the durable
+        # dedup journal, so they stay comparable with already recorded ones.
+        if not chat_id or not getattr(event, 'message_id', None) or event.adapter_name == 'wecomcs-omni':
+            return prefix
+        # Several platforms number messages per chat (Telegram), so the native ID
+        # alone would merge the records of unrelated conversations.
+        chat_type = getattr(event, 'chat_type', None)
+        return f'{prefix}{getattr(chat_type, "value", chat_type)}:{chat_id}:'
 
     @staticmethod
     def _platform_event_raw_id(event: platform_events.EBAEvent) -> str:
@@ -955,13 +970,27 @@ class RuntimeBot:
         event: platform_events.EBAEvent,
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
     ) -> None:
+        await self.assert_execution_active()
+        event.bot_uuid = self.bot_entity.uuid
+        async with self._inbound_deliveries.admit(delivery_key(event)) as delivery:
+            if delivery is None:
+                # Platforms redeliver unacknowledged messages and replay them after
+                # reconnecting; answering the copy would send the reply twice.
+                await self.logger.info(f'Ignored a redelivered copy of message {event.message_id}')
+                return
+            await self._process_platform_event(event, adapter, delivery)
+
+    async def _process_platform_event(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        delivery: InboundDelivery,
+    ) -> None:
         # One inbound event owns one execution trace; every stage recorded while
         # it is handled (routing, runner, platform API calls) joins that trace.
         from ..telemetry import trace as trace_mod
         from ..telemetry.execution import ingress
 
-        await self.assert_execution_active()
-        event.bot_uuid = self.bot_entity.uuid
         execution_id = self._platform_event_execution_id(event)
         if getattr(event, 'adapter_name', None) == 'wecomcs-omni':
             from ..agent.runner.event_log_store import EventLogStore
@@ -986,7 +1015,7 @@ class RuntimeBot:
             # The inbound event is the root workflow step: everything recorded
             # while handling it hangs under this node.
             with trace_mod.stage_scope() as node:
-                await self._handle_platform_event_body(event, adapter, execution_id, node)
+                await self._handle_platform_event_body(event, adapter, execution_id, node, delivery)
 
     @staticmethod
     def _summarize_event_delivery(results: list[typing.Any]) -> tuple[str, str]:
@@ -1057,8 +1086,17 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         execution_id: str | None = None,
         node: str = '',
+        delivery: InboundDelivery | None = None,
     ) -> None:
         results: list[typing.Any] = []
+
+        async def deliver_primary(handler):
+            result = await self._run_event_delivery(handler, event, adapter, execution_id=execution_id)
+            # A slow subscriber must not keep an already handled message retryable.
+            if delivery is not None:
+                delivery.accept()
+            return result
+
         try:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
@@ -1070,7 +1108,7 @@ class RuntimeBot:
             )
             subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
             seen = set()
-            tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
+            tasks = [deliver_primary(primary_handler)]
             for subscription in subscriptions:
                 processor_uuid = subscription.get('processor_uuid')
                 if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
@@ -1576,6 +1614,10 @@ class RuntimeBot:
                 event.message_chain,
             )
             return
+
+        if getattr(event, '_langbot_standalone_turn', False):
+            # Host variables also keep the message out of the aggregation buffer.
+            variables = {**(variables or {}), '_standalone_turn': True}
 
         await self.ap.msg_aggregator.add_message(
             bot_uuid=self.bot_entity.uuid,

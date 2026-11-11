@@ -11,8 +11,11 @@ Avoids circular imports by using proper import structure.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 from types import SimpleNamespace
+import langbot_plugin.api.entities.builtin.provider.message as provider_message
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langbot.pkg.agent.runner.errors import (
@@ -646,6 +649,30 @@ class TestChatHandlerAsyncBehavior:
         assert len(results) == 1
         assert results[0].result_type == entities.ResultType.INTERRUPT
         assert orchestrator.run_called is False
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize('read', [True, False])
+    async def test_claimed_message_runs_normally_when_the_active_run_never_read_it(self, read):
+        from langbot.pkg.pipeline.process.handlers.chat import ChatMessageHandler
+
+        class ClaimingOrchestrator(MockAgentRunOrchestrator):
+            runs = 0
+
+            async def try_claim_steering_from_query(self, query):
+                outcome = asyncio.get_running_loop().create_future()
+                outcome.set_result(read)
+                object.__setattr__(query, '_steering_outcome', outcome)
+                return True
+
+            async def run_from_query(self, query):
+                self.runs += 1
+                yield provider_message.Message(role='assistant', content='own answer')
+
+        orchestrator = ClaimingOrchestrator()
+        handler = ChatMessageHandler(MockApplication(orchestrator=orchestrator))
+        _ = [result async for result in handler.handle(make_handler_query('follow-up'))]
+
+        assert orchestrator.runs == int(not read)
 
     @pytest.mark.asyncio
     async def test_unexpected_steering_error_uses_normal_error_handling(self):

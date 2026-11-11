@@ -352,15 +352,19 @@ class AgentRunJournal:
             },
         )
 
-    async def write_steering_dropped_audits(
+    async def write_unread_steering_audits(
         self,
         items: list[dict[str, typing.Any]],
         run_id: str,
         runner_id: str,
         *,
+        status: str = 'dropped',
         reason: str = 'run_ended',
     ) -> None:
-        """Write terminal audit events for steering items left unconsumed."""
+        """Write audit events for steering items left unconsumed.
+
+        ``released`` items continue as their own run; ``dropped`` is terminal.
+        """
         if not items:
             return
 
@@ -380,7 +384,7 @@ class AgentRunJournal:
 
             await store.append_event(
                 event_id=str(uuid.uuid4()),
-                event_type='steering.dropped',
+                event_type=f'steering.{status}',
                 source='host',
                 bot_id=conversation.get('bot_id'),
                 workspace_id=conversation.get('workspace_id'),
@@ -391,13 +395,13 @@ class AgentRunJournal:
                 actor_name=actor.get('actor_name'),
                 subject_type=subject.get('subject_type'),
                 subject_id=subject.get('subject_id'),
-                input_summary='Unconsumed steering input dropped',
+                input_summary=f'Unconsumed steering input {status}',
                 run_id=run_id,
                 runner_id=runner_id,
                 event_time=event_time,
                 metadata={
                     'steering': {
-                        'status': 'dropped',
+                        'status': status,
                         'reason': reason,
                         'original_event_id': event.get('event_id'),
                         'claimed_run_id': item.get('claimed_run_id'),

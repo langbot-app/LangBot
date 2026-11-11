@@ -25,6 +25,7 @@ from .pool import get_query_execution_context
 from ..i18n import language_scope, t
 from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
+from ..platform.stream_output import stream_output_supported
 from .extension_preferences import normalize_extension_preferences
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
@@ -258,9 +259,9 @@ class RuntimePipeline:
                 query.message_event, platform_events.GroupMessage
             ):
                 result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            stream_output_supported = await query.adapter.is_stream_output_supported()
+            is_stream = await stream_output_supported(query.adapter, query.message_event)
             await self._assert_execution_active(query)
-            if stream_output_supported and query.resp_messages:
+            if is_stream and query.resp_messages:
                 await query.adapter.reply_message_chunk(
                     message_source=query.message_event,
                     bot_message=query.resp_messages[-1],
@@ -562,7 +563,7 @@ class RuntimePipeline:
         quote_origin = query.pipeline_config.get('output', {}).get('misc', {}).get('quote-origin', False)
         try:
             if (
-                await query.adapter.is_stream_output_supported()
+                await stream_output_supported(query.adapter, query.message_event)
                 and last_chunk is not None
                 and last_chunk.resp_message_id
             ):

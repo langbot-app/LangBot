@@ -96,7 +96,11 @@ class _SyncCollector:
     appended; every distinct reply is kept once, in delivery order.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, message_id: str, session_type: str) -> None:
+        # A session also carries other turns (async pushes, the group session with
+        # the same id), so only replies to this message belong to the request.
+        self.message_id = message_id
+        self.session_type = session_type
         self.replies: list[list] = []
         # stream key -> index in ``replies`` while that streamed reply is open
         self.open_streams: dict[str, int] = {}
@@ -341,6 +345,8 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         else:
             sender = platform_entities.Friend(id=session_id, nickname=sender_name, remark=sender_name)
             event = platform_events.FriendMessage(sender=sender, message_chain=chain, time=datetime.now().timestamp())
+        # Plugins and filters may rebuild the chain; replies keep the inbound identity.
+        object.__setattr__(event, '_http_bot_message_id', message_id)
         return event, session_id, session_type, message_id
 
     async def _handle_inbound(self, request, sync: bool):
@@ -430,6 +436,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     @staticmethod
     def _extract_reply_to(message_source: platform_events.MessageEvent) -> str:
+        message_id = getattr(message_source, '_http_bot_message_id', None)
+        if isinstance(message_id, str):
+            return message_id
         for comp in message_source.message_chain:
             if isinstance(comp, platform_message.Source):
                 return str(comp.id)
@@ -572,9 +581,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'timestamp': datetime.now().isoformat(),
         }
 
-        # If a /sync request is awaiting this session, collect instead of POSTing.
+        # If a /sync request is awaiting this message, collect instead of POSTing.
         collector = self.sync_waiters.get(session_id)
-        if collector is not None:
+        if collector is not None and collector.message_id == reply_to:
             collector.add(parts, stream_key=stream_key if stream else None, closes_stream=closes_stream)
             if is_final:
                 collector.done.set()
@@ -595,8 +604,9 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
             'message': [c.model_dump() if hasattr(c, 'model_dump') else c.__dict__ for c in message],
             'timestamp': datetime.now().isoformat(),
         }
+        # A proactive send names no source message; it can only be told apart by session.
         collector = self.sync_waiters.get(str(target_id))
-        if collector is not None:
+        if collector is not None and collector.session_type == ('group' if target_type == 'group' else 'person'):
             collector.add(payload['message'], stream_key=None, closes_stream=False)
             collector.done.set()
             return payload
@@ -647,8 +657,12 @@ class HttpBotAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
         if session_id in self.sync_waiters:
             return self._err('duplicate', 'a sync request is already in flight for this session')
 
-        collector = _SyncCollector()
+        session_type = 'group' if isinstance(event, platform_events.GroupMessage) else 'person'
+        collector = _SyncCollector(message_id, session_type)
         self.sync_waiters[session_id] = collector
+        # The caller waits for this message's own reply, so it must not be folded
+        # into another turn by aggregation or steering.
+        object.__setattr__(event, '_langbot_standalone_turn', True)
         listener_task = self._start_inbound_task(listener(event, self))
         if listener_task is None:
             self.sync_waiters.pop(session_id, None)

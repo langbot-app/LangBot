@@ -474,6 +474,52 @@ class TestSessionRegistryBasic:
         )
 
     @pytest.mark.asyncio
+    async def test_find_steering_target_can_require_the_same_actor(self):
+        """Another group member's message must not be answered to the run's sender."""
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_of_alice',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            conversation_id='group_1',
+            actor_id='alice',
+            available_apis={'steering_pull': True},
+        )
+
+        async def find(actor_id):
+            return await registry.find_steering_target(
+                conversation_id='group_1', runner_id='plugin:test/my-runner/default', actor_id=actor_id
+            )
+
+        assert await find('alice') == 'run_of_alice'
+        assert await find('bob') is None
+
+    @pytest.mark.asyncio
+    async def test_steering_outcome_reports_whether_the_run_read_the_message(self):
+        registry = AgentRunSessionRegistry()
+        await registry.register(
+            run_id='run_outcome',
+            runner_id='plugin:test/my-runner/default',
+            query_id=1,
+            plugin_identity='test/my-runner',
+            resources=make_resources(),
+            available_apis={'steering_pull': True},
+        )
+        read, unread = (asyncio.get_running_loop().create_future() for _ in range(2))
+        await registry.enqueue_steering('run_outcome', {'event': {'event_id': 'read'}}, read)
+        await registry.pull_steering('run_outcome')
+        await registry.enqueue_steering('run_outcome', {'event': {'event_id': 'unread'}}, unread)
+        assert read.result() is True
+        assert not unread.done()
+
+        # Reclaiming a stale run must not leave its messages owned forever.
+        registry._sessions['run_outcome']['status']['last_activity_at'] = 0
+        assert await registry.cleanup_stale_sessions(1) == 1
+        assert unread.result() is False
+
+    @pytest.mark.asyncio
     async def test_unregister_returns_pending_steering_queue(self):
         """Unregister returns the removed session so callers can audit pending steering."""
         registry = AgentRunSessionRegistry()

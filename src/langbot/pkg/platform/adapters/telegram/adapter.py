@@ -6,6 +6,8 @@ Preserves all existing functionality (messaging, streaming output, markdown card
 
 from __future__ import annotations
 
+import asyncio
+import datetime
 import typing
 import traceback
 
@@ -385,6 +387,29 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
         return args
 
     _MAX_STREAM_STATES: typing.ClassVar[int] = 1000
+    _MAX_FLOOD_RETRIES: typing.ClassVar[int] = 3
+    _MAX_FLOOD_WAIT_SECONDS: typing.ClassVar[int] = 60
+
+    async def _edit_stream_text(self, args: dict, *, is_final: bool) -> None:
+        """Edit a streamed message, waiting out flood control for the final text.
+
+        Flood limits are shared by every chat of the bot. A skipped intermediate
+        edit is repaired by the next one, but a failed final edit would leave a
+        partial message behind and make the pipeline send the answer again.
+        """
+        for attempt in range(self._MAX_FLOOD_RETRIES + 1):
+            try:
+                await self.bot.edit_message_text(**args)
+                return
+            except telegram.error.RetryAfter as exc:
+                if not is_final:
+                    return
+                delay = exc.retry_after
+                if isinstance(delay, datetime.timedelta):
+                    delay = delay.total_seconds()
+                if attempt == self._MAX_FLOOD_RETRIES or delay > self._MAX_FLOOD_WAIT_SECONDS:
+                    raise
+                await asyncio.sleep(delay)
 
     async def _delete_group_stream_message(self, chat_mode: str, chat_id: int, stream_id: int | None):
         if chat_mode == 'private' or stream_id is None:
@@ -529,11 +554,11 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
                 if self.config.get('markdown_card', False):
                     args['parse_mode'] = 'MarkdownV2'
                 try:
-                    await self.bot.edit_message_text(**args)
+                    await self._edit_stream_text(args, is_final=is_final)
                 except telegram.error.BadRequest as exc:
                     if 'Message_too_long' in str(exc):
                         args['text'] = self._process_markdown(content[:4000] + '\n\n… (truncated)')
-                        await self.bot.edit_message_text(**args)
+                        await self._edit_stream_text(args, is_final=is_final)
                     else:
                         raise
                 self.msg_stream_id[message_id] = (chat_mode, stream_id, True)

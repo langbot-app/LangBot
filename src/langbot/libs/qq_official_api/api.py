@@ -181,6 +181,7 @@ class QQOfficialClient:
         self._msg_seq_counter = 0
         self._token_refresh_task: Optional[asyncio.Task] = None
         self._http_clients: dict[float | None, httpx.AsyncClient] = {}
+        self._processing_tasks: set[asyncio.Task] = set()
 
     @asynccontextmanager
     async def _http_client_context(self, timeout: float | None = None):
@@ -202,6 +203,9 @@ class QQOfficialClient:
             self._token_refresh_task.cancel()
             await asyncio.gather(self._token_refresh_task, return_exceptions=True)
         self._token_refresh_task = None
+        for task in self._processing_tasks:
+            task.cancel()
+        self._processing_tasks.clear()
         clients = list(self._http_clients.values())
         self._http_clients.clear()
         if clients:
@@ -300,7 +304,13 @@ class QQOfficialClient:
                 message_data = await self.get_message(payload)
                 if message_data:
                     event = QQOfficialEvent.from_payload(message_data)
-                    await self._handle_message(event)
+                    # QQ redelivers slow callbacks and drops the connection, which
+                    # would cancel this request while it is still answering.
+                    from langbot.pkg.core.task_boundary import create_detached_task
+
+                    task = create_detached_task(self._process_message(event))
+                    self._processing_tasks.add(task)
+                    task.add_done_callback(self._processing_tasks.discard)
 
             return {'code': 0, 'message': 'success'}
 
@@ -337,6 +347,12 @@ class QQOfficialClient:
             return func
 
         return decorator
+
+    async def _process_message(self, event: QQOfficialEvent):
+        try:
+            await self._handle_message(event)
+        except Exception:
+            await self.logger.error(f'QQ Official message processing failed: {traceback.format_exc()}')
 
     async def _handle_message(self, event: QQOfficialEvent):
         """处理消息事件"""

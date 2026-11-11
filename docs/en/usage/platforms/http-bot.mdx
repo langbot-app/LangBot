@@ -111,7 +111,7 @@ The callback URL is **not** accepted in the body — it is taken only from bot c
 
 ### Aggregation (N → 1)
 
-If the pipeline has **message aggregation** enabled, send several messages with the **same `session_id`** inside the aggregation window and they merge into **one** turn. No special flag — just reuse the `session_id`.
+If the pipeline has **message aggregation** enabled, send several messages with the **same `session_id`** inside the aggregation window and they merge into **one** turn. No special flag — just reuse the `session_id`. In a `group` session only messages with the same `sender.id` merge, so users talking at once each get their own answer.
 
 ## Outbound callback format
 
@@ -169,7 +169,7 @@ POST /bots/{bot_uuid}/sync
 ```
 
 <Warning>
-Sync mode is **lossy** (you lose `sequence` and streaming boundaries) and blocks up to `callback_timeout × 4` seconds. Prefer the callback model for anything real-time or multi-part. Only one in-flight `/sync` per `session_id`.
+Sync mode is **lossy** (you lose `sequence` and streaming boundaries) and blocks up to `callback_timeout × 4` seconds. Prefer the callback model for anything real-time or multi-part. Only one in-flight `/sync` per `session_id`. A `/sync` message is always answered as its own turn: it is never aggregated, and replies to other messages of the session still go to your callback URL.
 </Warning>
 
 ## Error codes
