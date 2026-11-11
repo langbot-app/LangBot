@@ -185,7 +185,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
 
     reports_raw_timing = True
     TOKEN_COUNT_TIMEOUT = 4.0
-    _token_count_task: asyncio.Task | None = None
+    # A count that outlived its caller (timeout or cancellation). Its thread
+    # cannot be stopped, so no new count starts until it finishes.
+    _stalled_count_task: asyncio.Task | None = None
 
     _EMBEDDING_MODEL_HINTS = ('embedding', 'embed', 'bge-', 'e5-', 'm3e', 'gte-', 'text-embedding')
     _RERANK_MODEL_HINTS = ('rerank', 're-rank', 're_rank')
@@ -1626,17 +1628,22 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
                 count_args['tools'] = tools
                 count_args.setdefault('tool_choice', 'auto')
 
-        # A timed-out thread cannot be stopped. Keep it until it finishes so
-        # repeated counts cannot fill the executor with stalled downloads.
-        if self._token_count_task is not None and not self._token_count_task.done():
+        # Concurrent counts are normal (one per conversation). Only a count
+        # that outlived its caller blocks new ones: its thread cannot be
+        # stopped, and repeated stalled downloads would fill the executor.
+        if self._stalled_count_task is not None and not self._stalled_count_task.done():
             raise errors.RequesterError('Token counter is still busy loading tokenizer resources')
         task = asyncio.create_task(asyncio.to_thread(litellm.token_counter, **count_args))
-        self._token_count_task = task
         task.add_done_callback(lambda completed: None if completed.cancelled() else completed.exception())
         try:
             tokens = await asyncio.wait_for(asyncio.shield(task), timeout=self.TOKEN_COUNT_TIMEOUT)
         except TimeoutError as exc:
+            self._stalled_count_task = task
             raise errors.RequesterError('Token counting exceeded its time limit') from exc
+        except asyncio.CancelledError:
+            if not task.done():
+                self._stalled_count_task = task
+            raise
         except Exception as e:
             self._handle_litellm_error(e)
 
