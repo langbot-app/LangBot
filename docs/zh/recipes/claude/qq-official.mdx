@@ -1,0 +1,74 @@
+---
+title: "用 Claude 搭建QQ 官方机器人 AI 机器人"
+description: "使用 LangBot 搭建由 Claude 驱动的QQ 官方机器人 AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 Claude 模型接到QQ 官方机器人机器人上。LangBot 接收QQ 官方机器人消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+用 LangBot 内置 Agent 调用 Anthropic 的 Claude 模型，可配合 MCP、Skills 和代码沙箱使用工具。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 Claude 账号或服务。
+- 在 QQ 开放平台注册的机器人：**AppID**、**Token** 和 **AppSecret**，并把 LangBot 服务器 IP 加入 IP 白名单。
+
+## 网络要求
+
+QQ 官方机器人 Webhook 方式要求公网 IP 并正确配置 HTTPS；LangBot Cloud 自带公网域名。
+
+## 1. 添加 Claude 模型
+
+1. 在 Anthropic 控制台创建 API Key。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选择 Anthropic，再填入 API Key 和模型名称。
+3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
+4. 除非使用网关，请保留供应商默认请求地址；模型名请使用 Anthropic 文档中当前可用的 Claude 模型 ID。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建QQ 官方机器人机器人
+
+1. 新建机器人，选择 **QQ 官方** 适配器，填写 AppID、Token 和 AppSecret。
+2. 复制机器人的 Webhook 回调地址，把 IP 和端口换成你的 HTTPS 域名后填入 QQ 管理端的请求地址；在沙箱配置里添加测试成员。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+以沙箱成员身份私聊机器人，或在沙箱群中 @ 它。
+
+## 常见问题排查
+
+- Agent 从不调用工具：请在模型上勾选 **工具调用**。
+- 保存请求地址失败：域名无法通过 HTTPS 访问，或路径不是以 `/bots/<机器人 ID>` 结尾。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入QQ 官方机器人需要有公网 IP 的服务器吗？
+
+需要，或者直接使用 LangBot Cloud。QQ 官方机器人 Webhook 方式要求公网 IP 并正确配置 HTTPS；LangBot Cloud 自带公网域名。
+
+### QQ 官方机器人机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 Claude 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [QQ 官方机器人完整接入文档](/zh/usage/platforms/qq/official_webhook)
+- [模型配置](/zh/usage/models/readme)
+- QQ 官方机器人上的其他 AI 后端：[Dify](/zh/recipes/dify/qq-official) · [n8n](/zh/recipes/n8n/qq-official) · [Coze](/zh/recipes/coze/qq-official) · [Langflow](/zh/recipes/langflow/qq-official) · [DeepSeek](/zh/recipes/deepseek/qq-official)
+- Claude 接入其他平台：[Telegram](/zh/recipes/claude/telegram) · [Discord](/zh/recipes/claude/discord) · [Slack](/zh/recipes/claude/slack) · [飞书](/zh/recipes/claude/lark) · [钉钉](/zh/recipes/claude/dingtalk) · [企业微信应用](/zh/recipes/claude/wecom)

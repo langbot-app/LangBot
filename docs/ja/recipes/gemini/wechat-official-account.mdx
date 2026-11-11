@@ -1,0 +1,75 @@
+---
+title: "Gemini で WeChat 公式アカウント の AI ボットを作る"
+description: "LangBot で Gemini を使った WeChat 公式アカウント の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Gemini のモデルを WeChat 公式アカウント のボットにつなぎます。LangBot が WeChat 公式アカウント のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで Google の Gemini モデルを使います。視覚対応モデルなら画像入力も扱えます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Gemini のアカウントまたはサーバー。
+- WeChat 公式アカウントまたはサービスアカウント：**AppID**、**AppSecret**、サーバー設定の **Token** と **EncodingAESKey**。LangBot サーバーの IP を **IP ホワイトリスト** に追加します。
+
+## ネットワーク
+
+公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+## 1. Gemini のモデルを追加する
+
+1. Google Gemini のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Google Gemini を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. キーは Google AI Studio で作成します。画像を読ませたい場合はモデルの **ビジョン** を有効にします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. WeChat 公式アカウント のボットを作成する
+
+1. **WeChat 公式アカウント** アダプターでボットを作成し、返信モードを選びます：`drop`（5 秒のコールバック内で返信）、`passive`、または `auto`（企業認証済みアカウントならカスタマーサービス API で後から返信）。
+2. ボットのコールバック URL をアカウントのサーバー設定に貼り付けて保存します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeChat でアカウントをフォローし、メッセージを送ります。
+
+## トラブルシューティング
+
+- 画像が無視される場合は、モデルの **ビジョン** を有効にし、アダプターが画像を受け取れるか確認します。
+- 読み込みメッセージだけで回答が来ない場合、`passive` モード（または `auto` のフォールバック後）は次のメッセージで回答を受け取る仕組みです。
+- カスタマーサービス API には企業認証が必要で、本人確認だけでは使えません。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeChat 公式アカウント には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+### WeChat 公式アカウント のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Gemini の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeChat 公式アカウント の詳しい設定ガイド](/ja/usage/platforms/wxoa)
+- [モデルの設定](/ja/usage/models/readme)
+- WeChat 公式アカウント で使える他の AI：[Dify](/ja/recipes/dify/wechat-official-account) · [n8n](/ja/recipes/n8n/wechat-official-account) · [Coze](/ja/recipes/coze/wechat-official-account) · [Langflow](/ja/recipes/langflow/wechat-official-account) · [DeepSeek](/ja/recipes/deepseek/wechat-official-account)
+- Gemini を他のプラットフォームで使う：[Telegram](/ja/recipes/gemini/telegram) · [Discord](/ja/recipes/gemini/discord) · [Slack](/ja/recipes/gemini/slack) · [Lark（Feishu）](/ja/recipes/gemini/lark) · [DingTalk](/ja/recipes/gemini/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/gemini/wecom)

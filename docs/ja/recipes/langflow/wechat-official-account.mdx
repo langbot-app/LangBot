@@ -1,0 +1,74 @@
+---
+title: "Langflow を WeChat 公式アカウント に接続する"
+description: "LangBot で Langflow アプリを WeChat 公式アカウント のボットとして動かす手順：Langflow の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Langflow アプリを WeChat 公式アカウント のボットにつなぎます。LangBot が WeChat 公式アカウント のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Langflow はドラッグ＆ドロップでエージェントやフローを作れます。LangBot はメッセージごとに Langflow API でフローを実行します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Langflow のアカウントまたはインスタンス。
+- WeChat 公式アカウントまたはサービスアカウント：**AppID**、**AppSecret**、サーバー設定の **Token** と **EncodingAESKey**。LangBot サーバーの IP を **IP ホワイトリスト** に追加します。
+
+## ネットワーク
+
+公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+## 1. Langflow を準備する
+
+1. Langflow でフローを作成します（Simple Agent テンプレートから始めると簡単です）。
+2. **Settings** で API キーを作成します。
+3. **Share → API access** のサンプルコードから **Flow ID** を取得します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Langflow**（公式 Langflow Agent ランナープラグイン） |
+| Base URL | LangBot から到達できる Langflow のアドレス |
+| API Key | Langflow の API キー |
+| Flow ID | 実行するフローの ID |
+
+## 3. WeChat 公式アカウント のボットを作成する
+
+1. **WeChat 公式アカウント** アダプターでボットを作成し、返信モードを選びます：`drop`（5 秒のコールバック内で返信）、`passive`、または `auto`（企業認証済みアカウントならカスタマーサービス API で後から返信）。
+2. ボットのコールバック URL をアカウントのサーバー設定に貼り付けて保存します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeChat でアカウントをフォローし、メッセージを送ります。
+
+## トラブルシューティング
+
+- 接続が拒否される場合、`http://localhost:7860` が使えるのは Langflow と LangBot が同じホスト・同じネットワーク名前空間にあるときだけです。
+- 読み込みメッセージだけで回答が来ない場合、`passive` モード（または `auto` のフォールバック後）は次のメッセージで回答を受け取る仕組みです。
+- カスタマーサービス API には企業認証が必要で、本人確認だけでは使えません。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeChat 公式アカウント には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。公式アカウントには公開ドメインと HTTPS が必要で、コールバックには 5 秒以内に応答しなければなりません。AI の応答が遅い場合は `passive` または `auto` を使います。LangBot Cloud には公開ドメインがあります。
+
+### WeChat 公式アカウント のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Langflow の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeChat 公式アカウント の詳しい設定ガイド](/ja/usage/platforms/wxoa)
+- [Langflow ランナーの詳しいガイド](/ja/usage/pipelines/langflow)
+- WeChat 公式アカウント で使える他の AI：[Dify](/ja/recipes/dify/wechat-official-account) · [n8n](/ja/recipes/n8n/wechat-official-account) · [Coze](/ja/recipes/coze/wechat-official-account) · [DeepSeek](/ja/recipes/deepseek/wechat-official-account) · [OpenAI (ChatGPT models)](/ja/recipes/openai/wechat-official-account)
+- Langflow を他のプラットフォームで使う：[Telegram](/ja/recipes/langflow/telegram) · [Discord](/ja/recipes/langflow/discord) · [Slack](/ja/recipes/langflow/slack) · [Lark（Feishu）](/ja/recipes/langflow/lark) · [DingTalk](/ja/recipes/langflow/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/langflow/wecom)

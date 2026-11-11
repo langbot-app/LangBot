@@ -1,0 +1,73 @@
+---
+title: "n8n を QQ 公式ボット に接続する"
+description: "LangBot で n8n アプリを QQ 公式ボット のボットとして動かす手順：n8n の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの n8n アプリを QQ 公式ボット のボットにつなぎます。LangBot が QQ 公式ボット のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+n8n がワークフローを実行し、LangBot がチャットプラットフォーム、セッション、配信を担当します。メッセージごとに Webhook でワークフローを呼び出します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる n8n のアカウントまたはインスタンス。
+- QQ オープンプラットフォームで登録したボット：**AppID**、**Token**、**AppSecret**。LangBot サーバーの IP を IP ホワイトリストに追加します。
+
+## ネットワーク
+
+QQ 公式ボット API（Webhook）には公開 IP と HTTPS が必要です。LangBot Cloud には公開ドメインがあります。
+
+## 1. n8n を準備する
+
+1. ワークフローを **Webhook** または **On chat message** トリガーで開始します。ストリーミング返信には **Response Mode** を **Streaming** にします。
+2. **AI Agent** ノード（ストリーミング）か **Respond to Webhook** ノードで応答し、応答キー名を LangBot の出力キー名と一致させます。
+3. **Active** でワークフローを有効にし、本番用 Webhook URL をコピーします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **n8n**（公式 n8n ワークフローランナープラグイン） |
+| Webhook URL | ワークフローの本番用 Webhook URL |
+| 認証方式 | なし、Basic Auth、JWT、Header のいずれか（トリガーノードと同じ設定） |
+
+## 3. QQ 公式ボット のボットを作成する
+
+1. **QQ 公式** アダプターでボットを作成し、AppID、Token、AppSecret を入力します。
+2. ボットの Webhook コールバック URL をコピーし、ホストを HTTPS ドメインに置き換えて QQ 管理ポータルのリクエストアドレスに保存します。サンドボックス設定でテストユーザーを追加します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+サンドボックスのメンバーとしてボットに個別チャットするか、サンドボックスのグループでメンションします。
+
+## トラブルシューティング
+
+- 返信が空の場合は、**Respond to Webhook** のキー名が LangBot の出力キー名と一致しているか確認します。
+- テスト URL はエディターが待ち受けている間しか使えません。有効化したワークフローの本番 URL を使います。
+- リクエストアドレスの保存に失敗する場合は、ドメインが HTTPS で到達できないか、パスが `/bots/<ボット ID>` で終わっていません。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### QQ 公式ボット には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。QQ 公式ボット API（Webhook）には公開 IP と HTTPS が必要です。LangBot Cloud には公開ドメインがあります。
+
+### QQ 公式ボット のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ n8n の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [QQ 公式ボット の詳しい設定ガイド](/ja/usage/platforms/qq/official_webhook)
+- [n8n ランナーの詳しいガイド](/ja/usage/pipelines/n8n)
+- QQ 公式ボット で使える他の AI：[Dify](/ja/recipes/dify/qq-official) · [Coze](/ja/recipes/coze/qq-official) · [Langflow](/ja/recipes/langflow/qq-official) · [DeepSeek](/ja/recipes/deepseek/qq-official) · [OpenAI (ChatGPT models)](/ja/recipes/openai/qq-official)
+- n8n を他のプラットフォームで使う：[Telegram](/ja/recipes/n8n/telegram) · [Discord](/ja/recipes/n8n/discord) · [Slack](/ja/recipes/n8n/slack) · [Lark（Feishu）](/ja/recipes/n8n/lark) · [DingTalk](/ja/recipes/n8n/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/n8n/wecom)

@@ -1,0 +1,75 @@
+---
+title: "Build a Slack AI Bot with Gemini"
+description: "Step-by-step guide to running a Gemini-powered AI bot on Slack with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Gemini model behind a Slack bot. LangBot receives messages from Slack, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Google's Gemini models with LangBot's built-in Agent, including image input when the model supports vision.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Gemini account or server you can call from LangBot.
+- A Slack workspace where you can install apps, plus **App Configuration Tokens** from the [Slack apps page](https://api.slack.com/apps) for the quick setup assistant.
+
+## Networking
+
+With Socket Mode, LangBot connects out to Slack and no public event URL is needed. Webhook mode needs a publicly reachable HTTPS endpoint.
+
+## 1. Add the Gemini model
+
+1. Create an API key in the Google Gemini console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Google Gemini, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Create the key in Google AI Studio. Enable **Vision** on the model if you want the bot to read images.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the Slack bot
+
+1. Create a bot with the **Slack** adapter and use **Quick Slack setup**: it creates the app, scopes and event subscriptions for you.
+2. Choose **Socket Mode** (recommended) and add an App-Level Token (`xapp-...`), or choose **Webhook** if LangBot has a public HTTPS address. Then fill the adapter configuration and enable the bot.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Message the app from its **Messages** tab, or mention it in a channel it has been added to.
+
+## Troubleshooting
+
+- Images are ignored: enable **Vision** on the model and check that the platform adapter forwards images.
+- Do not paste the App Configuration Access/Refresh tokens into the App-Level Token field; it needs the `xapp-` token of the same app.
+- Leave token rotation disabled for the App-Level Token.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for Slack?
+
+Not necessarily. With Socket Mode, LangBot connects out to Slack and no public event URL is needed. Webhook mode needs a publicly reachable HTTPS endpoint.
+
+### Does the Slack bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Gemini setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full Slack setup guide](/en/usage/platforms/slack)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on Slack: [Dify](/en/recipes/dify/slack) · [n8n](/en/recipes/n8n/slack) · [Coze](/en/recipes/coze/slack) · [Langflow](/en/recipes/langflow/slack) · [DeepSeek](/en/recipes/deepseek/slack)
+- Gemini on other platforms: [Telegram](/en/recipes/gemini/telegram) · [Discord](/en/recipes/gemini/discord) · [Lark (Feishu)](/en/recipes/gemini/lark) · [DingTalk](/en/recipes/gemini/dingtalk) · [WeCom (internal app)](/en/recipes/gemini/wecom) · [WeCom Intelligent Bot](/en/recipes/gemini/wecombot)

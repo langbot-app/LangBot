@@ -1,0 +1,73 @@
+---
+title: "把 Coze 接入Slack"
+description: "使用 LangBot 把 Coze 应用接入Slack：Coze 配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把你的 Coze 应用接到Slack机器人上。LangBot 接收Slack消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+扣子（Coze）可以可视化搭建智能体。LangBot 通过 Coze API 调用你的智能体，让它出现在扣子本身不支持发布的平台上，并在多个渠道共用同一个智能体。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- LangBot 能通过网络访问到的 Coze 账号或实例。
+- 可以安装应用的 Slack 工作区，以及在 [Slack apps 页面](https://api.slack.com/apps) 生成的 **App Configuration Tokens**（供快速配置助手使用）。
+
+## 网络要求
+
+Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webhook 模式需要可公网访问的 HTTPS 地址。
+
+## 1. 准备 Coze
+
+1. 在扣子开发者控制台的 **API 管理** 中创建令牌（coze.cn 支持服务身份长期凭据，coze.com 只提供个人访问令牌）。
+2. 发布智能体时勾选 **API** 渠道，并记录 `bot_id`。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。如果列表里没有对应运行器，请先在 **插件** 或 [LangBot Space 插件市场](https://space.langbot.app/market) 安装官方运行器插件。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **扣子**（官方扣子 Agent 运行器插件） |
+| API Key | 扣子令牌 |
+| Bot ID | 智能体的 `bot_id` |
+| API Base URL | coze.cn 填 `https://api.coze.cn`，coze.com 填 `https://api.coze.com` |
+
+## 3. 创建Slack机器人
+
+1. 新建机器人，选择 **Slack** 适配器，使用 **快速配置 Slack**：助手会自动创建应用、权限范围和事件订阅。
+2. 选择 **Socket Mode**（推荐）并填写 App-Level Token（`xapp-...`）；如果 LangBot 有公网 HTTPS 地址，也可以选 **Webhook**。然后填充适配器配置并启用。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在应用的 **Messages** 标签页私聊它，或在已加入的频道中 @ 它。
+
+## 常见问题排查
+
+- 调用失败：检查令牌和 `bot_id` 是否带了多余空格、智能体发布时是否勾选了 API 渠道、Base URL 是否与所用站点一致。
+- 不要把 App Configuration 的 Access/Refresh Token 填进 App-Level Token 字段，这里需要同一个应用的 `xapp-` Token。
+- App-Level Token 不要开启 Token rotation。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入Slack需要有公网 IP 的服务器吗？
+
+不一定。Socket Mode 下 LangBot 主动连接 Slack，不需要公网事件地址；Webhook 模式需要可公网访问的 HTTPS 地址。
+
+### Slack机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 Coze 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [Slack完整接入文档](/zh/usage/platforms/slack)
+- [Coze 运行器完整文档](/zh/usage/pipelines/coze)
+- Slack上的其他 AI 后端：[Dify](/zh/recipes/dify/slack) · [n8n](/zh/recipes/n8n/slack) · [Langflow](/zh/recipes/langflow/slack) · [DeepSeek](/zh/recipes/deepseek/slack) · [OpenAI (ChatGPT models)](/zh/recipes/openai/slack)
+- Coze 接入其他平台：[Telegram](/zh/recipes/coze/telegram) · [Discord](/zh/recipes/coze/discord) · [飞书](/zh/recipes/coze/lark) · [钉钉](/zh/recipes/coze/dingtalk) · [企业微信应用](/zh/recipes/coze/wecom) · [企业微信智能机器人](/zh/recipes/coze/wecombot)

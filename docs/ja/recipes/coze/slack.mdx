@@ -1,0 +1,73 @@
+---
+title: "Coze を Slack に接続する"
+description: "LangBot で Coze アプリを Slack のボットとして動かす手順：Coze の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Coze アプリを Slack のボットにつなぎます。LangBot が Slack のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Coze ではエージェントをビジュアルに作れます。LangBot は Coze API で Coze ボットを呼び出すため、Coze が直接公開できないプラットフォームにも同じボットを展開できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Coze のアカウントまたはインスタンス。
+- アプリをインストールできる Slack ワークスペースと、[Slack アプリページ](https://api.slack.com/apps) で発行した **App Configuration Tokens**（クイックセットアップ用）。
+
+## ネットワーク
+
+Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+## 1. Coze を準備する
+
+1. Coze の開発者コンソールの **API 管理** でトークンを作成します（coze.com は個人アクセストークン、coze.cn はサービス資格情報にも対応）。
+2. 公開時に **API** チャネルを選んでエージェントを公開し、`bot_id` を控えます。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Coze**（公式 Coze Agent ランナープラグイン） |
+| API Key | Coze のトークン |
+| Bot ID | エージェントの `bot_id` |
+| API Base URL | coze.cn は `https://api.coze.cn`、coze.com は `https://api.coze.com` |
+
+## 3. Slack のボットを作成する
+
+1. **Slack** アダプターでボットを作成し、**Slack クイックセットアップ** を使います。アプリ、スコープ、イベント購読が自動で作成されます。
+2. **Socket Mode**（推奨）を選んで App-Level Token（`xapp-...`）を追加するか、LangBot に公開 HTTPS アドレスがあれば **Webhook** を選びます。設定を反映してボットを有効にします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+アプリの **メッセージ** タブから話しかけるか、追加済みのチャンネルでメンションします。
+
+## トラブルシューティング
+
+- 呼び出しに失敗する場合は、トークンと `bot_id` に余分な空白がないか、API チャネルで公開したか、Base URL が利用サイトと一致しているかを確認します。
+- App Configuration のアクセス/リフレッシュトークンを App-Level Token 欄に入れないでください。同じアプリの `xapp-` トークンが必要です。
+- App-Level Token のトークンローテーションは無効のままにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Slack には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+### Slack のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Coze の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Slack の詳しい設定ガイド](/ja/usage/platforms/slack)
+- [Coze ランナーの詳しいガイド](/ja/usage/pipelines/coze)
+- Slack で使える他の AI：[Dify](/ja/recipes/dify/slack) · [n8n](/ja/recipes/n8n/slack) · [Langflow](/ja/recipes/langflow/slack) · [DeepSeek](/ja/recipes/deepseek/slack) · [OpenAI (ChatGPT models)](/ja/recipes/openai/slack)
+- Coze を他のプラットフォームで使う：[Telegram](/ja/recipes/coze/telegram) · [Discord](/ja/recipes/coze/discord) · [Lark（Feishu）](/ja/recipes/coze/lark) · [DingTalk](/ja/recipes/coze/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/coze/wecom) · [WeCom インテリジェントボット](/ja/recipes/coze/wecombot)

@@ -1,0 +1,74 @@
+---
+title: "Dify を DingTalk に接続する"
+description: "LangBot で Dify アプリを DingTalk のボットとして動かす手順：Dify の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Dify アプリを DingTalk のボットにつなぎます。LangBot が DingTalk のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Dify ではチャットアシスタント、Chatflow、エージェント、ワークフローを作れます。LangBot は公開したアプリを Service API 経由で呼び出すため、プロンプト、ツール、ナレッジは Dify 側で管理できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Dify のアカウントまたはインスタンス。
+- DingTalk アプリロボット（**Client ID** と **Client Secret**）。ワンクリック設定でスマートフォンから認可すると自動入力されます。
+
+## ネットワーク
+
+Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+## 1. Dify を準備する
+
+1. Dify でチャットアシスタント（Chatflow を含む）、エージェント、ワークフローのいずれかを作成して **公開** します。
+2. アプリの **API アクセス** ページで API キーを作成します。
+3. ワークフローアプリの場合は、回答を `summary` というキーで出力します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Dify**（公式 Dify Agent ランナープラグイン） |
+| Base URL | Dify Cloud は `https://api.dify.ai/v1`、セルフホストは自分の Dify アドレスの末尾に `/v1` |
+| API Key | アプリの API アクセスページで作成したキー |
+
+## 3. DingTalk のボットを作成する
+
+1. **DingTalk** アダプターでボットを作成して **ワンクリック設定** を使うか、ロボットを手動で作成して認証情報を入力します。
+2. イベント配信は **Stream モード** を使います。ストリーミング返信には LangBot の `dingtalk_stream_card.json` カードテンプレートをインポートし、**カード返信を使用** を有効にしてテンプレート ID を入力します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+まずロボットと個別チャットし、次にグループへ追加してメンションします。
+
+## トラブルシューティング
+
+- 同じホストの Docker でセルフホスト版 Dify を動かす場合は、両方を共通の Docker ネットワークに参加させ、`localhost` ではなくコンテナのアドレス（例：`http://dify-nginx/v1`）を使います。
+- Chatflow アプリが返すのは回答（Answer）ノードの出力だけです。
+- ストリーミングでなくプレーンテキストで返る場合は、カードテンプレート未インポートか **カード返信を使用** が無効です。
+- メッセージが届かない場合は、アプリのバージョンを公開し、イベント購読で Stream モードが選ばれているか確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### DingTalk には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+### DingTalk のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Dify の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [DingTalk の詳しい設定ガイド](/ja/usage/platforms/dingtalk)
+- [Dify ランナーの詳しいガイド](/ja/usage/pipelines/dify)
+- DingTalk で使える他の AI：[n8n](/ja/recipes/n8n/dingtalk) · [Coze](/ja/recipes/coze/dingtalk) · [Langflow](/ja/recipes/langflow/dingtalk) · [DeepSeek](/ja/recipes/deepseek/dingtalk) · [OpenAI (ChatGPT models)](/ja/recipes/openai/dingtalk)
+- Dify を他のプラットフォームで使う：[Telegram](/ja/recipes/dify/telegram) · [Discord](/ja/recipes/dify/discord) · [Slack](/ja/recipes/dify/slack) · [Lark（Feishu）](/ja/recipes/dify/lark) · [WeCom（社内アプリ）](/ja/recipes/dify/wecom) · [WeCom インテリジェントボット](/ja/recipes/dify/wecombot)

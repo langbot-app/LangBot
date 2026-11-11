@@ -1,0 +1,75 @@
+---
+title: "Build a WeChat Official Account AI Bot with DeepSeek"
+description: "Step-by-step guide to running a DeepSeek-powered AI bot on WeChat Official Account with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a DeepSeek model behind a WeChat Official Account bot. LangBot receives messages from WeChat Official Account, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use DeepSeek models directly with LangBot's built-in Agent: no separate agent platform needed, with optional knowledge bases, MCP tools and Skills.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A DeepSeek account or server you can call from LangBot.
+- A WeChat Official Account or Service Account: **AppID**, **AppSecret**, a server **Token** and **EncodingAESKey**, with LangBot's server IP in the **IP whitelist**.
+
+## Networking
+
+Official Accounts require a public domain with HTTPS and must get a response within 5 seconds. Slow AI replies need `passive` or `auto` mode. LangBot Cloud includes a public domain.
+
+## 1. Add the DeepSeek model
+
+1. Create an API key in the DeepSeek console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to DeepSeek and request URL `https://api.deepseek.com`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Typical model IDs are `deepseek-chat` and `deepseek-reasoner`; check DeepSeek's documentation for the current list.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the WeChat Official Account bot
+
+1. Create a bot with the **WeChat Official Account** adapter and choose a reply mode: `drop` (reply within the 5-second callback), `passive` or `auto` (answer later through the customer service API when the account is enterprise-verified).
+2. Paste the bot's callback URL into the account's server configuration and save.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Follow the account in WeChat and send it a message.
+
+## Troubleshooting
+
+- 401 errors: the API key is wrong or has no balance in the DeepSeek console.
+- Users see the loading message but no answer: in `passive` mode (or after `auto` falls back) the user must send another message to retrieve the queued answer.
+- Customer service messages require an enterprise-verified account; identity verification alone is not enough.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for WeChat Official Account?
+
+Yes, or use LangBot Cloud. Official Accounts require a public domain with HTTPS and must get a response within 5 seconds. Slow AI replies need `passive` or `auto` mode. LangBot Cloud includes a public domain.
+
+### Does the WeChat Official Account bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same DeepSeek setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full WeChat Official Account setup guide](/en/usage/platforms/wxoa)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on WeChat Official Account: [Dify](/en/recipes/dify/wechat-official-account) · [n8n](/en/recipes/n8n/wechat-official-account) · [Coze](/en/recipes/coze/wechat-official-account) · [Langflow](/en/recipes/langflow/wechat-official-account) · [OpenAI (ChatGPT models)](/en/recipes/openai/wechat-official-account)
+- DeepSeek on other platforms: [Telegram](/en/recipes/deepseek/telegram) · [Discord](/en/recipes/deepseek/discord) · [Slack](/en/recipes/deepseek/slack) · [Lark (Feishu)](/en/recipes/deepseek/lark) · [DingTalk](/en/recipes/deepseek/dingtalk) · [WeCom (internal app)](/en/recipes/deepseek/wecom)

@@ -1,0 +1,74 @@
+---
+title: "把 n8n 接入微信公众号"
+description: "使用 LangBot 把 n8n 应用接入微信公众号：n8n 配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把你的 n8n 应用接到微信公众号机器人上。LangBot 接收微信公众号消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+n8n 负责执行工作流，LangBot 负责聊天平台接入、会话和消息投递，并在每条消息到来时通过 Webhook 调用你的工作流。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- LangBot 能通过网络访问到的 n8n 账号或实例。
+- 微信公众号或服务号：**AppID**、**AppSecret**、服务器配置的 **Token** 和 **EncodingAESKey**，并把 LangBot 服务器 IP 加入 **IP 白名单**。
+
+## 网络要求
+
+公众号要求公网域名和 HTTPS，并且必须在 5 秒内响应回调；AI 回复较慢时请使用 `passive` 或 `auto` 模式。LangBot Cloud 自带公网域名。
+
+## 1. 准备 n8n
+
+1. 工作流以 **Webhook** 或 **On chat message** 触发器开始；需要流式回复时把 **Response Mode** 设为 **Streaming**。
+2. 用 **AI Agent** 节点（流式）或 **Respond to Webhook** 节点返回结果，响应字段名要与 LangBot 中的输出键名一致。
+3. 点击 **Active** 启用工作流，复制生产环境的 Webhook 地址。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。如果列表里没有对应运行器，请先在 **插件** 或 [LangBot Space 插件市场](https://space.langbot.app/market) 安装官方运行器插件。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **n8n**（官方 n8n 工作流运行器插件） |
+| Webhook URL | 工作流的生产环境 Webhook 地址 |
+| 认证方式 | 无、Basic Auth、JWT 或 Header，与触发节点设置一致 |
+
+## 3. 创建微信公众号机器人
+
+1. 新建机器人，选择 **微信公众号** 适配器并选择回复模式：`drop`（5 秒回调内直接回复）、`passive` 或 `auto`（企业认证账号可通过客服消息接口稍后回复）。
+2. 把机器人的回调地址填入公众号服务器配置并保存。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在微信中关注公众号并发送消息。
+
+## 常见问题排查
+
+- 回复为空：**Respond to Webhook** 中的字段名必须与 LangBot 配置的输出键名一致。
+- 测试地址只在 n8n 编辑器监听时可用，请使用已激活工作流的生产地址。
+- 用户只收到加载提示没有答案：`passive` 模式（或 `auto` 回退后）需要用户再发一条消息来取回答案。
+- 客服消息接口需要企业认证，仅个人身份认证不够。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入微信公众号需要有公网 IP 的服务器吗？
+
+需要，或者直接使用 LangBot Cloud。公众号要求公网域名和 HTTPS，并且必须在 5 秒内响应回调；AI 回复较慢时请使用 `passive` 或 `auto` 模式。LangBot Cloud 自带公网域名。
+
+### 微信公众号机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 n8n 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [微信公众号完整接入文档](/zh/usage/platforms/wxoa)
+- [n8n 运行器完整文档](/zh/usage/pipelines/n8n)
+- 微信公众号上的其他 AI 后端：[Dify](/zh/recipes/dify/wechat-official-account) · [Coze](/zh/recipes/coze/wechat-official-account) · [Langflow](/zh/recipes/langflow/wechat-official-account) · [DeepSeek](/zh/recipes/deepseek/wechat-official-account) · [OpenAI (ChatGPT models)](/zh/recipes/openai/wechat-official-account)
+- n8n 接入其他平台：[Telegram](/zh/recipes/n8n/telegram) · [Discord](/zh/recipes/n8n/discord) · [Slack](/zh/recipes/n8n/slack) · [飞书](/zh/recipes/n8n/lark) · [钉钉](/zh/recipes/n8n/dingtalk) · [企业微信应用](/zh/recipes/n8n/wecom)

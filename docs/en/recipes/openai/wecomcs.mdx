@@ -1,0 +1,74 @@
+---
+title: "Build a WeCom Customer Service AI Bot with OpenAI (ChatGPT models)"
+description: "Step-by-step guide to running a OpenAI (ChatGPT models)-powered AI bot on WeCom Customer Service with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a OpenAI (ChatGPT models) model behind a WeCom Customer Service bot. LangBot receives messages from WeCom Customer Service, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use OpenAI's GPT models with LangBot's built-in Agent, with optional knowledge bases, MCP tools, Skills and a code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A OpenAI (ChatGPT models) account or server you can call from LangBot.
+- WeCom Customer Service (WeChat Kefu) with API access: **Corporate ID**, **Secret**, and a callback **Token** and **EncodingAESKey**.
+
+## Networking
+
+Customer Service delivers events to a callback URL, so LangBot needs a public HTTPS address. LangBot Cloud includes one.
+
+## 1. Add the OpenAI (ChatGPT models) model
+
+1. Create an API key in the OpenAI console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to OpenAI and request URL `https://api.openai.com/v1`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Use a current model ID from OpenAI's model list. Any OpenAI-compatible endpoint works the same way with its own request URL.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the WeCom Customer Service bot
+
+1. In WeCom Customer Service **Developer Settings**, generate the Token and EncodingAESKey and enter them with the Corporate ID in a bot using the **WeCom Customer Service** adapter.
+2. Enable the bot, paste its webhook callback URL into the admin console, then fill in the Secret and restart the bot. Generate the customer service link or QR code users will open.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Open the customer service link or scan the QR code in WeChat and send a message.
+
+## Troubleshooting
+
+- Region or network errors: LangBot must be able to reach the request URL. Behind a restricted network, use a compatible gateway you can reach.
+- Welcome messages can only be sent when WeChat supplies a `welcome_code`, and only once before it expires.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for WeCom Customer Service?
+
+Yes, or use LangBot Cloud. Customer Service delivers events to a callback URL, so LangBot needs a public HTTPS address. LangBot Cloud includes one.
+
+### Does the WeCom Customer Service bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same OpenAI (ChatGPT models) setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full WeCom Customer Service setup guide](/en/usage/platforms/wecom/wecomcs)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on WeCom Customer Service: [Dify](/en/recipes/dify/wecomcs) · [n8n](/en/recipes/n8n/wecomcs) · [Coze](/en/recipes/coze/wecomcs) · [Langflow](/en/recipes/langflow/wecomcs) · [DeepSeek](/en/recipes/deepseek/wecomcs)
+- OpenAI (ChatGPT models) on other platforms: [Telegram](/en/recipes/openai/telegram) · [Discord](/en/recipes/openai/discord) · [Slack](/en/recipes/openai/slack) · [Lark (Feishu)](/en/recipes/openai/lark) · [DingTalk](/en/recipes/openai/dingtalk) · [WeCom (internal app)](/en/recipes/openai/wecom)

@@ -1,0 +1,75 @@
+---
+title: "OpenAI (ChatGPT models) で WeCom（社内アプリ） の AI ボットを作る"
+description: "LangBot で OpenAI (ChatGPT models) を使った WeCom（社内アプリ） の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは OpenAI (ChatGPT models) のモデルを WeCom（社内アプリ） のボットにつなぎます。LangBot が WeCom（社内アプリ） のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで OpenAI の GPT モデルを使います。ナレッジベース、MCP ツール、Skills、コードサンドボックスも追加できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる OpenAI (ChatGPT models) のアカウントまたはサーバー。
+- WeCom の自社開発アプリ：**企業 ID**、アプリの **Secret**、**連絡先同期 Secret**、コールバック用の **Token** と **EncodingAESKey**。
+
+## ネットワーク
+
+WeCom はコールバック URL にメッセージを送るため、LangBot には公開ドメインと HTTPS が必要です（[リバースプロキシと SSL](/ja/workshop/production/proxy-and-ssl) を参照）。LangBot Cloud にはすぐ使える公開 URL があります。
+
+## 1. OpenAI (ChatGPT models) のモデルを追加する
+
+1. OpenAI のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに OpenAI、リクエスト URL に `https://api.openai.com/v1` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. モデル ID は OpenAI のモデル一覧にある現行のものを使います。OpenAI 互換のエンドポイントも同じ手順で、それぞれのリクエスト URL を指定します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. WeCom（社内アプリ） のボットを作成する
+
+1. **WeCom** アダプターでボットを作成し、企業 ID、アプリ Secret、連絡先同期 Secret を入力して有効化し、Webhook コールバック URL をコピーします。
+2. WeCom 管理画面の **メッセージ受信 → API 受信の設定** に URL を貼り、Token と EncodingAESKey を生成して、先に LangBot、次に WeCom で保存します。LangBot の送信元 IP を **企業の信頼 IP** に追加します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeCom クライアントでアプリを開き、メッセージを送ります。
+
+## トラブルシューティング
+
+- ネットワークや地域のエラーは、LangBot からリクエスト URL に到達できないことが原因です。制限のある環境では到達可能な互換ゲートウェイを使います。
+- コールバック保存時に **request URL failed** となる場合は、URL が公開 HTTPS で到達できないか、LangBot の Token/EncodingAESKey が一致していません。
+- 返信が送れない場合は、LangBot の送信元 IP を企業の信頼 IP に追加します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeCom（社内アプリ） には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。WeCom はコールバック URL にメッセージを送るため、LangBot には公開ドメインと HTTPS が必要です（[リバースプロキシと SSL](/ja/workshop/production/proxy-and-ssl) を参照）。LangBot Cloud にはすぐ使える公開 URL があります。
+
+### WeCom（社内アプリ） のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ OpenAI (ChatGPT models) の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeCom（社内アプリ） の詳しい設定ガイド](/ja/usage/platforms/wecom/wecom)
+- [モデルの設定](/ja/usage/models/readme)
+- WeCom（社内アプリ） で使える他の AI：[Dify](/ja/recipes/dify/wecom) · [n8n](/ja/recipes/n8n/wecom) · [Coze](/ja/recipes/coze/wecom) · [Langflow](/ja/recipes/langflow/wecom) · [DeepSeek](/ja/recipes/deepseek/wecom)
+- OpenAI (ChatGPT models) を他のプラットフォームで使う：[Telegram](/ja/recipes/openai/telegram) · [Discord](/ja/recipes/openai/discord) · [Slack](/ja/recipes/openai/slack) · [Lark（Feishu）](/ja/recipes/openai/lark) · [DingTalk](/ja/recipes/openai/dingtalk) · [WeCom インテリジェントボット](/ja/recipes/openai/wecombot)

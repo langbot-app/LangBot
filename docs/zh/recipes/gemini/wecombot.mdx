@@ -1,0 +1,74 @@
+---
+title: "用 Gemini 搭建企业微信智能机器人 AI 机器人"
+description: "使用 LangBot 搭建由 Gemini 驱动的企业微信智能机器人 AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 Gemini 模型接到企业微信智能机器人机器人上。LangBot 接收企业微信智能机器人消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+用 LangBot 内置 Agent 调用 Google Gemini 模型；模型支持视觉时还可以识别图片。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 Gemini 账号或服务。
+- 使用 **长连接** API 模式的企业微信智能机器人：**BotID** 与长连接 **Secret**。一键创建可以自动填好。
+
+## 网络要求
+
+长连接模式不需要公网回调地址；另一种回调 URL 模式需要。两种模式只能二选一，切换会让另一种失效。
+
+## 1. 添加 Gemini 模型
+
+1. 在 Google Gemini 控制台创建 API Key。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选择 Google Gemini，再填入 API Key 和模型名称。
+3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
+4. 在 Google AI Studio 创建密钥。需要识别图片时在模型上勾选 **视觉**。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建企业微信智能机器人机器人
+
+1. 新建机器人，选择 **企业微信智能机器人** 适配器并使用 **一键创建**；或在企业微信中创建机器人，把 API 模式切换为 **长连接**，再填写 BotID 和 Secret。
+2. 设置机器人的可见范围，保存并启用。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在企业微信中找到机器人单聊，再拉进群聊 @ 它。
+
+## 常见问题排查
+
+- 图片被忽略：在模型上勾选 **视觉**，并确认该平台适配器支持接收图片。
+- 长连接 Secret 与回调模式的 Token/EncodingAESKey 不是同一个东西；把 API 模式切到回调 URL 会使现有长连接失效。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入企业微信智能机器人需要有公网 IP 的服务器吗？
+
+不需要。长连接模式不需要公网回调地址；另一种回调 URL 模式需要。两种模式只能二选一，切换会让另一种失效。
+
+### 企业微信智能机器人机器人支持流式回复吗？
+
+支持。在机器人上开启流式输出，同时 AI 后端也要支持流式。详见[平台功能对照表](/zh/insight/platform-features)。
+
+### 同一套 Gemini 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [企业微信智能机器人完整接入文档](/zh/usage/platforms/wecom/wecombot)
+- [模型配置](/zh/usage/models/readme)
+- 企业微信智能机器人上的其他 AI 后端：[Dify](/zh/recipes/dify/wecombot) · [n8n](/zh/recipes/n8n/wecombot) · [Coze](/zh/recipes/coze/wecombot) · [Langflow](/zh/recipes/langflow/wecombot) · [DeepSeek](/zh/recipes/deepseek/wecombot)
+- Gemini 接入其他平台：[Telegram](/zh/recipes/gemini/telegram) · [Discord](/zh/recipes/gemini/discord) · [Slack](/zh/recipes/gemini/slack) · [飞书](/zh/recipes/gemini/lark) · [钉钉](/zh/recipes/gemini/dingtalk) · [企业微信应用](/zh/recipes/gemini/wecom)

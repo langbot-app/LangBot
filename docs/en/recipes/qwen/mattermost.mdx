@@ -1,0 +1,75 @@
+---
+title: "Build a Mattermost AI Bot with Qwen"
+description: "Step-by-step guide to running a Qwen-powered AI bot on Mattermost with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Qwen model behind a Mattermost bot. LangBot receives messages from Mattermost, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Alibaba Cloud's Qwen models through Model Studio (DashScope) with LangBot's built-in Agent.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Qwen account or server you can call from LangBot.
+- A Mattermost **bot account** (role `Member`) and its access token, plus your Mattermost server URL.
+
+## Networking
+
+LangBot only needs to reach your Mattermost server; Mattermost does not need to reach LangBot.
+
+## 1. Add the Qwen model
+
+1. Create an API key in the Aliyun Bailian (DashScope) console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Aliyun Bailian (DashScope) and request URL `https://dashscope.aliyuncs.com/compatible-mode/v1`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Use a Qwen model ID listed in Model Studio.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the Mattermost bot
+
+1. Create the bot account in Mattermost (choose `post:all` for direct messages) and copy its token; it is shown only once.
+2. Create a bot with the **Mattermost** adapter, enter the server address and token, and bind a pipeline.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send the bot a direct message, or mention it in a channel it has joined.
+
+## Troubleshooting
+
+- International accounts use a different DashScope endpoint; copy the OpenAI-compatible URL shown in your console.
+- Administrator-related features are not supported; keep the bot role as `Member`.
+- Disable streaming on the bot if your pipeline or AI provider does not support it.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for Mattermost?
+
+No. LangBot only needs to reach your Mattermost server; Mattermost does not need to reach LangBot.
+
+### Does the Mattermost bot support streaming replies?
+
+Yes. Enable streaming on the bot; the AI back end must also stream. See the [platform feature matrix](/en/insight/platform-features) for details.
+
+### Can the same Qwen setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full Mattermost setup guide](/en/usage/platforms/mattermost)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on Mattermost: [Dify](/en/recipes/dify/mattermost) · [n8n](/en/recipes/n8n/mattermost) · [Coze](/en/recipes/coze/mattermost) · [Langflow](/en/recipes/langflow/mattermost) · [DeepSeek](/en/recipes/deepseek/mattermost)
+- Qwen on other platforms: [Telegram](/en/recipes/qwen/telegram) · [Discord](/en/recipes/qwen/discord) · [Slack](/en/recipes/qwen/slack) · [Lark (Feishu)](/en/recipes/qwen/lark) · [DingTalk](/en/recipes/qwen/dingtalk) · [WeCom (internal app)](/en/recipes/qwen/wecom)

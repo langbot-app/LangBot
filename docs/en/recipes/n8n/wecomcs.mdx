@@ -1,0 +1,73 @@
+---
+title: "Connect n8n to WeCom Customer Service"
+description: "Step-by-step guide to running your n8n app as a WeCom Customer Service bot with LangBot: n8n setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your n8n app behind a WeCom Customer Service bot. LangBot receives messages from WeCom Customer Service, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+n8n runs the workflow; LangBot handles the chat platform, sessions and delivery and calls your workflow through a webhook for every message.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A n8n account or instance that LangBot can reach over the network.
+- WeCom Customer Service (WeChat Kefu) with API access: **Corporate ID**, **Secret**, and a callback **Token** and **EncodingAESKey**.
+
+## Networking
+
+Customer Service delivers events to a callback URL, so LangBot needs a public HTTPS address. LangBot Cloud includes one.
+
+## 1. Prepare n8n
+
+1. Start the workflow with a **Webhook** or **On chat message** trigger. Set **Response Mode** to **Streaming** if you want streamed replies.
+2. Answer with an **AI Agent** node (streaming) or a **Respond to Webhook** node whose response key matches LangBot's output key.
+3. Click **Active** to enable the workflow and copy its production webhook URL.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **n8n** (official n8n workflow runner plugin) |
+| Webhook URL | The workflow's production webhook URL |
+| Authentication Type | None, Basic Auth, JWT or Header, matching the trigger node |
+
+## 3. Create the WeCom Customer Service bot
+
+1. In WeCom Customer Service **Developer Settings**, generate the Token and EncodingAESKey and enter them with the Corporate ID in a bot using the **WeCom Customer Service** adapter.
+2. Enable the bot, paste its webhook callback URL into the admin console, then fill in the Secret and restart the bot. Generate the customer service link or QR code users will open.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Open the customer service link or scan the QR code in WeChat and send a message.
+
+## Troubleshooting
+
+- Empty replies: the key in **Respond to Webhook** must match the output key configured in LangBot.
+- The test URL only works while the n8n editor is listening; use the production URL of an active workflow.
+- Welcome messages can only be sent when WeChat supplies a `welcome_code`, and only once before it expires.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for WeCom Customer Service?
+
+Yes, or use LangBot Cloud. Customer Service delivers events to a callback URL, so LangBot needs a public HTTPS address. LangBot Cloud includes one.
+
+### Does the WeCom Customer Service bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same n8n setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full WeCom Customer Service setup guide](/en/usage/platforms/wecom/wecomcs)
+- [Full n8n runner guide](/en/usage/pipelines/n8n)
+- Other AI back ends on WeCom Customer Service: [Dify](/en/recipes/dify/wecomcs) · [Coze](/en/recipes/coze/wecomcs) · [Langflow](/en/recipes/langflow/wecomcs) · [DeepSeek](/en/recipes/deepseek/wecomcs) · [OpenAI (ChatGPT models)](/en/recipes/openai/wecomcs)
+- n8n on other platforms: [Telegram](/en/recipes/n8n/telegram) · [Discord](/en/recipes/n8n/discord) · [Slack](/en/recipes/n8n/slack) · [Lark (Feishu)](/en/recipes/n8n/lark) · [DingTalk](/en/recipes/n8n/dingtalk) · [WeCom (internal app)](/en/recipes/n8n/wecom)

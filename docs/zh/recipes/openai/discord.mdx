@@ -1,0 +1,75 @@
+---
+title: "用 OpenAI (ChatGPT models) 搭建Discord AI 机器人"
+description: "使用 LangBot 搭建由 OpenAI (ChatGPT models) 驱动的Discord AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 OpenAI (ChatGPT models) 模型接到Discord机器人上。LangBot 接收Discord消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+用 LangBot 内置 Agent 调用 OpenAI 的 GPT 模型，可以按需加知识库、MCP 工具、Skills 和代码沙箱。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 OpenAI (ChatGPT models) 账号或服务。
+- 在 [Discord Developer Portal](https://discord.com/developers/applications) 创建的应用与机器人：**Client ID** 和 **Bot Token**，并开启 **Server Members Intent** 与 **Message Content Intent**。
+
+## 网络要求
+
+Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址。
+
+## 1. 添加 OpenAI (ChatGPT models) 模型
+
+1. 在 OpenAI 控制台创建 API Key。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选择 OpenAI，请求地址填写 `https://api.openai.com/v1`，再填入 API Key 和模型名称。
+3. 如果模型支持函数调用，请勾选 **工具调用**；MCP 工具、Skills 和沙箱都依赖它。
+4. 模型名请使用 OpenAI 模型列表中的最新 ID；其他 OpenAI 兼容接口也按同样方式填写各自的请求地址。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建Discord机器人
+
+1. 新建机器人，选择 **Discord** 适配器，填入 Client ID 和 Token。
+2. 在 **OAuth2 → URL Generator** 勾选 `bot` 与 **Guild Install** 生成邀请链接，授予查看频道和发送消息等权限，把机器人拉进服务器。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+在服务器频道中发送一条满足触发规则的消息，再从机器人资料页发起私信测试。
+
+## 常见问题排查
+
+- 网络或地区错误：LangBot 必须能访问请求地址；网络受限时请使用可访问的兼容网关。
+- Gateway 登录失败：检查 Token 是否为最新，两个特权 Intent 是否都已开启并保存。
+- Discord 限制单条消息长度，较长的流式回复会拆成多条消息发送。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入Discord需要有公网 IP 的服务器吗？
+
+不需要。Discord 机器人主动连接 Discord Gateway，不需要公网 Webhook 地址。
+
+### Discord机器人支持流式回复吗？
+
+支持。在机器人上开启流式输出，同时 AI 后端也要支持流式。详见[平台功能对照表](/zh/insight/platform-features)。
+
+### 同一套 OpenAI (ChatGPT models) 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [Discord完整接入文档](/zh/usage/platforms/discord)
+- [模型配置](/zh/usage/models/readme)
+- Discord上的其他 AI 后端：[Dify](/zh/recipes/dify/discord) · [n8n](/zh/recipes/n8n/discord) · [Coze](/zh/recipes/coze/discord) · [Langflow](/zh/recipes/langflow/discord) · [DeepSeek](/zh/recipes/deepseek/discord)
+- OpenAI (ChatGPT models) 接入其他平台：[Telegram](/zh/recipes/openai/telegram) · [Slack](/zh/recipes/openai/slack) · [飞书](/zh/recipes/openai/lark) · [钉钉](/zh/recipes/openai/dingtalk) · [企业微信应用](/zh/recipes/openai/wecom) · [企业微信智能机器人](/zh/recipes/openai/wecombot)

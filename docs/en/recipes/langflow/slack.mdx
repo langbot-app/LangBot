@@ -1,0 +1,74 @@
+---
+title: "Connect Langflow to Slack"
+description: "Step-by-step guide to running your Langflow app as a Slack bot with LangBot: Langflow setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your Langflow app behind a Slack bot. LangBot receives messages from Slack, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Langflow builds agents and flows with a drag-and-drop editor. LangBot runs a flow through the Langflow API for every message.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Langflow account or instance that LangBot can reach over the network.
+- A Slack workspace where you can install apps, plus **App Configuration Tokens** from the [Slack apps page](https://api.slack.com/apps) for the quick setup assistant.
+
+## Networking
+
+With Socket Mode, LangBot connects out to Slack and no public event URL is needed. Webhook mode needs a publicly reachable HTTPS endpoint.
+
+## 1. Prepare Langflow
+
+1. Build a flow in Langflow (the Simple Agent template is a good start).
+2. Create an API key under **Settings**.
+3. Copy the **Flow ID** from **Share → API access**.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **Langflow** (official Langflow Agent runner plugin) |
+| Base URL | Your Langflow address, reachable from LangBot |
+| API Key | The Langflow API key |
+| Flow ID | The flow to run |
+
+## 3. Create the Slack bot
+
+1. Create a bot with the **Slack** adapter and use **Quick Slack setup**: it creates the app, scopes and event subscriptions for you.
+2. Choose **Socket Mode** (recommended) and add an App-Level Token (`xapp-...`), or choose **Webhook** if LangBot has a public HTTPS address. Then fill the adapter configuration and enable the bot.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Message the app from its **Messages** tab, or mention it in a channel it has been added to.
+
+## Troubleshooting
+
+- Connection refused: `http://localhost:7860` only works when Langflow runs on the same host and network namespace as LangBot.
+- Do not paste the App Configuration Access/Refresh tokens into the App-Level Token field; it needs the `xapp-` token of the same app.
+- Leave token rotation disabled for the App-Level Token.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for Slack?
+
+Not necessarily. With Socket Mode, LangBot connects out to Slack and no public event URL is needed. Webhook mode needs a publicly reachable HTTPS endpoint.
+
+### Does the Slack bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Langflow setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full Slack setup guide](/en/usage/platforms/slack)
+- [Full Langflow runner guide](/en/usage/pipelines/langflow)
+- Other AI back ends on Slack: [Dify](/en/recipes/dify/slack) · [n8n](/en/recipes/n8n/slack) · [Coze](/en/recipes/coze/slack) · [DeepSeek](/en/recipes/deepseek/slack) · [OpenAI (ChatGPT models)](/en/recipes/openai/slack)
+- Langflow on other platforms: [Telegram](/en/recipes/langflow/telegram) · [Discord](/en/recipes/langflow/discord) · [Lark (Feishu)](/en/recipes/langflow/lark) · [DingTalk](/en/recipes/langflow/dingtalk) · [WeCom (internal app)](/en/recipes/langflow/wecom) · [WeCom Intelligent Bot](/en/recipes/langflow/wecombot)

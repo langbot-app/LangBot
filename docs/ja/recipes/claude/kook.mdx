@@ -1,0 +1,74 @@
+---
+title: "Claude で KOOK の AI ボットを作る"
+description: "LangBot で Claude を使った KOOK の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Claude のモデルを KOOK のボットにつなぎます。LangBot が KOOK のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントで Anthropic の Claude モデルを使います。MCP サーバー、Skills、コードサンドボックスとのツール連携も可能です。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Claude のアカウントまたはサーバー。
+- KOOK 開発者センターで作成したボットとその **Bot Token**。
+
+## ネットワーク
+
+KOOK アダプターに必要なのはボットトークンだけで、LangBot から KOOK に接続します。
+
+## 1. Claude のモデルを追加する
+
+1. Anthropic のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Anthropic を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. ゲートウェイを使わない限り、リクエスト URL はプロバイダー既定のままにします。モデル ID は Anthropic のドキュメントにある現行の Claude モデルを使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. KOOK のボットを作成する
+
+1. **KOOK** アダプターでボットを作成し、Bot Token を入力します。
+2. ボットの権限を設定し、サーバーへ招待します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+ボットが読めるチャンネルで、トリガー条件に合うメッセージを送ります。
+
+## トラブルシューティング
+
+- エージェントがツールを呼ばない場合は、モデルの **ツール使用** を有効にします。
+- チャンネルで返信がない場合は、ボットのチャンネル権限とパイプラインのグループトリガー条件を確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### KOOK には公開 IP のあるサーバーが必要ですか？
+
+いいえ。KOOK アダプターに必要なのはボットトークンだけで、LangBot から KOOK に接続します。
+
+### KOOK のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Claude の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [KOOK の詳しい設定ガイド](/ja/usage/platforms/kook)
+- [モデルの設定](/ja/usage/models/readme)
+- KOOK で使える他の AI：[Dify](/ja/recipes/dify/kook) · [n8n](/ja/recipes/n8n/kook) · [Coze](/ja/recipes/coze/kook) · [Langflow](/ja/recipes/langflow/kook) · [DeepSeek](/ja/recipes/deepseek/kook)
+- Claude を他のプラットフォームで使う：[Telegram](/ja/recipes/claude/telegram) · [Discord](/ja/recipes/claude/discord) · [Slack](/ja/recipes/claude/slack) · [Lark（Feishu）](/ja/recipes/claude/lark) · [DingTalk](/ja/recipes/claude/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/claude/wecom)

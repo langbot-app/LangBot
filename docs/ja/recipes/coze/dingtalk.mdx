@@ -1,0 +1,73 @@
+---
+title: "Coze を DingTalk に接続する"
+description: "LangBot で Coze アプリを DingTalk のボットとして動かす手順：Coze の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Coze アプリを DingTalk のボットにつなぎます。LangBot が DingTalk のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Coze ではエージェントをビジュアルに作れます。LangBot は Coze API で Coze ボットを呼び出すため、Coze が直接公開できないプラットフォームにも同じボットを展開できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Coze のアカウントまたはインスタンス。
+- DingTalk アプリロボット（**Client ID** と **Client Secret**）。ワンクリック設定でスマートフォンから認可すると自動入力されます。
+
+## ネットワーク
+
+Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+## 1. Coze を準備する
+
+1. Coze の開発者コンソールの **API 管理** でトークンを作成します（coze.com は個人アクセストークン、coze.cn はサービス資格情報にも対応）。
+2. 公開時に **API** チャネルを選んでエージェントを公開し、`bot_id` を控えます。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Coze**（公式 Coze Agent ランナープラグイン） |
+| API Key | Coze のトークン |
+| Bot ID | エージェントの `bot_id` |
+| API Base URL | coze.cn は `https://api.coze.cn`、coze.com は `https://api.coze.com` |
+
+## 3. DingTalk のボットを作成する
+
+1. **DingTalk** アダプターでボットを作成して **ワンクリック設定** を使うか、ロボットを手動で作成して認証情報を入力します。
+2. イベント配信は **Stream モード** を使います。ストリーミング返信には LangBot の `dingtalk_stream_card.json` カードテンプレートをインポートし、**カード返信を使用** を有効にしてテンプレート ID を入力します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+まずロボットと個別チャットし、次にグループへ追加してメンションします。
+
+## トラブルシューティング
+
+- 呼び出しに失敗する場合は、トークンと `bot_id` に余分な空白がないか、API チャネルで公開したか、Base URL が利用サイトと一致しているかを確認します。
+- ストリーミングでなくプレーンテキストで返る場合は、カードテンプレート未インポートか **カード返信を使用** が無効です。
+- メッセージが届かない場合は、アプリのバージョンを公開し、イベント購読で Stream モードが選ばれているか確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### DingTalk には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+### DingTalk のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Coze の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [DingTalk の詳しい設定ガイド](/ja/usage/platforms/dingtalk)
+- [Coze ランナーの詳しいガイド](/ja/usage/pipelines/coze)
+- DingTalk で使える他の AI：[Dify](/ja/recipes/dify/dingtalk) · [n8n](/ja/recipes/n8n/dingtalk) · [Langflow](/ja/recipes/langflow/dingtalk) · [DeepSeek](/ja/recipes/deepseek/dingtalk) · [OpenAI (ChatGPT models)](/ja/recipes/openai/dingtalk)
+- Coze を他のプラットフォームで使う：[Telegram](/ja/recipes/coze/telegram) · [Discord](/ja/recipes/coze/discord) · [Slack](/ja/recipes/coze/slack) · [Lark（Feishu）](/ja/recipes/coze/lark) · [WeCom（社内アプリ）](/ja/recipes/coze/wecom) · [WeCom インテリジェントボット](/ja/recipes/coze/wecombot)

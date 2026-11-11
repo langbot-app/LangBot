@@ -1,0 +1,74 @@
+---
+title: "DeepSeek で Lark（Feishu） の AI ボットを作る"
+description: "LangBot で DeepSeek を使った Lark（Feishu） の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは DeepSeek のモデルを Lark（Feishu） のボットにつなぎます。LangBot が Lark（Feishu） のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントから DeepSeek のモデルを直接使います。別のエージェント基盤は不要で、ナレッジベース、MCP ツール、Skills も追加できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる DeepSeek のアカウントまたはサーバー。
+- Feishu または Lark のカスタムアプリ（`app_id` と `app_secret`）。LangBot のワンクリック設定で作成と認可ができます。
+
+## ネットワーク
+
+既定の WebSocket 長期接続では公開 IP は不要です。長期接続が使えない場合（一部の Lark 国際版など）は Webhook モードとなり、公開 HTTPS アドレスが必要です。LangBot Cloud には最初から用意されています。
+
+## 1. DeepSeek のモデルを追加する
+
+1. DeepSeek のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに DeepSeek、リクエスト URL に `https://api.deepseek.com` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. 代表的なモデル ID は `deepseek-chat` と `deepseek-reasoner` です。最新の一覧は DeepSeek のドキュメントで確認してください。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. Lark（Feishu） のボットを作成する
+
+1. **Lark** アダプターでボットを作成し、プラットフォームのドメイン（Feishu / Lark）を選んで **ワンクリック設定** を使うか、`app_id` と `app_secret` を手動入力します。
+2. ガイドに沿ってメッセージ権限とイベント購読（ストリーミングカードを使う場合はカード権限も）を追加し、アプリのバージョンを公開します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+Feishu/Lark でボットを検索して DM を送り、グループに追加してメンションでも試します。
+
+## トラブルシューティング
+
+- 401 エラーは、API キーの誤りか DeepSeek アカウントの残高不足です。
+- メッセージが届かない場合は、アプリのバージョンが公開済みか、イベント購読方式（長期接続 / Webhook）が LangBot 側と一致しているかを確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Lark（Feishu） には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。既定の WebSocket 長期接続では公開 IP は不要です。長期接続が使えない場合（一部の Lark 国際版など）は Webhook モードとなり、公開 HTTPS アドレスが必要です。LangBot Cloud には最初から用意されています。
+
+### Lark（Feishu） のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ DeepSeek の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Lark（Feishu） の詳しい設定ガイド](/ja/usage/platforms/lark)
+- [モデルの設定](/ja/usage/models/readme)
+- Lark（Feishu） で使える他の AI：[Dify](/ja/recipes/dify/lark) · [n8n](/ja/recipes/n8n/lark) · [Coze](/ja/recipes/coze/lark) · [Langflow](/ja/recipes/langflow/lark) · [OpenAI (ChatGPT models)](/ja/recipes/openai/lark)
+- DeepSeek を他のプラットフォームで使う：[Telegram](/ja/recipes/deepseek/telegram) · [Discord](/ja/recipes/deepseek/discord) · [Slack](/ja/recipes/deepseek/slack) · [DingTalk](/ja/recipes/deepseek/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/deepseek/wecom) · [WeCom インテリジェントボット](/ja/recipes/deepseek/wecombot)

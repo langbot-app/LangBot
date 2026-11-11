@@ -1,0 +1,74 @@
+---
+title: "Ollama で Slack の AI ボットを作る"
+description: "LangBot で Ollama を使った Slack の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Ollama のモデルを Slack のボットにつなぎます。LangBot が Slack のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Ollama でオープンモデルをローカル実行し、LangBot の内蔵エージェントから提供します。会話データは手元のマシンから出ません。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Ollama のアカウントまたはサーバー。
+- アプリをインストールできる Slack ワークスペースと、[Slack アプリページ](https://api.slack.com/apps) で発行した **App Configuration Tokens**（クイックセットアップ用）。
+
+## ネットワーク
+
+Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+## 1. Ollama のモデルを追加する
+
+1. Ollama をインストールしてモデルを取得します（`ollama pull` にモデル名）。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Ollama、リクエスト URL に Ollama サーバー（既定ポート `11434`）を指定します。
+3. LangBot が Docker で動いている場合、`localhost` はコンテナ自身を指すため、ホストのアドレス（例：`host.docker.internal`）を使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. Slack のボットを作成する
+
+1. **Slack** アダプターでボットを作成し、**Slack クイックセットアップ** を使います。アプリ、スコープ、イベント購読が自動で作成されます。
+2. **Socket Mode**（推奨）を選んで App-Level Token（`xapp-...`）を追加するか、LangBot に公開 HTTPS アドレスがあれば **Webhook** を選びます。設定を反映してボットを有効にします。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+アプリの **メッセージ** タブから話しかけるか、追加済みのチャンネルでメンションします。
+
+## トラブルシューティング
+
+- 小さなローカルモデルはツール呼び出しが苦手な場合があります。関数呼び出しに対応しないモデルでは **ツール使用** をオフにします。
+- App Configuration のアクセス/リフレッシュトークンを App-Level Token 欄に入れないでください。同じアプリの `xapp-` トークンが必要です。
+- App-Level Token のトークンローテーションは無効のままにします。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Slack には公開 IP のあるサーバーが必要ですか？
+
+必ずしも必要ではありません。Socket Mode では LangBot から Slack へ接続するため公開イベント URL は不要です。Webhook モードでは公開 HTTPS エンドポイントが必要です。
+
+### Slack のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Ollama の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Slack の詳しい設定ガイド](/ja/usage/platforms/slack)
+- [モデルの設定](/ja/usage/models/readme)
+- Slack で使える他の AI：[Dify](/ja/recipes/dify/slack) · [n8n](/ja/recipes/n8n/slack) · [Coze](/ja/recipes/coze/slack) · [Langflow](/ja/recipes/langflow/slack) · [DeepSeek](/ja/recipes/deepseek/slack)
+- Ollama を他のプラットフォームで使う：[Telegram](/ja/recipes/ollama/telegram) · [Discord](/ja/recipes/ollama/discord) · [Lark（Feishu）](/ja/recipes/ollama/lark) · [DingTalk](/ja/recipes/ollama/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/ollama/wecom) · [WeCom インテリジェントボット](/ja/recipes/ollama/wecombot)

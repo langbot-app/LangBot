@@ -1,0 +1,75 @@
+---
+title: "DeepSeek で Discord の AI ボットを作る"
+description: "LangBot で DeepSeek を使った Discord の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは DeepSeek のモデルを Discord のボットにつなぎます。LangBot が Discord のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+LangBot の内蔵エージェントから DeepSeek のモデルを直接使います。別のエージェント基盤は不要で、ナレッジベース、MCP ツール、Skills も追加できます。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる DeepSeek のアカウントまたはサーバー。
+- [Discord Developer Portal](https://discord.com/developers/applications) で作成したアプリとボットの **Client ID** と **ボットトークン**。**Server Members Intent** と **Message Content Intent** を有効にしておきます。
+
+## ネットワーク
+
+Discord ボットは Discord ゲートウェイへ外向きに接続するため、公開 Webhook URL は不要です。
+
+## 1. DeepSeek のモデルを追加する
+
+1. DeepSeek のコンソールで API キーを作成します。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに DeepSeek、リクエスト URL に `https://api.deepseek.com` を指定して、API キーとモデル ID を入力します。
+3. モデルが関数呼び出しに対応していれば **ツール使用** を有効にします。MCP ツール、Skills、サンドボックスに必要です。
+4. 代表的なモデル ID は `deepseek-chat` と `deepseek-reasoner` です。最新の一覧は DeepSeek のドキュメントで確認してください。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. Discord のボットを作成する
+
+1. **Discord** アダプターでボットを作成し、Client ID とトークンを入力します。
+2. **OAuth2 → URL Generator** で `bot` スコープと **Guild Install** を選び、チャンネル閲覧とメッセージ送信の権限を付けてサーバーに招待します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+サーバーのチャンネルでトリガー条件に合うメッセージを送り、続いてボットのプロフィールから DM も試します。
+
+## トラブルシューティング
+
+- 401 エラーは、API キーの誤りか DeepSeek アカウントの残高不足です。
+- ゲートウェイへのログインに失敗する場合は、最新のトークンか、2 つの特権インテントが有効で保存済みかを確認します。
+- Discord は 1 メッセージの長さに上限があるため、長いストリーミング返信は複数メッセージに分かれます。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Discord には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Discord ボットは Discord ゲートウェイへ外向きに接続するため、公開 Webhook URL は不要です。
+
+### Discord のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ DeepSeek の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Discord の詳しい設定ガイド](/ja/usage/platforms/discord)
+- [モデルの設定](/ja/usage/models/readme)
+- Discord で使える他の AI：[Dify](/ja/recipes/dify/discord) · [n8n](/ja/recipes/n8n/discord) · [Coze](/ja/recipes/coze/discord) · [Langflow](/ja/recipes/langflow/discord) · [OpenAI (ChatGPT models)](/ja/recipes/openai/discord)
+- DeepSeek を他のプラットフォームで使う：[Telegram](/ja/recipes/deepseek/telegram) · [Slack](/ja/recipes/deepseek/slack) · [Lark（Feishu）](/ja/recipes/deepseek/lark) · [DingTalk](/ja/recipes/deepseek/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/deepseek/wecom) · [WeCom インテリジェントボット](/ja/recipes/deepseek/wecombot)

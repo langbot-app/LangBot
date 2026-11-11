@@ -1,0 +1,73 @@
+---
+title: "用 Ollama 搭建网页聊天挂件 AI 机器人"
+description: "使用 LangBot 搭建由 Ollama 驱动的网页聊天挂件 AI 机器人：模型配置、机器人凭据、网络要求、测试与常见问题。"
+---
+
+本文把 Ollama 模型接到网页聊天挂件机器人上。LangBot 接收网页聊天挂件消息，交给流水线处理后把答案发回去，你不需要写任何平台对接代码。
+
+用 Ollama 在本地运行开源模型，通过 LangBot 内置 Agent 提供服务，对话数据不出你的机器。
+
+## 准备工作
+
+- 一个运行中的 LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（无需服务器），或用 Docker、`uvx langbot` [自行部署](/zh/deploy/langbot/docker)。
+- 可以从 LangBot 调用的 Ollama 账号或服务。
+- 不需要第三方凭据。可选：用于防刷的 Cloudflare Turnstile Site Key 和 Secret Key。
+
+## 网络要求
+
+访客的浏览器会直接连接 LangBot，因此 LangBot 需要可公网访问的 HTTPS 地址；LangBot Cloud 自带。
+
+## 1. 添加 Ollama 模型
+
+1. 安装 Ollama 并拉取模型（`ollama pull` 加模型名）。
+2. 在 LangBot 的 **模型** 页面新增 LLM 模型，供应商选 Ollama，请求地址指向你的 Ollama 服务（默认端口 `11434`）。
+3. 如果 LangBot 运行在 Docker 中，`localhost` 指的是容器本身，请改用宿主机地址（例如 `host.docker.internal`）。
+
+## 2. 创建流水线
+
+在 LangBot WebUI 打开 **流水线**，新建流水线（或编辑默认流水线），按下表配置 **AI** 能力。
+
+| 配置项 | 填写 |
+| --- | --- |
+| 运行器 | **内置 Agent** |
+| 模型 | 刚添加的模型，可以再加备用模型。 |
+| 提示词 | 机器人的身份、语气以及不能做的事。 |
+| 知识库 | 可选。绑定知识库后按你的资料回答。 |
+
+## 3. 创建网页聊天挂件机器人
+
+1. 新建机器人，选择 **网页机器人** 适配器并绑定流水线。
+2. 把嵌入代码放进你的网站，并把其中的 `localhost:5300` 换成 LangBot 的公网地址。
+
+## 4. 绑定并测试
+
+打开机器人，选择刚才创建的流水线，保存并确认机器人已启用。
+
+打开嵌入了挂件的网页，发起对话。
+
+## 常见问题排查
+
+- 小型本地模型的工具调用能力可能较弱；不支持函数调用的模型请不要勾选 **工具调用**。
+- 挂件加载不出来：嵌入代码仍指向 `localhost`，或 LangBot 地址没有使用 HTTPS。
+- 在 WebUI 的 **监控** 页面可以看到每条消息、每次流水线运行和错误详情。
+
+## 常见问题
+
+### 接入网页聊天挂件需要有公网 IP 的服务器吗？
+
+需要，或者直接使用 LangBot Cloud。访客的浏览器会直接连接 LangBot，因此 LangBot 需要可公网访问的 HTTPS 地址；LangBot Cloud 自带。
+
+### 网页聊天挂件机器人支持流式回复吗？
+
+请查看[平台功能对照表](/zh/insight/platform-features)了解该平台支持的能力；AI 后端生成完成后会一次性发送回复。
+
+### 同一套 Ollama 配置能同时用在其他平台吗？
+
+可以。一条流水线可以绑定多个机器人，同一套配置能同时在多个平台上回复。
+
+## 相关文档
+
+- [网页聊天挂件完整接入文档](/zh/usage/platforms/webpage)
+- [模型配置](/zh/usage/models/readme)
+- 网页聊天挂件上的其他 AI 后端：[Dify](/zh/recipes/dify/web-page) · [n8n](/zh/recipes/n8n/web-page) · [Coze](/zh/recipes/coze/web-page) · [Langflow](/zh/recipes/langflow/web-page) · [DeepSeek](/zh/recipes/deepseek/web-page)
+- Ollama 接入其他平台：[Telegram](/zh/recipes/ollama/telegram) · [Discord](/zh/recipes/ollama/discord) · [Slack](/zh/recipes/ollama/slack) · [飞书](/zh/recipes/ollama/lark) · [钉钉](/zh/recipes/ollama/dingtalk) · [企业微信应用](/zh/recipes/ollama/wecom)

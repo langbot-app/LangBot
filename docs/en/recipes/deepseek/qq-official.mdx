@@ -1,0 +1,74 @@
+---
+title: "Build a QQ Official Bot AI Bot with DeepSeek"
+description: "Step-by-step guide to running a DeepSeek-powered AI bot on QQ Official Bot with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a DeepSeek model behind a QQ Official Bot bot. LangBot receives messages from QQ Official Bot, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use DeepSeek models directly with LangBot's built-in Agent: no separate agent platform needed, with optional knowledge bases, MCP tools and Skills.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A DeepSeek account or server you can call from LangBot.
+- A bot registered on the QQ Open Platform: **AppID**, **Token** and **AppSecret**, with LangBot's server IP in the IP whitelist.
+
+## Networking
+
+The QQ Official Bot API (webhook) requires a public IP and working HTTPS. LangBot Cloud includes a public domain.
+
+## 1. Add the DeepSeek model
+
+1. Create an API key in the DeepSeek console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to DeepSeek and request URL `https://api.deepseek.com`, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Typical model IDs are `deepseek-chat` and `deepseek-reasoner`; check DeepSeek's documentation for the current list.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the QQ Official Bot bot
+
+1. Create a bot with the **QQ Official** adapter and enter AppID, Token and AppSecret.
+2. Copy the bot's webhook callback URL, replace the host with your HTTPS domain, and save it as the request address in the QQ management portal. Add test users in the sandbox settings.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+As a sandbox member, message the bot in a private chat or @mention it in a sandbox group.
+
+## Troubleshooting
+
+- 401 errors: the API key is wrong or has no balance in the DeepSeek console.
+- Saving the request address fails: the domain is not reachable over HTTPS or the path does not end with `/bots/<bot id>`.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for QQ Official Bot?
+
+Yes, or use LangBot Cloud. The QQ Official Bot API (webhook) requires a public IP and working HTTPS. LangBot Cloud includes a public domain.
+
+### Does the QQ Official Bot bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same DeepSeek setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full QQ Official Bot setup guide](/en/usage/platforms/qq/official_webhook)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on QQ Official Bot: [Dify](/en/recipes/dify/qq-official) · [n8n](/en/recipes/n8n/qq-official) · [Coze](/en/recipes/coze/qq-official) · [Langflow](/en/recipes/langflow/qq-official) · [OpenAI (ChatGPT models)](/en/recipes/openai/qq-official)
+- DeepSeek on other platforms: [Telegram](/en/recipes/deepseek/telegram) · [Discord](/en/recipes/deepseek/discord) · [Slack](/en/recipes/deepseek/slack) · [Lark (Feishu)](/en/recipes/deepseek/lark) · [DingTalk](/en/recipes/deepseek/dingtalk) · [WeCom (internal app)](/en/recipes/deepseek/wecom)

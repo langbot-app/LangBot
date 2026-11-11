@@ -1,0 +1,74 @@
+---
+title: "n8n を DingTalk に接続する"
+description: "LangBot で n8n アプリを DingTalk のボットとして動かす手順：n8n の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの n8n アプリを DingTalk のボットにつなぎます。LangBot が DingTalk のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+n8n がワークフローを実行し、LangBot がチャットプラットフォーム、セッション、配信を担当します。メッセージごとに Webhook でワークフローを呼び出します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる n8n のアカウントまたはインスタンス。
+- DingTalk アプリロボット（**Client ID** と **Client Secret**）。ワンクリック設定でスマートフォンから認可すると自動入力されます。
+
+## ネットワーク
+
+Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+## 1. n8n を準備する
+
+1. ワークフローを **Webhook** または **On chat message** トリガーで開始します。ストリーミング返信には **Response Mode** を **Streaming** にします。
+2. **AI Agent** ノード（ストリーミング）か **Respond to Webhook** ノードで応答し、応答キー名を LangBot の出力キー名と一致させます。
+3. **Active** でワークフローを有効にし、本番用 Webhook URL をコピーします。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **n8n**（公式 n8n ワークフローランナープラグイン） |
+| Webhook URL | ワークフローの本番用 Webhook URL |
+| 認証方式 | なし、Basic Auth、JWT、Header のいずれか（トリガーノードと同じ設定） |
+
+## 3. DingTalk のボットを作成する
+
+1. **DingTalk** アダプターでボットを作成して **ワンクリック設定** を使うか、ロボットを手動で作成して認証情報を入力します。
+2. イベント配信は **Stream モード** を使います。ストリーミング返信には LangBot の `dingtalk_stream_card.json` カードテンプレートをインポートし、**カード返信を使用** を有効にしてテンプレート ID を入力します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+まずロボットと個別チャットし、次にグループへ追加してメンションします。
+
+## トラブルシューティング
+
+- 返信が空の場合は、**Respond to Webhook** のキー名が LangBot の出力キー名と一致しているか確認します。
+- テスト URL はエディターが待ち受けている間しか使えません。有効化したワークフローの本番 URL を使います。
+- ストリーミングでなくプレーンテキストで返る場合は、カードテンプレート未インポートか **カード返信を使用** が無効です。
+- メッセージが届かない場合は、アプリのバージョンを公開し、イベント購読で Stream モードが選ばれているか確認します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### DingTalk には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Stream モードでは LangBot から DingTalk へ接続するため、公開コールバック URL は不要です。
+
+### DingTalk のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ n8n の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [DingTalk の詳しい設定ガイド](/ja/usage/platforms/dingtalk)
+- [n8n ランナーの詳しいガイド](/ja/usage/pipelines/n8n)
+- DingTalk で使える他の AI：[Dify](/ja/recipes/dify/dingtalk) · [Coze](/ja/recipes/coze/dingtalk) · [Langflow](/ja/recipes/langflow/dingtalk) · [DeepSeek](/ja/recipes/deepseek/dingtalk) · [OpenAI (ChatGPT models)](/ja/recipes/openai/dingtalk)
+- n8n を他のプラットフォームで使う：[Telegram](/ja/recipes/n8n/telegram) · [Discord](/ja/recipes/n8n/discord) · [Slack](/ja/recipes/n8n/slack) · [Lark（Feishu）](/ja/recipes/n8n/lark) · [WeCom（社内アプリ）](/ja/recipes/n8n/wecom) · [WeCom インテリジェントボット](/ja/recipes/n8n/wecombot)

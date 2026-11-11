@@ -1,0 +1,75 @@
+---
+title: "Build a LINE AI Bot with Claude"
+description: "Step-by-step guide to running a Claude-powered AI bot on LINE with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Claude model behind a LINE bot. LangBot receives messages from LINE, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Anthropic's Claude models with LangBot's built-in Agent, including tool use with MCP servers, Skills and the code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Claude account or server you can call from LangBot.
+- A Messaging API channel in the [LINE Developers Console](https://developers.line.biz/): **Channel Secret** and **Channel Access Token** (click **Issue**).
+
+## Networking
+
+LINE calls a webhook, so LangBot needs a public HTTPS URL. LangBot Cloud includes a domain and HTTPS.
+
+## 1. Add the Claude model
+
+1. Create an API key in the Anthropic console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Anthropic, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Keep the provider's default request URL unless you use a gateway. Use a current Claude model ID from Anthropic's documentation.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the LINE bot
+
+1. Create a bot with the **LINE** adapter and enter the Channel Secret and Channel Access Token.
+2. Copy the webhook callback URL from LangBot into the channel's **Webhook URL**, verify it, and turn on **Use webhook**.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Add the official account as a friend with its QR code and send a message.
+
+## Troubleshooting
+
+- The agent never calls tools: enable **Tool Use** on the model.
+- Webhook verification fails: check the URL and that HTTPS works from the public internet.
+- No replies: turn off LINE's auto-reply messages in the Official Account Manager so they do not answer instead of the bot.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for LINE?
+
+Yes, or use LangBot Cloud. LINE calls a webhook, so LangBot needs a public HTTPS URL. LangBot Cloud includes a domain and HTTPS.
+
+### Does the LINE bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Claude setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full LINE setup guide](/en/usage/platforms/line)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on LINE: [Dify](/en/recipes/dify/line) · [n8n](/en/recipes/n8n/line) · [Coze](/en/recipes/coze/line) · [Langflow](/en/recipes/langflow/line) · [DeepSeek](/en/recipes/deepseek/line)
+- Claude on other platforms: [Telegram](/en/recipes/claude/telegram) · [Discord](/en/recipes/claude/discord) · [Slack](/en/recipes/claude/slack) · [Lark (Feishu)](/en/recipes/claude/lark) · [DingTalk](/en/recipes/claude/dingtalk) · [WeCom (internal app)](/en/recipes/claude/wecom)

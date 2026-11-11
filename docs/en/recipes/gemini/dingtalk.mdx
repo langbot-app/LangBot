@@ -1,0 +1,75 @@
+---
+title: "Build a DingTalk AI Bot with Gemini"
+description: "Step-by-step guide to running a Gemini-powered AI bot on DingTalk with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Gemini model behind a DingTalk bot. LangBot receives messages from DingTalk, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Google's Gemini models with LangBot's built-in Agent, including image input when the model supports vision.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Gemini account or server you can call from LangBot.
+- A DingTalk app robot (**Client ID** and **Client Secret**). The one-click setup fills both after you authorize on your phone.
+
+## Networking
+
+In Stream Mode LangBot connects out to DingTalk, so no public callback URL is needed.
+
+## 1. Add the Gemini model
+
+1. Create an API key in the Google Gemini console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Google Gemini, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Create the key in Google AI Studio. Enable **Vision** on the model if you want the bot to read images.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the DingTalk bot
+
+1. Create a bot with the **DingTalk** adapter and use **One-Click Setup**, or create the robot manually and enter its credentials.
+2. Use **Stream Mode** for event delivery. For streaming replies, import LangBot's `dingtalk_stream_card.json` card template, enable **Use Card Replies** and paste the Card Template ID.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Message the robot directly, then add it to a group and @mention it.
+
+## Troubleshooting
+
+- Images are ignored: enable **Vision** on the model and check that the platform adapter forwards images.
+- Replies arrive as plain text instead of streaming: the card template is not imported or **Use Card Replies** is off.
+- Messages do not arrive: publish the app version and check that Stream Mode is selected under event subscriptions.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for DingTalk?
+
+No. In Stream Mode LangBot connects out to DingTalk, so no public callback URL is needed.
+
+### Does the DingTalk bot support streaming replies?
+
+Yes. Enable streaming on the bot; the AI back end must also stream. See the [platform feature matrix](/en/insight/platform-features) for details.
+
+### Can the same Gemini setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full DingTalk setup guide](/en/usage/platforms/dingtalk)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on DingTalk: [Dify](/en/recipes/dify/dingtalk) · [n8n](/en/recipes/n8n/dingtalk) · [Coze](/en/recipes/coze/dingtalk) · [Langflow](/en/recipes/langflow/dingtalk) · [DeepSeek](/en/recipes/deepseek/dingtalk)
+- Gemini on other platforms: [Telegram](/en/recipes/gemini/telegram) · [Discord](/en/recipes/gemini/discord) · [Slack](/en/recipes/gemini/slack) · [Lark (Feishu)](/en/recipes/gemini/lark) · [WeCom (internal app)](/en/recipes/gemini/wecom) · [WeCom Intelligent Bot](/en/recipes/gemini/wecombot)

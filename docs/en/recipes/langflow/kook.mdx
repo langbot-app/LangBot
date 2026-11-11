@@ -1,0 +1,73 @@
+---
+title: "Connect Langflow to KOOK"
+description: "Step-by-step guide to running your Langflow app as a KOOK bot with LangBot: Langflow setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your Langflow app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Langflow builds agents and flows with a drag-and-drop editor. LangBot runs a flow through the Langflow API for every message.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Langflow account or instance that LangBot can reach over the network.
+- A bot created in the KOOK developer center and its **Bot Token**.
+
+## Networking
+
+The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+## 1. Prepare Langflow
+
+1. Build a flow in Langflow (the Simple Agent template is a good start).
+2. Create an API key under **Settings**.
+3. Copy the **Flow ID** from **Share → API access**.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **Langflow** (official Langflow Agent runner plugin) |
+| Base URL | Your Langflow address, reachable from LangBot |
+| API Key | The Langflow API key |
+| Flow ID | The flow to run |
+
+## 3. Create the KOOK bot
+
+1. Create a bot with the **KOOK** adapter and enter the Bot Token.
+2. Grant the bot permissions and invite it to your server.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send a message that matches the trigger rules in a channel the bot can read.
+
+## Troubleshooting
+
+- Connection refused: `http://localhost:7860` only works when Langflow runs on the same host and network namespace as LangBot.
+- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for KOOK?
+
+No. The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+### Does the KOOK bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Langflow setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full KOOK setup guide](/en/usage/platforms/kook)
+- [Full Langflow runner guide](/en/usage/pipelines/langflow)
+- Other AI back ends on KOOK: [Dify](/en/recipes/dify/kook) · [n8n](/en/recipes/n8n/kook) · [Coze](/en/recipes/coze/kook) · [DeepSeek](/en/recipes/deepseek/kook) · [OpenAI (ChatGPT models)](/en/recipes/openai/kook)
+- Langflow on other platforms: [Telegram](/en/recipes/langflow/telegram) · [Discord](/en/recipes/langflow/discord) · [Slack](/en/recipes/langflow/slack) · [Lark (Feishu)](/en/recipes/langflow/lark) · [DingTalk](/en/recipes/langflow/dingtalk) · [WeCom (internal app)](/en/recipes/langflow/wecom)

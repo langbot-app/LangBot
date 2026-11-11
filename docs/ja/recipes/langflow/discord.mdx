@@ -1,0 +1,74 @@
+---
+title: "Langflow を Discord に接続する"
+description: "LangBot で Langflow アプリを Discord のボットとして動かす手順：Langflow の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Langflow アプリを Discord のボットにつなぎます。LangBot が Discord のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Langflow はドラッグ＆ドロップでエージェントやフローを作れます。LangBot はメッセージごとに Langflow API でフローを実行します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Langflow のアカウントまたはインスタンス。
+- [Discord Developer Portal](https://discord.com/developers/applications) で作成したアプリとボットの **Client ID** と **ボットトークン**。**Server Members Intent** と **Message Content Intent** を有効にしておきます。
+
+## ネットワーク
+
+Discord ボットは Discord ゲートウェイへ外向きに接続するため、公開 Webhook URL は不要です。
+
+## 1. Langflow を準備する
+
+1. Langflow でフローを作成します（Simple Agent テンプレートから始めると簡単です）。
+2. **Settings** で API キーを作成します。
+3. **Share → API access** のサンプルコードから **Flow ID** を取得します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Langflow**（公式 Langflow Agent ランナープラグイン） |
+| Base URL | LangBot から到達できる Langflow のアドレス |
+| API Key | Langflow の API キー |
+| Flow ID | 実行するフローの ID |
+
+## 3. Discord のボットを作成する
+
+1. **Discord** アダプターでボットを作成し、Client ID とトークンを入力します。
+2. **OAuth2 → URL Generator** で `bot` スコープと **Guild Install** を選び、チャンネル閲覧とメッセージ送信の権限を付けてサーバーに招待します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+サーバーのチャンネルでトリガー条件に合うメッセージを送り、続いてボットのプロフィールから DM も試します。
+
+## トラブルシューティング
+
+- 接続が拒否される場合、`http://localhost:7860` が使えるのは Langflow と LangBot が同じホスト・同じネットワーク名前空間にあるときだけです。
+- ゲートウェイへのログインに失敗する場合は、最新のトークンか、2 つの特権インテントが有効で保存済みかを確認します。
+- Discord は 1 メッセージの長さに上限があるため、長いストリーミング返信は複数メッセージに分かれます。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### Discord には公開 IP のあるサーバーが必要ですか？
+
+いいえ。Discord ボットは Discord ゲートウェイへ外向きに接続するため、公開 Webhook URL は不要です。
+
+### Discord のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Langflow の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [Discord の詳しい設定ガイド](/ja/usage/platforms/discord)
+- [Langflow ランナーの詳しいガイド](/ja/usage/pipelines/langflow)
+- Discord で使える他の AI：[Dify](/ja/recipes/dify/discord) · [n8n](/ja/recipes/n8n/discord) · [Coze](/ja/recipes/coze/discord) · [DeepSeek](/ja/recipes/deepseek/discord) · [OpenAI (ChatGPT models)](/ja/recipes/openai/discord)
+- Langflow を他のプラットフォームで使う：[Telegram](/ja/recipes/langflow/telegram) · [Slack](/ja/recipes/langflow/slack) · [Lark（Feishu）](/ja/recipes/langflow/lark) · [DingTalk](/ja/recipes/langflow/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/langflow/wecom) · [WeCom インテリジェントボット](/ja/recipes/langflow/wecombot)

@@ -1,0 +1,74 @@
+---
+title: "Langflow を WeCom（社内アプリ） に接続する"
+description: "LangBot で Langflow アプリを WeCom（社内アプリ） のボットとして動かす手順：Langflow の設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピではお使いの Langflow アプリを WeCom（社内アプリ） のボットにつなぎます。LangBot が WeCom（社内アプリ） のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Langflow はドラッグ＆ドロップでエージェントやフローを作れます。LangBot はメッセージごとに Langflow API でフローを実行します。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot からネットワーク経由で到達できる Langflow のアカウントまたはインスタンス。
+- WeCom の自社開発アプリ：**企業 ID**、アプリの **Secret**、**連絡先同期 Secret**、コールバック用の **Token** と **EncodingAESKey**。
+
+## ネットワーク
+
+WeCom はコールバック URL にメッセージを送るため、LangBot には公開ドメインと HTTPS が必要です（[リバースプロキシと SSL](/ja/workshop/production/proxy-and-ssl) を参照）。LangBot Cloud にはすぐ使える公開 URL があります。
+
+## 1. Langflow を準備する
+
+1. Langflow でフローを作成します（Simple Agent テンプレートから始めると簡単です）。
+2. **Settings** で API キーを作成します。
+3. **Share → API access** のサンプルコードから **Flow ID** を取得します。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。ランナーが一覧にない場合は、**プラグイン** または [LangBot Space マーケット](https://space.langbot.app/market) から公式ランナープラグインをインストールします。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Langflow**（公式 Langflow Agent ランナープラグイン） |
+| Base URL | LangBot から到達できる Langflow のアドレス |
+| API Key | Langflow の API キー |
+| Flow ID | 実行するフローの ID |
+
+## 3. WeCom（社内アプリ） のボットを作成する
+
+1. **WeCom** アダプターでボットを作成し、企業 ID、アプリ Secret、連絡先同期 Secret を入力して有効化し、Webhook コールバック URL をコピーします。
+2. WeCom 管理画面の **メッセージ受信 → API 受信の設定** に URL を貼り、Token と EncodingAESKey を生成して、先に LangBot、次に WeCom で保存します。LangBot の送信元 IP を **企業の信頼 IP** に追加します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeCom クライアントでアプリを開き、メッセージを送ります。
+
+## トラブルシューティング
+
+- 接続が拒否される場合、`http://localhost:7860` が使えるのは Langflow と LangBot が同じホスト・同じネットワーク名前空間にあるときだけです。
+- コールバック保存時に **request URL failed** となる場合は、URL が公開 HTTPS で到達できないか、LangBot の Token/EncodingAESKey が一致していません。
+- 返信が送れない場合は、LangBot の送信元 IP を企業の信頼 IP に追加します。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeCom（社内アプリ） には公開 IP のあるサーバーが必要ですか？
+
+必要です。または LangBot Cloud を使えます。WeCom はコールバック URL にメッセージを送るため、LangBot には公開ドメインと HTTPS が必要です（[リバースプロキシと SSL](/ja/workshop/production/proxy-and-ssl) を参照）。LangBot Cloud にはすぐ使える公開 URL があります。
+
+### WeCom（社内アプリ） のボットはストリーミング返信に対応していますか？
+
+対応状況は[プラットフォーム機能一覧](/ja/insight/platform-features)で確認してください。AI 側の生成が終わってから返信が送られます。
+
+### 同じ Langflow の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeCom（社内アプリ） の詳しい設定ガイド](/ja/usage/platforms/wecom/wecom)
+- [Langflow ランナーの詳しいガイド](/ja/usage/pipelines/langflow)
+- WeCom（社内アプリ） で使える他の AI：[Dify](/ja/recipes/dify/wecom) · [n8n](/ja/recipes/n8n/wecom) · [Coze](/ja/recipes/coze/wecom) · [DeepSeek](/ja/recipes/deepseek/wecom) · [OpenAI (ChatGPT models)](/ja/recipes/openai/wecom)
+- Langflow を他のプラットフォームで使う：[Telegram](/ja/recipes/langflow/telegram) · [Discord](/ja/recipes/langflow/discord) · [Slack](/ja/recipes/langflow/slack) · [Lark（Feishu）](/ja/recipes/langflow/lark) · [DingTalk](/ja/recipes/langflow/dingtalk) · [WeCom インテリジェントボット](/ja/recipes/langflow/wecombot)

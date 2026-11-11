@@ -1,0 +1,73 @@
+---
+title: "Ollama で WeCom インテリジェントボット の AI ボットを作る"
+description: "LangBot で Ollama を使った WeCom インテリジェントボット の AI ボットを動かす手順：モデル設定、ボットの認証情報、ネットワーク、テスト、トラブルシューティング。"
+---
+
+このレシピでは Ollama のモデルを WeCom インテリジェントボット のボットにつなぎます。LangBot が WeCom インテリジェントボット のメッセージを受け取り、パイプラインで処理して返信するので、プラットフォーム連携のコードは不要です。
+
+Ollama でオープンモデルをローカル実行し、LangBot の内蔵エージェントから提供します。会話データは手元のマシンから出ません。
+
+## 必要なもの
+
+- 稼働中の LangBot：[LangBot Cloud](https://space.langbot.app/cloud)（サーバー不要）、または Docker や `uvx langbot` による[セルフホスト](/ja/deploy/langbot/docker)。
+- LangBot から呼び出せる Ollama のアカウントまたはサーバー。
+- **長期接続** API モードの WeCom インテリジェントボット：**BotID** と長期接続用 **Secret**。ワンクリック設定で自動入力できます。
+
+## ネットワーク
+
+長期接続モードでは公開コールバック URL は不要です。もう一方のコールバック URL モードでは必要で、両モードは同時に使えません。
+
+## 1. Ollama のモデルを追加する
+
+1. Ollama をインストールしてモデルを取得します（`ollama pull` にモデル名）。
+2. LangBot の **モデル** で LLM モデルを追加し、プロバイダーに Ollama、リクエスト URL に Ollama サーバー（既定ポート `11434`）を指定します。
+3. LangBot が Docker で動いている場合、`localhost` はコンテナ自身を指すため、ホストのアドレス（例：`host.docker.internal`）を使います。
+
+## 2. パイプラインを作成する
+
+LangBot WebUI の **パイプライン** でパイプラインを作成（または既定のものを編集）し、**AI** を次のように設定します。
+
+| 項目 | 設定値 |
+| --- | --- |
+| ランナー | **Local Agent**（内蔵エージェント） |
+| モデル | 追加したモデル。予備モデルも指定できます。 |
+| プロンプト | ボットの役割、口調、してはいけないこと。 |
+| ナレッジベース | 任意。ナレッジベースを付けると資料に基づいて回答します。 |
+
+## 3. WeCom インテリジェントボット のボットを作成する
+
+1. **WeCom インテリジェントボット** アダプターでボットを作成して **ワンクリック設定** を使うか、WeCom でボットを作って API モードを **長期接続** に切り替え、BotID と Secret を入力します。
+2. ボットの公開範囲を設定し、保存して有効化します。
+
+## 4. 紐付けてテストする
+
+ボットを開いて作成したパイプラインを選び、保存してボットが有効になっていることを確認します。
+
+WeCom クライアントでボットを見つけて個別に話しかけ、グループに追加してメンションします。
+
+## トラブルシューティング
+
+- 小さなローカルモデルはツール呼び出しが苦手な場合があります。関数呼び出しに対応しないモデルでは **ツール使用** をオフにします。
+- 長期接続の Secret はコールバックモードの Token/EncodingAESKey とは別物です。API モードをコールバック URL に切り替えると既存の長期接続は無効になります。
+- WebUI の **モニタリング** に、すべてのメッセージ、パイプラインの実行、エラーが記録されます。
+
+## よくある質問
+
+### WeCom インテリジェントボット には公開 IP のあるサーバーが必要ですか？
+
+いいえ。長期接続モードでは公開コールバック URL は不要です。もう一方のコールバック URL モードでは必要で、両モードは同時に使えません。
+
+### WeCom インテリジェントボット のボットはストリーミング返信に対応していますか？
+
+はい。ボットでストリーミングを有効にし、AI 側もストリーミングに対応している必要があります。詳しくは[プラットフォーム機能一覧](/ja/insight/platform-features)をご覧ください。
+
+### 同じ Ollama の設定を他のプラットフォームでも使えますか？
+
+はい。1 つのパイプラインを複数のボットに紐付けられるので、同じ設定で複数のプラットフォームに同時に応答できます。
+
+## 関連ガイド
+
+- [WeCom インテリジェントボット の詳しい設定ガイド](/ja/usage/platforms/wecom/wecombot)
+- [モデルの設定](/ja/usage/models/readme)
+- WeCom インテリジェントボット で使える他の AI：[Dify](/ja/recipes/dify/wecombot) · [n8n](/ja/recipes/n8n/wecombot) · [Coze](/ja/recipes/coze/wecombot) · [Langflow](/ja/recipes/langflow/wecombot) · [DeepSeek](/ja/recipes/deepseek/wecombot)
+- Ollama を他のプラットフォームで使う：[Telegram](/ja/recipes/ollama/telegram) · [Discord](/ja/recipes/ollama/discord) · [Slack](/ja/recipes/ollama/slack) · [Lark（Feishu）](/ja/recipes/ollama/lark) · [DingTalk](/ja/recipes/ollama/dingtalk) · [WeCom（社内アプリ）](/ja/recipes/ollama/wecom)

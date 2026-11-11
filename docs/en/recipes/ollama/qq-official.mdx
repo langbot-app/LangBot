@@ -1,0 +1,73 @@
+---
+title: "Build a QQ Official Bot AI Bot with Ollama"
+description: "Step-by-step guide to running a Ollama-powered AI bot on QQ Official Bot with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Ollama model behind a QQ Official Bot bot. LangBot receives messages from QQ Official Bot, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Run open models locally with Ollama and serve them through LangBot's built-in Agent, so conversations never leave your machines.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Ollama account or server you can call from LangBot.
+- A bot registered on the QQ Open Platform: **AppID**, **Token** and **AppSecret**, with LangBot's server IP in the IP whitelist.
+
+## Networking
+
+The QQ Official Bot API (webhook) requires a public IP and working HTTPS. LangBot Cloud includes a public domain.
+
+## 1. Add the Ollama model
+
+1. Install Ollama and pull a model (for example `ollama pull` followed by the model name).
+2. In LangBot, open **Models** and add an LLM model with the provider set to Ollama and the request URL pointing at your Ollama server (by default port `11434`).
+3. If LangBot runs in Docker, `localhost` is the container itself: use the host's address (for example `host.docker.internal`) instead.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the QQ Official Bot bot
+
+1. Create a bot with the **QQ Official** adapter and enter AppID, Token and AppSecret.
+2. Copy the bot's webhook callback URL, replace the host with your HTTPS domain, and save it as the request address in the QQ management portal. Add test users in the sandbox settings.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+As a sandbox member, message the bot in a private chat or @mention it in a sandbox group.
+
+## Troubleshooting
+
+- Small local models may not support tool calling well; leave **Tool Use** off for models that do not support it.
+- Saving the request address fails: the domain is not reachable over HTTPS or the path does not end with `/bots/<bot id>`.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for QQ Official Bot?
+
+Yes, or use LangBot Cloud. The QQ Official Bot API (webhook) requires a public IP and working HTTPS. LangBot Cloud includes a public domain.
+
+### Does the QQ Official Bot bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Ollama setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full QQ Official Bot setup guide](/en/usage/platforms/qq/official_webhook)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on QQ Official Bot: [Dify](/en/recipes/dify/qq-official) · [n8n](/en/recipes/n8n/qq-official) · [Coze](/en/recipes/coze/qq-official) · [Langflow](/en/recipes/langflow/qq-official) · [DeepSeek](/en/recipes/deepseek/qq-official)
+- Ollama on other platforms: [Telegram](/en/recipes/ollama/telegram) · [Discord](/en/recipes/ollama/discord) · [Slack](/en/recipes/ollama/slack) · [Lark (Feishu)](/en/recipes/ollama/lark) · [DingTalk](/en/recipes/ollama/dingtalk) · [WeCom (internal app)](/en/recipes/ollama/wecom)

@@ -1,0 +1,73 @@
+---
+title: "Connect n8n to KOOK"
+description: "Step-by-step guide to running your n8n app as a KOOK bot with LangBot: n8n setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts your n8n app behind a KOOK bot. LangBot receives messages from KOOK, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+n8n runs the workflow; LangBot handles the chat platform, sessions and delivery and calls your workflow through a webhook for every message.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A n8n account or instance that LangBot can reach over the network.
+- A bot created in the KOOK developer center and its **Bot Token**.
+
+## Networking
+
+The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+## 1. Prepare n8n
+
+1. Start the workflow with a **Webhook** or **On chat message** trigger. Set **Response Mode** to **Streaming** if you want streamed replies.
+2. Answer with an **AI Agent** node (streaming) or a **Respond to Webhook** node whose response key matches LangBot's output key.
+3. Click **Active** to enable the workflow and copy its production webhook URL.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows. If the runner is not listed, install the official runner plugin from **Plugins** or the [LangBot Space marketplace](https://space.langbot.app/market).
+
+| Field | Value |
+| --- | --- |
+| Runner | **n8n** (official n8n workflow runner plugin) |
+| Webhook URL | The workflow's production webhook URL |
+| Authentication Type | None, Basic Auth, JWT or Header, matching the trigger node |
+
+## 3. Create the KOOK bot
+
+1. Create a bot with the **KOOK** adapter and enter the Bot Token.
+2. Grant the bot permissions and invite it to your server.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Send a message that matches the trigger rules in a channel the bot can read.
+
+## Troubleshooting
+
+- Empty replies: the key in **Respond to Webhook** must match the output key configured in LangBot.
+- The test URL only works while the n8n editor is listening; use the production URL of an active workflow.
+- No reply in a channel: check the bot's channel permissions and the pipeline's group trigger rules.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for KOOK?
+
+No. The KOOK adapter only needs a bot token; LangBot connects out to KOOK.
+
+### Does the KOOK bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same n8n setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full KOOK setup guide](/en/usage/platforms/kook)
+- [Full n8n runner guide](/en/usage/pipelines/n8n)
+- Other AI back ends on KOOK: [Dify](/en/recipes/dify/kook) · [Coze](/en/recipes/coze/kook) · [Langflow](/en/recipes/langflow/kook) · [DeepSeek](/en/recipes/deepseek/kook) · [OpenAI (ChatGPT models)](/en/recipes/openai/kook)
+- n8n on other platforms: [Telegram](/en/recipes/n8n/telegram) · [Discord](/en/recipes/n8n/discord) · [Slack](/en/recipes/n8n/slack) · [Lark (Feishu)](/en/recipes/n8n/lark) · [DingTalk](/en/recipes/n8n/dingtalk) · [WeCom (internal app)](/en/recipes/n8n/wecom)

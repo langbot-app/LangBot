@@ -1,0 +1,74 @@
+---
+title: "Build a a website chat widget AI Bot with Claude"
+description: "Step-by-step guide to running a Claude-powered AI bot on a website chat widget with LangBot: model setup, bot credentials, networking, testing and troubleshooting."
+---
+
+This recipe puts a Claude model behind a a website chat widget bot. LangBot receives messages from a website chat widget, runs them through a pipeline, and sends the answer back, so you do not write any platform code.
+
+Use Anthropic's Claude models with LangBot's built-in Agent, including tool use with MCP servers, Skills and the code sandbox.
+
+## What you need
+
+- A running LangBot instance: [LangBot Cloud](https://space.langbot.app/cloud) (no server needed) or a [self-hosted deployment](/en/deploy/langbot/docker) with Docker or `uvx langbot`.
+- A Claude account or server you can call from LangBot.
+- Nothing from a third party. Optionally a Cloudflare Turnstile site key and secret key for anti-abuse.
+
+## Networking
+
+Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a public HTTPS address. LangBot Cloud includes one.
+
+## 1. Add the Claude model
+
+1. Create an API key in the Anthropic console.
+2. In LangBot, open **Models**, add an LLM model with the provider set to Anthropic, then paste the API key and the model ID.
+3. Enable **Tool Use** if the model supports function calling; MCP tools, Skills and the sandbox need it.
+4. Keep the provider's default request URL unless you use a gateway. Use a current Claude model ID from Anthropic's documentation.
+
+## 2. Create a pipeline
+
+Open **Pipelines** in the LangBot WebUI, create a pipeline (or edit the default one) and set **AI** as follows.
+
+| Field | Value |
+| --- | --- |
+| Runner | **Local Agent** (built-in Agent) |
+| Model | The model you just added. You can add fallback models. |
+| Prompt | Instructions: who the bot is, tone, what it must not do. |
+| Knowledge Bases | Optional. Attach a knowledge base so answers come from your documents. |
+
+## 3. Create the a website chat widget bot
+
+1. Create a bot with the **Web Page Bot** adapter and bind a pipeline.
+2. Copy the embed code into your site and replace `localhost:5300` with LangBot's public address.
+
+## 4. Bind and test
+
+Open the bot, select the pipeline you created, save and make sure the bot is enabled.
+
+Open the page with the widget and start a conversation.
+
+## Troubleshooting
+
+- The agent never calls tools: enable **Tool Use** on the model.
+- The widget does not load: the embed code still points at `localhost`, or the LangBot address is not served over HTTPS.
+- Check **Monitoring** in the WebUI: every message, pipeline run and error is recorded there.
+
+## FAQ
+
+### Do I need a server with a public IP for a website chat widget?
+
+Yes, or use LangBot Cloud. Visitors' browsers talk to LangBot directly, so LangBot must be reachable at a public HTTPS address. LangBot Cloud includes one.
+
+### Does the a website chat widget bot support streaming replies?
+
+Check the [platform feature matrix](/en/insight/platform-features) for what this platform supports. Replies are delivered once the AI back end has finished.
+
+### Can the same Claude setup serve other platforms too?
+
+Yes. A pipeline can be bound to many bots, so one configuration can answer on several platforms at once.
+
+## Related guides
+
+- [Full a website chat widget setup guide](/en/usage/platforms/webpage)
+- [Model configuration](/en/usage/models/readme)
+- Other AI back ends on a website chat widget: [Dify](/en/recipes/dify/web-page) · [n8n](/en/recipes/n8n/web-page) · [Coze](/en/recipes/coze/web-page) · [Langflow](/en/recipes/langflow/web-page) · [DeepSeek](/en/recipes/deepseek/web-page)
+- Claude on other platforms: [Telegram](/en/recipes/claude/telegram) · [Discord](/en/recipes/claude/discord) · [Slack](/en/recipes/claude/slack) · [Lark (Feishu)](/en/recipes/claude/lark) · [DingTalk](/en/recipes/claude/dingtalk) · [WeCom (internal app)](/en/recipes/claude/wecom)
