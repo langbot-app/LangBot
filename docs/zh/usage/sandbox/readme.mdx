@@ -79,3 +79,9 @@ Host 会以 LangBot / Box Runtime 用户的权限直接执行命令，只能处�
 
 - [沙箱配置](./config) — 后端、安全预设、挂载、环境变量
 - [运行时与扩展关系](./runtime-relationships) — 沙箱、Skills、MCP、插件如何分工
+
+## 工作区沙箱配置
+
+在工作区设置中选择 Docker、E2B 或 nsjail，确认后保存。配置只应用于新任务；已运行的任务和 stdio MCP 连接保留原来的后端、E2B 凭据、模板和资源限制。新能力需要配套版本的 Core、SDK 和 Box Runtime；旧 SDK 可继续启动，但不能使用此配置入口。
+
+连接检查和保存不会创建沙箱。“测试运行”会创建、执行并删除一个临时 E2B 沙箱，占用配额且可能产生费用。磁盘限制在命令前后检查，不是持续的硬配额。沙箱配置仅供成员或 API Key 管理，不加入插件或 Runner 的 Workspace 工具目录；管理 MCP 客户端可显式调用，HTTP 和 MCP 使用同一 Application API。

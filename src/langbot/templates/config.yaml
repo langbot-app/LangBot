@@ -474,6 +474,9 @@ box:
         # Cloud bootstrap requires a positive hard quota.
         workspace_quota_mb: 0
         readiness_cache_sec: 15
+    # Optional administrator ceilings for Workspace overrides; requires a matching SDK/Box Runtime.
+    # Omitted values use the Workspace settings defaults. Example: {memory_mb: 4096, max_sessions: 8}
+    workspace_limit_caps: {}
     local:
         profile: 'default'  # Network enabled by default. Use 'offline' to disable network by default.
         image: ''  # Custom local sandbox image. Leave empty to use the profile default.
@@ -499,6 +502,9 @@ box:
     default_memory_mb: 1536
     docker:
         cpu_limit_enabled: true  # When false, Docker sandbox containers are started without --cpus. Memory and PID limits still apply.
+    nsjail:
+        # Optional pre-created, delegated parent under each v1 memory/pids/cpu controller.
+        cgroup_v1_parent: ''
     e2b:
         api_key: ''  # Can also be set via E2B_API_KEY env var.
         api_url: ''  # Custom API URL for self-hosted deployments.

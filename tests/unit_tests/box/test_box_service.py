@@ -2555,3 +2555,34 @@ async def test_execute_tool_preserves_trusted_read_only_mounts(tmp_path):
         assert mount.mode == BoxHostMountMode.READ_ONLY
     finally:
         await service.shutdown()
+
+
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+def test_workspace_admin_caps_also_constrain_inherited_defaults_and_numeric_strings():
+    app = make_app(Mock())
+    app.instance_config.data['box']['workspace_limit_caps'] = {
+        'memory_mb': 64,
+        'cpus': 0.5,
+        'pids_limit': 16,
+        'timeout_sec': 5,
+        'idle_ttl_sec': 60,
+        'max_sessions': 2,
+        'workspace_quota_mb': 10,
+    }
+    box = BoxService(app, client=Mock())
+    for payload in ({}, {'memory_mb': '2048', 'cpus': '4', 'pids_limit': '512', 'timeout_sec': '90'}):
+        spec = box.build_spec({'session_id': 'limits', 'backend': 'docker', **payload}, skip_host_mount_validation=True)
+        assert spec.memory_mb == 64 and spec.cpus == 0.5 and spec.pids_limit == 16
+        assert spec.timeout_sec == 5 and spec.idle_ttl_sec == 60 and spec.workspace_max_sessions == 2
+        assert spec.workspace_quota_mb == 10
+
+
+def test_default_template_can_build_a_box_with_the_installed_sdk():
+    import yaml
+
+    template = pathlib.Path(__file__).resolve().parents[3] / 'src/langbot/templates/config.yaml'
+    app = make_app(Mock())
+    app.instance_config.data = yaml.safe_load(template.read_text())
+    box = BoxService(app, client=Mock())
+    spec = box.build_spec({'session_id': 'fresh-install'}, skip_host_mount_validation=True)
+    assert spec.session_id == 'fresh-install' and spec.timeout_sec > 0

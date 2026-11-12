@@ -79,3 +79,9 @@ Set `box.enabled: false`. Everything that depends on the sandbox (built-in tools
 
 - [Sandbox Configuration](./config) — backends, security profiles, mounts, environment variables
 - [Runtimes & Extensions Compared](./runtime-relationships) — how the sandbox, Skills, MCP, and plugins divide responsibilities
+
+## Workspace sandbox settings
+
+Select Docker, E2B or nsjail in Workspace settings and confirm before saving. Changes apply to new tasks. Running tasks and stdio MCP connections retain their backend, E2B credentials, template and limits. This feature requires matching Core, SDK and Box Runtime versions; the older SDK can still start Core but cannot use these settings.
+
+Connection checks and saving create no sandbox. Test run creates, executes in and deletes a temporary E2B sandbox, consuming capacity and potentially incurring charges. Disk usage is checked around commands rather than continuously enforced. Settings are available to members and API keys and are excluded from plugin and Runner Workspace tools. Administrative MCP clients can call them explicitly; HTTP and MCP share the Application API.

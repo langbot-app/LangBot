@@ -100,9 +100,15 @@ async def test_random_identity_fallback_never_cleans(tmp_path, monkeypatch, capl
     monkeypatch.delenv("LANGBOT_BOX_CONFIG", raising=False)
     unwritable = tmp_path / "file"
     unwritable.write_text("not a directory")
-    backend = mock.Mock()
+    backend = mock.Mock(name="selected")
+    secondary = mock.Mock(name="secondary")
+    secondary.name = "secondary"
+    secondary.initialize = mock.AsyncMock()
+    secondary.cleanup_orphaned_containers = mock.AsyncMock()
     backend.cleanup_orphaned_containers = mock.AsyncMock()
-    runtime = BoxRuntime(logging.getLogger(), backends=[backend], data_dir=unwritable)
+    runtime = BoxRuntime(
+        logging.getLogger(), backends=[backend, secondary], data_dir=unwritable
+    )
     with mock.patch.object(
         runtime, "_select_backend", mock.AsyncMock(return_value=backend)
     ):
@@ -110,6 +116,9 @@ async def test_random_identity_fallback_never_cleans(tmp_path, monkeypatch, capl
     try:
         assert not runtime._identity.persistent
         backend.cleanup_orphaned_containers.assert_not_awaited()
+        assert await runtime._get_backend("secondary") is secondary
+        secondary.initialize.assert_awaited_once()
+        secondary.cleanup_orphaned_containers.assert_not_awaited()
         assert "without orphan cleanup" in caplog.text
     finally:
         await runtime.shutdown()

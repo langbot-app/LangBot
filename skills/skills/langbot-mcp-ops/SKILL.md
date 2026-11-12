@@ -74,6 +74,13 @@ permissions. Migration with plugin installation enabled uses the same checks.
 Pipeline extensions accept `allowed_platform_tools` as model preferences, not
 installation grants. See `docs/en/plugin/dev/permissions.mdx` for HTTP contracts.
 
+
+## Workspace execution environment
+
+Use `get_workspace_sandbox(refresh=true)` to detect selectable environments and supported limit controls. `check_workspace_sandbox(e2b)` performs read-only validation and never creates a sandbox. If the E2B service does not expose template queries, it reports the template as unverified; saving is still allowed. `set_workspace_sandbox(backend, e2b, limits)` requires `workspace.update`, applies only to new tasks, and never creates a sandbox. Limits may include `timeout_sec`, `idle_ttl_sec`, `max_sessions`, `cpus`, `memory_mb`, `pids_limit`, and `workspace_quota_mb`; only supported values within deployment ceilings are accepted. Empty limits inherit defaults. Existing tasks retain their Box and limit snapshot. Disk quotas are checked before/after commands, not continuous filesystem quotas.
+
+`test_workspace_sandbox(e2b)` is a separate, explicit operation that creates, executes in, and deletes a temporary E2B sandbox without saving. It consumes a provider slot and may incur charges. Users supply their provider's template name or ID. Stored API keys are never returned; a blank key retains the prior key only if service URLs are unchanged. Do not modify an E2B service to enable template queries.
+
 ## Tool surface
 
 `create_bot` requires `bot_data.name` and `bot_data.adapter` as non-empty strings,

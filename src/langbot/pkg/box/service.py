@@ -97,6 +97,8 @@ def _is_path_under(path: str, root: str) -> bool:
 
 
 if TYPE_CHECKING:
+    from langbot_plugin.box.models import E2BConnectionConfig
+
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
@@ -620,7 +622,11 @@ class BoxService:
             trusted_read_only_mounts = binding.read_only_mounts
         if spec_payload.get('session_id') not in (None, '', binding.session_id):
             raise BoxValidationError('session_id must match the bound Box')
+        backend = binding.spec.get('backend')
+        e2b_config = binding.spec.get('e2b_config')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
+        spec_payload.pop('backend', None)
+        spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
         spec_payload = self._managed_policy_payload(
             execution_context,
@@ -634,6 +640,11 @@ class BoxService:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        if backend is not None:
+            spec_payload['backend'] = backend
+        if e2b_config is not None:
+            spec_payload['e2b_config'] = e2b_config
+        spec_payload = self._apply_workspace_limits(spec_payload, getattr(query, '_sandbox_limits', {}) or {})
         try:
             spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         except BoxError as exc:
@@ -718,6 +729,9 @@ class BoxService:
         spec_payload: dict,
         *,
         skip_host_mount_validation: bool = False,
+        selected_backend: str | None = None,
+        selected_e2b_config: dict | None = None,
+        selected_limits: dict | None = None,
     ) -> BoxExecutionResult:
         """Execute trusted internal Box work inside one Workspace namespace."""
 
@@ -730,9 +744,22 @@ class BoxService:
                 payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        payload = await self._workspace_backend_payload(
+            execution_context,
+            payload,
+            backend=selected_backend,
+            e2b_selection=selected_e2b_config,
+            limits_selection=selected_limits,
+        )
         spec = self.build_spec(payload, skip_host_mount_validation=skip_host_mount_validation)
+        await self._enforce_workspace_quota(spec, phase='before execution')
         result = await self.client.execute(spec, action_context=self._action_context(execution_context))
         await self._validated_execution_context(execution_context)
+        try:
+            await self._enforce_workspace_quota(spec, phase='after execution')
+        except BoxError:
+            await self._cleanup_exceeded_session(execution_context, spec)
+            raise
         return result
 
     # ── Attachment passthrough (inbound / outbound) ──────────────────
@@ -1419,16 +1446,269 @@ class BoxService:
             spec_payload['image'] = self.custom_image
 
         self._apply_profile(spec_payload)
-
         try:
             spec = BoxSpec.model_validate(spec_payload)
         except pydantic.ValidationError as exc:
             first_error = exc.errors()[0]
-            raise BoxValidationError(first_error.get('msg', 'invalid box arguments')) from exc
+            raise BoxValidationError(first_error.get('msg', 'invalid box arguments')) from None
+
+        # Inherited defaults must respect explicit administrator ceilings too.
+        configured_caps = _get_box_config(self.ap).get('workspace_limit_caps') or {}
+        caps = self.workspace_limit_caps()
+        if configured_caps and 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox limits require an upgraded Box SDK and Runtime')
+        updates = {}
+        for key in configured_caps:
+            field = 'workspace_max_sessions' if key == 'max_sessions' else key
+            if key not in ('timeout_sec', 'max_sessions', 'idle_ttl_sec') and spec.backend == 'e2b':
+                continue
+            raw = getattr(spec, field)
+            if key in self.profile.locked and raw is not None and raw > caps[key]:
+                raise BoxValidationError('Deployment profile exceeds workspace limit caps')
+            updates[field] = min(raw, caps[key]) if raw is not None and raw > 0 else caps[key]
+        spec = spec.model_copy(update=updates)
 
         if not skip_host_mount_validation:
             self._validate_host_mount(spec)
         return spec
+
+    async def resolve_workspace_selection(self, context: TenantContext) -> dict:
+        from .settings import get_settings
+
+        saved = await get_settings(self.ap, require_workspace_uuid(context))
+        if 'backend' not in BoxSpec.model_fields:
+            if any(saved.values()):
+                raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+            return {'backend': None, 'e2b': {}, 'limits': {}}
+        backend = saved['backend']
+        if backend is None and self._available:
+            backend = (await self.client.get_backend_info()).get('name')
+        return {'backend': backend, 'e2b': saved['e2b'] or {}, 'limits': saved.get('limits') or {}}
+
+    async def resolve_workspace_backend(self, context: TenantContext) -> str | None:
+        return (await self.resolve_workspace_selection(context))['backend']
+
+    def _deployment_e2b_config(self) -> dict:
+        config = _get_box_config(self.ap).get('e2b') or {}
+        return {
+            'api_url': os.getenv('E2B_API_URL') or config.get('api_url', ''),
+            'sandbox_url': os.getenv('E2B_SANDBOX_URL') or config.get('sandbox_url', ''),
+            'api_key': os.getenv('E2B_API_KEY') or config.get('api_key', ''),
+            'template': config.get('template') or 'base',
+        }
+
+    async def _prepare_e2b_config(self, context: TenantContext, draft: dict) -> E2BConnectionConfig:
+        from .settings import get_settings
+
+        if 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+        from langbot_plugin.box.models import E2BConnectionConfig
+
+        if self._cloud_managed:
+            raise BoxValidationError('Custom E2B configuration is restricted by platform policy')
+        if not isinstance(draft, dict) or set(draft) - {'api_url', 'sandbox_url', 'api_key', 'template'}:
+            raise BoxValidationError('Invalid E2B connection configuration')
+        entry = (await get_settings(self.ap, context.workspace_uuid))['e2b']
+        current = entry['config'] if entry else self._deployment_e2b_config()
+        config = {**current, **draft}
+        if not draft.get('api_key'):
+            if any(
+                str(config.get(key, '')).strip().rstrip('/') != str(current.get(key, '')).strip().rstrip('/')
+                for key in ('api_url', 'sandbox_url')
+            ):
+                raise BoxValidationError('A new API key is required when E2B addresses change')
+            config['api_key'] = current.get('api_key', '')
+        try:
+            return E2BConnectionConfig.model_validate(config)
+        except (pydantic.ValidationError, ValueError):
+            raise BoxValidationError('Provide valid E2B API URL, sandbox URL and API key') from None
+
+    def workspace_limit_caps(self) -> dict:
+        config = _get_box_config(self.ap)
+        defaults = {
+            'timeout_sec': self.profile.max_timeout_sec,
+            'idle_ttl_sec': 86400,
+            'max_sessions': config.get('limits', {}).get('max_sessions', 64),
+            'cpus': 8.0,
+            'memory_mb': 8192,
+            'pids_limit': 1024,
+            'workspace_quota_mb': 10240,
+        }
+        from .settings import WorkspaceLimits
+
+        try:
+            configured = WorkspaceLimits.model_validate(config.get('workspace_limit_caps') or {}).model_dump(
+                exclude_none=True
+            )
+        except pydantic.ValidationError:
+            raise BoxValidationError('Invalid deployment workspace limit caps') from None
+        for key, value in configured.items():
+            defaults[key] = min(defaults[key], value) if key in ('timeout_sec', 'max_sessions') else value
+        return defaults
+
+    def _limit_capabilities(self, item: dict) -> dict:
+        capabilities = dict(item.get('limit_capabilities') or {})
+        if self._cloud_managed:
+            return dict.fromkeys(self.workspace_limit_caps(), False)
+        for key in getattr(self.profile, 'locked', ()):
+            capabilities[key] = False
+        capabilities['workspace_quota_mb'] = (
+            item['name'] in ('docker', 'nsjail')
+            and self.shares_filesystem_with_box
+            and 'workspace_quota_mb' not in self.profile.locked
+        )
+        return capabilities
+
+    def _prepare_limits(self, limits: dict, backend: str, settings: dict) -> dict:
+        from .settings import WorkspaceLimits
+
+        try:
+            values = WorkspaceLimits.model_validate(limits).model_dump(exclude_none=True)
+        except pydantic.ValidationError:
+            raise BoxValidationError('Invalid workspace sandbox limits') from None
+        item = next((item for item in settings['backends'] if item['name'] == backend), {})
+        capabilities = item.get('limit_capabilities') or {}
+        for key, value in values.items():
+            if not capabilities.get(key):
+                raise BoxValidationError(f'{key} is not supported by this backend or deployment policy')
+            if value > self.workspace_limit_caps()[key]:
+                raise BoxValidationError(f'{key} exceeds the deployment limit')
+        return values
+
+    @staticmethod
+    def _apply_workspace_limits(payload: dict, entry: dict) -> dict:
+        payload = dict(payload)
+        values = entry.get('config', {})
+        for key, value in values.items():
+            if key == 'timeout_sec':
+                try:
+                    requested = _INT_ADAPTER.validate_python(payload.get(key, value))
+                except pydantic.ValidationError:
+                    raise BoxValidationError('timeout_sec must be an integer') from None
+                payload[key] = min(requested, value)
+            else:
+                payload['workspace_max_sessions' if key == 'max_sessions' else key] = value
+        return payload
+
+    async def backend_supports_managed_processes(self, backend: str) -> bool:
+        items = await self.client.get_backends()
+        return any(item['name'] == backend and item.get('managed_processes', False) for item in items)
+
+    async def get_workspace_backend_settings(
+        self,
+        context: TenantContext,
+        *,
+        refresh: bool = False,
+        e2b_draft: dict | None = None,
+        e2b_model: E2BConnectionConfig | None = None,
+        validate_e2b_template: bool = False,
+    ) -> dict:
+        from .settings import get_settings
+
+        await self._validated_execution_context(context)
+        if 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+        from langbot_plugin.box.models import E2BConnectionConfig
+
+        saved = await get_settings(self.ap, context.workspace_uuid)
+        entry = saved['e2b']
+        private = entry['config'] if entry else self._deployment_e2b_config()
+        model = (
+            e2b_model
+            if e2b_model is not None
+            else await self._prepare_e2b_config(context, e2b_draft)
+            if e2b_draft is not None
+            else E2BConnectionConfig.model_validate(entry['config'])
+            if entry
+            else None
+        )
+        if model is not None:
+            private = model.model_dump()
+        public = {key: private.get(key, '') for key in ('api_url', 'sandbox_url', 'template')}
+        public.update(api_key_configured=bool(private.get('api_key')), source='workspace' if entry else 'deployment')
+        backends = []
+        if self._available:
+            options = {'refresh': refresh, 'validate_e2b_template': validate_e2b_template}
+            if model is not None:
+                options['e2b_config'] = model
+            backends = await self.client.get_backends(**options)
+            backends = [dict(item, limit_capabilities=self._limit_capabilities(item)) for item in backends]
+            if self._cloud_managed:
+                backends = [
+                    dict(item, available=False, reason='policy_restricted')
+                    if item['name'] != self._admission_policy.required_backend
+                    else item
+                    for item in backends
+                ]
+        effective = saved['backend'] or (
+            (await self.client.get_backend_info()).get('name') if self._available else None
+        )
+        return {
+            'backend': saved['backend'],
+            'effective_backend': effective,
+            'backends': backends,
+            'enabled': self._enabled,
+            'e2b': public,
+            'e2b_configurable': not self._cloud_managed,
+            'limits': (saved.get('limits') or {}).get('config', {}),
+            'limit_caps': self.workspace_limit_caps(),
+        }
+
+    async def set_workspace_backend(
+        self, context: TenantContext, backend: str, *, e2b_draft: dict | None = None, limits: dict | None = None
+    ) -> dict:
+        from .settings import SELECTABLE_BACKENDS, set_backend
+
+        if backend not in SELECTABLE_BACKENDS:
+            raise BoxValidationError('Unsupported sandbox backend')
+        model = await self._prepare_e2b_config(context, e2b_draft) if e2b_draft is not None else None
+        settings = await self.get_workspace_backend_settings(context, refresh=True, e2b_model=model)
+        if not any(item['name'] == backend and item['available'] for item in settings['backends']):
+            raise BoxValidationError('The selected sandbox backend is unavailable')
+        values = limits if limits is not None else settings.get('limits', {})
+        checked_limits = self._prepare_limits(values, backend, settings)
+        await set_backend(
+            self.ap,
+            context.workspace_uuid,
+            backend,
+            e2b_config=model.model_dump() if model is not None else None,
+            limits=checked_limits if limits is not None else None,
+        )
+        return await self.get_workspace_backend_settings(context)
+
+    async def _workspace_backend_payload(
+        self,
+        context: TenantContext,
+        payload: dict,
+        *,
+        backend: str | None = None,
+        e2b_selection: dict | None = None,
+        limits_selection: dict | None = None,
+    ) -> dict:
+        payload = dict(payload)
+        if backend is None or limits_selection is None or (backend == 'e2b' and e2b_selection is None):
+            selected = await self.resolve_workspace_selection(context)
+            backend = backend or selected['backend']
+            e2b_selection = selected['e2b'] if e2b_selection is None else e2b_selection
+            limits_selection = selected.get('limits', {}) if limits_selection is None else limits_selection
+        payload.pop('e2b_config', None)
+        payload = self._apply_workspace_limits(payload, limits_selection or {})
+        if limits_selection and limits_selection.get('config'):
+            marker = '-limits-' + limits_selection['revision']
+            if marker not in payload['session_id']:
+                payload['session_id'] += marker
+        if backend is not None:
+            payload['backend'] = backend
+            if backend == 'e2b':
+                config = e2b_selection['config'] if e2b_selection else self._deployment_e2b_config()
+                payload['image'] = config.get('template') or 'base'
+            suffix = '-backend-' + backend
+            if backend == 'e2b' and e2b_selection:
+                payload['e2b_config'] = e2b_selection['config']
+                suffix += '-' + e2b_selection['revision']
+            if not self._cloud_managed and not payload['session_id'].endswith(suffix):
+                payload['session_id'] += suffix
+        return payload
 
     async def create_session(
         self,
@@ -1437,6 +1717,9 @@ class BoxService:
         *,
         skip_host_mount_validation: bool = False,
         trusted_read_only_mounts: list[dict] | None = None,
+        selected_backend: str | None = None,
+        selected_e2b_config: dict | None = None,
+        selected_limits: dict | None = None,
     ) -> dict:
         execution_context = await self._validated_execution_context(context)
         spec_payload = self._managed_policy_payload(
@@ -1449,6 +1732,13 @@ class BoxService:
                 spec_payload['host_path'] = tenant_workspace
                 if self.shares_filesystem_with_box:
                     os.makedirs(tenant_workspace, exist_ok=True)
+        spec_payload = await self._workspace_backend_payload(
+            execution_context,
+            spec_payload,
+            backend=selected_backend,
+            e2b_selection=selected_e2b_config,
+            limits_selection=selected_limits,
+        )
         spec = self.build_spec(spec_payload, skip_host_mount_validation=skip_host_mount_validation)
         return await self.client.create_session(spec, action_context=self._action_context(execution_context))
 
@@ -1993,6 +2283,28 @@ class BoxService:
         # detailed ``backend`` object stays in the payload so the dialog
         # can still show which backend was tried.
         backend_info = runtime_status.get('backend') if isinstance(runtime_status, dict) else None
+        from .settings import get_backend
+
+        selected = await get_backend(self.ap, execution_context.workspace_uuid)
+        if selected is not None:
+            candidates = (await self.get_workspace_backend_settings(context))['backends']
+            backend_info = next(
+                (item for item in candidates if item['name'] == selected), {'name': selected, 'available': False}
+            )
+            runtime_status = {**runtime_status, 'backend': backend_info}
+        from .settings import get_settings
+
+        values = ((await get_settings(self.ap, execution_context.workspace_uuid)).get('limits') or {}).get('config', {})
+        capacity = runtime_status.get('capacity') or {}
+        workspace_cap = values.get('max_sessions') or (_get_box_config(self.ap).get('workspace_limit_caps') or {}).get(
+            'max_sessions'
+        )
+        if workspace_cap and capacity:
+            limit = min(workspace_cap, capacity.get('limit', workspace_cap))
+            runtime_status = {
+                **runtime_status,
+                'capacity': {**capacity, 'limit': limit, 'remaining': max(0, limit - capacity.get('used', 0))},
+            }
         backend_ok = bool(backend_info and backend_info.get('available', False))
         payload = {
             **runtime_status,

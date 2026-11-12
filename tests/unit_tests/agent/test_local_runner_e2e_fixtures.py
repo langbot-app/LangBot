@@ -107,7 +107,9 @@ async def test_failed_local_agent_boot_shuts_down_before_restoring_transport(mon
         run=running,
         shutdown=AsyncMock(),
         plugin_connector=SimpleNamespace(
-            handler=SimpleNamespace(ping=AsyncMock()), _current_execution_context=AsyncMock(return_value=CONTEXT)
+            handler=SimpleNamespace(ping=AsyncMock()),
+            _runtime_available=Mock(return_value=True),
+            _current_execution_context=AsyncMock(return_value=CONTEXT),
         ),
         runner_registry=SimpleNamespace(list_runners=AsyncMock(side_effect=ValueError('probe boot failure'))),
     )

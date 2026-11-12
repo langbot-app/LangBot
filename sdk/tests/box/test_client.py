@@ -578,3 +578,12 @@ async def test_init_sends_config(client, handler):
     args = handler.call_action.call_args.args
     assert args[0] is LangBotToBoxAction.INIT
     assert args[1] == {"backend": "nsjail", "foo": 1}
+
+
+@pytest.mark.anyio
+async def test_get_backends_preserves_probe_status_and_refresh(client, handler):
+    items = [{"name": "e2b", "available": False, "reason": "environment_unavailable"}]
+    handler.call_action.return_value = {"backends": items}
+    assert await client.get_backends(refresh=True) == items
+    assert handler.call_action.call_args.args[0] is LangBotToBoxAction.GET_BACKENDS
+    assert handler.call_action.call_args.args[1] == {"refresh": True}

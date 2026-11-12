@@ -161,7 +161,16 @@ class RunnerBoxService:
     def public_session(item):
         return {'id': item['session_id'], 'status': item.get('status', 'idle')}
 
+    async def _pin_selection(self, context, query):
+        if query is not None and not hasattr(query, '_sandbox_e2b_config'):
+            selection = await self.box.resolve_workspace_selection(context)
+            if not hasattr(query, '_sandbox_backend'):
+                object.__setattr__(query, '_sandbox_backend', selection['backend'])
+            object.__setattr__(query, '_sandbox_e2b_config', selection['e2b'])
+            object.__setattr__(query, '_sandbox_limits', selection.get('limits', {}))
+
     async def acquire(self, context, data, query=None):
+        await self._pin_selection(context, query)
         request = BoxAcquireRequest.model_validate(data)
         key = request.reuse_key
         if self.box.managed_admission_required:
@@ -177,10 +186,19 @@ class RunnerBoxService:
         from ..provider.tools.loaders.skill import build_execution_mounts
 
         mounts = build_execution_mounts(self.box.ap, query) if query is not None else []
-        result = await self.box.create_session(context, spec, trusted_read_only_mounts=mounts)
+        backend = getattr(query, '_sandbox_backend', None) if query is not None else None
+        result = await self.box.create_session(
+            context,
+            spec,
+            trusted_read_only_mounts=mounts,
+            selected_backend=backend,
+            selected_e2b_config=getattr(query, '_sandbox_e2b_config', None) if query is not None else None,
+            selected_limits=getattr(query, '_sandbox_limits', None) if query is not None else None,
+        )
         return self.public_session(result)
 
     async def bind(self, context, query, run_id, box_id):
+        await self._pin_selection(context, query)
         current = getattr(query, '_box_binding', None)
         if current is not None:
             if current.run_id != run_id or current.session_id != box_id:
@@ -190,6 +208,9 @@ class RunnerBoxService:
         item = next((item for item in sessions if item['session_id'] == box_id), None)
         if item is None:
             raise BoxValidationError('Box not found in the current Workspace')
+        backend = getattr(query, '_sandbox_backend', None)
+        if backend is not None and item.get('backend_name') != backend:
+            raise BoxValidationError('Box does not match the task sandbox backend')
         current = getattr(query, '_box_binding', None)
         if current is not None:
             if current.run_id != run_id or current.session_id != box_id:
@@ -197,6 +218,20 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
+        if backend is not None:
+            spec['backend'] = backend
+        limits = getattr(query, '_sandbox_limits', {}) or {}
+        if limits.get('config') and '-limits-' + limits['revision'] not in box_id:
+            raise BoxValidationError('Box does not match the task workspace limits')
+        if limits.get('config'):
+            spec = self.box._apply_workspace_limits(spec, limits)
+        selected_config = getattr(query, '_sandbox_e2b_config', None)
+        if item.get('backend_name') == 'e2b' and selected_config is not None:
+            suffix = '-backend-e2b' + ('-' + selected_config['revision'] if selected_config else '')
+            if not item['session_id'].endswith(suffix):
+                raise BoxValidationError('Box does not match the task E2B configuration')
+        if item.get('backend_name') == 'e2b' and selected_config:
+            spec['e2b_config'] = selected_config['config']
         from ..provider.tools.loaders.skill import build_execution_mounts
 
         binding = RunBoxBinding(

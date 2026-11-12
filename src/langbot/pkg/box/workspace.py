@@ -110,6 +110,9 @@ class BoxWorkspaceSession:
         execution_context,
         session_id: str,
         *,
+        selected_backend: str | None = None,
+        selected_limits: dict | None = None,
+        selected_e2b_config: dict | None = None,
         host_path: str | None = None,
         host_path_mode: str = 'rw',
         workdir: str = '/workspace',
@@ -123,6 +126,9 @@ class BoxWorkspaceSession:
         pids_limit: int | None = None,
         persistent: bool = False,
     ):
+        self.selected_e2b_config = selected_e2b_config
+        self.selected_limits = selected_limits
+        self.selected_backend = selected_backend
         self.box_service = box_service
         self.execution_context = execution_context
         self.session_id = session_id
@@ -189,6 +195,19 @@ class BoxWorkspaceSession:
             payload.pop('env')
         return payload
 
+    async def _resolve_backend_selection(self) -> None:
+        if (
+            self.selected_backend is None
+            or self.selected_limits is None
+            or (self.selected_backend == 'e2b' and self.selected_e2b_config is None)
+        ):
+            selected = await self.box_service.resolve_workspace_selection(self.execution_context)
+            self.selected_backend = self.selected_backend or selected['backend']
+            if self.selected_e2b_config is None:
+                self.selected_e2b_config = selected['e2b']
+            if self.selected_limits is None:
+                self.selected_limits = selected.get('limits', {})
+
     async def execute_raw(
         self,
         cmd: str,
@@ -197,8 +216,15 @@ class BoxWorkspaceSession:
         env: dict[str, str] | None = None,
         timeout_sec: int | None = None,
     ):
+        await self._resolve_backend_selection()
         payload = self.build_exec_payload(cmd, workdir=workdir, env=env, timeout_sec=timeout_sec)
-        return await self.box_service.execute_in_context(self.execution_context, payload)
+        return await self.box_service.execute_in_context(
+            self.execution_context,
+            payload,
+            selected_backend=self.selected_backend,
+            selected_e2b_config=self.selected_e2b_config,
+            selected_limits=self.selected_limits,
+        )
 
     async def execute_for_query(
         self,
@@ -213,7 +239,17 @@ class BoxWorkspaceSession:
         return await self.box_service.execute_spec_payload(payload, query)
 
     async def create_session(self):
-        return await self.box_service.create_session(self.execution_context, self.build_session_payload())
+        await self._resolve_backend_selection()
+        result = await self.box_service.create_session(
+            self.execution_context,
+            self.build_session_payload(),
+            selected_backend=self.selected_backend,
+            selected_e2b_config=self.selected_e2b_config,
+            selected_limits=self.selected_limits,
+        )
+        self.session_id = result['session_id']
+        self.selected_backend = result['backend_name']
+        return result
 
     def build_process_payload(
         self,

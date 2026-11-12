@@ -119,6 +119,95 @@ const jaJP = {
       managed_sandbox_sessions: '管理サンドボックスセッション',
     },
   },
+  workspaceSandbox: {
+    quotaCheck:
+      'ディスク上限はコマンド実行前後に確認します。継続的なファイルシステム制限ではありません。',
+    testRun: 'テスト実行',
+    testRunCost:
+      '一時サンドボックスを作成し、枠を1つ使用します。料金が発生する場合があります。',
+    checkHint:
+      '確認と保存ではサンドボックスを作成しません。テスト実行は任意です。',
+    queryUnsupported:
+      'テンプレート照会に未対応のため未検証です。保存または任意のテストが可能です。',
+    limitsTitle: 'ワークスペースの上限',
+    limitsHelp:
+      '空欄はデプロイの既定値を継承します。変更は新規タスクに適用されます。',
+    inherit: '既定値を継承',
+    limitMax: '上限: {{value}}',
+    limitUnsupported: 'バックエンドまたは管理ポリシーが未対応です',
+    e2bLimitUnsupported:
+      'E2Bテンプレートまたはサービスで管理されるため設定できません',
+    invalidLimits: '表示された範囲内の値を入力してください',
+
+    confirm: '確認して保存',
+    cancel: 'キャンセル',
+    current: '現在の設定：{{backend}}',
+    unsaved: '未保存',
+    configureE2b: 'E2B を設定',
+    apiUrl: 'API URL',
+    sandboxUrl: 'サンドボックス URL',
+    template: 'テンプレート',
+    keyConfigured: '設定済み。空欄で維持',
+    keyRequired: 'API Key を入力',
+    keyHelp:
+      '保存済みのキーは表示されません。URL を変更する場合は新しいキーを入力してください。',
+    noManagedProcesses: 'この環境は stdio MCP サーバーに対応していません。',
+    label: '実行環境',
+    description:
+      'このワークスペースの新しいタスクに適用されます。実行中のタスクは元の環境を使い続けます。',
+    saved: '保存しました。新しいタスクに適用されます',
+    saveFailed: '実行環境を保存できませんでした',
+    loadFailed: '環境の確認に失敗しました',
+    refresh: '再確認',
+    noEnvironment: '利用可能な環境がありません',
+    unavailable:
+      '選択した環境は利用できません。新しいタスクはサンドボックスで実行できません。',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'コマンド制限時間（秒）',
+      idle_ttl_sec: 'アイドル回収（秒）',
+      max_sessions: '最大サンドボックス数',
+      cpus: 'CPUコア数',
+      memory_mb: 'メモリ（MiB）',
+      pids_limit: 'プロセス数上限',
+      workspace_quota_mb: 'ディスク上限（MiB）',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: '利用不可',
+      policy_restricted: 'プラットフォームにより制限',
+      probe_failed: '環境確認に失敗',
+      docker_missing: 'Docker CLI が未インストール',
+      docker_unreachable: 'Docker が停止中、またはアクセス権限がありません',
+      nsjail_missing: 'nsjail が未インストール',
+      cgroup_unavailable: 'nsjail cgroup の制限が未準備',
+      isolation_unavailable:
+        'nsjail の名前空間・マウント・ネットワーク隔離に失敗',
+      sdk_missing: 'E2B SDK が未インストール',
+      missing_credentials: 'E2B API キーが未設定',
+      connection_failed:
+        'E2B に接続できません。URL とネットワークを確認してください',
+      authentication_failed: 'E2B 認証に失敗。API キーを確認してください',
+      probe_timeout: '確認がタイムアウトしました',
+      invalid_configuration: 'E2B の URL または認証情報が不完全',
+      not_checked: '設定が変更されました。再確認してください',
+    },
+  },
   workspaceLanguage: {
     label: 'ワークスペースの言語',
     description:

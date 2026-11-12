@@ -128,6 +128,40 @@ class LangBotMCPServer:
             context = _authorized(Permission.WORKSPACE_UPDATE)
             return _dump({'language': await set_workspace_language(ap, context.workspace_uuid, language)})
 
+        @mcp.tool(description='Get the Workspace sandbox backend and detected selectable environments.')
+        async def get_workspace_sandbox(refresh: bool = False) -> str:
+            context = _authorized(Permission.WORKSPACE_VIEW)
+            return _dump(await ap.application_api.execute('workspace.sandbox.get', context, {'refresh': refresh}))
+
+        @mcp.tool(
+            description='Set the Workspace sandbox backend for new tasks. Existing tasks keep their Box. Requires workspace.update.'
+        )
+        async def set_workspace_sandbox(
+            backend: typing.Literal['docker', 'e2b', 'nsjail'],
+            e2b: dict[str, str] | None = None,
+            limits: dict[str, float | int | None] | None = None,
+        ) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(
+                await ap.application_api.execute(
+                    'workspace.sandbox.update', context, {'backend': backend, 'e2b': e2b, 'limits': limits}
+                )
+            )
+
+        @mcp.tool(
+            description='Lightweight check of draft sandbox settings without saving or creating a sandbox. Requires workspace.update. Stored API keys are never returned.'
+        )
+        async def check_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(await ap.application_api.execute('workspace.sandbox.check', context, {'e2b': e2b}))
+
+        @mcp.tool(
+            description='Test the supplied E2B template by creating, executing in and deleting a temporary sandbox. Consumes a sandbox slot and may incur provider charges. Does not save. Requires workspace.update.'
+        )
+        async def test_workspace_sandbox(e2b: dict[str, str] | None = None) -> str:
+            context = _authorized(Permission.WORKSPACE_UPDATE)
+            return _dump(await ap.application_api.execute('workspace.sandbox.test', context, {'e2b': e2b}))
+
         # ----- System (read-only) -------------------------------------- #
         @mcp.tool(description='Get basic LangBot system/runtime information (version, edition).')
         async def get_system_info() -> str:

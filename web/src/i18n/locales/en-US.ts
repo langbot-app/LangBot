@@ -120,6 +120,94 @@ const enUS = {
       managed_sandbox_sessions: 'Managed sandbox sessions',
     },
   },
+  workspaceSandbox: {
+    quotaCheck:
+      'Disk quotas are checked before and after commands, not continuously.',
+    testRun: 'Test run',
+    testRunCost:
+      'Creates a temporary sandbox, uses one slot and may incur charges.',
+    checkHint:
+      'Lightweight checks do not create a sandbox. Test run is optional.',
+    queryUnsupported:
+      'This service does not expose template queries; the template is unverified. You can save or run an optional test.',
+    limitsTitle: 'Workspace limits',
+    limitsHelp:
+      'Blank values inherit deployment defaults. Changes apply to new tasks only.',
+    inherit: 'Inherit default',
+    limitMax: 'Maximum: {{value}}',
+    limitUnsupported: 'Unsupported by this backend or deployment policy',
+    e2bLimitUnsupported:
+      'Controlled by the E2B template/service; this setting is unsupported',
+    invalidLimits: 'Enter values within the displayed bounds',
+
+    confirm: 'Confirm and save',
+    cancel: 'Cancel',
+    current: 'Currently active: {{backend}}',
+    unsaved: 'Unsaved',
+    configureE2b: 'Configure E2B',
+    apiUrl: 'API URL',
+    sandboxUrl: 'Sandbox URL',
+    template: 'Template',
+    keyConfigured: 'Configured; leave blank to keep',
+    keyRequired: 'Enter API key',
+    keyHelp:
+      'Stored API keys are never returned. Enter a new key when changing service URLs.',
+    noManagedProcesses: 'This environment does not support stdio MCP servers.',
+    label: 'Execution environment',
+    description:
+      'All new tasks in this workspace use this environment. Running tasks keep their current environment.',
+    saved: 'Saved; applies to new tasks',
+    saveFailed: 'Failed to save execution environment',
+    loadFailed: 'Failed to check environments',
+    refresh: 'Check again',
+    noEnvironment: 'No available environment',
+    unavailable:
+      'The selected environment is unavailable. New tasks cannot start sandbox execution.',
+    templateVerified:
+      'Template verified: temporary sandbox created, executed and deleted',
+    limitLabels: {
+      timeout_sec: 'Command timeout (seconds)',
+      idle_ttl_sec: 'Idle cleanup (seconds)',
+      max_sessions: 'Maximum sandboxes',
+      cpus: 'CPU cores',
+      memory_mb: 'Memory (MiB)',
+      pids_limit: 'Process limit',
+      workspace_quota_mb: 'Workspace disk quota (MiB)',
+    },
+    reasons: {
+      resource_not_found: 'Requested service resource not found',
+      rate_limited: 'Too many requests; retry later',
+      template_not_found: 'Template not found or not visible to this account',
+      template_query_failed: 'Template query failed; check service status',
+      template_not_ready: 'Template build is not ready',
+      network_error: 'Cannot reach service; check URLs and network',
+      capacity_limited:
+        'Service capacity exhausted or rate limited; retry later',
+      permission_denied: 'Permission denied for the supplied credentials',
+      template_creation_failed:
+        'Sandbox creation failed; check template status and service capacity',
+      template_execution_failed: 'Sandbox created but execution check failed',
+      template_cleanup_failed:
+        'Temporary sandbox cleanup failed; check E2B service',
+
+      environment_unavailable: 'Unavailable',
+      policy_restricted: 'Restricted by platform policy',
+      probe_failed: 'Environment check failed',
+      docker_missing: 'Docker CLI is not installed',
+      docker_unreachable: 'Docker daemon is stopped or access is denied',
+      nsjail_missing: 'nsjail is not installed',
+      cgroup_unavailable: 'nsjail cgroup resource limits are not ready',
+      isolation_unavailable:
+        'nsjail namespace, mount or network isolation failed',
+      sdk_missing: 'E2B SDK is not installed',
+      missing_credentials: 'E2B API key is missing',
+      connection_failed: 'Cannot connect to E2B; check URLs and network',
+      authentication_failed: 'E2B authentication failed; check API key',
+      probe_timeout: 'Check timed out; check service and network',
+      invalid_configuration: 'E2B URLs or credentials are incomplete',
+      not_checked: 'Configuration changed; check again',
+    },
+  },
   workspaceLanguage: {
     label: 'Workspace language',
     description:

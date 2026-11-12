@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from langbot_plugin.box.errors import BoxAdmissionError
+from langbot_plugin.box.errors import BoxAdmissionError, BoxValidationError
 from pydantic import ValidationError
 
 
@@ -39,6 +39,8 @@ def error_from_exception(exc: Exception, *, operation_id: str = '') -> Applicati
         return ApplicationAPIError(exc.code, str(exc), 400)
     if isinstance(exc, BoxAdmissionError):
         return ApplicationAPIError('managed_sandbox_unavailable', str(exc), 403)
+    if isinstance(exc, BoxValidationError):
+        return ApplicationAPIError('invalid_sandbox_configuration', str(exc), 400)
     if isinstance(exc, EntitlementUnavailableError):
         code = 'managed_sandbox_unavailable' if operation_id.startswith('box.') else 'entitlement_unavailable'
         return ApplicationAPIError(code, str(exc), 403)

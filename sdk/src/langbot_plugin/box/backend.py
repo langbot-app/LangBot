@@ -32,6 +32,7 @@ from .security import validate_sandbox_security
 # produce large output within the time limit.  After this many bytes the
 # remaining output is discarded before decoding.
 _MAX_RAW_OUTPUT_BYTES = 1_048_576  # 1 MB per stream
+_CLI_CLEANUP_TIMEOUT_SEC = 2.0
 _FALSE_VALUES = {"0", "false"}
 
 
@@ -58,6 +59,12 @@ class BaseSandboxBackend(abc.ABC):
     @abc.abstractmethod
     async def is_available(self) -> bool:
         pass
+
+    def unavailable_reason(self) -> str:
+        return "environment_unavailable"
+
+    async def probe_available(self) -> bool:
+        return await self.is_available()
 
     @abc.abstractmethod
     async def start_session(self, spec: BoxSpec) -> BoxSessionInfo:
@@ -173,6 +180,13 @@ class CLISandboxBackend(BaseSandboxBackend):
         self._artifact_roots: dict[str, str] = {}
         self._availability_task: asyncio.Task[bool] | None = None
         self._availability_waiters: dict[asyncio.Task[bool], int] = {}
+
+    def unavailable_reason(self) -> str:
+        return (
+            "docker_missing"
+            if shutil.which(self.command) is None
+            else "docker_unreachable"
+        )
 
     async def is_available(self) -> bool:
         if shutil.which(self.command) is None:
@@ -366,7 +380,11 @@ class CLISandboxBackend(BaseSandboxBackend):
 
         run_options = {"input_data": input_data} if input_data is not None else {}
         result = await self._run_command(
-            args, timeout_sec=spec.timeout_sec, check=False, **run_options
+            args,
+            timeout_sec=spec.timeout_sec,
+            check=False,
+            timeout_session=session,
+            **run_options,
         )
         duration_ms = int(
             (dt.datetime.now(dt.timezone.utc) - start).total_seconds() * 1000
@@ -558,6 +576,7 @@ class CLISandboxBackend(BaseSandboxBackend):
         timeout_sec: int,
         check: bool,
         input_data: bytes | None = None,
+        timeout_session: BoxSessionInfo | None = None,
     ) -> _CommandResult:
         process = await asyncio.create_subprocess_exec(
             *args,
@@ -579,30 +598,94 @@ class CLISandboxBackend(BaseSandboxBackend):
                     process.stdin.close()
             await process.wait()
 
+        cleanup_errors: list[str] = []
+
+        def close_pipes():
+            # A sudo/CLI descendant can retain pipes after the child was reaped.
+            for stream in (process.stdout, process.stderr):
+                transport = getattr(stream, "_transport", None)
+                if transport is not None:
+                    transport.close()
+
+        async def abort(*, cancelled: bool):
+            try:
+                process.terminate() if cancelled else process.kill()
+            except ProcessLookupError:
+                pass
+            if timeout_session is not None:
+                cleanup = asyncio.create_task(self.stop_session(timeout_session))
+                try:
+                    await asyncio.shield(cleanup)
+                except asyncio.CancelledError:
+                    await asyncio.gather(cleanup, return_exceptions=True)
+                    raise
+                except Exception as exc:
+                    cleanup_errors.append(f"Sandbox cleanup failed: {exc}")
+                    self.logger.warning(
+                        "Sandbox cleanup failed after aborted exec: %s", exc
+                    )
+            try:
+                await asyncio.wait_for(process.wait(), timeout=_CLI_CLEANUP_TIMEOUT_SEC)
+            except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+                close_pipes()
+                try:
+                    await asyncio.wait_for(
+                        process.wait(), timeout=_CLI_CLEANUP_TIMEOUT_SEC
+                    )
+                except asyncio.TimeoutError:
+                    cleanup_errors.append("Sandbox CLI did not exit after termination")
+
         timed_out = False
         try:
-            await asyncio.wait_for(feed_and_wait(), timeout=timeout_sec)
-        except asyncio.TimeoutError:
-            process.kill()
-            timed_out = True
-            await process.wait()
-        except asyncio.CancelledError:
-            await self._terminate_process(process)
-            await asyncio.gather(
-                stdout_task,
-                stderr_task,
-                return_exceptions=True,
-            )
-            raise
+            try:
+                await asyncio.wait_for(feed_and_wait(), timeout=timeout_sec)
+            except asyncio.TimeoutError:
+                timed_out = True
+                await abort(cancelled=False)
+            except asyncio.CancelledError:
+                await abort(cancelled=True)
+                raise
 
-        stdout_bytes, stdout_total = await stdout_task
-        stderr_bytes, stderr_total = await stderr_task
+            try:
+                (
+                    (stdout_bytes, stdout_total),
+                    (stderr_bytes, stderr_total),
+                ) = await asyncio.wait_for(
+                    asyncio.gather(stdout_task, stderr_task),
+                    timeout=_CLI_CLEANUP_TIMEOUT_SEC,
+                )
+            except asyncio.TimeoutError:
+                if not timed_out:
+                    raise BoxError(
+                        "Sandbox CLI output did not close after command completion"
+                    ) from None
+                stdout_bytes, stdout_total, stderr_bytes, stderr_total = b"", 0, b"", 0
+                cleanup_errors.append(
+                    "Sandbox CLI output did not close after termination"
+                )
+        finally:
+            for task in (stdout_task, stderr_task):
+                if not task.done():
+                    task.cancel()
+            close_pipes()
+            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
 
         if timed_out:
+            stderr = self._clip_captured_bytes(stderr_bytes, stderr_total)
+            if cleanup_errors:
+                stderr = (
+                    (stderr + "\n" if stderr else "")
+                    + "Command timed out. "
+                    + "; ".join(cleanup_errors)
+                )
             return _CommandResult(
                 return_code=-1,
                 stdout=self._clip_captured_bytes(stdout_bytes, stdout_total),
-                stderr=self._clip_captured_bytes(stderr_bytes, stderr_total),
+                stderr=stderr,
                 timed_out=True,
             )
 

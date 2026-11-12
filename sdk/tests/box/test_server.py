@@ -1732,3 +1732,15 @@ def test_relay_error_classes_render():
     ):
         resp = _error_response(exc)
         assert resp.status == 400
+
+
+async def test_get_backends_is_host_control_and_preserves_refresh(
+    handler, mock_runtime
+):
+    mock_runtime.get_backends = mock.AsyncMock(
+        return_value=[{"name": "docker", "available": True}]
+    )
+    resp = await _invoke(handler, LangBotToBoxAction.GET_BACKENDS, {"refresh": True})
+    assert resp.code == 0
+    assert resp.data == {"backends": [{"name": "docker", "available": True}]}
+    mock_runtime.get_backends.assert_awaited_once_with(refresh=True)

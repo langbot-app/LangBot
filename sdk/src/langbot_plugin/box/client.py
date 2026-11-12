@@ -17,6 +17,7 @@ from .models import (
     BoxManagedProcessInfo,
     BoxManagedProcessSpec,
     BoxSpec,
+    E2BConnectionConfig,
     SandboxAdmissionGrant,
     SandboxAdmissionRevocation,
 )
@@ -46,6 +47,17 @@ class BoxRuntimeClient(abc.ABC):
 
     @abc.abstractmethod
     async def get_backend_info(self) -> dict: ...
+
+    async def get_backends(
+        self,
+        *,
+        refresh: bool = False,
+        e2b_config: E2BConnectionConfig | None = None,
+        validate_e2b_template: bool = False,
+    ) -> list[dict]:
+        raise NotImplementedError(
+            "Workspace backend selection requires an updated Box Runtime"
+        )
 
     async def get_storage_analysis(
         self, action_context: ActionContext | None = None
@@ -239,6 +251,26 @@ class ActionRPCBoxClient(BoxRuntimeClient):
 
     async def get_backend_info(self) -> dict:
         return await self._call(LangBotToBoxAction.GET_BACKEND_INFO, {})
+
+    async def get_backends(
+        self,
+        *,
+        refresh: bool = False,
+        e2b_config: E2BConnectionConfig | None = None,
+        validate_e2b_template: bool = False,
+    ) -> list[dict]:
+        payload = {"refresh": refresh}
+        if validate_e2b_template:
+            payload.update(validate_e2b_template=True)
+        if e2b_config is not None:
+            payload["e2b_config"] = e2b_config.model_dump()
+        return (
+            await self._call(
+                LangBotToBoxAction.GET_BACKENDS,
+                payload,
+                timeout=60 if validate_e2b_template else 30,
+            )
+        )["backends"]
 
     async def get_storage_analysis(
         self, action_context: ActionContext | None = None

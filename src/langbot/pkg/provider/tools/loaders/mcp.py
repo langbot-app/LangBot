@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ....i18n import t
 
+import contextvars
 import dataclasses
 import enum
 import json
@@ -298,6 +299,9 @@ class RuntimeMCPSession:
         self.server_config = server_config
         self.ap = ap
         self.execution_context = execution_context
+        self.sandbox_backend = server_config.get('_sandbox_backend')
+        self.sandbox_limits = server_config.get('_sandbox_limits')
+        self.sandbox_e2b_config = server_config.get('_sandbox_e2b_config')
         self.enable = enable
         self.session = None
         self.tool_call_timeout_sec = self._parse_tool_call_timeout(
@@ -1566,10 +1570,20 @@ class RuntimeMCPSession:
             'pids_limit': None,
             'read_only_rootfs': False,
         }
+        if self.sandbox_backend:
+            profile['backend'] = self.sandbox_backend
+        e2b = self.sandbox_e2b_config or {}
+        if self.sandbox_backend == 'e2b' and e2b:
+            profile['e2b_revision'] = e2b['revision']
+        limits = getattr(self, 'sandbox_limits', None) or {}
+        limits_suffix = '-limits-' + limits['revision'] if limits.get('config') else ''
+        if limits_suffix:
+            profile['limits'] = limits['revision']
         if profile == default_profile:
             return 'mcp-shared'
         digest = hashlib.sha256(json.dumps(profile, sort_keys=True).encode('utf-8')).hexdigest()[:12]
-        return f'mcp-shared-{digest}'
+        suffix = '-backend-' + self.sandbox_backend if self.sandbox_backend else ''
+        return f'mcp-shared-{digest}{limits_suffix}{suffix}'
 
     def _rewrite_path(self, path: str, host_path: str | None) -> str:
         return self._box_stdio_runtime.rewrite_path(path, host_path)
@@ -1638,6 +1652,9 @@ def _execution_context_from_query(query: pipeline_query.Query) -> ExecutionConte
 
 
 # @loader.loader_class('mcp')
+_task_mcp_sessions = contextvars.ContextVar('task_mcp_sessions', default=None)
+
+
 class MCPLoader(loader.ToolLoader):
     """MCP 工具加载器。
 
@@ -1651,6 +1668,7 @@ class MCPLoader(loader.ToolLoader):
     def __init__(self, ap: app.Application):
         super().__init__(ap)
         self.sessions = {}
+        self._task_sessions_by_query: dict[tuple, list[RuntimeMCPSession]] = {}
         self._hosted_mcp_tasks = []
         self._hosted_mcp_tasks_by_scope: dict[
             tuple[str, str, int],
@@ -2044,11 +2062,87 @@ class MCPLoader(loader.ToolLoader):
 
     def _sessions_for_context(self, context: TenantContext) -> list[RuntimeMCPSession]:
         scope_key = self._scope_key(context)
+        query_key = (*scope_key, getattr(context, 'query_uuid', None))
+        if query_key in self._task_sessions_by_query:
+            return self._task_sessions_by_query[query_key]
+        task_sessions = _task_mcp_sessions.get()
+        if task_sessions is not None and task_sessions[0] == query_key:
+            return task_sessions[1]
         return [
             session
             for key in self._session_keys_by_scope.get(scope_key, ())
             if (session := self._sessions.get(key)) is not None
         ]
+
+    @asynccontextmanager
+    async def task_sandbox_scope(
+        self,
+        context: TenantContext,
+        backend: str | None,
+        *,
+        tool_names: list[str] | None = None,
+        limits_selection: dict | None = None,
+        e2b_selection: dict | None = None,
+    ):
+        sessions = []
+        owned = []
+        token = None
+        query_key = (*self._scope_key(context), context.query_uuid) if context.query_uuid else None
+        try:
+            for session in self._sessions_for_context(context):
+                if session._uses_box_stdio() and (
+                    session.sandbox_backend != backend
+                    or (getattr(session, 'sandbox_limits', None) or {}) != (limits_selection or {})
+                    or (backend == 'e2b' and (session.sandbox_e2b_config or {}) != (e2b_selection or {}))
+                ):
+                    known_tools = session.get_tools()
+                    if tool_names == [] or (
+                        tool_names is not None
+                        and known_tools
+                        and not any(tool.name in tool_names for tool in known_tools)
+                    ):
+                        continue
+                    if backend is not None and not await self.ap.box_service.backend_supports_managed_processes(
+                        backend
+                    ):
+                        self.ap.logger.warning(
+                            'MCP server %s is unavailable: backend %s does not support managed processes',
+                            session.server_name,
+                            backend,
+                        )
+                        continue
+                    config = {
+                        **session.server_config,
+                        '_sandbox_backend': backend,
+                        '_sandbox_limits': limits_selection,
+                        '_sandbox_e2b_config': e2b_selection,
+                        '_sandbox_task_id': uuid_module.uuid4().hex,
+                    }
+                    session = RuntimeMCPSession(
+                        session.server_name, config, session.enable, self.ap, session.execution_context
+                    )
+                    owned.append(session)
+                    try:
+                        await session.start()
+                    except Exception:
+                        self.ap.logger.warning(
+                            'MCP server %s failed in task sandbox %s', session.server_name, backend, exc_info=True
+                        )
+                sessions.append(session)
+            token = _task_mcp_sessions.set(((*self._scope_key(context), context.query_uuid), sessions))
+            if query_key is not None:
+                self._task_sessions_by_query[query_key] = sessions
+            yield sessions
+        finally:
+            if query_key is not None:
+                self._task_sessions_by_query.pop(query_key, None)
+            if token is not None:
+                _task_mcp_sessions.reset(token)
+            for session in owned:
+                try:
+                    await session.shutdown()
+                except Exception:
+                    self.ap.logger.warning('Failed to close task MCP connection', exc_info=True)
 
     async def host_mcp_server(
         self,
@@ -2140,6 +2234,8 @@ class MCPLoader(loader.ToolLoader):
         mode = server_config['mode']
         enable = server_config['enable']
         extra_args = server_config.get('extra_args', {})
+        if any(key.startswith('_sandbox_') for key in extra_args):
+            raise ValueError('MCP sandbox selection fields are reserved for the Host')
 
         mixed_config = {
             'name': name,
@@ -2444,6 +2540,24 @@ class MCPLoader(loader.ToolLoader):
         query: pipeline_query.Query,
         source_id: str | None = None,
     ) -> typing.Any:
+        sessions = getattr(query, '_sandbox_mcp_sessions', None)
+        token = None
+        if sessions is not None:
+            context = _execution_context_from_query(query)
+            token = _task_mcp_sessions.set(((*self._scope_key(context), context.query_uuid), sessions))
+        try:
+            return await self._invoke_tool(name, parameters, query, source_id)
+        finally:
+            if token is not None:
+                _task_mcp_sessions.reset(token)
+
+    async def _invoke_tool(
+        self,
+        name: str,
+        parameters: dict,
+        query: pipeline_query.Query,
+        source_id: str | None = None,
+    ) -> typing.Any:
         """执行工具调用"""
         execution_context = await self._assert_execution_active(_execution_context_from_query(query))
         if source_id is None and name == MCP_TOOL_LIST_RESOURCES:
@@ -2672,7 +2786,9 @@ class MCPLoader(loader.ToolLoader):
 
     def get_session(self, context: TenantContext, server_name: str) -> RuntimeMCPSession | None:
         """获取指定名称的 MCP 会话"""
-        return self.sessions.get(self._session_key(context, server_name))
+        return next(
+            (session for session in self._sessions_for_context(context) if session.server_name == server_name), None
+        )
 
     def has_session(self, context: TenantContext, server_name: str) -> bool:
         """检查是否存在指定名称的 MCP 会话"""

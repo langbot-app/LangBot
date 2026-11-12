@@ -23,5 +23,6 @@ class LangBotToBoxAction(ActionType):
     GET_MANAGED_PROCESS = "box_get_managed_process"
     STOP_MANAGED_PROCESS = "box_stop_managed_process"
     GET_BACKEND_INFO = "box_get_backend_info"
+    GET_BACKENDS = "box_get_backends"
     GET_STORAGE_ANALYSIS = "box_get_storage_analysis"
     SHUTDOWN = "box_shutdown"
