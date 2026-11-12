@@ -53,7 +53,12 @@ They are not an unbounded streaming API.
 
 ## Backends and rollout
 
-Docker/Podman and nsjail use the Runtime's own workspace mapping. The explicit
+Docker/Podman and nsjail use the Runtime's own workspace mapping. When a
+Docker/Podman workspace file is inaccessible to the Runtime user, the existing
+container's default user runs a bounded file helper. Upload bytes use stdin and
+downloads use binary stdout with a separate size cap. The helper validates upload
+length and digest before publication, and finishes cleanup before cancellation
+releases the session lock. The explicit
 unsafe host backend uses its managed workspace. These local backends require
 descriptor-relative no-follow filesystem operations and a Runtime-visible
 workspace. E2B transfers bytes with its native files API and uses private staging

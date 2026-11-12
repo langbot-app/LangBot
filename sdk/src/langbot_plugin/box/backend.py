@@ -5,6 +5,8 @@ import asyncio
 import dataclasses
 import datetime as dt
 import logging
+import hashlib
+import inspect
 import os
 import re
 import shlex
@@ -483,6 +485,137 @@ class CLISandboxBackend(BaseSandboxBackend):
         if root is not None:
             await bounded_executor.run_blocking_cleanup(shutil.rmtree, root)
             self._artifact_roots.pop(session.backend_session_id, None)
+
+    async def upload_file(
+        self, session: BoxSessionInfo, path: str, content: bytes, max_bytes: int
+    ) -> None:
+        try:
+            await super().upload_file(session, path, content, max_bytes)
+        except PermissionError:
+            await self._transfer_workspace_via_cli(session, path, max_bytes, content)
+
+    async def download_file(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        try:
+            return await super().download_file(session, path, max_bytes)
+        except PermissionError:
+            return await self._transfer_workspace_via_cli(
+                session, path, max_bytes, None
+            )
+
+    async def _transfer_workspace_via_cli(
+        self,
+        session: BoxSessionInfo,
+        path: str,
+        max_bytes: int,
+        content: bytes | None,
+    ) -> bytes:
+        from . import file_io
+
+        relative = file_io.workspace_relative_path(session.mount_path, path)
+        if content is not None:
+            if session.host_path_mode == BoxHostMountMode.READ_ONLY:
+                raise BoxError("Cannot upload into a read-only workspace")
+            if len(content) > max_bytes:
+                raise ValueError("Workspace file exceeds the transfer size limit")
+        script = inspect.getsource(file_io) + "\nimport signal, sys, hashlib\n"
+        script += (
+            "def transfer_timeout(signum, frame):\n"
+            "    raise TimeoutError('Workspace file transfer timed out')\n"
+            "signal.signal(signal.SIGALRM, transfer_timeout)\n"
+            "signal.alarm(20)\n"
+        )
+        if content is None:
+            script += (
+                f"data = read_workspace_file({session.mount_path!r}, {relative!r}, {max_bytes!r})\n"
+                "sys.stdout.buffer.write(data)\n"
+                "sys.stdout.buffer.flush()\n"
+            )
+        else:
+            digest = hashlib.sha256(content).hexdigest()
+            script += (
+                f"data = sys.stdin.buffer.read({len(content) + 1!r})\n"
+                f"if len(data) != {len(content)!r} or hashlib.sha256(data).hexdigest() != {digest!r}:\n"
+                "    raise ValueError('Workspace upload size or digest mismatch')\n"
+                f"write_workspace_file({session.mount_path!r}, {relative!r}, data, {max_bytes!r})\n"
+            )
+        operation = asyncio.create_task(
+            self._run_file_transfer(session, script, max_bytes, content)
+        )
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            # Keep the session locked until the container helper has finished cleanup.
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not operation.cancelled() and operation.exception() is not None:
+                self.logger.warning(
+                    "Cancelled container file transfer failed during completion: %s",
+                    operation.exception(),
+                )
+            raise
+
+    async def _run_file_transfer(
+        self,
+        session: BoxSessionInfo,
+        script: str,
+        max_bytes: int,
+        content: bytes | None,
+    ) -> bytes:
+        process = await asyncio.create_subprocess_exec(
+            self.command,
+            "exec",
+            "-i",
+            session.backend_session_id,
+            "python3",
+            "-c",
+            script,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        output_limit = max_bytes + 1 if content is None else 1
+        stdout_task = asyncio.create_task(
+            self._read_stream(process.stdout, limit=output_limit)
+        )
+        stderr_task = asyncio.create_task(
+            self._read_stream(process.stderr, limit=16384)
+        )
+
+        async def complete():
+            try:
+                if content is not None:
+                    process.stdin.write(content)
+                    await process.stdin.drain()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            finally:
+                process.stdin.close()
+            await process.wait()
+            return await asyncio.gather(stdout_task, stderr_task)
+
+        try:
+            (stdout, total), (stderr, stderr_total) = await asyncio.wait_for(
+                complete(), timeout=30
+            )
+        except BaseException:
+            await self._terminate_process(process)
+            await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+            raise
+        if process.returncode != 0:
+            diagnostic = self._clip_captured_bytes(stderr, stderr_total, limit=16384)
+            raise BoxError(
+                self._format_cli_error(diagnostic or "Container file transfer failed")
+            )
+        if total > max_bytes or (content is not None and total):
+            raise BoxError("Container file transfer returned an invalid payload size")
+        return stdout
 
     async def is_session_alive(self, session: BoxSessionInfo) -> bool:
         result = await self._run_command(
