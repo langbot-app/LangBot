@@ -24,7 +24,7 @@ Each alert is sent when it opens, reminded after 6 h, 12 h and then every 24 h w
 | Channel | Available when | Notes |
 | --- | --- | --- |
 | Your mail service | The `email` section of `config.yaml` is set to SMTP or Resend | Owners, admins and up to 10 extra recipients |
-| LangBot Space (official) | An owner or admin signed in with a LangBot Space account | Free; mails only that account's own Space address |
+| LangBot Space (official) | An owner or admin signed in with a LangBot Account | Free; mails only that account's own address |
 | Automatic (default) | — | Your mail service when configured, otherwise LangBot Space |
 | Off | — | Alerts appear in Settings and go to webhooks only |
 
@@ -53,7 +53,7 @@ The same section sends member invitations. `workspace.invitations.email` from ol
 
 LangBot Space enforces these server-side to prevent abuse:
 
-- The recipient is always the requesting Space account's own address; an instance cannot choose another one.
+- The recipient is always the requesting LangBot Account's own address; an instance cannot choose another one.
 - Space renders the email from a fixed template and strips links from error summaries.
 - Free quota: 20 emails per day and 200 per month per account, 20 per day per Workspace, and 3 test emails per hour. Refused sends show as "Quota reached" in the delivery log.
 - Turn it off in your LangBot Space profile under Email preferences → Instance Alerts.

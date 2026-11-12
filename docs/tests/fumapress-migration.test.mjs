@@ -19,7 +19,7 @@ const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-
 // Generated integration recipes: one index plus one page per source/platform, per locale.
 const recipeDocuments = LANGS.length * (1 + SOURCES.length * PLATFORMS.length);
 // The fixed documentation baseline excludes synchronized Blog pages and recipes.
-const expectedDocuments = 305 + articleManifest.articles.length + recipeDocuments;
+const expectedDocuments = 308 + articleManifest.articles.length + recipeDocuments;
 
 
 test("Mintlify locales are mapped to public URL locales", () => {

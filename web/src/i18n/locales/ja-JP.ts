@@ -4115,7 +4115,7 @@ const jaJP = {
     noRecipients: 'メールアドレスを持つオーナーまたは管理者がいません。',
     extraRecipients: '追加の受信者（自前のメールサービスのみ、最大 10 件）',
     spaceRecipientsHint:
-      'LangBot Space は LangBot Space アカウントでサインインした管理者本人の Space アドレスにのみ送信します。無料枠：アカウントごとに 1 日 20 通、月 200 通。',
+      'LangBot Space は LangBot アカウントでサインインした管理者本人のアドレスにのみ送信します。無料枠：アカウントごとに 1 日 20 通、月 200 通。',
     channel: {
       auto: '自動',
       autoDescription:
@@ -4126,7 +4126,7 @@ const jaJP = {
         '未設定です。config.yaml の email セクションで SMTP または Resend を設定してください',
       space: 'LangBot Space（公式）',
       spaceAvailable: '{{accounts}} へ無料で公式送信',
-      spaceMissing: 'LangBot Space アカウントでサインインすると利用できます',
+      spaceMissing: 'LangBot アカウントでサインインすると利用できます',
       off: 'オフ',
       offDescription: 'ここに表示し Webhook のみ送信',
       none: '送信しない（利用可能なチャネルなし）',
