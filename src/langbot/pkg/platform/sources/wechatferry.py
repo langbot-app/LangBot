@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import traceback
 import typing
@@ -16,6 +17,8 @@ import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_
 import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 import langbot_plugin.api.entities.builtin.platform.events as platform_events
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
+
+_IMG_B64_RE = re.compile(r'<img_b64>(.*?)</img_b64>', re.DOTALL)
 
 
 class WeChatFerryMessageDeduplicator:
@@ -41,7 +44,7 @@ class WeChatFerryMessageDeduplicator:
 
 
 class WeChatFerryMessageConverter(abstract_platform_adapter.AbstractMessageConverter):
-    """Converts between LangBot MessageChain and WeChatFerry payloads."""
+    """Converts between LangBot MessageChain and WeChatFerry / Helper V4-V7 payloads."""
 
     @staticmethod
     async def yiri2target(message_chain: platform_message.MessageChain) -> dict:
@@ -81,7 +84,7 @@ class WeChatFerryMessageConverter(abstract_platform_adapter.AbstractMessageConve
         data: dict,
         bot_account_id: str,
     ) -> platform_message.MessageChain:
-        """Convert WCF incoming message dictionary to LangBot MessageChain."""
+        """Convert WCF / Helper V4-V7 incoming message dictionary to LangBot MessageChain."""
         components: list[platform_message.MessageComponent] = []
 
         content = data.get('content') or ''
@@ -98,9 +101,18 @@ class WeChatFerryMessageConverter(abstract_platform_adapter.AbstractMessageConve
         if msg_type == 1:  # 文本消息
             if content:
                 components.append(platform_message.Plain(text=content))
-        elif msg_type == 3:  # 图片消息
-            img_path = data.get('extra') or data.get('image_path') or ''
-            if img_path:
+        elif msg_type == 3:  # 图片消息（优先提取网关内联 <img_b64>，并拦截跨机 Windows 盘符路径）
+            b64_match = _IMG_B64_RE.search(content)
+            img_b64 = (b64_match.group(1).strip() if b64_match else '') or str(
+                data.get('img_b64') or data.get('base64') or ''
+            ).strip()
+            img_path = str(data.get('extra') or data.get('image_path') or '').strip()
+            if img_b64:
+                if not img_b64.startswith('data:'):
+                    img_b64 = f'data:image/jpeg;base64,{img_b64}'
+                data['content'] = '[图片]'
+                components.append(platform_message.Image(base64=img_b64))
+            elif img_path and ':' not in img_path:
                 components.append(platform_message.Image(path=img_path))
             else:
                 components.append(platform_message.Plain(text='[图片]'))
@@ -114,7 +126,7 @@ class WeChatFerryMessageConverter(abstract_platform_adapter.AbstractMessageConve
 
 
 class WeChatFerryEventConverter(abstract_platform_adapter.AbstractEventConverter):
-    """Converts incoming WCF message dict to LangBot GroupMessage or FriendMessage."""
+    """Converts incoming WCF / Helper V4-V7 message dict to LangBot GroupMessage or FriendMessage."""
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger):
         self.config = config
@@ -147,19 +159,21 @@ class WeChatFerryEventConverter(abstract_platform_adapter.AbstractEventConverter
             return None
 
         event_time = event.get('ts') or int(time.time())
+        sender_name = str(event.get('sender_name') or sender)
+        room_name = str(event.get('room_name') or roomid)
 
         is_group = bool(event.get('is_group', False)) or ('@chatroom' in roomid)
 
         if is_group:
-            # 群聊消息：sender 为群成员真实 wxid，group.id 为 roomid
+            # 群聊消息：sender 为群成员真实 wxid，member_name 优先透传网关解析出的真实群昵称
             return platform_events.GroupMessage(
                 sender=platform_entities.GroupMember(
                     id=sender,
-                    member_name=sender,
+                    member_name=sender_name,
                     permission=platform_entities.Permission.Member,
                     group=platform_entities.Group(
                         id=roomid,
-                        name=roomid,
+                        name=room_name,
                         permission=platform_entities.Permission.Member,
                     ),
                     special_title='',
@@ -169,11 +183,11 @@ class WeChatFerryEventConverter(abstract_platform_adapter.AbstractEventConverter
                 source_platform_object=event,
             )
         else:
-            # 私聊消息：sender 为用户真实 wxid
+            # 私聊消息：sender 为用户真实 wxid，nickname 优先透传真实显示名
             return platform_events.FriendMessage(
                 sender=platform_entities.Friend(
                     id=sender,
-                    nickname=sender,
+                    nickname=sender_name,
                     remark='',
                 ),
                 message_chain=message_chain,
@@ -183,7 +197,7 @@ class WeChatFerryEventConverter(abstract_platform_adapter.AbstractEventConverter
 
 
 class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
-    """WeChatFerry 官方 PC 微信平台适配器"""
+    """WeChatFerry / WeChat 4.x Helper Native Bridge PC 微信平台适配器"""
 
     model_config = pydantic.ConfigDict(extra='allow', arbitrary_types_allowed=True)
 
@@ -201,11 +215,12 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
     _deduplicator: WeChatFerryMessageDeduplicator = pydantic.PrivateAttr(default_factory=WeChatFerryMessageDeduplicator)
     _running: bool = pydantic.PrivateAttr(default=False)
     _ws_task: typing.Optional[asyncio.Task] = pydantic.PrivateAttr(default=None)
+    _inbound_tasks: set[asyncio.Task] = pydantic.PrivateAttr(default_factory=set)
 
     def __init__(self, config: dict, logger: abstract_platform_logger.AbstractEventLogger, **kwargs):
         message_converter = WeChatFerryMessageConverter()
         event_converter = WeChatFerryEventConverter(config, logger)
-        bot_wxid = config.get('bot_wxid', 'wxid_hpff6wk2y9zd12')
+        bot_wxid = config.get('bot_wxid', '')
 
         super().__init__(
             config=config,
@@ -249,7 +264,7 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
 
         await self.logger.info(f'WeChatFerry 适配器正在启动，API 地址: {api_url}, WS 地址: {ws_url}...')
 
-        # 尝试查询一次 WCF 账号状态，更新 bot_account_id
+        # 尝试查询一次 WCF 账号状态，自动同步当前登录账号 self_wxid
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(f'{api_url}/api/status', timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -260,7 +275,7 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
                             self.config['bot_wxid'] = self.bot_account_id
                             user_info = status_data.get('user_info', {})
                             await self.logger.info(
-                                f'WeChatFerry 账号已在线: {user_info.get("name", "Free")} ({self.bot_account_id})'
+                                f'WeChatFerry 账号已在线: {user_info.get("name", "WeChat")} ({self.bot_account_id})'
                             )
         except Exception as e:
             await self.logger.warning(f'检查 WCF 账号状态失败 (非致命): {e}')
@@ -273,17 +288,20 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
             pass
 
     async def _ws_loop(self, ws_url: str):
-        """WebSocket 消息监听循环，支持自动断线重连"""
+        """WebSocket 消息监听循环，支持 64MiB 大帧（适配图片/语音/35MiB 文档内联）与自动断线重连"""
         retry_delay = 2.0
         max_retry_delay = 30.0
+        ws_max_size_mb = max(16, int(self.config.get('ws_max_size_mb', 64) or 64))
+        ws_max_size = ws_max_size_mb * 1024 * 1024
 
         while self._running:
             try:
-                await self.logger.info(f'正在连接 WeChatFerry WebSocket: {ws_url} ...')
+                await self.logger.info(f'正在连接 WeChatFerry WebSocket: {ws_url} (max_size={ws_max_size_mb}MiB) ...')
                 async with websockets.connect(
                     ws_url,
                     ping_interval=30,
                     ping_timeout=10,
+                    max_size=ws_max_size,
                 ) as ws:
                     await self.logger.info('WeChatFerry WebSocket 连接成功，开始接收微信消息！')
                     retry_delay = 2.0  # 连接成功后重置重试间隔
@@ -295,7 +313,9 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
                             if isinstance(message, bytes):
                                 message = message.decode('utf-8', errors='ignore')
                             data = json.loads(message)
-                            await self._handle_inbound_data(data)
+                            task = asyncio.create_task(self._handle_inbound_data(data))
+                            self._inbound_tasks.add(task)
+                            task.add_done_callback(self._inbound_tasks.discard)
                         except json.JSONDecodeError:
                             await self.logger.warning(f'收到非 JSON 格式消息: {message[:100]}')
                         except Exception as ex:
@@ -312,13 +332,16 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
 
     async def _handle_inbound_data(self, data: dict):
         """处理由 WebSocket 推送过来的单条微信消息"""
-        msg_id = data.get('id') or data.get('msg_id')
-        if msg_id and self._deduplicator.is_duplicate(msg_id):
-            return
+        try:
+            msg_id = data.get('id') or data.get('msg_id')
+            if msg_id and self._deduplicator.is_duplicate(msg_id):
+                return
 
-        event = await self.event_converter.target2yiri(data, self.bot_account_id)
-        if event is not None and event.__class__ in self.listeners:
-            await self.listeners[event.__class__](event, self)
+            event = await self.event_converter.target2yiri(data, self.bot_account_id)
+            if event is not None and event.__class__ in self.listeners:
+                await self.listeners[event.__class__](event, self)
+        except Exception as ex:
+            await self.logger.error(f'分发 WCF 入站事件异常: {ex}\n{traceback.format_exc()}')
 
     async def send_message(
         self,
@@ -403,4 +426,7 @@ class WeChatFerryAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapte
         self._running = False
         if self._ws_task and not self._ws_task.done():
             self._ws_task.cancel()
+        for task in list(self._inbound_tasks):
+            if not task.done():
+                task.cancel()
         return True

@@ -4,12 +4,12 @@ metadata:
   name: wechatferry
   label:
     en_US: WeChatFerry
-    zh_Hans: WeChatFerry (PC微信)
-    zh_Hant: WeChatFerry (PC微信)
+    zh_Hans: WeChatFerry (PC微信 3.9 / 4.x Helper)
+    zh_Hant: WeChatFerry (PC微信 3.9 / 4.x Helper)
   description:
-    en_US: WeChatFerry PC WeChat adapter, supports authentic wxid recognition and bi-directional messaging
-    zh_Hans: 基于 WeChatFerry 的 PC 微信适配器，支持群聊/私聊真实 wxid 获取与消息双向收发
-    zh_Hant: 基於 WeChatFerry 的 PC 微信適配器
+    en_US: WeChatFerry & WeChat 4.x Helper Native Bridge PC WeChat adapter, supports authentic wxid/nickname recognition, inline Base64 media, and bi-directional messaging
+    zh_Hans: 基于 WeChatFerry / WeChat 4.x Helper 原生桥接网关的 PC 微信适配器，支持真实 wxid 与群昵称识别、跨机内联图片/大文件流及双向消息收发
+    zh_Hant: 基於 WeChatFerry / WeChat 4.x Helper 原生橋接網關的 PC 微信適配器
   icon: wechatferry.png
 spec:
   categories:
@@ -18,12 +18,12 @@ spec:
     - name: api_url
       label:
         en_US: WCF API URL
-        zh_Hans: WCF 服务 HTTP 地址
-        zh_Hant: WCF 服務 HTTP 地址
+        zh_Hans: WCF 网关 HTTP 地址
+        zh_Hant: WCF 網關 HTTP 地址
       description:
-        en_US: HTTP Base URL of WeChatFerry daemon service (e.g. http://127.0.0.1:18080)
-        zh_Hans: WeChatFerry 后台服务的 HTTP 地址，例如 http://127.0.0.1:18080
-        zh_Hant: WeChatFerry 後台服務的 HTTP 地址
+        en_US: HTTP Base URL of WeChatFerry / Helper V4+ gateway service (e.g. http://127.0.0.1:18080)
+        zh_Hans: WeChatFerry 或 WeChat 4.x Helper 网关服务的 HTTP 地址，例如 http://127.0.0.1:18080
+        zh_Hant: WeChatFerry 或 WeChat 4.x Helper 網關服務的 HTTP 地址
       type: string
       required: true
       default: "http://127.0.0.1:18080"
@@ -42,15 +42,27 @@ spec:
     - name: bot_wxid
       label:
         en_US: Bot WxID
-        zh_Hans: 机器人自身 wxid
-        zh_Hant: 機器人自身 wxid
+        zh_Hans: 机器人自身 wxid（可选）
+        zh_Hant: 機器人自身 wxid（可選）
       description:
-        en_US: The authentic WeChat ID of the bot account (e.g. wxid_hpff6wk2y9zd12)
-        zh_Hans: 机器人微信账号的真实微信 ID，例如 wxid_hpff6wk2y9zd12
-        zh_Hant: 機器人微信帳號的真實微信 ID
+        en_US: Optional authentic WeChat ID of the bot account; auto-detected via /api/status on startup if left empty
+        zh_Hans: 机器人微信账号的真实 wxid（留空时启动会自动通过 /api/status 识别同步）
+        zh_Hant: 機器人微信帳號的真實 wxid（留空時啟動會自動識別同步）
       type: string
       required: false
-      default: "wxid_hpff6wk2y9zd12"
+      default: ""
+    - name: ws_max_size_mb
+      label:
+        en_US: WebSocket Max Frame Size (MiB)
+        zh_Hans: WebSocket 单帧大小上限 (MiB)
+        zh_Hant: WebSocket 單幀大小上限 (MiB)
+      description:
+        en_US: Maximum WebSocket payload size in MiB for inline Base64 images, voice, and large documents (default 64 MiB)
+        zh_Hans: 单条入站消息 WebSocket 帧大小上限（默认 64 MiB，适配大图、语音及 35 MiB 文档 Base64 内联推送）
+        zh_Hant: 單條入站消息 WebSocket 幀大小上限（預設 64 MiB）
+      type: integer
+      required: false
+      default: 64
 execution:
   python:
     path: ./wechatferry.py

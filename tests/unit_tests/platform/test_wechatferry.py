@@ -1,16 +1,19 @@
-import pytest
+import asyncio
+import json
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
+import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
+import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
+import langbot_plugin.api.entities.builtin.platform.events as platform_events
+import langbot_plugin.api.entities.builtin.platform.message as platform_message
 from langbot.pkg.platform.sources.wechatferry import (
     WeChatFerryAdapter,
     WeChatFerryEventConverter,
     WeChatFerryMessageConverter,
     WeChatFerryMessageDeduplicator,
 )
-import langbot_plugin.api.definition.abstract.platform.event_logger as abstract_platform_logger
-import langbot_plugin.api.entities.builtin.platform.events as platform_events
-import langbot_plugin.api.entities.builtin.platform.message as platform_message
-import langbot_plugin.api.entities.builtin.platform.entities as platform_entities
 
 
 class DummyLogger(abstract_platform_logger.AbstractEventLogger):
@@ -68,6 +71,46 @@ async def test_message_converter_target2yiri():
 
 
 @pytest.mark.asyncio
+async def test_message_converter_image_base64_and_windows_path_guard():
+    # 1. Helper V4/V7 inline <img_b64> XML payload -> Image(base64=...) and sanitize data['content']
+    inline_data = {
+        'id': 20001,
+        'type': 3,
+        'content': '<msg><img_b64>/9j/4AAQSkZJRgABAQAAAQABAAD/</img_b64></msg>',
+        'extra': r'C:\wcf_service\temp\img_01.jpg',
+    }
+    chain = await WeChatFerryMessageConverter.target2yiri(inline_data, bot_account_id='wxid_bot')
+    assert len(chain) == 1
+    assert isinstance(chain[0], platform_message.Image)
+    assert chain[0].base64 == 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/'
+    assert inline_data['content'] == '[图片]'
+
+    # 2. Windows host path without base64 must NOT pass C:\... path into Linux container
+    win_path_only = {
+        'id': 20002,
+        'type': 3,
+        'content': '',
+        'extra': r'C:\Users\Admin\WeChat Files\pic.jpg',
+    }
+    chain_win = await WeChatFerryMessageConverter.target2yiri(win_path_only, bot_account_id='wxid_bot')
+    assert len(chain_win) == 1
+    assert isinstance(chain_win[0], platform_message.Plain)
+    assert chain_win[0].text == '[图片]'
+
+    # 3. Local POSIX path without drive colon remains supported
+    posix_path_data = {
+        'id': 20003,
+        'type': 3,
+        'content': '',
+        'extra': '/tmp/wcf_img.png',
+    }
+    chain_posix = await WeChatFerryMessageConverter.target2yiri(posix_path_data, bot_account_id='wxid_bot')
+    assert len(chain_posix) == 1
+    assert isinstance(chain_posix[0], platform_message.Image)
+    assert chain_posix[0].path == '/tmp/wcf_img.png'
+
+
+@pytest.mark.asyncio
 async def test_event_converter_group_message():
     config = {'bot_wxid': 'wxid_bot'}
     logger = AsyncMock()
@@ -78,7 +121,9 @@ async def test_event_converter_group_message():
         'type': 1,
         'is_group': True,
         'roomid': '249827391@chatroom',
+        'room_name': '测试鱼塘群',
         'sender': 'wxid_member_abc',
+        'sender_name': '路人甲',
         'content': '问道签到',
         'is_at': True,
         'ts': 1727800000,
@@ -86,9 +131,10 @@ async def test_event_converter_group_message():
 
     event = await converter.target2yiri(group_data, bot_account_id='wxid_bot')
     assert isinstance(event, platform_events.GroupMessage)
-    # 核心检验：真实 wxid
     assert event.sender.id == 'wxid_member_abc'
+    assert event.sender.member_name == '路人甲'
     assert event.sender.group.id == '249827391@chatroom'
+    assert event.sender.group.name == '测试鱼塘群'
     assert event.time == 1727800000
 
 
@@ -104,6 +150,7 @@ async def test_event_converter_friend_message():
         'is_group': False,
         'roomid': '',
         'sender': 'wxid_private_user',
+        'sender_name': '老朋友',
         'content': '问道帮助',
         'ts': 1727800001,
     }
@@ -111,6 +158,7 @@ async def test_event_converter_friend_message():
     event = await converter.target2yiri(private_data, bot_account_id='wxid_bot')
     assert isinstance(event, platform_events.FriendMessage)
     assert event.sender.id == 'wxid_private_user'
+    assert event.sender.nickname == '老朋友'
     assert event.time == 1727800001
 
 
@@ -134,6 +182,74 @@ async def test_event_converter_filters_self_and_official():
 
 
 @pytest.mark.asyncio
+async def test_ws_loop_large_max_size_and_concurrent_dispatch():
+    config = {
+        'api_url': 'http://127.0.0.1:18080',
+        'ws_url': 'ws://127.0.0.1:18080/ws',
+        'bot_wxid': 'wxid_bot',
+        'ws_max_size_mb': 64,
+    }
+    logger = DummyLogger()
+    adapter = WeChatFerryAdapter(config, logger)
+    adapter._running = True
+
+    received_events = []
+
+    async def fake_listener(ev, adp):
+        received_events.append(ev)
+        adapter._running = False
+
+    adapter.register_listener(platform_events.FriendMessage, fake_listener)
+
+    class FakeWS:
+        def __init__(self, frames):
+            self._frames = list(frames)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
+        def __aiter__(self):
+            return self
+
+        async def __anext__(self):
+            if not self._frames:
+                adapter._running = False
+                raise StopAsyncIteration
+            return self._frames.pop(0)
+
+    sample_frame = json.dumps(
+        {
+            'id': 30001,
+            'type': 1,
+            'is_group': False,
+            'sender': 'wxid_alice',
+            'sender_name': 'Alice',
+            'content': '你好大肥鱼',
+            'ts': 1727800099,
+        }
+    )
+
+    captured_kwargs = {}
+
+    def fake_connect(url, **kwargs):
+        captured_kwargs['url'] = url
+        captured_kwargs.update(kwargs)
+        return FakeWS([sample_frame])
+
+    with patch('langbot.pkg.platform.sources.wechatferry.websockets.connect', side_effect=fake_connect):
+        await adapter._ws_loop('ws://127.0.0.1:18080/ws')
+        if adapter._inbound_tasks:
+            await asyncio.gather(*list(adapter._inbound_tasks))
+
+    assert captured_kwargs['max_size'] == 64 * 1024 * 1024
+    assert len(received_events) == 1
+    assert received_events[0].sender.nickname == 'Alice'
+
+
+@pytest.mark.asyncio
 async def test_adapter_reply_routing():
     config = {
         'api_url': 'http://127.0.0.1:18080',
@@ -149,7 +265,9 @@ async def test_adapter_reply_routing():
         member_name='User',
         permission=platform_entities.Permission.Member,
         group=platform_entities.Group(
-            id='group123@chatroom', name='Group', permission=platform_entities.Permission.Member
+            id='group123@chatroom',
+            name='Group',
+            permission=platform_entities.Permission.Member,
         ),
         special_title='',
     )
