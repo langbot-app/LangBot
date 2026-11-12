@@ -456,7 +456,7 @@ wheels = [
 
 [[package]]
 name = "langbot-local-agent"
-version = "0.2.10"
+version = "0.2.12"
 source = { editable = "." }
 dependencies = [
     { name = "langbot-plugin" },

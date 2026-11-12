@@ -175,6 +175,11 @@ Local Agent currently uses a runner-owned context pipeline:
    context-overflow style error, compact the current loop context with a more
    aggressive retry budget and retry the model turn once before surfacing
    `run.failed`.
+7. If the first answer of a run has neither text nor tool calls, treat it as an
+   empty response: move on to the next configured fallback model, or, when none
+   is left, fail the run with `runner.empty_response` so the pipeline's error
+   handling replies to the user. An empty normal stop after tools ran still
+   completes the run.
 
 This is not `max-round` behavior. History is not selected by number of rounds;
 the runner budgets prompt, current input, summary, and recent history together,
