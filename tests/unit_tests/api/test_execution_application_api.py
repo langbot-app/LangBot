@@ -601,3 +601,39 @@ async def test_granted_bot_tool_is_not_limited_by_model_selection(host, monkeypa
         },
     )
     assert result['result']['message_id'] == 'sent'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('run_id', [None, 'run-a'], ids=['plugin', 'runner'])
+async def test_call_tool_serializes_mcp_content_elements(host, monkeypatch, run_id):
+    """MCP tools return ContentElement models; call_tool must emit JSON, not fail output validation (#2999)."""
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+
+    host.ap.tool_mgr.get_resolved_tool_catalog = AsyncMock(
+        return_value=[{'name': 'tool-a', 'source': 'mcp', 'source_id': 'server-a'}]
+    )
+    host.ap.tool_mgr.execute_func_call = AsyncMock(
+        return_value=[ContentElement.from_text('hello'), ContentElement.from_image_base64('data:image/png;base64,AAAA')]
+    )
+    host.ap.query_pool = SimpleNamespace(cached_queries={})
+    payload = {'tool_name': 'tool-a', 'parameters': {}}
+    if run_id:
+        session = run_session(host)
+        session['authorization']['authorized_ids'] = {'tool': {'tool-a'}}
+        session['authorization']['resources'] = {
+            'tools': [{'tool_name': 'tool-a', 'source': 'mcp', 'source_id': 'server-a'}]
+        }
+        stub_run(monkeypatch, session)
+    else:
+        monkeypatch.setattr(
+            'langbot.pkg.api.application.plugin_permissions.load_installation', AsyncMock(return_value=host.setting)
+        )
+        host.handler._resource_exists = AsyncMock(return_value=True)
+
+    result = await host.api.invoke('execution.call_tool', ExecutionAPIContext(host.binding, run_id), payload)
+
+    value = result['result'] if run_id else result['tool_response']
+    assert value[0]['type'] == 'text'
+    assert value[0]['text'] == 'hello'
+    assert value[1]['type'] == 'image_base64'
+    host.ap.tool_mgr.execute_func_call.assert_awaited_once()
