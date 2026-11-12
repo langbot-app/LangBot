@@ -488,13 +488,21 @@ class AlertService:
             self._settings_cache.pop(next(iter(self._settings_cache)))
         return settings
 
-    @staticmethod
-    def _normalize_settings(setting) -> dict:
+    def default_enabled(self) -> bool:
+        """Whether a Workspace without saved settings has alerts on.
+
+        Multi-tenant Cloud turns alerts on for every Workspace (existing and
+        new) and mails through the platform-configured service. Self-hosted and
+        dedicated instances are opt-in: nothing is evaluated or sent until an
+        admin turns alerts on. A saved choice always wins.
+        """
+
+        return getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+
+    def _normalize_settings(self, setting) -> dict:
         if setting is None:
-            # Alerts are opt-in per Workspace: nothing is evaluated or sent until
-            # an admin turns them on in Settings.
             return {
-                'enabled': False,
+                'enabled': self.default_enabled(),
                 'email_channel': 'auto',
                 'rules': rules.normalize_rules({}),
                 'webhook_ids': [],
@@ -512,8 +520,7 @@ class AlertService:
             'notify_resolved': bool(setting.notify_resolved),
         }
 
-    @staticmethod
-    def validate_settings(payload: dict) -> dict:
+    def validate_settings(self, payload: dict) -> dict:
         """Validate a settings update; raises ValueError with a stable message."""
 
         if not isinstance(payload, dict):
@@ -538,7 +545,7 @@ class AlertService:
         if not isinstance(muted, list):
             raise ValueError('muted_account_uuids must be a list')
         return {
-            'enabled': bool(payload.get('enabled', False)),
+            'enabled': bool(payload.get('enabled', self.default_enabled())),
             'email_channel': email_channel,
             'rules': rules.normalize_rules(payload.get('rules')),
             'webhook_ids': sorted({int(item) for item in webhook_ids}),

@@ -4,7 +4,7 @@ User guide: `docs/*/deploy/alerts.mdx`. This note records the internal contracts
 
 ## Opt-in
 
-Alerts are off per Workspace until an admin enables them (`alert_settings.enabled`, default false). The dashboard
+Without a saved `alert_settings` row, alerts are off on self-hosted/dedicated instances and on for multi-tenant Cloud (`deployment.mode == 'cloud'`, `AlertService.default_enabled`). A saved row always wins. The dashboard
 reads `GET /api/v1/alerts/summary` to offer an "Enable alerts" shortcut on the Failed card.
 
 ## Signal path
