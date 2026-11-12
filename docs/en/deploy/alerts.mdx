@@ -5,7 +5,7 @@ description: "Notify admins by email (your SMTP/Resend or the official LangBot S
 
 LangBot watches each Workspace for repeated failures. When a threshold is reached it opens an alert and notifies the Workspace owners and admins. Configure it in **Settings → Alerts** (owner or admin role).
 
-Alerts are **off by default**: nothing is evaluated or sent until an admin turns on "Alerts on" in Settings. When the dashboard's Failed card already shows failures while alerts are off, the card shows an **Enable alerts** shortcut that opens the alert settings.
+On self-hosted and dedicated instances alerts are **off by default**: nothing is evaluated or sent until an admin turns on "Alerts on" in Settings. LangBot Cloud (cloud.langbot.app) Workspaces have alerts on by default and mail through the platform's own service. When the dashboard's Failed card already shows failures while alerts are off, the card shows an **Enable alerts** shortcut that opens the alert settings.
 
 ## Rules
 
@@ -88,5 +88,5 @@ Add a webhook under **Settings → API**, then select it in the alert settings. 
 
 ## Turning alerts on and off
 
-- One Workspace: switch "Alerts on" in Settings, or disable individual rules. New Workspaces start with alerts off.
+- One Workspace: switch "Alerts on" in Settings, or disable individual rules. New self-hosted Workspaces start with alerts off and LangBot Cloud Workspaces with alerts on; a saved choice always wins.
 - The whole instance: set `alerts.enabled: false` in `config.yaml` (or `ALERTS__ENABLED=false`).
