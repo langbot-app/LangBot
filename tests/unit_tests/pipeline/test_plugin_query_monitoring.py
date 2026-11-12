@@ -59,6 +59,59 @@ def test_pipeline_query_session_id_is_unchanged(sample_query):
     assert monitoring_platform(sample_query) == sample_query.launcher_type.value
 
 
+def test_group_query_session_id_includes_sender_id_when_present():
+    group_query = SimpleNamespace(
+        launcher_type=SimpleNamespace(value='group'),
+        launcher_id='group-100',
+        sender_id='user-42',
+        variables={},
+    )
+    assert monitoring_session_id(group_query) == 'group_group-100_user-42'
+
+    group_query_without_sender = SimpleNamespace(
+        launcher_type=SimpleNamespace(value='group'),
+        launcher_id='group-100',
+        sender_id=None,
+        variables={},
+    )
+    assert monitoring_session_id(group_query_without_sender) == 'group_group-100'
+
+
+def test_extract_sender_name_supports_group_sender_methods_and_variables():
+    group_query = SimpleNamespace(
+        message_event=SimpleNamespace(
+            group=SimpleNamespace(name='  Dev Group  '),
+            sender=SimpleNamespace(nickname='Alice'),
+        ),
+        variables={},
+    )
+    assert MonitoringHelper._extract_sender_name(group_query) == 'Dev Group'
+
+    getter_query = SimpleNamespace(
+        message_event=SimpleNamespace(
+            group=None,
+            sender=SimpleNamespace(get_name=lambda: '  Getter Name  ', nickname='Fallback'),
+        ),
+        variables={},
+    )
+    assert MonitoringHelper._extract_sender_name(getter_query) == 'Getter Name'
+
+    remark_query = SimpleNamespace(
+        message_event=SimpleNamespace(
+            group=None,
+            sender=SimpleNamespace(member_name='', nickname='  ', remark='  Remark Name  '),
+        ),
+        variables={},
+    )
+    assert MonitoringHelper._extract_sender_name(remark_query) == 'Remark Name'
+
+    var_query = SimpleNamespace(
+        message_event=SimpleNamespace(group=None, sender=None),
+        variables={'sender_name': '  Lark User  '},
+    )
+    assert MonitoringHelper._extract_sender_name(var_query) == 'Lark User'
+
+
 @pytest.mark.asyncio
 async def test_llm_call_from_plugin_action_query_is_recorded():
     """Regression: ``'Query' object has no attribute 'launcher_type'`` dropped the record."""

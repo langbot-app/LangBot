@@ -756,6 +756,7 @@ class MonitoringRouterGroup(group.RouterGroup):
                     'is_active',
                     'platform',
                     'user_id',
+                    'user_name',
                 ]
             elif export_type == 'feedback':
                 data = await self.ap.monitoring_service.export_feedback(

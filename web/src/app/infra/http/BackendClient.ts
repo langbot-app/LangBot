@@ -2311,6 +2311,7 @@ export class BackendClient extends BaseHttpClient {
       start_time: string;
       platform?: string;
       user_id?: string;
+      user_name?: string;
     }>;
     errors: Array<{
       id: string;
