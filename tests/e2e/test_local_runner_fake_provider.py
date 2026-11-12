@@ -509,7 +509,7 @@ async def _wait_for_local_agent_runner(ap, tmpdir: Path):
 
     for _ in range(60):
         handler = getattr(ap.plugin_connector, 'handler', None)
-        if handler is not None:
+        if handler is not None and ap.plugin_connector._runtime_available():
             await handler.ping()
             break
         await asyncio.sleep(1)
