@@ -13,7 +13,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message
+from langbot_plugin.api.entities.builtin.provider.message import ContentElement, FunctionCall, Message, ToolCall
 from langbot_plugin.api.entities.builtin.runner import RunnerContext
 from langbot_plugin.api.proxies.runner.common import PermissionDeniedError
 
@@ -542,6 +542,43 @@ class ContextAssembler:
         )
         if user_message is not None:
             current_messages.append(user_message)
+        recovery = self.ctx.runtime.metadata.get("recovery", {})
+        if recovery.get("mode") == "resume":
+            started = {}
+            for event in recovery.get("events", []):
+                data = event.get("data", {})
+                call_id = data.get("tool_call_id")
+                if event.get("type") == "tool.call.started":
+                    started[call_id] = data
+                elif event.get("type") == "tool.call.completed" and call_id in started:
+                    call = started.pop(call_id)
+                    current_messages.append(
+                        Message(
+                            role="assistant",
+                            tool_calls=[
+                                ToolCall(
+                                    id=call_id,
+                                    type="function",
+                                    function=FunctionCall(
+                                        name=call["tool_name"], arguments=json.dumps(call.get("parameters", {}))
+                                    ),
+                                )
+                            ],
+                        )
+                    )
+                    current_messages.append(
+                        Message(
+                            role="tool",
+                            tool_call_id=call_id,
+                            content=json.dumps(
+                                data.get("result") if not data.get("error") else {"error": data["error"]}
+                            ),
+                        )
+                    )
+                elif event.get("type") == "message.completed":
+                    current_messages.append(Message.model_validate(data["message"]))
+            if started:
+                raise ValueError("Resume checkpoint contains an unfinished tool call")
 
         assembly = await ContextCompactor(
             self.budget,

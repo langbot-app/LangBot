@@ -242,6 +242,17 @@ class RuntimePipeline:
 
         await self.process_query(query)
 
+    async def deliver_runner_result(self, query: pipeline_query.Query, result: provider_message.Message) -> None:
+        """Use the configured post-processing stages for an explicitly recovered Runner."""
+        processors = [
+            index for index, stage in enumerate(self.stage_containers) if stage.inst_name == 'MessageProcessor'
+        ]
+        if len(processors) != 1:
+            raise ValueError('Runner recovery requires exactly one MessageProcessor stage')
+        await self._assert_execution_active(query)
+        query.resp_messages.append(result)
+        await self._execute_from_stage(processors[0] + 1, query)
+
     async def _check_output(self, query: pipeline_query.Query, result: pipeline_entities.StageProcessResult):
         """检查输出"""
         if result.user_notice or result.debug_notice or result.console_notice or result.error_notice:

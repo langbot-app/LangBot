@@ -246,6 +246,10 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
                 'event_get': True,
                 'event_page': True,
                 'steering_pull': True,
+                'steering_ack': True,
+                'run_retry': True,
+                'run_resume': True,
+                'run_cancel_ack': True,
                 'state': True,
                 'reply_stream': True,
                 'input_attachments': True,
@@ -308,6 +312,10 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     # RunnerAdminAPIProxy
     await try_call(admin.run_append_result(RunnerResult(type='content', data={'text': 'test'}, run_id='run-1')))
     await try_call(admin.run_cancel('run-1'))
+    if hasattr(admin, 'run_retry'):
+        await try_call(admin.run_retry('run-1'))
+        await try_call(admin.run_resume('run-1', from_sequence=1))
+        await try_call(admin.run_cancel_ack('run-1'))
     await try_call(admin.run_claim('rt-1'))
     await try_call(admin.run_renew_claim('run-1', 'rt-1', 'token-1'))
     await try_call(admin.run_release_claim('run-1', 'rt-1', 'token-1'))
@@ -338,6 +346,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(runner.event_get('evt-1'))
     await try_call(runner.event_page())
     await try_call(runner.steering_pull())
+    if hasattr(runner, 'steering_ack'):
+        await try_call(runner.steering_ack(['delivery-1']))
     await try_call(runner.state_get('run', 'k'))
     await try_call(runner.state_set('run', 'k', 'v'))
     await try_call(runner.state_delete('run', 'k'))
@@ -384,8 +394,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 76
-    assert len(test_host.api.catalog()) == 76
+    assert len(operations) == 80
+    assert len(test_host.api.catalog()) == 80
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())
@@ -416,9 +426,14 @@ async def test_all_operations_route_through_execution_api(test_host):
     """Drive all operations through handler with real SDK payloads and verify raw dispatch."""
     sdk_payloads = await _capture_sdk_payloads()
     operations = test_host.api.operations()
-    assert len(sdk_payloads) == 76, f'Expected 76 SDK payloads, got {len(sdk_payloads)}'
+    sdk_actions = {action.value for action in PluginToRuntimeAction} | {
+        action.value for action in RuntimeToLangBotAction
+    }
+    assert set(sdk_payloads) == {op.action for op in operations if op.action in sdk_actions}
 
     for op in operations:
+        if op.action not in sdk_payloads:
+            continue
         raw_called = False
         dummy_data = _make_dummy_output(op)
 

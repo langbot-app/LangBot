@@ -611,6 +611,19 @@ class TestAgentRunAPIContractEntities:
         assert "future_item_field" not in result.items[0].model_dump()
         assert "future_page_field" not in result.model_dump()
 
+    def test_runner_progress_and_cancellation_results_are_structured(self):
+        progress = RunnerResult.run_progress(
+            "run_1", progress=42.5, stage="tool", message="working"
+        )
+        assert progress.type == RunnerResultType.RUN_PROGRESS
+        assert progress.data["progress"] == 42.5
+
+        cancelled = RunnerResult.run_cancelled(
+            "run_1", reason="user requested", cleanup_confirmed=True
+        )
+        assert cancelled.type == RunnerResultType.RUN_CANCELLED
+        assert cancelled.data["cleanup_confirmed"] is True
+
     def test_llm_usage_results_preserve_provider_details(self):
         result = LLMInvokeResult.model_validate(
             {

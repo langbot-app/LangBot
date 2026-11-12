@@ -15,7 +15,15 @@ from urllib.parse import urlsplit
 import httpx
 from pkg.deadline import deadline
 from pkg.endpoint import endpoint
-from pkg.http_limits import MAX_LINE_CHARS, MAX_STREAM_BYTES, limited_body, limited_bytes, limited_lines, limited_post
+from pkg.http_limits import (
+    MAX_LINE_CHARS,
+    MAX_STREAM_BUDGET_BYTES,
+    MAX_STREAM_BYTES,
+    limited_body,
+    limited_bytes,
+    limited_lines,
+    limited_post,
+)
 from pkg.request_log import redact, redacted_target
 
 logger = logging.getLogger(__name__)
@@ -100,6 +108,8 @@ class AsyncDifyClient:
         timeout: float = 30.0,
         max_stream_bytes: int = MAX_STREAM_BYTES,
     ):
+        if not isinstance(max_stream_bytes, int) or not 0 < max_stream_bytes <= MAX_STREAM_BUDGET_BYTES:
+            raise ValueError(f"max_stream_bytes must be between 1 byte and {MAX_STREAM_BUDGET_BYTES} bytes")
         self.api_key = api_key
         self.base_url = endpoint(base_url).rstrip("/")
         self.timeout = timeout

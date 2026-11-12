@@ -9,6 +9,7 @@ metadata:
     en_US: Run Claude Code CLI as a LangBot Runner.
     zh_Hans: 将 Claude Code CLI 作为 LangBot 运行器运行。
 spec:
+  resume: true
   usages: [agent]
   config:
     - name: location

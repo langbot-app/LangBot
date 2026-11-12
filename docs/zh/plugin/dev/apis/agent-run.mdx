@@ -242,7 +242,8 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 | `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
 | `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
 | `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
-| `await ctx.steering_pull(mode="all", limit=None)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_pull(mode="all", limit=None, claim=False)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_ack(delivery_ids)` | `SteeringAckResult` | `steering_ack` |
 
 ### 状态
 
@@ -263,10 +264,17 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 | `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
 | `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
+| `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
 
+`claim=False` 保留拉取即消费语义；`claim=True` 领取后，需要用 `steering_ack` 确认已接受的 delivery ID，未确认的租约可被重投。ACK 和恢复控制在原 Run 结束后仍需校验授权。Host 的 retry/resume 创建具有新期限和当前授权的新 Run；resume 必须有已提交的检查点，不会回退外部副作用。
+
 `run_id=None` 表示当前运行。普通事件处理函数结束后，SDK 会自动完成本次运行；自定义 `run(ctx)` 通过 `yield RunnerResult` 返回结果时，也不需要再调用 `run_append_result()` 重复登记。
+
+Pipeline 重试和恢复会应用当前的输出过滤、回复包装和发送设置，并使用已记录的回复目标与原消息标识；缺少必要信息或平台不支持恢复投递时，会返回明确错误。
 
 ### 可用性与授权
 

@@ -240,7 +240,8 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 | `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
 | `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
 | `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
-| `await ctx.steering_pull(mode="all", limit=None)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_pull(mode="all", limit=None, claim=False)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_ack(delivery_ids)` | `SteeringAckResult` | `steering_ack` |
 
 ### 状態
 
@@ -261,10 +262,17 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 | `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
 | `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
+| `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
 
+`claim=False` は取得時に入力を消費します。`claim=True` では、受け付けた delivery ID を `steering_ack` で確認します。未確認のリースは再配信される場合があります。元の Run が終了した後も ACK と復旧操作は認可を検証します。Host の retry/resume は新しい期限と現在の権限で新しい Run を作成します。resume は確定済みチェックポイントを必要とし、外部の副作用を巻き戻しません。
+
 `run_id=None` は現在の実行を指します。通常のイベントハンドラーは SDK が自動的に完了します。独自の `run(ctx)` が `RunnerResult` を yield する場合、同じ結果を `run_append_result()` で重複登録しないでください。
+
+Pipeline の retry と resume は現在の出力フィルター、応答ラッパー、返信設定を適用します。記録された返信先と元のメッセージ ID を使用し、必要な情報がない場合や復旧時の送信に対応していない場合は明示的なエラーを返します。
 
 ### 利用可否と権限
 

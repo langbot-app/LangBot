@@ -28,6 +28,8 @@ class SteeringInputItem(pydantic.BaseModel):
     actor: ActorContext | None = None
     subject: SubjectContext | None = None
     metadata: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    delivery_id: str | None = None
+    lease_expires_at: int | None = None
 
     model_config = HOST_RESPONSE_MODEL_CONFIG
 
@@ -36,5 +38,14 @@ class SteeringPullResult(pydantic.BaseModel):
     """Result returned by RunnerAPIProxy.steering_pull()."""
 
     items: list[SteeringInputItem] = pydantic.Field(default_factory=list)
+
+    model_config = HOST_RESPONSE_MODEL_CONFIG
+
+
+class SteeringAckResult(pydantic.BaseModel):
+    """Result returned after acknowledging claimed steering inputs."""
+
+    acknowledged: list[str] = pydantic.Field(default_factory=list)
+    unknown: list[str] = pydantic.Field(default_factory=list)
 
     model_config = HOST_RESPONSE_MODEL_CONFIG

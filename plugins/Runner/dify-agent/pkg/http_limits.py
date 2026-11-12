@@ -9,9 +9,13 @@ import httpx
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_LINE_CHARS = 1024 * 1024
 MAX_STREAM_BYTES = 16 * 1024 * 1024
+MAX_STREAM_BUDGET_MB = 256
+MAX_STREAM_BUDGET_BYTES = MAX_STREAM_BUDGET_MB * 1024 * 1024
 
 
 async def limited_bytes(response, error, max_stream_bytes: int = MAX_STREAM_BYTES):
+    if not isinstance(max_stream_bytes, int) or not 0 < max_stream_bytes <= MAX_STREAM_BUDGET_BYTES:
+        raise error(f"Provider stream budget must be between 1 byte and {MAX_STREAM_BUDGET_BYTES} bytes")
     total = 0
     async for chunk in response.aiter_bytes():
         total += len(chunk)

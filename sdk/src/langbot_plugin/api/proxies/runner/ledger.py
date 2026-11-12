@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from langbot_plugin.api.entities.builtin.runner.run_ledger import (
     AgentRun,
     AgentRunEvent,
@@ -125,6 +127,67 @@ class AgentRunLedgerAPIMixin:
         )
         return AgentRun.model_validate(resp)
 
+    async def run_cancel_ack(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> AgentRun:
+        """Acknowledge that cancellation cleanup has completed."""
+        self._require_context_api("run_cancel_ack")
+        timeout = 15.0
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_CANCEL_ACK,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "reason": reason,
+                "cleanup_confirmed": cleanup_confirmed,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_retry(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Start a fresh Host attempt, or re-queue a run owned by an external queue."""
+        self._require_context_api("run_retry")
+        timeout = 15.0
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_RETRY,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "reason": reason,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
+    async def run_resume(
+        self,
+        run_id: str | None = None,
+        from_sequence: int | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Resume interrupted work in a fresh Host attempt. The cursor must match the latest committed Runner result; completed effects cannot be rewound."""
+        self._require_context_api("run_resume")
+        timeout = 15.0
+        resp = await self._api.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.RUN_RESUME,
+            {
+                "run_id": self.run_id,
+                "target_run_id": run_id or self.run_id,
+                "from_sequence": from_sequence,
+                "reason": reason,
+            },
+            timeout,
+        )
+        return AgentRun.model_validate(resp)
+
     async def run_append_result(
         self,
         result: RunnerResult,
@@ -152,6 +215,9 @@ class AgentRunLedgerAPIMixin:
         run_id: str | None = None,
         status: str | None = None,
         reason: str | None = None,
+        usage: dict[str, Any] | None = None,
+        cost: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentRun:
         """Finalize one Host-owned run ledger record.
 
@@ -162,14 +228,21 @@ class AgentRunLedgerAPIMixin:
         """
         self._require_context_api("run_finalize")
         timeout = self._bounded_timeout(default=15.0)
+        payload = {
+            "run_id": self.run_id,
+            "target_run_id": run_id or self.run_id,
+            "status": status,
+            "reason": reason,
+        }
+        if usage is not None:
+            payload["usage"] = usage
+        if cost is not None:
+            payload["cost"] = cost
+        if metadata is not None:
+            payload["metadata"] = metadata
         resp = await self._api.plugin_runtime_handler.call_action(
             PluginToRuntimeAction.RUN_FINALIZE,
-            {
-                "run_id": self.run_id,
-                "target_run_id": run_id or self.run_id,
-                "status": status,
-                "reason": reason,
-            },
+            payload,
             timeout,
         )
         return AgentRun.model_validate(resp)

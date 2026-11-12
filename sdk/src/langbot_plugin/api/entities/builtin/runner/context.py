@@ -19,7 +19,10 @@ from langbot_plugin.api.entities.builtin.runner.page_results import (
     AgentEventRecord,
     EventPage,
 )
-from langbot_plugin.api.entities.builtin.runner.steering import SteeringPullResult
+from langbot_plugin.api.entities.builtin.runner.steering import (
+    SteeringAckResult,
+    SteeringPullResult,
+)
 
 import pydantic
 from langbot_plugin.api.entities.builtin.runner.trigger import AgentTrigger
@@ -289,10 +292,14 @@ class RunnerContext(pydantic.BaseModel):
         )
 
     async def steering_pull(
-        self, mode: str = "all", limit: int | None = None
+        self, mode: str = "all", limit: int | None = None, claim: bool = False
     ) -> SteeringPullResult:
         """Pull pending run-scoped steering/follow-up input."""
-        return await self.api.steering_pull(mode=mode, limit=limit)
+        return await self.api.steering_pull(mode=mode, limit=limit, claim=claim)
+
+    async def steering_ack(self, delivery_ids: list[str]) -> SteeringAckResult:
+        """Acknowledge claimed steering inputs after applying them."""
+        return await self.api.steering_ack(delivery_ids=delivery_ids)
 
     async def state_get(self, scope: str, key: str) -> dict[str, Any]:
         """Get a state value from host-owned state store."""
@@ -354,6 +361,40 @@ class RunnerContext(pydantic.BaseModel):
         """Request cancellation for one Host-owned run."""
         return await self.api.run_cancel(run_id=run_id, reason=reason)
 
+    async def run_cancel_ack(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+        cleanup_confirmed: bool = True,
+    ) -> AgentRun:
+        """Acknowledge completed cancellation cleanup."""
+        return await self.api.run_cancel_ack(
+            run_id=run_id,
+            reason=reason,
+            cleanup_confirmed=cleanup_confirmed,
+        )
+
+    async def run_retry(
+        self,
+        run_id: str | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Start a fresh Host attempt, or re-queue an externally dispatched run."""
+        return await self.api.run_retry(run_id=run_id, reason=reason)
+
+    async def run_resume(
+        self,
+        run_id: str | None = None,
+        from_sequence: int | None = None,
+        reason: str | None = None,
+    ) -> AgentRun:
+        """Resume in a fresh Host attempt using the latest committed result cursor."""
+        return await self.api.run_resume(
+            run_id=run_id,
+            from_sequence=from_sequence,
+            reason=reason,
+        )
+
     async def run_append_result(self, result: RunnerResult) -> AgentRunEvent:
         """Append one result event to a Host-owned run ledger."""
         return await self.api.run_append_result(result=result)
@@ -363,9 +404,19 @@ class RunnerContext(pydantic.BaseModel):
         run_id: str | None = None,
         status: str | None = None,
         reason: str | None = None,
+        usage: dict[str, Any] | None = None,
+        cost: dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> AgentRun:
         """Finalize one Host-owned run ledger record."""
-        return await self.api.run_finalize(run_id=run_id, status=status, reason=reason)
+        return await self.api.run_finalize(
+            run_id=run_id,
+            status=status,
+            reason=reason,
+            usage=usage,
+            cost=cost,
+            metadata=metadata,
+        )
 
     async def log(self, text: str, level: str = "info") -> None:
         """Record a log for this invocation without sending a platform message."""

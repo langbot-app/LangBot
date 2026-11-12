@@ -284,6 +284,21 @@ class TestListRunners:
         assert runners[0]["config"] == runners[0]["manifest"]["config_schema"]
 
     @pytest.mark.anyio
+    async def test_resume_extension_is_advertised_without_new_capability_fields(self):
+        from langbot_plugin.runtime.plugin.mgr import PluginManager
+        from langbot_plugin.runtime.context import RuntimeContext
+
+        mgr = PluginManager(Mock(spec=RuntimeContext))
+        plugin = create_mock_plugin(
+            "test-author", "test-plugin", [("default", MockRunner())]
+        )
+        plugin.components[0].manifest.spec["resume"] = True
+        mgr.plugins = [plugin]
+        runners = await mgr.list_runners()
+        assert runners[0]["manifest"]["metadata"]["supports_resume"] is True
+        assert "resume" not in runners[0]["manifest"]["capabilities"]
+
+    @pytest.mark.anyio
     async def test_single_plugin_multiple_runners(self):
         """Test listing a plugin with multiple runners (key feature of v1)."""
         from langbot_plugin.runtime.plugin.mgr import PluginManager

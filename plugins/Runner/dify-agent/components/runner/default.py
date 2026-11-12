@@ -35,6 +35,7 @@ from pkg.dify_client import (
     extract_workflow_outputs,
     process_thinking_content,
 )
+from pkg.http_limits import MAX_STREAM_BUDGET_MB
 from pkg.scoped_identity import scoped_identity
 
 logger = logging.getLogger(__name__)
@@ -441,6 +442,11 @@ class DefaultRunner(Runner):
         stream_budget_mb = _to_int(config.get("stream-budget-mb"), 16)
         if stream_budget_mb <= 0:
             raise DifyConfigError("stream-budget-mb must be a positive integer", code="dify.config_invalid")
+        if stream_budget_mb > MAX_STREAM_BUDGET_MB:
+            raise DifyConfigError(
+                f"stream-budget-mb must not exceed {MAX_STREAM_BUDGET_MB} MiB",
+                code="dify.config_invalid",
+            )
 
         return {
             "base_url": base_url,

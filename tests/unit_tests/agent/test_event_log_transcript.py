@@ -136,6 +136,53 @@ class TestEventLogStore:
             assert '"status": "queued"' in stored_event['metadata_json']
             assert '"claimed_by_run_id": "run_1"' in stored_event['metadata_json']
 
+    @pytest.mark.asyncio
+    async def test_pending_steering_survives_claim_until_ack(self):
+        """Event log state supports recovery of an unacknowledged delivery."""
+        from sqlalchemy.ext.asyncio import create_async_engine
+        from langbot.pkg.entity.persistence.base import Base
+
+        engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            store = EventLogStore(engine)
+            await store.append_event(
+                event_id='evt_pending_steering',
+                event_type='message.received',
+                source='platform',
+                bot_id='bot_1',
+                conversation_id='conv_1',
+                input_json={'text': 'recover me', 'contents': [], 'attachments': []},
+                run_id='run_old',
+                runner_id='plugin:test/plugin/runner',
+                metadata={'steering': {'status': 'queued'}},
+            )
+
+            pending = await store.list_pending_steering(
+                conversation_id='conv_1',
+                runner_id='plugin:test/plugin/runner',
+                bot_id='bot_1',
+            )
+            assert [item['event_id'] for item in pending] == ['evt_pending_steering']
+            assert await store.update_steering_status(
+                'evt_pending_steering',
+                status='claimed',
+                delivery_id='delivery_1',
+                lease_expires_at=1,
+            )
+            assert await store.acknowledge_steering_deliveries(['delivery_1']) == ['delivery_1']
+            assert (
+                await store.list_pending_steering(
+                    conversation_id='conv_1',
+                    runner_id='plugin:test/plugin/runner',
+                    bot_id='bot_1',
+                )
+                == []
+            )
+        finally:
+            await engine.dispose()
+
 
 class TestTranscriptStore:
     """Test TranscriptStore operations."""

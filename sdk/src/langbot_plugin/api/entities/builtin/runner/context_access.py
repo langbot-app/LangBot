@@ -67,6 +67,9 @@ class ContextAPICapabilities(pydantic.BaseModel):
     steering_pull: bool = False
     """Whether run-scoped steering/follow-up pull API is available."""
 
+    steering_ack: bool = False
+    """Whether claimed steering inputs can be acknowledged."""
+
     run_get: bool = False
     """Whether run.get API is available."""
 
@@ -78,6 +81,15 @@ class ContextAPICapabilities(pydantic.BaseModel):
 
     run_cancel: bool = False
     """Whether run.cancel API is available."""
+
+    run_cancel_ack: bool = False
+    """Whether cancellation completion can be acknowledged."""
+
+    run_retry: bool = False
+    """Whether a terminal run can be re-queued for retry."""
+
+    run_resume: bool = False
+    """Whether a terminal run can be re-queued with a resume cursor."""
 
     run_append_result: bool = False
     """Whether run.append_result API is available."""

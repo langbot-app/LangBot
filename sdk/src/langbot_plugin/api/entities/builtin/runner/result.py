@@ -29,6 +29,8 @@ class RunnerResultType(str, enum.Enum):
     RUN_COMPLETED = "run.completed"
     RUN_FAILED = "run.failed"
     PROCESSOR_LOG = "processor.log"
+    RUN_PROGRESS = "run.progress"
+    RUN_CANCELLED = "run.cancelled"
 
 
 class ProcessorLogPayload(pydantic.BaseModel):
@@ -107,6 +109,26 @@ class RunFailedPayload(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid")
 
 
+class RunProgressPayload(pydantic.BaseModel):
+    """Structured progress update for a long-running run."""
+
+    progress: float | None = pydantic.Field(default=None, ge=0, le=100)
+    stage: str | None = pydantic.Field(default=None, max_length=256)
+    message: str | None = pydantic.Field(default=None, max_length=4096)
+    details: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+
+class RunCancelledPayload(pydantic.BaseModel):
+    """Cancellation acknowledgement emitted after runner cleanup."""
+
+    reason: str | None = pydantic.Field(default=None, max_length=4096)
+    cleanup_confirmed: bool = False
+
+    model_config = pydantic.ConfigDict(extra="forbid")
+
+
 class ActionRequestedPayload(pydantic.BaseModel):
     """Payload for action.requested."""
 
@@ -131,13 +153,12 @@ class RunnerResult(pydantic.BaseModel):
     Each yield from the runner's run() method produces one RunnerResult.
     LangBot maps these to appropriate host delivery events.
 
-    Token usage is optional because not every upstream runtime reports it. When
-    a runner can observe provider/runtime usage, it should attach the final
-    aggregate usage to the terminal run.completed result. For failed runs,
-    run.failed may include partial usage collected before the failure. Missing
-    usage means "unknown", not zero. Billing cost is intentionally not
-    standardized here; Host should derive authoritative cost from usage,
-    model identity, and its pricing table.
+    Token usage is optional because not every upstream runtime reports it. A
+    runner may attach cumulative snapshots to progress, message, or terminal
+    results; the Host retains the latest snapshot when a run is cancelled,
+    times out, or disconnects. Missing usage means "unknown", not zero.
+    Billing cost is intentionally not standardized here; Host should derive
+    authoritative cost from usage, model identity, and its pricing table.
     """
 
     run_id: str
@@ -157,6 +178,9 @@ class RunnerResult(pydantic.BaseModel):
 
     timestamp: int | None = None
     """Optional timestamp (epoch seconds)."""
+
+    metadata: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+    """Optional host-visible event metadata, such as output truncation."""
 
     @classmethod
     def message_delta(
@@ -374,6 +398,60 @@ class RunnerResult(pydantic.BaseModel):
             run_id=run_id,
             type=RunnerResultType.RUN_FAILED,
             data=payload.model_dump(mode="json"),
+            usage=_coerce_usage(usage),
+            sequence=sequence,
+            timestamp=timestamp,
+        )
+
+    @classmethod
+    def run_progress(
+        cls,
+        run_id: str,
+        *,
+        progress: float | None = None,
+        stage: str | None = None,
+        message: str | None = None,
+        details: dict[str, typing.Any] | None = None,
+        usage: LLMTokenUsage | dict[str, typing.Any] | None = None,
+        sequence: int | None = None,
+        timestamp: int | None = None,
+    ) -> "RunnerResult":
+        """Create a structured progress update."""
+        payload = RunProgressPayload(
+            progress=progress,
+            stage=stage,
+            message=message,
+            details=details or {},
+        )
+        return cls(
+            run_id=run_id,
+            type=RunnerResultType.RUN_PROGRESS,
+            data=payload.model_dump(mode="json", exclude_none=True),
+            usage=_coerce_usage(usage),
+            sequence=sequence,
+            timestamp=timestamp,
+        )
+
+    @classmethod
+    def run_cancelled(
+        cls,
+        run_id: str,
+        *,
+        reason: str | None = None,
+        cleanup_confirmed: bool = False,
+        usage: LLMTokenUsage | dict[str, typing.Any] | None = None,
+        sequence: int | None = None,
+        timestamp: int | None = None,
+    ) -> "RunnerResult":
+        """Create a cancellation acknowledgement."""
+        payload = RunCancelledPayload(
+            reason=reason,
+            cleanup_confirmed=cleanup_confirmed,
+        )
+        return cls(
+            run_id=run_id,
+            type=RunnerResultType.RUN_CANCELLED,
+            data=payload.model_dump(mode="json", exclude_none=True),
             usage=_coerce_usage(usage),
             sequence=sequence,
             timestamp=timestamp,

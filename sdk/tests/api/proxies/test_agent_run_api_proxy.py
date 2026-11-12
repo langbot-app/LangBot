@@ -1162,6 +1162,25 @@ class TestRunnerAPIProxyFieldConsistency:
         assert result.items[0].input.text == "follow up"
 
     @pytest.mark.anyio
+    async def test_steering_ack_sends_delivery_ids(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "acknowledged": ["delivery_1"],
+            "unknown": [],
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(steering_ack=True)
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+
+        result = await proxy.steering_ack(["delivery_1"])
+
+        assert result.acknowledged == ["delivery_1"]
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.STEERING_ACK
+        assert data == {"run_id": "test_run", "delivery_ids": ["delivery_1"]}
+
+    @pytest.mark.anyio
     async def test_action_error_is_wrapped_as_agent_api_exception(self):
         """Host action failures surface as structured AgentAPIException."""
         mock_handler = MockHandler()
@@ -1455,6 +1474,78 @@ class TestRunnerAPIProxyRunLedgerAPI:
             "status": "completed",
             "reason": "stop",
         }
+
+    @pytest.mark.anyio
+    async def test_run_finalize_forwards_usage_cost_and_metadata(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "id": 1,
+            "run_id": "run_target",
+            "runner_id": "plugin:test/plugin/default",
+            "status": "completed",
+            "metadata": {},
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(run_finalize=True)
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+
+        await proxy.run_finalize(
+            "run_target",
+            status="completed",
+            usage={"total_tokens": 3},
+            cost={"amount": 0.1},
+            metadata={"source": "runner"},
+        )
+
+        _action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert data["usage"] == {"total_tokens": 3}
+        assert data["cost"] == {"amount": 0.1}
+        assert data["metadata"] == {"source": "runner"}
+
+    @pytest.mark.anyio
+    async def test_run_retry_resume_and_cancel_ack_forward_lifecycle_fields(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {
+            "run_id": "run_target",
+            "status": "queued",
+            "metadata": {},
+        }
+        ctx = create_mock_context(
+            available_apis=ContextAPICapabilities(
+                run_retry=True,
+                run_resume=True,
+                run_cancel_ack=True,
+            )
+        )
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+        ctx.runtime.deadline_at = time.time() - 1
+
+        await proxy.run_retry("run_target", reason="retry")
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_RETRY
+        assert data["target_run_id"] == "run_target"
+
+        await proxy.run_resume("run_target", from_sequence=4, reason="resume")
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_RESUME
+        assert data["from_sequence"] == 4
+
+        await proxy.run_cancel_ack("run_target", cleanup_confirmed=True)
+        action, data, _timeout = mock_handler.call_action_mock.call_args.args
+        assert action == PluginToRuntimeAction.RUN_CANCEL_ACK
+        assert data["cleanup_confirmed"] is True
+
+    @pytest.mark.anyio
+    async def test_steering_preserves_legacy_default_and_explicit_claim(self):
+        mock_handler = MockHandler()
+        mock_handler.call_action_mock.return_value = {"items": []}
+        ctx = create_mock_context()
+        proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
+        await proxy.steering_pull()
+        assert mock_handler.call_action_mock.call_args.args[1]["claim"] is False
+        await proxy.steering_pull(claim=True)
+        assert mock_handler.call_action_mock.call_args.args[1]["claim"] is True
 
 
 class TestRunnerAdminAPIProxy:

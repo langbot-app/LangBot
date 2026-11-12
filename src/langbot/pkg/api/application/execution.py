@@ -461,8 +461,15 @@ EXECUTION_OPERATIONS = (
     ),
     ExecutionOperation(
         'steering_pull',
-        _input('ExecutionSteeringInput', mode=(str, 'all'), limit=(Positive | None, None)),
+        _input('ExecutionSteeringInput', mode=(str, 'all'), limit=(Positive | None, None), claim=(bool, False)),
         ItemsOutput,
+        'run',
+        True,
+    ),
+    ExecutionOperation(
+        'steering_ack',
+        _input('ExecutionSteeringAckInput', delivery_ids=(list[Text], ...)),
+        _output('ExecutionSteeringAckOutput', acknowledged=(list[str], ...), unknown=(list[str], ...)),
         'run',
         True,
     ),
@@ -546,6 +553,43 @@ EXECUTION_OPERATIONS = (
             target_run_id=(Text | None, None),
             reason=(str | None, None),
             status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_retry',
+        _input(
+            'ExecutionRetryRunInput',
+            target_run_id=(Text | None, None),
+            reason=(str | None, None),
+            status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_resume',
+        _input(
+            'ExecutionResumeRunInput',
+            target_run_id=(Text | None, None),
+            from_sequence=(Nonnegative | None, None),
+            reason=(str | None, None),
+            status_reason=(str | None, None),
+        ),
+        RunOutput,
+        'runner_admin',
+        True,
+    ),
+    ExecutionOperation(
+        'run_cancel_ack',
+        _input(
+            'ExecutionCancelAckInput',
+            target_run_id=(Text | None, None),
+            reason=(str | None, None),
+            cleanup_confirmed=(bool, True),
         ),
         RunOutput,
         'runner_admin',
@@ -803,7 +847,7 @@ class ExecutionAPI:
                     from ...plugin.agent_run_support import _load_persistent_agent_run_session
 
                     session = await get_session_registry().get(context.run_id)
-                    if session is None and operation.scope == 'runner_admin':
+                    if session is None and (operation.scope == 'runner_admin' or operation.action == 'steering_ack'):
                         session = await _load_persistent_agent_run_session(context.run_id, self.ap, operation.action)
                     if (
                         session is None

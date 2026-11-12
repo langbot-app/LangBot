@@ -240,7 +240,8 @@ External runners use the same flow through `AgentRunExternalTools`: `langbot_get
 | `await ctx.history_search(query, filters=None, top_k=10)` | `HistorySearchResult` | `history_search` |
 | `await ctx.event_get(event_id)` | `AgentEventRecord` | `event_get` |
 | `await ctx.event_page(conversation_id=None, event_types=None, before_cursor=None, limit=50)` | `EventPage` | `event_page` |
-| `await ctx.steering_pull(mode="all", limit=None)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_pull(mode="all", limit=None, claim=False)` | `SteeringPullResult` | `steering_pull` |
+| `await ctx.steering_ack(delivery_ids)` | `SteeringAckResult` | `steering_ack` |
 
 ### State
 
@@ -261,10 +262,17 @@ External runners use the same flow through `AgentRunExternalTools`: `langbot_get
 | `await ctx.run_list(conversation_id=None, statuses=None, before_cursor=None, limit=50)` | `RunPage` | `run_list` |
 | `await ctx.run_events_page(run_id=None, before_cursor=None, after_cursor=None, limit=50, direction="forward")` | `RunEventPage` | `run_events_page` |
 | `await ctx.run_cancel(run_id=None, reason=None)` | `AgentRun` | `run_cancel` |
+| `await ctx.run_retry(run_id=None, reason=None)` | `AgentRun` | `run_retry` |
+| `await ctx.run_resume(run_id=None, from_sequence=None, reason=None)` | `AgentRun` | `run_resume` |
+| `await ctx.run_cancel_ack(run_id=None, reason=None, cleanup_confirmed=True)` | `AgentRun` | `run_cancel_ack` |
 | `await ctx.run_append_result(result)` | `AgentRunEvent` | `run_append_result` |
 | `await ctx.run_finalize(run_id=None, status=None, reason=None)` | `AgentRun` | `run_finalize` |
 
+`claim=False` consumes steering on pull. With `claim=True`, acknowledge accepted delivery IDs with `steering_ack`; unacknowledged leases can be redelivered. ACK and recovery controls retain authorization after the source Run ends. Host retry/resume creates a new Run with a fresh deadline and current grants; resume requires a committed checkpoint and does not rewind external effects.
+
 `run_id=None` refers to the current run. The SDK completes a normal event handler automatically. When a custom `run(ctx)` yields `RunnerResult`, do not register the same result again with `run_append_result()`.
+
+Pipeline retry and resume apply the current output filters, response wrapping and reply settings. Recovery uses the recorded reply target and message identity; missing information or an unsupported reply path produces an explicit error.
 
 ### Availability and authorization
 

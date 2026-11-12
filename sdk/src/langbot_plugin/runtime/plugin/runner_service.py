@@ -218,6 +218,7 @@ class RunnerRuntimeService:
                     "plugin_author": plugin.manifest.metadata.author,
                     "plugin_name": plugin.manifest.metadata.name,
                     "runner_name": runner_name,
+                    "supports_resume": spec.get("resume", False) is True,
                 },
             )
         except Exception as exc:

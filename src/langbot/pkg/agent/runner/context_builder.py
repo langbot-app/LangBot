@@ -495,6 +495,9 @@ class RunnerContextBuilder:
         run_list_enabled = conversation_id is not None
         run_events_page_enabled = True
         run_cancel_enabled = True
+        run_cancel_ack_enabled = True
+        run_retry_enabled = True
+        run_resume_enabled = descriptor.raw_manifest.get('metadata', {}).get('supports_resume') is True
         run_append_result_enabled = False
         run_finalize_enabled = False
         run_claim_enabled = False
@@ -558,10 +561,14 @@ class RunnerContextBuilder:
                 'state': state_enabled,
                 'storage': storage_enabled,
                 'steering_pull': steering_pull_enabled,
+                'steering_ack': steering_pull_enabled,
                 'run_get': run_get_enabled,
                 'run_list': run_list_enabled,
                 'run_events_page': run_events_page_enabled,
                 'run_cancel': run_cancel_enabled,
+                'run_cancel_ack': run_cancel_ack_enabled,
+                'run_retry': run_retry_enabled,
+                'run_resume': run_resume_enabled,
                 'run_append_result': run_append_result_enabled,
                 'run_finalize': run_finalize_enabled,
                 'run_claim': run_claim_enabled,

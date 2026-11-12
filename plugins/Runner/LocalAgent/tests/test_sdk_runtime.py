@@ -289,6 +289,37 @@ async def test_real_sdk_count_failure_still_completes_reply(sdk_runtime, streami
 
 
 @pytest.mark.asyncio
+async def test_real_sdk_resume_keeps_committed_tool_result(sdk_runtime):
+    sdk_runtime.use_tool = True
+    ctx = run_context(streaming=False, tools=True)
+    ctx.runtime.metadata["recovery"] = {
+        "mode": "resume",
+        "source_run_id": "interrupted",
+        "from_sequence": 2,
+        "events": [
+            {
+                "type": "tool.call.started",
+                "data": {"tool_call_id": "fixture-call", "tool_name": "fixture_echo", "parameters": {"text": "hello"}},
+            },
+            {
+                "type": "tool.call.completed",
+                "data": {"tool_call_id": "fixture-call", "tool_name": "fixture_echo", "result": {"echo": "hello"}},
+            },
+        ],
+    }
+    results = await sdk_runtime.run(ctx)
+    assert results[-1].type == "run.completed"
+    assert results[-2].data["message"]["content"] == "真实 SDK fixture ✓"
+    assert not any(action == "call_tool" for action, _ in sdk_runtime.calls)
+    model_calls = [data for action, data in sdk_runtime.calls if action == "invoke"]
+    assert len(model_calls) == 1
+    assert any(
+        message["role"] == "tool" and message["tool_call_id"] == "fixture-call"
+        for message in model_calls[0]["messages"]
+    )
+
+
+@pytest.mark.asyncio
 async def test_real_sdk_runner_no_authorized_model(sdk_runtime):
     context = run_context()
     context.resources.models = []

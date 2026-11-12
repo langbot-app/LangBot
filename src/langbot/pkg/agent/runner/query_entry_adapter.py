@@ -519,6 +519,10 @@ class QueryEntryAdapter:
                 'supported_apis': supported_apis,
             },
         }
+        source_channel = getattr(getattr(source_event, 'source_platform_object', None), 'channel', None)
+        channel_id = getattr(source_channel, 'id', None)
+        if isinstance(channel_id, (str, int)) and channel_id:
+            delivery_data['reply_target']['chat_id'] = str(channel_id)
         if 'interactions' in DeliveryContext.model_fields and 'send_interaction' in supported_apis:
             get_capabilities = getattr(adapter, 'get_interaction_capabilities', None)
             if callable(get_capabilities):

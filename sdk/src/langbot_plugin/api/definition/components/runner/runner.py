@@ -108,7 +108,11 @@ class Runner(BaseComponent):
                                 "Runner result belongs to a different invocation"
                             )
                         await results.put(result)
-                        if result.type in {"run.completed", "run.failed"}:
+                        if result.type in {
+                            "run.completed",
+                            "run.failed",
+                            "run.cancelled",
+                        }:
                             terminal = True
                             break
                 finally:

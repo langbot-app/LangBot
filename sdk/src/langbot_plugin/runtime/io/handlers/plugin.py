@@ -958,6 +958,12 @@ class PluginConnectionHandler(handler.Handler):
                 PluginToRuntimeAction.STEERING_PULL, data, 15
             )
 
+        @self.action(PluginToRuntimeAction.STEERING_ACK)
+        async def steering_ack(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.STEERING_ACK, data, 15
+            )
+
         @self.action(PluginToRuntimeAction.STATE_GET)
         async def state_get(data: dict[str, Any]) -> handler.ActionResponse:
             return await forward_agent_action(PluginToRuntimeAction.STATE_GET, data, 15)
@@ -996,6 +1002,22 @@ class PluginConnectionHandler(handler.Handler):
         async def run_cancel(data: dict[str, Any]) -> handler.ActionResponse:
             return await forward_agent_action(
                 PluginToRuntimeAction.RUN_CANCEL, data, 15
+            )
+
+        @self.action(PluginToRuntimeAction.RUN_CANCEL_ACK)
+        async def run_cancel_ack(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.RUN_CANCEL_ACK, data, 15
+            )
+
+        @self.action(PluginToRuntimeAction.RUN_RETRY)
+        async def run_retry(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(PluginToRuntimeAction.RUN_RETRY, data, 15)
+
+        @self.action(PluginToRuntimeAction.RUN_RESUME)
+        async def run_resume(data: dict[str, Any]) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.RUN_RESUME, data, 15
             )
 
         @self.action(PluginToRuntimeAction.RUN_APPEND_RESULT)

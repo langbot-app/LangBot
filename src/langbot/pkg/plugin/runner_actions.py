@@ -390,6 +390,161 @@ def register(h):
             h.ap.logger.error(f'RUN_CANCEL error: {e}', exc_info=True)
             return handler.ActionResponse.error(message=f'Run cancel error: {e}')
 
+    async def _requeue_run(data: dict[str, Any], *, resume: bool) -> handler.ActionResponse:
+        """Re-queue a terminal run for retry or resume."""
+        run_id = data.get('run_id')
+        target_run_id = data.get('target_run_id') or run_id
+        caller_plugin_identity = data.get('caller_plugin_identity')
+        is_admin = _has_runner_admin_permission(
+            h.ap,
+            caller_plugin_identity,
+            AGENT_RUN_ADMIN_PERMISSION,
+        )
+        api_name = 'Run resume' if resume else 'Run retry'
+        api_capability = 'run_resume' if resume else 'run_retry'
+        if not is_admin and not run_id:
+            return handler.ActionResponse.error(message='run_id is required')
+        if not target_run_id:
+            return handler.ActionResponse.error(message='target_run_id is required')
+
+        session, error = await _validate_agent_run_session(
+            run_id,
+            caller_plugin_identity,
+            h.ap,
+            api_name,
+            api_capability=api_capability,
+            allow_persistent_authorization=True,
+            admin_permission=AGENT_RUN_ADMIN_PERMISSION,
+        )
+        if error:
+            return error
+
+        from ..agent.runner.run_ledger_store import RunLedgerStore
+
+        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        try:
+            run = await store.get_run(str(target_run_id))
+            if not run:
+                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+            if not is_admin:
+                auth_error = _authorize_target_run(session, run)
+                if auth_error:
+                    return auth_error
+            resume_from_sequence = data.get('from_sequence') if resume else None
+            if resume_from_sequence is not None:
+                try:
+                    resume_from_sequence = max(int(resume_from_sequence), 0)
+                except (TypeError, ValueError):
+                    return handler.ActionResponse.error(message='from_sequence must be a non-negative integer')
+            if run.get('queue_name') is not None:
+                updated = await store.retry_run(
+                    run_id=str(target_run_id),
+                    status_reason=data.get('reason') or data.get('status_reason'),
+                    resume_from_sequence=resume_from_sequence,
+                )
+            else:
+                from ..agent.runner.run_recovery import dispatch_recovery
+
+                updated = await dispatch_recovery(
+                    h.ap,
+                    run,
+                    resume=resume,
+                    from_sequence=resume_from_sequence,
+                    reason=data.get('reason') or data.get('status_reason'),
+                )
+            if not updated:
+                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+            if is_admin:
+                await _record_runner_admin_action(
+                    h.ap,
+                    store,
+                    action='run_resume' if resume else 'run_retry',
+                    caller_plugin_identity=caller_plugin_identity,
+                    permission=AGENT_RUN_ADMIN_PERMISSION,
+                    durable_run_id=str(target_run_id),
+                    detail={'from_sequence': resume_from_sequence},
+                )
+            return handler.ActionResponse.success(data=updated)
+        except Exception as e:
+            h.ap.logger.error(f'{api_name.upper().replace(" ", "_")} error: {e}', exc_info=True)
+            return handler.ActionResponse.error(message=f'{api_name} error: {e}')
+
+    @h.action(_plugin_runtime_action('RUN_RETRY', 'run_retry'))
+    async def run_retry(data: dict[str, Any]) -> handler.ActionResponse:
+        return await _requeue_run(data, resume=False)
+
+    @h.action(_plugin_runtime_action('RUN_RESUME', 'run_resume'))
+    async def run_resume(data: dict[str, Any]) -> handler.ActionResponse:
+        return await _requeue_run(data, resume=True)
+
+    @h.action(_plugin_runtime_action('RUN_CANCEL_ACK', 'run_cancel_ack'))
+    async def run_cancel_ack(data: dict[str, Any]) -> handler.ActionResponse:
+        """Persist cancellation cleanup acknowledgement for a run."""
+        run_id = data.get('run_id')
+        target_run_id = data.get('target_run_id') or run_id
+        caller_plugin_identity = data.get('caller_plugin_identity')
+        is_admin = _has_runner_admin_permission(
+            h.ap,
+            caller_plugin_identity,
+            AGENT_RUN_ADMIN_PERMISSION,
+        )
+        if not is_admin and not run_id:
+            return handler.ActionResponse.error(message='run_id is required')
+        if not target_run_id:
+            return handler.ActionResponse.error(message='target_run_id is required')
+        session, error = await _validate_agent_run_session(
+            run_id,
+            caller_plugin_identity,
+            h.ap,
+            'Run cancellation acknowledgement',
+            api_capability='run_cancel_ack',
+            allow_persistent_authorization=True,
+            admin_permission=AGENT_RUN_ADMIN_PERMISSION,
+        )
+        if error:
+            return error
+
+        from ..agent.runner.run_ledger_store import RunLedgerStore
+
+        store = RunLedgerStore(h.ap.persistence_mgr.get_db_engine())
+        try:
+            run = await store.get_run(str(target_run_id))
+            if not run:
+                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+            if not is_admin:
+                auth_error = _authorize_target_run(session, run)
+                if auth_error:
+                    return auth_error
+            updated = await store.acknowledge_cancel(
+                run_id=str(target_run_id),
+                reason=data.get('reason'),
+                cleanup_confirmed=bool(data.get('cleanup_confirmed', True)),
+            )
+            if not updated:
+                return handler.ActionResponse.error(message=f'Run {target_run_id} not found')
+            await store.append_audit_event(
+                run_id=str(target_run_id),
+                event_type='run.cancel_ack',
+                data={
+                    'cleanup_confirmed': bool(data.get('cleanup_confirmed', True)),
+                    'reason': data.get('reason'),
+                },
+            )
+            if is_admin:
+                await _record_runner_admin_action(
+                    h.ap,
+                    store,
+                    action='run_cancel_ack',
+                    caller_plugin_identity=caller_plugin_identity,
+                    permission=AGENT_RUN_ADMIN_PERMISSION,
+                    durable_run_id=str(target_run_id),
+                    detail={'cleanup_confirmed': bool(data.get('cleanup_confirmed', True))},
+                )
+            return handler.ActionResponse.success(data=updated)
+        except Exception as e:
+            h.ap.logger.error(f'RUN_CANCEL_ACK error: {e}', exc_info=True)
+            return handler.ActionResponse.error(message=f'Run cancellation acknowledgement error: {e}')
+
     @h.action(_plugin_runtime_action('RUN_APPEND_RESULT', 'run_append_result'))
     async def run_append_result(data: dict[str, Any]) -> handler.ActionResponse:
         """Append one result event for a Host-owned run visible to the current run."""
@@ -419,7 +574,13 @@ def register(h):
 
         event_data = data.get('data') if isinstance(data.get('data'), dict) else result.get('data')
         usage = data.get('usage') if isinstance(data.get('usage'), dict) else result.get('usage')
-        metadata = data.get('metadata') if isinstance(data.get('metadata'), dict) else None
+        metadata = (
+            data.get('metadata')
+            if isinstance(data.get('metadata'), dict)
+            else result.get('metadata')
+            if isinstance(result.get('metadata'), dict)
+            else None
+        )
 
         session, error = await _validate_agent_run_session(
             run_id,

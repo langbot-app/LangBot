@@ -16,6 +16,25 @@ from langbot_plugin.api.entities.builtin.runner.result import (
     ToolCallCompletedPayload,
     ToolCallStartedPayload,
 )
+
+try:
+    from langbot_plugin.api.entities.builtin.runner.result import (
+        RunProgressPayload,
+        RunCancelledPayload,
+    )
+except ImportError:
+
+    class RunProgressPayload(pydantic.BaseModel):
+        progress: float | None = pydantic.Field(default=None, ge=0, le=100)
+        stage: str | None = pydantic.Field(default=None, max_length=256)
+        message: str | None = pydantic.Field(default=None, max_length=4096)
+        details: dict[str, typing.Any] = pydantic.Field(default_factory=dict)
+
+    class RunCancelledPayload(pydantic.BaseModel):
+        reason: str | None = pydantic.Field(default=None, max_length=4096)
+        cleanup_confirmed: bool = False
+
+
 from langbot_plugin.api.entities.builtin.provider import message as provider_message
 
 from ...core import app
@@ -35,6 +54,8 @@ STRICT_RESULT_PAYLOADS: dict[str, type[pydantic.BaseModel]] = {
     'action.requested': ActionRequestedPayload,
     'run.completed': RunCompletedPayload,
     'run.failed': RunFailedPayload,
+    'run.progress': RunProgressPayload,
+    'run.cancelled': RunCancelledPayload,
     'processor.log': ProcessorLogPayload,
 }
 
@@ -60,6 +81,8 @@ class AgentResultNormalizer:
     - state.updated
     - run.completed
     - run.failed
+    - run.progress
+    - run.cancelled
     - action.requested (non-whitelisted actions are telemetry only)
     """
 
@@ -91,24 +114,7 @@ class AgentResultNormalizer:
         if not result_type:
             raise RunnerProtocolError(descriptor.id, 'Missing result type')
 
-        # Validate result size
-        try:
-            import json
-
-            result_json = json.dumps(result_dict)
-            if len(result_json) > MAX_RESULT_SIZE_BYTES:
-                self.ap.logger.warning(
-                    f'Runner {descriptor.id} result too large ({len(result_json)} bytes), truncating'
-                )
-                # Truncate content if possible
-                data = result_dict.get('data', {})
-                if 'chunk' in data or 'message' in data:
-                    content = data.get('chunk', {}).get('content', '') or data.get('message', {}).get('content', '')
-                    if isinstance(content, str) and len(content) > 10000:
-                        # Keep reasonable length
-                        data['chunk'] = {'role': 'assistant', 'content': content[:10000] + '...[truncated]'}
-        except Exception as e:
-            self.ap.logger.warning(f'Failed to validate runner {descriptor.id} result size: {e}')
+        self.annotate_result_size(result_dict, descriptor)
 
         # Handle each result type
         data = result_dict.get('data', {})
@@ -167,6 +173,17 @@ class AgentResultNormalizer:
                 ),
             )
 
+        elif result_type == 'run.progress':
+            self.ap.logger.debug(f'Runner {descriptor.id} progress: {data.get("progress")} stage={data.get("stage")}')
+            return None
+
+        elif result_type == 'run.cancelled':
+            self.ap.logger.info(
+                f'Runner {descriptor.id} acknowledged cancellation '
+                f'(cleanup_confirmed={data.get("cleanup_confirmed", False)})'
+            )
+            return None
+
         elif result_type == 'action.requested':
             # The orchestrator consumes whitelisted actions before normalization.
             self.ap.logger.info(
@@ -206,6 +223,34 @@ class AgentResultNormalizer:
                 f'Runner {descriptor.id} returned invalid {result_type} payload; dropping result: {e}'
             )
             return False
+
+    def annotate_result_size(
+        self,
+        result_dict: dict[str, typing.Any],
+        descriptor: RunnerDescriptor,
+    ) -> None:
+        """Bound oversized output and record a durable truncation marker."""
+        try:
+            import json
+
+            result_json = json.dumps(result_dict)
+            if len(result_json) <= MAX_RESULT_SIZE_BYTES:
+                return
+            self.ap.logger.warning(f'Runner {descriptor.id} result too large ({len(result_json)} bytes), truncating')
+            data = result_dict.get('data', {})
+            if isinstance(data, dict):
+                chunk = data.get('chunk') if isinstance(data.get('chunk'), dict) else None
+                message = data.get('message') if isinstance(data.get('message'), dict) else None
+                content_holder = chunk or message
+                content = content_holder.get('content', '') if content_holder else ''
+                if isinstance(content, str) and len(content) > 10000:
+                    content_holder['content'] = content[:10000] + '...[truncated]'
+            metadata = result_dict.setdefault('metadata', {})
+            if isinstance(metadata, dict):
+                metadata.setdefault('output_truncated', True)
+                metadata.setdefault('original_size_bytes', len(result_json))
+        except Exception as e:
+            self.ap.logger.warning(f'Failed to validate runner {descriptor.id} result size: {e}')
 
     def _normalize_message_delta(
         self,
