@@ -119,6 +119,7 @@ LangBot 的 `data/config.yaml` 使用本地 Box 地址：
 box:
   enabled: true
   backend: local
+  file_transfer_mode: network
   runtime:
     endpoint: ws://127.0.0.1:5410
 ```
@@ -135,6 +136,8 @@ export LANGBOT_BOX_CONTROL_TOKEN='<两端完全相同的高熵密钥>'
 ```
 
 Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBot。只在 LangBot 端设置不会启用 Box Runtime 端认证；显式配置但不足 32 位的值仍会被两端拒绝。不要把真实密钥提交到配置文件或 Git。
+
+设置 `box.file_transfer_mode: network`，即可通过鉴权后的 Box 连接传输附件，无需 Core 与 Runtime 共享附件目录。两端需要支持文件传输动作的 SDK/Runtime。逐步接入期间默认值为 `legacy`，沿用现有传输路径。网络模式通过分块 RPC 传输文件内容，使用小型沙箱命令准备产物快照和确认清理，支持导出 `/workspace` 之外的文件。临时产物快照需要占用工作目录空间。Cloud 启动还会检查共享工作目录，其迁移由 #3010 第 5 阶段跟踪。
 
 ## SDK（`sdk/`）架构
 

@@ -119,6 +119,7 @@ LangBot の `data/config.yaml` でローカル Box Runtime を指定します：
 box:
   enabled: true
   backend: local
+  file_transfer_mode: network
   runtime:
     endpoint: ws://127.0.0.1:5410
 ```
@@ -135,6 +136,8 @@ export LANGBOT_BOX_CONTROL_TOKEN='<両側で完全に同じ高エントロピー
 ```
 
 Box Runtime 側に token を設定すると、同じ値を送信しない LangBot は拒否されます。LangBot 側だけに設定しても Box Runtime 側の認証は有効になりません。明示的に設定した値が 32 文字未満の場合は、引き続き両側で拒否されます。実際の値を設定ファイルや Git にコミットしないでください。
+
+`box.file_transfer_mode: network` を設定すると、認証済みの Box 接続を通じて添付ファイルを転送できます。Core と Runtime で添付ファイル用ディレクトリを共有する必要はありません。両側にファイル転送アクションをサポートする SDK/Runtime が必要です。段階的な導入中の既定値は `legacy` で、既存の転送方法を使用します。ネットワークモードでは、ファイル内容を分割 RPC で転送し、小さなサンドボックスコマンドで出力のスナップショット作成と削除確認を行います。`/workspace` 外のファイルもエクスポートできます。一時スナップショットにはワークスペースのディスク容量が必要です。Cloud の起動時には共有ワークスペースの準備も検証され、この移行は #3010 の第 5 段階で追跡します。
 
 ## SDK（`sdk/`）アーキテクチャ
 

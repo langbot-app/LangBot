@@ -1,7 +1,6 @@
 # Box network file transfer
 
-Issue #3010 adds file transport before Core attachment and Skill callers switch
-to it. The SDK client uses the existing authenticated action RPC connection over
+Issue #3010 adds file transport and an explicit Core attachment network mode. The SDK client uses the existing authenticated action RPC connection over
 WebSocket or stdio. Core and Runtime need no shared directory for these calls.
 
 ## Client contract
@@ -64,9 +63,9 @@ descriptor-relative no-follow filesystem operations and a Runtime-visible
 workspace. E2B transfers bytes with its native files API and uses private staging
 plus bounded remote commands for safe workspace publication and download snapshots.
 
-Existing Core attachment, export and Skill call sites remain on their current
-paths in this stage. Stage 2 adopts file transport and stage 5 adopts Skill
-transport. A caller using these methods needs a Runtime SDK containing the three
+Core attachment and export operations use these actions when
+`box.file_transfer_mode` is `network`. Skill execution transport is tracked in
+stage 5 of #3010. A caller using these methods needs a Runtime SDK containing the three
 new Box actions; an older Runtime reports an unsupported action.
 
 ## Opt-in live verification
@@ -90,3 +89,30 @@ query the exact Docker container, the nsjail session directory, or the exact E2B
 sandbox across both running and paused states. The E2B query must first find the
 created sandbox and then confirm its absence after deletion. This avoids
 mistaking an unsupported detail endpoint's 404 for successful cleanup.
+
+
+## Core network mode
+
+The default `box.file_transfer_mode: legacy` keeps the existing rollout behavior.
+Explicit `network` mode requires a compatible SDK and Runtime and reports transfer
+failures directly. Core does not read or purge local inbox/outbox directories in
+this mode.
+
+Inbound files use Workspace-scoped upload calls. Each input reference retains its
+own directory. A failed or cancelled batch removes attempted files only when their
+content still matches the submitted bytes.
+
+For explicitly selected outputs, a small sandbox command prepares immutable
+workspace snapshots and returns only bounded metadata. File bytes then use
+download RPC. This supports source files outside the workspace without granting
+the Runtime host arbitrary path access. A bounded journal lets cleanup recover
+snapshots after preparation is terminated. Metadata binds each snapshot to its
+request position, so backend path rewriting does not change file identity.
+
+Core verifies the complete batch before registering output handles. Accepted
+files use the existing digest-checked cleanup acknowledgement; a cleanup warning
+keeps the accepted handles valid. The legacy outbox collection entrypoint lists
+only metadata and uses the same network download path.
+
+Temporary snapshots consume workspace disk space. Cloud startup still performs
+its shared-workspace readiness challenge, with its migration tracked in stage 5.

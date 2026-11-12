@@ -119,6 +119,7 @@ Point LangBot's `data/config.yaml` at the local Box Runtime:
 box:
   enabled: true
   backend: local
+  file_transfer_mode: network
   runtime:
     endpoint: ws://127.0.0.1:5410
 ```
@@ -135,6 +136,8 @@ export LANGBOT_BOX_CONTROL_TOKEN='<the exact same high-entropy secret on both si
 ```
 
 Once Box Runtime configures a token, it rejects LangBot clients without the same value. Configuring only the LangBot side does not enable authentication on Box Runtime; an explicitly configured value shorter than 32 characters is still rejected by both sides. Do not commit the real value to configuration or Git.
+
+Set `box.file_transfer_mode: network` to transfer attachments through the authenticated Box connection without a shared Core/Runtime directory. Both sides need the SDK/Runtime file-transfer actions. The default `legacy` mode preserves existing transfer paths during rollout. In network mode, file bytes use chunked RPC. Small sandbox commands prepare output snapshots and acknowledge cleanup, including files outside `/workspace`. Temporary export snapshots require workspace disk space. Cloud startup also validates shared-workspace readiness, whose migration is tracked in stage 5 of #3010.
 
 ## SDK (`sdk/`) Architecture
 
