@@ -63,3 +63,23 @@ Existing Core attachment, export and Skill call sites remain on their current
 paths in this stage. Stage 2 adopts file transport and stage 5 adopts Skill
 transport. A caller using these methods needs a Runtime SDK containing the three
 new Box actions; an older Runtime reports an unsupported action.
+
+## Opt-in live verification
+
+Run `sdk/tests/e2e/test_box_file_transfer_live.py` with
+`LANGBOT_FILE_TRANSFER_BACKEND=docker`, `nsjail`, or `e2b`, one at a time.
+Each invocation creates one sandbox, transfers at most 64 KiB per file, runs a
+five-second checksum/copy command, and verifies cancellation and size rejection.
+E2B creation is bounded to a 120-second lifetime. Docker requires an existing
+`python:3.12-alpine` image. nsjail requires an authorized execution environment
+and ancestor directories traversable by its mapped UID.
+
+For self-hosted E2B, use the deployment's matching SDK and existing endpoint/auth
+configuration. The trial deployment used for acceptance needs its matching SDK
+for proxy routing; the stock SDK cannot route its sandbox requests correctly.
+
+Linux acceptance passed for Docker, nsjail and self-hosted E2B. Cleanup checks
+query the exact Docker container, the nsjail session directory, or the exact E2B
+sandbox across both running and paused states. The E2B query must first find the
+created sandbox and then confirm its absence after deletion. This avoids
+mistaking an unsupported detail endpoint's 404 for successful cleanup.
