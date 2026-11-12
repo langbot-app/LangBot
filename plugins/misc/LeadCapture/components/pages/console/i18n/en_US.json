@@ -37,5 +37,16 @@
   "timeline": "Timeline (newest first)",
   "noEvents": "No events recorded.",
   "recentConversation": "Recent conversation (UTC)",
-  "conversationUnavailable": "Conversation unavailable"
+  "conversationUnavailable": "Conversation unavailable",
+  "riskCount": "Compliance risk",
+  "filterRisk": "Compliance risk",
+  "colScore": "Score",
+  "statusRisk": "Compliance risk",
+  "levelHigh": "High",
+  "levelMedium": "Medium",
+  "levelLow": "Low",
+  "eventRisk": "Flagged for compliance review; no contact request",
+  "eventFields": "Lead fields extracted",
+  "leadFields": "Lead fields",
+  "notMentioned": "Not mentioned"
 }
