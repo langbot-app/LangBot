@@ -146,3 +146,19 @@ async def test_e2b_credentials_and_template_are_pinned_per_task(monkeypatch):
         assert base.sandbox_e2b_config == old
     async with loader.task_sandbox_scope(context, 'e2b', limits_selection={}, e2b_selection=old):
         assert loader.get_session(context, 'server') is base
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('field', ['_sandbox_backend', '_sandbox_e2b_config', '_sandbox_limits', '_sandbox_task_id'])
+async def test_public_mcp_config_cannot_override_host_sandbox_selection(field):
+    context = ExecutionContext(instance_uuid='instance', workspace_uuid='workspace', placement_generation=1)
+    ap = SimpleNamespace(logger=Mock(), instance_config=SimpleNamespace(data={}))
+    loader = MCPLoader(ap)
+    loader._assert_execution_active = AsyncMock(return_value=context)
+    config = {'name': 'untrusted', 'mode': 'stdio', 'enable': True, 'extra_args': {field: 'host'}}
+    with pytest.raises(ValueError, match='reserved for the Host'):
+        await loader.load_mcp_server(context, config)
+    config['extra_args'] = {'command': 'python3', 'args': ['-V']}
+    session = await loader.load_mcp_server(context, config)
+    assert session.sandbox_backend is None
+    assert session.sandbox_e2b_config is None and session.sandbox_limits is None

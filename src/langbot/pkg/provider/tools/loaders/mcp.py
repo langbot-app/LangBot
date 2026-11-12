@@ -2234,6 +2234,8 @@ class MCPLoader(loader.ToolLoader):
         mode = server_config['mode']
         enable = server_config['enable']
         extra_args = server_config.get('extra_args', {})
+        if any(key.startswith('_sandbox_') for key in extra_args):
+            raise ValueError('MCP sandbox selection fields are reserved for the Host')
 
         mixed_config = {
             'name': name,
