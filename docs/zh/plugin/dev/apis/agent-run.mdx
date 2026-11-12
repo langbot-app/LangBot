@@ -274,6 +274,8 @@ Box 是否启用、何时创建以及如何复用，由运行器决定。获取�
 
 `run_id=None` 表示当前运行。普通事件处理函数结束后，SDK 会自动完成本次运行；自定义 `run(ctx)` 通过 `yield RunnerResult` 返回结果时，也不需要再调用 `run_append_result()` 重复登记。
 
+Pipeline 重试和恢复会应用当前的输出过滤、回复包装和发送设置，并使用已记录的回复目标与原消息标识；缺少必要信息或平台不支持恢复投递时，会返回明确错误。
+
 ### 可用性与授权
 
 通过 `ctx.context.available_apis` 判断提示词、历史、事件、状态和运行记录接口是否可用。模型、工具和知识库的授权范围分别位于 `ctx.resources.models`、`ctx.resources.tools` 和 `ctx.resources.knowledge_bases`。

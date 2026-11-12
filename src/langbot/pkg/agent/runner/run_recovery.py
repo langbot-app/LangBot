@@ -7,6 +7,9 @@ import contextlib
 import json
 from uuid import uuid4
 
+from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
+from langbot_plugin.api.entities.builtin.platform import events as platform_events
+
 from ...api.http.context import ExecutionContext
 from ...pipeline.extension_preferences import normalize_extension_preferences
 from .config_resolver import RunnerConfigResolver
@@ -16,6 +19,54 @@ from .host_models import AgentEventEnvelope
 from .query_entry_adapter import QueryEntryAdapter
 from .run_ledger_store import RunLedgerStore, TERMINAL_STATUSES
 from .resource_policy import ResourcePolicyProjector
+
+
+class _RecoveryDeliveryAdapter:
+    """Keep Pipeline output stages while replying from the durable event target."""
+
+    def __init__(self, adapter, event, *, quote_origin):
+        self._adapter = adapter
+        self._target = event.delivery.reply_target or {}
+        if not self._target.get('target_type') or not self._target.get('target_id'):
+            raise ValueError('Recovery input has no complete reply target')
+        self._context = {
+            'event_type': event.event_type,
+            'data': event.data,
+            'delivery': event.delivery.model_dump(mode='json'),
+            'quote_origin': quote_origin,
+        }
+        if quote_origin and (
+            not self._target.get('message_id')
+            or not (
+                callable(getattr(adapter, 'reply_to_event', None)) or callable(getattr(adapter, 'get_message', None))
+            )
+        ):
+            raise ValueError('This platform cannot restore the original message for a quoted Pipeline reply')
+
+    def __getattr__(self, name):
+        return getattr(self._adapter, name)
+
+    async def is_stream_output_supported(self):
+        return False
+
+    async def reply_message(self, message_source, message, quote_origin=False):
+        target_type, target_id = self._target['target_type'], self._target['target_id']
+        reply_to_event = getattr(self._adapter, 'reply_to_event', None)
+        if callable(reply_to_event):
+            return await reply_to_event(
+                context={**self._context, 'quote_origin': quote_origin},
+                target_type=target_type,
+                target_id=target_id,
+                message=message,
+            )
+        if quote_origin:
+            source = await self._adapter.get_message(
+                chat_type=target_type,
+                chat_id=target_id,
+                message_id=self._target['message_id'],
+            )
+            return await self._adapter.reply_message(source, message, quote_origin=True)
+        return await self._adapter.send_message(target_type, target_id, message)
 
 
 def _has_redacted_content(value):
@@ -99,6 +150,8 @@ async def dispatch_recovery(ap, source, *, resume=False, from_sequence=None, rea
             None if prefs['enable_all_mcp_servers'] else prefs['mcp_servers']
         )
         query.variables['_pipeline_bound_skills'] = None if prefs['enable_all_skills'] else prefs['skills']
+        query.variables['_pipeline_workspace_operations'] = prefs['workspace_operations']
+        query.variables['_pipeline_allowed_platform_tools'] = prefs['allowed_platform_tools']
         runner_id = RunnerConfigResolver.resolve_runner_id(pipeline['config'])
         runner_config = RunnerConfigResolver.resolve_runner_config(pipeline['config'], runner_id)
         descriptor = await orchestrator.registry.get(context, runner_id, bound_plugins)
@@ -166,8 +219,19 @@ async def dispatch_recovery(ap, source, *, resume=False, from_sequence=None, rea
         adapter = bot.adapter
     output_pipeline = None
     if query is not None and adapter is not None:
-        output_pipeline = await ap.pipeline_mgr.load_pipeline(context, pipeline)
-        query.adapter = adapter
+        output_pipeline = await ap.pipeline_mgr.prepare_pipeline(context, pipeline)
+        query.adapter = _RecoveryDeliveryAdapter(
+            adapter, event, quote_origin=query.pipeline_config['output']['misc']['quote-origin']
+        )
+        query.resp_message_chain = []
+        query.message_event = platform_events.MessageReceivedEvent(
+            timestamp=query.message_event.time or 0.0,
+            message_id=str(event.delivery.reply_target.get('message_id') or ''),
+            message_chain=query.message_chain,
+            sender=platform_entities.User(id=query.sender_id),
+            chat_type='group' if query.launcher_type.value == 'group' else 'private',
+            chat_id=query.launcher_id,
+        ).to_legacy_event()
         # Recovered Pipeline output follows its normal filters/wrapper/sender,
         # never the Agent-only direct reply shortcut.
         event.delivery.supports_streaming = False
@@ -203,6 +267,8 @@ async def dispatch_recovery(ap, source, *, resume=False, from_sequence=None, rea
             }
             if query is not None:
                 adapter_context['_query'] = query
+                if output_pipeline is not None:
+                    adapter_context['_recovery_delivery_adapter'] = query.adapter
             async with contextlib.aclosing(orchestrator.run(event, binding, bound_plugins, adapter_context)) as results:
                 async for result in results:
                     from langbot_plugin.api.entities.builtin.provider.message import Message

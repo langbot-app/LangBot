@@ -1134,6 +1134,7 @@ async def test_platform_event_steering_requires_waiting_run_and_matching_binding
     sessions = types.SimpleNamespace(
         find_steering_target=AsyncMock(return_value=target_run_id),
         enqueue_steering=AsyncMock(return_value=True),
+        complete_steering_enqueue=AsyncMock(return_value=True),
     )
     journal = types.SimpleNamespace(write_event_log=AsyncMock(return_value='log-1'), write_user_transcript=AsyncMock())
     orchestrator = types.SimpleNamespace(
@@ -1144,6 +1145,7 @@ async def test_platform_event_steering_requires_waiting_run_and_matching_binding
         journal=journal,
         ap=types.SimpleNamespace(logger=FakeLogger()),
     )
+    orchestrator._enqueue_steering = lambda *args: AgentRunOrchestrator._enqueue_steering(orchestrator, *args)
 
     claimed = await AgentRunOrchestrator.try_claim_steering_from_event(
         orchestrator,

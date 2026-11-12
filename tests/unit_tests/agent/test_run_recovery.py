@@ -379,7 +379,11 @@ async def test_secured_steering_ack_checks_persistent_authorization(clean_agent_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('resume', [False, True])
-async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_agent_state, resume):
+@pytest.mark.parametrize('platform', ['telegram', 'discord'])
+@pytest.mark.parametrize('quote_origin', [False, True])
+async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(
+    clean_agent_state, resume, platform, quote_origin
+):
     from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
     from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 
@@ -402,8 +406,43 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_ag
     ap.logger = Mock()
     orchestrator = AgentRunOrchestrator(ap, FakeRegistry(descriptor))
     ap.agent_run_orchestrator = orchestrator
+    from langbot_plugin.api.entities.builtin.platform import events, entities, message
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
+
+    query = make_query()
+    query.launcher_type = LauncherTypes.GROUP
+    query.launcher_id = '-100#77' if platform == 'telegram' else '789'
+    query.sender_id = '456'
+    query.session.launcher_type = query.launcher_type
+    query.session.launcher_id = query.launcher_id
+    query.session.sender_id = query.sender_id
+    query.message_chain = message.MessageChain(
+        [message.Source(id='10', time=query.message_chain[0].time), message.Plain(text='hello')]
+    )
+    query.message_event = events.MessageReceivedEvent(
+        message_id='10',
+        sender=entities.User(id='456'),
+        chat_type='group',
+        chat_id=query.launcher_id,
+        message_chain=query.message_chain,
+    ).to_legacy_event()
+    if platform == 'telegram':
+        from tests.unit_tests.platform.test_telegram_eba_adapter import make_adapter
+
+        adapter = make_adapter()
+        transport = AsyncMock(return_value=SimpleNamespace(message_id=91))
+        adapter.bot = SimpleNamespace(send_message=transport)
+    else:
+        from tests.unit_tests.platform.test_discord_eba_adapter import make_adapter
+
+        adapter = make_adapter()
+        transport = AsyncMock(return_value=SimpleNamespace(id=91))
+        channel = SimpleNamespace(id=789, send=transport)
+        adapter.bot = SimpleNamespace(get_guild=Mock(return_value=None), get_channel=Mock(return_value=channel))
+        query.message_event.source_platform_object = SimpleNamespace(channel=channel)
+    query.adapter = adapter
     with pytest.raises(Exception, match='interrupted'):
-        async for _ in orchestrator.run_from_query(make_query()):
+        async for _ in orchestrator.run_from_query(query):
             pass
     source_context = connector.contexts[0]
     source_id = source_context['run_id']
@@ -423,51 +462,86 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_ag
             )
         )
     )
+    config = query.pipeline_config
+    config['safety'] = {'content-filter': {'check-sensitive-words': True, 'scope': 'output-msg'}}
+    config['output'] = {
+        'force-delay': {'min': 0, 'max': 0},
+        'misc': {'at-sender': True, 'quote-origin': quote_origin, 'track-function-calls': False},
+    }
     ap.pipeline_service = SimpleNamespace(
         get_pipeline=AsyncMock(
             return_value={
-                'config': make_query().pipeline_config,
+                'uuid': 'pipeline_001',
+                'workspace_uuid': 'workspace-test',
+                'name': 'Recovery contract',
+                'config': config,
+                'stages': ['MessageProcessor', 'PostContentFilterStage', 'ResponseWrapper', 'SendResponseBackStage'],
                 'extensions_preferences': {
                     'enable_all_skills': False,
                     'skills': ['demo'],
                     'enable_all_plugins': False,
                     'plugins': [{'author': 'langbot-team', 'name': 'LocalAgent'}],
+                    'workspace_operations': ['pipeline.list'],
+                    'allowed_platform_tools': ['platform_send_message'],
                 },
             }
         )
     )
     ap.tool_mgr = SimpleNamespace(get_resolved_tool_catalog=AsyncMock(return_value=[]))
-    adapter = SimpleNamespace(
-        is_stream_output_supported=AsyncMock(return_value=False), send_message=AsyncMock(), reply_message=AsyncMock()
-    )
     ap.bot_mgr = SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
-    from langbot.pkg.pipeline.pipelinemgr import RuntimePipeline, StageInstContainer
-    from langbot.pkg.pipeline.entities import StageProcessResult, ResultType
-    from tests.unit_tests.agent.test_orchestrator_integration import TEST_CONTEXT
+    ap.platform_mgr = ap.bot_mgr
+    from langbot.pkg.pipeline.pipelinemgr import PipelineManager
+    from langbot.pkg.pipeline.stage import PipelineStage
+    from langbot.pkg.pipeline.cntfilter.cntfilter import ContentFilterStage
+    from langbot.pkg.pipeline.wrapper.wrapper import ResponseWrapper
+    from langbot.pkg.pipeline.respback.respback import SendResponseBackStage
+    from langbot_plugin.api.entities.context import EventContext
 
-    class OutputPolicy:
+    class UnusedProcessor(PipelineStage):
         async def process(self, query, stage_name):
-            assert query.variables['_pipeline_bound_plugins'] == ['langbot-team/LocalAgent']
-            text = 'policy:' + query.resp_messages[-1].content
-            await query.adapter.reply_message(message_source=query.message_event, message=text, quote_origin=False)
-            return StageProcessResult(result_type=ResultType.CONTINUE, new_query=query)
+            raise AssertionError('Recovery must not execute the MessageProcessor twice')
 
-    pipeline_runtime = RuntimePipeline(
-        ap,
-        SimpleNamespace(
-            uuid='pipeline_001',
-            workspace_uuid='workspace-test',
-            config=make_query().pipeline_config,
-            extensions_preferences={},
-        ),
-        [StageInstContainer('MessageProcessor', None), StageInstContainer('OutputPolicy', OutputPolicy())],
-        TEST_CONTEXT,
-    )
-    ap.pipeline_mgr = SimpleNamespace(load_pipeline=AsyncMock(return_value=pipeline_runtime))
+    ap.pipeline_mgr = PipelineManager(ap)
+    ap.pipeline_mgr.stage_dict = {
+        'MessageProcessor': UnusedProcessor,
+        'PostContentFilterStage': ContentFilterStage,
+        'ResponseWrapper': ResponseWrapper,
+        'SendResponseBackStage': SendResponseBackStage,
+    }
+    ap.sensitive_meta = SimpleNamespace(data={'words': ['recovered'], 'mask': '*', 'mask_word': 'MASKED'})
+    ap.sess_mgr = SimpleNamespace(get_session=AsyncMock(side_effect=lambda execution_query: execution_query.session))
+
+    async def emit_event(event, bound_plugins):
+        assert bound_plugins == ['langbot-team/LocalAgent']
+        assert event.response_text == 'MASKED'
+        event.reply_message_chain = message.MessageChain([message.Plain(text='wrapped:' + event.response_text)])
+        return EventContext.from_event(event)
+
+    connector.emit_event = emit_event
     ap.event_loop = asyncio.get_running_loop()
     ap.instance_config = SimpleNamespace(data={})
     ap.task_mgr = AsyncTaskManager(ap)
     h, binding = secured_host(ap, workspace_id='workspace-test', plugin_identity='langbot-team/LocalAgent')
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from langbot.pkg.api.application.api import ApplicationAPI
+
+    setting = ap.persistence_mgr.execute_async.return_value.first.return_value[0]
+    setting.permission_declaration = {'workspace_operations': ['pipeline.list'], 'capabilities': []}
+    setting.permission_grants = {'workspace_operations': ['pipeline.list'], 'capabilities': []}
+    async with AsyncSession(clean_agent_state, expire_on_commit=False) as session:
+        session.add(setting)
+        await session.commit()
+
+    async def execute_async(statement):
+        async with AsyncSession(clean_agent_state) as session:
+            return await session.execute(statement)
+
+    ap.persistence_mgr.execute_async = execute_async
+    ap.application_api = ApplicationAPI(ap)
+    connector.require_workspace_context = AsyncMock()
+    connector._setting_for_plugin = AsyncMock(return_value=(None, setting))
+    connector._binding_from_setting = lambda context, setting: binding
+    connector._runtime_handler = lambda: h
 
     class Bridge:
         async def call_action(self, action, data, timeout=15, **kwargs):
@@ -487,6 +561,26 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_ag
         {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
     ]
     connector.delay = 0.2
+    run_runner = connector.run_runner
+
+    async def reply_then_run(plugin_author, plugin_name, runner_name, context):
+        recovered_api = RunnerAPIProxy(RunnerContext.model_validate(context), Bridge())
+        active_bot = ap.platform_mgr.get_bot_by_uuid.return_value
+        ap.platform_mgr.get_bot_by_uuid.return_value = SimpleNamespace(adapter=object())
+        try:
+            with pytest.raises(AssertionError, match='no longer active'):
+                async with recovered_api.reply_stream() as reply:
+                    await reply.update('must not be delivered')
+        finally:
+            ap.platform_mgr.get_bot_by_uuid.return_value = active_bot
+        assert transport.await_count == 0
+        async with recovered_api.reply_stream() as reply:
+            await reply.update('explicit recovery reply')
+        await recovered_api.call_tool('event_reply', {'text': 'recovered tool reply'})
+        async for result in run_runner(plugin_author, plugin_name, runner_name, context):
+            yield result
+
+    connector.run_runner = reply_then_run
     if resume:
         child = await api.run_resume(from_sequence=3)
         repeated = await api.run_resume(from_sequence=3)
@@ -508,8 +602,27 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_ag
     assert len(request['events']) == (3 if resume else 0)
     assert connector.contexts[-1]['input']['text'] == source_context['input']['text']
     assert ap.pipeline_service.get_pipeline.call_args.args[1] == 'pipeline_001'
-    assert adapter.send_message.await_count + adapter.reply_message.await_count == 1
-    assert adapter.reply_message.call_args.kwargs['message'] == 'policy:recovered'
+    assert transport.await_count == 3
+    explicit = transport.call_args_list[0].kwargs
+    assert explicit.get('text', explicit.get('content')) == 'explicit recovery reply'
+    tool_reply = transport.call_args_list[1].kwargs
+    assert tool_reply.get('text', tool_reply.get('content')) == 'recovered tool reply'
+    sent = transport.call_args_list[2].kwargs
+    text = sent['text'] if platform == 'telegram' else sent['content']
+    assert 'wrapped:MASKED' in text and 'recovered' not in text
+    if platform == 'telegram':
+        assert sent['chat_id'] == -100 and sent['message_thread_id'] == 77
+        assert sent.get('reply_to_message_id') == (10 if quote_origin else None)
+    else:
+        if quote_origin:
+            assert sent['reference'].message_id == 10 and sent['reference'].channel_id == 789
+        else:
+            assert sent.get('reference') is None
+        assert '<@456>' in text
+    resources = connector.contexts[-1]['resources']
+    assert [operation['id'] for operation in resources['workspace_operations']] == ['pipeline.list']
+    assert 'platform_send_message' in {tool['tool_name'] for tool in resources['tools']}
+    assert ap.pipeline_mgr.pipelines == [], 'Recovery must not replace the published Pipeline runtime'
     events, *_ = await store.page_run_events(run_id=source_id)
     assert [e['type'] for e in events] == ['tool.call.started', 'tool.call.completed', 'run.failed']
 

@@ -254,6 +254,29 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
     # ---- Message Send / Reply (preserving original logic) ----
 
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        return await self._send_to_target(target_id, message)
+
+    async def reply_to_event(
+        self, *, context: dict, target_type: str, target_id: str, message: platform_message.MessageChain
+    ) -> platform_events.MessageResult:
+        if 'quote_origin' not in context:
+            return await self.send_message(target_type, target_id, message)
+        target = (context.get('delivery') or {}).get('reply_target') or {}
+        quote_origin = context.get('quote_origin', False)
+        if not isinstance(quote_origin, bool):
+            raise ValueError('quote_origin must be a boolean')
+        message_id = target.get('message_id') if quote_origin else None
+        if quote_origin and not message_id:
+            raise ValueError('The original Telegram message ID is required to quote a recovered reply')
+        return await self._send_to_target(
+            str(target.get('target_id') or target_id),
+            message,
+            reply_to_message_id=int(message_id) if message_id is not None else None,
+        )
+
+    async def _send_to_target(
+        self, target_id: str, message: platform_message.MessageChain, *, reply_to_message_id: int | None = None
+    ) -> platform_events.MessageResult:
         components = await TelegramMessageConverter.yiri2target(message, self.bot)
 
         chat_id_str, _, thread_id_str = str(target_id).partition('#')
@@ -266,6 +289,8 @@ class TelegramAdapter(TelegramAPIMixin, abstract_platform_adapter.AbstractPlatfo
             args = {'chat_id': chat_id}
             if message_thread_id is not None:
                 args['message_thread_id'] = message_thread_id
+            if reply_to_message_id is not None:
+                args['reply_to_message_id'] = reply_to_message_id
 
             if component_type == 'text':
                 text = component.get('text', '')

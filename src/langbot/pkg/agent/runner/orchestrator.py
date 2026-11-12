@@ -231,6 +231,7 @@ class AgentRunOrchestrator:
             adapter=(adapter_context or {}).get('_delivery_adapter') or getattr(execution_query, 'adapter', None),
             source=(adapter_context or {}).get('_platform_event')
             or getattr((adapter_context or {}).get('_query'), 'message_event', None),
+            delivery_adapter=(adapter_context or {}).get('_recovery_delivery_adapter'),
         )
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {
@@ -842,35 +843,7 @@ class AgentRunOrchestrator:
             execution_event = event.model_copy(deep=True)
             append_mcp_resource_context_to_event(execution_event, resource_addition)
 
-        steering_item = self._build_steering_item(execution_event, target_run_id, descriptor.id)
-        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
-            return False
-
-        try:
-            event_log_id = await self.journal.write_event_log(
-                event=event,
-                binding=binding,
-                run_id=target_run_id,
-                runner_id=descriptor.id,
-                metadata={
-                    'steering': {
-                        'status': 'queued',
-                        'trigger_behavior': 'absorbed_into_active_run',
-                        'claimed_by_run_id': target_run_id,
-                        'claimed_runner_id': descriptor.id,
-                        'claimed_at': steering_item.get('claimed_at'),
-                    },
-                },
-            )
-            await self.journal.write_user_transcript(event, event_log_id)
-        except Exception as exc:
-            self.ap.logger.warning(
-                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
-                exc_info=True,
-            )
-
-        self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
-        return True
+        return await self._enqueue_steering(event, execution_event, binding, target_run_id, descriptor.id)
 
     async def try_claim_steering_from_event(
         self,
@@ -898,7 +871,19 @@ class AgentRunOrchestrator:
         )
         if target_run_id is None:
             return False
-        steering_item = self._build_steering_item(event, target_run_id, descriptor.id)
+        return await self._enqueue_steering(event, event, binding, target_run_id, descriptor.id)
+
+    async def _enqueue_steering(
+        self,
+        event: AgentEventEnvelope,
+        execution_event: AgentEventEnvelope,
+        binding: AgentBinding,
+        target_run_id: str,
+        runner_id: str,
+    ) -> bool:
+        steering_item = self._build_steering_item(execution_event, target_run_id, runner_id)
+        # Reserve queue capacity without exposing an input before its source row exists.
+        steering_item['_steering_pending'] = True
         if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
             return False
         try:
@@ -906,23 +891,40 @@ class AgentRunOrchestrator:
                 event=event,
                 binding=binding,
                 run_id=target_run_id,
-                runner_id=descriptor.id,
+                runner_id=runner_id,
                 metadata={
                     'steering': {
                         'status': 'queued',
                         'trigger_behavior': 'absorbed_into_active_run',
                         'claimed_by_run_id': target_run_id,
-                        'claimed_runner_id': descriptor.id,
+                        'claimed_runner_id': runner_id,
                         'claimed_at': steering_item.get('claimed_at'),
                     }
                 },
             )
+            published = await self._session_registry.complete_steering_enqueue(
+                target_run_id, event.event_id, persisted=True
+            )
+        except BaseException:
+            await self._session_registry.complete_steering_enqueue(target_run_id, event.event_id, persisted=False)
+            raise
+        if not published:
+            from .event_log_store import EventLogStore
+
+            released = await EventLogStore(self.ap.persistence_mgr.get_db_engine()).update_steering_status(
+                event.event_id, status='dropped', owner_run_id=target_run_id
+            )
+            if not released:
+                raise RuntimeError(f'Cannot release steering event {event.event_id} after its run ended')
+            return False
+        try:
             await self.journal.write_user_transcript(event, event_log_id)
         except Exception as exc:
             self.ap.logger.warning(
-                f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',
+                f'Failed to write steering transcript for event {event.event_id}: {exc}',
                 exc_info=True,
             )
+        self.ap.logger.info(f'Claimed event {event.event_id} as steering input for run {target_run_id}')
         return True
 
     def _build_steering_item(

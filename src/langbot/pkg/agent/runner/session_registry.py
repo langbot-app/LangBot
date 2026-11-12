@@ -439,6 +439,22 @@ class AgentRunSessionRegistry:
                 session['status']['last_activity_at'] = int(time.time())
             return restored
 
+    async def complete_steering_enqueue(self, run_id: str, event_id: str, *, persisted: bool) -> bool:
+        """Publish a durable input or remove a failed pending enqueue."""
+        async with self._lock:
+            session = self._sessions.get(run_id)
+            if session is None:
+                return False
+            queue = session['steering_queue']
+            for index, item in enumerate(queue):
+                if item.get('_steering_pending') and item.get('event', {}).get('event_id') == event_id:
+                    if persisted:
+                        item.pop('_steering_pending')
+                    else:
+                        del queue[index]
+                    return persisted
+            return False
+
     async def pull_steering(
         self,
         run_id: str,
@@ -476,6 +492,8 @@ class AgentRunSessionRegistry:
             items: list[SteeringQueueItem] = []
             selected_indexes: list[int] = []
             for index, item in enumerate(queue):
+                if item.get('_steering_pending'):
+                    break
                 lease_expires_at = item.get('_steering_lease_expires_at')
                 if isinstance(lease_expires_at, int):
                     if lease_expires_at > now:
