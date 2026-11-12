@@ -2153,6 +2153,9 @@ class RuntimeConnectionHandler(handler.Handler):
                 result = await self.ap.tool_mgr.execute_func_call(
                     **execute_kwargs,
                 )
+                # Loaders may return Pydantic models (e.g. MCP list[ContentElement]);
+                # the action contract requires plain JSON values.
+                result = _serialize_plugin_api_result(result)
                 if is_runner_call:
                     return handler.ActionResponse.success(data={'result': result})
                 return handler.ActionResponse.success(data={'tool_response': result})
