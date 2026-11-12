@@ -18,6 +18,7 @@ from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 
 from pkg.config import DEFAULT_MAX_TOOL_RESULT_CHARS
+from pkg.messages import normalize_provider_message_roles
 
 TOOL_RESULT_TRUNCATION_MARKER = "tool result truncated"
 TOOL_RESULT_REFERENCE_MARKER = "tool result references"
@@ -209,7 +210,7 @@ async def invoke_with_fallback(
         try:
             response = await api.invoke_llm(
                 llm_model_uuid=model_id,
-                messages=messages,
+                messages=normalize_provider_message_roles(messages),
                 funcs=tools or [],
                 remove_think=remove_think,
                 reasoning_level=(reasoning_levels or {}).get(model_id, "provider_default"),
@@ -250,7 +251,7 @@ async def invoke_with_fallback_result(
                 invoke = api.invoke_llm
             response = await invoke(
                 llm_model_uuid=model_id,
-                messages=messages,
+                messages=normalize_provider_message_roles(messages),
                 funcs=tools or [],
                 remove_think=remove_think,
                 reasoning_level=(reasoning_levels or {}).get(model_id, "provider_default"),
@@ -369,7 +370,7 @@ class StreamingModelCaller:
                     stream_invoke = self.api.invoke_llm_stream
                 stream = stream_invoke(
                     llm_model_uuid=model_id,
-                    messages=self.messages,
+                    messages=normalize_provider_message_roles(self.messages),
                     funcs=self.tools,
                     remove_think=self.remove_think,
                     reasoning_level=self.reasoning_levels.get(model_id, "provider_default"),

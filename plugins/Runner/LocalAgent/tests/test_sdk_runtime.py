@@ -397,13 +397,14 @@ async def test_real_sdk_authorized_multikb_rerank_reaches_model(sdk_runtime):
     rerank_call = next(data for action, data in sdk_runtime.calls if action == "rerank")
     assert rerank_call["documents"] == ["kb-a fact", "kb-b fact"]
     model_call = next(data for action, data in sdk_runtime.calls if action == "invoke")
-    rag = next(
-        json.loads(message["content"])
-        for message in model_call["messages"]
-        if isinstance(message.get("content"), str) and '"langbot_retrieved_context"' in message["content"]
-    )
+    # RAG is user-role data merged in front of the current user message.
+    current = model_call["messages"][-1]
+    assert current["role"] == "user"
+    rag_text, user_text = current["content"].split("\n\n", 1)
+    rag = json.loads(rag_text)
+    assert rag["type"] == "langbot_retrieved_context"
     assert [chunk["content"] for chunk in rag["data"]["chunks"]] == ["kb-b fact"]
-    assert model_call["messages"][-1]["content"] == "Fixture question"
+    assert user_text == "Fixture question"
 
 
 @pytest.mark.asyncio
