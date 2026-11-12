@@ -18,7 +18,13 @@ pip install uv
 uv sync
 ```
 
-デフォルトのインストールにはオプションの SeekDB サポートは含まれません。SeekDB ベクトルストアまたは組み込み埋め込みモデルを使用する場合は、次を実行します：
+デフォルトのインストールにはオプションのベクトルストアは含まれません。次のバックエンドを使う場合は、`uv sync` に対応する extra を付けてください（組み合わせ可能）：
+
+| バックエンド | extra |
+| --- | --- |
+| SeekDB ベクトルストア / 組み込み埋め込みモデル | `seekdb` |
+| Milvus | `milvus` |
+| Valkey Search（Windows 非対応） | `valkey` |
 
 ```bash
 uv sync --extra seekdb

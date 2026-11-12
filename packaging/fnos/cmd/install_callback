@@ -150,7 +150,7 @@ if [ ! -d "${VENV_DIR}" ]; then
 fi
 
 # --- Sync dependencies (install into the relocated venv) ---
-if ! UV_PROJECT_ENVIRONMENT="${VENV_DIR}" "${UV_BIN}" sync --extra seekdb >> "${DEBUG_LOG}" 2>&1; then
+if ! UV_PROJECT_ENVIRONMENT="${VENV_DIR}" "${UV_BIN}" sync --extra seekdb --extra milvus --extra valkey >> "${DEBUG_LOG}" 2>&1; then
     echo "Dependency sync failed. Check network connectivity. See ${DEBUG_LOG}" > "${TRIM_TEMP_LOGFILE}"
     exit 1
 fi

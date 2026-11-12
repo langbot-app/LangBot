@@ -89,15 +89,15 @@ ENV UV_NO_CACHE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
-# The default image leaves out the optional SeekDB extra (published separately
-# as the *-seekdb tags, see the langbot-seekdb target below) and ChromaDB's
-# bundled ONNX MiniLM / Kubernetes client stack. LangBot always passes its own
-# embeddings to Chroma and only uses the embedded PersistentClient, so neither
-# is ever imported by the default image.
-ARG UV_SKIP="--no-install-package onnxruntime --no-install-package sympy --no-install-package mpmath \
-    --no-install-package coloredlogs --no-install-package humanfriendly --no-install-package flatbuffers \
-    --no-install-package kubernetes --no-install-package requests-oauthlib --no-install-package oauthlib \
-    --no-install-package durationpy"
+# The default image leaves out the optional vector-store extras (seekdb,
+# milvus, valkey; published separately as the *-<extra> tags, see the
+# langbot-extra target below) and ChromaDB's bundled ONNX MiniLM / Kubernetes
+# client stack. LangBot always passes its own embeddings to Chroma and only uses
+# the embedded PersistentClient, so neither is ever imported by the default image.
+ARG UV_SKIP_ONNX="--no-install-package onnxruntime --no-install-package sympy --no-install-package mpmath \
+    --no-install-package coloredlogs --no-install-package humanfriendly --no-install-package flatbuffers"
+ARG UV_SKIP_K8S="--no-install-package kubernetes --no-install-package requests-oauthlib \
+    --no-install-package oauthlib --no-install-package durationpy"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libc6-dev \
@@ -107,10 +107,10 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
-RUN uv sync --frozen --no-dev --no-install-project --extra audio $UV_SKIP
+RUN uv sync --frozen --no-dev --no-install-project --extra audio $UV_SKIP_ONNX $UV_SKIP_K8S
 
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra audio $UV_SKIP
+RUN uv sync --frozen --no-dev --extra audio $UV_SKIP_ONNX $UV_SKIP_K8S
 
 FROM python:3.12-slim-trixie AS langbot
 
@@ -175,15 +175,31 @@ COPY --from=node /app/web/dist ./web/dist
 
 CMD [ "uv", "run", "--no-sync", "main.py" ]
 
-# rockchin/langbot:<tag>-seekdb: the default image plus the optional SeekDB
-# vector database / built-in embedding support (pyseekdb, pylibseekdb, and the
-# ONNX runtime its embedding model needs). Added as one layer on top, so the
-# two variants share every other layer in registries and on hosts.
-FROM langbot AS langbot-seekdb
+# rockchin/langbot:<tag>-<extra>: the default image plus one optional
+# vector-store extra, added as a single layer on top so every variant shares the
+# default image's layers in registries and on hosts.
+#   seekdb  SeekDB vector store + built-in embedding (needs the ONNX runtime)
+#   milvus  Milvus vector store (pymilvus, pandas)
+#   valkey  Valkey Search vector store (valkey-glide)
+# Build with: docker build --target langbot-extra --build-arg LANGBOT_EXTRA=milvus .
+FROM langbot AS langbot-extra
 
-RUN UV_NO_CACHE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
-        uv sync --frozen --no-dev --extra audio --extra seekdb \
-    && uv run --no-sync python -c "import pyseekdb, onnxruntime"
+ARG LANGBOT_EXTRA
+ARG UV_SKIP_ONNX="--no-install-package onnxruntime --no-install-package sympy --no-install-package mpmath \
+    --no-install-package coloredlogs --no-install-package humanfriendly --no-install-package flatbuffers"
+ARG UV_SKIP_K8S="--no-install-package kubernetes --no-install-package requests-oauthlib \
+    --no-install-package oauthlib --no-install-package durationpy"
 
-# Default build target (plain `docker build .`): the image without SeekDB.
+RUN set -eu; \
+    case "$LANGBOT_EXTRA" in \
+        seekdb) skip="$UV_SKIP_K8S"; check="import pyseekdb, onnxruntime" ;; \
+        milvus) skip="$UV_SKIP_ONNX $UV_SKIP_K8S"; check="import pymilvus" ;; \
+        valkey) skip="$UV_SKIP_ONNX $UV_SKIP_K8S"; check="import glide" ;; \
+        *) echo "LANGBOT_EXTRA must be one of: seekdb, milvus, valkey" >&2; exit 1 ;; \
+    esac; \
+    UV_NO_CACHE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
+        uv sync --frozen --no-dev --extra audio --extra "$LANGBOT_EXTRA" $skip; \
+    uv run --no-sync python -c "$check"
+
+# Default build target (plain `docker build .`): the image without optional extras.
 FROM langbot

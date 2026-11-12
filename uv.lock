@@ -2158,7 +2158,6 @@ dependencies = [
     { name = "nakuru-project-idk" },
     { name = "ollama" },
     { name = "openai" },
-    { name = "pandas" },
     { name = "pgvector" },
     { name = "pillow" },
     { name = "pip" },
@@ -2166,7 +2165,6 @@ dependencies = [
     { name = "pycryptodome" },
     { name = "pydantic" },
     { name = "pyjwt" },
-    { name = "pymilvus" },
     { name = "pynacl" },
     { name = "pypdf" },
     { name = "python-docx" },
@@ -2189,7 +2187,6 @@ dependencies = [
     { name = "tiktoken" },
     { name = "urllib3" },
     { name = "uv" },
-    { name = "valkey-glide", marker = "sys_platform != 'win32'" },
     { name = "webauthn" },
     { name = "websockets" },
     { name = "xxhash" },
@@ -2199,9 +2196,15 @@ dependencies = [
 audio = [
     { name = "pilk" },
 ]
+milvus = [
+    { name = "pymilvus" },
+]
 seekdb = [
     { name = "pylibseekdb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or sys_platform == 'linux'" },
     { name = "pyseekdb" },
+]
+valkey = [
+    { name = "valkey-glide", marker = "sys_platform != 'win32'" },
 ]
 
 [package.dev-dependencies]
@@ -2257,7 +2260,6 @@ requires-dist = [
     { name = "nakuru-project-idk", specifier = ">=0.0.2.1" },
     { name = "ollama", specifier = ">=0.4.8" },
     { name = "openai", specifier = ">1.0.0" },
-    { name = "pandas", specifier = ">=2.2.2" },
     { name = "pgvector", specifier = ">=0.4.1" },
     { name = "pilk", marker = "extra == 'audio'", specifier = ">=0.1.0" },
     { name = "pillow", specifier = ">=13.0.0" },
@@ -2267,7 +2269,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">2.0" },
     { name = "pyjwt", specifier = ">=2.15.0" },
     { name = "pylibseekdb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'seekdb') or (sys_platform == 'linux' and extra == 'seekdb')", specifier = "==1.4.0" },
-    { name = "pymilvus", specifier = ">=2.6.4" },
+    { name = "pymilvus", marker = "extra == 'milvus'", specifier = ">=2.6.4" },
     { name = "pynacl", specifier = ">=1.5.0" },
     { name = "pypdf", specifier = ">=6.0.0" },
     { name = "pyseekdb", marker = "extra == 'seekdb'", specifier = "==1.4.0.post1" },
@@ -2291,12 +2293,12 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.9.0" },
     { name = "urllib3", specifier = ">=2.8.0" },
     { name = "uv", specifier = ">=0.13.4" },
-    { name = "valkey-glide", marker = "sys_platform != 'win32'", specifier = ">=2.5.2,<3.0.0" },
+    { name = "valkey-glide", marker = "sys_platform != 'win32' and extra == 'valkey'", specifier = ">=2.5.2,<3.0.0" },
     { name = "webauthn", specifier = ">=3.0.0" },
     { name = "websockets", specifier = ">=15.0.1" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
-provides-extras = ["audio", "seekdb"]
+provides-extras = ["audio", "milvus", "valkey", "seekdb"]
 
 [package.metadata.requires-dev]
 dev = [

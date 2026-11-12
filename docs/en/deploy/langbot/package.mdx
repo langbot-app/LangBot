@@ -40,6 +40,17 @@ macOS 14 ARM64 support plan. Because of the current `pyseekdb` package
 metadata, the extra also fails to resolve on macOS 14 ARM64 for server-only
 use. These platform limits do not affect LangBot when SeekDB is not installed.
 
+## Optional Milvus / Valkey Search support
+
+The Milvus and Valkey Search vector stores are optional too and are not part of the default installation. Start LangBot with the matching extra to use them (extras can be combined, such as `langbot[milvus,audio]`):
+
+```bash
+uvx --from 'langbot[milvus]@latest' langbot
+uvx --from 'langbot[valkey]@latest' langbot
+```
+
+The `valkey` extra depends on `valkey-glide`, which has no Windows build, so Valkey Search is not available on Windows.
+
 ## Optional Voice Transcoding Support (SILK / WeChat Native Voice)
 
 If you need native voice bubbles on platforms like WeChat (SILK encoding) or audio transcoding support, make sure `ffmpeg` is installed on your system and launch LangBot with the `audio` extra:

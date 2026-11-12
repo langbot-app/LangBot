@@ -237,7 +237,7 @@ class TestImportGuard:
     def test_constructor_raises_when_unavailable(self, monkeypatch):
         mod = get_valkey_module()
         monkeypatch.setattr(mod, 'VALKEY_SEARCH_AVAILABLE', False)
-        with pytest.raises(ImportError, match='valkey-glide'):
+        with pytest.raises(ImportError, match="'valkey' extra"):
             mod.ValkeySearchVectorDatabase(ap=None)
 
 
