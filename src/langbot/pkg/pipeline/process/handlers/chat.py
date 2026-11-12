@@ -16,11 +16,13 @@ from ... import plugin_diagnostics
 import langbot_plugin.api.entities.events as events
 from ....agent.runner.config_resolver import RunnerConfigResolver
 from ....agent.runner import config_schema
+from ....agent.runner.session_registry import pending_steering_outcome, release_steering_claim
 from ....agent.runner.errors import (
     RunnerExecutionError,
     RunnerNotFoundError,
     RunnerNotAuthorizedError,
 )
+from ....platform.stream_output import stream_output_supported
 from ....utils import runner as runner_utils
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -144,12 +146,17 @@ class ChatMessageHandler(handler.MessageHandler):
                         )
                         claimed = False
 
+                    outcome = pending_steering_outcome(query) if claimed else None
+                    if outcome is not None and not await outcome:
+                        release_steering_claim(query)
+                        claimed = False
+
                     if claimed:
                         yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
                         return
 
                 try:
-                    is_stream = await query.adapter.is_stream_output_supported()
+                    is_stream = await stream_output_supported(query.adapter, query.message_event)
                 except AttributeError:
                     is_stream = False
 

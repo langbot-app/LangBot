@@ -30,6 +30,7 @@ AggregationKey = tuple[
     str | None,
     str,
     int | str,
+    int | str,
 ]
 
 
@@ -91,8 +92,13 @@ class MessageAggregator:
         launcher_type: provider_session.LauncherTypes,
         launcher_id: int | str,
         pipeline_uuid: str | None,
+        sender_id: int | str,
     ) -> AggregationKey:
-        """Build a key that cannot alias another Workspace, bot, or pipeline."""
+        """Build a key that cannot alias another Workspace, bot, pipeline, or sender.
+
+        A group shares one launcher, but only one user's consecutive messages may
+        merge: the merged query is answered as the first message's sender.
+        """
 
         return (
             execution_context.instance_uuid,
@@ -102,6 +108,7 @@ class MessageAggregator:
             pipeline_uuid,
             launcher_type.value,
             launcher_id,
+            sender_id,
         )
 
     async def _get_aggregation_config(
@@ -194,6 +201,7 @@ class MessageAggregator:
             launcher_type,
             launcher_id,
             pipeline_uuid,
+            sender_id,
         )
         pending_msg = PendingMessage(
             execution_context=execution_context,
@@ -377,6 +385,7 @@ class MessageAggregator:
             base_msg.launcher_type,
             base_msg.launcher_id,
             base_msg.pipeline_uuid,
+            base_msg.sender_id,
         )
         for message in messages[1:]:
             message_key = self._get_aggregation_key(
@@ -385,6 +394,7 @@ class MessageAggregator:
                 message.launcher_type,
                 message.launcher_id,
                 message.pipeline_uuid,
+                message.sender_id,
             )
             if message_key != base_key or message.execution_context != base_msg.execution_context:
                 raise ExecutionContextMismatchError('Cannot merge pending messages from different execution scopes')

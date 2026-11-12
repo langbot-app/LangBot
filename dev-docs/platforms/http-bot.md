@@ -208,7 +208,9 @@ POST /bots/{bot_uuid}/sync
 
 This is **lossy** (you lose `sequence` / streaming boundaries) and blocks up to
 `callback_timeout × 4` seconds. Prefer the callback model for anything
-real-time or multi-part. Only one in-flight `/sync` per `session_id`.
+real-time or multi-part. Only one in-flight `/sync` per `session_id`. The waiter only
+collects replies to its own inbound message, which always runs as its own turn;
+proactive sends carry no source message and are matched by session and type.
 
 Collection waits for both a final reply and the inbound listener to finish. An
 Agent's text reply does not end collection while that Agent is still exporting

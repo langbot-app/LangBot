@@ -8,6 +8,7 @@ import asyncio
 
 import pytest
 
+from langbot.pkg.platform.ingress_dedup import InboundDeliveries
 from langbot.pkg.api.http.context import ExecutionContext
 
 TEST_CONTEXT = ExecutionContext(
@@ -37,6 +38,7 @@ def make_bot(event_bindings: list[dict], config=None, agent=None):
     manager = FakeTelemetryManager(config)
     counters = ExecutionCounters(manager)
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(
         uuid='bot-1',
         adapter='aiocqhttp',

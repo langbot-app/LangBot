@@ -13,6 +13,7 @@ from langbot.libs.wecom_api.api import (
 async def test_wecom_extended_client_timeout_is_still_bounded() -> None:
     client = object.__new__(WecomClient)
     client._http_clients = {}
+    client._processing_tasks = set()
 
     try:
         async with client._http_client_context(unbounded_timeout=True) as http_client:

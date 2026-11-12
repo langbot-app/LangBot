@@ -58,7 +58,7 @@ async def test_write_event_log_normalizes_timestamp(event_log_writer, scale):
 @pytest.mark.parametrize('scale', [1, 1000, 1_000_000])
 async def test_steering_dropped_audit_normalizes_timestamp(event_log_writer, scale):
     journal, append_event = event_log_writer
-    await journal.write_steering_dropped_audits([{'event': {'event_time': 1_790_000_000 * scale}}], 'run', 'runner')
+    await journal.write_unread_steering_audits([{'event': {'event_time': 1_790_000_000 * scale}}], 'run', 'runner')
     assert append_event.call_args.kwargs['event_type'] == 'steering.dropped'
     assert append_event.call_args.kwargs['event_time'] == datetime.datetime.fromtimestamp(
         1_790_000_000, datetime.timezone.utc
@@ -69,7 +69,7 @@ async def test_steering_dropped_audit_normalizes_timestamp(event_log_writer, sca
 @pytest.mark.parametrize('value', [None, 0, True, 'invalid', float('inf'), 10**400])
 async def test_invalid_steering_time_does_not_prevent_audit(event_log_writer, value):
     journal, append_event = event_log_writer
-    await journal.write_steering_dropped_audits([{'event': {'event_time': value}}], 'run', 'runner')
+    await journal.write_unread_steering_audits([{'event': {'event_time': value}}], 'run', 'runner')
     append_event.assert_awaited_once()
     assert append_event.call_args.kwargs['event_time'] is None
 

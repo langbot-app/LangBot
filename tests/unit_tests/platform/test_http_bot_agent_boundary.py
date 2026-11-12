@@ -28,6 +28,7 @@ from langbot.pkg.agent.runner.platform_tools import (
 from langbot.pkg.box.runner import RunBoxBinding, RunnerBoxService, exported_message, prepare_input_files
 from langbot.pkg.box.service import BoxService
 from langbot.pkg.discover.engine import Component
+from langbot.pkg.platform.ingress_dedup import InboundDeliveries
 from langbot.pkg.platform.botmgr import RuntimeBot
 from langbot.pkg.platform.sources import http_bot_signing as signing
 from langbot.pkg.platform.sources.http_bot import HttpBotAdapter
@@ -61,6 +62,7 @@ async def test_signed_http_file_reaches_box_and_authorized_agent_reply_reaches_s
     adapter = discovered_adapter()
     adapter._enqueue_callback = AsyncMock(side_effect=AssertionError('sync reply must not use callback'))
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(uuid='http-test-bot')
     app = SimpleNamespace(
         logger=Mock(),
@@ -179,6 +181,7 @@ async def test_signed_http_file_reaches_box_and_authorized_agent_reply_reaches_s
 def test_live_http_reply_grants_fail_closed(denial):
     adapter = discovered_adapter()
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(uuid='http-test-bot')
     inbound, *_ = adapter._build_event({'session_id': 'proof-session', 'message': [{'type': 'Plain', 'text': 'hi'}]})
     event = envelope(bot, adapter, inbound)
@@ -224,6 +227,7 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
     adapter = discovered_adapter()
     adapter._enqueue_callback = AsyncMock()
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(uuid='http-test-bot')
     inbound, session_id, _, message_id = adapter._build_event(
         {'session_id': 'generated-session', 'message': [{'type': 'Plain', 'text': 'generate a file'}]}

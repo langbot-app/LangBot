@@ -63,6 +63,23 @@ class RunAuthorizationSnapshot(typing.TypedDict):
 SteeringQueueItem = dict[str, typing.Any]
 
 
+def pending_steering_outcome(query: typing.Any) -> asyncio.Future[bool] | None:
+    """Return the claim an active run holds on a Query, if any.
+
+    The future resolves to True once the run took the message over, or to False
+    when the run ended without reading it and the Query must run on its own.
+    """
+    outcome = getattr(query, '_steering_outcome', None)
+    return outcome if isinstance(outcome, asyncio.Future) else None
+
+
+def release_steering_claim(query: typing.Any) -> None:
+    """Return an unread Query to normal scheduling."""
+    object.__setattr__(query, '_steering_outcome', None)
+    # Its user message already entered the Transcript when it was claimed.
+    object.__setattr__(query, '_steering_released', True)
+
+
 class AgentRunSession(typing.TypedDict):
     """Session for an active agent runner execution.
 
@@ -87,6 +104,7 @@ class AgentRunSession(typing.TypedDict):
     status: AgentRunSessionStatus
     reply_streams: typing.Any
     steering_queue: list[SteeringQueueItem]
+    steering_outcomes: typing.NotRequired[dict[str, asyncio.Future[bool]]]
     processor_type: typing.NotRequired[str | None]
     processor_id: typing.NotRequired[str | None]
     trigger_actor: typing.NotRequired[str | None]
@@ -311,8 +329,14 @@ class AgentRunSessionRegistry:
         thread_id: str | None = None,
         binding_id: str | None = None,
         eligible_run_ids: set[str] | None = None,
+        actor_id: str | None = None,
     ) -> str | None:
-        """Find the oldest active run that can accept steering for a conversation."""
+        """Find the oldest active run that can accept steering for a conversation.
+
+        ``actor_id`` limits the match to runs started by that actor: a run answers
+        the message that started it, so input from another group member would be
+        answered to the wrong person.
+        """
         async with self._lock:
             candidates: list[tuple[int, str]] = []
             for run_id, session in self._sessions.items():
@@ -320,6 +344,8 @@ class AgentRunSessionRegistry:
                 if eligible_run_ids is not None and run_id not in eligible_run_ids:
                     continue
                 if binding_id is not None and authorization.get('binding_id') != binding_id:
+                    continue
+                if actor_id is not None and authorization.get('actor_id') != actor_id:
                     continue
                 if session.get('runner_id') != runner_id:
                     continue
@@ -395,8 +421,12 @@ class AgentRunSessionRegistry:
         self,
         run_id: str,
         item: SteeringQueueItem,
+        outcome: asyncio.Future[bool] | None = None,
     ) -> bool:
-        """Append one steering item to an active run queue."""
+        """Append one steering item to an active run queue.
+
+        ``outcome`` reports whether the run read the item before it ended.
+        """
         async with self._lock:
             session = self._sessions.get(run_id)
             if session is None:
@@ -404,6 +434,8 @@ class AgentRunSessionRegistry:
             if len(session['steering_queue']) >= MAX_STEERING_QUEUE_ITEMS:
                 return False
             session['steering_queue'].append(copy.deepcopy(item))
+            if outcome is not None:
+                session.setdefault('steering_outcomes', {})[item['event']['event_id']] = outcome
             session['status']['last_activity_at'] = int(time.time())
             return True
 
@@ -435,8 +467,20 @@ class AgentRunSessionRegistry:
             count = max(0, min(count, len(queue), 100))
             items = [copy.deepcopy(item) for item in queue[:count]]
             del queue[:count]
+            for item in items:
+                self.settle_steering(session, item, read=True)
             session['status']['last_activity_at'] = int(time.time())
             return items
+
+    @staticmethod
+    def settle_steering(session: AgentRunSession, item: SteeringQueueItem, *, read: bool) -> bool:
+        """Report one item's outcome; False when no Query is waiting for it."""
+        event_id = (item.get('event') or {}).get('event_id')
+        outcome = session.get('steering_outcomes', {}).pop(event_id, None)
+        if outcome is None or outcome.done():
+            return False
+        outcome.set_result(read)
+        return True
 
     def is_resource_allowed(
         self,
@@ -532,7 +576,9 @@ class AgentRunSessionRegistry:
                     stale_run_ids.append(run_id)
 
             for run_id in stale_run_ids:
-                del self._sessions[run_id]
+                session = self._sessions.pop(run_id)
+                for item in session.get('steering_queue', []):
+                    self.settle_steering(session, item, read=False)
                 cleaned += 1
 
         return cleaned

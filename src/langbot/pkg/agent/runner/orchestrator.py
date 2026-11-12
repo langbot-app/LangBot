@@ -331,7 +331,11 @@ class AgentRunOrchestrator:
                 run_id=run_id,
                 runner_id=descriptor.id,
             )
-            if event.event_type == 'message.received' and event.conversation_id:
+            if (
+                event.event_type == 'message.received'
+                and event.conversation_id
+                and getattr(execution_query, '_steering_released', False) is not True
+            ):
                 await self.journal.write_user_transcript(
                     event=event,
                     event_log_id=event_log_id,
@@ -660,18 +664,20 @@ class AgentRunOrchestrator:
             if binding_box is not None and binding_box.run_id == run_id:
                 object.__delattr__(execution_query, '_box_binding')
             session = await self._session_registry.unregister(run_id)
+            # Messages claimed after the Runner's last pull run on their own,
+            # unless the user cancelled the turn they were added to.
+            unread_steering: dict[str, list] = {'released': [], 'dropped': []}
+            for item in session.get('steering_queue', []) if session else []:
+                cancelled = execution_outcome == 'cancelled'
+                waiting = self._session_registry.settle_steering(session, item, read=cancelled)
+                unread_steering['released' if waiting and not cancelled else 'dropped'].append(item)
             await reply_streams.close()
-            pending_steering = session.get('steering_queue', []) if session else []
-            if pending_steering:
+            for status, items in unread_steering.items():
                 try:
-                    await self.journal.write_steering_dropped_audits(
-                        pending_steering,
-                        run_id,
-                        descriptor.id,
-                    )
+                    await self.journal.write_unread_steering_audits(items, run_id, descriptor.id, status=status)
                 except Exception as exc:
                     self.ap.logger.warning(
-                        f'Failed to write dropped steering audit for run {run_id}: {exc}',
+                        f'Failed to write {status} steering audit for run {run_id}: {exc}',
                         exc_info=True,
                     )
 
@@ -780,6 +786,9 @@ class AgentRunOrchestrator:
         query: pipeline_query.Query,
     ) -> bool:
         """Claim a query as steering input for an active run when possible."""
+        if (query.variables or {}).get('_standalone_turn'):
+            # The sender waits for this message's own reply.
+            return False
         plan = self.query_bridge.build_plan(query)
         event = plan.event
         binding = plan.binding
@@ -801,6 +810,7 @@ class AgentRunOrchestrator:
             bot_id=event.bot_id,
             workspace_id=event.workspace_id,
             thread_id=event.thread_id,
+            actor_id=getattr(event.actor, 'actor_id', None),
         )
         if target_run_id is None:
             return False
@@ -812,8 +822,10 @@ class AgentRunOrchestrator:
             append_mcp_resource_context_to_event(execution_event, resource_addition)
 
         steering_item = self._build_steering_item(execution_event, target_run_id, descriptor.id)
-        if not await self._session_registry.enqueue_steering(target_run_id, steering_item):
+        outcome: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
+        if not await self._session_registry.enqueue_steering(target_run_id, steering_item, outcome):
             return False
+        object.__setattr__(query, '_steering_outcome', outcome)
 
         try:
             event_log_id = await self.journal.write_event_log(
@@ -831,7 +843,8 @@ class AgentRunOrchestrator:
                     },
                 },
             )
-            await self.journal.write_user_transcript(event, event_log_id)
+            if not getattr(query, '_steering_released', False):
+                await self.journal.write_user_transcript(event, event_log_id)
         except Exception as exc:
             self.ap.logger.warning(
                 f'Failed to persist steering event {event.event_id} for run {target_run_id}: {exc}',

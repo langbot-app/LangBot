@@ -5,6 +5,7 @@ import copy
 import traceback
 
 from ..core import app
+from ..agent.runner.session_registry import pending_steering_outcome, release_steering_claim
 from ..core import entities as core_entities
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 
@@ -136,7 +137,11 @@ class Controller:
                 # Commands must reach CommandHandler after the active run releases
                 # the session slot. They must never become Runner steering input.
                 return False
-            return await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+            claimed = await self.ap.agent_run_orchestrator.try_claim_steering_from_query(query)
+            if claimed:
+                # Group rules above may have claimed a copy of the queued Query.
+                object.__setattr__(original_query, '_steering_outcome', pending_steering_outcome(query))
+            return claimed
         except Exception as exc:
             self.ap.logger.warning(
                 f'Failed to claim query {query.query_id} as steering input: {exc}',
@@ -242,14 +247,25 @@ class Controller:
                     queries: list[pipeline_query.Query] = self.ap.query_pool.queries
 
                     for query in queries:
+                        outcome = pending_steering_outcome(query)
+                        if outcome is not None:
+                            if not outcome.done():
+                                # The active run owns this message until it reads it or ends.
+                                continue
+                            if outcome.result():
+                                claimed_steering_query = query
+                                break
+                            release_steering_claim(query)
+
                         session = await self.ap.sess_mgr.get_session(query)
                         # Debug logging removed from tight loop to prevent excessive log generation
                         # that can cause memory overflow in high-traffic scenarios
 
                         if session._semaphore.locked():
                             if await self._try_claim_steering_before_session_slot(query):
-                                claimed_steering_query = query
-                                break
+                                if pending_steering_outcome(query) is None:
+                                    claimed_steering_query = query
+                                    break
                             continue
 
                         # A stop command must cancel an active run even when the

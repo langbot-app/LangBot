@@ -60,6 +60,7 @@ def aggregation_key(
     launcher_id=12345,
     bot_uuid='test-bot',
     pipeline_uuid=None,
+    sender_id=12345,
 ):
     return (
         context.instance_uuid,
@@ -69,6 +70,7 @@ def aggregation_key(
         pipeline_uuid,
         launcher_type.value,
         launcher_id,
+        sender_id,
     )
 
 
@@ -252,6 +254,7 @@ class TestMessageAggregatorSessionId:
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id=45678,
             pipeline_uuid=None,
+            sender_id=1,
         )
 
         assert session_id == (
@@ -262,6 +265,7 @@ class TestMessageAggregatorSessionId:
             None,
             'person',
             45678,
+            1,
         )
 
     def test_session_id_different_launchers(self):
@@ -278,6 +282,7 @@ class TestMessageAggregatorSessionId:
             launcher_type=provider_session.LauncherTypes.PERSON,
             launcher_id=123,
             pipeline_uuid=None,
+            sender_id=1,
         )
 
         group_id = agg._get_aggregation_key(
@@ -286,6 +291,7 @@ class TestMessageAggregatorSessionId:
             launcher_type=provider_session.LauncherTypes.GROUP,
             launcher_id=123,
             pipeline_uuid=None,
+            sender_id=1,
         )
 
         assert person_id != group_id
@@ -613,6 +619,7 @@ class TestMessageAggregatorAddMessage:
             provider_session.LauncherTypes.PERSON,
             12345,
             'test-pipeline',
+            12345,
         )
         assert session_id not in agg.buffers or len(agg.buffers[session_id].messages) == 0
         app.query_pool.add_query.assert_awaited_once()
@@ -926,6 +933,26 @@ class TestMessageAggregatorFlushAll:
         ] == [(12345, 'first', context), (67890, 'second', context)]
 
 
+class TestMessageAggregatorSenderIsolation:
+    """One group shares a launcher, but every user keeps their own debounce buffer."""
+
+    @pytest.mark.asyncio
+    async def test_group_members_talking_at_once_are_not_merged(self):
+        app = make_aggregator_app()
+        enable_aggregation(app)
+        agg = get_aggregator_module().MessageAggregator(app)
+        context = execution_context(pipeline_uuid='test-pipeline')
+
+        for sender_id, text in ((1, 'a1'), (2, 'b1'), (1, 'a2'), (2, 'b2')):
+            kwargs = scoped_message_kwargs(context, launcher_id=777, text=text)
+            kwargs.update(launcher_type=provider_session.LauncherTypes.GROUP, sender_id=sender_id)
+            await agg.add_message(**kwargs)
+        await agg.flush_all()
+
+        sent = [call.kwargs for call in app.query_pool.add_query.await_args_list]
+        assert [(item['sender_id'], str(item['message_chain'])) for item in sent] == [(1, 'a1\na2'), (2, 'b1\nb2')]
+
+
 class TestMessageAggregatorWorkspaceIsolation:
     """Regression coverage for fail-closed and cross-workspace behavior."""
 
@@ -979,6 +1006,7 @@ class TestMessageAggregatorWorkspaceIsolation:
                 'bot',
                 'pipeline',
                 'person',
+                index,
                 index,
             ): object()
             for index in range(1_000)

@@ -117,6 +117,7 @@ class WecomClient:
             'example': [],
         }
         self._http_clients: dict[bool, httpx.AsyncClient] = {}
+        self._processing_tasks: set[asyncio.Task] = set()
 
     @asynccontextmanager
     async def _http_client_context(self, *, unbounded_timeout: bool = False):
@@ -135,6 +136,9 @@ class WecomClient:
         yield client
 
     async def close(self) -> None:
+        for task in self._processing_tasks:
+            task.cancel()
+        self._processing_tasks.clear()
         clients = list(self._http_clients.values())
         self._http_clients.clear()
         if clients:
@@ -396,7 +400,13 @@ class WecomClient:
                 if message_data:
                     event = WecomEvent.from_payload(message_data)  # 转换为 WecomEvent 对象
                     if event:
-                        await self._handle_message(event)
+                        # WeCom redelivers and drops the connection after five seconds,
+                        # which would cancel this request while it is still answering.
+                        from langbot.pkg.core.task_boundary import create_detached_task
+
+                        task = create_detached_task(self._process_message(event))
+                        self._processing_tasks.add(task)
+                        task.add_done_callback(self._processing_tasks.discard)
 
                 return 'success'
         except Exception as e:
@@ -421,6 +431,12 @@ class WecomClient:
             return func
 
         return decorator
+
+    async def _process_message(self, event: WecomEvent):
+        try:
+            await self._handle_message(event)
+        except Exception:
+            await self.logger.error(f'WeCom message processing failed: {traceback.format_exc()}')
 
     async def _handle_message(self, event: WecomEvent):
         """

@@ -981,6 +981,50 @@ async def test_lark_webhook_cardkit_submission_uses_async_card_update_only():
     assert response == {'toast': {'type': 'success', 'content': 'Submitted'}}
 
 
+def message_webhook_request(message_id: str) -> SimpleNamespace:
+    payload = {
+        'schema': '2.0',
+        'header': {'event_type': 'im.message.receive_v1', 'event_id': message_id},
+        'event': {
+            'sender': {'sender_id': {'open_id': 'user-1'}},
+            'message': {
+                'message_id': message_id,
+                'create_time': '1714000000000',
+                'chat_type': 'p2p',
+                'message_type': 'text',
+                'content': '{"text":"hello"}',
+            },
+        },
+    }
+    return signed_webhook_request(payload, 'test-encrypt-key')
+
+
+@pytest.mark.asyncio
+async def test_lark_webhook_acknowledges_message_before_the_answer():
+    """Lark cancels and redelivers a callback that waits for the answer."""
+    adapter = make_adapter({'enable-webhook': True, 'encrypt-key': 'test-encrypt-key'})
+    adapter._get_bot_open_id = AsyncMock(return_value='bot-open-id')
+    started, finish = asyncio.Event(), asyncio.Event()
+
+    async def listener(event, adapter):
+        started.set()
+        await finish.wait()
+
+    adapter.register_listener(platform_events.MessageReceivedEvent, listener)
+    response = await asyncio.wait_for(adapter.handle_unified_webhook('b', '', message_webhook_request('m1')), 1)
+    assert response == {'code': 200, 'message': 'ok'}
+    await asyncio.wait_for(started.wait(), 1)
+
+    with patch.object(type(adapter), '_MAX_INBOUND_EVENTS', 1):
+        # An event that cannot be admitted stays unacknowledged for redelivery.
+        _, status = await adapter.handle_unified_webhook('b', '', message_webhook_request('m2'))
+    assert status == 503
+    finish.set()
+    await asyncio.gather(*adapter.inbound_event_tasks)
+    await asyncio.sleep(0)
+    assert not adapter.inbound_event_tasks
+
+
 @pytest.mark.asyncio
 async def test_lark_webhook_rejects_unsigned_callback_with_no_encrypt_key():
     """A bot without either callback credential must reject inbound events.

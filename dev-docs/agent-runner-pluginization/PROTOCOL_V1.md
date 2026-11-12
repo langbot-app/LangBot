@@ -114,7 +114,7 @@ class RunnerCapabilities(BaseModel):
 - `multimodal_input`: runner 可以处理非纯文本 input / attachment。
 - `skill_authoring`:（降级为便捷开关，非访问硬前提）声明该 runner 期望使用 LangBot skill 工具链。skill 本身通过**统一 tool 授权**获得——发现走 `list_skills` / `langbot_list_assets`，激活/注册走 `activate` / `register_skill`，操作走 native exec/read/write，全部计入 `resource_policy.allowed_tool_names`。该 capability 仅作为「一键授权这组 skill tool + sandbox」的便捷开关，不再单独决定 skill 是否可用。
 - `interrupt`: runner 支持取消或中断。
-- `steering`: runner 支持在 turn 边界通过 Host pull API 消费同 conversation 在途追加消息。
+- `steering`: runner 支持在 turn 边界通过 Host pull API 消费同 conversation、同一发送者（actor）的在途追加消息。
 - `interactions`: runner 可以请求 Host 展示结构化交互，并处理后续 `interaction.submitted` 事件。
 
 Capabilities 字段全部是 `bool`，未知 key 禁止进入 typed manifest。早期草案里的上下文/会话类 capability 已删除；对应语义由 event-first context 和 runner-owned context 原则表达。
@@ -638,7 +638,7 @@ cache token counters，Host / SDK 不应丢弃这些字段。没有 usage 的 pr
 
 `steering_pull(mode="all")` 是推荐默认：Host 按 claim 顺序返回全部 pending steering 输入并清空对应队列。`mode="one-at-a-time"` 仅用于 runner 主动节流，每次返回一条。Host 不合并多条用户消息；runner 负责在 turn 边界决定模型侧格式。
 
-Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。若 run 结束时仍有已 claim 但未 pull 的 steering 输入，Host 追加 `steering.dropped` EventLog 记录，`metadata.steering.status="dropped"` 并引用 `source_event_id`；这不是用户消息事实的删除，只是 dispatch 终态。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
+Steering 审计使用 EventLog 而不是 Transcript schema 扩展：被 active run 吸收的原始 `message.received` 事件保留原事件类型，并在 `metadata.steering` 标记 `status="queued"`、`trigger_behavior="absorbed_into_active_run"`、`claimed_by_run_id`、`claimed_runner_id`、`claimed_at`。Runner 成功 pull 后，Host 追加 `steering.injected` EventLog 记录，`metadata.steering.status="injected"` 并引用 `source_event_id`。若 run 结束时仍有已 claim 但未 pull 的 steering 输入，Host 追加 `steering.released` EventLog 记录并引用 `original_event_id`，该消息回到正常调度、作为独立 run 处理，且不会重复写入 Transcript；只有 run 被取消，或没有可恢复的 Query（事件直连入口）时才写 `steering.dropped` 终态。Transcript 继续只表示会话事实，不承担 dispatch 行为标记。
 
 `state` 与 `storage` 的建议边界：`state` 放小型 JSON（conversation / actor / subject / runner），`storage` 放 blob 或较大数据（插件私有数据、workspace 数据、checkpoint）。
 

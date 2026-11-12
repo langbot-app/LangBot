@@ -39,8 +39,9 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
 
 职责划分遵循既有原则：Host 拥有事件路由和会话事实源，runner 拥有 turn 边界。
 
-- **Host 侧**：BindingResolver / dispatch 层识别"同 conversation 存在 active run
-  且 runner 声明支持 steering"的新消息事件，将其写入 run-scoped steering queue，
+- **Host 侧**：BindingResolver / dispatch 层识别"同 conversation 存在由同一发送者
+  发起的 active run 且 runner 声明支持 steering"的新消息事件（run 的回复指向发起者，
+  群内其他成员的消息按正常路径排队），将其写入 run-scoped steering queue，
   并标记该事件已被在途 run 认领（不再触发新 run，避免破坏 §13 的基数约束）。
   事件仍照常进 EventLog / Transcript（事实源不变，改变的只是触发行为）。
 - **Runner 侧**：在 turn 边界（tool batch 完成后、下一次模型调用前，以及 run
@@ -52,8 +53,9 @@ pi-agent-core 区分两个队列，注入时机都在 turn 边界，不打断进
 - **回执**：被 steering 消费的事件通过 EventLog 审计。原始 `message.received`
   记录在 `metadata.steering` 标记 queued/absorbed 与 `claimed_by_run_id`；
   runner 成功 pull 后，Host 追加 `steering.injected` 记录并引用源事件。
-  run 结束时仍未被 pull 的已 claim 输入，Host 追加 `steering.dropped` 记录作为
-  dispatch 终态；原始 Transcript 事实不删除。
+  被认领的 Query 在 run 读取之前仍保留在队列中；run 结束时仍未被 pull 的输入由 Host
+  追加 `steering.released` 记录并作为独立 run 继续处理。run 被取消时追加
+  `steering.dropped` 记录作为 dispatch 终态；原始 Transcript 事实不删除。
   Transcript 继续只表示会话事实，不扩展 dispatch 行为字段。
 
 已落地的协议面（最终定义归 PROTOCOL_V1）：
@@ -135,7 +137,7 @@ pi-agent-core 把 compaction 条目持久化进 session tree：摘要带
 
 | 项 | 归属 | 依赖 |
 | --- | --- | --- |
-| steering queue、事件认领、基础审计 | LangBot Host（dispatch / binding 层） | 已落地，含队列上限与未消费 dropped 终态 |
+| steering queue、事件认领、基础审计 | LangBot Host（dispatch / binding 层） | 已落地，含队列上限、未消费 released 与取消 dropped |
 | steering pull API + capability 位 | PROTOCOL_V1 + SDK proxy | 已落地 |
 | turn 边界拉取与注入 | langbot-local-agent | 已落地 |
 | local-agent 对 state API 的 checkpoint 读写 | langbot-local-agent | 已落地 |

@@ -106,8 +106,8 @@ MCP client
 Inbound platform messages enter through adapter-specific SDK callbacks. The common path is:
 
 1. A platform adapter under `pkg/platform/sources/` converts platform-specific events into SDK message/event entities.
-2. `RuntimeBot` in `pkg/platform/botmgr.py` applies pipeline routing rules and either discards the message, pushes it to webhooks, or sends it to the message aggregator.
-3. `MessageAggregator` batches/normalizes messages before adding a `Query` to `QueryPool`.
+2. `RuntimeBot` in `pkg/platform/botmgr.py` admits each native message once (`ingress_dedup.py`; identity is chat, sender, message ID and platform timestamp, so redelivered copies are ignored without serializing other messages), applies pipeline routing rules and either discards the message, pushes it to webhooks, or sends it to the message aggregator.
+3. `MessageAggregator` batches/normalizes one sender's consecutive messages before adding a `Query` to `QueryPool`.
 4. `Controller` in `pkg/pipeline/controller.py` selects queries subject to global pipeline concurrency and per-session concurrency.
 5. `RuntimePipeline` in `pkg/pipeline/pipelinemgr.py` runs configured pipeline stages using a responsibility-chain style executor that supports generator stages.
 6. The chat stage emits plugin events and projects the current query into the Runner Host orchestrator. The selected plugin Runner returns streaming or final results while the Host owns authorization, tools, telemetry, and conversation history.

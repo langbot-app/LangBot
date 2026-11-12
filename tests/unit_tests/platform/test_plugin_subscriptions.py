@@ -8,12 +8,14 @@ from unittest.mock import AsyncMock
 import pytest
 from langbot_plugin.api.entities.builtin.platform.events import MemberJoinedEvent
 
+from langbot.pkg.platform.ingress_dedup import InboundDeliveries
 from langbot.pkg.platform.botmgr import RuntimeBot
 from langbot.pkg.persistence.tenant_uow import PersistenceScope, PersistenceScopeBoundary
 
 
 def make_bot(subscriptions):
     bot = object.__new__(RuntimeBot)
+    bot._inbound_deliveries = InboundDeliveries()
     bot.bot_entity = SimpleNamespace(
         uuid='bot', adapter='aiocqhttp', event_bindings=[], plugin_processors=subscriptions
     )
