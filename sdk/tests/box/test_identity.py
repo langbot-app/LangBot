@@ -106,7 +106,9 @@ async def test_random_identity_fallback_never_cleans(tmp_path, monkeypatch, capl
     secondary.initialize = mock.AsyncMock()
     secondary.cleanup_orphaned_containers = mock.AsyncMock()
     backend.cleanup_orphaned_containers = mock.AsyncMock()
-    runtime = BoxRuntime(logging.getLogger(), backends=[backend, secondary], data_dir=unwritable)
+    runtime = BoxRuntime(
+        logging.getLogger(), backends=[backend, secondary], data_dir=unwritable
+    )
     with mock.patch.object(
         runtime, "_select_backend", mock.AsyncMock(return_value=backend)
     ):

@@ -434,7 +434,7 @@ async def test_live_workspace_limits_snapshot_capacity_timeout_and_kernel(sandbo
         fresh = await acquire('new-limits')
         timed = await box.execute_tool({'command': 'sleep 8', 'timeout_sec': 10}, fresh)
         assert timed['status'] == 'timed_out' and timed['duration_ms'] < 6500, timed
-        idle = await acquire('idle-limits')
+        await acquire('idle-limits')
         for _ in range(60):
             if not runtime.get_sessions():
                 break
