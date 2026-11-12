@@ -59,3 +59,13 @@ docker compose --profile all up -d
 docker compose --profile all pull
 docker compose --profile all up -d
 ```
+
+## SeekDB 版イメージ（任意）
+
+ダウンロードサイズを抑えるため、デフォルトイメージにはオプションの SeekDB 依存関係は含まれません。SeekDB をベクトルデータベースとして使う場合や「seekdb-内蔵」埋め込みモデルを使う場合は、`docker-compose.yaml` の `langbot` サービスのイメージだけを `-seekdb` サフィックス付きのタグに変更してください。プラグインランタイムと Box はそのままで構いません：
+
+- 安定版：`rockchin/langbot:latest-seekdb`、またはバージョン指定（例：`rockchin/langbot:vX.Y.Z-seekdb`）
+- Beta：`rockchin/langbot:beta-seekdb`
+- 中国本土向けミラー：`docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`
+
+リリースごとに、デフォルトイメージと対応する `-seekdb` イメージが同時に公開されます。変更後は上記と同じ手順で `pull` と `up -d` を再実行してください。

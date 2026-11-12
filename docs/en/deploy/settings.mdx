@@ -442,7 +442,7 @@ Treat the global API key, JWT secret, database credentials, S3 credentials, emai
 - `database.use` selects SQLite or PostgreSQL. A non-empty `database.postgresql.url` overrides the structured connection fields and preserves TLS/query options.
 - PostgreSQL pool and timeout settings bound shared runtime resources. `database.cloud_migration.operator_dsn_env` names the environment variable containing the operator-only migration DSN; keep that role separate from the runtime role.
 - `vdb.use` selects the vector backend. Configure only the selected backend. `runtime_cache_limit` bounds process-local collection/index handles.
-- `vdb.use: seekdb` requires `uv sync --extra seekdb` for a source deployment or `uvx --from 'langbot[seekdb]@latest' langbot` for a package deployment. The official Docker/Kubernetes image already includes the dependency and needs no additional build argument.
+- `vdb.use: seekdb` requires `uv sync --extra seekdb` for a source deployment or `uvx --from 'langbot[seekdb]@latest' langbot` for a package deployment. Docker/Kubernetes deployments need the `langbot` service on an image tag with the `-seekdb` suffix (for example `rockchin/langbot:latest-seekdb`); the default image does not include SeekDB.
 - `vdb.pgvector.use_business_database` reuses `database.postgresql`; `allowed_dimensions` controls the partial ANN indexes created by release migrations.
 - Valkey Search requires a Valkey server with the Search module, such as `valkey/valkey-bundle:9.1.0`.
 

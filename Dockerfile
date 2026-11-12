@@ -89,6 +89,16 @@ ENV UV_NO_CACHE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
 
+# The default image leaves out the optional SeekDB extra (published separately
+# as the *-seekdb tags, see the langbot-seekdb target below) and ChromaDB's
+# bundled ONNX MiniLM / Kubernetes client stack. LangBot always passes its own
+# embeddings to Chroma and only uses the embedded PersistentClient, so neither
+# is ever imported by the default image.
+ARG UV_SKIP="--no-install-package onnxruntime --no-install-package sympy --no-install-package mpmath \
+    --no-install-package coloredlogs --no-install-package humanfriendly --no-install-package flatbuffers \
+    --no-install-package kubernetes --no-install-package requests-oauthlib --no-install-package oauthlib \
+    --no-install-package durationpy"
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gcc libc6-dev \
     && python -m pip install --no-cache-dir uv \
@@ -97,12 +107,12 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
-RUN uv sync --frozen --no-dev --no-install-project --extra seekdb --extra audio
+RUN uv sync --frozen --no-dev --no-install-project --extra audio $UV_SKIP
 
 COPY src ./src
-RUN uv sync --frozen --no-dev --extra seekdb --extra audio
+RUN uv sync --frozen --no-dev --extra audio $UV_SKIP
 
-FROM python:3.12-slim-trixie
+FROM python:3.12-slim-trixie AS langbot
 
 # Keep testing packages isolated to the SQLite release with the WAL-reset fix.
 RUN printf 'deb http://deb.debian.org/debian forky main\n' > /etc/apt/sources.list.d/sqlite.list \
@@ -164,3 +174,16 @@ RUN if [ -n "$LANGBOT_BUILD_REVISION" ]; then python3 scripts/stamp_build_revisi
 COPY --from=node /app/web/dist ./web/dist
 
 CMD [ "uv", "run", "--no-sync", "main.py" ]
+
+# rockchin/langbot:<tag>-seekdb: the default image plus the optional SeekDB
+# vector database / built-in embedding support (pyseekdb, pylibseekdb, and the
+# ONNX runtime its embedding model needs). Added as one layer on top, so the
+# two variants share every other layer in registries and on hosts.
+FROM langbot AS langbot-seekdb
+
+RUN UV_NO_CACHE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never \
+        uv sync --frozen --no-dev --extra audio --extra seekdb \
+    && uv run --no-sync python -c "import pyseekdb, onnxruntime"
+
+# Default build target (plain `docker build .`): the image without SeekDB.
+FROM langbot

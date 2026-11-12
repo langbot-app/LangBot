@@ -49,7 +49,7 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 ### 使用 SeekDB
 
-官方镜像已经包含可选的 SeekDB 依赖，无需构建专用镜像或添加额外构建参数。将 `vdb.use` 配置为 `seekdb` 即可启用；不使用时保持默认的 `chroma`。
+默认镜像不包含可选的 SeekDB 依赖。如需将 SeekDB 用作向量数据库或使用其内置嵌入模型，请把 `langbot` Deployment 的镜像改为带 `-seekdb` 后缀的标签（如 `rockchin/langbot:latest-seekdb` 或 `rockchin/langbot:vX.Y.Z-seekdb`），再将 `vdb.use` 配置为 `seekdb`。插件运行时和 Box 继续使用默认镜像即可。不使用 SeekDB 时保持默认的 `chroma`。
 
 ## Box 沙箱运行时
 

@@ -49,9 +49,12 @@ For production, expose via Ingress + TLS (the manifest already includes commente
 
 ### Using SeekDB
 
-The official image already includes the optional SeekDB dependencies, so no
-dedicated image or additional build argument is required. Set `vdb.use` to
-`seekdb` to enable it, or keep the default `chroma` when it is not needed.
+The default image does not include the optional SeekDB dependencies. To use
+SeekDB as the vector store or its built-in embedding model, switch the `langbot`
+Deployment to an image tag with the `-seekdb` suffix (for example
+`rockchin/langbot:latest-seekdb` or `rockchin/langbot:vX.Y.Z-seekdb`), then set
+`vdb.use` to `seekdb`. The plugin runtime and Box keep the default image. Keep
+the default `chroma` when SeekDB is not needed.
 
 ## Box Sandbox Runtime
 

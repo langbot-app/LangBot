@@ -64,7 +64,7 @@ LangBot Models 是 LangBot 官方提供的模型服务。当您使用 LangBot Sp
 填入 `模型名称`、选择 `模型供应商`，然后提交即可。之后请在知识库中配置使用此模型。
 
 ### 使用 seekdb 内置嵌入模型（需要可选依赖）
-该模型无需填写请求参数。源码部署使用 `uv sync --extra seekdb`，包管理器部署使用 `uvx --from 'langbot[seekdb]@latest' langbot`；官方 Docker/Kubernetes 镜像已包含 SeekDB 依赖。原生部署的平台支持取决于 `pylibseekdb` wheel。
+该模型无需填写请求参数。源码部署使用 `uv sync --extra seekdb`，包管理器部署使用 `uvx --from 'langbot[seekdb]@latest' langbot`；Docker/Kubernetes 部署需使用带 `-seekdb` 后缀的官方镜像（如 `rockchin/langbot:latest-seekdb`），默认镜像不含 SeekDB。原生部署的平台支持取决于 `pylibseekdb` wheel。
 - 在”嵌入模型”页面选择「seekdb-内置」；
 - 点击「保存」即可立即使用；
 - 后续在知识库中选择该模型即可生效。

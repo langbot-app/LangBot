@@ -63,3 +63,13 @@ To try a beta instead of the stable setup above, download the [dev/4.11.x Compos
 docker compose --profile all pull
 docker compose --profile all up -d
 ```
+
+## SeekDB images (optional)
+
+The default image leaves out the optional SeekDB dependencies to keep downloads small. To use SeekDB as the vector store or the "seekdb-built-in" embedding model, change only the `langbot` service in `docker-compose.yaml` to an image tag with the `-seekdb` suffix; the plugin runtime and Box stay unchanged:
+
+- Stable: `rockchin/langbot:latest-seekdb`, or a specific version such as `rockchin/langbot:vX.Y.Z-seekdb`
+- Beta: `rockchin/langbot:beta-seekdb`
+- Mainland China mirror: `docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`
+
+Every release publishes the default image together with its `-seekdb` counterpart. After the change, run `pull` and `up -d` again as above.

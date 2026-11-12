@@ -49,7 +49,7 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 ### SeekDB を使用する場合
 
-公式イメージにはオプションの SeekDB 依存関係がすでに含まれているため、専用イメージや追加のビルド引数は不要です。`vdb.use` を `seekdb` に設定すると有効になり、不要な場合はデフォルトの `chroma` のまま使用できます。
+デフォルトイメージにはオプションの SeekDB 依存関係は含まれません。SeekDB をベクトルデータベースとして使う場合や組み込み埋め込みモデルを使う場合は、`langbot` Deployment のイメージを `-seekdb` サフィックス付きのタグ（例：`rockchin/langbot:latest-seekdb`、`rockchin/langbot:vX.Y.Z-seekdb`）に変更し、`vdb.use` を `seekdb` に設定してください。プラグインランタイムと Box はデフォルトイメージのままで構いません。SeekDB を使わない場合はデフォルトの `chroma` のままにしてください。
 
 ## Box サンドボックスランタイム
 

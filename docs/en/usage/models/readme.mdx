@@ -47,7 +47,7 @@ Embedding models are used to compute vector representations of messages. If you 
 Enter these four parameters: `Model Name`, `Model Provider`, `Request URL`, and `API Key`, then submit. After that, please configure the knowledge base to use this model.
 
 ### Using the seekdb Built-in Embedding Model (Optional Dependency Required)
-The model needs no request parameters. Use `uv sync --extra seekdb` for source deployments or `uvx --from 'langbot[seekdb]@latest' langbot` for package deployments. The official Docker/Kubernetes image already includes the SeekDB dependency. Native deployment support depends on the available `pylibseekdb` wheel.
+The model needs no request parameters. Use `uv sync --extra seekdb` for source deployments or `uvx --from 'langbot[seekdb]@latest' langbot` for package deployments. Docker/Kubernetes deployments need the official image with the `-seekdb` suffix (for example `rockchin/langbot:latest-seekdb`); the default image does not include SeekDB. Native deployment support depends on the available `pylibseekdb` wheel.
 - On the "Embedding Model" page, select "seekdb-built-in";
 - Click "Save" to use it immediately;
 - Then select this model in your knowledge base to take effect.
