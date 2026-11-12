@@ -181,20 +181,26 @@ class TestNormalizeRunCompleted:
         normalizer = AgentResultNormalizer(FakeApplication())
         descriptor = make_descriptor()
 
-        assert await normalizer.normalize(
-            {
-                'type': 'run.progress',
-                'data': {'progress': 50, 'stage': 'tool'},
-            },
-            descriptor,
-        ) is None
-        assert await normalizer.normalize(
-            {
-                'type': 'run.cancelled',
-                'data': {'reason': 'user requested', 'cleanup_confirmed': True},
-            },
-            descriptor,
-        ) is None
+        assert (
+            await normalizer.normalize(
+                {
+                    'type': 'run.progress',
+                    'data': {'progress': 50, 'stage': 'tool'},
+                },
+                descriptor,
+            )
+            is None
+        )
+        assert (
+            await normalizer.normalize(
+                {
+                    'type': 'run.cancelled',
+                    'data': {'reason': 'user requested', 'cleanup_confirmed': True},
+                },
+                descriptor,
+            )
+            is None
+        )
 
     def test_oversized_output_is_marked(self):
         normalizer = AgentResultNormalizer(FakeApplication())

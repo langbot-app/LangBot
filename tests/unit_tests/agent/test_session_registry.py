@@ -418,9 +418,7 @@ class TestSessionRegistryBasic:
         assert len(first) == 1
         delivery_id = first[0]['delivery_id']
         assert await registry.pull_steering('run_steering_claim', claim=True) == []
-        acknowledged, unknown = await registry.ack_steering(
-            'run_steering_claim', [delivery_id, 'missing']
-        )
+        acknowledged, unknown = await registry.ack_steering('run_steering_claim', [delivery_id, 'missing'])
         assert acknowledged == [delivery_id]
         assert unknown == ['missing']
         assert await registry.pull_steering('run_steering_claim', claim=True) == []
@@ -438,15 +436,18 @@ class TestSessionRegistryBasic:
             conversation_id='conv_1',
             available_apis={'steering_pull': True, 'steering_ack': True},
         )
-        assert await registry.restore_steering(
-            'run_steering_restarted',
-            [
-                {
-                    'event': {'event_id': 'event_recovered'},
-                    'input': {'text': 'recover me'},
-                }
-            ],
-        ) == 1
+        assert (
+            await registry.restore_steering(
+                'run_steering_restarted',
+                [
+                    {
+                        'event': {'event_id': 'event_recovered'},
+                        'input': {'text': 'recover me'},
+                    }
+                ],
+            )
+            == 1
+        )
 
         claimed = await registry.pull_steering('run_steering_restarted', claim=True)
         assert claimed[0]['event']['event_id'] == 'event_recovered'
