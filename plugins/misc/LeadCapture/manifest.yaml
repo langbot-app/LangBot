@@ -4,7 +4,7 @@ metadata:
   author: langbot-team
   name: LeadCapture
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture
-  version: 0.1.0
+  version: 0.2.0
   description:
     en_US: "Let an LLM spot customers with strong purchase intent, ask them once for contact details, and email the lead with the full conversation via Resend."
     zh_Hans: "由 LLM 根据对话和提示词判断用户是否有强烈购买意愿，只请求一次联系方式，并通过 Resend 把线索和完整对话发到指定邮箱。"
@@ -106,6 +106,10 @@ spec:
     EventListener:
       fromDirs:
         - path: components/event_listener/
+    Page:
+      fromDirs:
+        - path: components/pages/
+          maxDepth: 2
 execution:
   python:
     path: main.py

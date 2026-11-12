@@ -54,6 +54,26 @@ The plugin works inside a Pipeline. Make sure the customer-facing bot routes mes
 
 Chat with the bot from your own account and ask about buying (price, contract, trial). Check that the AI reply ends with the contact request, reply with a phone number and check the inbox.
 
+## Reviewing judgments (plugin page)
+
+The plugin ships a **Lead judgments** page, opened from the plugin pages in the LangBot sidebar.
+
+- **Totals**: conversations, judgments, asked for contact, contact captured, emailed.
+- **Conversation list**: one row per private-chat user, with:
+  - status (not yet / asked / captured);
+  - the latest judgment and its reason;
+  - how many judgments, and how many were strong;
+  - contact and email result.
+
+  Filter by status (including "with errors") or search by user ID or contact.
+- **Details**: click a row to see the conversation's **timeline**:
+  - every judgment, with the result, the reason, what the user said and the AI reply;
+  - the contact request, the captured contact, email attempts and errors.
+
+  The 30 most recent messages are shown below the timeline.
+
+The latest 100 events are kept per conversation. The page is read-only.
+
 ## How contact details are recognized
 
 - Patterns first: mainland China mobile numbers (with optional `+86`, spaces or dashes), landlines with an area code (e.g. `010-12345678`), email addresses, and WeChat IDs after "微信 / vx / wx".
