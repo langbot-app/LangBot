@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import hashlib
+import inspect
 import json
 import logging
 import os
@@ -470,6 +471,144 @@ class E2BSandboxBackend(BaseSandboxBackend):
             last_used_at=now,
         )
 
+    async def _file_transfer(
+        self,
+        session: BoxSessionInfo,
+        path: str,
+        max_bytes: int,
+        content: bytes | None,
+    ) -> bytes | None:
+        operation = asyncio.create_task(
+            self._file_transfer_once(session, path, max_bytes, content)
+        )
+        try:
+            return await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            # Keep the session lock until remote publication and cleanup finish.
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not operation.cancelled() and operation.exception() is not None:
+                self.logger.warning(
+                    "Cancelled E2B file transfer failed during completion: %s",
+                    operation.exception(),
+                )
+            raise
+
+    async def _file_transfer_once(
+        self,
+        session: BoxSessionInfo,
+        path: str,
+        max_bytes: int,
+        content: bytes | None,
+    ) -> bytes | None:
+        from . import file_io
+
+        if not _check_e2b_available():
+            raise BoxError("e2b package not installed")
+        relative = file_io.workspace_relative_path(session.mount_path, path)
+        if content is not None:
+            if session.host_path_mode == BoxHostMountMode.READ_ONLY:
+                raise BoxError("Cannot upload into a read-only workspace")
+            if len(content) > max_bytes:
+                raise ValueError("Workspace file exceeds the transfer size limit")
+        sandbox = await _AsyncSandbox.connect(
+            sandbox_id=session.backend_session_id,
+            api_key=self._api_key,
+            request_timeout=30,
+            **({"domain": self._api_url} if self._api_url else {}),
+        )
+        staging = "/tmp/langbot-file-transfer-" + uuid.uuid4().hex
+        payload = staging + "/payload"
+        workspace = _adapt_path_for_e2b(session.mount_path)
+        # The script contains only code and metadata; bytes use the native file API.
+        script = inspect.getsource(file_io) + "\nimport hashlib\n"
+        try:
+            await self._run_e2b_checked(
+                sandbox,
+                "mkdir -m 0700 " + shlex.quote(staging),
+                subject="create file transfer staging",
+                user="root",
+            )
+            if content is not None:
+                await sandbox.files.write(
+                    payload, content, user="root", request_timeout=30
+                )
+                digest = hashlib.sha256(content).hexdigest()
+                script += (
+                    f"content = read_workspace_file({staging!r}, 'payload', {max_bytes!r})\n"
+                    f"if hashlib.sha256(content).hexdigest() != {digest!r}:\n"
+                    "    raise ValueError('Upload digest mismatch')\n"
+                    # Read private staging before dropping privileges for publication.
+                    "import pwd\n"
+                    "account = pwd.getpwnam('user')\n"
+                    "os.initgroups(account.pw_name, account.pw_gid)\n"
+                    "os.setgid(account.pw_gid)\n"
+                    "os.setuid(account.pw_uid)\n"
+                    f"write_workspace_file({workspace!r}, {relative!r}, content, {max_bytes!r})\n"
+                )
+                await self._run_e2b_checked(
+                    sandbox,
+                    "python3 -c " + shlex.quote(script),
+                    subject="publish workspace upload",
+                    user="root",
+                )
+                return None
+            script += (
+                f"content = read_workspace_file({workspace!r}, {relative!r}, {max_bytes!r})\n"
+                f"write_workspace_file({staging!r}, 'payload', content, {max_bytes!r})\n"
+            )
+            await self._run_e2b_checked(
+                sandbox,
+                "python3 -c " + shlex.quote(script),
+                subject="snapshot workspace download",
+                user="root",
+            )
+            stream = await sandbox.files.read(
+                payload, format="stream", user="root", request_timeout=30
+            )
+            body = bytearray()
+            try:
+                async for chunk in stream:
+                    if len(body) + len(chunk) > max_bytes:
+                        raise ValueError(
+                            "Workspace file exceeds the transfer size limit"
+                        )
+                    body.extend(chunk)
+            finally:
+                await stream.aclose()
+            return bytes(body)
+        finally:
+            cleanup = asyncio.create_task(
+                self._run_e2b_checked(
+                    sandbox,
+                    "rm -rf -- " + shlex.quote(staging),
+                    subject="clean file transfer staging",
+                    user="root",
+                )
+            )
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                await asyncio.gather(cleanup, return_exceptions=True)
+                raise
+
+    async def upload_file(
+        self, session: BoxSessionInfo, path: str, content: bytes, max_bytes: int
+    ) -> None:
+        await self._file_transfer(session, path, max_bytes, content)
+
+    async def download_file(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        content = await self._file_transfer(session, path, max_bytes, None)
+        assert content is not None
+        return content
+
     async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
         """Execute a command in the E2B sandbox.
 
@@ -859,7 +998,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         user: str | None = None,
     ) -> None:
         try:
-            kwargs = {"timeout": 30}
+            kwargs = {"timeout": 30, "request_timeout": 30}
             if user is not None:
                 kwargs["user"] = user
             result = await sandbox.commands.run(command, **kwargs)

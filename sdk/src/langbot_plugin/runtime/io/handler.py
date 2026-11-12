@@ -2510,6 +2510,7 @@ class Handler(abc.ABC):
         file_extension: str,
         *,
         action_context: ActionEnvelopeContext | dict[str, Any] | None = None,
+        file_key: str | None = None,
     ) -> str:
         """Send a file to the peer, chunk by chunk, in base64."""
         from langbot_plugin.api.proxies.invocation import invocation_capability
@@ -2523,7 +2524,10 @@ class Handler(abc.ABC):
         if extension and _SAFE_FILE_EXTENSION_PATTERN.fullmatch(extension) is None:
             raise ValueError("Invalid file transfer extension")
         suffix = f".{extension}" if extension else ""
-        file_key = f"ft1_{uuid.uuid4().hex}{uuid.uuid4().hex}{suffix}"
+        if file_key is None:
+            file_key = f"ft1_{uuid.uuid4().hex}{uuid.uuid4().hex}{suffix}"
+        elif re.fullmatch(r"ft1_[0-9a-f]{64}" + re.escape(suffix), file_key) is None:
+            raise ValueError("Invalid file transfer capability")
         file_length = len(file_bytes)
         chunk_amount = max(
             1, (file_length + FILE_CHUNK_LENGTH - 1) // FILE_CHUNK_LENGTH
@@ -2633,6 +2637,15 @@ class Handler(abc.ABC):
             self._require_transfer_root()
         owner_record = _transfer_owner_record_path(file_key, self.file_storage_dir)
         with _locked_transfer(self.file_storage_dir, file_key) as lock_key:
+            stage = self._transfer_stages.get(file_key)
+            if stage is not None:
+                if not self._context_can_access_transfer(
+                    transfer_context, stage.transfer_context
+                ):
+                    raise FileNotFoundError(file_key)
+                if not self._discard_transfer_stage(file_key, stage, clear_active=True):
+                    raise ValueError("File transfer staging cleanup failed")
+                return True
             stored_context, current_claim_id, expected_payload_identity = (
                 transfer_context,
                 None,

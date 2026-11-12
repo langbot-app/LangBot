@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import datetime as dt
 import hmac
+import hashlib
 import logging
 import os
 import sys
@@ -54,6 +55,8 @@ from .errors import (
 )
 from .models import (
     BoxExecutionResult,
+    BoxFileRequest,
+    BoxFileUploadRequest,
     BoxManagedProcessSpec,
     BoxSpec,
     SandboxAdmissionGrant,
@@ -370,7 +373,6 @@ class BoxServerHandler(Handler):
     _HOST_CONTROL_ACTIONS = frozenset(
         {
             CommonAction.PING.value,
-            CommonAction.FILE_CHUNK.value,
             LangBotToBoxAction.HEALTH.value,
             LangBotToBoxAction.GET_BACKEND_INFO.value,
             LangBotToBoxAction.GET_BACKENDS.value,
@@ -384,6 +386,9 @@ class BoxServerHandler(Handler):
 
     _SANDBOX_ACTIONS = frozenset(
         {
+            CommonAction.FILE_CHUNK.value,
+            LangBotToBoxAction.UPLOAD_FILE.value,
+            LangBotToBoxAction.DOWNLOAD_FILE.value,
             LangBotToBoxAction.EXEC.value,
             LangBotToBoxAction.CREATE_SESSION.value,
             LangBotToBoxAction.GET_SESSION.value,
@@ -428,7 +433,10 @@ class BoxServerHandler(Handler):
 
     def _wrap_tenant_actions_with_generation_fence(self) -> None:
         for action, action_handler in tuple(self.actions.items()):
-            if action in self._HOST_CONTROL_ACTIONS:
+            if (
+                action in self._HOST_CONTROL_ACTIONS
+                or action == LangBotToBoxAction.DELETE_FILE_TRANSFER.value
+            ):
                 continue
 
             async def fenced_action(
@@ -437,6 +445,13 @@ class BoxServerHandler(Handler):
                 _handler=action_handler,
                 _action=action,
             ) -> ActionResponse:
+                # Legacy instance-level transfers remain compatible; new file
+                # operations can consume only explicitly Workspace-owned payloads.
+                if (
+                    _action == CommonAction.FILE_CHUNK.value
+                    and self.current_action_context is None
+                ):
+                    return await _handler(data)
                 context = self._action_context()
                 lease_task = asyncio.current_task()
                 if (
@@ -483,6 +498,8 @@ class BoxServerHandler(Handler):
         """
 
         self._require_host_control()
+        if action == CommonAction.FILE_CHUNK.value and action_context is None:
+            return None
         if action in self._HOST_CONTROL_ACTIONS:
             if (
                 action_context is not None
@@ -601,6 +618,59 @@ class BoxServerHandler(Handler):
             return ActionResponse.success(
                 self._logical_session_data(_result_to_dict(result))
             )
+
+        @self.action(LangBotToBoxAction.UPLOAD_FILE)
+        async def upload_file(data: dict[str, Any]) -> ActionResponse:
+            request = BoxFileUploadRequest.model_validate(data)
+            context = self._action_context()
+            try:
+                if request.size > self._runtime.max_rpc_file_bytes:
+                    raise ValueError("File exceeds the configured transfer size limit")
+                content = await self.read_local_file(
+                    request.file_key, action_context=context
+                )
+                digest = hashlib.sha256(content).hexdigest()
+                if len(content) != request.size or digest != request.sha256:
+                    raise ValueError("Upload receipt does not match its content")
+                await self._runtime.upload_file(
+                    self._session_id(request.session_id),
+                    request.path,
+                    content,
+                    context,
+                )
+                return ActionResponse.success(
+                    {"path": request.path, "size": len(content), "sha256": digest}
+                )
+            finally:
+                await self.delete_local_file(request.file_key, action_context=context)
+
+        @self.action(LangBotToBoxAction.DOWNLOAD_FILE)
+        async def download_file(data: dict[str, Any]) -> ActionResponse:
+            request = BoxFileRequest.model_validate(data)
+            context = self._action_context()
+            content = await self._runtime.download_file(
+                self._session_id(request.session_id),
+                request.path,
+                context,
+            )
+            await self.send_file(
+                content, "", action_context=context, file_key=request.file_key
+            )
+            return ActionResponse.success(
+                {
+                    "file_key": request.file_key,
+                    "path": request.path,
+                    "size": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                }
+            )
+
+        @self.action(LangBotToBoxAction.DELETE_FILE_TRANSFER)
+        async def delete_file_transfer(data: dict[str, Any]) -> ActionResponse:
+            await self.delete_local_file(
+                data["file_key"], action_context=self._action_context()
+            )
+            return ActionResponse.success({})
 
         @self.action(LangBotToBoxAction.CREATE_SESSION)
         async def create_session(data: dict[str, Any]) -> ActionResponse:

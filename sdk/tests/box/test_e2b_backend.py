@@ -1481,3 +1481,101 @@ def test_e2b_failure_classification_uses_status_without_echoing_body(
         )
         == expected
     )
+@pytest.mark.anyio
+async def test_upload_cancellation_waits_for_remote_publication_and_cleanup(
+    backend, mock_e2b_module
+):
+    session = await backend.start_session(BoxSpec(session_id="file-cancel", cmd="true"))
+    publication_started = asyncio.Event()
+    allow_publication = asyncio.Event()
+    cleanup_started = asyncio.Event()
+    allow_cleanup = asyncio.Event()
+    events = []
+
+    async def run(command, **kwargs):
+        if command.startswith("python3 -c"):
+            publication_started.set()
+            await allow_publication.wait()
+            events.append("published")
+        elif command.startswith("rm -rf --"):
+            cleanup_started.set()
+            await allow_cleanup.wait()
+            events.append("cleaned")
+        return SimpleNamespace(exit_code=0, stdout="", stderr="")
+
+    mock_e2b_module.commands.run = mock.AsyncMock(side_effect=run)
+    mock_e2b_module.files = SimpleNamespace(write=mock.AsyncMock())
+    upload = asyncio.create_task(
+        backend.upload_file(session, "/workspace/input.bin", b"payload", 1024)
+    )
+    try:
+        await asyncio.wait_for(publication_started.wait(), timeout=1)
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        assert not cleanup_started.is_set()
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        allow_publication.set()
+        await asyncio.wait_for(cleanup_started.wait(), timeout=1)
+        upload.cancel()
+        await asyncio.sleep(0)
+        assert not upload.done()
+        allow_cleanup.set()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(upload, timeout=1)
+        assert events == ["published", "cleaned"]
+    finally:
+        allow_publication.set()
+        allow_cleanup.set()
+        await asyncio.gather(upload, return_exceptions=True)
+
+
+@pytest.mark.anyio
+async def test_upload_publishes_bytes_with_private_staging(
+    backend, mock_e2b_module, tmp_path, monkeypatch
+):
+    import os
+    from pathlib import Path
+    import shlex
+    import sys
+    from langbot_plugin.box import e2b_backend
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    monkeypatch.setattr(e2b_backend, "_adapt_path_for_e2b", lambda path: str(workspace))
+    session = await backend.start_session(BoxSpec(session_id="file-owner", cmd="true"))
+
+    async def write(path, content, **kwargs):
+        Path(path).write_bytes(content)
+
+    async def run(command, **kwargs):
+        args = shlex.split(command)
+        if args[:2] == ["python3", "-c"]:
+            # Emulate the sandbox account with this test process' existing UID.
+            prefix = (
+                "import os,pwd,types\n"
+                f"pwd.getpwnam=lambda name: types.SimpleNamespace(pw_name=name,pw_gid={os.getgid()},pw_uid={os.getuid()})\n"
+                "os.initgroups=lambda name,gid: None\n"
+            )
+            args = [sys.executable, "-c", prefix + "exec(" + repr(args[2]) + ")"]
+        process = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        return SimpleNamespace(
+            exit_code=process.returncode, stdout=stdout.decode(), stderr=stderr.decode()
+        )
+
+    mock_e2b_module.files = SimpleNamespace(write=write)
+    mock_e2b_module.commands.run = run
+    content = bytes(range(256)) * 5000
+    await backend.upload_file(session, "/workspace/input.bin", content, len(content))
+    assert (workspace / "input.bin").read_bytes() == content
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"private")
+    (workspace / "linked.bin").symlink_to(outside)
+    with pytest.raises(BoxError):
+        await backend.upload_file(session, "/workspace/linked.bin", b"overwrite", 1024)
+    assert outside.read_bytes() == b"private"

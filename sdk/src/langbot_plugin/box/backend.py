@@ -78,6 +78,37 @@ class BaseSandboxBackend(abc.ABC):
     async def stop_session(self, session: BoxSessionInfo):
         pass
 
+    def _file_workspace_root(self, session: BoxSessionInfo) -> str:
+        if not session.host_path or session.host_path_mode == BoxHostMountMode.NONE:
+            raise BoxError(f"{self.name} file transfer requires a mapped workspace")
+        return session.host_path
+
+    async def upload_file(
+        self, session: BoxSessionInfo, path: str, content: bytes, max_bytes: int
+    ) -> None:
+        from .file_io import workspace_relative_path, write_workspace_file
+
+        if session.host_path_mode == BoxHostMountMode.READ_ONLY:
+            raise BoxError("Cannot upload into a read-only workspace")
+        relative = workspace_relative_path(session.mount_path, path)
+        await bounded_executor.run_blocking_atomic(
+            write_workspace_file,
+            self._file_workspace_root(session),
+            relative,
+            content,
+            max_bytes,
+        )
+
+    async def download_file(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        from .file_io import read_workspace_file, workspace_relative_path
+
+        relative = workspace_relative_path(session.mount_path, path)
+        return await bounded_executor.run_blocking_atomic(
+            read_workspace_file, self._file_workspace_root(session), relative, max_bytes
+        )
+
     async def is_session_alive(self, session: BoxSessionInfo) -> bool:
         return True
 
