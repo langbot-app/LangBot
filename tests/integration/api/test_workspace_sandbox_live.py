@@ -93,7 +93,7 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
 
     async def select(name):
         nonlocal e2b_saves
-        payload = {'backend': name}
+        payload = {'backend': name, 'limits': {'timeout_sec': 120}}
         if name == 'e2b':
             payload['e2b'] = {
                 'api_url': os.environ['E2B_API_URL'],
@@ -135,11 +135,12 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
         pending = asyncio.create_task(
             box.execute_tool(
                 {
+                    'timeout_sec': 120,
                     'command': (
                         f'printf old-{before} > /workspace/{started_name}; '
                         f'while [ ! -f /workspace/{release_name} ]; do sleep 0.1; done; '
                         f'cat /workspace/{started_name}'
-                    )
+                    ),
                 },
                 old,
             )
@@ -147,7 +148,10 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
         if before == 'e2b':
             sessions = await client.get_sessions(action_context=box._action_context(context))
             info = next(item for item in sessions if item['session_id'] == old._box_binding.session_id)
-            sandbox = await AsyncSandbox.connect(info['backend_session_id'])
+            sandbox = await AsyncSandbox.connect(
+                info['backend_session_id'],
+                headers={'E2b-Sandbox-Id': info['backend_session_id'], 'E2b-Sandbox-Port': '49983'},
+            )
             for _ in range(100):
                 try:
                     marker = await sandbox.files.read(f'/home/user/workspace/{started_name}')
@@ -183,16 +187,16 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
             assert values['cpu.cfs_quota_us'] / values['cpu.cfs_period_us'] == 1
             print('NSJAIL_KERNEL_LIMITS', json.dumps(values), flush=True)
         old_completed = before == after
+        await select(after)
         if old_completed:
-            # The trial E2B service permits one sandbox; free its slot for the new creation probe.
-            assert not pending.done(), 'Old task ended before the template update'
+            # Verify the saved revision before freeing capacity for the next E2B sandbox.
+            assert not pending.done(), 'Saving the E2B revision interrupted the old task'
             await release()
             result = await asyncio.wait_for(pending, 15)
             assert result['ok'] and result['backend'] == before and result['stdout'] == f'old-{before}', result
             again = await box.execute_tool({'command': f'cat /workspace/{started_name}'}, old)
             assert again['ok'] and again['backend'] == before and again['stdout'] == f'old-{before}', again
             await client.delete_session(old._box_binding.session_id, action_context=box._action_context(context))
-        await select(after)
         new = await acquire(f'new-{nonce}')
         assert old._box_binding.session_id != new._box_binding.session_id
         result = await box.execute_tool({'command': f'printf new-{after}'}, new)

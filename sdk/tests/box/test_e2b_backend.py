@@ -231,7 +231,9 @@ async def test_is_session_alive_probes_remote_sandbox(backend, mock_e2b_module):
 
     assert await backend.is_session_alive(info) is True
     mock_e2b_module.connect.assert_awaited_once_with(
-        sandbox_id="sandbox-test-123", api_key="test-api-key"
+        sandbox_id="sandbox-test-123",
+        api_key="test-api-key",
+        headers={"E2b-Sandbox-Id": "sandbox-test-123", "E2b-Sandbox-Port": "49983"},
     )
 
     mock_e2b_module.connect.side_effect = RuntimeError("sandbox gone")
@@ -390,14 +392,15 @@ async def test_start_session_no_host_mount_when_empty(backend, mock_e2b_module):
 
 
 @pytest.mark.anyio
-async def test_exec_success(backend, mock_e2b_module):
+@pytest.mark.parametrize("sandbox_id", ["sandbox-123", "sandbox-456"])
+async def test_exec_success(backend, mock_e2b_module, sandbox_id):
     """exec runs command and returns result."""
     backend._api_key = "test-api-key"
 
     session = BoxSessionInfo(
         session_id="exec-sess",
         backend_name="e2b",
-        backend_session_id="sandbox-123",
+        backend_session_id=sandbox_id,
         image="base",
         network=BoxNetworkMode.OFF,
         created_at="2024-01-01T00:00:00+00:00",
@@ -417,7 +420,11 @@ async def test_exec_success(backend, mock_e2b_module):
     assert result.stdout == "output"
 
     # Verify connect and run were called
-    mock_e2b_module.connect.assert_called_once()
+    mock_e2b_module.connect.assert_awaited_once_with(
+        sandbox_id=sandbox_id,
+        api_key="test-api-key",
+        headers={"E2b-Sandbox-Id": sandbox_id, "E2b-Sandbox-Port": "49983"},
+    )
     mock_e2b_module.commands.run.assert_called_once()
 
     # Verify command includes path adaptation

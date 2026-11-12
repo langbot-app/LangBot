@@ -167,14 +167,23 @@ class E2BSandboxBackend(BaseSandboxBackend):
         text = str(error)
         return text.replace(self._api_key, "***") if self._api_key else text
 
-    def _connection_kwargs(self) -> dict:
+    def _connection_kwargs(self, sandbox_id: str | None = None) -> dict:
         if self.connection_config is not None:
-            return self.connection_config.model_dump(exclude={"template"})
-        options = {}
-        if self._api_key:
-            options["api_key"] = self._api_key
-        if self._api_url:
-            options["domain"] = self._api_url
+            options = self.connection_config.model_dump(exclude={"template"})
+        else:
+            options = {}
+            if self._api_key:
+                options["api_key"] = self._api_key
+            if self._api_url:
+                options["domain"] = self._api_url
+        if sandbox_id is not None:
+            from e2b.connection_config import ConnectionConfig
+
+            # E2B 2.21.1 omits proxy routing headers on async reconnect.
+            options["headers"] = {
+                "E2b-Sandbox-Id": sandbox_id,
+                "E2b-Sandbox-Port": str(ConnectionConfig.envd_port),
+            }
         return options
 
     def unavailable_reason(self) -> str:
@@ -472,7 +481,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
         start = dt.datetime.now(dt.timezone.utc)
 
         # Connect kwargs
-        connect_kwargs = self._connection_kwargs()
+        connect_kwargs = self._connection_kwargs(session.backend_session_id)
 
         # Adapt workdir and logical /workspace command paths for E2B.
         workdir = _adapt_path_for_e2b(spec.workdir)
@@ -1137,7 +1146,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         """Probe the remote sandbox rather than trusting stale local metadata."""
         if not _check_e2b_available():
             return False
-        kwargs = self._connection_kwargs()
+        kwargs = self._connection_kwargs(session.backend_session_id)
         try:
             await _AsyncSandbox.connect(sandbox_id=session.backend_session_id, **kwargs)
             return True
