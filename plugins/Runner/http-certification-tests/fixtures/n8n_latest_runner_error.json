@@ -1,0 +1,40 @@
+{
+  "name": "LangBot n8n streaming workflow error",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "langbot-n8n-stream-error",
+        "responseMode": "streaming",
+        "options": {}
+      },
+      "id": "langbot-n8n-error-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "langbot-n8n-stream-error"
+    },
+    {
+      "parameters": {
+        "errorType": "errorObject",
+        "errorObject": "{\"message\":\"Intentional regression failure\",\"description\":\"LANGBOT_N8N_STREAM_ERROR\"}"
+      },
+      "id": "langbot-n8n-workflow-error",
+      "name": "Intentional workflow error",
+      "type": "n8n-nodes-base.stopAndError",
+      "typeVersion": 1,
+      "position": [300, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Intentional workflow error", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {"executionOrder": "v1"},
+  "versionId": "langbot-n8n-stream-error-v1",
+  "meta": {"templateCredsSetupCompleted": true},
+  "tags": []
+}

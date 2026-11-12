@@ -30,6 +30,8 @@ Select `Webhook` or `On chat message` as the trigger and configure as follows:
 <Info title="">
 If you need streaming responses, set `Response Mode` to `Streaming`.
 
+If n8n reports a workflow error in the stream, the n8n Runner marks the run as failed. Text already sent to a streaming channel may remain visible.
+
 ![n8n streaming configuration](/images/zh/deploy/pipelines/n8n/config_response_model.png)
 </Info>
 

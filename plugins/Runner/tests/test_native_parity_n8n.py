@@ -217,6 +217,52 @@ async def test_reply_split_utf8_preserves_text(runner_module, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("with_item", [False, True])
+@pytest.mark.parametrize("framing", ["whole", "lines", "bytes"])
+async def test_stream_workflow_error_fails_run(runner_module, monkeypatch, with_item, framing):
+    chunks = [{"type": "begin", "metadata": {"nodeId": "synthetic-node"}}]
+    if with_item:
+        chunks.append({"type": "item", "content": "Partial answer "})
+    chunks.extend(
+        [
+            {"type": "error", "content": "Synthetic provider rate limit"},
+            {"type": "end", "metadata": {}},
+        ]
+    )
+    # No final newline: HTTP chunk boundaries and NDJSON line endings are independent.
+    body_bytes = "\n".join(json.dumps(chunk) for chunk in chunks).encode()
+    if framing == "whole":
+        wire_chunks = [body_bytes]
+    elif framing == "lines":
+        wire_chunks = body_bytes.splitlines(keepends=True)
+    else:
+        wire_chunks = [bytes([byte]) for byte in body_bytes]
+    body = Body(wire_chunks)
+    wire(monkeypatch, body)
+    results = await collect(runner_module, context())
+
+    assert results[-1]["type"] == "run.failed", results
+    assert results[-1]["data"]["code"] == "n8n.workflow_error"
+    assert "Synthetic provider rate limit" in results[-1]["data"]["error"]
+    assert not any(result["type"] in ("run.completed", "state.updated") for result in results)
+    assert [chunk["content"] for chunk in messages(results)] == (["Partial answer "] if with_item else [])
+    assert not any(chunk["is_final"] for chunk in messages(results))
+    assert body.closed
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error_chunk", [{"type": "error"}, {"type": "error", "content": ""}, {"type": "error", "content": None}]
+)
+async def test_stream_workflow_error_without_description(runner_module, monkeypatch, error_chunk):
+    wire(monkeypatch, Body([json.dumps(error_chunk).encode()]))
+    results = await collect(runner_module, context())
+    assert [result["type"] for result in results] == ["run.failed"]
+    assert results[0]["data"]["code"] == "n8n.workflow_error"
+    assert results[0]["data"]["error"] == "n8n workflow error: unknown error"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("streaming", [False, True])
 async def test_reply_response_size_is_bounded(runner_module, monkeypatch, streaming):
     chunks = [b'{"type":"item","content":"' + b"x" * 1024 + b'"}'] * 1024 if streaming else [b"x" * (LIMIT + 1)]

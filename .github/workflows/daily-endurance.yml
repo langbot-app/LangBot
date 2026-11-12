@@ -321,15 +321,18 @@ jobs:
             -e N8N_VERSION_NOTIFICATIONS_ENABLED=false \
             --entrypoint /bin/sh \
             docker.n8n.io/n8nio/n8n:latest -c 'tail -f /dev/null'
-      - name: Import and publish smoke workflow
+      - name: Import and publish n8n regression workflows
         run: |
-          docker cp http-certification-tests/fixtures/n8n_latest_runner_smoke.json langbot-n8n-latest:/tmp/n8n_latest_runner_smoke.json
-          docker exec -u node langbot-n8n-latest n8n import:workflow --input=/tmp/n8n_latest_runner_smoke.json
+          for fixture in n8n_latest_runner_smoke n8n_latest_runner_error; do
+            docker cp "http-certification-tests/fixtures/$fixture.json" "langbot-n8n-latest:/tmp/$fixture.json"
+            docker exec -u node langbot-n8n-latest n8n import:workflow --input="/tmp/$fixture.json"
+          done
           docker exec -u node langbot-n8n-latest n8n export:workflow --all --output=/tmp/n8n_export.json
           docker exec -u node langbot-n8n-latest sh -c 'cat /tmp/n8n_export.json' > /tmp/n8n_export.json
-          workflow_id=$(python3 -c 'import json; print(json.load(open("/tmp/n8n_export.json"))[0]["id"])')
-          echo "Imported workflow id: $workflow_id"
-          docker exec -u node langbot-n8n-latest n8n publish:workflow --id="$workflow_id"
+          while read -r workflow_id; do
+            echo "Imported workflow id: $workflow_id"
+            docker exec -u node langbot-n8n-latest n8n publish:workflow --id="$workflow_id"
+          done < <(python3 -c 'import json; print("\n".join(w["id"] for w in json.load(open("/tmp/n8n_export.json"))))')
           docker exec -d -u node langbot-n8n-latest n8n start
           for attempt in {1..60}; do
             if curl -fsS http://127.0.0.1:5678/healthz >/dev/null; then
@@ -366,6 +369,8 @@ jobs:
           enable-cache: true
       - name: Install Runner dependencies
         run: uv sync --dev --frozen
+      - name: Run n8n parser and Runner regressions
+        run: uv run --no-sync python -m pytest tests/test_native_parity_n8n.py -q
       - name: Run LangBot n8n DefaultRunner regression
         env:
           N8N_LIVE_OUTPUT: ${{ github.workspace }}/.qa/n8n-live/summary.json
