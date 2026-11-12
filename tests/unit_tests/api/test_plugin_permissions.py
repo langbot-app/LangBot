@@ -8,9 +8,11 @@ from langbot_plugin.api.entities.permissions import Capability
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from langbot.pkg.api.application.contracts import ApplicationAPIException, Input, Operation
+from langbot.pkg.api.application.execution import EXECUTION_OPERATIONS
 from langbot.pkg.api.application.plugin_capabilities import (
     ACTION_CAPABILITIES,
     APPLICATION_ACTIONS,
+    BINARY_STORAGE_ACTIONS,
     CAPABILITY_ACTIONS,
     CAPABILITY_PERMISSIONS,
     CONTEXT_ACTIONS,
@@ -148,7 +150,7 @@ def test_capability_and_action_catalogs_are_complete():
     assert not (set(actions) & CONTEXT_ACTIONS)
     assert set(actions) | CONTEXT_ACTIONS | APPLICATION_ACTIONS == {
         action.value for action in PluginToRuntimeAction if action is not PluginToRuntimeAction.REGISTER_PLUGIN
-    }
+    } | ({operation.action for operation in EXECUTION_OPERATIONS} - BINARY_STORAGE_ACTIONS)
     assert ACTION_CAPABILITIES[PluginToRuntimeAction.CALL_TOOL.value] == 'plugin_tools'
 
 

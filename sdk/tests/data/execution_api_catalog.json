@@ -451,6 +451,123 @@
     }
   },
   {
+    "id": "execution.list_tools",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "tools": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Tools",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tools"
+      ],
+      "title": "ExecutionToolsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_commands",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "commands": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Commands",
+          "type": "array"
+        }
+      },
+      "required": [
+        "commands"
+      ],
+      "title": "ExecutionCommandsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.list_plugins_manifest",
+    "version": "1",
+    "scope": "plugin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": false,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "title": "ExecutionEmptyInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "plugins": {
+          "items": {
+            "additionalProperties": {
+              "$ref": "#/$defs/JsonValue"
+            },
+            "type": "object"
+          },
+          "title": "Plugins",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plugins"
+      ],
+      "title": "ExecutionPluginsOutput",
+      "type": "object"
+    }
+  },
+  {
     "id": "execution.get_bot_info",
     "version": "1",
     "scope": "plugin",
@@ -535,6 +652,31 @@
           },
           "title": "Message Chain",
           "type": "array"
+        },
+        "origin_query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin Query Uuid"
+        },
+        "timeout": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Timeout"
         }
       },
       "required": [
@@ -990,6 +1132,19 @@
           ],
           "default": null,
           "title": "Reasoning Config Override"
+        },
+        "origin_query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin Query Uuid"
         }
       },
       "required": [
@@ -1155,6 +1310,19 @@
           ],
           "default": null,
           "title": "Reasoning Config Override"
+        },
+        "origin_query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin Query Uuid"
         }
       },
       "required": [
@@ -1323,6 +1491,19 @@
           ],
           "default": null,
           "title": "Reasoning Config Override"
+        },
+        "origin_query_uuid": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Origin Query Uuid"
         }
       },
       "required": [
@@ -3177,6 +3358,11 @@
           ],
           "default": null,
           "title": "Limit"
+        },
+        "claim": {
+          "default": false,
+          "title": "Claim",
+          "type": "boolean"
         }
       },
       "title": "ExecutionSteeringInput",
@@ -3202,6 +3388,62 @@
         "items"
       ],
       "title": "ExecutionItemsOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.steering_ack",
+    "version": "1",
+    "scope": "run",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "delivery_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Delivery Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "delivery_ids"
+      ],
+      "title": "ExecutionSteeringAckInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "acknowledged": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Acknowledged",
+          "type": "array"
+        },
+        "unknown": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Unknown",
+          "type": "array"
+        }
+      },
+      "required": [
+        "acknowledged",
+        "unknown"
+      ],
+      "title": "ExecutionSteeringAckOutput",
       "type": "object"
     }
   },
@@ -4113,6 +4355,240 @@
         }
       },
       "title": "ExecutionCancelRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_retry",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Reason"
+        }
+      },
+      "title": "ExecutionRetryRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_resume",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "from_sequence": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "From Sequence"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "status_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Status Reason"
+        }
+      },
+      "title": "ExecutionResumeRunInput",
+      "type": "object"
+    },
+    "output_schema": {
+      "$defs": {
+        "JsonValue": {}
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "properties": {
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "status": {
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "status"
+      ],
+      "title": "ExecutionRunOutput",
+      "type": "object"
+    }
+  },
+  {
+    "id": "execution.run_cancel_ack",
+    "version": "1",
+    "scope": "runner_admin",
+    "authorization": "installation_binding_and_existing_host_capabilities",
+    "side_effect": true,
+    "streaming": false,
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "target_run_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Run Id"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reason"
+        },
+        "cleanup_confirmed": {
+          "default": true,
+          "title": "Cleanup Confirmed",
+          "type": "boolean"
+        }
+      },
+      "title": "ExecutionCancelAckInput",
       "type": "object"
     },
     "output_schema": {
@@ -5366,7 +5842,7 @@
   {
     "id": "execution.list_application_operations",
     "version": "1",
-    "scope": "run",
+    "scope": "plugin_or_run",
     "authorization": "installation_binding_and_existing_host_capabilities",
     "side_effect": false,
     "streaming": false,
@@ -5410,7 +5886,7 @@
   {
     "id": "execution.call_application_operation",
     "version": "1",
-    "scope": "run",
+    "scope": "plugin_or_run",
     "authorization": "installation_binding_and_existing_host_capabilities",
     "side_effect": true,
     "streaming": false,

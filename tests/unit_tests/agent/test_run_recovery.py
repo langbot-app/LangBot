@@ -29,14 +29,15 @@ from langbot.pkg.core.taskmgr import AsyncTaskManager
 
 
 @pytest.fixture
-async def clean_agent_state():
+async def clean_agent_state(tmp_path):
     from sqlalchemy.ext.asyncio import create_async_engine
     from langbot.pkg.entity.persistence.base import Base
     from langbot.pkg.agent.runner.persistent_state_store import reset_persistent_state_store
 
     registry = get_session_registry()
     reset_persistent_state_store()
-    engine = create_async_engine('sqlite+aiosqlite:///:memory:')
+    # Recovery reads and the background worker must not share one in-memory connection.
+    engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / "lifecycle.sqlite"}')
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     try:
@@ -63,6 +64,38 @@ class ActionHost:
             return fn
 
         return register
+
+
+def secured_host(ap, *, workspace_id, plugin_identity):
+    from langbot_plugin.entities.io.context import InstallationBinding
+    from langbot.pkg.entity.persistence.plugin import PluginSetting
+    from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+
+    binding = InstallationBinding(
+        instance_uuid='instance-test',
+        workspace_uuid=workspace_id,
+        placement_generation=1,
+        installation_uuid='00000000-0000-4000-8000-000000000001',
+        runtime_revision=1,
+        artifact_digest='a' * 64,
+    )
+    author, name = plugin_identity.split('/')
+    setting = PluginSetting(
+        workspace_uuid=workspace_id,
+        installation_uuid=binding.installation_uuid,
+        plugin_author=author,
+        plugin_name=name,
+        enabled=True,
+        runtime_revision=1,
+        artifact_digest=binding.artifact_digest,
+        permission_declaration={'workspace_operations': [], 'capabilities': []},
+        permission_grants={'workspace_operations': [], 'capabilities': []},
+    )
+    ap.persistence_mgr.execute_async = AsyncMock(return_value=Mock(first=Mock(return_value=(setting,))))
+    ap.workspace_service = SimpleNamespace(get_execution_binding=AsyncMock(return_value=binding))
+    host = RuntimeConnectionHandler(Mock(), AsyncMock(return_value=True), ap)
+    host.register_installation_binding(binding, plugin_author=author, plugin_name=name)
+    return host, binding
 
 
 async def setup_steering(engine, run_id='run'):
@@ -259,7 +292,8 @@ async def test_recovery_does_not_deliver_same_input_to_two_active_runs(clean_age
 
 
 @pytest.mark.asyncio
-async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_agent_state):
+@pytest.mark.parametrize('leased', [False, True])
+async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_agent_state, leased):
     from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
     from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 
@@ -268,10 +302,15 @@ async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_
     from pkg.agent_core.langbot import LangBotSteeringPuller
 
     registry, store, h = await setup_steering(clean_agent_state)
+    h, binding = secured_host(h.ap, workspace_id='ws', plugin_identity='test/runner')
 
     class CoreActionBridge:
         async def call_action(self, action, data, timeout=15, **kwargs):
-            response = await h.actions[action.value]({**data, 'caller_plugin_identity': 'test/runner'})
+            token = h._current_action_context.set(binding)
+            try:
+                response = await h.actions[action.value](data)
+            finally:
+                h._current_action_context.reset(token)
             assert response.code == 0, response.message
             return response.data
 
@@ -283,7 +322,7 @@ async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_
             'input': {'text': 'hi'},
             'delivery': {'surface': 'test'},
             'runtime': {},
-            'context': {'available_apis': {'steering_pull': True, 'steering_ack': True}},
+            'context': {'available_apis': {'steering_pull': True, 'steering_ack': leased}},
             'resources': make_resources(),
         }
     )
@@ -300,11 +339,52 @@ async def test_actual_localagent_and_sdk_do_not_replay_processed_followup(clean_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('authorized', [False, True])
+async def test_secured_steering_ack_checks_persistent_authorization(clean_agent_state, authorized):
+    registry, store, host = await setup_steering(clean_agent_state)
+    host, binding = secured_host(host.ap, workspace_id='ws', plugin_identity='test/runner')
+    token = host._current_action_context.set(binding)
+    try:
+        pulled = await host.actions['steering_pull']({'run_id': 'run', 'claim': True})
+        assert pulled.code == 0, pulled.message
+        delivery_id = pulled.data['items'][0]['delivery_id']
+        await registry.unregister('run')
+        authorization = {
+            'workspace_id': 'ws',
+            'conversation_id': 'conv',
+            'plugin_identity': 'test/runner',
+            'available_apis': {'steering_ack': authorized},
+        }
+        ledger = RunLedgerStore(clean_agent_state)
+        await ledger.create_run(
+            run_id='run',
+            event_id='trigger',
+            binding_id='binding',
+            runner_id='plugin:test/runner/default',
+            workspace_id='ws',
+            deadline_at=time.time() - 1,
+            authorization=authorization,
+        )
+        await ledger.finalize_run(run_id='run', status='cancelled')
+        response = await host.actions['steering_ack']({'run_id': 'run', 'delivery_ids': [delivery_id]})
+        if authorized:
+            assert response.code == 0, response.message
+            assert response.data == {'acknowledged': [delivery_id], 'unknown': []}
+            assert await store.list_pending_steering(**pending_args()) == []
+        else:
+            assert response.code != 0 and 'not authorized' in response.message
+    finally:
+        host._current_action_context.reset(token)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('resume', [False, True])
 async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_agent_state, resume):
     from langbot_plugin.api.entities.builtin.runner.context import RunnerContext
     from langbot_plugin.api.proxies.runner import RunnerAPIProxy
-    from langbot.pkg.plugin import runner_actions
+
+    if not hasattr(RunnerAPIProxy, 'run_retry'):
+        pytest.skip('Requires the in-tree lifecycle SDK')
 
     descriptor = make_descriptor()
     descriptor.raw_manifest = {'metadata': {'supports_resume': True}}
@@ -387,13 +467,15 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(clean_ag
     ap.event_loop = asyncio.get_running_loop()
     ap.instance_config = SimpleNamespace(data={})
     ap.task_mgr = AsyncTaskManager(ap)
-    h = ActionHost(clean_agent_state)
-    h.ap = ap
-    runner_actions.register(h)
+    h, binding = secured_host(ap, workspace_id='workspace-test', plugin_identity='langbot-team/LocalAgent')
 
     class Bridge:
         async def call_action(self, action, data, timeout=15, **kwargs):
-            response = await h.actions[action.value]({**data, 'caller_plugin_identity': 'langbot-team/LocalAgent'})
+            token = h._current_action_context.set(binding)
+            try:
+                response = await h.actions[action.value](data)
+            finally:
+                h._current_action_context.reset(token)
             assert response.code == 0, response.message
             return response.data
 

@@ -444,10 +444,63 @@ async def test_selected_tool_missing_from_workspace_catalog_cannot_execute(host,
 
 
 @pytest.mark.asyncio
-async def test_runner_admin_operations_do_not_grant_admin_implicitly(host):
+@pytest.mark.parametrize(
+    'action,payload,error',
+    [
+        ('run_stats', {}, 'not authorized'),
+        ('run_retry', {'target_run_id': 'other-run'}, 'run_id is required'),
+        ('run_resume', {'target_run_id': 'other-run'}, 'run_id is required'),
+        ('run_cancel_ack', {'target_run_id': 'other-run'}, 'run_id is required'),
+    ],
+)
+async def test_runner_admin_operations_do_not_grant_admin_implicitly(host, action, payload, error):
     with pytest.raises(ApplicationAPIException) as exc:
-        await host.api.invoke('execution.run_stats', ExecutionAPIContext(host.binding))
-    assert 'not authorized' in exc.value.error.message
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding), payload)
+    assert error in exc.value.error.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action,payload',
+    [
+        ('steering_ack', {'delivery_ids': ['delivery']}),
+        ('run_retry', {}),
+        ('run_resume', {'from_sequence': 0}),
+        ('run_cancel_ack', {'cleanup_confirmed': True}),
+    ],
+)
+@pytest.mark.parametrize('denial', ['workspace', 'plugin', 'capability'])
+async def test_recovery_operations_preserve_run_authorization(host, monkeypatch, action, payload, denial):
+    session = run_session(host)
+    if denial == 'workspace':
+        session['authorization']['workspace_id'] = 'foreign-workspace'
+    elif denial == 'plugin':
+        session['plugin_identity'] = 'other/plugin'
+    stub_run(monkeypatch, session)
+    with pytest.raises(ApplicationAPIException) as exc:
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding, run_id='run-a'), payload)
+    if denial == 'capability':
+        assert exc.value.error.code == 'application_error'
+        assert 'not authorized' in exc.value.error.message
+    else:
+        assert exc.value.error.code == 'permission_denied'
+        assert 'does not belong' in exc.value.error.message
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'action,payload',
+    [
+        ('steering_pull', {'claim': 'true'}),
+        ('steering_ack', {'delivery_ids': ['']}),
+        ('run_resume', {'from_sequence': -1}),
+        ('run_cancel_ack', {'cleanup_confirmed': 'true'}),
+    ],
+)
+async def test_recovery_operations_reject_invalid_inputs(host, action, payload):
+    with pytest.raises(ApplicationAPIException) as exc:
+        await host.api.invoke('execution.' + action, ExecutionAPIContext(host.binding, run_id='run-a'), payload)
+    assert exc.value.error.code == 'invalid_input'
 
 
 @pytest.mark.asyncio

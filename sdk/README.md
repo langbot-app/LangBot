@@ -107,7 +107,7 @@ of exactly-once tool execution.
 
 ## ExecutionAPI 操作一览与作用域说明
 
-LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 72 项核心业务能力。插件与 Agent Runner 统一经由该 facade 与 SDK 入口访问。
+LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 80 项核心业务能力。插件与 Agent Runner 统一经由该 facade 与 SDK 入口访问。
 
 - **通用执行入口**: `api.execution.invoke(operation_id, **arguments)` 与 `api.execution.stream(...)`。
 - **Box 沙箱代理扩展**: `LangBotAPIProxy` 现已提供 `@run_scoped` 的 `bind_box`, `import_box_attachments`, `export_box_files`。

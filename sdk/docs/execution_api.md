@@ -1,6 +1,6 @@
 # ExecutionAPI 操作一览与作用域说明
 
-LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 72 项核心业务能力。插件与 Agent Runner 可以通过统一的授权契约与 SDK 入口调用这些能力。
+LangBot Core 通过统一的 `ExecutionAPI` facade 暴露 80 项核心业务能力。插件与 Agent Runner 可以通过统一的授权契约与 SDK 入口调用这些能力。
 
 ## 作用域（Scopes）说明
 
@@ -9,7 +9,7 @@ ExecutionAPI 定义了严格的作用域划分，防止权限提升与越权访�
 | 作用域 | 标识 | 说明 |
 | :--- | :--- | :--- |
 | **Plugin** | `plugin` | 插件安装级别能力。仅在非 Run 上下文或具有插件完整 InstallationBinding 时可用。Run 上下文无法降级使用此类操作。 |
-| **Run** | `run` | 单次 Agent Run 作用域。必须携带有效的 `run_id`，且在会话生命周期内严格受限，调用时自动校验该 Run 的授权范围（如 Tool、Box 等资源）。 |
+| **Run** | `run` | 单次 Agent Run 作用域。必须携带有效的 `run_id`，且按该 Run 的授权范围严格受限，调用时自动校验该 Run 的授权范围（如 Tool、Box 等资源）。 |
 | **Runner Admin** | `runner_admin` | 运行器管理级别能力（如 Run 查询、状态恢复等）。需要特定的运行器管理权限，支持根据 AgentRun 授权快照恢复过期的 Run 上下文。 |
 | **Plugin or Run** | `plugin_or_run` | 双模作用域能力（如 LLM 调用、存储操作等）。在 Run 上下文中调用时携带 Run 授权与审计标识；在普通插件事件上下文调用时使用插件安装级别凭证。 |
 
@@ -59,7 +59,7 @@ async for chunk in api.execution.stream(
 
 ---
 
-## 72 项操作完整清单
+## 80 项操作完整清单
 
 本表与 `tests/data/execution_api_catalog.json`（由 LangBot Core 的 `scripts/export_execution_catalog.py` 导出）一致，由 `tests/api/test_execution_api_consistency.py` 校验。
 
@@ -72,6 +72,9 @@ async for chunk in api.execution.stream(
 | `execution.get_query_vars` | `plugin` | 否 | 否 | 获取当前查询的所有变量 |
 | `execution.create_new_conversation` | `plugin` | 是 | 否 | 为当前查询创建新会话 |
 | `execution.get_langbot_version` | `plugin_or_run` | 否 | 否 | 获取 LangBot Core 版本与 API 特性 |
+| `execution.list_tools` | `plugin` | 否 | 否 | 列出插件可访问的工具 |
+| `execution.list_commands` | `plugin` | 否 | 否 | 列出插件可访问的命令 |
+| `execution.list_plugins_manifest` | `plugin` | 否 | 否 | 列出插件 manifest |
 | `execution.get_bots` | `plugin` | 否 | 否 | 获取已配置的机器人列表 |
 | `execution.get_bot_info` | `plugin` | 否 | 否 | 获取指定机器人的详细信息 |
 | `execution.send_message` | `plugin_or_run` | 是 | 否 | 向目标实体主动发送消息 |
@@ -108,6 +111,7 @@ async for chunk in api.execution.stream(
 | `execution.event_get` | `run` | 否 | 否 | 获取特定历史事件的详情 |
 | `execution.event_page` | `run` | 否 | 否 | 分页读取当前会话的事件记录 |
 | `execution.steering_pull` | `run` | 是 | 否 | 拉取用户在运行中追加的引导消息 |
+| `execution.steering_ack` | `run` | 是 | 否 | 确认已领取的引导消息；校验当前或持久化 Run 授权 |
 | `execution.state_get` | `run` | 否 | 否 | 获取 Agent 作用域状态值 |
 | `execution.state_set` | `run` | 是 | 否 | 设置 Agent 作用域状态值 |
 | `execution.state_delete` | `run` | 是 | 否 | 删除 Agent 状态值 |
@@ -123,6 +127,9 @@ async for chunk in api.execution.stream(
 | `execution.run_list` | `runner_admin` | 否 | 否 | 管理员分页查询历史 Agent Run 列表 |
 | `execution.run_events_page` | `runner_admin` | 否 | 否 | 分页读取指定运行的事件 |
 | `execution.run_cancel` | `runner_admin` | 是 | 否 | 取消指定运行（Runner 管理） |
+| `execution.run_retry` | `runner_admin` | 是 | 否 | 按当前授权创建重试 Run，或重新入队外部任务 |
+| `execution.run_resume` | `runner_admin` | 是 | 否 | 从已提交检查点创建恢复 Run |
+| `execution.run_cancel_ack` | `runner_admin` | 是 | 否 | 确认运行取消后的资源清理 |
 | `execution.run_append_result` | `runner_admin` | 是 | 否 | 向指定运行追加结果（Runner 管理） |
 | `execution.run_finalize` | `runner_admin` | 是 | 否 | 结束指定运行并写入最终状态 |
 | `execution.runner_list` | `runner_admin` | 否 | 否 | 列出已注册的 Runner |
@@ -136,8 +143,8 @@ async for chunk in api.execution.stream(
 | `execution.run_claim` | `runner_admin` | 是 | 否 | 为外部 Runtime 认领待执行的运行 |
 | `execution.run_renew_claim` | `runner_admin` | 是 | 否 | 续期对运行的认领 |
 | `execution.run_release_claim` | `runner_admin` | 是 | 否 | 释放对运行的认领 |
-| `execution.list_application_operations` | `run` | 否 | 否 | 列出本次运行被授权的 ApplicationAPI 工作区操作及其 schema |
-| `execution.call_application_operation` | `run` | 是 | 否 | 以处理器身份调用本次运行被授权的 ApplicationAPI 工作区操作 |
+| `execution.list_application_operations` | `plugin_or_run` | 否 | 否 | 列出本次运行被授权的 ApplicationAPI 工作区操作及其 schema |
+| `execution.call_application_operation` | `plugin_or_run` | 是 | 否 | 以处理器身份调用本次运行被授权的 ApplicationAPI 工作区操作 |
 
 ---
 
