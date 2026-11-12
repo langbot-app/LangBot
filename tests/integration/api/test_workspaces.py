@@ -599,6 +599,10 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'sandbox.status',
             'sandbox.sessions',
             'sandbox.errors',
+            'workspace.sandbox.get',
+            'workspace.sandbox.update',
+            'workspace.sandbox.check',
+            'workspace.sandbox.test',
         ]
     )
     assert all(item == {'supported': True} for item in capabilities['operations'].values())
