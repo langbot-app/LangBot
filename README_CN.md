@@ -37,7 +37,7 @@
 LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时通信机器人。它将大语言模型（LLM）连接到各种聊天平台，帮助你创建能够对话、执行任务、并集成到现有工作流程中的智能 Agent。
 
 <p align="center">
-<img src="res/dashboard-overview.png" alt="LangBot Web 管理面板仪表盘 — 实时监控消息量、模型调用、成功率与活跃会话" width="720"/>
+<img src="res/dashboard-overview-zh.png" alt="LangBot Web 管理面板仪表盘 — 实时监控消息量、模型调用、成功率与活跃会话" width="720"/>
 </p>
 
 ### 核心能力

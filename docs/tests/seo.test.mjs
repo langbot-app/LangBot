@@ -200,7 +200,7 @@ test("guide preserves the introduction and adds ordered navigation plus a copyab
     const navigation = guide.indexOf(`## ${start}`);
     const assistant = guide.indexOf(`<Tip title="${title}">`);
     assert.ok(overview > 0 && navigation > overview && assistant > navigation);
-    assert.ok(guide.includes("/images/zh/insight/dashboard-overview.png"));
+    assert.ok(guide.includes(`/images/${locale === "zh" ? "zh" : "en"}/insight/dashboard-overview.png`));
     assert.match(guide.slice(navigation, assistant), /^1\. /m);
     assert.match(guide.slice(navigation, assistant), /^5\. /m);
     assert.doesNotMatch(guide, /^### \d+\.|127\.0\.0\.1:5300|<Steps>/m);
