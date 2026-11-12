@@ -4082,6 +4082,15 @@ const jaJP = {
       '権限が不足しているため、一部の操作は選択されなかったか削除されました',
   },
   alerts: {
+    enableHint: 'アラートを有効化',
+    cta: {
+      title: 'LangBot アカウントでサインインして、アラートメールを無料で送信',
+      pointFree: '公式の無料送信、1 日 20 通まで',
+      pointNoSetup: 'SMTP や Resend の設定は不要',
+      pointPrivate: 'あなたの LangBot アカウントのアドレスにのみ送信',
+      selfHosted: '自前のメールサーバーを使いたい場合',
+      selfHostedLink: 'config.yaml で SMTP または Resend を設定 →',
+    },
     title: 'アラート',
     description:
       'ボット、パイプライン、モデルが失敗し続けたときにメールと Webhook で通知します',

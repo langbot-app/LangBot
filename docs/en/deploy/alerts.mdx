@@ -5,6 +5,8 @@ description: "Notify admins by email (your SMTP/Resend or the official LangBot S
 
 LangBot watches each Workspace for repeated failures. When a threshold is reached it opens an alert and notifies the Workspace owners and admins. Configure it in **Settings → Alerts** (owner or admin role).
 
+Alerts are **off by default**: nothing is evaluated or sent until an admin turns on "Alerts on" in Settings. When the dashboard's Failed card already shows failures while alerts are off, the card shows an **Enable alerts** shortcut that opens the alert settings.
+
 ## Rules
 
 | Rule | Default trigger | Recovery |
@@ -27,6 +29,8 @@ Each alert is sent when it opens, reminded after 6 h, 12 h and then every 24 h w
 | Off | — | Alerts appear in Settings and go to webhooks only |
 
 When both are available, pick one in Settings.
+
+If no mail service is configured and no admin has signed in with a LangBot Account, the alert settings show a **Sign in with LangBot Account** prompt. It binds your local account to the LangBot Account with the same email and brings you back to the alert settings, ready to use the free official sender.
 
 ### Configure your mail service
 
@@ -82,7 +86,7 @@ Add a webhook under **Settings → API**, then select it in the alert settings. 
 
 `event_type` is `alert.fired`, `alert.reminder`, `alert.resolved` or `alert.test`. Use it to forward alerts to Slack, Feishu, DingTalk or WeCom groups.
 
-## Turning alerts off
+## Turning alerts on and off
 
-- One Workspace: switch off "Alerts on" in Settings, or disable individual rules.
+- One Workspace: switch "Alerts on" in Settings, or disable individual rules. New Workspaces start with alerts off.
 - The whole instance: set `alerts.enabled: false` in `config.yaml` (or `ALERTS__ENABLED=false`).

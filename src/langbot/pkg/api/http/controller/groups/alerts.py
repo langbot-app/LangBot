@@ -47,6 +47,10 @@ class AlertsRouterGroup(group.RouterGroup):
                 }
             )
 
+        @self.route('/summary', methods=['GET'], permission=Permission.AUDIT_VIEW)
+        async def _(request_context: RequestContext) -> str:
+            return self.success(data=await self.ap.alert_service.summary(request_context.workspace_uuid))
+
         @self.route('/settings', methods=['PUT'], permission=Permission.WORKSPACE_UPDATE)
         async def _(request_context: RequestContext) -> str:
             payload = await quart.request.get_json(silent=True) or {}

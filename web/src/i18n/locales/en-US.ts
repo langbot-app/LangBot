@@ -4071,6 +4071,15 @@ const enUS = {
     listSeparator: ', ',
   },
   alerts: {
+    enableHint: 'Enable alerts',
+    cta: {
+      title: 'Email alerts for free with a LangBot Account',
+      pointFree: 'Free official sending, 20 emails per day',
+      pointNoSetup: 'No SMTP or Resend setup needed',
+      pointPrivate: 'Sent only to your own LangBot Account address',
+      selfHosted: 'Prefer your own mail server?',
+      selfHostedLink: 'Configure SMTP or Resend in config.yaml →',
+    },
     title: 'Alerts',
     description:
       'Email and webhook notifications when bots, Pipelines or models keep failing',
@@ -4106,7 +4115,7 @@ const enUS = {
         'Not configured. Set the email section (SMTP or Resend) in config.yaml',
       space: 'LangBot Space (official)',
       spaceAvailable: 'Free official sending to {{accounts}}',
-      spaceMissing: 'Sign in with a LangBot Space account to use it',
+      spaceMissing: 'Sign in with a LangBot Account to use it',
       off: 'Off',
       offDescription: 'Only show alerts here and send webhooks',
       none: 'not sent (no channel available)',

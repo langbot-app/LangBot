@@ -491,8 +491,10 @@ class AlertService:
     @staticmethod
     def _normalize_settings(setting) -> dict:
         if setting is None:
+            # Alerts are opt-in per Workspace: nothing is evaluated or sent until
+            # an admin turns them on in Settings.
             return {
-                'enabled': True,
+                'enabled': False,
                 'email_channel': 'auto',
                 'rules': rules.normalize_rules({}),
                 'webhook_ids': [],
@@ -536,7 +538,7 @@ class AlertService:
         if not isinstance(muted, list):
             raise ValueError('muted_account_uuids must be a list')
         return {
-            'enabled': bool(payload.get('enabled', True)),
+            'enabled': bool(payload.get('enabled', False)),
             'email_channel': email_channel,
             'rules': rules.normalize_rules(payload.get('rules')),
             'webhook_ids': sorted({int(item) for item in webhook_ids}),
@@ -616,6 +618,7 @@ class AlertService:
         return {
             'instance': {'configured': bool(instance['enabled']), 'provider': instance['provider']},
             'space': {
+                'supported': self._space_available(),
                 'available': bool(space_accounts),
                 'accounts': [mask_email(item['email']) for item in space_accounts],
             },
@@ -861,6 +864,25 @@ class AlertService:
         statement = statement.order_by(Incident.opened_at.desc()).limit(min(max(limit, 1), 200))
         rows = (await self._execute(workspace_uuid, statement)).all()
         return [self._incident_payload(row) for row in rows]
+
+    async def summary(self, workspace_uuid: str) -> dict[str, typing.Any]:
+        """Cheap status for the dashboard: whether alerts are on and how many fire."""
+
+        settings = await self._settings(workspace_uuid)
+        Incident = alert_entity.AlertIncident
+        firing = (
+            await self._execute(
+                workspace_uuid,
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(Incident)
+                .where(Incident.workspace_uuid == workspace_uuid, Incident.state == alert_entity.INCIDENT_FIRING),
+            )
+        ).scalar() or 0
+        return {
+            'enabled_instance_wide': self.enabled(),
+            'enabled': bool(settings['enabled']),
+            'firing': int(firing),
+        }
 
     async def list_deliveries(self, workspace_uuid: str, *, limit: int = 50) -> list[dict]:
         Delivery = alert_entity.AlertDelivery

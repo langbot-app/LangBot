@@ -4053,6 +4053,15 @@ const viVN = {
       'Một số thao tác không được chọn hoặc đã bị gỡ do thiếu quyền.',
   },
   alerts: {
+    enableHint: 'Bật cảnh báo',
+    cta: {
+      title: 'Đăng nhập bằng tài khoản LangBot để gửi email cảnh báo miễn phí',
+      pointFree: 'Gửi chính thức miễn phí, 20 thư mỗi ngày',
+      pointNoSetup: 'Không cần cấu hình SMTP hay Resend',
+      pointPrivate: 'Chỉ gửi tới địa chỉ tài khoản LangBot của bạn',
+      selfHosted: 'Muốn dùng máy chủ email riêng?',
+      selfHostedLink: 'Cấu hình SMTP hoặc Resend trong config.yaml →',
+    },
     title: 'Cảnh báo',
     description:
       'Thông báo qua email và webhook khi bot, Pipeline hoặc mô hình liên tục lỗi',

@@ -3,6 +3,7 @@ import type {
   AlertIncident,
   AlertSettings,
   AlertSettingsResponse,
+  AlertSummary,
 } from '@/app/infra/entities/alerts';
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
@@ -2084,6 +2085,10 @@ export class BackendClient extends BaseHttpClient {
     settings: AlertSettings,
   ): Promise<{ settings: AlertSettings }> {
     return this.put('/api/v1/alerts/settings', settings);
+  }
+
+  public getAlertSummary(): Promise<AlertSummary> {
+    return this.get('/api/v1/alerts/summary');
   }
 
   public getAlertIncidents(

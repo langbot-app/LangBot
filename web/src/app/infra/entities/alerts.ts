@@ -35,7 +35,7 @@ export interface AlertSettingsResponse {
   rule_catalog: AlertRuleCatalogItem[];
   channels: {
     instance: { configured: boolean; provider: 'smtp' | 'resend' | null };
-    space: { available: boolean; accounts: string[] };
+    space: { supported: boolean; available: boolean; accounts: string[] };
     effective_email_channel: 'instance' | 'space' | null;
   };
   recipients: {
@@ -46,6 +46,12 @@ export interface AlertSettingsResponse {
     muted: boolean;
   }[];
   webhooks: { id: number; name: string; enabled: boolean }[];
+}
+
+export interface AlertSummary {
+  enabled_instance_wide: boolean;
+  enabled: boolean;
+  firing: number;
 }
 
 export interface AlertIncident {

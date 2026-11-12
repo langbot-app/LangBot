@@ -139,6 +139,8 @@ async def env(tmp_path, monkeypatch):
     )
     service = AlertService(ap)
     service._queue = asyncio.Queue()
+    # Alerts are opt-in; most tests exercise an enabled Workspace.
+    await service.update_settings(WS, {'enabled': True})
     yield SimpleNamespace(service=service, email=email, space=space, pusher=pusher, engine=engine)
     await engine.dispose()
 
@@ -251,7 +253,7 @@ async def test_incident_resolved_before_first_notice_stays_silent(env, monkeypat
 async def test_space_channel_never_sends_recipients_or_free_text(env):
     service = env.service
     env.email.enabled = False
-    await service.update_settings(WS, {'email_channel': 'auto', 'webhook_ids': [7]})
+    await service.update_settings(WS, {'enabled': True, 'email_channel': 'auto', 'webhook_ids': [7]})
     service.observe_failure(WS, 'bot_offline', 'bot-1', 'QQ Bot', error_message='x' * 1000)
     await _drain(service)
     await service.tick()
@@ -299,6 +301,7 @@ async def test_settings_validation_mute_and_channel_choice(env):
     settings = await service.update_settings(
         WS,
         {
+            'enabled': True,
             'email_channel': 'instance',
             'muted_account_uuids': [ADMIN],
             'extra_recipients': ['Oncall@Example.com'],
@@ -313,7 +316,7 @@ async def test_settings_validation_mute_and_channel_choice(env):
     assert sorted(item['to'][0] for item in env.email.sent) == ['oncall@example.com', 'owner@example.com']
 
     # Both channels available: the explicit choice decides.
-    await service.update_settings(WS, {'email_channel': 'space'})
+    await service.update_settings(WS, {'enabled': True, 'email_channel': 'space'})
     await service.send_test(WS)
     assert len(env.space.calls) == 1
     await service.send_test(WS)  # third test within ten minutes is still allowed
@@ -332,7 +335,7 @@ async def test_daily_email_budget_caps_instance_mail(env, monkeypatch):
 
 async def test_disabled_rule_and_instance_switch_ignore_failures(env):
     service = env.service
-    await service.update_settings(WS, {'rules': {'model_failures': {'enabled': False}}})
+    await service.update_settings(WS, {'enabled': True, 'rules': {'model_failures': {'enabled': False}}})
     for _ in range(20):
         service.observe_failure(WS, 'model_failures', 'gpt', 'gpt')
     await _drain(service)
@@ -341,3 +344,26 @@ async def test_disabled_rule_and_instance_switch_ignore_failures(env):
     service.ap.instance_config.data['alerts']['enabled'] = False
     service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
     assert service._queue.empty()
+
+
+async def test_alerts_are_off_until_a_workspace_opts_in(env):
+    service = env.service
+    async with env.engine.begin() as connection:
+        await connection.execute(sqlalchemy.delete(alert_entity.AlertSetting))
+    service._settings_cache.clear()
+
+    summary = await service.summary(WS)
+    assert summary == {'enabled_instance_wide': True, 'enabled': False, 'firing': 0}
+    for _ in range(10):
+        service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert await _incidents(env.engine) == []
+
+    # Saving settings without an explicit flag keeps alerts off.
+    assert (await service.update_settings(WS, {'email_channel': 'auto'}))['enabled'] is False
+    await service.update_settings(WS, {'enabled': True})
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert (await service.summary(WS))['firing'] == 1
+    state = await service.channel_state(WS)
+    assert state['space']['supported'] is True

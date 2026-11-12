@@ -2,6 +2,11 @@
 
 User guide: `docs/*/deploy/alerts.mdx`. This note records the internal contracts.
 
+## Opt-in
+
+Alerts are off per Workspace until an admin enables them (`alert_settings.enabled`, default false). The dashboard
+reads `GET /api/v1/alerts/summary` to offer an "Enable alerts" shortcut on the Failed card.
+
 ## Signal path
 
 - `MonitoringService.record_error` → rule `pipeline_failures` (subject: Pipeline).

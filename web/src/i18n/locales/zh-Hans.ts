@@ -3836,6 +3836,15 @@ const zhHans = {
     listSeparator: '、',
   },
   alerts: {
+    enableHint: '启用告警',
+    cta: {
+      title: '用 LangBot 账号免费发送告警邮件',
+      pointFree: '官方免费发信，每天 20 封',
+      pointNoSetup: '无需配置 SMTP 或 Resend',
+      pointPrivate: '只发到你自己的 LangBot 账号邮箱',
+      selfHosted: '想用自己的邮件服务？',
+      selfHostedLink: '在 config.yaml 中配置 SMTP 或 Resend →',
+    },
     title: '告警',
     description:
       '机器人、流水线或模型持续失败时，通过邮件和 Webhook 通知管理员',
@@ -3859,7 +3868,7 @@ const zhHans = {
     noRecipients: '没有带邮箱的所有者或管理员。',
     extraRecipients: '额外收件人（仅限你的邮件服务，最多 10 个）',
     spaceRecipientsHint:
-      'LangBot Space 只发给使用 LangBot Space 账户登录的管理员本人的 Space 邮箱。免费额度：每个账户每天 20 封、每月 200 封。',
+      'LangBot Space 只发给使用 LangBot 账号登录的管理员本人的邮箱。免费额度：每个账号每天 20 封、每月 200 封。',
     channel: {
       auto: '自动',
       autoDescription: '已配置邮件服务时使用它，否则使用 LangBot Space',
@@ -3869,7 +3878,7 @@ const zhHans = {
         '未配置。请在 config.yaml 的 email 段中配置 SMTP 或 Resend',
       space: 'LangBot Space 官方发信',
       spaceAvailable: '免费官方发送到 {{accounts}}',
-      spaceMissing: '使用 LangBot Space 账户登录后可用',
+      spaceMissing: '使用 LangBot 账号登录后可用',
       off: '关闭',
       offDescription: '只在此处显示告警并发送 Webhook',
       none: '不发送（没有可用渠道）',

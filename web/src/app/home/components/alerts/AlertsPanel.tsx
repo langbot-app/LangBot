@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import {
+  ArrowRight,
   BellRing,
+  Check,
   CheckCircle2,
   CircleAlert,
   Loader2,
@@ -19,6 +21,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
+import langbotIcon from '@/app/assets/langbot-logo.webp';
+import { httpClient } from '@/app/infra/http/HttpClient';
+import { rememberSpaceBindReturnPath } from '@/app/infra/space-bind-return';
 import { backendClient, useCurrentWorkspace } from '@/app/infra/http';
 import type {
   AlertDelivery,
@@ -69,6 +74,88 @@ function Section({
       </div>
       <div className="px-4 py-3">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Shown when neither the instance mail service nor a LangBot Account can send
+ * alert emails: signing in with a LangBot Account is the zero-config path.
+ */
+function SignInCta() {
+  const { t, i18n } = useTranslation();
+  const [busy, setBusy] = useState(false);
+  const docsLanguage = i18n.language?.startsWith('zh')
+    ? 'zh'
+    : i18n.language?.startsWith('ja')
+      ? 'ja'
+      : 'en';
+
+  const signIn = async () => {
+    setBusy(true);
+    try {
+      rememberSpaceBindReturnPath(
+        `${window.location.pathname}?action=showAlerts`,
+      );
+      const response = await httpClient.getSpaceBindAuthorizeUrl(
+        `${window.location.origin}/auth/space/callback?mode=bind`,
+      );
+      window.location.href = response.authorize_url;
+    } catch {
+      toast.error(t('common.spaceLoginFailed'));
+      setBusy(false);
+    }
+  };
+
+  const points = [
+    t('alerts.cta.pointFree'),
+    t('alerts.cta.pointNoSetup'),
+    t('alerts.cta.pointPrivate'),
+  ];
+
+  return (
+    <div className="mb-4 overflow-hidden rounded-lg border border-primary/25 bg-primary/[0.03]">
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:gap-5">
+        <img
+          src={langbotIcon}
+          alt=""
+          className="size-11 shrink-0 rounded-xl shadow-sm"
+        />
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <p className="text-sm font-semibold">{t('alerts.cta.title')}</p>
+          <ul className="space-y-1">
+            {points.map((point) => (
+              <li
+                key={point}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground"
+              >
+                <Check className="size-3.5 shrink-0 text-primary" />
+                {point}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <Button
+          className="shrink-0"
+          onClick={() => void signIn()}
+          disabled={busy}
+        >
+          {busy && <Loader2 className="size-4 animate-spin" />}
+          {t('common.loginWithSpace')}
+          {!busy && <ArrowRight className="size-4" />}
+        </Button>
+      </div>
+      <div className="border-t border-primary/15 bg-background/60 px-4 py-2 text-xs text-muted-foreground">
+        {t('alerts.cta.selfHosted')}{' '}
+        <a
+          href={`https://langbot.app/docs/${docsLanguage}/deploy/alerts`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-medium text-primary hover:underline"
+        >
+          {t('alerts.cta.selfHostedLink')}
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -329,6 +416,9 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
           })}
           icon={<Mail className="size-4" />}
         >
+          {!channels.instance.configured &&
+            !channels.space.available &&
+            channels.space.supported && <SignInCta />}
           <div className="grid gap-2 sm:grid-cols-2">
             {channelOptions.map((option) => {
               const selected = draft.email_channel === option.value;
@@ -431,9 +521,10 @@ export default function AlertsPanel({ active }: AlertsPanelProps) {
                 />
               </div>
             )}
-            {draft.email_channel === 'space' ||
-            (draft.email_channel === 'auto' &&
-              !channels.instance.configured) ? (
+            {channels.space.available &&
+            (draft.email_channel === 'space' ||
+              (draft.email_channel === 'auto' &&
+                !channels.instance.configured)) ? (
               <p className="text-xs text-muted-foreground">
                 {t('alerts.spaceRecipientsHint')}
               </p>

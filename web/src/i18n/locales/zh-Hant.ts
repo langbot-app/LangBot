@@ -3837,6 +3837,15 @@ const zhHant = {
     listSeparator: '、',
   },
   alerts: {
+    enableHint: '啟用告警',
+    cta: {
+      title: '用 LangBot 帳號免費發送告警郵件',
+      pointFree: '官方免費發信，每天 20 封',
+      pointNoSetup: '無需設定 SMTP 或 Resend',
+      pointPrivate: '只發到你自己的 LangBot 帳號郵箱',
+      selfHosted: '想用自己的郵件服務？',
+      selfHostedLink: '在 config.yaml 中設定 SMTP 或 Resend →',
+    },
     title: '告警',
     description:
       '機器人、流水線或模型持續失敗時，透過郵件和 Webhook 通知管理員',
@@ -3870,7 +3879,7 @@ const zhHant = {
         '未設定。請在 config.yaml 的 email 區段中設定 SMTP 或 Resend',
       space: 'LangBot Space 官方發信',
       spaceAvailable: '免費官方發送到 {{accounts}}',
-      spaceMissing: '使用 LangBot Space 帳戶登入後可用',
+      spaceMissing: '使用 LangBot 帳號登入後可用',
       off: '關閉',
       offDescription: '只在此處顯示告警並發送 Webhook',
       none: '不發送（沒有可用管道）',

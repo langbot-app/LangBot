@@ -4144,6 +4144,16 @@ const esES = {
       'Algunas operaciones no se seleccionaron o se quitaron por falta de permisos.',
   },
   alerts: {
+    enableHint: 'Activar alertas',
+    cta: {
+      title:
+        'Inicia sesión con una cuenta de LangBot para enviar alertas por correo gratis',
+      pointFree: 'Envío oficial gratuito, 20 correos al día',
+      pointNoSetup: 'Sin configurar SMTP ni Resend',
+      pointPrivate: 'Solo a la dirección de tu propia cuenta de LangBot',
+      selfHosted: '¿Prefieres tu propio servidor de correo?',
+      selfHostedLink: 'Configura SMTP o Resend en config.yaml →',
+    },
     title: 'Alertas',
     description:
       'Avisos por correo y webhook cuando bots, Pipelines o modelos fallan repetidamente',
