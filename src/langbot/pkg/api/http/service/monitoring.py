@@ -153,6 +153,17 @@ class MonitoringService(ExecutionDetailsMixin):
 
     ap: app.Application
 
+    def _observe_alert(self, workspace_uuid: str, rule: str, subject_id, subject_name, **error) -> None:
+        """Feed a failure to Workspace alerts; never affects the monitoring write."""
+
+        alert_service = getattr(self.ap, 'alert_service', None)
+        if alert_service is None:
+            return
+        try:
+            alert_service.observe_failure(workspace_uuid, rule, subject_id, subject_name, **error)
+        except Exception:
+            pass
+
     def __init__(self, ap: app.Application) -> None:
         self.ap = ap
         self._session_list: SessionSummaryReader = SqlSessionSummaryReader(self._summary_session)
@@ -729,6 +740,15 @@ class MonitoringService(ExecutionDetailsMixin):
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_monitoring.MonitoringLLMCall).values(call_data)
         )
+        if status == 'error':
+            self._observe_alert(
+                workspace_uuid,
+                'model_failures',
+                model_name,
+                model_name,
+                error_type='ModelCallError',
+                error_message=error_message,
+            )
 
         return call_id
 
@@ -869,6 +889,14 @@ class MonitoringService(ExecutionDetailsMixin):
 
         await self.ap.persistence_mgr.execute_async(
             sqlalchemy.insert(persistence_monitoring.MonitoringError).values(error_data)
+        )
+        self._observe_alert(
+            workspace_uuid,
+            'pipeline_failures',
+            pipeline_id,
+            pipeline_name,
+            error_type=error_type,
+            error_message=error_message,
         )
 
         return error_id

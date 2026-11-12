@@ -194,6 +194,30 @@ class SpaceService:
                 raise ValueError(f'Failed to get user info: {data.get("msg")}')
             return data.get('data', {})
 
+    async def send_alert_email(self, access_token: str, payload: dict) -> tuple[int, dict]:
+        """Ask LangBot Space to email an alert to the token's own verified address.
+
+        Space chooses the recipient and renders the message from the structured
+        payload; Core cannot supply an address or free-form body. Returns the HTTP
+        status and the decoded response data (empty on non-JSON bodies).
+        """
+        space_url = self._get_space_config()['url'].rstrip('/')
+        session = httpclient.get_session()
+        async with session.post(
+            f'{space_url}/api/v1/notifications/alert-email',
+            json=payload,
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=aiohttp.ClientTimeout(total=15),
+        ) as response:
+            try:
+                body = await httpclient.read_json_limited(response)
+            except Exception:
+                body = {}
+        if not isinstance(body, dict):
+            body = {}
+        data = body.get('data') if isinstance(body.get('data'), dict) else {}
+        return response.status, {**data, 'msg': str(body.get('msg') or '')[:200]}
+
     async def get_dedicated_membership(self, access_token: str) -> typing.Dict:
         """Ask Space which role the token's account holds on this dedicated instance.
 

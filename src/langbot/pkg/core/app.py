@@ -54,6 +54,8 @@ from ..skill import manager as skill_mgr
 from ..workspace import service as workspace_service_module
 from ..workspace import collaboration as workspace_collaboration_module
 from ..workspace import invitation_delivery as invitation_delivery_module
+from ..notification import email as email_notification_module
+from ..alerts import service as alert_service_module
 from ..cloud import bootstrap as cloud_bootstrap_module
 from ..cloud import launch as cloud_launch_module
 from ..cloud import support_admin as cloud_support_admin_module
@@ -146,6 +148,10 @@ class Application:
     workspace_collaboration_service: workspace_collaboration_module.WorkspaceCollaborationService = None
 
     invitation_delivery_service: invitation_delivery_module.InvitationDeliveryService = None
+
+    email_service: email_notification_module.EmailService = None
+
+    alert_service: alert_service_module.AlertService = None
 
     space_launch_service: cloud_launch_module.SpaceLaunchService = None
 
@@ -416,6 +422,12 @@ class Application:
                     core_entities.LifecycleControlScope.PLATFORM,
                 ],
             )
+            if self.alert_service is not None:
+                self.task_mgr.create_task(
+                    self.alert_service.run(),
+                    name='workspace-alerts',
+                    scopes=[core_entities.LifecycleControlScope.APPLICATION],
+                )
             self.task_mgr.create_task(
                 self.ctrl.run(),
                 name='query-controller',

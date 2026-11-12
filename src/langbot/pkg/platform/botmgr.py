@@ -1807,10 +1807,34 @@ class RuntimeBot:
             tenant_scoped_listener(on_eba_event),
         )
 
+    def _observe_alert(self, *, error: Exception | None = None, recovered: bool = False) -> None:
+        """Report adapter crashes and restarts to Workspace alerts."""
+
+        alert_service = getattr(self.ap, 'alert_service', None)
+        bot_entity = getattr(self, 'bot_entity', None)
+        if alert_service is None or bot_entity is None:
+            return
+        workspace_uuid = getattr(self.execution_context, 'workspace_uuid', None)
+        try:
+            if recovered:
+                alert_service.observe_recovery(workspace_uuid, 'bot_offline', bot_entity.uuid)
+            else:
+                alert_service.observe_failure(
+                    workspace_uuid,
+                    'bot_offline',
+                    bot_entity.uuid,
+                    getattr(bot_entity, 'name', None) or bot_entity.uuid,
+                    error_type=type(error).__name__ if error else None,
+                    error_message=str(error) if error else None,
+                )
+        except Exception:
+            pass
+
     async def run(self):
         async def exception_wrapper():
             try:
                 self.task_context.set_current_action('Running...')
+                self._observe_alert(recovered=True)
                 await self.adapter.run_async()
                 self.task_context.set_current_action('Exited.')
             except Exception as e:
@@ -1820,6 +1844,7 @@ class RuntimeBot:
 
                 traceback_str = traceback.format_exc()
                 self.task_context.set_current_action('Exited with error.')
+                self._observe_alert(error=e)
                 await self.logger.error(f'平台适配器运行出错:\n{e}\n{traceback_str}')
 
         self.task_wrapper = self.ap.task_mgr.create_task(

@@ -131,6 +131,12 @@ def _redact(text: str) -> str:
     return text
 
 
+def redact_text(text: str) -> str:
+    """Redact credential-like values and email addresses from free text."""
+
+    return _redact(text)
+
+
 def _bounded_error(value, limit: int = ERROR_LIMIT) -> str:
     """Bound and redact one failure detail before it leaves the process.
 
