@@ -218,7 +218,8 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
-        spec['backend'] = item.get('backend_name')
+        if backend is not None:
+            spec['backend'] = backend
         limits = getattr(query, '_sandbox_limits', {}) or {}
         if limits.get('config') and '-limits-' + limits['revision'] not in box_id:
             raise BoxValidationError('Box does not match the task workspace limits')

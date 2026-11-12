@@ -47,6 +47,7 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             or op_id == 'stats.basic'
             or op_id == 'task.get'
             or op_id == 'workspace.language.get'
+            or op_id.startswith('workspace.sandbox.')
             or op_id.startswith('bot.')
             or op_id.startswith('adapter.')
             or op_id.startswith('agent.')
@@ -66,8 +67,8 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 165
-    assert len(OPERATION_DOCS) == 165
+    assert len(in_scope_operation_ids) == 169
+    assert len(OPERATION_DOCS) == 169
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -130,6 +131,7 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if (
             op_id.startswith('assistant.')
             or op_id.startswith('api_key.')
+            or op_id.startswith('workspace.sandbox.')
             or op_id.startswith('workspace.member.')
             or op_id.startswith('workspace.invitation.')
             or op_id.startswith('provider.codex.')
@@ -235,7 +237,7 @@ def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 237
+    assert len(catalog_op_ids) == 241
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []

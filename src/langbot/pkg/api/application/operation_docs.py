@@ -1446,7 +1446,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         label={'en_US': 'Update Sandbox Settings', 'zh_Hans': '更新沙箱配置'},
         summary='Save sandbox settings for new tasks.',
         description='Save backend, private E2B credentials and limits after explicit user confirmation. Existing tasks retain their snapshot.',
-        risk='high',
+        risk='dangerous',
         exposure='none',
     ),
     'workspace.sandbox.check': OperationDoc(
@@ -1462,7 +1462,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         label={'en_US': 'Test Sandbox', 'zh_Hans': '测试沙箱'},
         summary='Create, execute in and delete a temporary E2B sandbox.',
         description='Consumes provider capacity and may incur charges. Requires explicit user action; does not save settings.',
-        risk='high',
+        risk='dangerous',
         exposure='none',
     ),
     'workspace.language.get': OperationDoc(
