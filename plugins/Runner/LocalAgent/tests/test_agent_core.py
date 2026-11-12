@@ -1240,3 +1240,107 @@ async def test_non_streaming_loop_recovers_context_overflow_before_visible_failu
     assert model_adapter.calls[1][0].content == "short retry context"
     assert [event.type for event in events].count(AgentLoopEventType.TURN_START) == 1
     assert AgentLoopEventType.RUN_FAILED not in [event.type for event in events]
+
+
+def _empty_stop_stream_api(contents_by_model: dict[str, str]):
+    """Streaming API double: each model answers with one final stop chunk."""
+
+    class EmptyStopAPI:
+        def __init__(self):
+            self.model_ids: list[str] = []
+
+        async def invoke_llm_stream_events(self, *, llm_model_uuid, **kwargs):
+            self.model_ids.append(llm_model_uuid)
+            yield {
+                "chunk": MessageChunk(
+                    role="assistant",
+                    content=contents_by_model[llm_model_uuid],
+                    is_final=True,
+                    provider_specific_fields={"finish_reason": "stop"},
+                )
+            }
+            yield {"usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}}
+
+    return EmptyStopAPI()
+
+
+@pytest.mark.asyncio
+async def test_streaming_empty_first_answer_fails_run_instead_of_completing():
+    """LANG-427: an empty answer (no text, no tool calls) must not be reported as success."""
+    api = _empty_stop_stream_api({"model-1": ""})
+    loop = AgentLoop(
+        model_adapter=LangBotModelAdapter(api),
+        tool_executor=LangBotToolExecutor(api, set()),
+        model_ids=["model-1"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=True,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert events[-1].code == "runner.empty_response"
+    assert events[-1].retryable is True
+    assert "model-1" in events[-1].error
+    assert not any(event.type == AgentLoopEventType.AGENT_END for event in events)
+
+
+@pytest.mark.asyncio
+async def test_streaming_empty_first_answer_falls_back_to_next_model():
+    api = _empty_stop_stream_api({"model-1": "  ", "model-2": "Hello from fallback"})
+    loop = AgentLoop(
+        model_adapter=LangBotModelAdapter(api),
+        tool_executor=LangBotToolExecutor(api, set()),
+        model_ids=["model-1", "model-2"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=True,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert api.model_ids == ["model-1", "model-2"]
+    assert events[-1].type == AgentLoopEventType.AGENT_END
+    final = [e.message for e in events if e.type == AgentLoopEventType.MESSAGE_END and e.message is not None]
+    assert final[-1].content == "Hello from fallback"
+    assert all(m.content.strip() for m in loop.messages if m.role == "assistant")
+
+
+@pytest.mark.asyncio
+async def test_non_streaming_empty_first_answer_falls_back_then_fails():
+    class EmptyModelAdapter:
+        def __init__(self):
+            self.calls: list[list[str]] = []
+
+        async def invoke_turn(self, *, model_ids, messages, tools):
+            self.calls.append(list(model_ids))
+            return ModelTurnResult(
+                message=Message(role="assistant", content=""),
+                tool_calls=[],
+                committed_model_id=model_ids[0],
+                usage={"prompt_tokens": 3, "completion_tokens": 0, "total_tokens": 3},
+            )
+
+        async def invoke_committed_turn(self, *, committed_model_id, messages, tools):
+            raise AssertionError("no model should be committed after an empty answer")
+
+    adapter = EmptyModelAdapter()
+    loop = AgentLoop(
+        model_adapter=adapter,
+        tool_executor=LangBotToolExecutor(AsyncMock(), set()),
+        model_ids=["model-1", "model-2"],
+        messages=[Message(role="user", content="你好")],
+        tools=[],
+        streaming=False,
+        max_tool_iterations=10,
+    )
+
+    events = await _collect_events(loop)
+
+    assert adapter.calls == [["model-1", "model-2"], ["model-2"]]
+    assert events[-1].type == AgentLoopEventType.RUN_FAILED
+    assert events[-1].code == "runner.empty_response"
+    assert events[-1].usage["model_calls"] == 2
