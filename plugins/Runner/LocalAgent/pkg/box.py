@@ -12,7 +12,7 @@ from langbot_plugin.api.entities.builtin.runner.errors import AgentAPIException
 
 from .agent_core.types import NonRetryableToolError
 
-SANDBOX_TOOLS = frozenset({"exec", "read", "write", "edit", "glob", "grep"})
+SANDBOX_TOOLS = frozenset({"exec", "read", "write", "edit", "glob", "grep", "register_skill"})
 
 
 def resolve_reuse_key(ctx, template: str) -> str:
@@ -154,6 +154,7 @@ class LocalAgentBox:
 
     def _instructions(self):
         return (
+            "Files in /workspace belong to this Box. To publish a Skill draft, explicitly call register_skill; edits stay local until publication. "
             f"Prefer storing generated artifacts in {self.binding.outbox}/; create it if needed. "
             "To deliver files, explicitly call export_box_files with their absolute paths and confirm success before finishing. "
             "Writing a file does not deliver it. Fix reported errors and retry the tool; no automatic export occurs."

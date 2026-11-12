@@ -25,12 +25,8 @@ from .models import (
 from .security import validate_sandbox_security
 
 _MAX_E2B_SYNC_FILES = 2048
-_MAX_E2B_SYNC_ENTRIES = 2048
 _MAX_E2B_SYNC_FILE_BYTES = 10 * 1024 * 1024
 _MAX_E2B_SYNC_TOTAL_BYTES = 256 * 1024 * 1024
-_E2B_UPLOAD_BATCH_FILES = 32
-_E2B_UPLOAD_BATCH_BYTES = 8 * 1024 * 1024
-_E2B_DOWNLOAD_CONCURRENCY = 8
 _ARTIFACT_ROOT = "/opt/langbot-artifact-cache"
 
 
@@ -42,12 +38,6 @@ def _read_e2b_host_file_limited(path: str) -> bytes:
     if len(body) > _MAX_E2B_SYNC_FILE_BYTES:
         raise ValueError("E2B host sync file exceeds the size limit")
     return body
-
-
-def _write_e2b_host_file(path: str, data: bytes) -> None:
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "wb") as file:
-        file.write(data)
 
 
 def _build_e2b_host_manifest(host_root: str) -> tuple[str, dict]:
@@ -182,7 +172,6 @@ class E2BSandboxBackend(BaseSandboxBackend):
         - template: spec.image (E2B template ID)
         - envs: spec.env
         - timeout: sandbox lifetime timeout (not command timeout)
-        - metadata: CubeSandbox host-mount configuration
         """
         validate_sandbox_security(spec)
 
@@ -213,21 +202,6 @@ class E2BSandboxBackend(BaseSandboxBackend):
         if self._api_url:
             # E2B SDK uses 'domain' for self-hosted API URL
             create_kwargs["domain"] = self._api_url
-
-        # Build metadata for CubeSandbox host-mount
-        metadata = {}
-        if spec.host_path and spec.host_path_mode != BoxHostMountMode.NONE:
-            metadata["host-mount"] = json.dumps(
-                [
-                    {
-                        "hostPath": spec.host_path,
-                        "mountPath": mount_path,
-                        "readOnly": spec.host_path_mode == BoxHostMountMode.READ_ONLY,
-                    }
-                ]
-            )
-        if metadata:
-            create_kwargs["metadata"] = metadata
 
         # Network mode - E2B uses allow_internet_access parameter
         # Note: E2B SDK doesn't have this directly in create(), but CubeSandbox may support it
@@ -308,7 +282,8 @@ class E2BSandboxBackend(BaseSandboxBackend):
         except Exception as exc:
             raise BoxError(f"Failed to connect to E2B sandbox: {exc}")
 
-        await self._sync_mounts_to_e2b(sandbox, spec)
+        await self._prepare_read_only_mounts(sandbox, spec)
+        await self._check_workspace_quota(sandbox, spec)
 
         # Run the command
         # Note: E2B requires cwd to exist before running command. We create it
@@ -340,7 +315,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 )
             raise BoxError(f"E2B command execution failed: {exc}")
 
-        await self._sync_mounts_from_e2b(sandbox, spec)
+        await self._check_workspace_quota(sandbox, spec)
 
         duration_ms = int(
             (dt.datetime.now(dt.timezone.utc) - start).total_seconds() * 1000
@@ -360,41 +335,58 @@ class E2BSandboxBackend(BaseSandboxBackend):
             duration_ms=duration_ms,
         )
 
-    async def _sync_mounts_to_e2b(self, sandbox, spec: BoxSpec) -> None:
-        """Upload Workspace data and atomically materialize immutable mounts."""
-        shadowed_paths = self._main_mount_shadow_paths(spec)
-        if spec.host_path is not None and spec.host_path_mode != BoxHostMountMode.NONE:
-            if spec.host_path_mode == BoxHostMountMode.READ_ONLY:
-                await self._materialize_immutable_mount(
-                    sandbox,
-                    host_root=spec.host_path,
-                    remote_root=_adapt_path_for_e2b(spec.mount_path),
-                )
-            else:
-                await self._sync_host_tree_to_e2b(
-                    sandbox,
-                    host_root=spec.host_path,
-                    remote_root=_adapt_path_for_e2b(spec.mount_path),
-                    excluded_relative_paths=shadowed_paths,
-                )
+    async def _check_workspace_quota(self, sandbox, spec: BoxSpec) -> None:
+        if spec.workspace_quota_mb <= 0:
+            return
+        limit = spec.workspace_quota_mb * 1024 * 1024
+        script = """import os, sys
+root, limit = sys.argv[1], int(sys.argv[2])
+size = entries = 0
+def failed(error):
+    raise error
+for directory, dirs, files in os.walk(root, followlinks=False, onerror=failed):
+    entries += len(dirs) + len(files)
+    if entries > 100000:
+        raise ValueError('workspace entry limit exceeded')
+    for name in files:
+        size += os.lstat(os.path.join(directory, name)).st_size
+        if size > limit:
+            raise ValueError('workspace quota exceeded')
+"""
+        result = await sandbox.commands.run(
+            "python3 -c "
+            + shlex.quote(script)
+            + " "
+            + shlex.quote(_adapt_path_for_e2b(spec.mount_path))
+            + " "
+            + str(limit),
+            timeout=30,
+        )
+        if result.exit_code != 0:
+            raise BoxError("E2B workspace quota check failed: " + (result.stderr or ""))
 
+    async def _prepare_read_only_mounts(self, sandbox, spec: BoxSpec) -> None:
+        """Import immutable resources without mirroring the writable workspace."""
+        if spec.host_path and spec.host_path_mode == BoxHostMountMode.READ_ONLY:
+            await self._materialize_immutable_mount(
+                sandbox,
+                host_root=spec.host_path,
+                remote_root=_adapt_path_for_e2b(spec.mount_path),
+            )
         for mount in spec.extra_mounts:
             if mount.mode == BoxHostMountMode.NONE:
                 continue
-            if mount.mode == BoxHostMountMode.READ_ONLY:
-                await self._materialize_immutable_mount(
-                    sandbox,
-                    host_root=mount.host_path,
-                    remote_root=_adapt_path_for_e2b(mount.mount_path),
-                    expected_digest=mount.content_digest,
-                    manifest_path=mount.manifest_path,
+            if mount.mode != BoxHostMountMode.READ_ONLY:
+                raise BoxError(
+                    "E2B writable host mounts are unsupported; explicitly import files into the Box"
                 )
-            else:
-                await self._sync_host_tree_to_e2b(
-                    sandbox,
-                    host_root=mount.host_path,
-                    remote_root=_adapt_path_for_e2b(mount.mount_path),
-                )
+            await self._materialize_immutable_mount(
+                sandbox,
+                host_root=mount.host_path,
+                remote_root=_adapt_path_for_e2b(mount.mount_path),
+                expected_digest=mount.content_digest,
+                manifest_path=mount.manifest_path,
+            )
 
     async def _materialize_immutable_mount(
         self,
@@ -666,257 +658,6 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         if getattr(result, "exit_code", 1) != 0:
             stderr = str(getattr(result, "stderr", "") or "").strip()
             raise BoxError(f"Failed to {subject}: {stderr or 'remote command failed'}")
-
-    async def _sync_mounts_from_e2b(self, sandbox, spec: BoxSpec) -> None:
-        """Best-effort download of writable E2B mounts into host paths."""
-        if (
-            spec.host_path is not None
-            and spec.host_path_mode == BoxHostMountMode.READ_WRITE
-        ):
-            await self._sync_e2b_tree_to_host(
-                sandbox,
-                remote_root=_adapt_path_for_e2b(spec.mount_path),
-                host_root=spec.host_path,
-                excluded_relative_paths=self._main_mount_shadow_paths(spec),
-            )
-
-        for mount in spec.extra_mounts:
-            if mount.mode != BoxHostMountMode.READ_WRITE:
-                continue
-            await self._sync_e2b_tree_to_host(
-                sandbox,
-                remote_root=_adapt_path_for_e2b(mount.mount_path),
-                host_root=mount.host_path,
-            )
-
-    async def _sync_host_tree_to_e2b(
-        self,
-        sandbox,
-        *,
-        host_root: str,
-        remote_root: str,
-        excluded_relative_paths: set[str] | None = None,
-    ) -> None:
-        """Best-effort sync for public E2B, which has no local bind mounts."""
-        if not os.path.isdir(host_root):
-            return
-
-        synced_files = 0
-        synced_bytes = 0
-        pending = []
-        pending_bytes = 0
-
-        async def flush():
-            nonlocal synced_files, synced_bytes, pending_bytes
-            if not pending:
-                return
-            try:
-                if len(pending) == 1:
-                    await sandbox.files.write(pending[0]["path"], pending[0]["data"])
-                else:
-                    await sandbox.files.write_files(list(pending))
-                synced_files += len(pending)
-                synced_bytes += pending_bytes
-            except Exception as exc:
-                self.logger.debug(f"Failed to upload E2B sync batch: {exc}")
-                if len(pending) > 1:
-                    # A failed batch must not prevent independent files from syncing.
-                    for entry in pending:
-                        try:
-                            await sandbox.files.write(entry["path"], entry["data"])
-                            synced_files += 1
-                            synced_bytes += len(entry["data"])
-                        except Exception as file_exc:
-                            self.logger.debug(
-                                f"Failed to sync host file to E2B {entry['path']}: {file_exc}"
-                            )
-            pending.clear()
-            pending_bytes = 0
-
-        excluded = excluded_relative_paths or set()
-        for root, dirs, files in os.walk(host_root):
-            rel_dir = os.path.relpath(root, host_root)
-            portable_rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
-            dirs[:] = [
-                directory
-                for directory in dirs
-                if directory not in {".git", "__pycache__", ".venv", "node_modules"}
-                and not self._path_is_shadowed(
-                    posixpath.join(portable_rel_dir, directory).lstrip("/"),
-                    excluded,
-                )
-            ]
-            remote_dir = (
-                remote_root
-                if rel_dir == "."
-                else posixpath.join(remote_root, rel_dir.replace(os.sep, "/"))
-            )
-            try:
-                await sandbox.commands.run(
-                    f"mkdir -p {shlex.quote(remote_dir)}", timeout=10
-                )
-            except Exception as exc:
-                self.logger.debug(f"Failed to create E2B sync dir {remote_dir}: {exc}")
-                continue
-
-            for filename in files:
-                relative_file = posixpath.join(portable_rel_dir, filename).lstrip("/")
-                if self._path_is_shadowed(relative_file, excluded):
-                    continue
-                if synced_files + len(pending) >= _MAX_E2B_SYNC_FILES:
-                    await flush()
-                    return
-                host_file = os.path.join(root, filename)
-                try:
-                    data = await asyncio.to_thread(
-                        _read_e2b_host_file_limited,
-                        host_file,
-                    )
-                    if (
-                        synced_bytes + pending_bytes + len(data)
-                        > _MAX_E2B_SYNC_TOTAL_BYTES
-                    ):
-                        await flush()
-                        return
-                    remote_file = posixpath.join(remote_dir, filename)
-                    if pending and pending_bytes + len(data) > _E2B_UPLOAD_BATCH_BYTES:
-                        await flush()
-                    pending.append({"path": remote_file, "data": data})
-                    pending_bytes += len(data)
-                    if len(pending) >= _E2B_UPLOAD_BATCH_FILES:
-                        await flush()
-                except Exception as exc:
-                    self.logger.debug(
-                        f"Failed to sync host file to E2B {host_file}: {exc}"
-                    )
-        await flush()
-
-    async def _sync_e2b_tree_to_host(
-        self,
-        sandbox,
-        *,
-        remote_root: str,
-        host_root: str,
-        excluded_relative_paths: set[str] | None = None,
-    ) -> None:
-        """Best-effort download of an E2B mount into the matching host path."""
-        await asyncio.to_thread(os.makedirs, host_root, exist_ok=True)
-        try:
-            entries = await sandbox.files.list(remote_root, depth=16)
-        except Exception as exc:
-            self.logger.debug(f"Failed to list E2B mount for sync {remote_root}: {exc}")
-            return
-
-        synced_files = 0
-        synced_bytes = 0
-        pending = []
-
-        async def download(remote_path):
-            try:
-                stream = await sandbox.files.read(
-                    remote_path, format="stream", request_timeout=30
-                )
-                data = bytearray()
-                async for chunk in stream:
-                    if len(data) + len(chunk) > _MAX_E2B_SYNC_FILE_BYTES:
-                        raise ValueError("E2B remote sync file exceeds the size limit")
-                    if (
-                        synced_bytes + len(data) + len(chunk)
-                        > _MAX_E2B_SYNC_TOTAL_BYTES
-                    ):
-                        raise ValueError("E2B remote sync exceeds the total size limit")
-                    data.extend(chunk)
-                return bytes(data)
-            except Exception as exc:
-                self.logger.debug(
-                    f"Failed to sync E2B file to host {remote_path}: {exc}"
-                )
-
-        async def flush_downloads():
-            nonlocal synced_files, synced_bytes
-            if len(pending) == 1:
-                bodies = [await download(pending[0][0])]
-            else:
-                bodies = await asyncio.gather(*(download(path) for path, _ in pending))
-            # Commit in listing order; failed reads/writes must not consume quota.
-            for (remote_path, host_path), data in zip(pending, bodies):
-                if data is None:
-                    continue
-                try:
-                    if synced_bytes + len(data) > _MAX_E2B_SYNC_TOTAL_BYTES:
-                        raise ValueError("E2B remote sync exceeds the total size limit")
-                    await asyncio.to_thread(_write_e2b_host_file, host_path, data)
-                    synced_files += 1
-                    synced_bytes += len(data)
-                except Exception as exc:
-                    self.logger.debug(
-                        f"Failed to sync E2B file to host {remote_path}: {exc}"
-                    )
-            pending.clear()
-
-        excluded = excluded_relative_paths or set()
-        for entry in entries[:_MAX_E2B_SYNC_ENTRIES]:
-            remote_path = str(getattr(entry, "path", "") or "")
-            if (
-                not remote_path
-                or remote_path == remote_root
-                or not remote_path.startswith(remote_root + "/")
-            ):
-                continue
-            rel_path = remote_path[len(remote_root) :].lstrip("/")
-            if self._path_is_shadowed(rel_path, excluded):
-                continue
-            real_host_root = os.path.realpath(host_root)
-            host_path = os.path.realpath(
-                os.path.join(real_host_root, *rel_path.split("/"))
-            )
-            if not (
-                host_path == real_host_root
-                or host_path.startswith(real_host_root + os.sep)
-            ):
-                continue
-
-            entry_type = getattr(getattr(entry, "type", None), "value", "")
-            try:
-                if entry_type == "dir":
-                    await asyncio.to_thread(os.makedirs, host_path, exist_ok=True)
-                elif entry_type == "file":
-                    if synced_files >= _MAX_E2B_SYNC_FILES:
-                        break
-                    declared_size = int(getattr(entry, "size", 0) or 0)
-                    if declared_size > _MAX_E2B_SYNC_FILE_BYTES:
-                        continue
-                    pending.append((remote_path, host_path))
-                    if len(pending) >= min(
-                        _E2B_DOWNLOAD_CONCURRENCY, _MAX_E2B_SYNC_FILES - synced_files
-                    ):
-                        await flush_downloads()
-            except Exception as exc:
-                self.logger.debug(
-                    f"Failed to sync E2B file to host {remote_path}: {exc}"
-                )
-        if pending:
-            await flush_downloads()
-
-    @staticmethod
-    def _main_mount_shadow_paths(spec: BoxSpec) -> set[str]:
-        main_root = _adapt_path_for_e2b(spec.mount_path).rstrip("/")
-        shadowed: set[str] = set()
-        for mount in spec.extra_mounts:
-            if mount.mode == BoxHostMountMode.NONE:
-                continue
-            target = _adapt_path_for_e2b(mount.mount_path)
-            if target.startswith(main_root + "/"):
-                shadowed.add(target[len(main_root) :].lstrip("/"))
-        return shadowed
-
-    @staticmethod
-    def _path_is_shadowed(relative_path: str, shadowed_paths: set[str]) -> bool:
-        normalized = posixpath.normpath(relative_path).lstrip("/")
-        return any(
-            normalized == shadowed or normalized.startswith(shadowed + "/")
-            for shadowed in shadowed_paths
-        )
 
     async def stop_session(self, session: BoxSessionInfo):
         """Kill the E2B sandbox."""

@@ -195,7 +195,9 @@ def make_query(query_id: int = 42) -> pipeline_query.Query:
     )
 
     object.__setattr__(
-        query, '_box_binding', RunBoxBinding(f'run-{query_id}', 'person_test_user', {}, f'query-{query_id}')
+        query,
+        '_box_binding',
+        RunBoxBinding(f'run-{query_id}', 'person_test_user', {}, f'query-{query_id}', host_filesystem_accessible=True),
     )
     return query
 
@@ -811,7 +813,7 @@ async def test_box_service_uses_default_workspace_when_host_path_omitted(tmp_pat
     assert result['ok'] is True
     assert backend.start_calls == ['person_test_user']
     assert backend.exec_calls == [('person_test_user', 'pwd')]
-    assert backend.start_specs[0].host_path == service._tenant_workspace(_CONTEXT)
+    assert backend.start_specs[0].host_path == service._box_workspace(_CONTEXT, 'person_test_user')
 
 
 @pytest.mark.asyncio
@@ -1243,7 +1245,7 @@ async def test_box_service_rejects_execution_when_workspace_already_exceeds_quot
     app.instance_config.data['box']['local']['default_workspace'] = str(host_dir)
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
-    tenant_host_dir = service._tenant_workspace(_CONTEXT)
+    tenant_host_dir = service._box_workspace(_CONTEXT, 'person_test_user')
     assert tenant_host_dir is not None
     os.makedirs(tenant_host_dir, exist_ok=True)
     with open(os.path.join(tenant_host_dir, 'already-too-large.bin'), 'wb') as handle:
@@ -1289,7 +1291,7 @@ async def test_box_service_rejects_workspace_inode_bomb_before_execution(tmp_pat
     app.instance_config.data['box']['limits'] = {'max_workspace_entries': 2}
     service = BoxService(app, client=_InProcessBoxRuntimeClient(logger, runtime))
 
-    tenant_host_dir = service._tenant_workspace(_CONTEXT)
+    tenant_host_dir = service._box_workspace(_CONTEXT, 'person_test_user')
     assert tenant_host_dir is not None
     os.makedirs(tenant_host_dir, exist_ok=True)
     for index in range(3):
@@ -2139,7 +2141,14 @@ class TestInboundOutboundRoundTrip:
             assert q is query
             return {'ok': True, 'stdout': await self._execute_command(parameters['command'], tmp_path), 'stderr': ''}
 
-        service.execute_tool = AsyncMock(side_effect=fake_execute_tool)
+        async def transfer(q, script):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                stdout=await self._execute_command("python3 - <<'LBPY'\n" + script + '\nLBPY', tmp_path)
+            )
+
+        service._execute_file_transfer = transfer
 
         descriptors = await service.materialize_inbound_attachments(query)
         assert len(descriptors) == 1
@@ -2260,7 +2269,7 @@ class TestAttachmentHostPath:
         service._available = True
         # Force the default_workspace to our tmp dir so _host_query_dir resolves.
         service.default_workspace = default_workspace
-        tenant_workspace = service._tenant_workspace(_CONTEXT)
+        tenant_workspace = service._box_workspace(_CONTEXT, 'person_test_user')
         assert tenant_workspace is not None
         os.makedirs(tenant_workspace, exist_ok=True)
         return service, tenant_workspace
@@ -2555,3 +2564,64 @@ async def test_execute_tool_preserves_trusted_read_only_mounts(tmp_path):
         assert mount.mode == BoxHostMountMode.READ_ONLY
     finally:
         await service.shutdown()
+
+
+def test_box_workspaces_are_separate_inside_each_tenant(tmp_path):
+    service = BoxService(make_app(Mock()), client=Mock(spec=BoxRuntimeClient))
+    service.default_workspace = str(tmp_path)
+    a = service._box_workspace(_CONTEXT, 'agent-a')
+    b = service._box_workspace(_CONTEXT, 'agent-b')
+    assert a != b
+    from dataclasses import replace
+
+    other = replace(_CONTEXT, workspace_uuid='other-workspace')
+    assert a != service._box_workspace(other, 'agent-a')
+    pathlib.Path(a).mkdir(parents=True)
+    pathlib.Path(b).mkdir(parents=True)
+    pathlib.Path(a, 'same.txt').write_text('a')
+    pathlib.Path(b, 'same.txt').write_text('b')
+    pathlib.Path(a, 'same.txt').unlink()
+    assert pathlib.Path(b, 'same.txt').read_text() == 'b'
+
+
+@pytest.mark.asyncio
+async def test_bound_run_rejects_replaced_physical_box():
+    logger = Mock()
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger=logger, backends=[backend])
+    client = _InProcessBoxRuntimeClient(logger, runtime)
+    service = BoxService(make_app(logger), client=client)
+    await service.initialize()
+    query = make_query()
+    query._box_binding.backend_session_id = 'lost-physical-box'
+    client.get_session = AsyncMock(return_value={'backend_session_id': 'replacement-box'})
+    try:
+        with pytest.raises(BoxValidationError, match='Bound Box was replaced'):
+            await service.execute_spec_payload({'cmd': 'touch /workspace/should-not-exist'}, query)
+        assert backend.start_calls == []
+    finally:
+        await service.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_skill_snapshot_staging_is_private_and_removed_on_failure(tmp_path):
+    import base64
+
+    app = make_app(Mock())
+    root = tmp_path / '.imports' / 'tenant'
+    app.skill_repository = SimpleNamespace(import_staging_root=Mock(return_value=str(root)))
+    service = BoxService(app, client=Mock(spec=BoxRuntimeClient))
+    service._read_transfer_snapshot = AsyncMock(
+        return_value=[{'name': 'SKILL.md', 'b64': base64.b64encode(b'draft').decode()}]
+    )
+    with pytest.raises(RuntimeError, match='publication rejected'):
+        async with service.export_skill_draft(make_query(), '/workspace/drafts/demo') as path:
+            from pathlib import Path
+
+            staging = Path(path)
+            assert staging.name == 'demo'
+            assert (staging / 'SKILL.md').read_bytes() == b'draft'
+            assert staging.is_relative_to(root)
+            raise RuntimeError('publication rejected')
+    assert not staging.exists()
+    assert list(root.iterdir()) == []
