@@ -3,7 +3,7 @@ kind: Plugin
 metadata:
   author: langbot-team
   name: CodexAgent
-  version: 0.1.21
+  version: 0.1.22
   repository: https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/codex-agent
   label:
     en_US: Codex Agent
