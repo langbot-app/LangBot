@@ -491,6 +491,27 @@ class Application:
                 * 3600
             )
 
+            system_cleanup_cfg = self.instance_config.data.get('system', {}).get('auto_cleanup', {})
+            system_cleanup_enabled = bool(system_cleanup_cfg.get('enabled', False))
+            system_cleanup_interval_seconds = (
+                self._get_positive_float_config(
+                    system_cleanup_cfg.get('interval_hours', 24),
+                    default=24,
+                    name='system.auto_cleanup.interval_hours',
+                )
+                * 3600
+            )
+            log_retention_days = self._get_non_negative_int_config(
+                system_cleanup_cfg.get('log_retention_days', 7),
+                default=7,
+                name='system.auto_cleanup.log_retention_days',
+            )
+            runtime_session_idle_hours = self._get_non_negative_int_config(
+                system_cleanup_cfg.get('runtime_session_idle_hours', 24),
+                default=24,
+                name='system.auto_cleanup.runtime_session_idle_hours',
+            )
+
             maintenance_intervals: dict[str, float] = {}
             if monitoring_enabled:
                 maintenance_intervals['monitoring'] = monitoring_interval_seconds
@@ -500,6 +521,8 @@ class Application:
                 maintenance_intervals['invitations'] = 3600.0
             if operation_log_enabled:
                 maintenance_intervals['operation_logs'] = operation_log_interval_seconds
+            if system_cleanup_enabled:
+                maintenance_intervals['system_auto_cleanup'] = system_cleanup_interval_seconds
             dedicated_members = None
             if getattr(self, 'user_service', None) is not None:
                 dedicated_members = self.user_service._space_dedicated_members()
@@ -614,6 +637,23 @@ class Application:
                                     raise
                                 except Exception as exc:
                                     self.logger.warning(f'Expired Workspace invitation cleanup failed: {exc}')
+                            if 'system_auto_cleanup' in due:
+                                try:
+                                    deleted_logs = self._cleanup_expired_log_files(log_retention_days)
+                                    deleted_sessions = (
+                                        self.sess_mgr.cleanup_inactive_sessions(runtime_session_idle_hours * 3600)
+                                        if self.sess_mgr is not None and runtime_session_idle_hours > 0
+                                        else 0
+                                    )
+                                    if deleted_logs > 0 or deleted_sessions > 0:
+                                        self.logger.info(
+                                            f'System auto-cleanup finished: logs={deleted_logs} '
+                                            f'sessions={deleted_sessions}'
+                                        )
+                                except asyncio.CancelledError:
+                                    raise
+                                except Exception as exc:
+                                    self.logger.warning(f'System auto-cleanup failed: {exc}')
 
                         completed_at = loop.time()
                         for name in due:
@@ -660,6 +700,40 @@ class Application:
             self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
             return default
         return parsed
+
+    def _get_non_negative_int_config(self, value, default: int, name: str) -> int:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        if parsed < 0:
+            self.logger.warning(f'Invalid {name}: {value!r}, using {default}')
+            return default
+        return parsed
+
+    @staticmethod
+    def _cleanup_expired_log_files(retention_days: int) -> int:
+        if retention_days <= 0:
+            return 0
+        from pathlib import Path
+        import time
+
+        log_dir = Path('data/logs')
+        if not log_dir.exists():
+            return 0
+
+        cutoff_ts = time.time() - retention_days * 24 * 3600
+        deleted = 0
+        for file_path in log_dir.glob('langbot-*.log*'):
+            try:
+                if not file_path.is_file() or file_path.stat().st_mtime >= cutoff_ts:
+                    continue
+                os.remove(file_path)
+                deleted += 1
+            except FileNotFoundError:
+                continue
+        return deleted
 
     async def shutdown(self):
         """Stop application work and deterministically release runtime resources."""
