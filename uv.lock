@@ -2155,7 +2155,6 @@ dependencies = [
     { name = "markdown" },
     { name = "matrix-nio" },
     { name = "mcp" },
-    { name = "mypy" },
     { name = "nakuru-project-idk" },
     { name = "ollama" },
     { name = "openai" },
@@ -2163,7 +2162,6 @@ dependencies = [
     { name = "pgvector" },
     { name = "pillow" },
     { name = "pip" },
-    { name = "pre-commit" },
     { name = "psutil" },
     { name = "pycryptodome" },
     { name = "pydantic" },
@@ -2183,7 +2181,6 @@ dependencies = [
     { name = "quart-cors" },
     { name = "regex" },
     { name = "requests" },
-    { name = "ruff" },
     { name = "slack-sdk" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "sqlmodel" },
@@ -2210,6 +2207,7 @@ seekdb = [
 [package.dev-dependencies]
 dev = [
     { name = "moto" },
+    { name = "mypy" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -2256,7 +2254,6 @@ requires-dist = [
     { name = "markdown", specifier = ">=3.6" },
     { name = "matrix-nio", specifier = ">=0.25.2" },
     { name = "mcp", specifier = ">=1.30.0,<2.0.0" },
-    { name = "mypy", specifier = ">=1.16.0" },
     { name = "nakuru-project-idk", specifier = ">=0.0.2.1" },
     { name = "ollama", specifier = ">=0.4.8" },
     { name = "openai", specifier = ">1.0.0" },
@@ -2265,7 +2262,6 @@ requires-dist = [
     { name = "pilk", marker = "extra == 'audio'", specifier = ">=0.1.0" },
     { name = "pillow", specifier = ">=13.0.0" },
     { name = "pip", specifier = ">=26.2.0" },
-    { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pycryptodome", specifier = ">=3.22.0" },
     { name = "pydantic", specifier = ">2.0" },
@@ -2287,7 +2283,6 @@ requires-dist = [
     { name = "quart-cors", specifier = ">=0.8.0" },
     { name = "regex", specifier = ">=2026.1.15" },
     { name = "requests", specifier = ">=2.33.0" },
-    { name = "ruff", specifier = ">=0.11.9" },
     { name = "slack-sdk", specifier = ">=3.35.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.40,<2.2" },
     { name = "sqlmodel", specifier = ">=0.0.24" },
@@ -2306,6 +2301,7 @@ provides-extras = ["audio", "seekdb"]
 [package.metadata.requires-dev]
 dev = [
     { name = "moto", specifier = ">=5.2.1" },
+    { name = "mypy", specifier = ">=1.16.0" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.0.0" },
