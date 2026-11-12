@@ -3438,6 +3438,7 @@ const ruRU = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Журнал',
+      alerts: 'Оповещения',
       models: 'Модели',
       api: 'API',
       storage: 'Хранилище',
@@ -4092,6 +4093,98 @@ const ruRU = {
     collapseDomain: 'Свернуть',
     ungrantableRemoved:
       'Некоторые операции не выбраны или удалены из-за недостатка прав.',
+  },
+  alerts: {
+    title: 'Оповещения',
+    description:
+      'Уведомления по почте и через webhook, когда боты, Pipeline или модели постоянно дают сбои',
+    enabled: 'Оповещения включены',
+    firingCount: 'Активных: {{count}}',
+    allClear: 'Всё в порядке',
+    sendTest: 'Отправить тест',
+    saveBeforeTest: 'Сохраните изменения перед отправкой теста',
+    saved: 'Настройки оповещений сохранены',
+    saveFailed: 'Не удалось сохранить настройки: {{error}}',
+    loadFailed: 'Не удалось загрузить оповещения: {{error}}',
+    testSent: 'Тестовое оповещение отправлено, получателей: {{count}}',
+    testPartial: 'Тест отправлен с ошибками; см. журнал отправки',
+    testNoChannel: 'Каналы не настроены; выберите почтовый канал или webhook',
+    testFailed: 'Не удалось отправить тестовое оповещение: {{error}}',
+    disabledInstanceWide:
+      'Оповещения отключены для этого экземпляра (alerts.enabled в config.yaml).',
+    emailTitle: 'Почта',
+    emailDescription: 'Сейчас отправляется через: {{channel}}',
+    recipients: 'Получатели (владельцы и администраторы Workspace)',
+    noRecipients: 'Ни у одного владельца или администратора нет адреса почты.',
+    extraRecipients:
+      'Дополнительные получатели (только ваш почтовый сервис, до 10)',
+    spaceRecipientsHint:
+      'LangBot Space отправляет письма только администраторам, вошедшим через LangBot Space, на их собственный адрес Space. Бесплатная квота: 20 в день и 200 в месяц на аккаунт.',
+    channel: {
+      auto: 'Автоматически',
+      autoDescription:
+        'Ваш почтовый сервис, если он настроен, иначе LangBot Space',
+      instance: 'Ваш почтовый сервис',
+      instanceConfigured: '{{provider}} настроен в config.yaml',
+      instanceMissing:
+        'Не настроен. Задайте раздел email (SMTP или Resend) в config.yaml',
+      space: 'LangBot Space (официально)',
+      spaceAvailable: 'Бесплатная официальная отправка на {{accounts}}',
+      spaceMissing: 'Войдите с аккаунтом LangBot Space, чтобы использовать',
+      off: 'Выключено',
+      offDescription: 'Только показывать здесь и отправлять webhook',
+      none: 'не отправляется (нет доступного канала)',
+      ready: 'Готово',
+      unavailable: 'Недоступно',
+    },
+    rulesTitle: 'Правила',
+    rulesDescription:
+      'Оповещение открывается, когда число сбоев за окно достигает порога.',
+    minutesWithin: 'мин, не менее',
+    failuresOrMore: 'сбоев',
+    notifyResolved: 'Уведомлять о восстановлении',
+    throttleHint:
+      'Каждое оповещение отправляется один раз при открытии, затем напоминание через 6 ч, 12 ч и далее каждые 24 ч, пока сбои продолжаются.',
+    rule: {
+      pipeline_failures: 'Сбои Pipeline',
+      pipeline_failuresDescription: 'Ошибки обработки в одном Pipeline',
+      model_failures: 'Сбои вызовов модели',
+      model_failuresDescription: 'Неудачные запросы к одной модели',
+      bot_offline: 'Бот остановился с ошибкой',
+      bot_offlineDescription:
+        'Оповещает сразу; восстанавливается при повторном запуске бота',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Выбранные webhook получают события alert.fired, alert.reminder и alert.resolved.',
+    noWebhooks: 'Webhook пока нет. Добавьте его в Настройки → API.',
+    webhookDisabled: 'Отключён',
+    incidentsTitle: 'Последние оповещения',
+    noIncidents: 'Оповещений пока нет.',
+    incidentMeta: 'Сбоев: {{count}} · открыто {{time}}',
+    state: {
+      firing: 'Активно',
+      resolved: 'Восстановлено',
+    },
+    deliveriesTitle: 'Журнал отправки',
+    noDeliveries: 'Ещё ничего не отправлено.',
+    kind: {
+      fired: 'Оповещение',
+      reminder: 'Напоминание',
+      resolved: 'Восстановление',
+      test: 'Тест',
+    },
+    via: {
+      email: 'Почта',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Отправлено',
+      failed: 'Ошибка',
+      rate_limited: 'Квота исчерпана',
+      skipped: 'Пропущено',
+    },
   },
 };
 export default ruRU;

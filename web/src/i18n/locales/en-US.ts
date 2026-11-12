@@ -3418,6 +3418,7 @@ const enUS = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Operation Log',
+      alerts: 'Alerts',
       models: 'Models',
       api: 'API',
       storage: 'Storage',
@@ -4068,6 +4069,98 @@ const enUS = {
     list: 'Includes: {{items}}',
     listMore: 'Includes: {{items}} and more ({{count}} total)',
     listSeparator: ', ',
+  },
+  alerts: {
+    title: 'Alerts',
+    description:
+      'Email and webhook notifications when bots, Pipelines or models keep failing',
+    enabled: 'Alerts on',
+    firingCount: '{{count}} firing',
+    allClear: 'All clear',
+    sendTest: 'Send test',
+    saveBeforeTest: 'Save your changes before sending a test',
+    saved: 'Alert settings saved',
+    saveFailed: 'Failed to save alert settings: {{error}}',
+    loadFailed: 'Failed to load alerts: {{error}}',
+    testSent: 'Test alert sent to {{count}} destination(s)',
+    testPartial: 'Test alert sent with errors; see the delivery log',
+    testNoChannel:
+      'No channel is set up yet; choose an email channel or a webhook',
+    testFailed: 'Failed to send test alert: {{error}}',
+    disabledInstanceWide:
+      'Alerts are turned off for this instance (alerts.enabled in config.yaml).',
+    emailTitle: 'Email',
+    emailDescription: 'Currently sent via: {{channel}}',
+    recipients: 'Recipients (Workspace owners and admins)',
+    noRecipients: 'No owner or admin has an email address.',
+    extraRecipients: 'Extra recipients (your mail service only, up to 10)',
+    spaceRecipientsHint:
+      'LangBot Space only mails admins who signed in with LangBot Space, at their own Space address. Free quota: 20 per day, 200 per month per account.',
+    channel: {
+      auto: 'Automatic',
+      autoDescription:
+        'Your mail service when configured, otherwise LangBot Space',
+      instance: 'Your mail service',
+      instanceConfigured: '{{provider}} configured in config.yaml',
+      instanceMissing:
+        'Not configured. Set the email section (SMTP or Resend) in config.yaml',
+      space: 'LangBot Space (official)',
+      spaceAvailable: 'Free official sending to {{accounts}}',
+      spaceMissing: 'Sign in with a LangBot Space account to use it',
+      off: 'Off',
+      offDescription: 'Only show alerts here and send webhooks',
+      none: 'not sent (no channel available)',
+      ready: 'Ready',
+      unavailable: 'Unavailable',
+    },
+    rulesTitle: 'Rules',
+    rulesDescription:
+      'An alert opens when failures reach the threshold within the window.',
+    minutesWithin: 'min, at least',
+    failuresOrMore: 'failures',
+    notifyResolved: 'Notify when an alert recovers',
+    throttleHint:
+      'Each alert is sent once when it opens, then reminded after 6h, 12h and every 24h while it keeps failing.',
+    rule: {
+      pipeline_failures: 'Pipeline failures',
+      pipeline_failuresDescription: 'Processing errors in one Pipeline',
+      model_failures: 'Model call failures',
+      model_failuresDescription: 'Failed requests to one model',
+      bot_offline: 'Bot stopped with an error',
+      bot_offlineDescription:
+        'Alerts immediately; recovers when the bot starts again',
+    },
+    webhooksTitle: 'Webhooks',
+    webhooksDescription:
+      'Selected webhooks receive alert.fired, alert.reminder and alert.resolved events.',
+    noWebhooks: 'No webhooks yet. Add one in Settings → API.',
+    webhookDisabled: 'Disabled',
+    incidentsTitle: 'Recent alerts',
+    noIncidents: 'No alerts yet.',
+    incidentMeta: '{{count}} failure(s) · opened {{time}}',
+    state: {
+      firing: 'Firing',
+      resolved: 'Resolved',
+    },
+    deliveriesTitle: 'Delivery log',
+    noDeliveries: 'Nothing has been sent yet.',
+    kind: {
+      fired: 'Alert',
+      reminder: 'Reminder',
+      resolved: 'Recovered',
+      test: 'Test',
+    },
+    via: {
+      email: 'Email',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Sent',
+      failed: 'Failed',
+      rate_limited: 'Quota reached',
+      skipped: 'Skipped',
+    },
   },
 };
 export default enUS;
