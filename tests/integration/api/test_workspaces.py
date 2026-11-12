@@ -10,6 +10,7 @@ import pytest
 import sqlalchemy
 import jwt
 from quart import Quart
+from langbot_plugin.box.models import BoxSpec
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.controller.groups.workspaces import (
@@ -58,6 +59,9 @@ async def workspace_api(tmp_path):
             'api': {'global_api_key': '', 'webui_url': 'https://langbot.example'},
         }
     )
+    from langbot.pkg.api.application import ApplicationAPI
+
+    application.application_api = ApplicationAPI(application)
     application.logger = logging.getLogger('workspace-api-test')
     application.workspace_service = WorkspaceService(
         application,
@@ -1005,6 +1009,10 @@ async def test_workspace_language_persists_and_controls_api_errors(workspace_api
     assert unauthorized.status_code in (403, 404)
 
 
+@pytest.mark.skipif(
+    'backend' not in BoxSpec.model_fields,
+    reason='requires in-tree Box SDK',
+)
 async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(workspace_api, tmp_path):
     from langbot.pkg.box.service import BoxService
     from langbot.pkg.box.runner import RunnerBoxService
@@ -1020,7 +1028,7 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
     headers = _auth(owner_token, workspace_uuid)
     docker, e2b = FakeBackend(application.logger), FakeBackend(application.logger)
     docker.name, e2b.name = 'docker', 'e2b'
-    runtime = BoxRuntime(application.logger, backends=[docker, e2b], session_ttl_sec=0)
+    runtime = BoxRuntime(application.logger, backends=[docker, e2b], session_ttl_sec=0, data_dir=tmp_path / 'identity')
     runtime._box_config = {'backend': 'docker'}
 
     class Client(_InProcessBoxRuntimeClient):
@@ -1090,6 +1098,7 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
         await box.shutdown()
 
 
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
 async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmation(workspace_api):
     from langbot.pkg.box.service import BoxService
     from langbot.pkg.box.settings import get_settings
@@ -1184,6 +1193,7 @@ async def test_workspace_e2b_drafts_are_private_and_only_saved_after_confirmatio
     assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
 
 
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
 @pytest.mark.asyncio
 async def test_workspace_limits_and_explicit_test_run_are_separate(workspace_api):
     from langbot.pkg.box.service import BoxService
@@ -1277,3 +1287,27 @@ async def test_workspace_limits_and_explicit_test_run_are_separate(workspace_api
     assert (await http.post('/api/v1/workspaces/current/sandbox/test', headers=headers, json={})).status_code == 200
     assert calls[0]['validate_e2b_template'] is True
     assert await get_settings(ap, ws) != stored  # Only the confirmed limits update changed metadata.
+
+
+async def test_workspace_sandbox_requires_supported_sdk_without_exposing_draft(workspace_api, monkeypatch):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box import service
+
+    ap, http, _, token = workspace_api
+    monkeypatch.setattr(service, 'BoxSpec', SimpleNamespace(model_fields={}))
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    response = await http.post(
+        '/api/v1/workspaces/current/sandbox/check', headers=_auth(token), json={'e2b': {'api_key': 'private-draft-key'}}
+    )
+    assert response.status_code == 400
+    text = await response.get_data(as_text=True)
+    assert 'upgraded Box SDK' in text and 'private-draft-key' not in text
+    current = (await (await http.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    from langbot.pkg.api.http.context import ExecutionContext
+
+    selection = await ap.box_service.resolve_workspace_selection(
+        ExecutionContext(
+            instance_uuid='instance-workspace-api', workspace_uuid=current['workspace']['uuid'], placement_generation=1
+        )
+    )
+    assert selection == {'backend': None, 'e2b': {}, 'limits': {}}

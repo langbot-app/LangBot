@@ -67,6 +67,7 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
             NsjailBackend(ap.logger, base_dir=str(tmp_path / 'jails')),
         ],
         session_ttl_sec=0,
+        data_dir=tmp_path / 'identity',
     )
     runtime.init(config)
     await runtime.initialize()
@@ -243,6 +244,7 @@ async def sandbox_limits_live(live_workspace_api, tmp_path):
             NsjailBackend(ap.logger, base_dir=str(tmp_path / 'jails')),
         ],
         session_ttl_sec=0,
+        data_dir=tmp_path / 'identity',
     )
     runtime.init(config)
     await runtime.initialize()

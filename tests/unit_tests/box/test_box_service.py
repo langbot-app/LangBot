@@ -2557,6 +2557,7 @@ async def test_execute_tool_preserves_trusted_read_only_mounts(tmp_path):
         await service.shutdown()
 
 
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
 def test_workspace_admin_caps_also_constrain_inherited_defaults_and_numeric_strings():
     app = make_app(Mock())
     app.instance_config.data['box']['workspace_limit_caps'] = {

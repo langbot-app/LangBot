@@ -34,7 +34,6 @@ from langbot_plugin.box.models import (
     BoxMountSpec,
     BoxProfile,
     BoxSpec,
-    E2BConnectionConfig,
 )
 
 _INT_ADAPTER = pydantic.TypeAdapter(int)
@@ -98,6 +97,8 @@ def _is_path_under(path: str, root: str) -> bool:
 
 
 if TYPE_CHECKING:
+    from langbot_plugin.box.models import E2BConnectionConfig
+
     from ..core import app as core_app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
@@ -1454,6 +1455,8 @@ class BoxService:
         # Inherited defaults must respect explicit administrator ceilings too.
         configured_caps = _get_box_config(self.ap).get('workspace_limit_caps') or {}
         caps = self.workspace_limit_caps()
+        if configured_caps and 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox limits require an upgraded Box SDK and Runtime')
         updates = {}
         for key in configured_caps:
             field = 'workspace_max_sessions' if key == 'max_sessions' else key
@@ -1473,6 +1476,10 @@ class BoxService:
         from .settings import get_settings
 
         saved = await get_settings(self.ap, require_workspace_uuid(context))
+        if 'backend' not in BoxSpec.model_fields:
+            if any(saved.values()):
+                raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+            return {'backend': None, 'e2b': {}, 'limits': {}}
         backend = saved['backend']
         if backend is None and self._available:
             backend = (await self.client.get_backend_info()).get('name')
@@ -1492,6 +1499,10 @@ class BoxService:
 
     async def _prepare_e2b_config(self, context: TenantContext, draft: dict) -> E2BConnectionConfig:
         from .settings import get_settings
+
+        if 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+        from langbot_plugin.box.models import E2BConnectionConfig
 
         if self._cloud_managed:
             raise BoxValidationError('Custom E2B configuration is restricted by platform policy')
@@ -1595,6 +1606,10 @@ class BoxService:
         from .settings import get_settings
 
         await self._validated_execution_context(context)
+        if 'backend' not in BoxSpec.model_fields:
+            raise BoxValidationError('Workspace sandbox settings require an upgraded Box SDK and Runtime')
+        from langbot_plugin.box.models import E2BConnectionConfig
+
         saved = await get_settings(self.ap, context.workspace_uuid)
         entry = saved['e2b']
         private = entry['config'] if entry else self._deployment_e2b_config()

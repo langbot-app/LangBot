@@ -209,6 +209,7 @@ class BoxStdioSessionRuntime:
             self.owner.execution_context,
             session_id,
             selected_backend=self.owner.sandbox_backend,
+            selected_e2b_config=self.owner.sandbox_e2b_config,
             selected_limits=getattr(self.owner, 'sandbox_limits', None),
             host_path=resolved_host_path,
             host_path_mode=self.config.host_path_mode,
@@ -253,11 +254,17 @@ class BoxStdioSessionRuntime:
 
     async def initialize(self) -> None:
         await self._wait_for_box_runtime()
-        if self.owner.sandbox_backend is None or getattr(self.owner, 'sandbox_limits', None) is None:
+        if (
+            self.owner.sandbox_backend is None
+            or self.owner.sandbox_limits is None
+            or self.owner.sandbox_e2b_config is None
+        ):
             selection = await self.ap.box_service.resolve_workspace_selection(self.owner.execution_context)
             self.owner.sandbox_backend = self.owner.sandbox_backend or selection['backend']
             if getattr(self.owner, 'sandbox_limits', None) is None:
                 self.owner.sandbox_limits = selection.get('limits', {})
+            if self.owner.sandbox_e2b_config is None:
+                self.owner.sandbox_e2b_config = selection['e2b']
 
         # All stdio MCP servers share one Box session. Per-server host paths
         # are staged into the shared workspace instead of becoming session

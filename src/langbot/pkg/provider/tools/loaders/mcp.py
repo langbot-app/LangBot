@@ -301,6 +301,7 @@ class RuntimeMCPSession:
         self.execution_context = execution_context
         self.sandbox_backend = server_config.get('_sandbox_backend')
         self.sandbox_limits = server_config.get('_sandbox_limits')
+        self.sandbox_e2b_config = server_config.get('_sandbox_e2b_config')
         self.enable = enable
         self.session = None
         self.tool_call_timeout_sec = self._parse_tool_call_timeout(
@@ -1571,6 +1572,9 @@ class RuntimeMCPSession:
         }
         if self.sandbox_backend:
             profile['backend'] = self.sandbox_backend
+        e2b = self.sandbox_e2b_config or {}
+        if self.sandbox_backend == 'e2b' and e2b:
+            profile['e2b_revision'] = e2b['revision']
         limits = getattr(self, 'sandbox_limits', None) or {}
         limits_suffix = '-limits-' + limits['revision'] if limits.get('config') else ''
         if limits_suffix:
@@ -2078,6 +2082,7 @@ class MCPLoader(loader.ToolLoader):
         *,
         tool_names: list[str] | None = None,
         limits_selection: dict | None = None,
+        e2b_selection: dict | None = None,
     ):
         sessions = []
         owned = []
@@ -2088,6 +2093,7 @@ class MCPLoader(loader.ToolLoader):
                 if session._uses_box_stdio() and (
                     session.sandbox_backend != backend
                     or (getattr(session, 'sandbox_limits', None) or {}) != (limits_selection or {})
+                    or (backend == 'e2b' and (session.sandbox_e2b_config or {}) != (e2b_selection or {}))
                 ):
                     known_tools = session.get_tools()
                     if tool_names == [] or (
@@ -2109,6 +2115,7 @@ class MCPLoader(loader.ToolLoader):
                         **session.server_config,
                         '_sandbox_backend': backend,
                         '_sandbox_limits': limits_selection,
+                        '_sandbox_e2b_config': e2b_selection,
                         '_sandbox_task_id': uuid_module.uuid4().hex,
                     }
                     session = RuntimeMCPSession(

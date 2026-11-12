@@ -112,6 +112,7 @@ class BoxWorkspaceSession:
         *,
         selected_backend: str | None = None,
         selected_limits: dict | None = None,
+        selected_e2b_config: dict | None = None,
         host_path: str | None = None,
         host_path_mode: str = 'rw',
         workdir: str = '/workspace',
@@ -125,7 +126,7 @@ class BoxWorkspaceSession:
         pids_limit: int | None = None,
         persistent: bool = False,
     ):
-        self.selected_e2b_config = None
+        self.selected_e2b_config = selected_e2b_config
         self.selected_limits = selected_limits
         self.selected_backend = selected_backend
         self.box_service = box_service
@@ -202,7 +203,8 @@ class BoxWorkspaceSession:
         ):
             selected = await self.box_service.resolve_workspace_selection(self.execution_context)
             self.selected_backend = self.selected_backend or selected['backend']
-            self.selected_e2b_config = selected['e2b']
+            if self.selected_e2b_config is None:
+                self.selected_e2b_config = selected['e2b']
             if self.selected_limits is None:
                 self.selected_limits = selected.get('limits', {})
 

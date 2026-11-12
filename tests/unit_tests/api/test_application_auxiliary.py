@@ -210,3 +210,28 @@ async def test_task_selection_excludes_other_workspace_and_hides_api_key_logs(fo
     assert 'secret internal diagnostic' not in str(public)
     with pytest.raises(ApplicationAPIException):
         await api.execute('task.get', context, {'task_id': other.id})
+
+
+@pytest.mark.asyncio
+async def test_sandbox_management_is_not_exposed_to_plugin_tools(foundation):
+    from unittest.mock import AsyncMock
+
+    api, ap, context, _ = foundation
+    ap.box_service = SimpleNamespace(get_workspace_backend_settings=AsyncMock(return_value={'backend': 'docker'}))
+    assert await api.execute('workspace.sandbox.get', context, {}) == {'backend': 'docker'}
+    catalog = {item['id']: item for item in api.operation_catalog()}
+    for suffix in ('get', 'update', 'check', 'test'):
+        item = catalog['workspace.sandbox.' + suffix]
+        assert item['exposure'] == 'none'
+        assert 'plugin' not in item['principals'] and 'processor' not in item['principals']
+    assert catalog['workspace.sandbox.test']['side_effect']
+    plugin = dataclasses.replace(
+        context,
+        principal=dataclasses.replace(
+            context.principal, principal_type=PrincipalType.PLUGIN, installation_uuid='installation'
+        ),
+    )
+    with pytest.raises(ApplicationAPIException) as denied:
+        await api.execute('workspace.sandbox.get', plugin, {})
+    assert denied.value.error.status_code in (401, 403)
+    ap.box_service.get_workspace_backend_settings.assert_awaited_once()

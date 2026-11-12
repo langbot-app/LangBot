@@ -112,3 +112,37 @@ async def test_switch_recovers_stdio_when_previous_backend_never_loaded_tools(mo
         assert selected is not base
         assert selected.sandbox_backend == 'docker'
         assert selected.get_tools()[0].name == 'expected_tool'
+
+
+@pytest.mark.asyncio
+async def test_e2b_credentials_and_template_are_pinned_per_task(monkeypatch):
+    context = ExecutionContext(
+        instance_uuid='instance', workspace_uuid='workspace', placement_generation=1, query_uuid='task'
+    )
+    ap = SimpleNamespace(
+        logger=Mock(),
+        instance_config=SimpleNamespace(data={}),
+        box_service=SimpleNamespace(enabled=True, backend_supports_managed_processes=AsyncMock(return_value=True)),
+    )
+    loader = MCPLoader(ap)
+    old = {'revision': 'old', 'config': {'template': 'old-template', 'api_key': 'old-key'}}
+    new = {'revision': 'new', 'config': {'template': 'new-template', 'api_key': 'new-key'}}
+    base = RuntimeMCPSession(
+        'server',
+        {'uuid': 'id', 'mode': 'stdio', '_sandbox_backend': 'e2b', '_sandbox_limits': {}, '_sandbox_e2b_config': old},
+        True,
+        ap,
+        context,
+    )
+    loader._register_session(context, 'server', base)
+    monkeypatch.setattr(RuntimeMCPSession, 'start', AsyncMock())
+    monkeypatch.setattr(RuntimeMCPSession, 'shutdown', AsyncMock())
+    async with loader.task_sandbox_scope(context, 'e2b', limits_selection={}, e2b_selection=new):
+        selected = loader.get_session(context, 'server')
+        assert selected is not base
+        handle = selected._box_stdio_runtime._build_workspace()
+        assert handle.selected_e2b_config == new
+        assert selected._build_box_session_id() != base._build_box_session_id()
+        assert base.sandbox_e2b_config == old
+    async with loader.task_sandbox_scope(context, 'e2b', limits_selection={}, e2b_selection=old):
+        assert loader.get_session(context, 'server') is base

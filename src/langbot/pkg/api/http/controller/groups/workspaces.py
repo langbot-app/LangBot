@@ -76,6 +76,14 @@ class WorkspacesRouterGroup(group.RouterGroup):
         return await operation()
 
     async def initialize(self) -> None:
+        async def sandbox_operation(operation_id, context, payload):
+            from langbot.pkg.api.application import ApplicationAPIException
+
+            try:
+                return self.success(data=await self.ap.application_api.execute(operation_id, context, payload))
+            except ApplicationAPIException as exc:
+                return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
+
         @self.route(
             '/current/sandbox',
             methods=['GET'],
@@ -83,10 +91,8 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_VIEW,
         )
         async def get_sandbox(request_context: RequestContext):
-            return self.success(
-                data=await self.ap.box_service.get_workspace_backend_settings(
-                    request_context, refresh=quart.request.args.get('refresh') == 'true'
-                )
+            return await sandbox_operation(
+                'workspace.sandbox.get', request_context, {'refresh': quart.request.args.get('refresh') == 'true'}
             )
 
         @self.route(
@@ -96,20 +102,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def update_sandbox(request_context: RequestContext):
-            from langbot_plugin.box.errors import BoxValidationError
-
-            body = await quart.request.get_json()
-            backend = body.get('backend') if isinstance(body, dict) else None
-            try:
-                result = await self.ap.box_service.set_workspace_backend(
-                    request_context,
-                    backend,
-                    e2b_draft=body.get('e2b') if isinstance(body, dict) else None,
-                    limits=body.get('limits') if isinstance(body, dict) else None,
-                )
-            except BoxValidationError as exc:
-                return self.http_status(400, 'sandbox_backend_unavailable', str(exc))
-            return self.success(data=result)
+            return await sandbox_operation('workspace.sandbox.update', request_context, await quart.request.get_json())
 
         @self.route(
             '/current/sandbox/check',
@@ -118,19 +111,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def check_sandbox(request_context: RequestContext):
-            from langbot_plugin.box.errors import BoxValidationError
-
-            body = await quart.request.get_json()
-            try:
-                result = await self.ap.box_service.get_workspace_backend_settings(
-                    request_context,
-                    refresh=True,
-                    validate_e2b_template=False,
-                    e2b_draft=body.get('e2b') if isinstance(body, dict) else None,
-                )
-            except BoxValidationError as exc:
-                return self.http_status(400, 'invalid_sandbox_configuration', str(exc))
-            return self.success(data=result)
+            return await sandbox_operation('workspace.sandbox.check', request_context, await quart.request.get_json())
 
         @self.route(
             '/current/sandbox/test',
@@ -139,19 +120,7 @@ class WorkspacesRouterGroup(group.RouterGroup):
             permission=Permission.WORKSPACE_UPDATE,
         )
         async def test_sandbox(request_context: RequestContext):
-            from langbot_plugin.box.errors import BoxValidationError
-
-            body = await quart.request.get_json()
-            try:
-                result = await self.ap.box_service.get_workspace_backend_settings(
-                    request_context,
-                    refresh=True,
-                    validate_e2b_template=True,
-                    e2b_draft=body.get('e2b') if isinstance(body, dict) else None,
-                )
-            except BoxValidationError as exc:
-                return self.http_status(400, 'invalid_sandbox_configuration', str(exc))
-            return self.success(data=result)
+            return await sandbox_operation('workspace.sandbox.test', request_context, await quart.request.get_json())
 
         @self.route(
             '/current/language',

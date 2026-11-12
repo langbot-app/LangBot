@@ -139,6 +139,7 @@ class AgentRunOrchestrator:
                         backend,
                         tool_names=tool_names,
                         **({'limits_selection': selection['limits']} if selection.get('limits') else {}),
+                        **({'e2b_selection': selection['e2b']} if backend == 'e2b' else {}),
                     )
                 )
             stream = self._run(event, binding, bound_plugins, adapter_context)
