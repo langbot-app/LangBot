@@ -34,24 +34,32 @@ workspace:
         # use api.webui_url, then api.webhook_prefix. Set via
         # WORKSPACE__INVITATIONS__PUBLIC_WEB_URL in container deployments.
         public_web_url: ''
-        email:
-            # Optional invitation email delivery. Empty provider keeps
-            # invitations link-only. Supported: resend, smtp.
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__RESEND__API_KEY.
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__SMTP__PASSWORD.
-                password: ''
-                starttls: true
-                ssl: false
+# Instance mail service shared by Workspace invitations and alert emails.
+# workspace.invitations.email from older releases is moved here on startup.
+email:
+    # Empty provider disables email (invitations become link-only).
+    # Supported: resend, smtp.
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        # Secret. Set via EMAIL__RESEND__API_KEY.
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        # Secret. Set via EMAIL__SMTP__PASSWORD.
+        password: ''
+        starttls: true
+        ssl: false
+# Workspace failure alerts (in-app, email, LangBot Space, webhooks).
+alerts:
+    # false stops evaluating rules and sending notifications instance-wide.
+    enabled: true
+    # Seconds between delivery / auto-resolve passes.
+    tick_seconds: 30
 command:
     enable: true
     prefix:
@@ -426,7 +434,9 @@ space:
 - `api.port` is the HTTP API and WebUI port. `api.webhook_prefix` is the public base URL used to generate platform callback URLs; production deployments normally set it to the HTTPS reverse-proxy origin.
 - Set `api.webui_url` when the browser UI and API use different origins. OAuth redirects trust only this server-side value and `webhook_prefix`, never request `Host` or `Origin` headers.
 - `api.global_api_key` authenticates the HTTP Service API and built-in MCP server through `X-API-Key` or `Authorization: Bearer`, without a login session or a database-backed `lbk_` key. Empty means disabled.
-- `workspace.invitations.public_web_url` controls invitation links and falls back to `api.webui_url`, then `api.webhook_prefix`. Email delivery is optional; choose `resend` or `smtp`, or leave `provider` empty for link-only invitations.
+- `workspace.invitations.public_web_url` controls invitation links and falls back to `api.webui_url`, then `api.webhook_prefix`.
+- `email` is the instance mail service shared by invitations and [alerts](/en/deploy/alerts). Choose `resend` or `smtp`, or leave `provider` empty for link-only invitations and no alert email. `workspace.invitations.email` from older releases is moved here on startup, and `WORKSPACE__INVITATIONS__EMAIL__*` variables keep working (the matching `EMAIL__*` wins).
+- `alerts.enabled` turns failure alerts off instance-wide; see [Alerts](/en/deploy/alerts).
 
 <Warning>
 Treat the global API key, JWT secret, database credentials, S3 credentials, email-provider secrets, and E2B key as secrets. Prefer environment variables in production, never commit real values, and expose authenticated endpoints only over HTTPS.
@@ -475,6 +485,7 @@ Convert a nested key to uppercase and join levels with double underscores:
 
 - `API__PORT` → `api.port`
 - `WORKSPACE__INVITATIONS__PUBLIC_WEB_URL` → `workspace.invitations.public_web_url`
+- `EMAIL__SMTP__HOST` → `email.smtp.host`
 - `CONCURRENCY__PENDING_QUERIES_PER_WORKSPACE` → `concurrency.pending_queries_per_workspace`
 - `DATABASE__POSTGRESQL__POOL_SIZE` → `database.postgresql.pool_size`
 - `STORAGE__CLEANUP__MAX_FILES_PER_RUN` → `storage.cleanup.max_files_per_run`

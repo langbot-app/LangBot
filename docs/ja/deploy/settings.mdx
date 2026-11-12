@@ -23,25 +23,32 @@ api:
     global_api_key: ''
 # Workspace 関連の設定です。
 workspace:
-    # メンバー招待リンクと任意のメール送信設定です。
+    # メンバー招待リンクの設定です。
     invitations:
         # 招待リンクに使う WebUI の公開 URL です。空の場合は api.webui_url、api.webhook_prefix の順にフォールバックします。
         public_web_url: ''
-        # provider が空の場合はリンクだけを生成します。resend または smtp を選べます。
-        email:
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                password: ''
-                starttls: true
-                ssl: false
+# 招待メールとアラートメールで共用するインスタンスのメールサービスです。旧バージョンの workspace.invitations.email は起動時にここへ自動移行されます。
+email:
+    # provider が空の場合はメールを送信しません（招待はリンクのみ）。resend または smtp を選べます。
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        password: ''
+        starttls: true
+        ssl: false
+# ワークスペースの障害アラート（画面内、メール、LangBot Space、Webhook）です。
+alerts:
+    # false にするとインスタンス全体でルール判定と通知を停止します。
+    enabled: true
+    # 配信と自動復旧チェックの間隔（秒）です。
+    tick_seconds: 30
 # コマンド機能、プレフィックス、権限マッピングです。
 command:
     enable: true
@@ -336,7 +343,9 @@ space:
 - `api.port` は HTTP API と WebUI のポートです。`api.webhook_prefix` はプラットフォームのコールバック URL を生成する公開ベース URL で、本番環境では通常 HTTPS リバースプロキシのオリジンを指定します。
 - WebUI と API のオリジンが異なる場合は `api.webui_url` を設定します。OAuth リダイレクトはこのサーバー側設定と `webhook_prefix` のみを信頼し、リクエストの `Host` / `Origin` ヘッダーは信頼しません。
 - `api.global_api_key` は `X-API-Key` または `Authorization: Bearer` で HTTP Service API と組み込み MCP サーバーを認証します。ログインセッションや DB 保存の `lbk_` キーは不要で、空文字列は無効を意味します。
-- `workspace.invitations.public_web_url` は招待リンクの公開 URL です。空の場合は `api.webui_url`、次に `api.webhook_prefix` へフォールバックします。メール配信は `resend` または `smtp` を選び、`provider` が空ならリンクのみを生成します。
+- `workspace.invitations.public_web_url` は招待リンクの公開 URL です。空の場合は `api.webui_url`、次に `api.webhook_prefix` へフォールバックします。
+- `email` は招待と[アラート](/ja/deploy/alerts)で共用するインスタンスのメールサービスです。`resend` または `smtp` を選び、`provider` が空なら招待はリンクのみ、アラートメールは送信しません。旧バージョンの `workspace.invitations.email` は起動時にここへ移行され、`WORKSPACE__INVITATIONS__EMAIL__*` 環境変数も引き続き使えます（同名の `EMAIL__*` が優先）。
+- `alerts.enabled` でインスタンス全体のアラートを無効にできます。詳しくは[アラート](/ja/deploy/alerts)を参照してください。
 
 <Warning>
 グローバル API キー、JWT シークレット、DB/S3 認証情報、メールプロバイダーのシークレット、E2B キーは機密情報です。本番では環境変数を優先し、実値を Git にコミットせず、認証対象のエンドポイントは HTTPS で公開してください。
@@ -385,6 +394,7 @@ space:
 
 - `API__PORT` → `api.port`
 - `WORKSPACE__INVITATIONS__PUBLIC_WEB_URL` → `workspace.invitations.public_web_url`
+- `EMAIL__SMTP__HOST` → `email.smtp.host`
 - `CONCURRENCY__PENDING_QUERIES_PER_WORKSPACE` → `concurrency.pending_queries_per_workspace`
 - `DATABASE__POSTGRESQL__POOL_SIZE` → `database.postgresql.pool_size`
 - `STORAGE__CLEANUP__MAX_FILES_PER_RUN` → `storage.cleanup.max_files_per_run`

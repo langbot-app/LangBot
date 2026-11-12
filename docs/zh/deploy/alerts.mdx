@@ -1,0 +1,88 @@
+---
+title: "告警"
+description: "机器人、流水线或模型连续失败时，通过邮件（自有 SMTP/Resend 或 LangBot Space 官方发信）和 Webhook 通知管理员。"
+---
+
+LangBot 会监测工作区里的连续失败，在达到阈值时打开一条告警，并通知工作区的所有者和管理员。入口在 **设置 → 告警**，需要所有者或管理员角色。
+
+## 告警规则
+
+| 规则 | 默认触发条件 | 恢复 |
+| --- | --- | --- |
+| 流水线处理失败 | 同一条流水线 10 分钟内至少 5 次失败 | 15 分钟内没有新的失败 |
+| 模型调用失败 | 同一个模型 10 分钟内至少 10 次失败 | 15 分钟内没有新的失败 |
+| 机器人异常退出 | 机器人适配器因错误退出（1 次即触发） | 机器人重新启动 |
+
+阈值和时间窗口可以调整，但有下限（至少 3 次失败），避免偶发错误刷屏。
+
+同一条告警只在以下时间点通知：触发时一次；持续失败时在 6 小时、12 小时后提醒，之后每 24 小时提醒一次；恢复时一次（可在设置中关闭）。邮件中不会包含任何终端用户的聊天内容，只有规则、对象名称、失败次数和脱敏后的错误摘要。
+
+## 邮件发送方式
+
+| 方式 | 条件 | 说明 |
+| --- | --- | --- |
+| 你的邮件服务 | 在 `config.yaml` 的 `email` 段配置了 SMTP 或 Resend | 发给所有者、管理员，以及最多 10 个额外收件人 |
+| LangBot Space 官方发信 | 所有者或管理员使用 LangBot Space 账户登录 | 免费；只发到该账户自己的 Space 邮箱 |
+| 自动（默认） | — | 配置了邮件服务就用它，否则使用 LangBot Space |
+| 关闭 | — | 只在设置页显示告警，并发送 Webhook |
+
+两种方式都可用时，可以在设置页里自行选择。
+
+### 配置你的邮件服务
+
+```yaml
+email:
+    provider: smtp          # 或 resend
+    from: 'LangBot <alerts@example.com>'
+    smtp:
+        host: smtp.example.com
+        port: 587
+        username: alerts@example.com
+        password: ''        # 建议用 EMAIL__SMTP__PASSWORD 注入
+        starttls: true
+        ssl: false
+```
+
+这一段也用于成员邀请邮件。旧版本中的 `workspace.invitations.email` 会在启动时自动迁移到 `email`；`WORKSPACE__INVITATIONS__EMAIL__*` 环境变量仍然有效。
+
+### LangBot Space 官方发信的限制
+
+为防止滥用，官方发信由 LangBot Space 服务端控制：
+
+- 收件人只能是发起请求的 Space 账户本人的邮箱，实例无法指定其他地址。
+- 邮件内容由 Space 使用固定模板生成，并移除错误摘要中的链接。
+- 免费额度：每个账户每天 20 封、每月 200 封；每个工作区每天 20 封；测试邮件每小时 3 封。超出后在发送记录中显示「超出额度」。
+- 可以在 LangBot Space 个人资料的「邮件偏好 → 实例告警」中关闭。
+
+## Webhook
+
+在 **设置 → API** 中添加 Webhook 后，可以在告警设置里勾选它。勾选的 Webhook 会收到以下事件：
+
+```json
+{
+  "uuid": "…",
+  "event_type": "alert.fired",
+  "data": {
+    "workspace_uuid": "…",
+    "workspace_name": "Default Workspace",
+    "incidents": [
+      {
+        "rule": "pipeline_failures",
+        "subject_name": "Default Pipeline",
+        "state": "firing",
+        "event_count": 5,
+        "error_type": "PipelineError",
+        "error_summary": "…",
+        "opened_at": "2026-11-12T08:42:05"
+      }
+    ]
+  }
+}
+```
+
+`event_type` 可能是 `alert.fired`、`alert.reminder`、`alert.resolved` 或 `alert.test`。可以用它把告警转发到飞书、钉钉或企业微信群。
+
+## 关闭告警
+
+- 单个工作区：在设置页关闭「启用告警」，或关闭某条规则。
+- 整个实例：在 `config.yaml` 中设置 `alerts.enabled: false`（或环境变量 `ALERTS__ENABLED=false`）。

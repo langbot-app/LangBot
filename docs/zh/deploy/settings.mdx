@@ -23,25 +23,32 @@ api:
     global_api_key: ''
 # Workspace 相关配置。
 workspace:
-    # 成员邀请链接与可选邮件发送设置。
+    # 成员邀请链接设置。
     invitations:
         # 邀请链接使用的 WebUI 公网地址；留空时回退到 api.webui_url 和 api.webhook_prefix。
         public_web_url: ''
-        # provider 留空时只生成链接；可选 resend 或 smtp。
-        email:
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                password: ''
-                starttls: true
-                ssl: false
+# 实例邮件服务，成员邀请邮件和告警邮件共用。旧版本中的 workspace.invitations.email 会在启动时自动迁移到这里。
+email:
+    # provider 留空表示不发邮件（邀请只生成链接）；可选 resend 或 smtp。
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        password: ''
+        starttls: true
+        ssl: false
+# 工作区失败告警（站内、邮件、LangBot Space、Webhook）。
+alerts:
+    # false 表示整个实例停止判定告警和发送通知。
+    enabled: true
+    # 投递与自动恢复检查的间隔秒数。
+    tick_seconds: 30
 # 命令系统、命令前缀与权限映射。
 command:
     enable: true
@@ -339,7 +346,8 @@ space:
 - `api.webui_url`：WebUI 与 API 跨域部署时的浏览器端规范来源，例如开发环境的 `http://localhost:3000`。OAuth 回调只信任该配置与 `webhook_prefix`，不会信任请求中的 `Host` 或 `Origin` 请求头。
 - `api.global_api_key`：供自动化程序、HTTP Service API 和内置 MCP 服务使用的全局密钥。设置后可通过 `X-API-Key` 或 `Authorization: Bearer` 鉴权，无需登录会话或数据库中的 `lbk_` 密钥；留空表示关闭。
 - `workspace.invitations.public_web_url`：邀请链接使用的 WebUI 公网地址；留空时依次回退到 `api.webui_url`、`api.webhook_prefix`。
-- `workspace.invitations.email`：可选的邀请邮件发送配置。`provider` 支持 `resend`、`smtp`，留空时只生成邀请链接、不发送邮件。
+- `email`：实例邮件服务，成员邀请邮件和[告警](/zh/deploy/alerts)邮件共用。`provider` 支持 `resend`、`smtp`，留空时邀请只生成链接、告警不发邮件。旧版本的 `workspace.invitations.email` 会在启动时自动迁移到这里，`WORKSPACE__INVITATIONS__EMAIL__*` 环境变量仍然有效（同名的 `EMAIL__*` 优先）。
+- `alerts.enabled`：实例级告警总开关，详见[告警](/zh/deploy/alerts)。
 
 <Warning>
 `global_api_key`、JWT 密钥、数据库密码、S3 密钥、Resend/SMTP 密钥和 E2B API Key 都属于敏感信息。生产环境优先使用环境变量注入，不要提交到 Git，也不要通过明文 HTTP 暴露服务。
@@ -422,6 +430,7 @@ space:
 
 - `API__PORT` → `api.port`
 - `WORKSPACE__INVITATIONS__PUBLIC_WEB_URL` → `workspace.invitations.public_web_url`
+- `EMAIL__SMTP__HOST` → `email.smtp.host`
 - `CONCURRENCY__PENDING_QUERIES_PER_WORKSPACE` → `concurrency.pending_queries_per_workspace`
 - `DATABASE__POSTGRESQL__POOL_SIZE` → `database.postgresql.pool_size`
 - `STORAGE__CLEANUP__MAX_FILES_PER_RUN` → `storage.cleanup.max_files_per_run`

@@ -539,6 +539,7 @@
                   "en/deploy/langbot/one-click/bt",
                   "en/deploy/langbot/manual",
                   "en/deploy/settings",
+                  "en/deploy/alerts",
                   "en/deploy/update",
                   "en/deploy/command"
                 ]
@@ -1028,6 +1029,7 @@
                   "zh/deploy/langbot/one-click/bt",
                   "zh/deploy/langbot/manual",
                   "zh/deploy/settings",
+                  "zh/deploy/alerts",
                   "zh/deploy/update",
                   "zh/deploy/command"
                 ]
@@ -1545,6 +1547,7 @@
                   "ja/deploy/langbot/one-click/bt",
                   "ja/deploy/langbot/manual",
                   "ja/deploy/settings",
+                  "ja/deploy/alerts",
                   "ja/deploy/update",
                   "ja/deploy/command"
                 ]

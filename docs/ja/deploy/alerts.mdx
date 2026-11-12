@@ -1,0 +1,88 @@
+---
+title: "アラート"
+description: "ボット、パイプライン、モデルが失敗し続けたときに、メール（自前の SMTP/Resend または LangBot Space 公式送信）と Webhook で管理者に通知します。"
+---
+
+LangBot はワークスペースごとに連続した失敗を監視し、しきい値に達するとアラートを発生させて、ワークスペースのオーナーと管理者に通知します。設定は **設定 → アラート** から行います（オーナーまたは管理者ロールが必要です）。
+
+## ルール
+
+| ルール | 既定の発生条件 | 復旧 |
+| --- | --- | --- |
+| パイプラインの失敗 | 同じパイプラインで 10 分以内に 5 回以上失敗 | 15 分間新しい失敗がない |
+| モデル呼び出しの失敗 | 同じモデルで 10 分以内に 10 回以上失敗 | 15 分間新しい失敗がない |
+| ボットがエラーで停止 | プラットフォームアダプターがエラーで終了（1 回で発生） | ボットが再起動する |
+
+しきい値と時間枠は調整できますが、下限（3 回以上の失敗）があります。
+
+各アラートは発生時に 1 回送信され、失敗が続く場合は 6 時間後、12 時間後、その後 24 時間ごとにリマインドされます。復旧時にも 1 回通知します（無効化可能）。メールにはエンドユーザーの会話内容は含まれず、ルール、対象名、失敗回数、マスク済みのエラー概要のみが含まれます。
+
+## メールの送信方法
+
+| 方法 | 利用条件 | 説明 |
+| --- | --- | --- |
+| 自前のメールサービス | `config.yaml` の `email` セクションで SMTP または Resend を設定 | オーナー、管理者、最大 10 件の追加受信者 |
+| LangBot Space（公式） | オーナーまたは管理者が LangBot Space アカウントでサインイン | 無料。そのアカウント本人の Space アドレスにのみ送信 |
+| 自動（既定） | — | メールサービスが設定されていればそれを、なければ LangBot Space を使用 |
+| オフ | — | 設定画面での表示と Webhook のみ |
+
+両方が利用可能な場合は、設定画面で選択できます。
+
+### メールサービスの設定
+
+```yaml
+email:
+    provider: smtp          # または resend
+    from: 'LangBot <alerts@example.com>'
+    smtp:
+        host: smtp.example.com
+        port: 587
+        username: alerts@example.com
+        password: ''        # EMAIL__SMTP__PASSWORD で注入を推奨
+        starttls: true
+        ssl: false
+```
+
+このセクションはメンバー招待メールにも使われます。旧バージョンの `workspace.invitations.email` は起動時に `email` へ自動移行され、`WORKSPACE__INVITATIONS__EMAIL__*` 環境変数も引き続き使えます。
+
+### LangBot Space 公式送信の制限
+
+不正利用を防ぐため、LangBot Space がサーバー側で次の制限を適用します。
+
+- 受信者はリクエストした Space アカウント本人のアドレスに限られ、インスタンスが別のアドレスを指定することはできません。
+- メール本文は Space が固定テンプレートで生成し、エラー概要内のリンクは削除されます。
+- 無料枠：アカウントごとに 1 日 20 通・月 200 通、ワークスペースごとに 1 日 20 通、テストメールは 1 時間に 3 通まで。超過分は送信履歴に「上限到達」と表示されます。
+- LangBot Space のプロフィールの「メール設定 → インスタンスのアラート」で無効にできます。
+
+## Webhook
+
+**設定 → API** で Webhook を追加し、アラート設定で選択します。選択した Webhook には次のイベントが届きます。
+
+```json
+{
+  "uuid": "…",
+  "event_type": "alert.fired",
+  "data": {
+    "workspace_uuid": "…",
+    "workspace_name": "Default Workspace",
+    "incidents": [
+      {
+        "rule": "pipeline_failures",
+        "subject_name": "Default Pipeline",
+        "state": "firing",
+        "event_count": 5,
+        "error_type": "PipelineError",
+        "error_summary": "…",
+        "opened_at": "2026-11-12T08:42:05"
+      }
+    ]
+  }
+}
+```
+
+`event_type` は `alert.fired`、`alert.reminder`、`alert.resolved`、`alert.test` のいずれかです。
+
+## アラートを無効にする
+
+- ワークスペース単位：設定画面で「アラートを有効化」をオフにするか、個別のルールを無効にします。
+- インスタンス全体：`config.yaml` で `alerts.enabled: false`（または `ALERTS__ENABLED=false`）を設定します。
