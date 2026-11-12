@@ -2575,3 +2575,14 @@ def test_workspace_admin_caps_also_constrain_inherited_defaults_and_numeric_stri
         assert spec.memory_mb == 64 and spec.cpus == 0.5 and spec.pids_limit == 16
         assert spec.timeout_sec == 5 and spec.idle_ttl_sec == 60 and spec.workspace_max_sessions == 2
         assert spec.workspace_quota_mb == 10
+
+
+def test_default_template_can_build_a_box_with_the_installed_sdk():
+    import yaml
+
+    template = pathlib.Path(__file__).resolve().parents[3] / 'src/langbot/templates/config.yaml'
+    app = make_app(Mock())
+    app.instance_config.data = yaml.safe_load(template.read_text())
+    box = BoxService(app, client=Mock())
+    spec = box.build_spec({'session_id': 'fresh-install'}, skip_host_mount_validation=True)
+    assert spec.session_id == 'fresh-install' and spec.timeout_sec > 0
