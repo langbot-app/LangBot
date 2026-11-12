@@ -63,3 +63,15 @@ To try a beta instead of the stable setup above, download the [dev/4.11.x Compos
 docker compose --profile all pull
 docker compose --profile all up -d
 ```
+
+## Optional vector store images (optional)
+
+To keep downloads small, the default image only ships Chroma, Qdrant and pgvector support. To use SeekDB (including the "seekdb-built-in" embedding model), Milvus or Valkey Search, change only the `langbot` service in `docker-compose.yaml` to the image tag with the matching suffix; the plugin runtime and Box stay unchanged:
+
+| Vector store | Stable | Specific version | Beta |
+| --- | --- | --- | --- |
+| SeekDB | `rockchin/langbot:latest-seekdb` | `rockchin/langbot:vX.Y.Z-seekdb` | `rockchin/langbot:beta-seekdb` |
+| Milvus | `rockchin/langbot:latest-milvus` | `rockchin/langbot:vX.Y.Z-milvus` | `rockchin/langbot:beta-milvus` |
+| Valkey Search | `rockchin/langbot:latest-valkey` | `rockchin/langbot:vX.Y.Z-valkey` | `rockchin/langbot:beta-valkey` |
+
+The mainland China mirror serves the same tags, such as `docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`. Every release publishes the default image together with all of these variants. After the change, run `pull` and `up -d` again as above.

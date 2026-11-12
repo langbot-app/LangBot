@@ -195,8 +195,8 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
-    # SeekDB is optional. Source/package deployments need the `seekdb` extra.
-    # The official Docker/Kubernetes image already includes it.
+    # SeekDB is optional: source/package deployments need the `seekdb` extra,
+    # Docker/Kubernetes deployments use the -seekdb image tags.
     # Embedded-mode platform support depends on the native pylibseekdb wheels.
     seekdb:
         mode: embedded  # 'embedded' or 'server'
@@ -209,6 +209,7 @@ vdb:
         user: 'root'
         password: ''
         tenant: ''  # Optional, for OceanBase server
+    # Milvus is optional: install the `milvus` extra or use the -milvus image tags.
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
@@ -224,6 +225,8 @@ vdb:
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    # Valkey Search is optional: install the `valkey` extra (not on Windows) or use
+    # the -valkey image tags.
     valkey_search:
         host: 'localhost'
         port: 6379            # integration tests use 6380 -> valkey/valkey-bundle:9.1.0
@@ -442,7 +445,7 @@ Treat the global API key, JWT secret, database credentials, S3 credentials, emai
 - `database.use` selects SQLite or PostgreSQL. A non-empty `database.postgresql.url` overrides the structured connection fields and preserves TLS/query options.
 - PostgreSQL pool and timeout settings bound shared runtime resources. `database.cloud_migration.operator_dsn_env` names the environment variable containing the operator-only migration DSN; keep that role separate from the runtime role.
 - `vdb.use` selects the vector backend. Configure only the selected backend. `runtime_cache_limit` bounds process-local collection/index handles.
-- `vdb.use: seekdb` requires `uv sync --extra seekdb` for a source deployment or `uvx --from 'langbot[seekdb]@latest' langbot` for a package deployment. The official Docker/Kubernetes image already includes the dependency and needs no additional build argument.
+- SeekDB, Milvus and Valkey Search are optional dependencies that neither the default installation nor the default image includes. For `vdb.use: seekdb` / `milvus` / `valkey_search`, run `uv sync --extra seekdb` (or `milvus`, `valkey`) for a source deployment, `uvx --from 'langbot[seekdb]@latest' langbot` (or `[milvus]`, `[valkey]`) for a package deployment, and switch the `langbot` service to the matching image tag for Docker/Kubernetes, such as `rockchin/langbot:latest-seekdb`, `latest-milvus` or `latest-valkey`. Chroma, Qdrant and pgvector need nothing extra.
 - `vdb.pgvector.use_business_database` reuses `database.postgresql`; `allowed_dimensions` controls the partial ANN indexes created by release migrations.
 - Valkey Search requires a Valkey server with the Search module, such as `valkey/valkey-bundle:9.1.0`.
 

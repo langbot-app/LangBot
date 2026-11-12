@@ -47,11 +47,14 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 For production, expose via Ingress + TLS (the manifest already includes commented Ingress / LoadBalancer / NodePort examples — uncomment as needed).
 
-### Using SeekDB
+### Using SeekDB, Milvus or Valkey Search
 
-The official image already includes the optional SeekDB dependencies, so no
-dedicated image or additional build argument is required. Set `vdb.use` to
-`seekdb` to enable it, or keep the default `chroma` when it is not needed.
+The default image only ships Chroma, Qdrant and pgvector support. To use SeekDB
+(including its built-in embedding model), Milvus or Valkey Search, switch the
+`langbot` Deployment to the image tag with the matching suffix, `-seekdb`,
+`-milvus` or `-valkey` (for example `rockchin/langbot:latest-milvus` or
+`rockchin/langbot:vX.Y.Z-milvus`), then set `vdb.use`. The plugin runtime and
+Box keep the default image.
 
 ## Box Sandbox Runtime
 

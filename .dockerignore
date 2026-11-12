@@ -26,3 +26,12 @@ plugins/
 # Plugin SDK sources: Core installs the PyPI-pinned langbot-plugin.
 sdk/
 **/*.lbpkg
+
+# Not needed at runtime: documentation (incl. ~70 MB of images), tests,
+# repo-level dev tooling and agent skills.
+docs/
+dev-docs/
+tests/
+tools/
+skills/
+examples/

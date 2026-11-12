@@ -47,9 +47,9 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 生产环境推荐使用 Ingress + TLS 对外暴露（清单中已附带被注释的 Ingress / LoadBalancer / NodePort 示例，按需取消注释）。
 
-### 使用 SeekDB
+### 使用 SeekDB / Milvus / Valkey Search
 
-官方镜像已经包含可选的 SeekDB 依赖，无需构建专用镜像或添加额外构建参数。将 `vdb.use` 配置为 `seekdb` 即可启用；不使用时保持默认的 `chroma`。
+默认镜像只内置 Chroma、Qdrant 与 pgvector 支持。如需使用 SeekDB（含内置嵌入模型）、Milvus 或 Valkey Search，请把 `langbot` Deployment 的镜像改为带对应后缀的标签：`-seekdb`、`-milvus` 或 `-valkey`（如 `rockchin/langbot:latest-milvus`、`rockchin/langbot:vX.Y.Z-milvus`），再配置 `vdb.use`。插件运行时和 Box 继续使用默认镜像即可。
 
 ## Box 沙箱运行时
 

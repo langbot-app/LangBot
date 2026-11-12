@@ -159,8 +159,8 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
-    # SeekDB はオプションです。ソース/package デプロイでは `seekdb` extra が必要です。
-    # 公式 Docker/Kubernetes イメージにはすでに含まれています。
+    # SeekDB はオプションです。ソース/package デプロイでは `seekdb` extra、
+    # Docker/Kubernetes デプロイでは -seekdb イメージタグが必要です。
     # 組み込みモードの対応環境は pylibseekdb wheel に依存します。
     seekdb:
         mode: embedded
@@ -171,7 +171,7 @@ vdb:
         user: 'root'
         password: ''
         tenant: ''
-    # Milvus の接続設定です。
+    # Milvus はオプションです。`milvus` extra または -milvus イメージタグが必要です。
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
@@ -186,6 +186,7 @@ vdb:
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    # Valkey Search はオプションです。`valkey` extra（Windows 非対応）または -valkey イメージタグが必要です。
     # Search モジュールを有効にした Valkey が必要です。
     valkey_search:
         host: 'localhost'
@@ -354,7 +355,7 @@ space:
 - `database.use` で SQLite または PostgreSQL を選択します。`database.postgresql.url` が空でなければ分割された接続項目より優先され、TLS/クエリオプションも保持できます。
 - PostgreSQL のプールとタイムアウトは共有ランタイム資源を制限します。`database.cloud_migration.operator_dsn_env` は運用者専用のマイグレーション DSN を格納する環境変数名で、ランタイムロールとは分離してください。
 - `vdb.use` で利用するベクトルバックエンドを選びます。実際に選択したバックエンドだけを設定します。
-- `vdb.use: seekdb` は、ソースデプロイでは `uv sync --extra seekdb`、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot` が必要です。公式 Docker/Kubernetes イメージには依存関係がすでに含まれており、追加のビルド引数は不要です。
+- SeekDB、Milvus、Valkey Search はオプション依存関係で、デフォルトのインストールにもデフォルトイメージにも含まれません。`vdb.use: seekdb` / `milvus` / `valkey_search` を使う場合、ソースデプロイでは `uv sync --extra seekdb`（または `milvus`、`valkey`）、パッケージデプロイでは `uvx --from 'langbot[seekdb]@latest' langbot`（または `[milvus]`、`[valkey]`）を使用し、Docker/Kubernetes では `langbot` サービスのイメージを対応するタグ（例：`rockchin/langbot:latest-seekdb`、`latest-milvus`、`latest-valkey`）に変更してください。Chroma、Qdrant、pgvector は追加の依存関係が不要です。
 - `vdb.pgvector.use_business_database` は `database.postgresql` を再利用します。`allowed_dimensions` はリリースマイグレーションが作成する ANN インデックスの次元を制御します。
 - Valkey Search には Search モジュール入りの Valkey（例: `valkey/valkey-bundle:9.1.0`）が必要です。
 

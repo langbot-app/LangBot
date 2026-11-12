@@ -38,6 +38,17 @@ SeekDB 嵌入式模式还要求当前平台存在兼容的 `pylibseekdb` wheel�
 `pyseekdb` 包元数据影响，macOS 14 ARM64 即使只连接远程 SeekDB，也无法解析该
 extra。不使用 SeekDB 时，这些平台限制不影响 LangBot。
 
+## 可选的 Milvus / Valkey Search 支持
+
+Milvus 与 Valkey Search 向量数据库同样是可选依赖，默认安装不包含。使用前分别带上对应的 extra 启动（可与其他 extra 组合，如 `langbot[milvus,audio]`）：
+
+```bash
+uvx --from 'langbot[milvus]@latest' langbot
+uvx --from 'langbot[valkey]@latest' langbot
+```
+
+`valkey` extra 依赖的 `valkey-glide` 没有 Windows 版本，Windows 上无法使用 Valkey Search。
+
 ## 可选的语音转码支持（SILK / 微信原生语音）
 
 如果需要在微信等平台发送原生语音条（SILK 格式）或进行音频格式转换，需要系统已安装 `ffmpeg`，并使用 `audio` extra 启动：

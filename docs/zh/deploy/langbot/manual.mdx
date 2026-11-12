@@ -22,7 +22,13 @@ pip install uv
 uv sync
 ```
 
-默认安装不包含可选的 SeekDB 支持。如果需要使用 SeekDB 向量数据库或内置嵌入模型，请改用：
+默认安装不包含可选的向量数据库支持。如需使用以下后端，在 `uv sync` 时加上对应的 extra（可组合）：
+
+| 后端 | extra |
+| --- | --- |
+| SeekDB 向量数据库 / 内置嵌入模型 | `seekdb` |
+| Milvus | `milvus` |
+| Valkey Search（不支持 Windows） | `valkey` |
 
 ```bash
 uv sync --extra seekdb

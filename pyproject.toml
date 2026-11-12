@@ -50,13 +50,9 @@ dependencies = [
     "websockets>=15.0.1",
     "python-socks>=2.7.1", # dingtalk missing dependency
     "pip>=26.2.0",
-    "ruff>=0.11.9",
-    "pre-commit>=4.2.0",
     "uv>=0.13.4",
-    "mypy>=1.16.0",
     "pypdf>=6.0.0",
     "python-docx>=1.1.0",
-    "pandas>=2.2.2",
     "chardet>=5.2.0",
     "xxhash>=3.5.0",
     "markdown>=3.6",
@@ -77,11 +73,9 @@ dependencies = [
     "matrix-nio>=0.25.2",
     "tboxsdk>=0.0.10",
     "boto3>=1.35.0",
-    "pymilvus>=2.6.4",
     "pgvector>=0.4.1",
     "botocore>=1.42.39",
     "litellm>=1.88.6",
-    "valkey-glide>=2.5.2,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
     "webauthn>=3.0.0",
     "httpx[socks]>=0.28.1",
 ]
@@ -114,6 +108,12 @@ classifiers = [
 audio = [
     "pilk>=0.1.0",
 ]
+milvus = [
+    "pymilvus>=2.6.4",
+]
+valkey = [
+    "valkey-glide>=2.5.2,<3.0.0; sys_platform != 'win32'", # No Windows wheels are published
+]
 seekdb = [
     "pyseekdb==1.4.0.post1",
     "pylibseekdb==1.4.0; sys_platform == 'linux' or (sys_platform == 'darwin' and platform_machine == 'arm64')",
@@ -141,6 +141,7 @@ include = ["langbot", "langbot.*"]
 [dependency-groups]
 dev = [
     "moto>=5.2.1",
+    "mypy>=1.16.0",
     "pre-commit>=4.2.0",
     "pytest>=9.0.3",
     "pytest-asyncio>=1.0.0",

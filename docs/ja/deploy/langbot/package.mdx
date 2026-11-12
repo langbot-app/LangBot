@@ -32,3 +32,14 @@ uvx --from 'langbot[seekdb]@latest' langbot
 ```
 
 SeekDB の組み込みモードには、現在のプラットフォームに対応する `pylibseekdb` wheel も必要です。Apple Silicon では現在 macOS 15 以降が必要です。macOS 14 ARM64 の対応予定は [oceanbase/seekdb#1324](https://github.com/oceanbase/seekdb/issues/1324) を参照してください。現在の `pyseekdb` package metadata のため、macOS 14 ARM64 ではサーバーモードだけを使う場合も extra を解決できません。SeekDB をインストールしない場合、この制限は LangBot に影響しません。
+
+## オプションの Milvus / Valkey Search サポート
+
+Milvus と Valkey Search のベクトルストアもオプション依存関係で、デフォルトのインストールには含まれません。使用する場合は対応する extra を付けて起動してください（`langbot[milvus,audio]` のように組み合わせ可能）：
+
+```bash
+uvx --from 'langbot[milvus]@latest' langbot
+uvx --from 'langbot[valkey]@latest' langbot
+```
+
+`valkey` extra が依存する `valkey-glide` には Windows 版がないため、Windows では Valkey Search を利用できません。

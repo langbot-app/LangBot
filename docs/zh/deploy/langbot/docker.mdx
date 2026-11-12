@@ -63,3 +63,15 @@ docker compose --profile all up -d
 docker compose --profile all pull
 docker compose --profile all up -d
 ```
+
+## 可选向量数据库版本（可选）
+
+为减小下载体积，默认镜像只内置 Chroma、Qdrant 与 pgvector 支持。如需使用 SeekDB（含「seekdb-内置」嵌入模型）、Milvus 或 Valkey Search，请在 `docker-compose.yaml` 中只把 `langbot` 服务的镜像改为带对应后缀的标签，插件运行时和 Box 保持不变：
+
+| 向量数据库 | 稳定版 | 指定版本 | Beta |
+| --- | --- | --- | --- |
+| SeekDB | `rockchin/langbot:latest-seekdb` | `rockchin/langbot:vX.Y.Z-seekdb` | `rockchin/langbot:beta-seekdb` |
+| Milvus | `rockchin/langbot:latest-milvus` | `rockchin/langbot:vX.Y.Z-milvus` | `rockchin/langbot:beta-milvus` |
+| Valkey Search | `rockchin/langbot:latest-valkey` | `rockchin/langbot:vX.Y.Z-valkey` | `rockchin/langbot:beta-valkey` |
+
+中国大陆镜像源同样提供这些标签，如 `docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`。每次发版都会同时发布默认镜像和以上各版本。修改后按上面的方式重新执行 `pull` 和 `up -d`。

@@ -47,9 +47,9 @@ kubectl port-forward -n langbot svc/langbot 5300:5300
 
 本番環境では Ingress + TLS での公開を推奨します（マニフェストにはコメントアウトされた Ingress / LoadBalancer / NodePort の例が含まれているので、必要に応じてコメントを解除してください）。
 
-### SeekDB を使用する場合
+### SeekDB / Milvus / Valkey Search を使用する場合
 
-公式イメージにはオプションの SeekDB 依存関係がすでに含まれているため、専用イメージや追加のビルド引数は不要です。`vdb.use` を `seekdb` に設定すると有効になり、不要な場合はデフォルトの `chroma` のまま使用できます。
+デフォルトイメージには Chroma、Qdrant、pgvector のサポートだけが含まれます。SeekDB（組み込み埋め込みモデルを含む）、Milvus、Valkey Search を使う場合は、`langbot` Deployment のイメージを対応するサフィックス付きのタグ（`-seekdb`、`-milvus`、`-valkey`。例：`rockchin/langbot:latest-milvus`、`rockchin/langbot:vX.Y.Z-milvus`）に変更し、`vdb.use` を設定してください。プラグインランタイムと Box はデフォルトイメージのままで構いません。
 
 ## Box サンドボックスランタイム
 

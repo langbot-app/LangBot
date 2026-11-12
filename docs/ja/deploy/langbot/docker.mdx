@@ -59,3 +59,15 @@ docker compose --profile all up -d
 docker compose --profile all pull
 docker compose --profile all up -d
 ```
+
+## オプションのベクトルストア版イメージ（任意）
+
+ダウンロードサイズを抑えるため、デフォルトイメージには Chroma、Qdrant、pgvector のサポートだけが含まれます。SeekDB（「seekdb-内蔵」埋め込みモデルを含む）、Milvus、Valkey Search を使う場合は、`docker-compose.yaml` の `langbot` サービスのイメージだけを対応するサフィックス付きのタグに変更してください。プラグインランタイムと Box はそのままで構いません：
+
+| ベクトルストア | 安定版 | バージョン指定 | Beta |
+| --- | --- | --- | --- |
+| SeekDB | `rockchin/langbot:latest-seekdb` | `rockchin/langbot:vX.Y.Z-seekdb` | `rockchin/langbot:beta-seekdb` |
+| Milvus | `rockchin/langbot:latest-milvus` | `rockchin/langbot:vX.Y.Z-milvus` | `rockchin/langbot:beta-milvus` |
+| Valkey Search | `rockchin/langbot:latest-valkey` | `rockchin/langbot:vX.Y.Z-valkey` | `rockchin/langbot:beta-valkey` |
+
+中国本土向けミラーでも同じタグ（例：`docker.langbot.app/langbot-public/rockchin/langbot:latest-seekdb`）を利用できます。リリースごとに、デフォルトイメージとこれらの版が同時に公開されます。変更後は上記と同じ手順で `pull` と `up -d` を再実行してください。

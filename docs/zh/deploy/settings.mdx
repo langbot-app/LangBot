@@ -159,8 +159,8 @@ vdb:
         host: localhost
         port: 6333
         api_key: ''
-    # SeekDB 是可选功能；源码/包管理器部署需安装 langbot[seekdb] extra。
-    # 官方 Docker/Kubernetes 镜像已包含该依赖。
+    # SeekDB 是可选功能：源码/包管理器部署需安装 langbot[seekdb] extra，
+    # Docker/Kubernetes 部署使用 -seekdb 镜像标签。
     # 嵌入式模式的平台支持取决于 pylibseekdb wheel。
     seekdb:
         mode: embedded
@@ -171,7 +171,7 @@ vdb:
         user: 'root'
         password: ''
         tenant: ''
-    # Milvus 连接参数。
+    # Milvus 是可选功能：需安装 langbot[milvus] extra，或使用 -milvus 镜像标签。
     milvus:
         uri: 'http://127.0.0.1:19530'
         token: ''
@@ -186,6 +186,7 @@ vdb:
         database: 'langbot'
         user: 'postgres'
         password: 'postgres'
+    # Valkey Search 是可选功能：需安装 langbot[valkey] extra（不支持 Windows），或使用 -valkey 镜像标签。
     # 需要启用 Search 模块的 Valkey 服务。
     valkey_search:
         host: 'localhost'
@@ -381,7 +382,7 @@ space:
 - PostgreSQL 的 `pool_size`、`max_overflow`、连接池超时与回收参数共同限制连接资源；三个数据库超时字段只应用于 Cloud 运行时连接。
 - `database.cloud_migration.operator_dsn_env` 指定 Cloud 发布迁移读取的运维级 DSN 环境变量。运维角色必须与运行时角色分离，密码不要写入配置文件或命令行参数。
 - `vdb.use` 选择向量后端。页面列出了 Qdrant、SeekDB、Milvus、pgvector 与 Valkey Search 的连接参数；只需要配置实际选中的后端。
-- `vdb.use: seekdb` 在源码部署中要求执行 `uv sync --extra seekdb`，包管理器部署使用 `uvx --from 'langbot[seekdb]@latest' langbot`。官方 Docker/Kubernetes 镜像已包含该依赖，无需额外构建参数。
+- SeekDB、Milvus 与 Valkey Search 是可选依赖，默认安装和默认镜像都不包含。选用 `vdb.use: seekdb` / `milvus` / `valkey_search` 时：源码部署执行 `uv sync --extra seekdb`（或 `milvus`、`valkey`），包管理器部署使用 `uvx --from 'langbot[seekdb]@latest' langbot`（或 `[milvus]`、`[valkey]`）；Docker/Kubernetes 部署将 `langbot` 服务的镜像换成对应后缀的标签，如 `rockchin/langbot:latest-seekdb`、`latest-milvus`、`latest-valkey`。Chroma、Qdrant 与 pgvector 无需额外依赖。
 - `vdb.runtime_cache_limit` 限制进程内集合/索引句柄数量。
 - `vdb.pgvector.use_business_database: true` 表示复用 `database.postgresql`；`allowed_dimensions` 限定发布迁移创建 ANN 索引的向量维度。
 - `vdb.valkey_search` 需要带 Search 模块的 Valkey 服务，例如 `valkey/valkey-bundle:9.1.0`。连接按需建立，支持 HNSW/FLAT 与 COSINE/L2/IP。
