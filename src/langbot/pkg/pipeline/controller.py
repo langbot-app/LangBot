@@ -88,6 +88,8 @@ class Controller:
     ) -> bool:
         """Offer follow-up input to an active Runner before it queues."""
 
+        if self.ap.instance_config.data.get('system', {}).get('plugin_only') is True:
+            return False
         try:
             original_query = query
             pipeline_uuid = query.pipeline_uuid

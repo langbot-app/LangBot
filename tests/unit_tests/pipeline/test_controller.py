@@ -53,6 +53,16 @@ def make_query(query_id: int, pipeline_uuid: str):
 
 
 @pytest.mark.asyncio
+async def test_plugin_only_does_not_offer_messages_to_runner_before_session():
+    app = make_app()
+    app.instance_config.data['system'] = {'plugin_only': True}
+    controller = Controller(app)
+    assert await controller._try_claim_steering_before_session_slot(make_query(1, 'pipeline-1')) is False
+    app.pipeline_mgr.get_pipeline_by_uuid.assert_not_awaited()
+    app.agent_run_orchestrator.try_claim_steering_from_query.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_try_claim_steering_returns_false_when_runner_lookup_fails():
     app = make_app()
     app.pipeline_mgr.get_pipeline_by_uuid.return_value = make_pipeline()

@@ -114,6 +114,8 @@ proxy:
     http: ''
     https: ''
 system:
+    # Silence unclaimed chat/commands after plugin listeners run; disable AI and built-in command fallback.
+    plugin_only: false
     instance_id: ''
     edition: community
     recovery_key: ''

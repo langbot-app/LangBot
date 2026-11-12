@@ -1314,6 +1314,21 @@ class RuntimeBot:
             )
 
         target_uuid = event_binding.get('target_uuid')
+        instance_data = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        if (
+            target_type == 'agent'
+            and isinstance(instance_data, dict)
+            and instance_data.get('system', {}).get('plugin_only') is True
+        ):
+            return await self._record_event_route_trace(
+                event_type=event_type,
+                status='discarded',
+                binding=event_binding,
+                target_type=target_type,
+                target_uuid=target_uuid,
+                reason='Instance only processes plugin messages',
+                text=f'Event {event_type} skipped Agent in plugin-only mode',
+            )
         if agent is None:
             agent = await self.ap.agent_service.get_agent(self.execution_context, target_uuid)
         if not agent or agent.get('kind') != target_type:
