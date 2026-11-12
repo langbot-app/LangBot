@@ -29,6 +29,8 @@ DEFAULT_INTENT_PROMPT = (
 DEFAULT_ASK_TEXT = "为了更好地为您服务，方便留下您的手机号或微信号吗？我们的顾问会尽快与您联系。"
 DEFAULT_THANKS_TEXT = "已收到您的联系方式，我们的顾问会尽快与您联系，感谢您的信任！"
 MAX_EMAIL_ATTEMPTS = 3
+MAX_EVENTS = 100
+EXCERPT_CHARS = 300
 PAGE_SIZE = 100
 MAX_TRANSCRIPT_MESSAGES = 5000
 COMPONENT_LABELS = {
@@ -120,6 +122,18 @@ def role_label(role: str) -> str:
     return "用户" if role == "user" else "AI"
 
 
+def excerpt(text: str) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= EXCERPT_CHARS else text[:EXCERPT_CHARS] + "…"
+
+
+def record(lead: dict, kind: str, **data) -> None:
+    """Append one timeline event to a lead row (most recent MAX_EVENTS kept)."""
+    events = lead.setdefault("events", [])
+    events.append({"at": time.time(), "kind": kind, **data})
+    del events[:-MAX_EVENTS]
+
+
 class LeadCapture(BasePlugin):
     """Detect strong purchase intent with an LLM, ask once for contact details, email the lead."""
 
@@ -148,13 +162,32 @@ class LeadCapture(BasePlugin):
     def key(self, bot: str, user: str) -> str:
         return "lead:" + ":".join(quote(str(part), safe="") for part in (self.scope(), bot, user))
 
+    def key_prefix(self) -> str:
+        return "lead:" + quote(self.scope(), safe="") + ":"
+
     async def load(self, key: str):
         if key not in await self.get_plugin_storage_keys():
             return None
         return json.loads(await self.get_plugin_storage(key))
 
     async def save(self, key: str, value):
+        value["updated_at"] = time.time()
         await self.set_plugin_storage(key, json.dumps(value, ensure_ascii=False).encode("utf-8"))
+
+    async def list_leads(self) -> list[dict]:
+        """All lead rows of this installation (used by the Page)."""
+        prefix = self.key_prefix()
+        rows = []
+        for key in await self.get_plugin_storage_keys():
+            if not key.startswith(prefix):
+                continue
+            try:
+                row = json.loads(await self.get_plugin_storage(key))
+            except (ValueError, TypeError):
+                continue
+            row["key"] = key
+            rows.append(row)
+        return rows
 
     # ---- conversation history --------------------------------------------------
 
@@ -297,10 +330,13 @@ class LeadCapture(BasePlugin):
             history = await self.full_history(lead["bot"], lead["user"])
         except Exception as error:
             lead["email_status"] = f"history:{'permission_denied' if permission_denied(error) else type(error).__name__}"
+            record(lead, "email", status=lead["email_status"], attempt=lead["email_attempts"])
             logger.warning("LeadCapture could not read the conversation: %s", lead["email_status"])
             return
         error = await self.send_email(config, self.build_email(config, lead, history))
         lead["email_status"] = error or "sent"
+        record(lead, "email", status=lead["email_status"], attempt=lead["email_attempts"], recipients=len(
+            [address for address in config.get("to_emails", []) if str(address).strip()]))
         if error:
             logger.warning("LeadCapture email failed (%s), attempt %s", error, lead["email_attempts"])
 
@@ -329,6 +365,7 @@ class LeadCapture(BasePlugin):
             if not contact:
                 return
             lead.update(status="captured", contact=contact, captured_at=time.time(), thanks_pending=True)
+            record(lead, "contact", contact=contact, message=excerpt(plain_text(event.message_chain)))
             await self.save(key, lead)
             await self.deliver(config, lead)
             await self.save(key, lead)
@@ -353,8 +390,9 @@ class LeadCapture(BasePlugin):
                     self.append_to_reply(event_context, str(config.get("thanks_text", DEFAULT_THANKS_TEXT) or ""))
                 await self.save(key, lead)
                 return
-            if lead:
+            if lead and lead.get("status") == "asked":
                 return  # Already asked once; never ask again.
+            lead = lead or {"status": "idle", "bot": bot, "user": user, "created_at": time.time()}
             try:
                 history = int(config.get("history_messages", 20))
             except (TypeError, ValueError):
@@ -363,17 +401,25 @@ class LeadCapture(BasePlugin):
                 dialogue = await self.recent_dialogue(bot, user, max(1, min(history, 100)))
             except Exception as error:
                 logger.warning("LeadCapture could not read recent messages: %s", type(error).__name__)
+                record(lead, "error", stage="history", error=type(error).__name__)
+                await self.save(key, lead)
                 return
+            user_text = next((line[len("用户: "):] for line in reversed(dialogue) if line.startswith("用户: ")), "")
             dialogue.append(f"AI: {event.response_text}")
             try:
                 strong, reason = await self.evaluate_intent(config, dialogue)
             except Exception as error:
                 logger.warning("LeadCapture intent evaluation failed: %s", type(error).__name__)
+                record(lead, "error", stage="judge", error=type(error).__name__, message=excerpt(user_text))
+                await self.save(key, lead)
                 return
-            if not strong:
-                return
-            await self.save(key, {"status": "asked", "bot": bot, "user": user, "reason": reason, "asked_at": time.time()})
-            self.append_to_reply(event_context, str(config.get("ask_text") or DEFAULT_ASK_TEXT))
+            record(lead, "judge", strong=strong, reason=reason, message=excerpt(user_text),
+                   reply=excerpt(event.response_text))
+            if strong:
+                lead.update(status="asked", reason=reason, asked_at=time.time())
+                record(lead, "asked", text=excerpt(str(config.get("ask_text") or DEFAULT_ASK_TEXT)))
+                self.append_to_reply(event_context, str(config.get("ask_text") or DEFAULT_ASK_TEXT))
+            await self.save(key, lead)
 
     @staticmethod
     def append_to_reply(event_context, text: str) -> None:

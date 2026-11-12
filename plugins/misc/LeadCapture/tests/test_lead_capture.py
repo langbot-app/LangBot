@@ -150,7 +150,11 @@ async def test_no_intent_leaves_reply_untouched():
     with bind_invocation(host, config=CONFIG, binding=binding()):
         await fire(handlers, events.NormalMessageResponded, ctx)
     assert reply_text(ctx) is None
-    assert host.storage == {}
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["status"] == "idle"
+    assert [(e["kind"], e["strong"], e["reason"], e["message"], e["reply"]) for e in state["events"]] == [
+        ("judge", False, "just browsing", "what does it do?", "AI answer"),
+    ]
     prompt = host.llm_calls[0]["messages"]
     assert "asks for a quote" in json.dumps(prompt, ensure_ascii=False)
     assert "AI: AI answer" in json.dumps(prompt, ensure_ascii=False)
@@ -311,6 +315,8 @@ def test_manifest():
     assert manifest["spec"]["permissions"] == {
         "capabilities": ["models.invoke", "storage.plugin"], "workspace_operations": ["monitoring.messages"],
     }
+    assert manifest["metadata"]["version"] == "0.2.0"
+    assert manifest["spec"]["components"]["Page"]["fromDirs"][0]["path"] == "components/pages/"
     names = [item["name"] for item in manifest["spec"]["config"]]
     assert names == ["model", "intent_prompt", "history_messages", "ask_text", "thanks_text",
                      "resend_api_key", "from_email", "to_emails"]
@@ -321,3 +327,97 @@ def test_manifest():
     locales = {"en_US", "zh_Hans", "zh_Hant", "ja_JP", "es_ES", "ru_RU", "th_TH", "vi_VN"}
     assert set(manifest["metadata"]["label"]) == locales
     assert set(manifest["metadata"]["description"]) == locales
+
+
+page_module = load_module(ROOT / "components/pages/console/console.py", "lead_capture_console")
+
+
+async def page_for(plugin):
+    page = page_module.ConsolePage()
+    page.plugin = plugin
+    return page
+
+
+async def call_page(page, endpoint, body=None, method="GET"):
+    from langbot_plugin.api.definition.components.page import PageRequest
+
+    return await page.handle_api(PageRequest(endpoint=endpoint, method=method, body=body))
+
+
+@pytest.mark.asyncio
+async def test_page_lists_sessions_and_shows_timeline(monkeypatch):
+    resend = Resend().install(monkeypatch)
+    plugin, host, handlers = await graph()
+    host.history = [row("user", "年付多少钱？", "2026-11-06T07:00:00"), row("assistant", "99 元", "2026-11-06T07:00:05")]
+    host.llm_answers = [
+        '{"strong_intent": false, "reason": "only asking"}',
+        '{"strong_intent": true, "reason": "asked about invoices"}',
+    ]
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, responded("first answer"))
+        await fire(handlers, events.NormalMessageResponded, responded("second answer"))
+        await fire(handlers, events.PersonMessageReceived, received("13800138000"))
+        await fire(handlers, events.NormalMessageResponded, responded("noted", user="other-user"))
+        page = await page_for(plugin)
+        listing = await call_page(page, "/sessions")
+        assert listing.error is None
+        totals, sessions = listing.data["totals"], listing.data["sessions"]
+        assert totals == {"sessions": 2, "asked": 0, "captured": 1, "emailed": 1, "judgments": 3}
+        captured = next(item for item in sessions if item["user"] == USER)
+        assert captured["status"] == "captured" and captured["contact"] == "13800138000"
+        assert captured["judgments"] == 2 and captured["strong_judgments"] == 1
+        assert captured["last_reason"] == "asked about invoices" and captured["email_status"] == "sent"
+        detail = await call_page(page, "/session", {"key": captured["key"]}, "POST")
+    assert detail.error is None
+    kinds = [event["kind"] for event in detail.data["session"]["events"]]
+    assert kinds == ["judge", "judge", "asked", "contact", "email"]
+    assert detail.data["session"]["events"][0]["message"] == "年付多少钱？"
+    assert [m["text"] for m in detail.data["conversation"]] == ["年付多少钱？", "99 元"]
+    assert len(resend.requests) == 1
+
+
+@pytest.mark.asyncio
+async def test_page_rejects_foreign_keys_and_unknown_endpoints():
+    plugin, host, _handlers = await graph()
+    host.storage["lead:other-install:bot-1:x"] = json.dumps({"status": "captured"}).encode()
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        page = await page_for(plugin)
+        foreign = await call_page(page, "/session", {"key": "lead:other-install:bot-1:x"}, "POST")
+        missing = await call_page(page, "/session", {"key": plugin.key("bot-1", "nobody")}, "POST")
+        listing = await call_page(page, "/sessions")
+        unknown = await call_page(page, "/nope")
+    assert foreign.error == "Unknown session" and missing.error == "Unknown session"
+    assert listing.data["sessions"] == []
+    assert unknown.error.startswith("Unknown endpoint")
+
+
+@pytest.mark.asyncio
+async def test_judgment_errors_are_recorded():
+    _plugin, host, handlers = await graph()
+    host.llm_answers = []
+
+    async def failing(action, data, *args, **kwargs):
+        if action == Action.INVOKE_LLM:
+            raise RuntimeError("provider down")
+        return await Host.call_action(host, action, data, *args, **kwargs)
+
+    host.call_action = failing
+    ctx = responded()
+    with bind_invocation(host, config=CONFIG, binding=binding()):
+        await fire(handlers, events.NormalMessageResponded, ctx)
+    assert reply_text(ctx) is None
+    state = json.loads(next(iter(host.storage.values())))
+    assert state["status"] == "idle"
+    assert state["events"][0]["kind"] == "error" and state["events"][0]["stage"] == "judge"
+
+
+def test_page_i18n_keys_match_and_cover_html():
+    import re
+
+    folder = ROOT / "components/pages/console"
+    en = json.loads((folder / "i18n/en_US.json").read_text())
+    zh = json.loads((folder / "i18n/zh_Hans.json").read_text())
+    assert set(en) == set(zh)
+    html = (folder / "index.html").read_text()
+    used = set(re.findall(r'data-i18n="([^"]+)"', html)) | set(re.findall(r"t\('([^']+)'", html))
+    assert used <= set(en), used - set(en)

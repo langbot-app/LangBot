@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Page
+metadata:
+  name: console
+  label:
+    en_US: Lead judgments
+    zh_Hans: 留资判断记录
+    zh_Hant: 留資判斷紀錄
+    ja_JP: リード判定記録
+    es_ES: Registro de evaluaciones
+    ru_RU: Журнал оценок
+    th_TH: บันทึกการประเมินลีด
+    vi_VN: Nhật ký đánh giá khách hàng
+spec:
+  path: index.html
+execution:
+  python:
+    path: console.py
+    attr: ConsolePage
