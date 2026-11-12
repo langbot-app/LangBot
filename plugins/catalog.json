@@ -232,7 +232,7 @@
   },
   {
     "id": "langbot-team/LeadCapture",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "category": "misc",
     "path": "misc/LeadCapture",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/misc/LeadCapture"

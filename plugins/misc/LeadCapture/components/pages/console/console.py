@@ -23,6 +23,9 @@ def summarize(row: dict) -> dict:
         "last_judged_at": last_judge.get("at"),
         "last_strong": last_judge.get("strong"),
         "last_reason": last_judge.get("reason", ""),
+        "score": row.get("score", last_judge.get("score")),
+        "level": row.get("level", last_judge.get("level", "")),
+        "fields": row.get("fields") or {},
         "reason": row.get("reason", ""),
         "contact": row.get("contact", ""),
         "email_status": row.get("email_status", ""),
@@ -43,6 +46,7 @@ class ConsolePage(Page):
             totals = {
                 "sessions": len(rows),
                 "asked": sum(1 for row in rows if row["status"] == "asked"),
+                "risk": sum(1 for row in rows if row["status"] == "risk"),
                 "captured": sum(1 for row in rows if row["status"] == "captured"),
                 "emailed": sum(1 for row in rows if row["email_status"] == "sent"),
                 "judgments": sum(row["judgments"] for row in rows),

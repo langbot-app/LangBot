@@ -45,6 +45,15 @@
     .b-idle { background: rgba(107,114,128,.15); }
     .b-asked { background: rgba(245,158,11,.18); color: #b45309; }
     .b-captured { background: rgba(16,185,129,.18); color: #047857; }
+    .b-risk { background: rgba(239,68,68,.15); color: #b91c1c; }
+    .b-high { background: rgba(239,68,68,.12); color: #b91c1c; }
+    .b-medium { background: rgba(245,158,11,.18); color: #b45309; }
+    .b-low { background: rgba(107,114,128,.15); }
+    .score { font-weight: 600; font-size: 15px; }
+    .signals { margin-top: 4px; }
+    .signals span { display: inline-block; margin: 2px 4px 0 0; padding: 0 6px; border-radius: 6px; font-size: 12px; border: 1px solid var(--langbot-border, #e5e7eb); }
+    .fields { width: 100%; font-size: 13px; }
+    .fields td { padding: 4px 6px; border-bottom: 1px solid var(--langbot-border, #e5e7eb); }
     .b-strong { background: rgba(245,158,11,.18); color: #b45309; }
     .b-weak { background: rgba(107,114,128,.15); }
     .b-error { background: rgba(239,68,68,.15); color: #b91c1c; }
@@ -79,6 +88,7 @@
     <div class="card"><div class="muted" data-i18n="askedCount">Asked for contact</div><div class="num" id="t-asked">-</div></div>
     <div class="card"><div class="muted" data-i18n="capturedCount">Contact captured</div><div class="num" id="t-captured">-</div></div>
     <div class="card"><div class="muted" data-i18n="emailedCount">Emailed</div><div class="num" id="t-emailed">-</div></div>
+    <div class="card"><div class="muted" data-i18n="riskCount">Compliance risk</div><div class="num" id="t-risk">-</div></div>
   </div>
 
   <div class="toolbar">
@@ -86,6 +96,7 @@
     <button class="tab" data-filter="captured" data-i18n="filterCaptured">Captured</button>
     <button class="tab" data-filter="asked" data-i18n="filterAsked">Asked, waiting</button>
     <button class="tab" data-filter="idle" data-i18n="filterIdle">Not yet</button>
+    <button class="tab" data-filter="risk" data-i18n="filterRisk">Compliance risk</button>
     <button class="tab" data-filter="errors" data-i18n="filterErrors">With errors</button>
     <input type="search" id="search" data-i18n-placeholder="searchPlaceholder" placeholder="Search user ID or contact">
     <button class="refresh" id="refresh" data-i18n="refresh">Refresh</button>
@@ -98,6 +109,7 @@
           <tr>
             <th data-i18n="colUser">User</th>
             <th data-i18n="colStatus">Status</th>
+            <th data-i18n="colScore">Score</th>
             <th data-i18n="colLast">Latest judgment</th>
             <th data-i18n="colCount">Judged (strong)</th>
             <th data-i18n="colContact">Contact / email</th>
@@ -128,13 +140,21 @@
       return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
     }
     function statusBadge(status) {
-      var label = { idle: t('statusIdle', 'Not yet'), asked: t('statusAsked', 'Asked'), captured: t('statusCaptured', 'Captured') }[status] || status;
+      var label = { idle: t('statusIdle', 'Not yet'), asked: t('statusAsked', 'Asked'), captured: t('statusCaptured', 'Captured'), risk: t('statusRisk', 'Compliance risk') }[status] || status;
       return '<span class="badge b-' + esc(status) + '">' + esc(label) + '</span>';
     }
     function judgeBadge(strong) {
       if (strong === true) return '<span class="badge b-strong">' + esc(t('strong', 'Strong intent')) + '</span>';
       if (strong === false) return '<span class="badge b-weak">' + esc(t('weak', 'Not strong')) + '</span>';
       return '<span class="muted">-</span>';
+    }
+    function scoreCell(score, level) {
+      if (score === null || score === undefined) return '<span class="muted">-</span>';
+      var label = { high: t('levelHigh', 'High'), medium: t('levelMedium', 'Medium'), low: t('levelLow', 'Low') }[level] || '';
+      return '<span class="score">' + esc(score) + '</span> ' + (label ? '<span class="badge b-' + esc(level) + '">' + esc(label) + '</span>' : '');
+    }
+    function signalsHtml(signals) {
+      return (signals && signals.length) ? '<div class="signals">' + signals.map(function (x) { return '<span>' + esc(x) + '</span>'; }).join('') + '</div>' : '';
     }
     function emailBadge(status) {
       if (!status) return '';
@@ -146,7 +166,7 @@
       var q = state.query.toLowerCase();
       return state.sessions.filter(function (s) {
         if (state.filter === 'errors' && !s.errors && !(s.email_status && s.email_status !== 'sent')) return false;
-        if (['idle', 'asked', 'captured'].indexOf(state.filter) >= 0 && s.status !== state.filter) return false;
+        if (['idle', 'asked', 'captured', 'risk'].indexOf(state.filter) >= 0 && s.status !== state.filter) return false;
         if (q && (s.user + ' ' + (s.contact || '')).toLowerCase().indexOf(q) < 0) return false;
         return true;
       });
@@ -159,6 +179,7 @@
         return '<tr data-key="' + esc(s.key) + '"' + (s.key === state.selected ? ' class="selected"' : '') + '>' +
           '<td class="mono">' + esc(s.user) + '</td>' +
           '<td>' + statusBadge(s.status) + '</td>' +
+          '<td>' + scoreCell(s.score, s.level) + '</td>' +
           '<td>' + judgeBadge(s.last_strong) + '<div class="muted">' + esc(s.last_reason || s.reason || '') + '</div></td>' +
           '<td>' + s.judgments + ' (' + s.strong_judgments + ')' + (s.errors ? ' <span class="badge b-error">' + s.errors + ' ' + esc(t('errorsShort', 'errors')) + '</span>' : '') + '</td>' +
           '<td>' + esc(s.contact || '') + '<div>' + emailBadge(s.email_status) + '</div></td>' +
@@ -171,16 +192,18 @@
     }
 
     function renderTotals(totals) {
-      ['sessions', 'judgments', 'asked', 'captured', 'emailed'].forEach(function (k) {
-        document.getElementById('t-' + k).textContent = totals[k];
+      ['sessions', 'judgments', 'asked', 'captured', 'emailed', 'risk'].forEach(function (k) {
+        document.getElementById('t-' + k).textContent = totals[k] == null ? 0 : totals[k];
       });
     }
 
     function renderEvent(e) {
       var cls = 'event', body = '';
       if (e.kind === 'judge') {
-        if (e.strong) cls += ' strong';
-        body = judgeBadge(e.strong) + ' ' + esc(e.reason || '') +
+        if (e.risk) cls += ' error'; else if (e.strong) cls += ' strong';
+        body = (e.score !== undefined ? scoreCell(e.score, e.level) + ' ' : judgeBadge(e.strong) + ' ') + esc(e.reason || '') +
+          (e.risk ? '<div><span class="badge b-risk">' + esc(t('statusRisk', 'Compliance risk')) + '</span> ' + esc(e.risk_reason || '') + '</div>' : '') +
+          signalsHtml(e.signals) +
           (e.message ? '<div class="msg user">' + esc(t('userSaid', 'User')) + ': ' + esc(e.message) + '</div>' : '') +
           (e.reply ? '<div class="msg">AI: ' + esc(e.reply) + '</div>' : '');
       } else if (e.kind === 'asked') {
@@ -190,6 +213,12 @@
         cls += ' captured';
         body = '<b>' + esc(t('eventContact', 'Contact captured')) + ':</b> ' + esc(e.contact) +
           (e.message ? '<div class="msg user">' + esc(e.message) + '</div>' : '');
+      } else if (e.kind === 'risk') {
+        cls += ' error';
+        body = '<span class="badge b-risk">' + esc(t('eventRisk', 'Flagged for compliance review; no contact request')) + '</span> ' + esc(e.reason || '');
+      } else if (e.kind === 'fields') {
+        cls += ' captured';
+        body = '<b>' + esc(t('eventFields', 'Lead fields extracted')) + '</b>';
       } else if (e.kind === 'email') {
         cls += e.status === 'sent' ? ' captured' : ' error';
         body = emailBadge(e.status) + ' <span class="muted">#' + esc(e.attempt) + '</span>';
@@ -210,9 +239,14 @@
         '<div class="kv">' +
         '<span class="muted">' + esc(t('colUser', 'User')) + '</span><span class="mono">' + esc(s.user) + '</span>' +
         '<span class="muted">' + esc(t('colStatus', 'Status')) + '</span><span>' + statusBadge(s.status) + '</span>' +
+        '<span class="muted">' + esc(t('colScore', 'Score')) + '</span><span>' + scoreCell(s.score, s.level) + '</span>' +
         (s.reason ? '<span class="muted">' + esc(t('reason', 'Reason')) + '</span><span>' + esc(s.reason) + '</span>' : '') +
         (s.contact ? '<span class="muted">' + esc(t('colContact', 'Contact')) + '</span><span>' + esc(s.contact) + ' ' + emailBadge(s.email_status) + '</span>' : '') +
         '</div>' +
+        (Object.keys(s.fields || {}).length ? '<h3>' + esc(t('leadFields', 'Lead fields')) + '</h3><table class="fields">' +
+          Object.keys(s.fields).map(function (k) {
+            return '<tr><td class="muted">' + esc(k) + '</td><td>' + (s.fields[k] ? esc(s.fields[k]) : '<span class="muted">' + esc(t('notMentioned', 'Not mentioned')) + '</span>') + '</td></tr>';
+          }).join('') + '</table>' : '') +
         '<h3>' + esc(t('timeline', 'Timeline (newest first)')) + '</h3>' +
         (events.length ? events.map(renderEvent).join('') : '<div class="muted">' + esc(t('noEvents', 'No events recorded.')) + '</div>') +
         '<h3>' + esc(t('recentConversation', 'Recent conversation (UTC)')) + '</h3>';
