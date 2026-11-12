@@ -392,6 +392,51 @@ class _ListenerAdapter:
 
 
 @pytest.mark.asyncio
+async def test_recall_bridge_preserves_workspace_scope_and_migrated_pipeline_target():
+    from langbot.pkg.platform import custom_events
+    from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
+
+    adapter = _ListenerAdapter()
+    persistence_mgr = _ScopeOnlyPersistenceManager()
+    application = SimpleNamespace(
+        persistence_mgr=persistence_mgr,
+        workspace_service=_WorkspaceService(),
+        query_pool=SimpleNamespace(add_query=AsyncMock()),
+    )
+    entity = SimpleNamespace(
+        uuid=BOT_A,
+        workspace_uuid=WORKSPACE_A,
+        enable=True,
+        event_bindings=[
+            {'event_pattern': 'message.received', 'target_type': 'pipeline', 'target_uuid': 'pipeline-test'}
+        ],
+    )
+    runtime = RuntimeBot(
+        application,
+        entity,
+        adapter,
+        SimpleNamespace(info=AsyncMock()),
+        _context(WORKSPACE_A, BOT_A),
+    )
+    await runtime.initialize()
+    chain = text_chain('recalled')
+    event = custom_events.MessageRecalled(
+        message_id='message-recalled',
+        launcher_type=LauncherTypes.PERSON,
+        launcher_id='user',
+        sender_id='user',
+        message_event=friend_message_event(chain, sender_id='user'),
+        message_chain=chain,
+    )
+    await adapter.listeners[custom_events.MessageRecalled](event, adapter)
+    args = application.query_pool.add_query.await_args.kwargs
+    assert args['execution_context'] == runtime.execution_context
+    assert args['pipeline_uuid'] == 'pipeline-test'
+    assert args['variables']['_recalled_message_id'] == 'message-recalled'
+    assert persistence_mgr.active_workspace is None
+
+
+@pytest.mark.asyncio
 async def test_platform_callback_carries_scope_without_holding_database_session():
     persistence_mgr = _ScopeOnlyPersistenceManager()
     adapter = _ListenerAdapter()

@@ -1565,49 +1565,49 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
 
     @localized_adapter
     async def send_message(self, target_type: str, target_id: str, message: platform_message.MessageChain):
+        # Map generic target types used by plugin/runtime to Lark receive_id_type.
+        receive_id_type_map = {
+            'person': 'open_id',
+            'friend': 'open_id',
+            'user': 'open_id',
+            'group': 'chat_id',
+            'chat': 'chat_id',
+            'open_id': 'open_id',
+            'chat_id': 'chat_id',
+            'user_id': 'user_id',
+            'union_id': 'union_id',
+            'email': 'email',
+        }
+
+        receive_id_type = receive_id_type_map.get(str(target_type).lower())
+        if receive_id_type is None:
+            raise ValueError(
+                f'Unsupported target_type for Lark proactive messaging: {target_type}. '
+                f'Supported values: {", ".join(receive_id_type_map.keys())}'
+            )
+
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
 
-        # Map standard target_type to Feishu receive_id_type
-        if target_type == 'person':
-            receive_id_type = 'open_id'
-        elif target_type == 'group':
-            receive_id_type = 'chat_id'
-        else:
-            receive_id_type = target_type
+        tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
+        app_access_token = self.get_app_access_token()
+        tenant_access_token = self.get_tenant_access_token(tenant_key)
+        req_opt: RequestOption = (
+            RequestOption.builder()
+            .app_ticket(self.app_ticket)
+            .tenant_key(tenant_key)
+            .app_access_token(app_access_token)
+            .tenant_access_token(tenant_access_token)
+            .build()
+        )
 
-        # Send text message if there are text elements
-        if text_elements:
-            # Use 'post' format if: has @mentions OR has markdown tables
-            has_at = any(ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph)
-            has_table = self._has_markdown_table(text_elements)
-            needs_post = has_at or has_table
-
-            if needs_post:
-                msg_type = 'post'
-                final_content = json.dumps(
-                    {
-                        'zh_Hans': {
-                            'title': '',
-                            'content': text_elements,
-                        },
-                    }
-                )
-            else:
-                msg_type = 'text'
-                parts = []
-                for paragraph in text_elements:
-                    para_text = ''.join(ele.get('text', '') for ele in paragraph)
-                    if para_text:
-                        parts.append(para_text)
-                final_content = json.dumps({'text': '\n\n'.join(parts)})
-
+        async def send_create_message(msg_type: str, content_payload: dict) -> None:
             request: CreateMessageRequest = (
                 CreateMessageRequest.builder()
                 .receive_id_type(receive_id_type)
                 .request_body(
                     CreateMessageRequestBody.builder()
-                    .receive_id(target_id)
-                    .content(final_content)
+                    .receive_id(str(target_id))
+                    .content(json.dumps(content_payload))
                     .msg_type(msg_type)
                     .uuid(str(uuid.uuid4()))
                     .build()
@@ -1615,43 +1615,41 @@ class LarkAdapter(abstract_platform_adapter.AbstractMessagePlatformAdapter):
                 .build()
             )
 
-            app_access_token = self.get_app_access_token()
-            req_opt: RequestOption = (
-                RequestOption.builder().app_ticket(self.app_ticket).app_access_token(app_access_token).build()
-            )
             response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
-
             if not response.success():
                 raise Exception(
-                    f'client.im.v1.message.create failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
+                    f'client.im.v1.message.create ({msg_type}) failed, code: {response.code}, '
+                    f'msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n'
+                    f'{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
                 )
+
+        # Send text message if there are text elements
+        if text_elements:
+            needs_post = any(
+                ele['tag'] == 'at' for paragraph in text_elements for ele in paragraph
+            ) or self._has_markdown_table(text_elements)
+
+            if needs_post:
+                await send_create_message(
+                    'post',
+                    {
+                        'zh_Hans': {
+                            'title': '',
+                            'content': text_elements,
+                        },
+                    },
+                )
+            else:
+                parts = []
+                for paragraph in text_elements:
+                    para_text = ''.join(ele.get('text', '') for ele in paragraph)
+                    if para_text:
+                        parts.append(para_text)
+                await send_create_message('text', {'text': '\n\n'.join(parts)})
 
         # Send media messages separately (image, audio, file, etc.)
         for media in media_items:
-            request: CreateMessageRequest = (
-                CreateMessageRequest.builder()
-                .receive_id_type(receive_id_type)
-                .request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(target_id)
-                    .content(json.dumps(media['content']))
-                    .msg_type(media['msg_type'])
-                    .uuid(str(uuid.uuid4()))
-                    .build()
-                )
-                .build()
-            )
-
-            app_access_token = self.get_app_access_token()
-            req_opt: RequestOption = (
-                RequestOption.builder().app_ticket(self.app_ticket).app_access_token(app_access_token).build()
-            )
-            response: CreateMessageResponse = self.api_client.im.v1.message.create(request, req_opt)
-
-            if not response.success():
-                raise Exception(
-                    f'client.im.v1.message.create ({media["msg_type"]}) failed, code: {response.code}, msg: {response.msg}, log_id: {response.get_log_id()}, resp: \n{json.dumps(json.loads(response.raw.content), indent=4, ensure_ascii=False)}'
-                )
+            await send_create_message(media['msg_type'], media['content'])
 
     async def is_stream_output_supported(self) -> bool:
         is_stream = False

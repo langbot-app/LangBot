@@ -403,8 +403,28 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
         target_id: str,
         message: platform_message.MessageChain,
     ) -> platform_events.MessageResult:
+        receive_id_type_map = {
+            'person': 'open_id',
+            'friend': 'open_id',
+            'user': 'open_id',
+            'group': 'chat_id',
+            'chat': 'chat_id',
+            'open_id': 'open_id',
+            'chat_id': 'chat_id',
+            'user_id': 'user_id',
+            'union_id': 'union_id',
+            'email': 'email',
+        }
+        receive_id_type = receive_id_type_map.get(str(target_type).lower())
+        if receive_id_type is None:
+            raise ValueError(
+                f'Unsupported target_type for Lark proactive messaging: {target_type}. '
+                f'Supported values: {", ".join(receive_id_type_map.keys())}'
+            )
+
         text_elements, media_items = await self.message_converter.yiri2target(message, self.api_client)
-        receive_id_type = 'chat_id' if target_type == 'group' else 'open_id'
+        tenant_key = self.lark_tenant_key or self.config.get('lark_tenant_key') or None
+        req_opt = self.request_option(tenant_key)
         message_ids: list[str] = []
 
         for msg_type, content in self._outbound_payloads(text_elements, media_items):
@@ -421,7 +441,7 @@ class LarkAdapter(LarkAPIMixin, abstract_platform_adapter.AbstractPlatformAdapte
                 )
                 .build()
             )
-            response: CreateMessageResponse = await self.api_client.im.v1.message.acreate(request)
+            response: CreateMessageResponse = await self.api_client.im.v1.message.acreate(request, req_opt)
             if not response.success():
                 raise RuntimeError(f'Lark send_message failed: {response.code} {response.msg}')
             message_ids.append(getattr(response.data, 'message_id', ''))
