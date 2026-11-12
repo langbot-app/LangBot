@@ -36,7 +36,7 @@
   },
   {
     "id": "langbot-team/LocalAgent",
-    "version": "0.2.12",
+    "version": "0.2.14",
     "category": "Runner",
     "path": "Runner/LocalAgent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/LocalAgent"
@@ -50,21 +50,21 @@
   },
   {
     "id": "langbot-team/ACPAgentRunner",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "category": "Runner",
     "path": "Runner/acp-agent-runner",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/acp-agent-runner"
   },
   {
     "id": "langbot-team/ClaudeCodeAgent",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "category": "Runner",
     "path": "Runner/claude-code-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/claude-code-agent"
   },
   {
     "id": "langbot-team/CodexAgent",
-    "version": "0.1.21",
+    "version": "0.1.22",
     "category": "Runner",
     "path": "Runner/codex-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/codex-agent"
@@ -92,7 +92,7 @@
   },
   {
     "id": "langbot-team/DifyAgent",
-    "version": "0.2.10",
+    "version": "0.2.11",
     "category": "Runner",
     "path": "Runner/dify-agent",
     "repository": "https://github.com/langbot-app/LangBot/tree/master/plugins/Runner/dify-agent"
