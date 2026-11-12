@@ -21,24 +21,33 @@ workspace:
         # use api.webui_url, then api.webhook_prefix. Set via
         # WORKSPACE__INVITATIONS__PUBLIC_WEB_URL in container deployments.
         public_web_url: ''
-        email:
-            # Optional invitation email delivery. Empty provider keeps
-            # invitations link-only. Supported: resend, smtp.
-            provider: ''
-            from: ''
-            timeout_seconds: 10
-            resend:
-                api_url: 'https://api.resend.com/emails'
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__RESEND__API_KEY.
-                api_key: ''
-            smtp:
-                host: ''
-                port: 587
-                username: ''
-                # Secret. Set via WORKSPACE__INVITATIONS__EMAIL__SMTP__PASSWORD.
-                password: ''
-                starttls: true
-                ssl: false
+email:
+    # Instance mail service shared by Workspace invitations and alert emails.
+    # Empty provider disables email (invitations become link-only). Supported:
+    # resend, smtp. Older releases kept this section at workspace.invitations.email;
+    # it is moved here automatically and WORKSPACE__INVITATIONS__EMAIL__* env
+    # names keep working as aliases of EMAIL__*.
+    provider: ''
+    from: ''
+    timeout_seconds: 10
+    resend:
+        api_url: 'https://api.resend.com/emails'
+        # Secret. Set via EMAIL__RESEND__API_KEY.
+        api_key: ''
+    smtp:
+        host: ''
+        port: 587
+        username: ''
+        # Secret. Set via EMAIL__SMTP__PASSWORD.
+        password: ''
+        starttls: true
+        ssl: false
+alerts:
+    # Workspace failure alerts (in-app, email, LangBot Space, webhooks).
+    # false stops evaluating rules and sending notifications instance-wide.
+    enabled: true
+    # Seconds between delivery / auto-resolve passes.
+    tick_seconds: 30
 command:
     enable: true
     prefix:

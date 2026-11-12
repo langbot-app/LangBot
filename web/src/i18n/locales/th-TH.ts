@@ -3357,6 +3357,7 @@ const thTH = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'บันทึกการดำเนินการ',
+      alerts: 'การแจ้งเตือน',
       models: 'โมเดล',
       api: 'API',
       storage: 'พื้นที่จัดเก็บ',
@@ -3993,6 +3994,105 @@ const thTH = {
     collapseDomain: 'ยุบ',
     ungrantableRemoved:
       'การดำเนินการบางรายการไม่ได้ถูกเลือกหรือถูกนำออกเพราะสิทธิ์ไม่เพียงพอ',
+  },
+  alerts: {
+    enableHint: 'เปิดการแจ้งเตือน',
+    cta: {
+      title: 'เข้าสู่ระบบด้วยบัญชี LangBot เพื่อส่งอีเมลแจ้งเตือนฟรี',
+      pointFree: 'ส่งฟรีอย่างเป็นทางการ 20 ฉบับต่อวัน',
+      pointNoSetup: 'ไม่ต้องตั้งค่า SMTP หรือ Resend',
+      pointPrivate: 'ส่งไปยังอีเมลบัญชี LangBot ของคุณเท่านั้น',
+      selfHosted: 'ต้องการใช้เซิร์ฟเวอร์อีเมลของคุณเอง?',
+      selfHostedLink: 'ตั้งค่า SMTP หรือ Resend ใน config.yaml →',
+    },
+    title: 'การแจ้งเตือน',
+    description:
+      'แจ้งทางอีเมลและ webhook เมื่อบอท Pipeline หรือโมเดลล้มเหลวซ้ำ ๆ',
+    enabled: 'เปิดการแจ้งเตือน',
+    firingCount: 'กำลังแจ้งเตือน {{count}} รายการ',
+    allClear: 'ปกติทั้งหมด',
+    sendTest: 'ส่งทดสอบ',
+    saveBeforeTest: 'บันทึกการเปลี่ยนแปลงก่อนส่งทดสอบ',
+    saved: 'บันทึกการตั้งค่าการแจ้งเตือนแล้ว',
+    saveFailed: 'บันทึกการตั้งค่าไม่สำเร็จ: {{error}}',
+    loadFailed: 'โหลดการแจ้งเตือนไม่สำเร็จ: {{error}}',
+    testSent: 'ส่งการแจ้งเตือนทดสอบไปยัง {{count}} ปลายทางแล้ว',
+    testPartial: 'ส่งทดสอบแล้วแต่มีข้อผิดพลาด ดูบันทึกการส่ง',
+    testNoChannel: 'ยังไม่ได้ตั้งค่าช่องทางใด เลือกช่องทางอีเมลหรือ webhook',
+    testFailed: 'ส่งการแจ้งเตือนทดสอบไม่สำเร็จ: {{error}}',
+    disabledInstanceWide:
+      'อินสแตนซ์นี้ปิดการแจ้งเตือนไว้ (alerts.enabled ใน config.yaml)',
+    emailTitle: 'อีเมล',
+    emailDescription: 'ส่งผ่าน: {{channel}}',
+    recipients: 'ผู้รับ (เจ้าของและผู้ดูแล Workspace)',
+    noRecipients: 'ไม่มีเจ้าของหรือผู้ดูแลที่มีอีเมล',
+    extraRecipients: 'ผู้รับเพิ่มเติม (เฉพาะบริการอีเมลของคุณ สูงสุด 10)',
+    spaceRecipientsHint:
+      'LangBot Space ส่งเฉพาะผู้ดูแลที่เข้าสู่ระบบด้วย LangBot Space ไปยังอีเมล Space ของตนเอง โควตาฟรี: 20 ฉบับต่อวัน 200 ฉบับต่อเดือนต่อบัญชี',
+    channel: {
+      auto: 'อัตโนมัติ',
+      autoDescription:
+        'ใช้บริการอีเมลของคุณเมื่อตั้งค่าไว้ ไม่เช่นนั้นใช้ LangBot Space',
+      instance: 'บริการอีเมลของคุณ',
+      instanceConfigured: 'ตั้งค่า {{provider}} ใน config.yaml แล้ว',
+      instanceMissing:
+        'ยังไม่ได้ตั้งค่า กำหนดส่วน email (SMTP หรือ Resend) ใน config.yaml',
+      space: 'LangBot Space (ทางการ)',
+      spaceAvailable: 'ส่งฟรีอย่างเป็นทางการไปยัง {{accounts}}',
+      spaceMissing: 'เข้าสู่ระบบด้วยบัญชี LangBot Space เพื่อใช้งาน',
+      off: 'ปิด',
+      offDescription: 'แสดงที่นี่และส่ง webhook เท่านั้น',
+      none: 'ไม่ส่ง (ไม่มีช่องทาง)',
+      ready: 'พร้อม',
+      unavailable: 'ไม่พร้อม',
+    },
+    rulesTitle: 'กฎ',
+    rulesDescription:
+      'จะเปิดการแจ้งเตือนเมื่อจำนวนความล้มเหลวในช่วงเวลาถึงเกณฑ์',
+    minutesWithin: 'นาที อย่างน้อย',
+    failuresOrMore: 'ครั้ง',
+    notifyResolved: 'แจ้งเมื่อกลับมาปกติ',
+    throttleHint:
+      'แต่ละการแจ้งเตือนส่งครั้งเดียวเมื่อเปิด จากนั้นเตือนซ้ำหลัง 6 ชม. 12 ชม. และทุก 24 ชม. หากยังล้มเหลว',
+    rule: {
+      pipeline_failures: 'Pipeline ล้มเหลว',
+      pipeline_failuresDescription: 'ข้อผิดพลาดในการประมวลผลของ Pipeline เดียว',
+      model_failures: 'การเรียกโมเดลล้มเหลว',
+      model_failuresDescription: 'คำขอไปยังโมเดลเดียวล้มเหลว',
+      bot_offline: 'บอทหยุดทำงานด้วยข้อผิดพลาด',
+      bot_offlineDescription: 'แจ้งทันที และกลับมาปกติเมื่อบอทเริ่มใหม่',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Webhook ที่เลือกจะได้รับเหตุการณ์ alert.fired, alert.reminder และ alert.resolved',
+    noWebhooks: 'ยังไม่มี webhook เพิ่มได้ที่ การตั้งค่า → API',
+    webhookDisabled: 'ปิดใช้งาน',
+    incidentsTitle: 'การแจ้งเตือนล่าสุด',
+    noIncidents: 'ยังไม่มีการแจ้งเตือน',
+    incidentMeta: 'ล้มเหลว {{count}} ครั้ง · เริ่ม {{time}}',
+    state: {
+      firing: 'กำลังแจ้งเตือน',
+      resolved: 'กลับมาปกติ',
+    },
+    deliveriesTitle: 'บันทึกการส่ง',
+    noDeliveries: 'ยังไม่มีการส่ง',
+    kind: {
+      fired: 'แจ้งเตือน',
+      reminder: 'เตือนซ้ำ',
+      resolved: 'กลับมาปกติ',
+      test: 'ทดสอบ',
+    },
+    via: {
+      email: 'อีเมล',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'ส่งแล้ว',
+      failed: 'ล้มเหลว',
+      rate_limited: 'เกินโควตา',
+      skipped: 'ข้าม',
+    },
   },
 };
 export default thTH;

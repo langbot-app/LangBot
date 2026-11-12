@@ -80,6 +80,10 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     # Administrative traceability for member and resource operations. Owned by
     # the Workspace and therefore protected by the same RLS contract.
     'workspace_operation_logs': 'workspace_uuid',
+    # Failure alerts: per-Workspace settings, incidents and delivery log.
+    'alert_settings': 'workspace_uuid',
+    'alert_incidents': 'workspace_uuid',
+    'alert_deliveries': 'workspace_uuid',
     # Created by 0013 rather than ORM metadata; it is still part of the same
     # business-database RLS contract and permits no discovery policies.
     'langbot_vectors': 'workspace_uuid',

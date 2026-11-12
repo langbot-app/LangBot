@@ -1,3 +1,10 @@
+import type {
+  AlertDelivery,
+  AlertIncident,
+  AlertSettings,
+  AlertSettingsResponse,
+  AlertSummary,
+} from '@/app/infra/entities/alerts';
 import { BaseHttpClient, type RequestConfig } from './BaseHttpClient';
 import { notifyAfterModelConfigurationChange } from './modelConfigEvents';
 import type {
@@ -2069,6 +2076,34 @@ export class BackendClient extends BaseHttpClient {
   }
 
   // ============ Workspace governance / operation traceability ============
+
+  public getAlertSettings(): Promise<AlertSettingsResponse> {
+    return this.get('/api/v1/alerts/settings');
+  }
+
+  public updateAlertSettings(
+    settings: AlertSettings,
+  ): Promise<{ settings: AlertSettings }> {
+    return this.put('/api/v1/alerts/settings', settings);
+  }
+
+  public getAlertSummary(): Promise<AlertSummary> {
+    return this.get('/api/v1/alerts/summary');
+  }
+
+  public getAlertIncidents(
+    state?: 'firing' | 'resolved',
+  ): Promise<{ incidents: AlertIncident[] }> {
+    return this.get('/api/v1/alerts/incidents', state ? { state } : undefined);
+  }
+
+  public getAlertDeliveries(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.get('/api/v1/alerts/deliveries');
+  }
+
+  public sendTestAlert(): Promise<{ deliveries: AlertDelivery[] }> {
+    return this.post('/api/v1/alerts/test', {});
+  }
 
   public getOperationGovernance(): Promise<OperationGovernance> {
     return this.get('/api/v1/settings/governance');

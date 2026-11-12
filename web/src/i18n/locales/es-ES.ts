@@ -3475,6 +3475,7 @@ const esES = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Registro',
+      alerts: 'Alertas',
       models: 'Modelos',
       api: 'API',
       storage: 'Almacenamiento',
@@ -4141,6 +4142,109 @@ const esES = {
     collapseDomain: 'Contraer',
     ungrantableRemoved:
       'Algunas operaciones no se seleccionaron o se quitaron por falta de permisos.',
+  },
+  alerts: {
+    enableHint: 'Activar alertas',
+    cta: {
+      title:
+        'Inicia sesión con una cuenta de LangBot para enviar alertas por correo gratis',
+      pointFree: 'Envío oficial gratuito, 20 correos al día',
+      pointNoSetup: 'Sin configurar SMTP ni Resend',
+      pointPrivate: 'Solo a la dirección de tu propia cuenta de LangBot',
+      selfHosted: '¿Prefieres tu propio servidor de correo?',
+      selfHostedLink: 'Configura SMTP o Resend en config.yaml →',
+    },
+    title: 'Alertas',
+    description:
+      'Avisos por correo y webhook cuando bots, Pipelines o modelos fallan repetidamente',
+    enabled: 'Alertas activadas',
+    firingCount: '{{count}} activas',
+    allClear: 'Todo en orden',
+    sendTest: 'Enviar prueba',
+    saveBeforeTest: 'Guarda los cambios antes de enviar una prueba',
+    saved: 'Configuración de alertas guardada',
+    saveFailed: 'No se pudo guardar la configuración: {{error}}',
+    loadFailed: 'No se pudieron cargar las alertas: {{error}}',
+    testSent: 'Alerta de prueba enviada a {{count}} destino(s)',
+    testPartial: 'La prueba se envió con errores; revisa el registro de envíos',
+    testNoChannel:
+      'Aún no hay ningún canal; elige un canal de correo o un webhook',
+    testFailed: 'No se pudo enviar la alerta de prueba: {{error}}',
+    disabledInstanceWide:
+      'Las alertas están desactivadas en esta instancia (alerts.enabled en config.yaml).',
+    emailTitle: 'Correo',
+    emailDescription: 'Se envía actualmente por: {{channel}}',
+    recipients: 'Destinatarios (propietarios y administradores del Workspace)',
+    noRecipients: 'Ningún propietario o administrador tiene correo.',
+    extraRecipients:
+      'Destinatarios adicionales (solo tu servicio de correo, hasta 10)',
+    spaceRecipientsHint:
+      'LangBot Space solo envía a los administradores que iniciaron sesión con LangBot Space, a su propia dirección de Space. Cuota gratuita: 20 al día y 200 al mes por cuenta.',
+    channel: {
+      auto: 'Automático',
+      autoDescription:
+        'Tu servicio de correo si está configurado; si no, LangBot Space',
+      instance: 'Tu servicio de correo',
+      instanceConfigured: '{{provider}} configurado en config.yaml',
+      instanceMissing:
+        'No configurado. Define la sección email (SMTP o Resend) en config.yaml',
+      space: 'LangBot Space (oficial)',
+      spaceAvailable: 'Envío oficial gratuito a {{accounts}}',
+      spaceMissing: 'Inicia sesión con una cuenta de LangBot Space para usarlo',
+      off: 'Desactivado',
+      offDescription: 'Solo mostrar alertas aquí y enviar webhooks',
+      none: 'no se envía (sin canal disponible)',
+      ready: 'Listo',
+      unavailable: 'No disponible',
+    },
+    rulesTitle: 'Reglas',
+    rulesDescription:
+      'Se abre una alerta cuando los fallos alcanzan el umbral dentro de la ventana.',
+    minutesWithin: 'min, al menos',
+    failuresOrMore: 'fallos',
+    notifyResolved: 'Avisar cuando una alerta se recupere',
+    throttleHint:
+      'Cada alerta se envía una vez al abrirse y se recuerda a las 6 h, a las 12 h y luego cada 24 h mientras siga fallando.',
+    rule: {
+      pipeline_failures: 'Fallos de Pipeline',
+      pipeline_failuresDescription: 'Errores de procesamiento en un Pipeline',
+      model_failures: 'Fallos de llamadas al modelo',
+      model_failuresDescription: 'Solicitudes fallidas a un modelo',
+      bot_offline: 'Bot detenido con error',
+      bot_offlineDescription:
+        'Avisa de inmediato; se recupera cuando el bot vuelve a iniciarse',
+    },
+    webhooksTitle: 'Webhooks',
+    webhooksDescription:
+      'Los webhooks seleccionados reciben los eventos alert.fired, alert.reminder y alert.resolved.',
+    noWebhooks: 'Aún no hay webhooks. Añade uno en Configuración → API.',
+    webhookDisabled: 'Desactivado',
+    incidentsTitle: 'Alertas recientes',
+    noIncidents: 'Todavía no hay alertas.',
+    incidentMeta: '{{count}} fallo(s) · abierta {{time}}',
+    state: {
+      firing: 'Activa',
+      resolved: 'Resuelta',
+    },
+    deliveriesTitle: 'Registro de envíos',
+    noDeliveries: 'Todavía no se ha enviado nada.',
+    kind: {
+      fired: 'Alerta',
+      reminder: 'Recordatorio',
+      resolved: 'Recuperada',
+      test: 'Prueba',
+    },
+    via: {
+      email: 'Correo',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Enviado',
+      failed: 'Fallido',
+      rate_limited: 'Cuota agotada',
+      skipped: 'Omitido',
+    },
   },
 };
 export default esES;

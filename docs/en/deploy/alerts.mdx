@@ -1,0 +1,92 @@
+---
+title: "Alerts"
+description: "Notify admins by email (your SMTP/Resend or the official LangBot Space sender) and webhooks when bots, Pipelines or models keep failing."
+---
+
+LangBot watches each Workspace for repeated failures. When a threshold is reached it opens an alert and notifies the Workspace owners and admins. Configure it in **Settings → Alerts** (owner or admin role).
+
+Alerts are **off by default**: nothing is evaluated or sent until an admin turns on "Alerts on" in Settings. When the dashboard's Failed card already shows failures while alerts are off, the card shows an **Enable alerts** shortcut that opens the alert settings.
+
+## Rules
+
+| Rule | Default trigger | Recovery |
+| --- | --- | --- |
+| Pipeline failures | At least 5 failures of one Pipeline within 10 minutes | No new failure for 15 minutes |
+| Model call failures | At least 10 failures of one model within 10 minutes | No new failure for 15 minutes |
+| Bot stopped with an error | A platform adapter exits with an error (fires on the first one) | The bot starts again |
+
+Thresholds and windows are adjustable within limits (at least 3 failures) so a single blip never pages anyone.
+
+Each alert is sent when it opens, reminded after 6 h, 12 h and then every 24 h while it keeps failing, and once more when it recovers (optional). Emails never contain end-user conversations: only the rule, the affected name, failure counts and a redacted error summary.
+
+## Email channels
+
+| Channel | Available when | Notes |
+| --- | --- | --- |
+| Your mail service | The `email` section of `config.yaml` is set to SMTP or Resend | Owners, admins and up to 10 extra recipients |
+| LangBot Space (official) | An owner or admin signed in with a LangBot Account | Free; mails only that account's own address |
+| Automatic (default) | — | Your mail service when configured, otherwise LangBot Space |
+| Off | — | Alerts appear in Settings and go to webhooks only |
+
+When both are available, pick one in Settings.
+
+If no mail service is configured and no admin has signed in with a LangBot Account, the alert settings show a **Sign in with LangBot Account** prompt. It binds your local account to the LangBot Account with the same email and brings you back to the alert settings, ready to use the free official sender.
+
+### Configure your mail service
+
+```yaml
+email:
+    provider: smtp          # or resend
+    from: 'LangBot <alerts@example.com>'
+    smtp:
+        host: smtp.example.com
+        port: 587
+        username: alerts@example.com
+        password: ''        # inject with EMAIL__SMTP__PASSWORD
+        starttls: true
+        ssl: false
+```
+
+The same section sends member invitations. `workspace.invitations.email` from older releases is moved to `email` on startup, and `WORKSPACE__INVITATIONS__EMAIL__*` variables keep working.
+
+### Limits of the official LangBot Space sender
+
+LangBot Space enforces these server-side to prevent abuse:
+
+- The recipient is always the requesting LangBot Account's own address; an instance cannot choose another one.
+- Space renders the email from a fixed template and strips links from error summaries.
+- Free quota: 20 emails per day and 200 per month per account, 20 per day per Workspace, and 3 test emails per hour. Refused sends show as "Quota reached" in the delivery log.
+- Turn it off in your LangBot Space profile under Email preferences → Instance Alerts.
+
+## Webhooks
+
+Add a webhook under **Settings → API**, then select it in the alert settings. Selected webhooks receive:
+
+```json
+{
+  "uuid": "…",
+  "event_type": "alert.fired",
+  "data": {
+    "workspace_uuid": "…",
+    "workspace_name": "Default Workspace",
+    "incidents": [
+      {
+        "rule": "pipeline_failures",
+        "subject_name": "Default Pipeline",
+        "state": "firing",
+        "event_count": 5,
+        "error_type": "PipelineError",
+        "error_summary": "…",
+        "opened_at": "2026-11-12T08:42:05"
+      }
+    ]
+  }
+}
+```
+
+`event_type` is `alert.fired`, `alert.reminder`, `alert.resolved` or `alert.test`. Use it to forward alerts to Slack, Feishu, DingTalk or WeCom groups.
+
+## Turning alerts on and off
+
+- One Workspace: switch "Alerts on" in Settings, or disable individual rules. New Workspaces start with alerts off.
+- The whole instance: set `alerts.enabled: false` in `config.yaml` (or `ALERTS__ENABLED=false`).

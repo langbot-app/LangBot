@@ -12,6 +12,7 @@ import time
 
 from .. import stage, app
 from ..bootutils import config
+from ...notification import email as email_notification
 
 
 _RUNTIME_POLICY_DEFAULTS = {
@@ -74,6 +75,7 @@ _RUNTIME_POLICY_DEFAULTS = {
         },
     },
     'mcp': {'stdio': {'enabled': True}},
+    'alerts': {'enabled': True, 'tick_seconds': 30},
     'monitoring': {
         'query_limits': {
             'page_rows': 1000,
@@ -168,8 +170,15 @@ def _apply_env_overrides_to_config(cfg: dict) -> dict:
         else:
             return value
 
+    # Legacy ``WORKSPACE__INVITATIONS__EMAIL__*`` names are aliases of
+    # ``EMAIL__*``; never let them recreate the moved legacy section.
+    environ = {
+        key: value for key, value in os.environ.items() if not key.startswith(email_notification.LEGACY_ENV_PREFIX)
+    }
+    environ.update(email_notification.legacy_email_env_overrides())
+
     # Process environment variables
-    for env_key, env_value in os.environ.items():
+    for env_key, env_value in environ.items():
         # Check if the environment variable is uppercase and contains __
         if not env_key.isupper():
             continue
@@ -260,6 +269,11 @@ class LoadConfigStage(stage.BootingStage):
         """Load config file"""
 
         ap.instance_config = await config.load_yaml_config('data/config.yaml', 'config.yaml', completion=False)
+
+        # workspace.invitations.email moved to the shared top-level email
+        # section; the dump below persists the move.
+        if email_notification.migrate_email_config(ap.instance_config.data):
+            print('Migrated workspace.invitations.email to the top-level email section')
 
         # Deep-complete only typed execution-policy fields. This keeps native
         # env coercion reliable for existing data/config.yaml files.

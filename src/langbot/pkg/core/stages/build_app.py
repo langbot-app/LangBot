@@ -45,6 +45,8 @@ from ...agent.runner import RunnerRegistry, AgentRunOrchestrator, RunnerDefaultC
 from ...workspace import service as workspace_service_module
 from ...workspace import collaboration as workspace_collaboration_module
 from ...workspace import invitation_delivery as invitation_delivery_module
+from ...notification import email as email_notification_module
+from ...alerts import service as alert_service_module
 from ...cloud import bootstrap as cloud_bootstrap
 from ...cloud import launch as cloud_launch_module
 from ...cloud import support_admin as cloud_support_admin_module
@@ -229,7 +231,9 @@ class BuildAppStage(stage.BootingStage):
             ap,
             workspace_service_inst,
         )
+        ap.email_service = email_notification_module.EmailService(ap)
         ap.invitation_delivery_service = invitation_delivery_module.InvitationDeliveryService(ap)
+        ap.alert_service = alert_service_module.AlertService(ap)
         ap.support_admin_session_service = cloud_support_admin_module.SupportAdminSessionService(ap)
         ap.space_launch_service = cloud_launch_module.SpaceLaunchService(ap)
 

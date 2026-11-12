@@ -79,6 +79,36 @@ class WebhookPusher:
         finally:
             await self._release_delivery_slots(admitted)
 
+    async def deliver_event(self, webhooks: list[dict], payload: dict) -> list[bool]:
+        """Deliver one notification event; returns per-destination success.
+
+        Shares the instance-wide in-flight bound with message pushes. Destinations
+        beyond the bound are reported as failed instead of queued.
+        """
+
+        admitted = await self._reserve_delivery_slots(len(webhooks))
+        if admitted == 0:
+            return [False] * len(webhooks)
+
+        async def deliver(url: str) -> bool:
+            try:
+                session = httpclient.get_session()
+                async with session.post(
+                    url,
+                    json=payload,
+                    headers={'Content-Type': 'application/json'},
+                    timeout=aiohttp.ClientTimeout(total=15),
+                ) as response:
+                    return response.status < 400
+            except Exception:
+                return False
+
+        try:
+            results = await asyncio.gather(*(deliver(webhook['url']) for webhook in webhooks[:admitted]))
+        finally:
+            await self._release_delivery_slots(admitted)
+        return list(results) + [False] * (len(webhooks) - admitted)
+
     async def push_person_message(
         self,
         execution_context: ExecutionContext,

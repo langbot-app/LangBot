@@ -3433,6 +3433,7 @@ const jaJP = {
     nav: {
       workspace: 'ワークスペース',
       operationTrace: '操作ログ',
+      alerts: 'アラート',
       models: 'モデル',
       api: 'API',
       storage: 'ストレージ',
@@ -4079,6 +4080,106 @@ const jaJP = {
     collapseDomain: '折りたたむ',
     ungrantableRemoved:
       '権限が不足しているため、一部の操作は選択されなかったか削除されました',
+  },
+  alerts: {
+    enableHint: 'アラートを有効化',
+    cta: {
+      title: 'LangBot アカウントでサインインして、アラートメールを無料で送信',
+      pointFree: '公式の無料送信、1 日 20 通まで',
+      pointNoSetup: 'SMTP や Resend の設定は不要',
+      pointPrivate: 'あなたの LangBot アカウントのアドレスにのみ送信',
+      selfHosted: '自前のメールサーバーを使いたい場合',
+      selfHostedLink: 'config.yaml で SMTP または Resend を設定 →',
+    },
+    title: 'アラート',
+    description:
+      'ボット、パイプライン、モデルが失敗し続けたときにメールと Webhook で通知します',
+    enabled: 'アラートを有効化',
+    firingCount: '{{count}} 件発生中',
+    allClear: '問題なし',
+    sendTest: 'テスト送信',
+    saveBeforeTest: 'テスト送信の前に変更を保存してください',
+    saved: 'アラート設定を保存しました',
+    saveFailed: 'アラート設定の保存に失敗しました：{{error}}',
+    loadFailed: 'アラートの読み込みに失敗しました：{{error}}',
+    testSent: 'テストアラートを {{count}} 件の宛先に送信しました',
+    testPartial: '一部の送信に失敗しました。送信履歴を確認してください',
+    testNoChannel:
+      '通知チャネルが未設定です。メールチャネルか Webhook を選択してください',
+    testFailed: 'テストアラートの送信に失敗しました：{{error}}',
+    disabledInstanceWide:
+      'このインスタンスではアラートが無効です（config.yaml の alerts.enabled）。',
+    emailTitle: 'メール',
+    emailDescription: '現在の送信方法：{{channel}}',
+    recipients: '受信者（ワークスペースのオーナーと管理者）',
+    noRecipients: 'メールアドレスを持つオーナーまたは管理者がいません。',
+    extraRecipients: '追加の受信者（自前のメールサービスのみ、最大 10 件）',
+    spaceRecipientsHint:
+      'LangBot Space は LangBot アカウントでサインインした管理者本人のアドレスにのみ送信します。無料枠：アカウントごとに 1 日 20 通、月 200 通。',
+    channel: {
+      auto: '自動',
+      autoDescription:
+        'メールサービスが設定されていればそれを、なければ LangBot Space を使用',
+      instance: '自前のメールサービス',
+      instanceConfigured: 'config.yaml で {{provider}} を設定済み',
+      instanceMissing:
+        '未設定です。config.yaml の email セクションで SMTP または Resend を設定してください',
+      space: 'LangBot Space（公式）',
+      spaceAvailable: '{{accounts}} へ無料で公式送信',
+      spaceMissing: 'LangBot アカウントでサインインすると利用できます',
+      off: 'オフ',
+      offDescription: 'ここに表示し Webhook のみ送信',
+      none: '送信しない（利用可能なチャネルなし）',
+      ready: '利用可能',
+      unavailable: '利用不可',
+    },
+    rulesTitle: 'ルール',
+    rulesDescription:
+      '時間枠内の失敗回数がしきい値に達するとアラートが発生します。',
+    minutesWithin: '分以内に',
+    failuresOrMore: '回以上の失敗',
+    notifyResolved: 'アラートの復旧時に通知',
+    throttleHint:
+      '各アラートは発生時に 1 回送信され、失敗が続く場合は 6 時間後、12 時間後、その後 24 時間ごとにリマインドされます。',
+    rule: {
+      pipeline_failures: 'パイプラインの失敗',
+      pipeline_failuresDescription: '同じパイプラインでの処理エラー',
+      model_failures: 'モデル呼び出しの失敗',
+      model_failuresDescription: '同じモデルへのリクエスト失敗',
+      bot_offline: 'ボットがエラーで停止',
+      bot_offlineDescription: '即時に通知し、ボットが再起動すると復旧',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      '選択した Webhook は alert.fired、alert.reminder、alert.resolved イベントを受信します。',
+    noWebhooks: 'Webhook がありません。設定 → API で追加してください。',
+    webhookDisabled: '無効',
+    incidentsTitle: '最近のアラート',
+    noIncidents: 'アラートはまだありません。',
+    incidentMeta: '{{count}} 回の失敗 · 開始 {{time}}',
+    state: {
+      firing: '発生中',
+      resolved: '復旧済み',
+    },
+    deliveriesTitle: '送信履歴',
+    noDeliveries: 'まだ何も送信されていません。',
+    kind: {
+      fired: 'アラート',
+      reminder: 'リマインド',
+      resolved: '復旧',
+      test: 'テスト',
+    },
+    via: {
+      email: 'メール',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: '送信済み',
+      failed: '失敗',
+      rate_limited: '上限到達',
+      skipped: 'スキップ',
+    },
   },
 };
 export default jaJP;

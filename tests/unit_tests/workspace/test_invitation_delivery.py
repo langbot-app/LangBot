@@ -61,7 +61,7 @@ async def test_configured_provider_failure_returns_failed_without_raising():
             }
         )
     )
-    service._send_resend = AsyncMock(return_value=False)
+    service._email()._send_resend = AsyncMock(return_value='resend_http_500')
 
     assert service.capability() == {'enabled': True, 'provider': 'resend'}
     result = await service.deliver_invitation(
@@ -71,7 +71,15 @@ async def test_configured_provider_failure_returns_failed_without_raising():
     )
 
     assert result == InvitationDeliveryResult(status='failed', provider='resend')
-    service._send_resend.assert_awaited_once()
+
+
+async def test_top_level_email_section_and_new_env_names_drive_delivery(monkeypatch):
+    service = InvitationDeliveryService(
+        _app({'email': {'provider': 'smtp', 'from': 'LangBot <noreply@example.com>', 'smtp': {'host': ''}}})
+    )
+    assert service.capability() == {'enabled': False, 'provider': None}
+    monkeypatch.setenv('EMAIL__SMTP__HOST', 'smtp.example.com')
+    assert service.capability() == {'enabled': True, 'provider': 'smtp'}
 
 
 async def test_environment_mapping_enables_provider_without_leaking_secret(monkeypatch):
@@ -145,7 +153,7 @@ async def test_oss_smtp_configuration_delivers_the_generic_invitation_email():
     )
     link = 'https://self-hosted.example/invitations/accept#token=lbi_secret'
 
-    with patch('langbot.pkg.workspace.invitation_delivery.smtplib.SMTP') as smtp:
+    with patch('langbot.pkg.notification.email.smtplib.SMTP') as smtp:
         result = await service.deliver_invitation(
             recipient_email='member@example.com',
             workspace_name='Self-hosted Workspace',

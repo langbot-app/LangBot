@@ -19,7 +19,7 @@ const articleManifest = JSON.parse(await readFile(path.join(root, "scripts/blog-
 // Generated integration recipes: one index plus one page per source/platform, per locale.
 const recipeDocuments = LANGS.length * (1 + SOURCES.length * PLATFORMS.length);
 // The fixed documentation baseline excludes synchronized Blog pages and recipes.
-const expectedDocuments = 305 + articleManifest.articles.length + recipeDocuments;
+const expectedDocuments = 308 + articleManifest.articles.length + recipeDocuments;
 
 
 test("Mintlify locales are mapped to public URL locales", () => {
@@ -178,7 +178,7 @@ test("canonical MDX and nested OpenAPI sources are discovered", async () => {
   const docs = JSON.parse(await readFile(path.join(root, "docs.json"), "utf8"));
   const pages = await collectMdxDocuments(root);
   assert.equal(pages.length, expectedDocuments);
-  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), Object.fromEntries(Object.entries({ en: 96, zh: 113, ja: 96 }).map(([locale, count]) => [locale, count + recipeDocuments / LANGS.length + articleManifest.articles.filter((article) => article.locale === locale).length])));
+  assert.deepEqual(Object.fromEntries([...pages.reduce((acc, page) => acc.set(page.split("/", 1)[0], (acc.get(page.split("/", 1)[0]) ?? 0) + 1), new Map()).entries()]), Object.fromEntries(Object.entries({ en: 97, zh: 114, ja: 97 }).map(([locale, count]) => [locale, count + recipeDocuments / LANGS.length + articleManifest.articles.filter((article) => article.locale === locale).length])));
   assert.deepEqual(collectOpenApiSources(docs), [
     { locale: "en", source: "openapi/service-api-en.json", directory: "en/api-reference" },
     { locale: "zh", source: "openapi/service-api-zh.json", directory: "zh/api-reference" },

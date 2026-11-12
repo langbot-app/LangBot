@@ -3401,6 +3401,7 @@ const viVN = {
     nav: {
       workspace: 'Workspace',
       operationTrace: 'Nhật ký',
+      alerts: 'Cảnh báo',
       models: 'Mô hình',
       api: 'API',
       storage: 'Lưu trữ',
@@ -4050,6 +4051,106 @@ const viVN = {
     collapseDomain: 'Thu gọn',
     ungrantableRemoved:
       'Một số thao tác không được chọn hoặc đã bị gỡ do thiếu quyền.',
+  },
+  alerts: {
+    enableHint: 'Bật cảnh báo',
+    cta: {
+      title: 'Đăng nhập bằng tài khoản LangBot để gửi email cảnh báo miễn phí',
+      pointFree: 'Gửi chính thức miễn phí, 20 thư mỗi ngày',
+      pointNoSetup: 'Không cần cấu hình SMTP hay Resend',
+      pointPrivate: 'Chỉ gửi tới địa chỉ tài khoản LangBot của bạn',
+      selfHosted: 'Muốn dùng máy chủ email riêng?',
+      selfHostedLink: 'Cấu hình SMTP hoặc Resend trong config.yaml →',
+    },
+    title: 'Cảnh báo',
+    description:
+      'Thông báo qua email và webhook khi bot, Pipeline hoặc mô hình liên tục lỗi',
+    enabled: 'Bật cảnh báo',
+    firingCount: '{{count}} đang cảnh báo',
+    allClear: 'Mọi thứ ổn',
+    sendTest: 'Gửi thử',
+    saveBeforeTest: 'Hãy lưu thay đổi trước khi gửi thử',
+    saved: 'Đã lưu cài đặt cảnh báo',
+    saveFailed: 'Không lưu được cài đặt cảnh báo: {{error}}',
+    loadFailed: 'Không tải được cảnh báo: {{error}}',
+    testSent: 'Đã gửi cảnh báo thử tới {{count}} đích',
+    testPartial: 'Gửi thử có lỗi; xem nhật ký gửi',
+    testNoChannel: 'Chưa có kênh nào; hãy chọn kênh email hoặc webhook',
+    testFailed: 'Không gửi được cảnh báo thử: {{error}}',
+    disabledInstanceWide:
+      'Cảnh báo đã bị tắt cho phiên bản này (alerts.enabled trong config.yaml).',
+    emailTitle: 'Email',
+    emailDescription: 'Hiện gửi qua: {{channel}}',
+    recipients: 'Người nhận (chủ sở hữu và quản trị viên Workspace)',
+    noRecipients: 'Không có chủ sở hữu hoặc quản trị viên nào có email.',
+    extraRecipients:
+      'Người nhận bổ sung (chỉ dịch vụ email của bạn, tối đa 10)',
+    spaceRecipientsHint:
+      'LangBot Space chỉ gửi cho quản trị viên đăng nhập bằng LangBot Space, tới địa chỉ Space của chính họ. Hạn mức miễn phí: 20 thư/ngày, 200 thư/tháng mỗi tài khoản.',
+    channel: {
+      auto: 'Tự động',
+      autoDescription:
+        'Dùng dịch vụ email của bạn nếu đã cấu hình, nếu không dùng LangBot Space',
+      instance: 'Dịch vụ email của bạn',
+      instanceConfigured: 'Đã cấu hình {{provider}} trong config.yaml',
+      instanceMissing:
+        'Chưa cấu hình. Đặt mục email (SMTP hoặc Resend) trong config.yaml',
+      space: 'LangBot Space (chính thức)',
+      spaceAvailable: 'Gửi chính thức miễn phí tới {{accounts}}',
+      spaceMissing: 'Đăng nhập bằng tài khoản LangBot Space để sử dụng',
+      off: 'Tắt',
+      offDescription: 'Chỉ hiển thị tại đây và gửi webhook',
+      none: 'không gửi (không có kênh khả dụng)',
+      ready: 'Sẵn sàng',
+      unavailable: 'Không khả dụng',
+    },
+    rulesTitle: 'Quy tắc',
+    rulesDescription:
+      'Cảnh báo được mở khi số lỗi trong khoảng thời gian đạt ngưỡng.',
+    minutesWithin: 'phút, ít nhất',
+    failuresOrMore: 'lỗi',
+    notifyResolved: 'Thông báo khi cảnh báo phục hồi',
+    throttleHint:
+      'Mỗi cảnh báo được gửi một lần khi mở, sau đó nhắc lại sau 6 giờ, 12 giờ và mỗi 24 giờ nếu vẫn lỗi.',
+    rule: {
+      pipeline_failures: 'Lỗi Pipeline',
+      pipeline_failuresDescription: 'Lỗi xử lý trong một Pipeline',
+      model_failures: 'Lỗi gọi mô hình',
+      model_failuresDescription: 'Yêu cầu thất bại tới một mô hình',
+      bot_offline: 'Bot dừng do lỗi',
+      bot_offlineDescription: 'Cảnh báo ngay; phục hồi khi bot khởi động lại',
+    },
+    webhooksTitle: 'Webhook',
+    webhooksDescription:
+      'Webhook được chọn sẽ nhận sự kiện alert.fired, alert.reminder và alert.resolved.',
+    noWebhooks: 'Chưa có webhook. Thêm trong Cài đặt → API.',
+    webhookDisabled: 'Đã tắt',
+    incidentsTitle: 'Cảnh báo gần đây',
+    noIncidents: 'Chưa có cảnh báo.',
+    incidentMeta: '{{count}} lỗi · mở lúc {{time}}',
+    state: {
+      firing: 'Đang cảnh báo',
+      resolved: 'Đã phục hồi',
+    },
+    deliveriesTitle: 'Nhật ký gửi',
+    noDeliveries: 'Chưa gửi gì.',
+    kind: {
+      fired: 'Cảnh báo',
+      reminder: 'Nhắc lại',
+      resolved: 'Phục hồi',
+      test: 'Thử',
+    },
+    via: {
+      email: 'Email',
+      space: 'LangBot Space',
+      webhook: 'Webhook',
+    },
+    status: {
+      sent: 'Đã gửi',
+      failed: 'Thất bại',
+      rate_limited: 'Hết hạn mức',
+      skipped: 'Bỏ qua',
+    },
   },
 };
 export default viVN;

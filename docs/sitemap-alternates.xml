@@ -1597,6 +1597,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/articles/welcome" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/deploy/alerts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/alerts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/deploy/alerts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/alerts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/deploy/alerts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/alerts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/alerts" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/deploy/command</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/command" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/command" />
