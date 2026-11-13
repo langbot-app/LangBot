@@ -31,6 +31,8 @@ from .tenant_uow import (
     TENANT_POLICY_NAME,
     TENANT_SETTING,
     TENANT_TABLE_COLUMNS,
+    PUBLIC_MEDIA_KEY_SETTING,
+    PUBLIC_MEDIA_POLICY_NAME,
     CrossScopeTransactionError,
     DIRECTORY_INSTANCE_SETTING,
     DIRECTORY_PROJECTED_TENANT_TABLES,
@@ -61,6 +63,10 @@ _ALEMBIC_TENANT_TABLES = {
     'bots',
     'bot_admins',
     'binary_storages',
+    'content_objects',
+    'content_aliases',
+    'skill_registry',
+    'skill_versions',
     'mcp_servers',
     'model_providers',
     'codex_credentials',
@@ -1584,6 +1590,14 @@ class PersistenceManager:
             'check_expression': None,
         }
 
+        policies['content_objects'][PUBLIC_MEDIA_POLICY_NAME] = {
+            'command': 'r',
+            'using_expression': (
+                f'((public_media = true) AND ((public_key)::text = {setting(PUBLIC_MEDIA_KEY_SETTING)}))'
+            ),
+            'check_expression': None,
+        }
+
         directory_setting = setting(DIRECTORY_INSTANCE_SETTING)
         workspace_expression = (
             f"(((instance_uuid)::text = {directory_setting}) AND ((source)::text = 'cloud_projection'::text))"
@@ -1863,6 +1877,10 @@ class PersistenceManager:
 
     def identity_discovery_uow(self, identity_digest: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.identity(identity_digest))
+
+    def public_media_uow(self, key: str) -> TenantUnitOfWork:
+        """Read only the exact, explicitly published media object requested by its URL."""
+        return self._scoped_uow(PersistenceScope.public_media(key))
 
     def current_session(self) -> sqlalchemy_asyncio.AsyncSession | None:
         """Return the transaction-bound session for the current task, if any."""

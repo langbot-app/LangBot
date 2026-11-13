@@ -1292,8 +1292,8 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
     'skill.delete': OperationDoc(
         domain='skill',
         label={'zh_Hans': '删除技能', 'en_US': 'Delete Skill'},
-        summary='Delete a custom skill and remove its code files.',
-        description='Permanently remove a skill and delete its associated script files. Prerequisites: Call skill.list to obtain skill_name. Side effect: Irreversible removal of skill.',
+        summary='Remove a skill from the current catalog.',
+        description='Remove the current registration. Retained versions remain available to authorized pinned runs. Prerequisites: Call skill.list to obtain skill_name.',
         risk='dangerous',
         exposure='all',
     ),
@@ -1344,6 +1344,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         description='Retrieve complete skill definition, parameter schema, and file structure. Prerequisites: Call skill.list to obtain skill_name.',
         risk='read',
         exposure='all',
+    ),
+    'skill.package.get': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '下载技能版本包', 'en_US': 'Download Skill Publication'},
+        summary='Read an authorized immutable Skill version as a ZIP archive.',
+        description='Requires Workspace resource access. A revision or content digest never grants access by itself.',
+        risk='read',
+        exposure='none',
     ),
     'skill.github.install': OperationDoc(
         domain='skill',

@@ -112,7 +112,7 @@ class TestSkillRepositoryBoundary:
         skill = await service.get_skill(_CONTEXT, 'x')
 
         assert skill['revision'] == 'sha256:x'
-        ap.skill_repository.get_skill.assert_awaited_once_with(_CONTEXT, 'x', snapshot=True)
+        ap.skill_repository.get_skill.assert_awaited_once_with(_CONTEXT, 'x')
 
     @pytest.mark.asyncio
     async def test_missing_repository_is_explicit(self):
@@ -124,6 +124,7 @@ class TestSkillRepositoryBoundary:
         )
         with pytest.raises(ValueError, match='repository is not initialised'):
             await service.create_skill(_CONTEXT, {'name': 'x'})
+
 
 class TestGithubSkillArchiveLimits:
     @staticmethod

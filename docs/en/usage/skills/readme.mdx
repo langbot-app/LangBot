@@ -20,7 +20,7 @@ See [Runtimes and Extensions](../sandbox/runtime-relationships) for the full pic
 ## Installing Skills
 
 <Note>
-Skills require the sandbox. `box.enabled` must be `true` and at least one backend (Docker / Nsjail / E2B) must be available — otherwise you can't install, activate, or edit skills. See [Sandbox Configuration](../sandbox/config).
+Core provides Skill management, activation and read-only resource access without Box. Running scripts, editing sandbox drafts and `register_skill` require an available Box. See [Sandbox Configuration](../sandbox/config).
 </Note>
 
 ### From LangBot Space (Preferred)
@@ -37,7 +37,28 @@ This covers most cases. For custom workflows, use the option below.
 1. Prepare the directory and `SKILL.md` under the sandbox `/workspace`
 2. Have the Agent call `register_skill(path="/workspace/my-skill")`
 
-Both options write to the skill store managed by Box Runtime.
+Both options publish to the Skill repository managed by Core.
+
+### Database persistence (opt-in)
+
+Filesystem mode remains the default. Database mode is opt-in and uses a separate catalog. Existing Skills, uploads and media are not imported automatically; their files remain intact. Migrate existing content before switching a populated deployment: old links do not fall back to the previous backend. It stores registrations, immutable version packages and persistent attachments in the database by default; object storage is optional. Use matching Core and SDK builds; for source development, install the in-tree SDK as described in [Runtime Development](../../develop/plugin-runtime). Multiple Core processes should share an external PostgreSQL database, logical instance identity and authentication configuration. Update `data/config.yaml` and restart Core:
+
+```yaml
+skills:
+    persistence: database
+    root: './data/skills'
+storage:
+    use: persistent
+    content:
+        backend: database
+```
+
+`skills.root/.database-cache` is built only for resource reads and execution snapshots. It can be deleted and rebuilt when no execution is using it. Listings and package downloads do not depend on the local cache; Core replicas sharing the database need not share this cache. Script execution still follows the existing Box mount requirements; Runtime network download of Skills is not enabled by this change.
+
+For object storage, configure `type: s3`, `endpoint_url`, `bucket`, `region`, `access_key_id` and `secret_access_key` under `storage.content.backends.<name>`, then set `storage.content.backend` to that name. Keep historical names and endpoint/bucket/region locations available. Changing the write backend does not move old content; removing or retargeting an old configuration makes its content unavailable. Restart Core after credential changes.
+
+Database version packages are limited to 64 MiB. Concurrent updates reject conflicting overwrites, and activated runs retain their pinned version.
+
 
 ## Enabling in a Pipeline
 
@@ -78,7 +99,7 @@ LangBot currently reads these three fields:
 
 For the full spec see [agentskills.io](https://agentskills.io/home). Other fields (`license`, `metadata`, ...) can stay in the file for future compatibility but are not currently read.
 
-**Skills with resources** place `scripts/`, `templates/`, etc. next to `SKILL.md`. After activation the Agent accesses them at `/workspace/.skills/{skill-name}/`.
+**Skills with resources** place `scripts/`, `templates/`, etc. next to `SKILL.md`. Use the pinned version path returned by activation when executing them.
 
 ### Tools the Agent Sees
 
@@ -91,11 +112,11 @@ For the full spec see [agentskills.io](https://agentskills.io/home). Other field
 
 | Symptom | What to check |
 |---------|---------------|
-| Skill list is empty | `box.enabled`, Box Runtime status, `box.local.skills_root` |
+| Skill list is empty | Workspace, Skill bindings, `skills.persistence` and `skills.root` |
 | Agent doesn't activate a skill | Whether `description` is specific, whether the pipeline has the skill bound, whether the model supports function calling |
-| Files missing after activation | Files must live inside the Skill package; the path is `/workspace/.skills/{skill-name}/` |
+| Files missing after activation | Files must live inside the Skill package; use the version path returned by activation |
 | `register_skill` errors | The path must be under `/workspace`, and the directory or subdirectories within two levels must contain `SKILL.md` |
 
 <Note>
-Skills currently target the built-in Agent and depend on function calling plus a sandbox backend. External runners (Dify, n8n, Langflow, Coze, etc.) should use their platform's equivalent mechanism.
+Automatic activation requires a Runner with Skill and tool-call support; script execution requires Box. External runners (Dify, n8n, Langflow, Coze, etc.) should use their platform's supported mechanism.
 </Note>

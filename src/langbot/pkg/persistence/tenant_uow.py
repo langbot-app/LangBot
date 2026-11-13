@@ -29,6 +29,7 @@ INVITATION_HASH_SETTING = 'langbot.invitation_hash'
 INSTANCE_SETTING = 'langbot.instance_uuid'
 IDENTITY_DIGEST_SETTING = 'langbot.identity_digest'
 DIRECTORY_INSTANCE_SETTING = 'langbot.directory_instance_uuid'
+PUBLIC_MEDIA_KEY_SETTING = 'langbot.public_media_key'
 
 TENANT_POLICY_NAME = 'langbot_workspace_isolation'
 LOCAL_DIRECTORY_WRITE_POLICY_NAME = 'langbot_workspace_local_directory_write'
@@ -37,6 +38,7 @@ API_KEY_DISCOVERY_POLICY_NAME = 'langbot_api_key_discovery'
 INVITATION_DISCOVERY_POLICY_NAME = 'langbot_invitation_discovery'
 INSTANCE_DISCOVERY_POLICY_NAME = 'langbot_instance_discovery'
 DIRECTORY_PROJECTION_POLICY_NAME = 'langbot_directory_projection'
+PUBLIC_MEDIA_POLICY_NAME = 'langbot_public_media_read'
 
 # Keep this contract explicit. A new tenant-owned table must be added to both
 # this runtime list and the corresponding Alembic migration before release.
@@ -53,6 +55,10 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'bots': 'workspace_uuid',
     'bot_admins': 'workspace_uuid',
     'binary_storages': 'workspace_uuid',
+    'content_objects': 'workspace_uuid',
+    'content_aliases': 'workspace_uuid',
+    'skill_registry': 'workspace_uuid',
+    'skill_versions': 'workspace_uuid',
     'mcp_servers': 'workspace_uuid',
     'model_providers': 'workspace_uuid',
     'codex_credentials': 'workspace_uuid',
@@ -111,6 +117,7 @@ class PersistenceScopeKind(enum.StrEnum):
     INSTANCE_DISCOVERY = 'instance_discovery'
     IDENTITY_DISCOVERY = 'identity_discovery'
     DIRECTORY_PROJECTION = 'directory_projection'
+    PUBLIC_MEDIA = 'public_media'
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -150,6 +157,14 @@ class PersistenceScope:
             PersistenceScopeKind.DIRECTORY_PROJECTION,
             DIRECTORY_INSTANCE_SETTING,
             instance_uuid,
+        )
+
+    @classmethod
+    def public_media(cls, key: str) -> PersistenceScope:
+        # Clear the OSS singleton default; this scope grants only the media SELECT policy.
+        return cls(
+            PersistenceScopeKind.PUBLIC_MEDIA,
+            ((TENANT_SETTING, ''), (PUBLIC_MEDIA_KEY_SETTING, cls._normalize(key, 'public media key'))),
         )
 
     @classmethod
@@ -977,6 +992,7 @@ class TenantScopedAsyncSession(sqlalchemy_asyncio.AsyncSession):
             INSTANCE_SETTING,
             IDENTITY_DIGEST_SETTING,
             DIRECTORY_INSTANCE_SETTING,
+            PUBLIC_MEDIA_KEY_SETTING,
         }:
             self._reject_transaction_escape('unknown tenant scope configuration')
         self._require_owner_task()
@@ -1363,6 +1379,7 @@ class TenantUnitOfWork:
                         PersistenceScopeKind.INVITATION_DISCOVERY,
                         PersistenceScopeKind.INSTANCE_DISCOVERY,
                         PersistenceScopeKind.IDENTITY_DISCOVERY,
+                        PersistenceScopeKind.PUBLIC_MEDIA,
                     }
                 )
                 if not workspace_to_discovery:

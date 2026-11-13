@@ -471,6 +471,11 @@ and only then advances the registry pointer. Updates require the current
 active or recoverable runs. Former mutable package directories are only a
 one-time online-upgrade import source.
 
+`export_skill_publication` and `restore_skill_publication` preserve an exact
+publication across disposable stores without changing its tree revision.
+Core's optional database repository uses these helpers for temporary CRUD and
+verified execution caches; its database CAS owns the authoritative catalog.
+
 LangBot Core composes pinned revisions into generic read-only `BoxMountSpec`
 values. Ordinary fixed mounts include `content_digest` and `manifest_path` in
 the session signature; supported digest-addressed packages are excluded from it.

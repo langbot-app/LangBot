@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import stat
+import io
+import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from unittest import mock
@@ -13,6 +15,7 @@ from langbot_plugin.skill_store import (
     SkillStore,
     skill_namespace,
 )
+from langbot_plugin.artifact import build_tree_manifest
 
 
 def test_generic_store_uses_an_execution_independent_root(tmp_path):
@@ -298,3 +301,104 @@ def test_generic_store_rejects_symlinks_during_import(tmp_path):
             {"name": "draft", "instructions": "Draft"},
             source_root=str(workspace),
         )
+
+
+def test_publication_restoration_preserves_exact_entry_bytes_and_executable_mode(
+    tmp_path,
+):
+    source = tmp_path / "exact"
+    (source / "scripts").mkdir(parents=True)
+    entry = b"---\r\n# Keep formatting\r\nname: exact\r\ndescription: Exact package\r\n---\r\n\r\nInstructions.\r\n"
+    (source / "SKILL.md").write_bytes(entry)
+    script = source / "scripts" / "run.py"
+    script.write_bytes(b"#!/usr/bin/env python3\nprint('exact')\n")
+    script.chmod(0o755)
+    store = SkillStore(tmp_path / "restored")
+    skill = SkillStore(tmp_path / "scan").scan_directory(str(source))
+    revision, manifest = build_tree_manifest(
+        str(source), max_files=2048, max_total_bytes=256 * 1024 * 1024
+    )
+    skill.update(
+        revision=revision,
+        created_at="2024-01-01T00:00:00+00:00",
+        updated_at="2024-02-01T00:00:00+00:00",
+    )
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.write(source / "SKILL.md", "SKILL.md")
+        archive.write(script, "scripts/run.py")
+
+    restored = store.restore_skill_publication(
+        skill, manifest, output.getvalue(), make_current=True
+    )
+
+    assert restored["revision"] == revision
+    assert restored["created_at"] == skill["created_at"]
+    assert restored["updated_at"] == skill["updated_at"]
+    root = restored["package_root"]
+    with open(os.path.join(root, "SKILL.md"), "rb") as file:
+        assert file.read() == entry
+    assert (
+        stat.S_IMODE(os.stat(os.path.join(root, "scripts", "run.py")).st_mode) == 0o555
+    )
+    assert stat.S_IMODE(os.stat(root).st_mode) == 0o555
+    exported = store.export_skill_publication("exact")
+    assert exported["manifest"] == manifest
+    with zipfile.ZipFile(io.BytesIO(exported["file_bytes"])) as archive:
+        assert archive.read("SKILL.md") == entry
+    second_cache = SkillStore(tmp_path / "second-cache")
+    second_cache.restore_skill_publication(
+        skill, manifest, exported["file_bytes"], make_current=True
+    )
+    assert (
+        second_cache.export_skill_publication("exact")["file_bytes"]
+        == exported["file_bytes"]
+    )
+
+
+def test_publication_restoration_rejects_tampered_archive_without_publishing(tmp_path):
+    source = SkillStore(tmp_path / "source")
+    original = source.create_skill({"name": "safe", "instructions": "unchanged"})
+    publication = source.export_skill_publication("safe")
+    output = io.BytesIO()
+    with (
+        zipfile.ZipFile(io.BytesIO(publication["file_bytes"])) as original_archive,
+        zipfile.ZipFile(output, "w") as archive,
+    ):
+        for member in original_archive.infolist():
+            body = original_archive.read(member)
+            archive.writestr(member, body.replace(b"unchanged", b"tampered!"))
+    recovered = SkillStore(tmp_path / "cache")
+
+    with pytest.raises(ValueError, match="match its manifest"):
+        recovered.restore_skill_publication(
+            publication["skill"],
+            publication["manifest"],
+            output.getvalue(),
+            make_current=True,
+        )
+
+    assert recovered.get_skill("safe") is None
+    assert not os.path.isdir(recovered._revision_directory(original["revision"]))
+
+
+def test_restoring_pinned_publication_does_not_move_current_pointer(tmp_path):
+    source = SkillStore(tmp_path / "source")
+    first = source.create_skill({"name": "safe", "instructions": "version one"})
+    old = source.export_skill_publication("safe")
+    second = source.update_skill(
+        "safe", {"instructions": "version two"}, base_revision=first["revision"]
+    )
+    latest = source.export_skill_publication("safe")
+    cache = SkillStore(tmp_path / "cache")
+    cache.restore_skill_publication(
+        latest["skill"], latest["manifest"], latest["file_bytes"], make_current=True
+    )
+
+    cache.restore_skill_publication(old["skill"], old["manifest"], old["file_bytes"])
+
+    assert cache.get_skill("safe")["revision"] == second["revision"]
+    assert (
+        cache.get_skill_snapshot("safe", first["revision"])["instructions"]
+        == "version one"
+    )

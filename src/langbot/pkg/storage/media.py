@@ -153,6 +153,9 @@ class MediaCache:
         hash_str = self.hash_bytes(data)
         ext = self.guess_extension(mime_type)
         storage_key = f'{MEDIA_DIR}/{hash_str}{ext}'
+        if getattr(self.storage_mgr, 'persistent_content', False) is True:
+            await self.storage_mgr.content_store.save_public_media(storage_key, data)
+            return hash_str, storage_key, len(data)
         provider = self.storage_mgr.storage_provider
 
         if not await provider.exists(storage_key):
@@ -168,6 +171,13 @@ class MediaCache:
         if not SAFE_MEDIA_FILENAME.match(filename):
             return None
         storage_key = f'{MEDIA_DIR}/{filename}'
+        if getattr(self.storage_mgr, 'persistent_content', False) is True:
+            data = await self.storage_mgr.content_store.get_public_media(
+                storage_key, max_bytes=self.storage_mgr._object_read_limit()
+            )
+            if data is None:
+                return None
+            return data, mimetypes.guess_type(filename)[0] or 'application/octet-stream'
         provider = self.storage_mgr.storage_provider
 
         if not await provider.exists(storage_key):
@@ -295,6 +305,8 @@ class MediaCache:
                 except Exception as e:
                     if hasattr(self.ap, 'logger') and self.ap.logger:
                         self.ap.logger.warning(f'Failed to externalize image to media cache: {e}')
+                    if getattr(self.storage_mgr, 'persistent_content', False) is True:
+                        raise
                 self._clear_inline_image(node)
             for k, v in list(node.items()):
                 if isinstance(v, (list, dict)):

@@ -20,7 +20,7 @@ Skill 是一个**按需激活**的指令包：用户描述匹配时，Agent 调�
 ## 安装技能
 
 <Note>
-技能依赖沙箱：`box.enabled` 为 `true` 且 Docker / Nsjail / E2B 至少一个可用时，才能安装、激活和编辑技能。详见[沙箱配置](../sandbox/config)。
+技能的管理、激活和只读资源访问由 Core 提供，不要求 Box。执行脚本、操作沙箱草稿和 `register_skill` 需要可用的 Box。详见[沙箱配置](../sandbox/config)。
 </Note>
 
 ### 从 LangBot Space（首选）
@@ -37,7 +37,28 @@ Skill 是一个**按需激活**的指令包：用户描述匹配时，Agent 调�
 1. 在沙箱 `/workspace` 下准备好目录和 `SKILL.md`
 2. 让 Agent 调用 `register_skill(path="/workspace/my-skill")`
 
-两种方式都会写入 Box Runtime 管理的 skill store。
+两种方式都会发布到 Core 管理的技能仓库。
+
+### 数据库存储（显式启用）
+
+默认仍为本地模式；数据库模式需显式启用，使用独立索引。旧技能、上传附件和媒体不会自动导入，原文件保留；已有数据的部署须先迁移再切换，旧链接不会自动回读原后端。此模式将注册信息、不可变版本包和持久附件内容默认存入数据库，对象存储可选。此模式需要配套的 Core 和 SDK；源码开发请先按[运行时开发说明](../../develop/plugin-runtime)安装仓库中的 SDK。多个 Core 应连接同一个外部 PostgreSQL，并使用一致的逻辑实例标识和鉴权配置。修改 `data/config.yaml` 后重启 Core：
+
+```yaml
+skills:
+    persistence: database
+    root: './data/skills'
+storage:
+    use: persistent
+    content:
+        backend: database
+```
+
+`skills.root/.database-cache` 仅在读取资源或准备执行快照时生成，可在没有执行使用它时删除并重建。列表和版本包下载不依赖本地缓存；两个 Core 使用同一数据库时无需共享这份缓存。脚本执行仍遵守现有 Box 挂载要求，并未切换为 Runtime 网络下载技能。
+
+使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应内容无法读取。修改凭据后重启 Core。
+
+数据库模式的版本包上限为 64 MiB。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
+
 
 ## 在流水线启用
 
@@ -78,7 +99,7 @@ LangBot 当前读取以下三个字段：
 
 完整规范见 [agentskills.io](https://agentskills.io/home)。其它字段（`license`、`metadata` 等）可保留供未来兼容，当前不会被读取。
 
-**带资源的技能**在 `SKILL.md` 同级放 `scripts/`、`templates/` 等目录，激活后 Agent 通过 `/workspace/.skills/{skill-name}/` 访问。
+**带资源的技能**在 `SKILL.md` 同级放 `scripts/`、`templates/` 等目录，执行时使用激活结果返回的固定版本路径。
 
 ### Agent 可用的工具
 
@@ -91,11 +112,11 @@ LangBot 当前读取以下三个字段：
 
 | 现象 | 检查项 |
 |------|--------|
-| 技能列表为空 | `box.enabled`、Box Runtime 状态、`box.local.skills_root` |
+| 技能列表为空 | Workspace、技能绑定、`skills.persistence` 和 `skills.root` |
 | Agent 不激活技能 | `description` 是否具体、流水线是否绑定、模型是否支持函数调用 |
-| 激活后找不到文件 | 文件需在 Skill 包内，路径是 `/workspace/.skills/{skill-name}/` |
+| 激活后找不到文件 | 文件需在 Skill 包内，使用激活结果返回的版本路径 |
 | `register_skill` 报错 | 路径必须在 `/workspace` 下，目录或两层内子目录需含 `SKILL.md` |
 
 <Note>
-Skills 当前面向内置 Agent，依赖函数调用和沙箱后端。外部运行器（Dify、n8n、Langflow、Coze 等）请使用各自平台的等价机制。
+自动激活需要 Runner 支持技能和工具调用，脚本执行需要 Box。外部运行器（Dify、n8n、Langflow、Coze 等）请使用各自平台支持的机制。
 </Note>
