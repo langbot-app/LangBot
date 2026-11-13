@@ -518,8 +518,10 @@ def test_build_resource_limits_rlimit_fallback(backend):
     ras_idx = args.index("--rlimit_as")
     assert args[ras_idx + 1] == "hard"
 
+    # RLIMIT_NPROC is UID-scoped, so the emitted cap is the live UID thread
+    # count plus pids_limit: pids_limit must stay sandbox headroom (#2602).
     nproc_idx = args.index("--rlimit_nproc")
-    assert args[nproc_idx + 1] == "128"
+    assert int(args[nproc_idx + 1]) >= 128
 
     # Safe rlimits still apply.
     assert "--rlimit_fsize" in args
@@ -992,3 +994,97 @@ async def test_refresh_does_not_remove_working_cgroup_limits_while_probe_runs(ba
         assert args[args.index("--rlimit_nproc") + 1] == "hard"
         release.set()
         assert await probe is True
+
+
+def test_build_resource_limits_nproc_offsets_uid_baseline():
+    """pids_limit must stay sandbox headroom, not the whole UID budget (#2602)."""
+    backend = NsjailBackend(logging.getLogger("test"))
+    backend._cgroup_v2_available = False
+    backend._uid_thread_count = lambda uid=None: 718  # type: ignore[method-assign]
+
+    args = backend._build_resource_limits(
+        BoxSpec(session_id="s", cmd="x", pids_limit=128)
+    )
+
+    assert args[args.index("--rlimit_nproc") + 1] == "846"
+
+
+def test_build_resource_limits_nproc_ignores_baseline_on_cgroup_v2():
+    backend = NsjailBackend(logging.getLogger("test"))
+    backend._cgroup_v2_available = True
+    backend._uid_thread_count = lambda uid=None: 718  # type: ignore[method-assign]
+
+    args = backend._build_resource_limits(
+        BoxSpec(session_id="s", cmd="x", pids_limit=128)
+    )
+
+    # cgroup v2 counts sandbox processes only, so no UID offset is needed.
+    assert args[args.index("--cgroup_pids_max") + 1] == "128"
+    assert "--rlimit_nproc" not in args
+
+
+def test_uid_thread_count_sums_threads_of_matching_uid(monkeypatch):
+    entries = {
+        "11": "Name:\tfoo\nUid:\t42\t42\t42\t42\nThreads:\t3\n",
+        "12": "Name:\tbar\nUid:\t7\t7\t7\t7\nThreads:\t9\n",
+        "13": "Name:\tbaz\nUid:\t42\t42\t42\t42\n",
+        "cpuinfo": None,
+    }
+
+    monkeypatch.setattr(nsjail_backend_module.os, "listdir", lambda path: list(entries))
+
+    class FakeHandle:
+        def __init__(self, text):
+            self._text = text
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return self._text
+
+    def fake_open(path, *args, **kwargs):
+        text = entries[pathlib.Path(path).parent.name]
+        if text is None:
+            raise FileNotFoundError(path)
+        return FakeHandle(text)
+
+    monkeypatch.setattr("builtins.open", fake_open)
+
+    # pid 11 contributes 3, pid 13 has no Threads line and counts as 1.
+    assert NsjailBackend._uid_thread_count(42) == 4
+    assert NsjailBackend._uid_thread_count(7) == 9
+
+
+def test_uid_thread_count_tolerates_unreadable_proc(monkeypatch):
+    def raise_oserror(path):
+        raise OSError("no proc")
+
+    monkeypatch.setattr(nsjail_backend_module.os, "listdir", raise_oserror)
+
+    assert NsjailBackend._uid_thread_count() == 0
+
+
+@pytest.mark.anyio
+async def test_readiness_marks_uid_scoped_pid_limit_without_cgroup_v2(backend):
+    backend._cgroup_v2_available = False
+    with mock.patch.object(
+        backend, "is_available", new_callable=mock.AsyncMock, return_value=True
+    ):
+        readiness = await backend.get_readiness()
+
+    assert readiness["pid_limit_scope"] == "uid"
+
+
+@pytest.mark.anyio
+async def test_readiness_omits_pid_limit_scope_with_cgroup_v2(backend):
+    backend._cgroup_v2_available = True
+    with mock.patch.object(
+        backend, "is_available", new_callable=mock.AsyncMock, return_value=True
+    ):
+        readiness = await backend.get_readiness()
+
+    assert "pid_limit_scope" not in readiness
