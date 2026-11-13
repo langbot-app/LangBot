@@ -8,6 +8,9 @@ import enum
 import hashlib
 import json
 import os
+import posixpath
+import re
+import uuid
 import secrets
 from typing import TYPE_CHECKING
 
@@ -121,6 +124,13 @@ class BoxService:
             self._runtime_connector = BoxRuntimeConnector(ap, runtime_disconnect_callback=self._on_runtime_disconnect)
             client = self._runtime_connector.client
         self.client = client
+        self.file_transfer_mode = _get_box_config(ap).get('file_transfer_mode', 'legacy')
+        if self.file_transfer_mode not in ('legacy', 'network'):
+            raise BoxValidationError('box.file_transfer_mode must be legacy or network')
+        if self.file_transfer_mode == 'network' and any(
+            not callable(getattr(client, name, None)) for name in ('upload_file', 'download_file')
+        ):
+            raise BoxValidationError('Network file transfer requires an updated Box SDK')
         self.output_limit_chars = output_limit_chars
         self.host_root = self._load_host_root()
         self.allowed_mount_roots = self._load_allowed_mount_roots()
@@ -841,6 +851,9 @@ class BoxService:
         to direct host-filesystem deletion. It must never issue an unscoped Box
         exec merely to remove root-owned container output.
         """
+        if self.file_transfer_mode == 'network':
+            return
+
         root = self.default_workspace
         if not root or not os.path.isdir(root):
             return
@@ -932,11 +945,207 @@ class BoxService:
         if not files:
             return []
 
+        if self.file_transfer_mode == 'network':
+            return await self._write_files_network(query, target_mount_dir, files)
+
         host_dir = self._host_query_dir(subdir, query)
         if host_dir is not None:
             return await asyncio.to_thread(self._write_files_host, host_dir, target_mount_dir, files)
 
         return await self._write_files_via_exec(query, target_mount_dir, files)
+
+    async def _write_files_network(self, query, target_dir, files):
+        if (
+            len(files) > self._ATTACHMENT_MAX_FILES
+            or sum(len(data) for _, data in files) > self._ATTACHMENT_MAX_TOTAL_BYTES
+        ):
+            raise BoxValidationError('Input attachments exceed the file count or total size limit')
+        names = [secure_fs._component(name) for name, _ in files]
+        if len(set(names)) != len(names):
+            raise BoxValidationError('Input attachment filenames must be unique within a batch')
+        if any(len(data) > self._ATTACHMENT_MAX_BYTES for _, data in files):
+            raise BoxValidationError('Input attachment exceeds the per-file size limit')
+        context = await self.require_workspace_sandbox(self._query_execution_context(query))
+        written = []
+        try:
+            for name, data in files:
+                path = f'{target_dir}/{name}'
+                written.append(path)
+                await self.client.upload_file(
+                    self.resolve_box_session_id(query), path, data, action_context=self._action_context(context)
+                )
+            await self._validated_execution_context(context)
+            return written
+        except BaseException:
+            if written:
+                from .selected_files import selected_files_script
+
+                digests = {f'{target_dir}/{name}': hashlib.sha256(data).hexdigest() for name, data in files}
+                script = selected_files_script(
+                    written,
+                    max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+                    max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+                    cleanup=digests,
+                )
+                await self._cleanup_network_script(query, script, 'incomplete attachment batch')
+            raise
+
+    async def _execute_file_script(self, query, script):
+        return await self._execute_spec_payload_result(
+            {
+                'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
+                'timeout_sec': 30,
+                'session_id': self.resolve_box_session_id(query),
+            },
+            query,
+        )
+
+    async def _cleanup_network_script(self, query, script, subject):
+        cleanup = asyncio.create_task(self._execute_file_script(query, script))
+        interrupted = False
+        while not cleanup.done():
+            try:
+                await asyncio.shield(cleanup)
+            except asyncio.CancelledError:
+                interrupted = True
+            except Exception:
+                break
+        if cleanup.cancelled() or cleanup.exception() is not None or not cleanup.result().ok:
+            self.ap.logger.warning(f'Failed to clean network {subject}')
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def _file_metadata(self, query, script, paths=None):
+        result = await self._execute_file_script(query, script)
+        if not result.ok:
+            failure = script_export_error(
+                result.stderr or '',
+                result.exit_code,
+                {
+                    'file_bytes': self._ATTACHMENT_MAX_BYTES,
+                    'collection_bytes': self._ATTACHMENT_MAX_TOTAL_BYTES,
+                    'file_count': self._ATTACHMENT_MAX_FILES,
+                    'depth': 8,
+                    'entries': 512,
+                    'directories': 64,
+                },
+                selected_paths=paths,
+            )
+            raise failure or BoxValidationError(
+                f'Failed to prepare sandbox files (exit code {result.exit_code}); no files were accepted by this attempt: '
+                f'{(result.stderr or "")[-4000:]}'
+            )
+        failure = transport_export_error(result.stdout)
+        if failure is not None:
+            raise failure
+        try:
+            result = json.loads(result.stdout)
+            if not isinstance(result, list) or len(result) > self._ATTACHMENT_MAX_FILES:
+                raise ValueError('Invalid file list')
+            return result
+        except (TypeError, ValueError) as exc:
+            raise export_error('invalid_response') from exc
+
+    async def _read_selected_files_network(self, query, paths):
+        import base64
+        from .selected_files import selected_files_script, selected_files_cleanup_script
+
+        if not paths:
+            return []
+        context = await self.require_workspace_sandbox(self._query_execution_context(query))
+        binding = getattr(query, '_box_binding', None)
+        if (
+            binding is not None
+            and self.build_spec(
+                {'session_id': binding.session_id, **binding.spec}, skip_host_mount_validation=True
+            ).host_path_mode
+            == BoxHostMountMode.READ_ONLY
+        ):
+            raise BoxValidationError(
+                'Network export requires a writable workspace for temporary snapshots; '
+                'use a writable profile or legacy file transfer'
+            )
+        root = '/workspace/.langbot-export-' + uuid.uuid4().hex
+        script = selected_files_script(
+            paths,
+            max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+            max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+            snapshot_root=root,
+        )
+        try:
+            preparation = asyncio.create_task(self._file_metadata(query, script, paths))
+            try:
+                metadata = await asyncio.shield(preparation)
+            except asyncio.CancelledError:
+                while not preparation.done():
+                    try:
+                        await asyncio.shield(preparation)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not preparation.cancelled():
+                    preparation.exception()
+                raise
+            if len(metadata) != len(paths):
+                raise export_error('invalid_response')
+            entries = []
+            total = 0
+            for index, (source_path, item) in enumerate(zip(paths, metadata, strict=True)):
+                if not isinstance(item, dict) or type(item.get('index')) is not int or item['index'] != index:
+                    raise export_error('invalid_response')
+                snapshot_path = item.get('snapshot_path')
+                if not isinstance(snapshot_path, str) or posixpath.basename(
+                    posixpath.dirname(snapshot_path)
+                ) != posixpath.basename(root):
+                    raise export_error('invalid_response')
+                filename = posixpath.basename(snapshot_path)
+                if not re.fullmatch(r'[0-9a-f]{32}[.]bin', filename):
+                    raise export_error('invalid_response')
+                size = item.get('size')
+                if type(size) is not int or size < 0 or size > self._ATTACHMENT_MAX_BYTES:
+                    raise export_error('invalid_response')
+                total += size
+                if total > self._ATTACHMENT_MAX_TOTAL_BYTES:
+                    raise export_error('invalid_response')
+                content = await self.client.download_file(
+                    self.resolve_box_session_id(query),
+                    root + '/' + filename,
+                    action_context=self._action_context(context),
+                )
+                if len(content) != size or hashlib.sha256(content).hexdigest() != item.get('sha256'):
+                    raise export_error('invalid_response')
+                entries.append({'name': source_path, 'b64': base64.b64encode(content).decode('ascii')})
+            await self._validated_execution_context(context)
+            return entries
+        finally:
+            await self._cleanup_network_script(query, selected_files_cleanup_script(root), 'export snapshot')
+
+    async def _read_outbox_network(self, query):
+        from .sandbox_files import outbox_script
+
+        script = outbox_script(
+            self.OUTBOX_MOUNT_DIR,
+            self._attachment_query_key(query),
+            operation='list',
+            max_file_bytes=self._ATTACHMENT_MAX_BYTES,
+            max_files=self._ATTACHMENT_MAX_FILES,
+            max_total_bytes=self._ATTACHMENT_MAX_TOTAL_BYTES,
+        )
+        metadata = await self._file_metadata(query, script)
+        paths = []
+        prefix = f'{self.OUTBOX_MOUNT_DIR}/{self._attachment_query_key(query)}/'
+        for item in metadata:
+            if not isinstance(item, dict) or not isinstance(item.get('name'), str):
+                raise export_error('invalid_response')
+            name = item['name']
+            for component in name.split('/'):
+                secure_fs._component(component)
+            paths.append(prefix + name)
+        entries = await self._read_selected_files_network(query, paths)
+        for entry in entries:
+            entry['name'] = entry['name'][len(prefix) :]
+        return entries
 
     def _write_files_host(
         self,
@@ -1113,9 +1322,11 @@ class BoxService:
         if self._cloud_managed:
             await self.require_workspace_sandbox(self._query_execution_context(query))
 
-        host_dir = self._host_query_dir(self.OUTBOX_SUBDIR, query)
+        host_dir = None if self.file_transfer_mode == 'network' else self._host_query_dir(self.OUTBOX_SUBDIR, query)
         try:
-            if host_dir is not None:
+            if self.file_transfer_mode == 'network':
+                entries = await self._read_outbox_network(query)
+            elif host_dir is not None:
                 try:
                     entries = await asyncio.to_thread(self._read_outbox_host, host_dir)
                 except PermissionError:
@@ -1141,7 +1352,8 @@ class BoxService:
 
     async def clear_outbound_attachments(self, query: pipeline_query.Query) -> None:
         """Clear output after a complete read has been accepted by the Runner."""
-        await self._clear_outbox(query, self._host_query_dir(self.OUTBOX_SUBDIR, query))
+        host_dir = None if self.file_transfer_mode == 'network' else self._host_query_dir(self.OUTBOX_SUBDIR, query)
+        await self._clear_outbox(query, host_dir)
 
     def _read_outbox_host(self, host_dir: str) -> list[dict]:
         """Read outbox files straight off the bind-mounted host directory."""
@@ -1265,7 +1477,10 @@ class BoxService:
     async def collect_selected_files(self, query, paths):
         if not self._available:
             raise BoxError('Box runtime is not available')
-        entries = await self._read_outbox_via_exec(query, paths)
+        if self.file_transfer_mode == 'network':
+            entries = await self._read_selected_files_network(query, paths)
+        else:
+            entries = await self._read_outbox_via_exec(query, paths)
         if len(entries) != len(paths) or {e['name'] for e in entries} != set(paths):
             raise BoxValidationError('Incomplete selected file export; files were retained')
         return self._classify_outbound_entries(entries, include_source_path=True)
@@ -1467,6 +1682,15 @@ class BoxService:
                 raise BoxValidationError('Deployment profile exceeds workspace limit caps')
             updates[field] = min(raw, caps[key]) if raw is not None and raw > 0 else caps[key]
         spec = spec.model_copy(update=updates)
+
+        if (
+            not self._cloud_managed
+            and self.file_transfer_mode == 'network'
+            and spec.backend == 'e2b'
+            and spec.host_path_mode == BoxHostMountMode.READ_WRITE
+        ):
+            # Network transfers own writable E2B data; a host mirror resurrects deleted files.
+            spec = spec.model_copy(update={'host_path': None, 'host_path_mode': BoxHostMountMode.NONE})
 
         if not skip_host_mount_validation:
             self._validate_host_mount(spec)

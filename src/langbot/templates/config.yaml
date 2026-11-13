@@ -436,6 +436,9 @@ box:
     # isolation. It is never auto-selected and is only for trusted local
     # development. Can be written via BOX__BACKEND.
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', 'e2b', or explicit unsafe 'host'.
+    # Use 'network' with a compatible SDK/Runtime to transfer attachments
+    # without shared Core/Box paths. 'legacy' preserves existing transfer paths.
+    file_transfer_mode: 'legacy'
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret
