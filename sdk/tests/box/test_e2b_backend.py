@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import threading
 from types import SimpleNamespace
 from unittest import mock
 
@@ -84,6 +85,72 @@ def mock_e2b_module():
 
 
 # ── Path adaptation ────────────────────────────────────────────────────
+
+
+def test_concurrent_downloads_wait_for_workspace_blocking_capacity(backend, tmp_path):
+    from langbot_plugin.runtime.bounded_executor import (
+        BoundedThreadPoolExecutor,
+        blocking_work_scope,
+    )
+
+    class Files:
+        async def list(self, *args, **kwargs):
+            return [
+                SimpleNamespace(
+                    path="/remote/value.txt", type=SimpleNamespace(value="file"), size=5
+                )
+            ]
+
+        async def read(self, *args, **kwargs):
+            async def chunks():
+                yield b"value"
+
+            return chunks()
+
+    executor = BoundedThreadPoolExecutor(
+        max_workers=2, max_pending=16, max_inflight_per_scope=1
+    )
+    release = threading.Event()
+
+    async def run():
+        asyncio.get_running_loop().set_default_executor(executor)
+        with blocking_work_scope("workspace:test"):
+            occupied = executor.submit(lambda: release.wait(timeout=5))
+            tasks = [
+                asyncio.create_task(
+                    backend._sync_e2b_tree_to_host(
+                        SimpleNamespace(files=Files()),
+                        remote_root="/remote",
+                        host_root=str(tmp_path / str(index)),
+                    )
+                )
+                for index in range(16)
+            ]
+        try:
+            await asyncio.sleep(0.05)
+        finally:
+            release.set()
+            await asyncio.wrap_future(occupied)
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True), 5
+        )
+        assert not any(isinstance(result, BaseException) for result in results), results
+        assert [
+            (tmp_path / str(index) / "value.txt").read_bytes() for index in range(16)
+        ] == [b"value"] * 16
+        snapshot = executor.snapshot()
+        assert snapshot["max_inflight_per_scope"] == 1
+        assert snapshot["scope_rejected_total"] > 0
+        assert snapshot["inflight"] == 0
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(run())
+    finally:
+        release.set()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
 
 
 def test_adapt_path_workspace():

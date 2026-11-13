@@ -15,6 +15,37 @@ from langbot.pkg.utils.bounded_executor import (
 )
 
 
+def test_sdk_backpressure_waits_for_core_workspace_capacity():
+    from langbot_plugin.runtime.bounded_executor import run_blocking_with_backpressure
+
+    executor = BoundedThreadPoolExecutor(max_workers=2, max_pending=16, max_inflight_per_scope=1)
+    release = threading.Event()
+
+    async def run():
+        asyncio.get_running_loop().set_default_executor(executor)
+        with blocking_work_scope('workspace:test'):
+            occupied = executor.submit(lambda: release.wait(timeout=5))
+            tasks = [asyncio.create_task(run_blocking_with_backpressure(lambda value=i: value)) for i in range(16)]
+        try:
+            await asyncio.sleep(0.05)
+        finally:
+            release.set()
+            await asyncio.wrap_future(occupied)
+        results = await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), 5)
+        assert results == list(range(16))
+        assert executor.snapshot()['inflight'] == 0
+        assert executor.snapshot()['scope_rejected_total'] > 0
+
+    loop = asyncio.new_event_loop()
+    try:
+        loop.run_until_complete(run())
+    finally:
+        release.set()
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
+
+
 def test_bounded_executor_rejects_instead_of_queueing_without_limit():
     executor = BoundedThreadPoolExecutor(
         max_workers=1,
