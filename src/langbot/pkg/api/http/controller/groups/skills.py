@@ -5,7 +5,7 @@ import quart
 from ...authz import Permission
 from ...context import RequestContext
 from .....operation_trace import service as settings_service
-from .....skill.repository import SkillRevisionConflictError
+from .....skill.repository import SkillRevisionConflictError, SkillRevisionNotFoundError
 from .. import group
 
 
@@ -58,6 +58,34 @@ class SkillsRouterGroup(group.RouterGroup):
             if not skill:
                 return self.http_status(404, -1, 'Skill not found')
             return self.success(data={'skill': skill})
+
+        @self.route(
+            '/<skill_name>/package',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_skill_package(skill_name: str, request_context: RequestContext) -> quart.Response:
+            try:
+                package = await self.ap.skill_service.get_skill_package(
+                    request_context,
+                    skill_name,
+                    quart.request.args.get('revision'),
+                )
+            except SkillRevisionNotFoundError as exc:
+                return self.http_status(404, -1, str(exc))
+            except ValueError as exc:
+                return self.http_status(400, -1, str(exc))
+            return quart.Response(
+                package['content'],
+                mimetype='application/zip',
+                headers={
+                    'Content-Disposition': f'attachment; filename="{package["filename"]}"',
+                    'ETag': f'"{package["sha256"]}"',
+                    'X-LangBot-Skill-Revision': package['revision'],
+                    'Cache-Control': 'private, no-store',
+                },
+            )
 
         @self.route(
             '/<skill_name>',

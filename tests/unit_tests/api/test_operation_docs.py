@@ -67,8 +67,8 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 169
-    assert len(OPERATION_DOCS) == 169
+    assert len(in_scope_operation_ids) == 170
+    assert len(OPERATION_DOCS) == 170
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -237,7 +237,7 @@ def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 241
+    assert len(catalog_op_ids) == 242
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []

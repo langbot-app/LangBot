@@ -1613,7 +1613,7 @@ class SkillDomain:
         return cast(OperationResult[dict[str, JSONValue]], await self._workspace.call('skill.create', **arguments))
 
     async def delete(self, *, skill_name: str) -> OperationResult[bool]:
-        'skill.delete: Permanently remove a skill and delete its associated script files. Prerequisites: Call skill.list to obtain skill_name. Side effect: Irreversible removal of skill.\nParameters (Python -> wire): skill_name -> skill_name.'
+        'skill.delete: Remove the current registration. Retained versions remain available to authorized pinned runs. Prerequisites: Call skill.list to obtain skill_name.\nParameters (Python -> wire): skill_name -> skill_name.'
         arguments: SkillDeleteArguments = {'skill_name': skill_name}
         return cast(OperationResult[bool], await self._workspace.call('skill.delete', **arguments))
 

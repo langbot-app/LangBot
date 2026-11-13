@@ -79,7 +79,8 @@ class SkillManager:
 
     async def ensure_loaded(self, context: TenantContext) -> None:
         key = self._scope_key(context)
-        if key not in self._skills_by_scope:
+        repository = getattr(self.ap, 'skill_repository', None)
+        if key not in self._skills_by_scope or bool(getattr(repository, 'database_backed', False)):
             await self.reload_skills(context)
 
     def get_skills(self, context: TenantContext) -> dict[str, dict]:

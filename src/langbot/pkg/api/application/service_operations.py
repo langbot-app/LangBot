@@ -492,6 +492,7 @@ _BINDINGS = (
     ),
     ('skill.list', 'skill_service', 'skill', 'SkillService', 'list_skills', 'RESOURCE_VIEW', False),
     ('skill.get', 'skill_service', 'skill', 'SkillService', 'get_skill', 'RESOURCE_VIEW', False),
+    ('skill.package.get', 'skill_service', 'skill', 'SkillService', 'get_skill_package', 'RESOURCE_VIEW', False),
     ('skill.create', 'skill_service', 'skill', 'SkillService', 'create_skill', 'RESOURCE_MANAGE', True),
     ('skill.update', 'skill_service', 'skill', 'SkillService', 'update_skill', 'RESOURCE_MANAGE', True),
     ('skill.delete', 'skill_service', 'skill', 'SkillService', 'delete_skill', 'RESOURCE_MANAGE', True),

@@ -20,7 +20,7 @@ Agent に**専門的なワークフロー、テンプレート、スクリプト
 ## Skill のインストール
 
 <Note>
-Skill はサンドボックスに依存します。`box.enabled` が `true` で、Docker / Nsjail / E2B のいずれかが利用可能なときのみ、Skill のインストール、起動、編集ができます。詳細は[サンドボックス設定](../sandbox/config)を参照。
+Skill の管理、有効化、読み取り専用リソースへのアクセスは Core が提供し、Box は不要です。スクリプト実行、サンドボックス内の下書き編集、`register_skill` には利用可能な Box が必要です。詳細は[サンドボックス設定](../sandbox/config)を参照。
 </Note>
 
 ### LangBot Space から（推奨）
@@ -37,7 +37,28 @@ Skill はサンドボックスに依存します。`box.enabled` が `true` で�
 1. サンドボックスの `/workspace` 配下にディレクトリと `SKILL.md` を準備
 2. Agent に `register_skill(path="/workspace/my-skill")` を呼び出させる
 
-いずれの方法でも Box Runtime が管理する skill store に書き込まれます。
+いずれの方法でも Core が管理する Skill リポジトリに公開されます。
+
+### データベース保存（明示的に有効化）
+
+既定は引き続きファイルシステム方式です。データベース方式は明示的に有効化し、独立した一覧を使います。旧 Skill、アップロード、メディアは自動移行されず、元ファイルは保持されます。既存データを移行してから切り替えてください。旧リンクは元のバックエンドへ自動フォールバックしません。登録情報、不変のバージョンパッケージ、永続添付データは既定でデータベースに保存され、オブジェクトストレージは任意です。対応する Core と SDK が必要です。ソースから開発する場合は[ランタイム開発手順](../../develop/plugin-runtime)に従ってリポジトリの SDK をインストールしてください。複数の Core は同じ外部 PostgreSQL、論理インスタンス ID、認証設定を使用します。`data/config.yaml` を変更して Core を再起動します。
+
+```yaml
+skills:
+    persistence: database
+    root: './data/skills'
+storage:
+    use: persistent
+    content:
+        backend: database
+```
+
+`skills.root/.database-cache` はリソース読み取りと実行スナップショットのために作られ、実行が使用していないときに削除・再構築できます。一覧とパッケージダウンロードはローカルキャッシュに依存せず、同じデータベースを使う Core 間でキャッシュを共有する必要はありません。スクリプト実行には既存の Box マウント要件が適用されます。Runtime による Skill のネットワーク取得は、この変更では有効になりません。
+
+オブジェクトストレージを使う場合は、`storage.content.backends.<名前>` に `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id`、`secret_access_key` を設定し、`storage.content.backend` をその名前に変更します。過去の名前と endpoint/bucket/region は維持してください。書き込み先の切り替えは既存データを移動せず、古い設定の削除や接続先変更で該当コンテンツが読めなくなります。認証情報の変更後は Core を再起動します。
+
+データベース保存のバージョンパッケージは最大 64 MiB です。同時更新による競合上書きは拒否され、実行中のタスクは固定済みのバージョンを使用します。
+
 
 ## パイプラインで有効化
 
@@ -78,7 +99,7 @@ LangBot は現在、以下の 3 つのフィールドを読み取ります：
 
 完全な仕様は [agentskills.io](https://agentskills.io/home) を参照してください。その他のフィールド（`license`、`metadata` など）は将来の互換のために残せますが、現在は読み取られません。
 
-**リソースを伴う Skill** では `SKILL.md` と同じ階層に `scripts/`、`templates/` などを置きます。起動後、Agent は `/workspace/.skills/{skill-name}/` でこれらにアクセスできます。
+**リソースを伴う Skill** では `SKILL.md` と同じ階層に `scripts/`、`templates/` などを置きます。実行には有効化結果が返す固定バージョンのパスを使用します。
 
 ### Agent が使えるツール
 
@@ -91,11 +112,11 @@ LangBot は現在、以下の 3 つのフィールドを読み取ります：
 
 | 症状 | 確認項目 |
 |------|--------|
-| Skill 一覧が空 | `box.enabled`、Box Runtime の状態、`box.local.skills_root` |
+| Skill 一覧が空 | Workspace、Skill のバインド、`skills.persistence` と `skills.root` |
 | Agent が Skill を起動しない | `description` が具体的か、パイプラインでバインドされているか、モデルが関数呼び出しに対応しているか |
-| 起動後にファイルが見つからない | ファイルは Skill パッケージ内に置く必要があり、パスは `/workspace/.skills/{skill-name}/` |
+| 起動後にファイルが見つからない | ファイルは Skill パッケージ内に置き、有効化結果が返すバージョンのパスを使用する |
 | `register_skill` がエラー | パスは `/workspace` 配下である必要があり、ディレクトリまたは 2 階層以内のサブディレクトリに `SKILL.md` が必要 |
 
 <Note>
-Skills は現在、組み込み Agent 向けで、関数呼び出しとサンドボックスバックエンドに依存します。外部 Runner（Dify、n8n、Langflow、Coze など）では各プラットフォームの同等機構を利用してください。
+自動有効化には Skill とツール呼び出しに対応する Runner が必要で、スクリプト実行には Box が必要です。外部 Runner（Dify、n8n、Langflow、Coze など）では各プラットフォームが対応する仕組みを利用してください。
 </Note>

@@ -48,6 +48,22 @@ def test_repository_prefers_standalone_skill_root(tmp_path):
     assert repository._store.root == str((tmp_path / 'skill-store').resolve())
 
 
+def test_database_repository_requires_publication_capabilities(tmp_path, monkeypatch):
+    from langbot_plugin.skill_store import SkillStore
+
+    monkeypatch.delattr(SkillStore, 'restore_skill_publication', raising=False)
+    app = SimpleNamespace(
+        instance_config=SimpleNamespace(
+            data={
+                'skills': {'persistence': 'database', 'root': str(tmp_path / 'cache')},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match='requires a compatible SDK'):
+        SkillRepository(app)
+    assert not (tmp_path / 'cache').exists()
+
+
 def test_repository_locks_are_workspace_scoped(tmp_path):
     repository = _repository(tmp_path)
 

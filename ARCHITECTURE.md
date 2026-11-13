@@ -217,7 +217,7 @@ In this repo:
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
   Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
-- `pkg/skill/repository.py` is the thin async/Workspace adapter over the Plugin SDK's execution-independent `SkillStore`; `skills.root` owns its location independently of Box. Core's registry points to immutable content-addressed publications, and every update carries `base_revision` so concurrent writers fail instead of overwriting each other.
+- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or explicit database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`, independently of Box. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Durable Box Workspace storage is shared across placement generations, but

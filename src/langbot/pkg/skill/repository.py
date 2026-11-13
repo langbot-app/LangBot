@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import weakref
 
@@ -18,14 +19,29 @@ from ..utils.bounded_executor import blocking_work_scope, run_blocking_atomic
 
 
 class SkillRepository:
-    """Async, Workspace-scoped adapter around the SDK SkillStore."""
+    """Workspace-scoped Skill publications with optional database persistence."""
 
     def __init__(self, ap) -> None:
         self.ap = ap
         config = getattr(getattr(ap, 'instance_config', None), 'data', {}) or {}
         self._local_config = (config.get('box') or {}).get('local') or {}
         self._skills_config = config.get('skills') or {}
-        self._store = SkillStore(self._skills_root())
+        persistence = str(self._skills_config.get('persistence') or 'filesystem').strip()
+        if persistence not in {'filesystem', 'database'}:
+            raise ValueError('skills.persistence must be filesystem or database')
+        self.database_backed = persistence == 'database'
+        if self.database_backed and not all(
+            callable(getattr(SkillStore, method, None))
+            for method in ('export_skill_publication', 'restore_skill_publication')
+        ):
+            raise ValueError('Database Skill persistence requires a compatible SDK; update Core and SDK together')
+        root = self._skills_root()
+        self._store = SkillStore(os.path.join(root, '.database-cache') if self.database_backed else root)
+        self._database = None
+        if self.database_backed:
+            from .database_repository import DatabaseSkillRepository
+
+            self._database = DatabaseSkillRepository(ap, self._store)
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
     def _workspace_lock(self, namespace: str) -> asyncio.Lock:
@@ -116,6 +132,8 @@ class SkillRepository:
 
         async with self._workspace_lock(namespace):
             with blocking_work_scope(f'skill:{namespace}'):
+                if self._database is not None:
+                    return await self._database.call(execution_context, namespace, method_name, *args, **kwargs)
                 return await run_blocking_atomic(invoke)
 
     async def list_skills(self, context: TenantContext) -> list[dict]:
@@ -135,6 +153,22 @@ class SkillRepository:
 
     async def create_skill(self, context: TenantContext, skill: dict) -> dict:
         return await self._call(context, 'create_skill', skill)
+
+    async def get_skill_package(self, context: TenantContext, name: str, revision: str | None = None) -> dict:
+        execution_context = await self._validated_execution_context(context)
+        if self._database is not None:
+            return await self._database.get_package(execution_context, name, revision)
+        if not callable(getattr(self._store, 'export_skill_publication', None)):
+            raise ValueError('Skill package downloads require a compatible SDK; update Core and SDK together')
+        publication = await self._call(execution_context, 'export_skill_publication', name, revision)
+        content = publication['file_bytes']
+        return {
+            'content': content,
+            'revision': publication['skill']['revision'],
+            'sha256': hashlib.sha256(content).hexdigest(),
+            'size': len(content),
+            'filename': f'{publication["skill"]["name"]}.zip',
+        }
 
     async def import_skill_directory(
         self,

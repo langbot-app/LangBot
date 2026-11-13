@@ -48,7 +48,7 @@ _MAX_SKILL_COMPRESSION_RATIO = 200
 
 
 class SkillService:
-    """Filesystem-backed skill management service."""
+    """Workspace-scoped Skill management and immutable package reads."""
 
     ap: app.Application
 
@@ -92,11 +92,20 @@ class SkillService:
 
     async def get_skill(self, context: TenantContext, skill_name: str) -> Optional[dict]:
         execution_context = await self._execution_context(context)
-        skill = await self._repository().get_skill(execution_context, skill_name, snapshot=True)
+        skill = await self._repository().get_skill(execution_context, skill_name)
         return self._serialize_skill(skill) if skill else None
 
     async def get_skill_by_name(self, context: TenantContext, name: str) -> Optional[dict]:
         return await self.get_skill(context, name)
+
+    async def get_skill_package(
+        self,
+        context: TenantContext,
+        skill_name: str,
+        revision: str | None = None,
+    ) -> dict[str, bytes | str | int]:
+        execution_context = await self._execution_context(context)
+        return await self._repository().get_skill_package(execution_context, skill_name, revision)
 
     async def create_skill(self, context: TenantContext, data: dict) -> dict:
         execution_context = await self._execution_context(context)

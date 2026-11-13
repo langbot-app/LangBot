@@ -3,6 +3,7 @@ from __future__ import annotations
 import collections
 import contextlib
 import datetime as dt
+import hashlib
 import io
 import json
 import mimetypes
@@ -19,7 +20,7 @@ from typing import Optional
 
 import yaml
 
-from .artifact import build_tree_manifest
+from .artifact import build_tree_manifest, load_tree_manifest, validate_tree_manifest
 from .workspace import workspace_namespace
 
 
@@ -270,6 +271,149 @@ class SkillStore:
         """Return the current or explicitly pinned immutable publication."""
 
         return self.get_skill(skill_name, revision=revision)
+
+    def export_skill_publication(
+        self, skill_name: str, revision: str | None = None
+    ) -> dict:
+        """Export exact published bytes and identity without rewriting SKILL.md."""
+
+        skill = self._require_skill(skill_name, revision=revision)
+        digest, manifest = load_tree_manifest(
+            skill["manifest_path"],
+            max_files=_MAX_REVISION_FILES,
+            max_total_bytes=_MAX_REVISION_BYTES,
+            subject="Skill package",
+        )
+        if digest != skill["revision"] or self._package_manifest(
+            skill["package_root"]
+        ) != (digest, manifest):
+            raise ValueError("Published Skill package does not match its revision")
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+            for entry in manifest["files"]:
+                member = zipfile.ZipInfo(entry["path"], date_time=(1980, 1, 1, 0, 0, 0))
+                member.create_system = 3
+                member.external_attr = (
+                    stat.S_IFREG | (0o555 if entry["executable"] else 0o444)
+                ) << 16
+                source_path = os.path.join(
+                    skill["package_root"], *entry["path"].split("/")
+                )
+                with (
+                    open(source_path, "rb") as source,
+                    archive.open(member, "w") as target,
+                ):
+                    shutil.copyfileobj(source, target, _ZIP_COPY_CHUNK_BYTES)
+        return {"skill": skill, "manifest": manifest, "file_bytes": output.getvalue()}
+
+    def restore_skill_publication(
+        self,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        *,
+        make_current: bool = False,
+    ) -> dict:
+        """Recover an immutable publication, preserving its bytes and revision.
+
+        This is a cache restoration operation, not a publication or an update.
+        The caller must authorize the persisted publication before using it.
+        """
+
+        name = self._validate_skill_name(skill.get("name", ""))
+        revision, manifest = validate_tree_manifest(
+            manifest,
+            max_files=_MAX_REVISION_FILES,
+            max_total_bytes=_MAX_REVISION_BYTES,
+            subject="Skill package",
+        )
+        if revision != skill.get("revision"):
+            raise ValueError("Restored Skill manifest does not match its revision")
+        if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
+            raise ValueError("Restored Skill archive is too large")
+        with self._skill_lock(name):
+            staging_root, package_root = self._stage_package()
+            try:
+                with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+                    members = archive.infolist()
+                    expected = {entry["path"]: entry for entry in manifest["files"]}
+                    if len(members) != len(expected) or {
+                        member.filename for member in members
+                    } != set(expected):
+                        raise ValueError(
+                            "Restored Skill archive does not match its manifest"
+                        )
+                    for member in members:
+                        entry = expected[member.filename]
+                        mode = stat.S_IFMT(member.external_attr >> 16)
+                        if member.is_dir() or mode not in {0, stat.S_IFREG}:
+                            raise ValueError(
+                                "Restored Skill archive requires regular files"
+                            )
+                        if member.file_size != entry["size"]:
+                            raise ValueError(
+                                "Restored Skill file size does not match its manifest"
+                            )
+                        destination = os.path.realpath(
+                            os.path.join(package_root, *entry["path"].split("/"))
+                        )
+                        if not destination.startswith(package_root + os.sep):
+                            raise ValueError(
+                                "Restored Skill path must stay within its package"
+                            )
+                        os.makedirs(os.path.dirname(destination), exist_ok=True)
+                        copied = 0
+                        digest = hashlib.sha256()
+                        with (
+                            archive.open(member) as source,
+                            open(destination, "xb") as target,
+                        ):
+                            while chunk := source.read(
+                                min(_ZIP_COPY_CHUNK_BYTES, entry["size"] - copied + 1)
+                            ):
+                                copied += len(chunk)
+                                if copied > entry["size"]:
+                                    raise ValueError(
+                                        "Restored Skill file exceeds its manifest size"
+                                    )
+                                digest.update(chunk)
+                                target.write(chunk)
+                        if (
+                            copied != entry["size"]
+                            or digest.hexdigest() != entry["sha256"]
+                        ):
+                            raise ValueError(
+                                "Restored Skill file does not match its manifest"
+                            )
+                        os.chmod(destination, 0o755 if entry["executable"] else 0o644)
+                loaded = self._load_skill_package(package_root)
+                if loaded["name"] != name or self._package_manifest(package_root) != (
+                    revision,
+                    manifest,
+                ):
+                    raise ValueError(
+                        "Restored Skill package does not match its publication"
+                    )
+                self._install_staged_revision(staging_root, revision, manifest)
+                staging_root = ""
+                registry = {
+                    "format": 1,
+                    "name": name,
+                    "current_revision": revision,
+                    "created_at": skill.get("created_at", loaded["created_at"]),
+                    "updated_at": skill.get("updated_at", loaded["updated_at"]),
+                }
+                if make_current:
+                    self._write_registry_atomic(name, registry)
+                restored = self._load_published_skill(
+                    name, revision=revision, registry=registry
+                )
+                restored["created_at"] = registry["created_at"]
+                restored["updated_at"] = registry["updated_at"]
+                return restored
+            finally:
+                if staging_root:
+                    self._remove_staging_tree(staging_root)
 
     def resolve_skill_package_root(
         self,
@@ -966,6 +1110,32 @@ class SkillStore:
                 f'Published package name "{loaded["name"]}" does not match "{skill_name}"'
             )
         revision, manifest = self._package_manifest(package_root)
+        self._install_staged_revision(staging_root, revision, manifest)
+
+        now = dt.datetime.now(dt.timezone.utc).isoformat()
+        registry = {
+            "format": 1,
+            "name": skill_name,
+            "current_revision": revision,
+            "metadata": {
+                "display_name": loaded.get("display_name", skill_name),
+                "description": loaded.get("description", ""),
+                "entry_file": loaded.get("entry_file", "SKILL.md"),
+                "python_project": loaded.get("python_project", False),
+            },
+            "created_at": (
+                current_registry.get("created_at", now)
+                if current_registry is not None
+                else now
+            ),
+            "updated_at": now,
+        }
+        self._write_registry_atomic(skill_name, registry)
+        return self._load_published_skill(skill_name, registry=registry)
+
+    def _install_staged_revision(
+        self, staging_root: str, revision: str, manifest: dict
+    ) -> None:
         manifest_path = os.path.join(staging_root, "manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as file:
             json.dump(manifest, file, ensure_ascii=False, sort_keys=True)
@@ -1000,27 +1170,6 @@ class SkillStore:
             else:
                 os.chmod(target_revision_root, 0o555)
             self._fsync_directory(self._revisions_root())
-
-        now = dt.datetime.now(dt.timezone.utc).isoformat()
-        registry = {
-            "format": 1,
-            "name": skill_name,
-            "current_revision": revision,
-            "metadata": {
-                "display_name": loaded.get("display_name", skill_name),
-                "description": loaded.get("description", ""),
-                "entry_file": loaded.get("entry_file", "SKILL.md"),
-                "python_project": loaded.get("python_project", False),
-            },
-            "created_at": (
-                current_registry.get("created_at", now)
-                if current_registry is not None
-                else now
-            ),
-            "updated_at": now,
-        }
-        self._write_registry_atomic(skill_name, registry)
-        return self._load_published_skill(skill_name, registry=registry)
 
     def _write_registry_atomic(self, skill_name: str, registry: dict) -> None:
         registry_root = self._registry_root()
