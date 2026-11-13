@@ -106,6 +106,72 @@ def _auth(token: str, workspace_uuid: str | None = None) -> dict[str, str]:
     return headers
 
 
+@pytest.mark.skipif('backend' not in BoxSpec.model_fields, reason='requires in-tree Box SDK')
+async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempotent(workspace_api):
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+
+    ap, client, engine, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    ws = current['workspace']['uuid']
+    created = await client.post(
+        '/api/v1/apikeys',
+        headers=_auth(token, ws),
+        json={'name': 'Reset test', 'scopes': ['workspace.view', 'workspace.update']},
+    )
+    key = (await created.get_json())['data']['key']['key']
+    headers = {'X-API-Key': key, 'X-Workspace-Id': 'reset-other'}
+    async with engine.begin() as connection:
+        await connection.execute(
+            sqlalchemy.insert(Workspace).values(
+                uuid='reset-other', instance_uuid='reset-other-instance', name='Other', slug='reset-other'
+            )
+        )
+        await connection.execute(
+            sqlalchemy.insert(WorkspaceMetadata).values(workspace_uuid=ws, key='unrelated', value='keep')
+        )
+    await set_backend(ap, ws, 'e2b', e2b_config={'api_key': 'workspace-private-key'}, limits={'timeout_sec': 60})
+    await set_backend(ap, 'reset-other', 'nsjail', e2b_config={'api_key': 'other-private-key'}, limits={'cpus': 1})
+    other = await get_settings(ap, 'reset-other')
+    ap.instance_config.data['box'] = {'e2b': {'api_key': 'deployment-private-key'}}
+    box = BoxService(
+        ap,
+        client=SimpleNamespace(
+            get_backends=AsyncMock(return_value=[{'name': 'docker', 'available': True}]),
+            get_backend_info=AsyncMock(return_value={'name': 'docker'}),
+        ),
+    )
+    box._available = True
+    ap.box_service = box
+    for _ in range(2):
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        public = (await visible.get_json())['data']
+        assert public['backend'] is None and public['effective_backend'] == 'docker'
+        assert public['limits'] == {} and public['e2b']['source'] == 'deployment'
+        assert public['e2b']['api_key_configured']
+        assert 'private-key' not in await reset.get_data(as_text=True)
+        assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+        assert await get_settings(ap, 'reset-other') == other
+    async with engine.begin() as connection:
+        kept = await connection.execute(
+            sqlalchemy.select(WorkspaceMetadata.value).where(
+                WorkspaceMetadata.workspace_uuid == ws, WorkspaceMetadata.key == 'unrelated'
+            )
+        )
+        assert kept.scalar_one() == 'keep'
+
+    await set_backend(ap, ws, 'docker', limits={'timeout_sec': 30})
+    box.client.get_backends.reset_mock()
+    box.client.get_backends.side_effect = RuntimeError('Runtime unavailable')
+    reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert reset.status_code == 200 and (await reset.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, ws) == {'backend': None, 'e2b': None, 'limits': None}
+    box.client.get_backends.assert_not_awaited()
+
+
 async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
     application, client, _, owner_token = workspace_api
     account = await application.user_service.get_authenticated_account(owner_token)
@@ -530,6 +596,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'plugin.install.local',
             'plugin.upgrade',
             'plugin.get',
+            'plugin.permissions.get',
             'plugin.list',
             'plugin.config.get',
             'plugin.config.update',
@@ -601,6 +668,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
             'sandbox.errors',
             'workspace.sandbox.get',
             'workspace.sandbox.update',
+            'workspace.sandbox.reset',
             'workspace.sandbox.check',
             'workspace.sandbox.test',
         ]
@@ -1085,6 +1153,14 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
         invalid = await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'host'})
         assert unavailable.status_code == invalid.status_code == 400
         assert await get_backend(application, workspace_uuid) == 'e2b'
+        reset = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert reset.status_code == 200
+        assert (await reset.get_json())['data'] == {'reset': True}
+        visible = await client.get('/api/v1/workspaces/current/sandbox', headers=headers)
+        assert (await visible.get_json())['data']['effective_backend'] == 'docker'
+        assert await get_backend(application, workspace_uuid) is None
+        assert new_query._box_binding.spec['backend'] == 'e2b'
+        assert runtime.get_session(new_query._box_binding.session_id) is not None
         async with engine.begin() as connection:
             await connection.execute(
                 sqlalchemy.update(WorkspaceMembership)
@@ -1095,6 +1171,7 @@ async def test_workspace_sandbox_setting_routes_new_boxes_and_preserves_old(work
                 .values(role='viewer')
             )
         assert (await client.get('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 200
+        assert (await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)).status_code == 403
         assert (
             await client.put('/api/v1/workspaces/current/sandbox', headers=headers, json={'backend': 'docker'})
         ).status_code == 403

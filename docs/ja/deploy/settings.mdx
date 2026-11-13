@@ -9,6 +9,12 @@ LangBot の実行設定は `data/config.yaml` にあります。初回起動時�
 通常のセルフホストで変更が必要なのは主に公開 URL、DB/ベクトルストア、オブジェクトストレージ、Box Runtime です。用途を理解していない容量・Cloud 安全上限は既定値を維持してください。
 </Info>
 
+## Workspace のサンドボックス設定
+
+Workspace のサンドボックス設定はデプロイの既定値を上書きします。対応する Core と `lbctl` で `lbctl sandbox config reset --dry-run` を実行して前提条件を確認し、`lbctl sandbox config reset --yes` で Workspace のバックエンド、E2B 接続情報・認証情報、リソース制限を削除します。新しいタスクはデプロイの既定値を継承し、既存タスクは設定スナップショットを保持します。
+
+API は `DELETE /api/v1/workspaces/current/sandbox`、操作 ID は `workspace.sandbox.reset`、必要な権限は `workspace.update` です。応答は `{reset: true}` で保存完了を示します。継承した設定は GET で別途確認でき、繰り返し実行できます。CLI の保存後確認には `workspace.view` も必要です。
+
 ## 完全なデフォルト設定
 
 ```yaml

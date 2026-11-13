@@ -1900,6 +1900,13 @@ class BoxService:
         )
         return await self.get_workspace_backend_settings(context)
 
+    async def reset_workspace_backend(self, context: TenantContext) -> dict:
+        from .settings import reset_settings
+
+        await self._validated_execution_context(context)
+        await reset_settings(self.ap, context.workspace_uuid)
+        return {'reset': True}
+
     async def _workspace_backend_payload(
         self,
         context: TenantContext,

@@ -1465,6 +1465,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='none',
     ),
+    'workspace.sandbox.reset': OperationDoc(
+        domain='workspace',
+        label={'en_US': 'Reset Sandbox Settings', 'zh_Hans': '恢复默认沙箱配置'},
+        summary='Clear Workspace sandbox overrides and inherit deployment defaults.',
+        description='Remove the saved backend, E2B connection credentials and resource limits for future tasks. Existing tasks retain their snapshots. Requires a member or API key with workspace.update.',
+        risk='dangerous',
+        exposure='none',
+    ),
     'workspace.sandbox.test': OperationDoc(
         domain='workspace',
         label={'en_US': 'Test Sandbox', 'zh_Hans': '测试沙箱'},

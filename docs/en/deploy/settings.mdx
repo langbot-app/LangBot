@@ -9,6 +9,12 @@ LangBot runtime configuration lives in `data/config.yaml`. The first startup gen
 Most self-hosted deployments only need to change public URLs, databases/vector stores, object storage, and Box Runtime. Keep capacity and Cloud safety limits at their defaults unless you understand their operational impact.
 </Info>
 
+## Workspace sandbox overrides
+
+Workspace sandbox settings override deployment defaults. With a matching Core and `lbctl`, use `lbctl sandbox config reset --dry-run` to check prerequisites, then `lbctl sandbox config reset --yes` to clear the Workspace backend, E2B connection credentials and resource limits. New tasks inherit deployment defaults. Existing tasks retain their configuration snapshots.
+
+The API is `DELETE /api/v1/workspaces/current/sandbox`, with operation `workspace.sandbox.reset` and permission `workspace.update`. The response acknowledges the committed reset with `{reset: true}`. Read the inherited settings separately with GET. Repeating reset is supported. CLI readback also requires `workspace.view`.
+
 ## Complete default configuration
 
 ```yaml
