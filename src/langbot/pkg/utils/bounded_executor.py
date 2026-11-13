@@ -8,6 +8,8 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from langbot_plugin.runtime.bounded_executor import BlockingWorkCapacityError
+
 
 DEFAULT_MAX_WORKERS = 8
 DEFAULT_MAX_PENDING = 128
@@ -22,14 +24,6 @@ _blocking_work_scope: contextvars.ContextVar[str | None] = contextvars.ContextVa
     'langbot_blocking_work_scope',
     default=None,
 )
-
-
-class BlockingWorkCapacityError(RuntimeError):
-    """Raised before unbounded blocking work can enter the executor queue."""
-
-    def __init__(self, message: str, *, scope: str | None = None) -> None:
-        super().__init__(message)
-        self.scope = scope
 
 
 @contextlib.contextmanager
