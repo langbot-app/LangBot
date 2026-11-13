@@ -65,6 +65,6 @@ jobs:
       - name: Test LocalAgent with the in-tree SDK
         working-directory: plugins/Runner/LocalAgent
         run: |
-          uv pip install ../../../sdk
-          uv pip check
+          uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" ../../../sdk
+          uv pip check --python "$UV_PROJECT_ENVIRONMENT/bin/python"
           uv run --no-sync pytest

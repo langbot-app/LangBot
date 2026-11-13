@@ -107,14 +107,25 @@ class RepositoryTests(unittest.TestCase):
             self.assertNotIn('release', events)
             self.assertNotIn('langbot-app/langbot-plugins', text)
             self.assertNotIn('secrets.', text)
+            consumer_paths = (
+                {'sdk/**', 'src/langbot/**'}
+                if path.name
+                in {
+                    'plugins-runner-tests.yml',
+                    'plugins-local-agent-tests.yml',
+                    'plugins-knowledgeengine-shared-tests.yml',
+                }
+                else set()
+            )
             for event in ('push', 'pull_request'):
                 if event in events:
                     self.assertTrue(
                         all(
-                            pattern.startswith(('plugins/', '.github/workflows/plugins-'))
+                            pattern.startswith(('plugins/', '.github/workflows/plugins-')) or pattern in consumer_paths
                             for pattern in events[event]['paths']
                         )
                     )
+                    self.assertTrue(consumer_paths <= set(events[event]['paths']), path.name)
             for job in data['jobs'].values():
                 default = job.get('defaults', {}).get('run', {}).get('working-directory', '.')
                 self.assertTrue((CORE / default).is_dir())

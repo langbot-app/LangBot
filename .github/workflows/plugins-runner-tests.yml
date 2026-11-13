@@ -83,7 +83,7 @@ jobs:
           "$RUNNER_TEMP/coding-sdk/bin/python" -m unittest discover -s tests -v
       - name: Test Runner RPC consumers with the in-tree SDK
         run: |
-          uv pip install ../../sdk
+          uv pip install --python "$UV_PROJECT_ENVIRONMENT/bin/python" ../../sdk
           uv pip install --python "$RUNNER_TEMP/coding-sdk/bin/python" ../../sdk
           RUNNER_EVIDENCE_DIR="$RUNNER_EVIDENCE_DIR/in-tree" uv run --no-sync python -m pytest \
             tests/test_real_sdk_runtime.py -q --junitxml="${RUNNER_EVIDENCE_DIR}/in-tree.xml"
