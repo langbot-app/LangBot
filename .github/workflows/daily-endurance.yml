@@ -395,3 +395,93 @@ jobs:
           path: .qa/n8n-live
           if-no-files-found: warn
           retention-days: 30
+
+  persistence-runtime:
+    name: Daily Skill persistence and Plugin Runtime contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SPACE__DISABLE_TELEMETRY: 'true'
+      LANGBOT_NETWORK_PLUGIN_E2E: '1'
+      LANGBOT_CORE_NETWORK_BACKEND: host
+      LANGBOT_PERSISTENCE_CORE_E2E: '1'
+      LANGBOT_PERSISTENCE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_test
+      LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_core
+      LANGBOT_PERSISTENCE_MINIO_ENDPOINT: http://127.0.0.1:9000
+      # Disposable loopback-only CI service credentials, never external accounts.
+      LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY: minioadmin
+      LANGBOT_PERSISTENCE_MINIO_SECRET_KEY: minioadmin
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: langbot_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - '127.0.0.1:5432:5432'
+        options: >-
+          --health-cmd="pg_isready -U postgres -d langbot_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - name: Install Core with the in-tree SDK
+        run: |
+          uv sync --dev --frozen
+          uv pip install ./sdk
+      - name: Prepare disposable PostgreSQL and MinIO
+        run: |
+          mkdir -p .qa/persistence-runtime
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_core;'
+          docker run -d --name langbot-persistence-minio -p 127.0.0.1:9000:9000 \
+            -e MINIO_ROOT_USER="$LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY" \
+            -e MINIO_ROOT_PASSWORD="$LANGBOT_PERSISTENCE_MINIO_SECRET_KEY" \
+            quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+          for attempt in {1..30}; do
+            if curl -fsS "$LANGBOT_PERSISTENCE_MINIO_ENDPOINT/minio/health/ready"; then break; fi
+            if [[ "$attempt" == 30 ]]; then exit 1; fi
+            sleep 2
+          done
+      - name: Run full-process network file delivery on host
+        run: |
+          uv run --no-sync pytest tests/e2e/test_network_file_plugin_runtime.py \
+            --required-suite network_plugin -q --tb=short -rs \
+            --junitxml=.qa/persistence-runtime/network-plugin.xml
+      - name: Run Skill publications, media, RLS and two-Core recovery
+        run: |
+          uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
+            tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
+            --required-suite skill_persistence -q --tb=short -rs \
+            --basetemp=.qa/persistence-runtime/processes \
+            --junitxml=.qa/persistence-runtime/skill-persistence.xml
+      - name: Preserve execution scope and service logs
+        if: always()
+        run: |
+          mkdir -p .qa/persistence-runtime
+          printf 'Candidate: %s\nSDK: in-tree\nBox: host\nStorage: PostgreSQL + MinIO\nE2B/nsjail: not exercised\n' \
+            "$GITHUB_SHA" | tee .qa/persistence-runtime/scope.txt >> "$GITHUB_STEP_SUMMARY"
+          docker logs langbot-persistence-minio > .qa/persistence-runtime/minio.log 2>&1 || true
+      - name: Remove owned MinIO
+        if: always()
+        run: docker rm -fv langbot-persistence-minio >/dev/null 2>&1 || true
+      - name: Upload persistence and Runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-persistence-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .qa/persistence-runtime/*.xml
+            .qa/persistence-runtime/*.txt
+            .qa/persistence-runtime/*.log
+            .qa/persistence-runtime/processes/**/langbot.*.log
+            .qa/persistence-runtime/processes/**/before-restart-*.log
+          if-no-files-found: warn
+          retention-days: 30

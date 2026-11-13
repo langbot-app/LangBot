@@ -526,7 +526,8 @@ def _wait_for_qa_runner(client: httpx.Client, token: str, timeout: float = 60) -
         ai_metadata = next(group for group in metadata_groups if group.get('name') == 'ai')
         runner_stage = next(stage for stage in ai_metadata['stages'] if stage['name'] == 'runner')
         runner_select = next(item for item in runner_stage['config'] if item['name'] == 'id')
-        option_names = {option['name'] for option in runner_select['options']}
+        # Metadata can precede Runtime reconnection after a Core restart.
+        option_names = {option['name'] for option in runner_select.get('options', [])}
         if QA_RUNNER_ID in option_names:
             break
         time.sleep(1)

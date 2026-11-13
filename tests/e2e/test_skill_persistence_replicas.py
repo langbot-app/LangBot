@@ -31,6 +31,8 @@ from tests.integration.skill.test_persistent_skill_replicas import (
 
 pytestmark = [
     pytest.mark.e2e,
+    pytest.mark.skill_persistence,
+    pytest.mark.contract('two_core_cache_recovery'),
     pytest.mark.skipif(os.environ.get('LANGBOT_PERSISTENCE_CORE_E2E') != '1', reason='explicit two-Core acceptance'),
 ]
 

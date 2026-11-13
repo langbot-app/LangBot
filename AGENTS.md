@@ -48,6 +48,16 @@ uv run pytest tests/integration/persistence -q
 uv run pytest tests/manual/mcp_smoke.py
 ```
 
+## Before-Merge Acceptance
+
+Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. PR unit/smoke checks alone do not establish cross-component behavior. Use the [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) for commands and environment requirements:
+
+- Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.
+- File transfer, installation grants or Box routing: full HTTP → installed Plugin Runtime Runner → Box → HTTP file delivery, plus the affected real Box backend.
+- Skill/content persistence: PostgreSQL/MinIO publication and media contracts, restricted-role RLS, two Core processes with restart and cache removal.
+
+Select by changed behavior; do not mechanically run every backend. Missing environments, unrun cases and skip/xfail are unverified acceptance, not passes. Record the candidate SHA, SDK source/version, actual backend/service configuration (without secrets), commands, results and untested scope in the PR. Use the approved developer Linux environment; developer self-testing does not mean running on the agent's Mac. These are acceptance instructions, not changes to branch protection, required checks or branch freshness rules.
+
 ## SDK Work (`sdk/`)
 
 Core depends on the exact PyPI pin `langbot-plugin==X` in `pyproject.toml`; `uv sync` never installs `sdk/`. When changing SDK contracts (shared entities, plugin APIs, action protocol, `lbp rt`, `lbp box`), change `sdk/` and the Core bridge in the same PR and test them together:

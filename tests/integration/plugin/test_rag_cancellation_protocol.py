@@ -10,6 +10,9 @@ from langbot_plugin.runtime.io.handler import ActionResponse
 from tests.integration.plugin.test_rag_file_transfer_protocol import BINDING, protocol_stack
 
 
+pytestmark = [pytest.mark.sdk_core, pytest.mark.contract('rag_cancellation')]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize('disconnect', [False, True], ids=['cancel-waiter', 'close-host-connection'])
 async def test_b1_host_cancellation_does_not_fence_remote_ingest(tmp_path, monkeypatch, disconnect):

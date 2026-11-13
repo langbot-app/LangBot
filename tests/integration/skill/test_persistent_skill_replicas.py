@@ -48,6 +48,7 @@ from langbot.pkg.workspace.service import WorkspaceService
 
 pytestmark = [
     pytest.mark.integration,
+    pytest.mark.skill_persistence,
     pytest.mark.asyncio,
     pytest.mark.skipif(
         not hasattr(SkillStore, 'restore_skill_publication'),
@@ -154,7 +155,13 @@ async def _assert_metadata_without_cache(replica, headers, revision):
     assert not cache.exists(), 'Catalog and metadata reads must not materialize Skill files'
 
 
-@pytest.fixture(params=['sqlite-database', 'postgres-database', 'postgres-minio'])
+@pytest.fixture(
+    params=[
+        pytest.param('sqlite-database', marks=pytest.mark.contract('sqlite_database')),
+        pytest.param('postgres-database', marks=pytest.mark.contract('postgres_database')),
+        pytest.param('postgres-minio', marks=pytest.mark.contract('postgres_minio')),
+    ]
+)
 async def persistence_case(request, tmp_path):
     postgres = request.param != 'sqlite-database'
     minio = request.param == 'postgres-minio'
@@ -314,6 +321,7 @@ async def replicas(tmp_path, monkeypatch, persistence_case):
             await _close_replica(replica)
 
 
+@pytest.mark.contract('skill_publication_recovery')
 async def test_skill_publications_survive_cache_loss_and_replica_cas(replicas):
     a, b = replicas.a, replicas.b
     headers = _auth(replicas.token, a.context.workspace_uuid)
@@ -415,6 +423,7 @@ async def test_skill_publications_survive_cache_loss_and_replica_cas(replicas):
     assert await (await fresh.client.get(package_url, headers=headers)).get_data() == original_package
 
 
+@pytest.mark.contract('persistent_media_isolation')
 async def test_persistent_public_media_and_private_uploads_cross_replicas(replicas):
     a, b = replicas.a, replicas.b
     headers = _auth(replicas.token, a.context.workspace_uuid)

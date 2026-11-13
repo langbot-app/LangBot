@@ -25,7 +25,13 @@ from langbot.pkg.persistence.alembic_runner import (
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 
 
-pytestmark = [pytest.mark.integration, pytest.mark.slow, pytest.mark.asyncio]
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.slow,
+    pytest.mark.asyncio,
+    pytest.mark.skill_persistence,
+    pytest.mark.contract('skill_content_rls'),
+]
 _TABLES = ('content_objects', 'content_aliases', 'skill_registry', 'skill_versions')
 _A = '00000000-0000-0000-0000-000000000001'
 _B = '00000000-0000-0000-0000-000000000002'

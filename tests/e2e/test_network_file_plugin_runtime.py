@@ -47,6 +47,8 @@ runner_runtime_process = runtime_tests.runner_runtime_process
 
 pytestmark = [
     pytest.mark.e2e,
+    pytest.mark.network_plugin,
+    pytest.mark.contract('registered_runner_file_delivery'),
     pytest.mark.skipif(os.environ.get('LANGBOT_NETWORK_PLUGIN_E2E') != '1', reason='explicit full-process acceptance'),
 ]
 
@@ -75,6 +77,9 @@ def runner_e2e_tmpdir(network_process_env):
     network_process_env.setenv('LANGBOT_PLUGIN_FILE_STORAGE_DIR', str(directory / 'rpc-transfers'))
     yield directory
     if not os.environ.get('LANGBOT_KEEP_RUNNER_E2E'):
+        # Runtime seals dependency directories; all processes using this owned tree have stopped.
+        for root, _dirs, _files in os.walk(directory):
+            os.chmod(root, 0o700)
         shutil.rmtree(directory)
 
 
