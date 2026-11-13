@@ -17,6 +17,7 @@ import httpx
 
 
 from ..artifact import build_tree_manifest, load_tree_manifest
+from ..runtime.bounded_executor import run_blocking_with_backpressure
 from .backend import BaseSandboxBackend, _MAX_RAW_OUTPUT_BYTES
 from .errors import BoxError
 from .models import (
@@ -757,7 +758,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
         """
 
         if manifest_path is not None:
-            digest, manifest = await asyncio.to_thread(
+            digest, manifest = await run_blocking_with_backpressure(
                 load_tree_manifest,
                 manifest_path,
                 max_files=_MAX_E2B_SYNC_FILES,
@@ -765,7 +766,7 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 subject="E2B immutable mount",
             )
         else:
-            digest, manifest = await asyncio.to_thread(
+            digest, manifest = await run_blocking_with_backpressure(
                 _build_e2b_host_manifest,
                 host_root,
             )
@@ -815,7 +816,9 @@ class E2BSandboxBackend(BaseSandboxBackend):
                     )
                     created_directories.add(remote_directory)
                 host_file = os.path.join(host_root, *relative.split("/"))
-                data = await asyncio.to_thread(_read_e2b_host_file_limited, host_file)
+                data = await run_blocking_with_backpressure(
+                    _read_e2b_host_file_limited, host_file
+                )
                 if (
                     len(data) != entry["size"]
                     or hashlib.sha256(data).hexdigest() != entry["sha256"]
@@ -1117,7 +1120,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                     return
                 host_file = os.path.join(root, filename)
                 try:
-                    data = await asyncio.to_thread(
+                    data = await run_blocking_with_backpressure(
                         _read_e2b_host_file_limited,
                         host_file,
                     )
@@ -1149,7 +1152,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         excluded_relative_paths: set[str] | None = None,
     ) -> None:
         """Best-effort download of an E2B mount into the matching host path."""
-        await asyncio.to_thread(os.makedirs, host_root, exist_ok=True)
+        await run_blocking_with_backpressure(os.makedirs, host_root, exist_ok=True)
         try:
             entries = await sandbox.files.list(remote_root, depth=16)
         except Exception as exc:
@@ -1196,7 +1199,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                 try:
                     if synced_bytes + len(data) > _MAX_E2B_SYNC_TOTAL_BYTES:
                         raise ValueError("E2B remote sync exceeds the total size limit")
-                    await asyncio.to_thread(_write_e2b_host_file, host_path, data)
+                    await run_blocking_with_backpressure(
+                        _write_e2b_host_file, host_path, data
+                    )
                     synced_files += 1
                     synced_bytes += len(data)
                 except Exception as exc:
@@ -1230,7 +1235,9 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             entry_type = getattr(getattr(entry, "type", None), "value", "")
             try:
                 if entry_type == "dir":
-                    await asyncio.to_thread(os.makedirs, host_path, exist_ok=True)
+                    await run_blocking_with_backpressure(
+                        os.makedirs, host_path, exist_ok=True
+                    )
                 elif entry_type == "file":
                     if synced_files >= _MAX_E2B_SYNC_FILES:
                         break
