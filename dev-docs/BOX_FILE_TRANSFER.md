@@ -79,9 +79,11 @@ E2B creation is bounded to a 120-second lifetime. Docker requires an existing
 `python:3.12-alpine` image. nsjail requires an authorized execution environment
 and ancestor directories traversable by its mapped UID.
 
-For self-hosted E2B, use the deployment's matching SDK and existing endpoint/auth
-configuration. The trial deployment used for acceptance needs its matching SDK
-for proxy routing; the stock SDK cannot route its sandbox requests correctly.
+For self-hosted E2B, supply the existing `E2B_API_URL`, `E2B_SANDBOX_URL`,
+`E2B_API_KEY` and optional `E2B_TEMPLATE`. The smoke uses a Docker-default Runtime
+with one explicitly configured E2B session and clears the global E2B variables
+after constructing that session's connection config. File transfer must retain
+the session's backend, custom endpoints and reconnect routing headers.
 
 Linux acceptance passed for Docker, nsjail and self-hosted E2B. Cleanup checks
 query the exact Docker container, the nsjail session directory, or the exact E2B

@@ -1284,6 +1284,8 @@ async def test_timeout_cleanup_failure_keeps_timeout_and_bounds_pipe_drain(
     assert "timed out" in result.stderr
     assert "remove failed" in result.stderr
     assert proc.closed.is_set()
+
+
 @pytest.mark.anyio
 async def test_download_permission_fallback_preserves_large_binary(backend, session):
     from langbot_plugin.box.backend import BaseSandboxBackend

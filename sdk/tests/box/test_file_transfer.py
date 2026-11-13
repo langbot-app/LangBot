@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from contextlib import asynccontextmanager
+import datetime as dt
 import hashlib
 import logging
 from types import SimpleNamespace
@@ -135,6 +136,82 @@ async def test_websocket_roundtrip_and_retry(network_box, content):
     )
     assert (network_box.workspace / "inputs/payload.bin").read_bytes() == content
     assert not list(network_box.core_root.rglob("*.bin"))
+
+
+@pytest.mark.asyncio
+async def test_transfer_uses_bound_backend_after_default_changes(
+    network_box, monkeypatch
+):
+    runtime = network_box.runtime
+    runtime.max_sessions = 1
+    different_backend = HostProcessBackend(logging.getLogger(__name__))
+
+    async def reject_default(*args, **kwargs):
+        raise AssertionError("Existing session must keep its original backend")
+
+    monkeypatch.setattr(different_backend, "upload_file", reject_default)
+    monkeypatch.setattr(different_backend, "download_file", reject_default)
+    runtime._backend = different_backend
+    content = b"bound session content"
+    await network_box.client.upload_file(
+        "files", "/workspace/bound.bin", content, action_context=_CONTEXT
+    )
+    assert (
+        await network_box.client.download_file(
+            "files", "/workspace/bound.bin", action_context=_CONTEXT
+        )
+        == content
+    )
+    assert (network_box.workspace / "bound.bin").read_bytes() == content
+    assert len(runtime._sessions) == 1
+
+
+@pytest.mark.asyncio
+async def test_transfer_lease_protects_session_from_idle_expiry(
+    network_box, monkeypatch
+):
+    runtime = network_box.runtime
+    await runtime.stop_background_reaper()
+    session_id, session = next(iter(runtime._sessions.items()))
+    session.idle_ttl_sec = 1
+    runtime._expirable_session_ids.add(session_id)
+    started, resume = asyncio.Event(), asyncio.Event()
+    download_file = session.backend.download_file
+
+    async def pause_download(*args, **kwargs):
+        started.set()
+        await resume.wait()
+        return await download_file(*args, **kwargs)
+
+    (network_box.workspace / "lease.bin").write_bytes(b"leased")
+    monkeypatch.setattr(session.backend, "download_file", pause_download)
+    download = asyncio.create_task(
+        network_box.client.download_file(
+            "files", "/workspace/lease.bin", action_context=_CONTEXT
+        )
+    )
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        session.info.last_used_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            seconds=5
+        )
+        async with runtime._lock:
+            assert runtime._session_leases[session_id] == 1
+            assert await runtime._reap_expired_sessions_locked() == []
+        resume.set()
+        assert await download == b"leased"
+        assert not runtime._session_leases
+        session.info.last_used_at = dt.datetime.now(dt.timezone.utc) - dt.timedelta(
+            seconds=5
+        )
+        async with runtime._lock:
+            cleanup = await runtime._reap_expired_sessions_locked()
+        assert len(cleanup) == 1
+        await asyncio.gather(*cleanup)
+        assert session_id not in runtime._sessions
+    finally:
+        resume.set()
+        await asyncio.gather(download, return_exceptions=True)
 
 
 @pytest.mark.asyncio

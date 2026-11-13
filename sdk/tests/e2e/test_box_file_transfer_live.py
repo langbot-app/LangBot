@@ -20,7 +20,7 @@ from langbot_plugin.box.backend import DockerBackend
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.e2b_backend import E2BSandboxBackend
 from langbot_plugin.box.errors import BoxError
-from langbot_plugin.box.models import BoxSpec
+from langbot_plugin.box.models import BoxSpec, E2BConnectionConfig
 from langbot_plugin.box.nsjail_backend import NsjailBackend
 from langbot_plugin.box.runtime import BoxRuntime
 from langbot_plugin.box.security import BOX_CONTROL_TOKEN_HEADER, BOX_INSTANCE_HEADER
@@ -88,6 +88,7 @@ async def live_network_box(tmp_path, monkeypatch):
     workspace = tmp_path / "runtime-workspace"
     workspace.mkdir()
     created_e2b = []
+    e2b_connection = None
     config = {
         "backend": _BACKEND,
         "limits": {"max_sessions": 1, "max_rpc_file_bytes": _MAX_BYTES},
@@ -111,9 +112,18 @@ async def live_network_box(tmp_path, monkeypatch):
     else:
         from e2b import AsyncSandbox
 
-        assert os.environ.get("E2B_API_KEY"), (
-            "selected E2B smoke requires the existing E2B_API_KEY"
+        required = ("E2B_API_KEY", "E2B_API_URL", "E2B_SANDBOX_URL")
+        assert all(os.environ.get(name) for name in required), (
+            "selected E2B smoke requires E2B_API_KEY, E2B_API_URL and E2B_SANDBOX_URL"
         )
+        e2b_connection = E2BConnectionConfig(
+            api_url=os.environ["E2B_API_URL"],
+            sandbox_url=os.environ["E2B_SANDBOX_URL"],
+            api_key=os.environ["E2B_API_KEY"],
+            template=os.environ.get("E2B_TEMPLATE") or "base",
+        )
+        for name in (*required, "E2B_DOMAIN", "E2B_TEMPLATE"):
+            monkeypatch.delenv(name, raising=False)
         original_create = AsyncSandbox.create
 
         async def create_bounded_sandbox(**kwargs):
@@ -131,15 +141,14 @@ async def live_network_box(tmp_path, monkeypatch):
             return sandbox
 
         monkeypatch.setattr(AsyncSandbox, "create", create_bounded_sandbox)
-        config["e2b"] = {
-            "api_key": os.environ["E2B_API_KEY"],
-            "api_url": os.environ.get("E2B_API_URL", ""),
-            "template": os.environ.get("E2B_TEMPLATE", ""),
-        }
-        backend = E2BSandboxBackend(logger)
+        config["backend"] = "docker"
+        backend = DockerBackend(logger)
+    backends = [backend]
+    if _BACKEND == "e2b":
+        backends.append(E2BSandboxBackend(logger))
     runtime = BoxRuntime(
         logger,
-        backends=[backend],
+        backends=backends,
         instance_id=instance,
         data_dir=tmp_path / "identity",
         session_ttl_sec=0,
@@ -162,6 +171,7 @@ async def live_network_box(tmp_path, monkeypatch):
             ),
             limit=10,
             request_timeout=5,
+            **e2b_connection.model_dump(exclude={"template"}),
         )
         found = False
         for _ in range(3):
@@ -201,6 +211,8 @@ async def live_network_box(tmp_path, monkeypatch):
 
     spec = BoxSpec(
         session_id="files",
+        backend="e2b" if _BACKEND == "e2b" else None,
+        e2b_config=e2b_connection,
         host_path=None if _BACKEND == "e2b" else str(workspace),
         image="python:3.12-alpine"
         if _BACKEND == "docker"
@@ -213,6 +225,9 @@ async def live_network_box(tmp_path, monkeypatch):
     )
     try:
         await _step("initialize", runtime.initialize())
+        if _BACKEND == "e2b":
+            assert runtime._backend is backend and backend.name == "docker"
+            _event("default_backend_is_docker", "passed")
         await server.start_server()
         async with connect() as (client, handler):
             try:
@@ -220,8 +235,13 @@ async def live_network_box(tmp_path, monkeypatch):
                     "create_single_session",
                     client.create_session(spec, action_context=context),
                 )
-                info = runtime._sessions[namespace_session_id(context, "files")].info
+                session = runtime._sessions[namespace_session_id(context, "files")]
+                info = session.info
                 if _BACKEND == "e2b":
+                    assert runtime._backend is backend and info.backend_name == "e2b"
+                    assert session.backend.connection_config == e2b_connection
+                    assert len(created_e2b) == 1
+                    _event("explicit_session_backend_is_e2b", "passed")
                     await _step(
                         "verify_exact_sandbox_exists", require_e2b_presence(True)
                     )

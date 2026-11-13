@@ -495,9 +495,16 @@ class E2BSandboxBackend(BaseSandboxBackend):
             if not operation.cancelled() and operation.exception() is not None:
                 self.logger.warning(
                     "Cancelled E2B file transfer failed during completion: %s",
-                    operation.exception(),
+                    self._safe_error(operation.exception()),
                 )
             raise
+        except Exception as exc:
+            message = self._safe_error(exc)
+            if isinstance(exc, BoxError):
+                raise type(exc)(message) from None
+            if isinstance(exc, ValueError):
+                raise ValueError(message) from None
+            raise BoxError(f"E2B file transfer failed: {message}") from None
 
     async def _file_transfer_once(
         self,
@@ -518,9 +525,8 @@ class E2BSandboxBackend(BaseSandboxBackend):
                 raise ValueError("Workspace file exceeds the transfer size limit")
         sandbox = await _AsyncSandbox.connect(
             sandbox_id=session.backend_session_id,
-            api_key=self._api_key,
             request_timeout=30,
-            **({"domain": self._api_url} if self._api_url else {}),
+            **self._connection_kwargs(session.backend_session_id),
         )
         staging = "/tmp/langbot-file-transfer-" + uuid.uuid4().hex
         payload = staging + "/payload"

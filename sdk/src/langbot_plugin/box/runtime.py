@@ -1391,7 +1391,7 @@ done
                         raise BoxValidationError(
                             "File transfer cannot access additional mounts"
                         )
-                backend = await self._get_backend()
+                backend = session.backend
                 if content is not None:
                     await backend.upload_file(
                         session.info, path, content, self.max_rpc_file_bytes
