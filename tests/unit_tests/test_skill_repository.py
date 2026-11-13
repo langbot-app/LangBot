@@ -1,3 +1,5 @@
+import base64
+import hashlib
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -5,6 +7,7 @@ import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.skill.repository import SkillRepository, SkillRevisionConflictError
+from langbot_plugin.skill_store import SkillRevisionMismatchError
 
 
 _CONTEXT = ExecutionContext(
@@ -313,3 +316,240 @@ async def test_deleted_skill_can_restore_exact_recoverable_run_revision(tmp_path
     restored = await repository.get_skill(_CONTEXT, 'recoverable', snapshot=True, revision=published['revision'])
     assert restored['revision'] == published['revision']
     assert restored['instructions'] == 'Pinned instructions'
+
+
+_PNG = (
+    b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89'
+    b'\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82'
+)
+
+
+async def _package_with_binary(repository, tmp_path) -> tuple[str, str]:
+    """Publish a skill holding a real PNG and a PDF, return (revision, skill)."""
+
+    source = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'pkg'
+    (source / 'assets').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('---\nname: media\ndescription: d\n---\n\nUse the assets.\n')
+    (source / 'assets' / 'diagram.png').write_bytes(_PNG)
+    (source / 'assets' / 'spec.pdf').write_bytes(b'%PDF-1.4\n%%EOF\n')
+    skill = await repository.import_skill_directory(
+        _CONTEXT,
+        str(source),
+        {'name': 'media', 'description': 'd'},
+    )
+    return skill['revision'], skill
+
+
+@pytest.mark.asyncio
+async def test_binary_resources_are_read_only_when_generated(tmp_path):
+    """The UTF-8 gap from #2775: reading a PNG must not be a UTF-8 error."""
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(ValueError, match='not valid UTF-8'):
+        await repository._call(_CONTEXT, 'read_skill_resource', 'media', 'assets/diagram.png')
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=revision,
+    )
+
+    assert resource['encoding'] == 'base64'
+    assert base64.b64decode(resource['content']) == _PNG
+    assert resource['size'] == len(_PNG)
+    assert resource['mime_type'] == 'image/png'
+    assert resource['revision'] == revision
+    assert resource['sha256'] == hashlib.sha256(_PNG).hexdigest()
+
+
+@pytest.mark.asyncio
+async def test_binary_resource_requires_activation_and_pins_revision(tmp_path):
+    repository = _repository(tmp_path)
+    first_revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(SkillRevisionMismatchError):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            'assets/diagram.png',
+            expected_revision='sha256:not-a-revision',
+        )
+
+    # A later publication must not change the bytes an existing run resolves.
+    rewritten = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'pkg2'
+    (rewritten / 'assets').mkdir(parents=True)
+    (rewritten / 'SKILL.md').write_text('---\nname: media\ndescription: d\n---\n\nUse the assets.\n')
+    (rewritten / 'assets' / 'diagram.png').write_bytes(_PNG + b'tail')
+    updated = await repository.import_skill_directory(
+        _CONTEXT,
+        str(rewritten),
+        {'name': 'media', 'description': 'd'},
+        base_revision=first_revision,
+    )
+
+    pinned = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=first_revision,
+    )
+    current = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=updated['revision'],
+    )
+
+    assert base64.b64decode(pinned['content']) == _PNG
+    assert base64.b64decode(current['content']) == _PNG + b'tail'
+
+
+@pytest.mark.asyncio
+async def test_binary_resource_rejects_escape_missing_and_oversized(tmp_path):
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    with pytest.raises(ValueError, match='stay within'):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            '../secret.png',
+            expected_revision=revision,
+        )
+    with pytest.raises(ValueError, match='not found'):
+        await repository.read_skill_resource(
+            _CONTEXT,
+            'media',
+            'assets/missing.png',
+            expected_revision=revision,
+        )
+    with pytest.raises(ValueError, match='read limit'):
+        await repository.read_skill_resource_bytes(
+            _CONTEXT,
+            'media',
+            'assets/diagram.png',
+            expected_revision=revision,
+            max_bytes=4,
+        )
+
+
+@pytest.mark.asyncio
+async def test_text_resources_keep_the_string_contract(tmp_path):
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    text = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'SKILL.md',
+        expected_revision=revision,
+    )
+
+    assert text['content'].startswith('---')
+    assert 'encoding' not in text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ('resource_path', 'body'),
+    [
+        ('assets/cfg.yaml', 'name: cfg\nport: 8080\n'),
+        # Python 3.12 reports "application/yaml" for .yaml while the classifier
+        # listed only the older "application/x-yaml".
+        ('LICENSE', 'Apache License\nVersion 2.0\n'),
+        # No extension and no mime type at all.
+        ('Makefile', 'test:\n\tpytest -q\n'),
+        ('Dockerfile', 'FROM python:3.12\n'),
+        # An extension that lies: text bytes under a binary-ish name.
+        ('assets/data.png', 'just text, not a png\n'),
+    ],
+)
+async def test_text_with_unknown_or_wrong_mime_stays_text(tmp_path, resource_path, body):
+    """Decode as text first; only fall back to base64 when the bytes are not UTF-8.
+
+    Guessing from the extension alone mis-delivered YAML on 3.12 and anything
+    without a known mime type, handing back base64 for plain text.
+    """
+
+    repository = _repository(tmp_path)
+    source = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'mixed'
+    (source / 'assets').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('---\nname: mixed\ndescription: d\n---\n')
+    (source / resource_path).write_text(body)
+    skill = await repository.import_skill_directory(_CONTEXT, str(source), {'name': 'mixed', 'description': 'd'})
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'mixed',
+        resource_path,
+        expected_revision=skill['revision'],
+    )
+
+    assert 'encoding' not in resource
+    assert resource['content'] == body
+
+
+@pytest.mark.asyncio
+async def test_real_binary_still_falls_back_to_base64(tmp_path):
+    """The text-first attempt must not turn a real PNG into mojibake."""
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    resource = await repository.read_skill_resource(
+        _CONTEXT,
+        'media',
+        'assets/diagram.png',
+        expected_revision=revision,
+    )
+
+    assert resource['encoding'] == 'base64'
+    assert base64.b64decode(resource['content']) == _PNG
+
+
+@pytest.mark.asyncio
+async def test_binary_read_holds_the_placement_fence(tmp_path):
+    """A stale placement must not serve bytes the text path would refuse."""
+
+    repository = _repository(tmp_path)
+    revision, _ = await _package_with_binary(repository, tmp_path)
+
+    async def stale_binding(workspace_uuid, *, expected_generation):
+        return SimpleNamespace(
+            instance_uuid=_CONTEXT.instance_uuid,
+            workspace_uuid=workspace_uuid,
+            placement_generation=expected_generation + 1,
+        )
+
+    repository.ap.workspace_service.get_execution_binding = stale_binding
+
+    with pytest.raises(ValueError, match='stale Workspace placement'):
+        await repository.read_skill_resource(_CONTEXT, 'media', 'assets/diagram.png', expected_revision=revision)
+    with pytest.raises(ValueError, match='stale Workspace placement'):
+        await repository.read_skill_resource_bytes(_CONTEXT, 'media', 'assets/diagram.png', expected_revision=revision)
+
+
+@pytest.mark.asyncio
+async def test_extensionless_and_yaml_files_stay_text(tmp_path):
+    """Formatting by extension alone misclassifies real text (#2775 review).
+
+    `LICENSE` has no mime type at all and Python answers `application/yaml`
+    where the code's table says `application/x-yaml`; both must still reach the
+    UTF-8 path instead of becoming base64.
+    """
+
+    repository = _repository(tmp_path)
+    source = tmp_path / 'box' / 'default' / 'tenants' / 'ws-695136eeae1cb9b6af4a8226' / 'txt'
+    (source / 'assets').mkdir(parents=True)
+    (source / 'SKILL.md').write_text('---\nname: txt\ndescription: d\n---\n')
+    (source / 'LICENSE').write_text('MIT License\n')
+    (source / 'assets' / 'cfg.yaml').write_text('a: 1\n')
+    skill = await repository.import_skill_directory(_CONTEXT, str(source), {'name': 'txt', 'description': 'd'})
+
+    for path, expected in (('LICENSE', 'MIT License\n'), ('assets/cfg.yaml', 'a: 1\n')):
+        resource = await repository.read_skill_resource(_CONTEXT, 'txt', path, expected_revision=skill['revision'])
+        assert 'encoding' not in resource, path
+        assert resource['content'] == expected, path
