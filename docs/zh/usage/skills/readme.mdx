@@ -94,6 +94,7 @@ LangBot 当前读取以下三个字段：
 | 技能列表为空 | `box.enabled`、Box Runtime 状态、`box.local.skills_root` |
 | Agent 不激活技能 | `description` 是否具体、流水线是否绑定、模型是否支持函数调用 |
 | 激活后找不到文件 | 文件需在 Skill 包内，路径是 `/workspace/.skills/{skill-name}/` |
+| 用 `write`/`edit` 改不动已激活的技能 | 已激活的是不可变的发布版本，先复制到 `/workspace/skill-drafts` 改完再 `register_skill` |
 | `register_skill` 报错 | 路径必须在 `/workspace` 下，目录或两层内子目录需含 `SKILL.md` |
 
 <Note>

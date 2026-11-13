@@ -94,6 +94,7 @@ LangBot は現在、以下の 3 つのフィールドを読み取ります：
 | Skill 一覧が空 | `box.enabled`、Box Runtime の状態、`box.local.skills_root` |
 | Agent が Skill を起動しない | `description` が具体的か、パイプラインでバインドされているか、モデルが関数呼び出しに対応しているか |
 | 起動後にファイルが見つからない | ファイルは Skill パッケージ内に置く必要があり、パスは `/workspace/.skills/{skill-name}/` |
+| `write`/`edit` で起動済み Skill を変更できない | 起動済みは不変の公開リビジョンです。`/workspace/skill-drafts` にコピーして編集し、`register_skill` を呼び出してください |
 | `register_skill` がエラー | パスは `/workspace` 配下である必要があり、ディレクトリまたは 2 階層以内のサブディレクトリに `SKILL.md` が必要 |
 
 <Note>

@@ -94,6 +94,7 @@ For the full spec see [agentskills.io](https://agentskills.io/home). Other field
 | Skill list is empty | `box.enabled`, Box Runtime status, `box.local.skills_root` |
 | Agent doesn't activate a skill | Whether `description` is specific, whether the pipeline has the skill bound, whether the model supports function calling |
 | Files missing after activation | Files must live inside the Skill package; the path is `/workspace/.skills/{skill-name}/` |
+| `write`/`edit` cannot change an activated skill | An activated revision is immutable; copy it to `/workspace/skill-drafts`, edit it there, then call `register_skill` |
 | `register_skill` errors | The path must be under `/workspace`, and the directory or subdirectories within two levels must contain `SKILL.md` |
 
 <Note>
