@@ -1032,7 +1032,7 @@ class BoxService:
                 selected_paths=paths,
             )
             raise failure or BoxValidationError(
-                f'Failed to prepare sandbox files (exit code {result.exit_code}); original files were retained: '
+                f'Failed to prepare sandbox files (exit code {result.exit_code}); no files were accepted by this attempt: '
                 f'{(result.stderr or "")[-4000:]}'
             )
         failure = transport_export_error(result.stdout)
@@ -1053,6 +1053,18 @@ class BoxService:
         if not paths:
             return []
         context = await self.require_workspace_sandbox(self._query_execution_context(query))
+        binding = getattr(query, '_box_binding', None)
+        if (
+            binding is not None
+            and self.build_spec(
+                {'session_id': binding.session_id, **binding.spec}, skip_host_mount_validation=True
+            ).host_path_mode
+            == BoxHostMountMode.READ_ONLY
+        ):
+            raise BoxValidationError(
+                'Network export requires a writable workspace for temporary snapshots; '
+                'use a writable profile or legacy file transfer'
+            )
         root = '/workspace/.langbot-export-' + uuid.uuid4().hex
         script = selected_files_script(
             paths,
@@ -1670,6 +1682,15 @@ class BoxService:
                 raise BoxValidationError('Deployment profile exceeds workspace limit caps')
             updates[field] = min(raw, caps[key]) if raw is not None and raw > 0 else caps[key]
         spec = spec.model_copy(update=updates)
+
+        if (
+            not self._cloud_managed
+            and self.file_transfer_mode == 'network'
+            and spec.backend == 'e2b'
+            and spec.host_path_mode == BoxHostMountMode.READ_WRITE
+        ):
+            # Network transfers own writable E2B data; a host mirror resurrects deleted files.
+            spec = spec.model_copy(update={'host_path': None, 'host_path_mode': BoxHostMountMode.NONE})
 
         if not skip_host_mount_validation:
             self._validate_host_mount(spec)

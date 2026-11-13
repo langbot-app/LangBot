@@ -6,9 +6,11 @@ import asyncio
 from dataclasses import replace
 import base64
 import logging
+import json
 import os
 import shutil
 import shlex
+from pathlib import Path
 from types import SimpleNamespace
 import uuid
 
@@ -19,10 +21,13 @@ import websockets
 from langbot_plugin.api.entities.builtin.platform.message import File
 from langbot_plugin.box.backend import DockerBackend
 from langbot_plugin.box.client import ActionRPCBoxClient
+from langbot_plugin.box.e2b_backend import E2BSandboxBackend
 from langbot_plugin.box.errors import BoxError
+from langbot_plugin.box.nsjail_backend import NsjailBackend
 from langbot_plugin.box.runtime import BoxRuntime
 from langbot_plugin.box.security import BOX_CONTROL_TOKEN_HEADER, BOX_INSTANCE_HEADER
 from langbot_plugin.box.server import create_app
+from langbot_plugin.box.tenancy import namespace_session_id
 from langbot_plugin.runtime.io.connections.ws import WebSocketConnection
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
@@ -75,8 +80,8 @@ async def _require_existing_docker_image():
 @pytest.fixture
 async def network_files(tmp_path, monkeypatch):
     backend_name = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
-    if backend_name not in {'host', 'docker'}:
-        pytest.fail('LANGBOT_CORE_NETWORK_BACKEND must select host or docker')
+    if backend_name not in {'host', 'docker', 'nsjail', 'e2b'}:
+        pytest.fail('LANGBOT_CORE_NETWORK_BACKEND must select host, docker, nsjail or e2b')
     monkeypatch.delenv('LANGBOT_BOX_CONFIG', raising=False)
     monkeypatch.delenv('LANGBOT_BOX_INSTANCE_ID', raising=False)
     monkeypatch.setenv(PLUGIN_FILE_STORAGE_DIR_ENV, str(tmp_path / 'runtime-transfers'))
@@ -84,26 +89,95 @@ async def network_files(tmp_path, monkeypatch):
     instance_uuid = 'core-network-files-' + uuid.uuid4().hex
     context = replace(_CONTEXT, instance_uuid=instance_uuid)
     action_context = _ACTION_CONTEXT.model_copy(update={'instance_uuid': instance_uuid})
-    if backend_name == 'docker':
-        await _require_existing_docker_image()
+    created_e2b = []
+    e2b_connection = None
+    core_host_root = ''
+    config = {'backend': backend_name, 'limits': {'max_sessions': 1}}
+    if backend_name in {'docker', 'nsjail'}:
+        core_host_root = str(tmp_path / 'runtime-workspace-root')
+        output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
+        if backend_name == 'docker':
+            await _require_existing_docker_image()
+            backend = DockerBackend(logger)
+        else:
+            assert os.environ.get('LANGBOT_NSJAIL_CGROUP_V1_PARENT'), (
+                'nsjail tests require delegated cgroup controllers'
+            )
+            tmp_path.chmod(0o755)
+            backend = NsjailBackend(logger, base_dir=str(tmp_path / 'nsjail-sessions'))
+            config['nsjail'] = {'cgroup_v1_parent': os.environ['LANGBOT_NSJAIL_CGROUP_V1_PARENT']}
+    elif backend_name == 'e2b':
+        from e2b import AsyncSandbox
+        from langbot_plugin.box.models import E2BConnectionConfig
+
+        required = ('E2B_API_KEY', 'E2B_API_URL', 'E2B_SANDBOX_URL')
+        assert all(os.environ.get(name) for name in required), 'E2B tests require the complete connection configuration'
+        e2b_connection = E2BConnectionConfig(
+            api_url=os.environ['E2B_API_URL'],
+            sandbox_url=os.environ['E2B_SANDBOX_URL'],
+            api_key=os.environ['E2B_API_KEY'],
+            template=os.environ.get('E2B_TEMPLATE') or 'base',
+        )
+        for name in (*required, 'E2B_DOMAIN', 'E2B_TEMPLATE'):
+            monkeypatch.delenv(name, raising=False)
+        original_create = AsyncSandbox.create
+
+        async def create_one_bounded_sandbox(**kwargs):
+            assert not created_e2b, 'Each Core scenario creates only one E2B sandbox'
+            kwargs.update(timeout=180, request_timeout=15)
+            kwargs['metadata'] = {**kwargs.get('metadata', {}), 'core-network-validation': instance_uuid}
+            sandbox = await original_create(**kwargs)
+            created_e2b.append(sandbox)
+            (tmp_path / 'created-sandbox.json').write_text(json.dumps({'sandbox_id': sandbox.sandbox_id}))
+            return sandbox
+
+        monkeypatch.setattr(AsyncSandbox, 'create', create_one_bounded_sandbox)
+        config['backend'] = 'docker'
         backend = DockerBackend(logger)
-        runtime_workspace = tmp_path / 'runtime-workspace'
-        runtime_workspace.mkdir()
+        core_host_root = str(tmp_path / 'core-local')
         output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
     else:
         backend = HostProcessBackend(logger)
-        runtime_workspace = None
         output_root = str(tmp_path / 'outside-workspace')
         os.mkdir(output_root, mode=0o700)
+    backends = [backend]
+    if backend_name == 'e2b':
+        backends.append(E2BSandboxBackend(logger))
+
+    async def require_e2b_presence(expected):
+        from e2b import AsyncSandbox
+        from e2b.sandbox.sandbox_api import SandboxQuery, SandboxState
+
+        pager = AsyncSandbox.list(
+            query=SandboxQuery(
+                metadata={'core-network-validation': instance_uuid}, state=[SandboxState.RUNNING, SandboxState.PAUSED]
+            ),
+            limit=10,
+            request_timeout=5,
+            **e2b_connection.model_dump(exclude={'template'}),
+        )
+        found = False
+        for _ in range(3):
+            items = await pager.next_items()
+            found |= any(item.sandbox_id == created_e2b[0].sandbox_id for item in items)
+            if not pager.has_next:
+                break
+        assert not pager.has_next, 'Exact sandbox query exceeded its validation budget'
+        assert found == expected, 'Exact E2B sandbox presence differs from its expected state'
+
     runtime = BoxRuntime(
         logger,
-        backends=[backend],
+        backends=backends,
         instance_id=instance_uuid,
         data_dir=tmp_path / 'runtime-identity',
         max_sessions=1,
     )
-    runtime.init({'backend': backend_name, 'limits': {'max_sessions': 1}})
+    runtime.init(config)
     await runtime.initialize()
+    if backend_name == 'e2b':
+        assert runtime._backend is backend and backend.name == 'docker'
+    elif backend_name == 'nsjail':
+        assert backend._cgroup_v1_available or backend._cgroup_v2_available
     server = TestServer(create_app(runtime, control_token=_TOKEN, trusted_instance_uuid=instance_uuid))
     await server.start_server()
     url = str(server.make_url('/rpc/ws')).replace('http://', 'ws://', 1)
@@ -121,34 +195,47 @@ async def network_files(tmp_path, monkeypatch):
             handler_task = asyncio.create_task(handler.run())
             client = ActionRPCBoxClient(logger)
             client.set_handler(handler)
-            ap = make_app(logger, allowed_mount_roots=[str(runtime_workspace)] if runtime_workspace else [])
+            ap = make_app(
+                logger,
+                allowed_mount_roots=[core_host_root] if core_host_root else [],
+                host_root=core_host_root,
+            )
             ap.workspace_service.instance_uuid = instance_uuid
             ap.workspace_service.get_execution_binding.return_value = SimpleNamespace(
                 instance_uuid=instance_uuid,
                 workspace_uuid=context.workspace_uuid,
                 placement_generation=context.placement_generation,
             )
+            ap.instance_config.data['box']['backend'] = config['backend']
             ap.instance_config.data['box']['file_transfer_mode'] = 'network'
             ap.instance_config.data['box']['runtime']['endpoint'] = url
             service = BoxService(ap, client=client)
             service._available = True
             query = make_query()
             object.__setattr__(query, 'instance_uuid', instance_uuid)
-            if runtime_workspace:
-                query._box_binding.spec.update(
-                    host_path=str(runtime_workspace),
-                    image='python:3.12-alpine',
-                    network='off',
-                    cpus=0.25,
-                    memory_mb=128,
-                    pids_limit=32,
-                )
+            object.__setattr__(query, '_box_binding', None)
+            object.__setattr__(query, '_sandbox_backend', backend_name)
+            object.__setattr__(
+                query,
+                '_sandbox_e2b_config',
+                {'revision': 'fixture', 'config': e2b_connection.model_dump()} if e2b_connection is not None else {},
+            )
+            limits = {'timeout_sec': 5, 'max_sessions': 1, 'idle_ttl_sec': 60}
+            if backend_name in {'docker', 'nsjail'}:
+                limits.update(cpus=0.25, memory_mb=128, pids_limit=32)
+            object.__setattr__(query, '_sandbox_limits', {'revision': 'fixture', 'config': limits})
+            image = 'python:3.12-alpine' if backend_name == 'docker' else 'rockchin/langbot-sandbox:latest'
+            if e2b_connection is not None:
+                image = e2b_connection.template
+            acquire_request = {'reuse_key': 'network-file-fixture', 'options': {'image': image}}
             box = SimpleNamespace(
                 service=service,
                 client=client,
                 query=query,
                 runner=RunnerBoxService(service),
                 action_context=action_context,
+                context=context,
+                acquire_request=acquire_request,
                 output_root=output_root,
             )
 
@@ -156,12 +243,30 @@ async def network_files(tmp_path, monkeypatch):
                 raise AssertionError('Network file operations must not inspect a Core host directory')
 
             monkeypatch.setattr(service, '_host_query_dir', reject_host_query_directory)
+            acquired_session = None
             try:
+                acquired = await box.runner.acquire(context, acquire_request, query)
+                acquired_session = acquired['id']
+                session = runtime._sessions[namespace_session_id(action_context, acquired_session)]
+                if backend_name == 'nsjail':
+                    Path(session.info.host_path).chmod(0o777)
+                await box.runner.bind(context, query, 'run-' + uuid.uuid4().hex, acquired_session)
+                assert query._box_binding.session_id == acquired_session
+                assert len(runtime._sessions) == 1
                 await _command(box, 'mkdir -p -- ' + shlex.quote(output_root))
+                if backend_name == 'e2b':
+                    session = runtime._sessions[namespace_session_id(action_context, query._box_binding.session_id)]
+                    assert runtime._backend is backend and session.info.backend_name == 'e2b'
+                    assert session.backend.connection_config == e2b_connection
+                    assert service.default_workspace, 'Exercise a configured Core host workspace'
+                    assert session.info.host_path is None, 'Network mode must disable the writable E2B host mirror'
+                    assert len(created_e2b) == 1
+                    await require_e2b_presence(True)
                 yield box
             finally:
                 try:
-                    await client.delete_session(query._box_binding.session_id, action_context=action_context)
+                    if acquired_session is not None:
+                        await client.delete_session(acquired_session, action_context=action_context)
                 finally:
                     await handler.close()
                     await asyncio.gather(handler_task, return_exceptions=True)
@@ -174,6 +279,13 @@ async def network_files(tmp_path, monkeypatch):
             finally:
                 if backend_name == 'host':
                     shutil.rmtree(output_root)
+                elif backend_name == 'e2b' and created_e2b:
+                    await require_e2b_presence(False)
+                    assert not any(path.is_file() for path in Path(core_host_root).rglob('*'))
+                elif backend_name == 'nsjail':
+                    assert not any((tmp_path / 'nsjail-sessions').glob('*')), (
+                        'nsjail session directories survived cleanup'
+                    )
 
 
 @pytest.mark.asyncio
@@ -220,6 +332,9 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
     assert 'base64' not in item
     message = exported_message(box.query, [item['id']])
     assert _decode(message[0].base64) == _CONTENT
+    assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
+    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, 'printf unrelated-command') == 'unrelated-command'
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
     assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
 

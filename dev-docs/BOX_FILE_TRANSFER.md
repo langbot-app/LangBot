@@ -116,3 +116,10 @@ only metadata and uses the same network download path.
 
 Temporary snapshots consume workspace disk space. Cloud startup still performs
 its shared-workspace readiness challenge, with its migration tracked in stage 5.
+
+In OSS network mode, E2B specs disable the writable main-workspace host mirror, so later
+commands cannot resurrect accepted outputs or export snapshots. Read-only artifact
+mounts and the legacy mode retain their existing behavior. Output snapshot
+preparation requires a writable workspace; network exports from a read-only workspace fail before any transfer and require
+a writable profile or legacy mode. Command timeouts/cancellation still retire the
+sandbox; container-local uncommitted files are not durable across that retirement.
