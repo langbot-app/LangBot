@@ -4,11 +4,15 @@ on:
   push:
     branches: [master, develop]
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - "plugins/Runner/**"
       - ".github/workflows/plugins-runner-tests.yml"
   pull_request:
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - "plugins/Runner/**"
       - ".github/workflows/plugins-runner-tests.yml"
@@ -77,6 +81,12 @@ jobs:
           "$RUNNER_TEMP/coding-sdk/bin/python" certification-tests/test_runner_demo_dependency_admission.py -v
           cd RunnerDemo
           "$RUNNER_TEMP/coding-sdk/bin/python" -m unittest discover -s tests -v
+      - name: Test Runner RPC consumers with the in-tree SDK
+        run: |
+          uv pip install ../../sdk
+          uv pip install --python "$RUNNER_TEMP/coding-sdk/bin/python" ../../sdk
+          RUNNER_EVIDENCE_DIR="$RUNNER_EVIDENCE_DIR/in-tree" uv run --no-sync python -m pytest \
+            tests/test_real_sdk_runtime.py -q --junitxml="${RUNNER_EVIDENCE_DIR}/in-tree.xml"
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v4

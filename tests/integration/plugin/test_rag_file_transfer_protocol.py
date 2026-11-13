@@ -34,7 +34,7 @@ from langbot_plugin.runtime.plugin.mgr import PluginManager
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
 
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.sdk_core, pytest.mark.contract('rag_file_transfer')]
 PAYLOAD = bytes(range(256)) * 161 + b'\x00original RAG file\xff'
 BINDING = InstallationBinding(
     instance_uuid='instance-a',

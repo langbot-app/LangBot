@@ -37,7 +37,7 @@ from langbot.pkg.entity.persistence.plugin import PluginSetting
 from langbot.pkg.plugin.handler import RuntimeConnectionHandler, _plugin_runtime_action
 
 
-pytestmark = pytest.mark.integration
+pytestmark = [pytest.mark.integration, pytest.mark.sdk_core, pytest.mark.contract('execution_routing')]
 
 NON_EXECUTION_ACTIONS = frozenset(
     {

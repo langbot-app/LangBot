@@ -5,6 +5,17 @@ import pytest
 
 # These are behavior obligations, independent of file names and parametrization.
 REQUIRED_CONTRACTS = {
+    'sdk_core': {'execution_routing', 'rag_file_transfer', 'rag_cancellation'},
+    'network_plugin': {'registered_runner_file_delivery'},
+    'skill_persistence': {
+        'skill_publication_recovery',
+        'persistent_media_isolation',
+        'sqlite_database',
+        'postgres_database',
+        'postgres_minio',
+        'skill_content_rls',
+        'two_core_cache_recovery',
+    },
     'session_summary': {
         'reader_dependencies',
         'reader_sql',

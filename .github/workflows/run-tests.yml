@@ -133,6 +133,7 @@ jobs:
     # unit. Releases still require the SDK to be published first (see
     # scripts/check_sdk_release_pin.py).
     name: Core with in-tree SDK
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     env:
       SPACE__DISABLE_TELEMETRY: 'true'
@@ -149,6 +150,17 @@ jobs:
           uv run --no-sync python -c "import langbot_plugin, pathlib; print(pathlib.Path(langbot_plugin.__file__).parent)"
       - name: Run unit + smoke tests
         run: uv run --no-sync pytest tests/unit_tests/ tests/smoke/ -q --tb=short
+      - name: Run required Core and SDK protocol contracts
+        run: |
+          uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core \
+            -q --tb=short -rs --junitxml=sdk-core-results.xml
+      - name: Upload Core and SDK contract results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-core-results
+          path: sdk-core-results.xml
+          if-no-files-found: warn
 
   sqlalchemy-compat:
     name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility

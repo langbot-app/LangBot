@@ -3,11 +3,15 @@ name: Plugins / KnowledgeEngine shared SDK verification
 on:
   push:
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - 'plugins/KnowledgeEngine/**'
       - '.github/workflows/plugins-knowledgeengine-shared-tests.yml'
   pull_request:
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - 'plugins/KnowledgeEngine/**'
       - '.github/workflows/plugins-knowledgeengine-shared-tests.yml'
@@ -47,6 +51,11 @@ jobs:
         run: PYTHONPATH=. ../../.venv/bin/python -m pytest tests -q
       - name: Exact archives, real dependency prepare, discovery and RPC
         run: .venv/bin/python KnowledgeEngine/certification-tests/verify_candidates.py --evidence "$RUNNER_TEMP/ke-evidence"
+      - name: Test KnowledgeEngine consumers with the in-tree SDK
+        run: |
+          uv pip install ../sdk
+          uv pip check
+          .venv/bin/python -m pytest KnowledgeEngine/certification-tests -q
       - name: Retain unsigned candidate evidence
         if: always()
         uses: actions/upload-artifact@v4

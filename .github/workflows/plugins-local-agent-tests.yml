@@ -3,11 +3,15 @@ name: Plugins / LocalAgent tests
 on:
   push:
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - "plugins/Runner/LocalAgent/**"
       - ".github/workflows/plugins-local-agent-tests.yml"
   pull_request:
     paths:
+      - "sdk/**"
+      - "src/langbot/**"
       - "plugins/pytest.ini"
       - "plugins/Runner/LocalAgent/**"
       - ".github/workflows/plugins-local-agent-tests.yml"
@@ -57,3 +61,10 @@ jobs:
       - name: Pytest
         run: uv run --no-sync pytest
         working-directory: plugins/Runner/LocalAgent
+
+      - name: Test LocalAgent with the in-tree SDK
+        working-directory: plugins/Runner/LocalAgent
+        run: |
+          uv pip install ../../../sdk
+          uv pip check
+          uv run --no-sync pytest
