@@ -158,6 +158,9 @@ class HostProcessBackend(BaseSandboxBackend):
             last_used_at=now,
         )
 
+    def _file_workspace_root(self, session: BoxSessionInfo) -> str:
+        return self._require_session(session).workspace_path
+
     async def exec(self, session: BoxSessionInfo, spec: BoxSpec) -> BoxExecutionResult:
         state = self._require_session(session)
         mounts = {posixpath.normpath(spec.mount_path): state.workspace_path}

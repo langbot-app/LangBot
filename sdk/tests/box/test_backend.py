@@ -1284,3 +1284,114 @@ async def test_timeout_cleanup_failure_keeps_timeout_and_bounds_pipe_drain(
     assert "timed out" in result.stderr
     assert "remove failed" in result.stderr
     assert proc.closed.is_set()
+
+
+@pytest.mark.anyio
+async def test_download_permission_fallback_preserves_large_binary(backend, session):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    content = bytes(range(256)) * 5000
+    process = _FakeProcess(stdout=content)
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ) as spawn,
+    ):
+        downloaded = await backend.download_file(
+            session, "/workspace/report.bin", len(content)
+        )
+    assert downloaded == content
+    args = spawn.await_args.args
+    assert args[:4] == (backend.command, "exec", "-i", session.backend_session_id)
+    assert "--user" not in args
+    assert "read_workspace_file('/workspace', 'report.bin'" in args[-1]
+    process.stdin.close.assert_called_once()
+
+
+@pytest.mark.anyio
+async def test_upload_permission_fallback_uses_stdin_and_checks_content(
+    backend, session
+):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    content = b"\x00binary\xff" * 10000
+    process = _FakeProcess()
+    process.stdin.drain = mock.AsyncMock()
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "upload_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ) as spawn,
+    ):
+        await backend.upload_file(
+            session, "/workspace/input.bin", content, len(content)
+        )
+    process.stdin.write.assert_called_once_with(content)
+    script = spawn.await_args.args[-1]
+    assert "sys.stdin.buffer.read(" in script
+    assert "hashlib.sha256(data).hexdigest()" in script
+    assert script.index("if len(data)") < script.rindex("write_workspace_file(")
+
+
+@pytest.mark.anyio
+async def test_file_permission_fallback_rejects_oversized_cli_output(backend, session):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec",
+            mock.AsyncMock(return_value=_FakeProcess(stdout=b"too big")),
+        ),
+        pytest.raises(BoxError, match="payload size"),
+    ):
+        await backend.download_file(session, "/workspace/report.bin", 3)
+
+
+@pytest.mark.anyio
+async def test_permission_fallback_waits_for_helper_after_repeated_cancel(
+    backend, session
+):
+    from langbot_plugin.box.backend import BaseSandboxBackend
+
+    started, finish = asyncio.Event(), asyncio.Event()
+    process = _FakeProcess(stdout=b"data")
+
+    async def wait():
+        started.set()
+        await finish.wait()
+        return 0
+
+    process.wait = wait
+    with (
+        mock.patch.object(
+            BaseSandboxBackend, "download_file", side_effect=PermissionError
+        ),
+        mock.patch(
+            "asyncio.create_subprocess_exec", mock.AsyncMock(return_value=process)
+        ),
+    ):
+        download = asyncio.create_task(
+            backend.download_file(session, "/workspace/report.bin", 100)
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            download.cancel()
+            await asyncio.sleep(0)
+            assert not download.done()
+            download.cancel()
+            await asyncio.sleep(0)
+            assert not download.done()
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(download, timeout=1)
+        finally:
+            finish.set()
+            await asyncio.gather(download, return_exceptions=True)

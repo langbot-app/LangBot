@@ -637,3 +637,18 @@ class BoxExecutionResult(pydantic.BaseModel):
     @property
     def ok(self) -> bool:
         return self.status == BoxExecutionStatus.COMPLETED and self.exit_code == 0
+
+
+class BoxFileRequest(pydantic.BaseModel):
+    """One bounded file operation on an existing Workspace sandbox."""
+
+    model_config = pydantic.ConfigDict(extra="forbid", strict=True)
+
+    session_id: str = pydantic.Field(min_length=1)
+    path: str = pydantic.Field(min_length=1, max_length=4096)
+    file_key: str = pydantic.Field(pattern=r"^ft1_[0-9a-f]{64}$")
+
+
+class BoxFileUploadRequest(BoxFileRequest):
+    size: int = pydantic.Field(ge=0)
+    sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")

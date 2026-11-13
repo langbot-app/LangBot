@@ -1334,6 +1334,82 @@ done
                     if not execution_cancelled:
                         raise
 
+    async def upload_file(
+        self,
+        session_id: str,
+        path: str,
+        content: bytes,
+        action_context: ActionContext,
+    ) -> None:
+        if len(content) > self.max_rpc_file_bytes:
+            raise BoxValidationError("File exceeds the configured transfer size limit")
+        await self._transfer_file(session_id, path, action_context, content=content)
+
+    async def download_file(
+        self,
+        session_id: str,
+        path: str,
+        action_context: ActionContext,
+    ) -> bytes:
+        return await self._transfer_file(session_id, path, action_context)
+
+    async def _transfer_file(
+        self,
+        session_id: str,
+        path: str,
+        action_context: ActionContext,
+        *,
+        content: bytes | None = None,
+    ):
+        from .file_io import workspace_relative_path
+        from .tenancy import session_belongs_to_placement
+
+        if not session_belongs_to_placement(action_context, session_id):
+            raise BoxValidationError(
+                "File transfer session does not belong to this Workspace placement"
+            )
+        if self.admission_required:
+            await self.require_sandbox_admission(action_context)
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or session.closing:
+                raise BoxSessionNotFoundError(f"session {session_id} not found")
+            self._session_leases[session_id] += 1
+        try:
+            async with session.lock:
+                if session.closing or self._sessions.get(session_id) is not session:
+                    raise BoxSessionNotFoundError(
+                        f"session {session_id} is being deleted"
+                    )
+                if self.admission_required:
+                    await self.require_sandbox_admission(action_context)
+                workspace_relative_path(session.info.mount_path, path)
+                for _, mount_path, _, _, _ in session.extra_mounts_key:
+                    if path == mount_path or path.startswith(
+                        mount_path.rstrip("/") + "/"
+                    ):
+                        raise BoxValidationError(
+                            "File transfer cannot access additional mounts"
+                        )
+                backend = session.backend
+                if content is not None:
+                    await backend.upload_file(
+                        session.info, path, content, self.max_rpc_file_bytes
+                    )
+                    return None
+                return await backend.download_file(
+                    session.info, path, self.max_rpc_file_bytes
+                )
+        except (ValueError, OSError) as exc:
+            raise BoxValidationError(str(exc)) from exc
+        finally:
+            async with self._lock:
+                if self._sessions.get(session_id) is session:
+                    session.info.last_used_at = dt.datetime.now(_UTC)
+                self._session_leases[session_id] -= 1
+                if self._session_leases[session_id] <= 0:
+                    self._session_leases.pop(session_id, None)
+
     def start_background_reaper(self) -> None:
         if (
             self.session_ttl_sec <= 0

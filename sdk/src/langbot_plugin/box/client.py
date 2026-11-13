@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import abc
+import asyncio
+import hashlib
+import uuid
 import logging
 from typing import Any
 
@@ -106,6 +109,23 @@ class BoxRuntimeClient(abc.ABC):
     @abc.abstractmethod
     async def init(self, config: dict) -> None: ...
 
+    async def upload_file(
+        self,
+        session_id: str,
+        path: str,
+        content: bytes,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        raise NotImplementedError
+
+    async def download_file(
+        self,
+        session_id: str,
+        path: str,
+        action_context: ActionContext | None = None,
+    ) -> bytes:
+        raise NotImplementedError
+
     async def verify_shared_workspace(self, marker_name: str) -> dict:
         raise NotImplementedError
 
@@ -182,7 +202,12 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                 data,
                 timeout=timeout,
                 action_context=action_context,
-                cancel_peer_on_cancel=action == LangBotToBoxAction.EXEC,
+                cancel_peer_on_cancel=action
+                in {
+                    LangBotToBoxAction.EXEC,
+                    LangBotToBoxAction.UPLOAD_FILE,
+                    LangBotToBoxAction.DOWNLOAD_FILE,
+                },
             )
         except BoxRuntimeUnavailableError:
             raise
@@ -214,6 +239,103 @@ class ActionRPCBoxClient(BoxRuntimeClient):
             stderr=data.get("stderr", ""),
             duration_ms=data["duration_ms"],
         )
+
+    async def _cleanup_file_transfer(self, file_key, action_context, *, local):
+        async def cleanup():
+            if local:
+                await self.handler.delete_local_file(
+                    file_key, action_context=action_context
+                )
+            else:
+                await self._call(
+                    LangBotToBoxAction.DELETE_FILE_TRANSFER,
+                    {"file_key": file_key},
+                    action_context=action_context,
+                )
+
+        task = asyncio.create_task(cleanup())
+        interrupted = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                interrupted = True
+            except Exception:
+                break
+        if not task.cancelled() and task.exception() is not None:
+            self._logger.warning(
+                "Box file transfer cleanup failed",
+                exc_info=task.exception(),
+            )
+        if interrupted:
+            raise asyncio.CancelledError
+
+    async def upload_file(
+        self,
+        session_id: str,
+        path: str,
+        content: bytes,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        """Publish a complete file; retrying identical bytes is safe."""
+        if action_context is None:
+            raise ValueError("Box file transfer requires a trusted Workspace context")
+        if not isinstance(content, bytes):
+            raise ValueError("Box upload content must be bytes")
+        file_key = "ft1_" + uuid.uuid4().hex + uuid.uuid4().hex
+        try:
+            await self.handler.send_file(
+                content,
+                "",
+                action_context=action_context,
+                file_key=file_key,
+            )
+            return await self._call(
+                LangBotToBoxAction.UPLOAD_FILE,
+                {
+                    "session_id": session_id,
+                    "path": path,
+                    "file_key": file_key,
+                    "size": len(content),
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                },
+                timeout=60.0,
+                action_context=action_context,
+            )
+        except Exception as exc:
+            raise _translate_action_error(exc) from exc
+        finally:
+            await self._cleanup_file_transfer(file_key, action_context, local=False)
+
+    async def download_file(
+        self,
+        session_id: str,
+        path: str,
+        action_context: ActionContext | None = None,
+    ) -> bytes:
+        """Read one complete file and verify its transfer receipt."""
+        if action_context is None:
+            raise ValueError("Box file transfer requires a trusted Workspace context")
+        file_key = "ft1_" + uuid.uuid4().hex + uuid.uuid4().hex
+        try:
+            result = await self._call(
+                LangBotToBoxAction.DOWNLOAD_FILE,
+                {"session_id": session_id, "path": path, "file_key": file_key},
+                timeout=60.0,
+                action_context=action_context,
+            )
+            content = await self.handler.read_local_file(
+                file_key, action_context=action_context
+            )
+            if (
+                result.get("file_key") != file_key
+                or result.get("size") != len(content)
+                or result.get("sha256") != hashlib.sha256(content).hexdigest()
+            ):
+                raise BoxError("Box download receipt does not match its content")
+            return content
+        finally:
+            await self._cleanup_file_transfer(file_key, action_context, local=True)
 
     async def shutdown(self) -> None:
         if self._handler is not None:
