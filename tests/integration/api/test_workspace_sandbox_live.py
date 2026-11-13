@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from pathlib import Path
+import shlex
 from types import SimpleNamespace
 import uuid
 
@@ -186,28 +187,26 @@ async def test_live_workspace_switch_preserves_running_task(live_workspace_api, 
             assert values['pids.max'] == 128
             assert values['cpu.cfs_quota_us'] / values['cpu.cfs_period_us'] == 1
             print('NSJAIL_KERNEL_LIMITS', json.dumps(values), flush=True)
-        old_completed = before == after
         await select(after)
-        if old_completed:
-            # Verify the saved revision before freeing capacity for the next E2B sandbox.
-            assert not pending.done(), 'Saving the E2B revision interrupted the old task'
-            await release()
-            result = await asyncio.wait_for(pending, 15)
-            assert result['ok'] and result['backend'] == before and result['stdout'] == f'old-{before}', result
-            again = await box.execute_tool({'command': f'cat /workspace/{started_name}'}, old)
-            assert again['ok'] and again['backend'] == before and again['stdout'] == f'old-{before}', again
-            await client.delete_session(old._box_binding.session_id, action_context=box._action_context(context))
+        assert not pending.done(), 'Saving the sandbox revision interrupted the old task'
         new = await acquire(f'new-{nonce}')
         assert old._box_binding.session_id != new._box_binding.session_id
+        if before == after == 'e2b':
+            sessions = await client.get_sessions(action_context=box._action_context(context))
+            session_ids = {old._box_binding.session_id, new._box_binding.session_id}
+            backend_ids = {item['backend_session_id'] for item in sessions if item['session_id'] in session_ids}
+            assert len(backend_ids) == 2, sessions
+            active = await AsyncSandbox.list().next_items()
+            assert backend_ids <= {item.sandbox_id for item in active}
+            print('LIVE_DUAL_E2B_ACTIVE', json.dumps(sorted(backend_ids)), flush=True)
         result = await box.execute_tool({'command': f'printf new-{after}'}, new)
         assert result['ok'] and result['backend'] == after and result['stdout'] == f'new-{after}', result
-        if not old_completed:
-            assert not pending.done(), 'Workspace update interrupted the old task'
-            await release()
-            result = await asyncio.wait_for(pending, 15)
-            assert result['ok'] and result['backend'] == before and result['stdout'] == f'old-{before}', result
-            again = await box.execute_tool({'command': f'cat /workspace/{started_name}'}, old)
-            assert again['ok'] and again['backend'] == before and again['stdout'] == f'old-{before}', again
+        assert not pending.done(), 'Workspace update interrupted the old task'
+        await release()
+        result = await asyncio.wait_for(pending, 15)
+        assert result['ok'] and result['backend'] == before and result['stdout'] == f'old-{before}', result
+        again = await box.execute_tool({'command': f'cat /workspace/{started_name}'}, old)
+        assert again['ok'] and again['backend'] == before and again['stdout'] == f'old-{before}', again
         print(
             'LIVE_SWITCH_PASS',
             json.dumps(
@@ -269,6 +268,125 @@ async def sandbox_limits_live(live_workspace_api, tmp_path):
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.parametrize('box_count', [2, 8, 16])
+async def test_live_e2b_concurrent_boxes_create_execute_isolate_and_cleanup(sandbox_limits_live, box_count):
+    from e2b import AsyncSandbox
+
+    box, _, http, headers, context, client = sandbox_limits_live
+    runner = RunnerBoxService(box)
+    nonce = uuid.uuid4().hex
+    response = await http.put(
+        '/api/v1/workspaces/current/sandbox',
+        headers=headers,
+        json={
+            'backend': 'e2b',
+            'e2b': {
+                'api_url': os.environ['E2B_API_URL'],
+                'sandbox_url': os.environ['E2B_SANDBOX_URL'],
+                'api_key': os.environ['E2B_API_KEY'],
+                'template': 'base',
+            },
+            'limits': {'timeout_sec': 120, 'max_sessions': box_count, 'idle_ttl_sec': 60},
+        },
+    )
+    assert response.status_code == 200, await response.get_json()
+    selected = await box.resolve_workspace_selection(context)
+
+    async def acquire(own):
+        run_id = f'{own}-{nonce}'
+        query = SimpleNamespace(
+            query_id=run_id,
+            query_uuid=run_id,
+            variables={},
+            _execution_context=context,
+            _sandbox_backend=selected['backend'],
+            _sandbox_e2b_config=selected['e2b'],
+            _sandbox_limits=selected['limits'],
+        )
+        acquired = await runner.acquire(context, {'reuse_key': run_id, 'options': {'image': 'base'}}, query)
+        await runner.bind(context, query, run_id, acquired['id'])
+        return query
+
+    queries = await asyncio.gather(*(acquire(str(index)) for index in range(box_count)))
+    session_ids = {query._box_binding.session_id for query in queries}
+    assert len(session_ids) == box_count
+    sessions = await client.get_sessions(action_context=box._action_context(context))
+    backend_by_session = {
+        item['session_id']: item['backend_session_id'] for item in sessions if item['session_id'] in session_ids
+    }
+    backend_ids = set(backend_by_session.values())
+    assert len(backend_ids) == box_count
+    active = await AsyncSandbox.list().next_items()
+    assert backend_ids <= {item.sandbox_id for item in active}
+    print('LIVE_E2B_CONCURRENT_CREATED', json.dumps({'count': box_count, 'ids': sorted(backend_ids)}), flush=True)
+
+    async def connect(query):
+        sandbox_id = backend_by_session[query._box_binding.session_id]
+        return await AsyncSandbox.connect(
+            sandbox_id, headers={'E2b-Sandbox-Id': sandbox_id, 'E2b-Sandbox-Port': '49983'}
+        )
+
+    sandboxes = await asyncio.gather(*(connect(query) for query in queries))
+
+    async def execute(query, own):
+        # /workspace is intentionally shared by runs in one Workspace; /tmp is Box-local.
+        script = f"""import json,time
+from pathlib import Path
+p=Path('/tmp/langbot-{nonce}')
+p.mkdir()
+(p/'same-name').write_text({own!r})
+(p/'only-{own}').write_text({own!r})
+start=time.time()
+(p/'ready').write_text('ready')
+while not (p/'release').exists():
+    assert time.time()-start < 45, 'test barrier timed out'
+    time.sleep(0.1)
+assert (p/'same-name').read_text()=={own!r}
+assert sorted(x.name for x in p.glob('only-*'))==['only-{own}']
+print(json.dumps(dict(own={own!r},start=start,end=time.time())))
+"""
+        result = await box.execute_tool({'command': 'python3 -c ' + shlex.quote(script)}, query)
+        assert result['ok'] and result['backend'] == 'e2b', result
+        return json.loads(result['stdout'])
+
+    tasks = [asyncio.create_task(execute(query, str(index))) for index, query in enumerate(queries)]
+
+    async def wait_ready(sandbox, task):
+        for _ in range(200):
+            if task.done():
+                raise AssertionError(await task)
+            try:
+                ready = await sandbox.files.read(f'/tmp/langbot-{nonce}/ready')
+            except Exception:
+                await asyncio.sleep(0.1)
+                continue
+            assert ready == 'ready'
+            return
+        raise AssertionError('E2B command did not reach its test barrier')
+
+    try:
+        await asyncio.gather(*(wait_ready(sandbox, task) for sandbox, task in zip(sandboxes, tasks)))
+        assert all(not task.done() for task in tasks)
+        await asyncio.gather(*(sandbox.files.write(f'/tmp/langbot-{nonce}/release', 'go') for sandbox in sandboxes))
+        results = await asyncio.wait_for(asyncio.gather(*tasks), 30)
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert min(item['end'] for item in results) > max(item['start'] for item in results), results
+    await client.delete_session(queries[0]._box_binding.session_id, action_context=box._action_context(context))
+    result = await box.execute_tool({'command': f'cat /tmp/langbot-{nonce}/same-name'}, queries[-1])
+    assert result['ok'] and result['stdout'] == str(box_count - 1), result
+    for query in queries[1:]:
+        await client.delete_session(query._box_binding.session_id, action_context=box._action_context(context))
+    sessions = await client.get_sessions(action_context=box._action_context(context))
+    assert not session_ids & {item['session_id'] for item in sessions}
+    active = await AsyncSandbox.list().next_items()
+    assert not backend_ids & {item.sandbox_id for item in active}
+    print('LIVE_E2B_CONCURRENT_PASS', json.dumps({'count': box_count, 'commands': results}), flush=True)
 
 
 async def test_live_e2b_save_never_creates_and_explicit_test_cleans_up(sandbox_limits_live, monkeypatch):
