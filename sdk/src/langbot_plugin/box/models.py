@@ -231,6 +231,35 @@ class SandboxAdmissionPolicy(pydantic.BaseModel):
 
 
 ARTIFACT_MOUNT_ROOT = "/opt/langbot-artifacts"
+MAX_ARTIFACT_ARCHIVE_BYTES = 64 * 1024 * 1024
+
+
+class BoxArtifactMountSpec(pydantic.BaseModel):
+    """A prepared Runtime-owned immutable artifact, never a caller host path."""
+
+    content_digest: str = pydantic.Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
+
+    @property
+    def mount_path(self) -> str:
+        return f"{ARTIFACT_MOUNT_ROOT}/{self.content_digest[7:]}"
+
+
+class BoxArtifactDescriptor(BoxArtifactMountSpec):
+    manifest: dict
+    archive_size: int = pydantic.Field(ge=0, le=MAX_ARTIFACT_ARCHIVE_BYTES, strict=True)
+    archive_sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")
+
+    @pydantic.model_validator(mode="after")
+    def validate_manifest(self):
+        from langbot_plugin.artifact import validate_tree_manifest
+
+        digest, _ = validate_tree_manifest(
+            self.manifest, max_files=2048, max_total_bytes=256 * 1024 * 1024
+        )
+        if digest != self.content_digest:
+            raise ValueError("Artifact manifest does not match content_digest")
+        return self
 
 
 class BoxMountSpec(pydantic.BaseModel):
@@ -347,6 +376,9 @@ class BoxSpec(pydantic.BaseModel):
     host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
     mount_path: str = DEFAULT_BOX_MOUNT_PATH
     extra_mounts: list[BoxMountSpec] = pydantic.Field(default_factory=list)
+    artifact_mounts: list[BoxArtifactMountSpec] = pydantic.Field(
+        default_factory=list, max_length=256
+    )
     persistent: bool = False
     workspace_max_sessions: int | None = pydantic.Field(
         default=None, ge=1, le=1024, strict=True
@@ -360,6 +392,15 @@ class BoxSpec(pydantic.BaseModel):
     workspace_quota_mb: int = 0
 
     model_config = pydantic.ConfigDict(extra="forbid")
+
+    @pydantic.field_validator("artifact_mounts")
+    @classmethod
+    def validate_artifact_mounts(
+        cls, value: list[BoxArtifactMountSpec]
+    ) -> list[BoxArtifactMountSpec]:
+        if len({mount.content_digest for mount in value}) != len(value):
+            raise ValueError("Artifact mounts must be unique")
+        return value
 
     @pydantic.model_validator(mode="before")
     @classmethod

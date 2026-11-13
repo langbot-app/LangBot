@@ -102,6 +102,7 @@ class DatabaseSkillRepository:
         return {
             'content': content,
             'revision': record['skill']['revision'],
+            'manifest': record['manifest'],
             'sha256': hashlib.sha256(content).hexdigest(),
             'size': len(content),
             'filename': f'{record["skill"]["name"]}.zip',

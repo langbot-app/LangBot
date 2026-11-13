@@ -469,6 +469,9 @@ box:
         # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.
         max_admission_records: 100000
         max_rpc_file_bytes: 20971520
+        # Runtime-owned immutable package cache; active session mounts stay pinned.
+        max_artifact_cache_bytes: 268435456
+        artifact_cache_ttl_sec: 300
     # Cloud v2 overrides these values through the instance config/environment.
     # OSS keeps admission disabled and preserves the existing multi-session
     # local behavior. These limits are Runtime-owned and cannot be relaxed by

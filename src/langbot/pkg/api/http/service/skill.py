@@ -103,7 +103,7 @@ class SkillService:
         context: TenantContext,
         skill_name: str,
         revision: str | None = None,
-    ) -> dict[str, bytes | str | int]:
+    ) -> dict[str, bytes | str | int | dict]:
         execution_context = await self._execution_context(context)
         return await self._repository().get_skill_package(execution_context, skill_name, revision)
 

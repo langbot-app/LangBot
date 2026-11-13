@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 import stat
 import time
+import uuid
 import weakref
 from typing import TYPE_CHECKING
 
@@ -20,8 +21,13 @@ import pydantic
 
 from langbot_plugin.entities.io.context import ActionContext
 from langbot_plugin.runtime.event_loop_monitor import EventLoopLagMonitor
+from langbot_plugin.runtime.bounded_executor import (
+    blocking_work_scope,
+    run_blocking_with_backpressure,
+)
 
 from .backend import BaseSandboxBackend, CLISandboxBackend, DockerBackend
+from .artifact_cache import ArtifactCache
 from .host_backend import HostProcessBackend
 from .identity import BoxIdentity
 from .nsjail_backend import NsjailBackend
@@ -38,6 +44,7 @@ from .errors import (
     BoxValidationError,
 )
 from .models import (
+    BoxArtifactDescriptor,
     DEFAULT_BOX_IMAGE,
     DEFAULT_BOX_MOUNT_PATH,
     BoxExecutionResult,
@@ -298,6 +305,22 @@ class BoxRuntime:
             data_dir,
         )
         self.instance_id = self._identity.instance_id
+        self._artifact_cache: ArtifactCache | None = None
+        self._artifact_cache_init_lock = asyncio.Lock()
+        self.max_artifact_cache_bytes = _bounded_runtime_limit(
+            limits,
+            "max_artifact_cache_bytes",
+            256 * 1024 * 1024,
+            minimum=1,
+            maximum=256 * 1024 * 1024,
+        )
+        self.artifact_cache_ttl_sec = _bounded_runtime_limit(
+            limits,
+            "artifact_cache_ttl_sec",
+            300,
+            minimum=1,
+            maximum=86_400,
+        )
         for backend in self.backends:
             if backend is not None:
                 backend.instance_id = self.instance_id
@@ -343,6 +366,25 @@ class BoxRuntime:
                 except BaseException:
                     self._identity.release()
                     raise
+
+        root = self._artifact_cache_root()
+        if (
+            self._can_cleanup_orphans
+            and root.exists()
+            and hasattr(os, "O_NOFOLLOW")
+            and hasattr(os, "geteuid")
+            and os.open in os.supports_dir_fd
+        ):
+
+            def cleanup_staging():
+                cache = ArtifactCache(
+                    root,
+                    max_bytes=self.max_artifact_cache_bytes,
+                    idle_ttl_sec=self.artifact_cache_ttl_sec,
+                )
+                cache.cleanup_staging()
+
+            await self._artifact_work(cleanup_staging)
 
         self.start_background_reaper()
         self.event_loop_monitor.start()
@@ -404,6 +446,27 @@ class BoxRuntime:
             minimum=0,
             maximum=MAX_RUNTIME_COMPLETED_RETENTION_SEC,
         )
+        max_artifact_cache_bytes = _bounded_runtime_limit(
+            limits,
+            "max_artifact_cache_bytes",
+            self.max_artifact_cache_bytes,
+            minimum=1,
+            maximum=256 * 1024 * 1024,
+        )
+        artifact_cache_ttl_sec = _bounded_runtime_limit(
+            limits,
+            "artifact_cache_ttl_sec",
+            self.artifact_cache_ttl_sec,
+            minimum=1,
+            maximum=86_400,
+        )
+        if self._artifact_cache is not None and (
+            max_artifact_cache_bytes != self.max_artifact_cache_bytes
+            or artifact_cache_ttl_sec != self.artifact_cache_ttl_sec
+        ):
+            raise ValueError(
+                "Artifact cache limits require a Box Runtime restart after first use"
+            )
         self._box_config = candidate_config
         self.max_sessions = max_sessions
         self.max_managed_processes = max_managed_processes
@@ -411,6 +474,8 @@ class BoxRuntime:
         self.max_admission_records = max_admission_records
         self.max_rpc_file_bytes = max_rpc_file_bytes
         self.completed_process_retention_sec = completed_process_retention_sec
+        self.max_artifact_cache_bytes = max_artifact_cache_bytes
+        self.artifact_cache_ttl_sec = artifact_cache_ttl_sec
         self._apply_config_to_backends(config)
         self._refresh_admission_policy()
         if previous_admission_policy.required and not self._admission_policy.required:
@@ -1265,6 +1330,144 @@ done
             if backend_config and hasattr(backend, "configure"):
                 backend.configure(backend_config)
 
+    @property
+    def artifact_cache(self) -> ArtifactCache | None:
+        return self._artifact_cache
+
+    def _artifact_cache_root(self) -> Path:
+        return (
+            self._identity.data_dir / "artifacts" / self.instance_id.replace(":", "%3A")
+        ).absolute()
+
+    async def _artifact_work(self, function, *args):
+        task = asyncio.create_task(run_blocking_with_backpressure(function, *args))
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            while not task.done():
+                try:
+                    await asyncio.shield(task)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:
+                    break
+            if not task.cancelled():
+                task.exception()
+            raise
+
+    async def _get_artifact_cache(self) -> ArtifactCache:
+        if (
+            not hasattr(os, "O_NOFOLLOW")
+            or not hasattr(os, "geteuid")
+            or os.open not in os.supports_dir_fd
+        ):
+            raise BoxValidationError(
+                "Artifact caching requires a POSIX Runtime with descriptor-relative no-follow file IO"
+            )
+        if not self._can_cleanup_orphans:
+            raise BoxValidationError(
+                "Artifact cache requires an exclusive Runtime identity lock"
+            )
+        async with self._artifact_cache_init_lock:
+            if self._artifact_cache is None:
+                root = self._artifact_cache_root()
+                workspace = self._default_workspace()
+                if workspace is not None and self._path_is_under(
+                    os.path.realpath(root), workspace
+                ):
+                    raise BoxValidationError(
+                        "Artifact cache must stay outside the writable sandbox Workspace"
+                    )
+
+                def create():
+                    return ArtifactCache(
+                        root,
+                        max_bytes=self.max_artifact_cache_bytes,
+                        idle_ttl_sec=self.artifact_cache_ttl_sec,
+                    )
+
+                self._artifact_cache = await self._artifact_work(create)
+                self.start_background_reaper()
+            return self._artifact_cache
+
+    async def reap_artifact_cache(self) -> None:
+        cache = self._artifact_cache
+        if cache is not None:
+            await self._artifact_work(cache.reap)
+
+    async def prepare_artifact(
+        self,
+        descriptor: BoxArtifactDescriptor,
+        content: bytes | None,
+        action_context: ActionContext,
+    ) -> dict:
+        context = ActionContext.model_validate(action_context).without_installation()
+        descriptor = BoxArtifactDescriptor.model_validate(descriptor)
+        if self.admission_required:
+            await self.require_sandbox_admission(context)
+        with blocking_work_scope(box_namespace(context)):
+            cache = await self._get_artifact_cache()
+            ready = await self._artifact_work(cache.probe, context, descriptor)
+            if not ready and content is not None:
+                await self._artifact_work(cache.prepare, context, descriptor, content)
+                ready = True
+        if self.admission_required:
+            await self.require_sandbox_admission(context)
+        return {
+            "ready": ready,
+            "content_digest": descriptor.content_digest,
+            "mount_path": descriptor.mount_path,
+        }
+
+    @contextlib.asynccontextmanager
+    async def _resolved_artifact_spec(
+        self, spec: BoxSpec, action_context: ActionContext | None
+    ):
+        if not spec.artifact_mounts:
+            yield spec, []
+            return
+        if action_context is None:
+            raise BoxValidationError(
+                "Artifact mounts require a trusted Workspace context"
+            )
+        context = ActionContext.model_validate(action_context).without_installation()
+        if (
+            len(spec.extra_mounts) + len(spec.artifact_mounts)
+            > MAX_ADMITTED_READ_ONLY_MOUNTS
+        ):
+            raise BoxValidationError("Too many read-only mounts")
+        paths = {mount.mount_path for mount in spec.extra_mounts}
+        if any(mount.mount_path in paths for mount in spec.artifact_mounts):
+            raise BoxValidationError(
+                "Artifact mount targets conflict with additional mounts"
+            )
+        owner = "pending-" + uuid.uuid4().hex
+        digests = [mount.content_digest for mount in spec.artifact_mounts]
+        with blocking_work_scope(box_namespace(context)):
+            cache = await self._get_artifact_cache()
+            try:
+                mounts = await self._artifact_work(
+                    cache.acquire, context, digests, owner
+                )
+                yield (
+                    spec.model_copy(
+                        update={
+                            "extra_mounts": [*spec.extra_mounts, *mounts],
+                            "artifact_mounts": [],
+                        }
+                    ),
+                    digests,
+                )
+            finally:
+                await self._artifact_work(cache.release, owner)
+
+    async def _pin_session_artifacts(
+        self, session_id: str, context: ActionContext | None, digests: list[str]
+    ) -> None:
+        if digests:
+            cache = await self._get_artifact_cache()
+            await self._artifact_work(cache.acquire, context, digests, session_id)
+
     async def execute(
         self,
         spec: BoxSpec,
@@ -1279,6 +1482,18 @@ done
                 )
             await self.require_sandbox_admission(action_context)
             spec = self._normalize_admitted_spec(spec, action_context)
+        async with self._resolved_artifact_spec(spec, action_context) as (
+            resolved,
+            digests,
+        ):
+            return await self._execute_resolved(resolved, action_context, digests)
+
+    async def _execute_resolved(
+        self,
+        spec: BoxSpec,
+        action_context: ActionContext | None,
+        artifact_digests: list[str],
+    ) -> BoxExecutionResult:
         session = await self._get_or_create_session(
             spec,
             track_active_exec=True,
@@ -1290,6 +1505,13 @@ done
         execution_cancelled = False
         try:
             async with session.lock:
+                if session.closing:
+                    raise BoxSessionNotFoundError(
+                        f"session {spec.session_id} is being deleted"
+                    )
+                await self._pin_session_artifacts(
+                    spec.session_id, action_context, artifact_digests
+                )
                 if session.closing:
                     raise BoxSessionNotFoundError(
                         f"session {spec.session_id} is being deleted"
@@ -1414,6 +1636,7 @@ done
         if (
             self.session_ttl_sec <= 0
             and not self.admission_required
+            and self._artifact_cache is None
             and not any(
                 session.idle_ttl_sec is not None for session in self._sessions.values()
             )
@@ -1437,12 +1660,15 @@ done
         while (
             self.session_ttl_sec > 0
             or self.admission_required
+            or self._artifact_cache is not None
             or any(
                 session.idle_ttl_sec is not None for session in self._sessions.values()
             )
         ):
             self._reaper_wakeup.clear()
             intervals = [_REAPER_INTERVAL_SEC]
+            if self._artifact_cache is not None:
+                intervals.append(self.artifact_cache_ttl_sec)
             if self.session_ttl_sec > 0:
                 intervals.append(self.session_ttl_sec)
             intervals.extend(
@@ -1461,6 +1687,7 @@ done
                     cleanup_tasks = self._reap_expired_admissions_locked()
                     cleanup_tasks.extend(await self._reap_expired_sessions_locked())
                 await self._wait_for_session_cleanups(cleanup_tasks)
+                await self.reap_artifact_cache()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -1513,8 +1740,22 @@ done
                 )
             await self.require_sandbox_admission(action_context)
             spec = self._normalize_admitted_spec(spec, action_context)
-        session = await self._get_or_create_session(spec, action_context=action_context)
-        return self._session_to_dict(session.info)
+        async with self._resolved_artifact_spec(spec, action_context) as (
+            resolved,
+            digests,
+        ):
+            session = await self._get_or_create_session(
+                resolved, action_context=action_context
+            )
+            async with session.lock:
+                if session.closing:
+                    raise BoxSessionNotFoundError(
+                        f"session {resolved.session_id} is being deleted"
+                    )
+                await self._pin_session_artifacts(
+                    resolved.session_id, action_context, digests
+                )
+                return self._session_to_dict(session.info)
 
     async def delete_session(self, session_id: str) -> None:
         # Serialize against a session that is still being created. Otherwise a
@@ -2577,6 +2818,8 @@ done
                     ) from process_error
                 runtime_session.managed_processes.clear()
                 self._managed_process_session_ids.discard(session_id)
+                if self._artifact_cache is not None:
+                    await self._artifact_work(self._artifact_cache.release, session_id)
                 cleaned_up = True
         except Exception as exc:
             self.logger.warning(

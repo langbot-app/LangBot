@@ -202,6 +202,7 @@ Box is the optional sandbox subsystem used by native execution tools, stdio MCP 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
+- Its internal `prepare_skill_artifact` seam checks a pinned repository publication and prepares the Runtime's own verified cache over authenticated RPC. Existing user execution payloads cannot choose cache digests; native execution integration remains separate. See [Runtime artifact cache](dev-docs/BOX_ARTIFACT_CACHE.md).
 - [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio when Core launches it (Windows, Linux and macOS alike), or over WebSocket for Docker, `--standalone-box`, or an explicit `box.runtime.endpoint`. The rule is shared with the Plugin Runtime connector through `ManagedRuntimeConnector.select_runtime_transport()`.
 - Core-launched Box subprocesses receive a stable `LANGBOT_BOX_INSTANCE_ID`:

@@ -139,6 +139,23 @@ Box Runtime 端一旦配置 token，就会拒绝未携带相同 token 的 LangBo
 
 设置 `box.file_transfer_mode: network`，即可通过鉴权后的 Box 连接传输附件，无需 Core 与 Runtime 共享附件目录。两端需要支持文件传输动作的 SDK/Runtime。逐步接入期间默认值为 `legacy`，沿用现有传输路径。网络模式通过分块 RPC 传输文件内容，使用小型沙箱命令准备产物快照和确认清理，支持导出 `/workspace` 之外的文件。临时产物快照需要占用工作目录空间。Cloud 启动还会检查共享工作目录，其迁移由 #3010 第 5 阶段跟踪。 网络模式的产物导出需要可写工作目录来准备临时快照；`offline_readonly` 导出请使用 `legacy`。OSS 网络模式下，E2B 的可写工作区文件保留在沙箱中，不再与宿主目录双向镜像。
 
+### Runtime 包缓存
+
+使用配套的 Core 与 SDK 源码时，Host 可以通过鉴权后的 Box 连接准备不可变包。Runtime 校验压缩包及文件树 digest 后，才会发布只读缓存。缓存命中仍须携带当前 Workspace 上下文，digest 本身不授予访问权。这提供后续网络执行所需的基础接口；逐步接入期间，现有 Skill 工具仍使用原来的挂载路径。
+
+```yaml
+box:
+  limits:
+    max_artifact_cache_bytes: 268435456
+    artifact_cache_ttl_sec: 300
+```
+
+默认允许 256 MiB 的可复用包内容和元数据，闲置 300 秒后可回收；上限分别为 256 MiB 和 86,400 秒。会话仍挂载的包持续受保护，包括托管进程运行期间。若受保护的包占满缓存，准备新包会明确失败。沙箱中的投影和可写工作区另有限额。
+
+缓存由 Runtime 管理，位于 `LANGBOT_BOX_DATA_DIR` 下，不使用 Core 包目录。淘汰后会重新传输并校验。GC 只删除可丢弃缓存，不删除数据库中的发布版本。单个压缩包上限为 64 MiB，仍须满足后端限制，例如 E2B 单文件不超过 10 MiB。附件传输的独立限额保持原值。
+
+该缓存需要 POSIX 描述符相对文件操作，本阶段验证的平台为 Linux Runtime。首次使用缓存后修改上述限额，需要重启 Box Runtime。Runtime 崩溃时仍受保护的包会保留并继续占用容量。维护时须先停止该 Runtime 及调用方，确认旧后端会话及进程已退出，再清理其可丢弃缓存。
+
 ## SDK（`sdk/`）架构
 
 `sdk/src/langbot_plugin` 中包含以下内容：

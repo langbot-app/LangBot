@@ -51,9 +51,10 @@ does not authorize private package access.
 The same service is registered as `skill.package.get` with `exposure: none`.
 HTTP clients can use the authenticated binary endpoint. Existing MCP,
 assistant, plugin and Runner Skill operations retain their current permissions;
-the binary package operation is not advertised to them. Runtime package download
-and replacement of execution mounts belong to the subsequent runtime work.
-Current script execution still uses the existing Box mount contract.
+the binary package operation is not advertised to them. The Host can prepare a
+pinned publication through the [Runtime artifact cache](BOX_ARTIFACT_CACHE.md)
+without materializing a Core tree. Current native script execution still uses the
+existing Box mount contract; replacing that orchestration is a separate stage.
 
 Public media retains its existing anonymous HTTP contract. Writes require a
 trusted Workspace scope and explicitly register `public_media`. Reads use an
@@ -88,4 +89,5 @@ absent keys older than the operational grace period.
 Do not use an age-only S3 lifecycle rule on the publication prefix: retained
 versions can remain valid indefinitely. Keep every referenced content row and
 every published version. Automatic legacy import, default switching and Runtime
-cache GC are separate stages tracked by #3010.
+execution integration are separate stages tracked by #3010. Runtime-owned cache
+GC is described in the artifact-cache contract above.

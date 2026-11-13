@@ -165,6 +165,7 @@ class SkillRepository:
         return {
             'content': content,
             'revision': publication['skill']['revision'],
+            'manifest': publication['manifest'],
             'sha256': hashlib.sha256(content).hexdigest(),
             'size': len(content),
             'filename': f'{publication["skill"]["name"]}.zip',
