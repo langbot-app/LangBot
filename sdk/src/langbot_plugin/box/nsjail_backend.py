@@ -249,6 +249,11 @@ class NsjailBackend(BaseSandboxBackend):
             "bounded_ephemeral_storage": False,
             "inode_quota": False,
         }
+        if available and not self._cgroup_v2_available:
+            # Be explicit that the pid cap is UID-scoped here instead of
+            # reporting a plain available backend whose exec cannot fork
+            # (langbot-app/LangBot#2602).
+            readiness["pid_limit_scope"] = "uid"
         if not strict:
             return readiness
 
@@ -816,6 +821,56 @@ class NsjailBackend(BaseSandboxBackend):
                     f"Failed to prepare nsjail mount target {target}: {exc}"
                 )
 
+    @staticmethod
+    def _uid_thread_count(uid: int | None = None) -> int:
+        """Count the live threads of ``uid`` (default: the current real UID).
+
+        Linux keys ``RLIMIT_NPROC`` by real UID and counts every thread of that
+        account, not just the nsjail child tree. The rlimit fallback therefore
+        needs the host baseline so ``pids_limit`` still is sandbox headroom.
+        Returns 0 when ``/proc`` is unreadable.
+        """
+        if uid is None:
+            uid = os.getuid()
+        total = 0
+        try:
+            proc_entries = os.listdir("/proc")
+        except OSError:
+            return 0
+        for name in proc_entries:
+            if not name.isdigit():
+                continue
+            try:
+                with open(f"/proc/{name}/status", encoding="utf-8") as handle:
+                    status = handle.read()
+            except OSError:
+                continue
+            real_uid: int | None = None
+            threads = 1
+            for line in status.splitlines():
+                if line.startswith("Uid:"):
+                    try:
+                        real_uid = int(line.split()[1])
+                    except (IndexError, ValueError):
+                        real_uid = None
+                elif line.startswith("Threads:"):
+                    try:
+                        threads = int(line.split()[1])
+                    except (IndexError, ValueError):
+                        threads = 1
+            if real_uid == uid:
+                total += max(threads, 1)
+        return total
+
+    def _rlimit_nproc_value(self, spec: BoxSpec) -> int:
+        """Return a UID-offset ``--rlimit_nproc`` so ``pids_limit`` stays headroom.
+
+        The bare ``pids_limit`` is UID-scoped and a host account that already
+        has that many threads cannot fork inside the jail at all (issued as
+        langbot-app/LangBot#2602).
+        """
+        return self._uid_thread_count() + max(spec.pids_limit, 1)
+
     def _build_resource_limits(self, spec: BoxSpec) -> list[str]:
         args: list[str] = []
         if self._cgroup_v1_parent and not (
@@ -872,7 +927,12 @@ class NsjailBackend(BaseSandboxBackend):
             # compose `cgroup: host`); otherwise bound memory at the container
             # level (e.g. compose `mem_limit`). We still apply the pid cap,
             # which is a real rlimit that does not break runtimes.
-            args.extend(["--rlimit_nproc", str(spec.pids_limit)])
+            #
+            # RLIMIT_NPROC is UID-scoped, so `pids_limit` alone is already
+            # consumed by the host account on a busy machine and the jail
+            # cannot fork (langbot-app/LangBot#2602). Offset by the live UID
+            # thread count to keep `pids_limit` as sandbox headroom.
+            args.extend(["--rlimit_nproc", str(self._rlimit_nproc_value(spec))])
 
         # nsjail defaults --rlimit_as to 512 MB. RLIMIT_AS caps *virtual*
         # address space, and modern runtimes reserve huge virtual mappings up
