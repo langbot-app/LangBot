@@ -24,7 +24,12 @@ from ... import group
 from ......i18n import language, t
 from ......i18n.workspace import get_workspace_language
 from ......utils import httpclient, paths
-from ......platform.sources.websocket_manager import WebSocketScope, is_valid_session_id, ws_connection_manager
+from ......platform.sources.websocket_manager import (
+    WebSocketScope,
+    is_valid_session_id,
+    session_launcher_id,
+    ws_connection_manager,
+)
 from .websocket_chat import create_scoped_duplex_tasks, wait_for_duplex_tasks
 
 logger = logging.getLogger(__name__)
@@ -304,13 +309,51 @@ class EmbedRouterGroup(group.RouterGroup):
                 return self.http_status(403, -1, 'Unauthorized or session expired')
             try:
                 data = await quart.request.get_json()
-                message_id = data.get('message_id', '')
+                message_id = str(data.get('message_id', ''))
                 feedback_type = data.get('feedback_type')
 
                 if feedback_type not in (1, 2, 3):
                     return self.http_status(400, -1, 'feedback_type must be 1 (like), 2 (dislike), or 3 (cancel)')
 
-                feedback_id = f'embed_{uuid.uuid4().hex[:12]}'
+                conversation = {}
+                session_id = data.get('session_id') or None
+                if session_id is None:
+                    # A widget cached before votes were tied to a conversation.
+                    feedback_id = f'embed_{uuid.uuid4().hex[:12]}'
+                else:
+                    session_type = data.get('session_type') or 'person'
+                    if session_type not in ('person', 'group'):
+                        return self.http_status(400, -1, 'session_type must be person or group')
+                    if not is_valid_session_id(session_id):
+                        return self.http_status(400, -1, 'Valid session_id is required')
+                    if not message_id or len(message_id) > 64:
+                        return self.http_status(400, -1, 'Valid message_id is required')
+                    # Message ids restart in every conversation. Scope them to the
+                    # visitor's conversation (named as monitoring names it), and
+                    # derive one id per vote so changing or cancelling it reaches
+                    # the same record.
+                    conversation['session_id'] = (
+                        f'{session_type}_{session_launcher_id(session_type, pipeline_uuid, session_id)}'
+                    )
+                    digest = hashlib.sha256(
+                        f'{runtime_bot.bot_entity.uuid}\n{conversation["session_id"]}\n{message_id}'.encode()
+                    ).hexdigest()
+                    feedback_id = f'embed_{digest[:32]}'
+                    # Link the vote to the monitoring record of the question it
+                    # answers. Resolved from the visitor's own conversation so a
+                    # visitor cannot attach feedback to someone else's message.
+                    if feedback_type != 3:
+                        proxy_bot = await self.ap.platform_mgr.get_websocket_proxy_bot(runtime_bot.execution_context)
+                        websocket_adapter = proxy_bot.adapter if proxy_bot else None
+                        stream_id = (
+                            websocket_adapter.get_monitoring_message_id(
+                                pipeline_uuid, session_type, session_id, message_id
+                            )
+                            if websocket_adapter
+                            else None
+                        )
+                        if stream_id:
+                            conversation['stream_id'] = stream_id
 
                 await self.ap.monitoring_service.record_feedback(
                     runtime_bot.execution_context,
@@ -319,8 +362,9 @@ class EmbedRouterGroup(group.RouterGroup):
                     bot_id=runtime_bot.bot_entity.uuid,
                     bot_name=runtime_bot.bot_entity.name or bot_uuid,
                     pipeline_id=pipeline_uuid,
-                    message_id=str(message_id),
+                    message_id=message_id,
                     platform='web_page_bot',
+                    **conversation,
                 )
 
                 return self.success(data={'feedback_id': feedback_id})

@@ -65,3 +65,13 @@ python3 -m http.server 8930
 ## Start Using
 
 After adding the embed code to your website, visitors can click the chat bubble at the bottom-right corner to start chatting with your bot.
+
+## Conversations and Feedback
+
+Each visitor has their own conversation, kept per browser tab: reloading the page continues it, while a new tab or another visitor starts a separate one. Replies are only delivered to the conversation that asked, even when many visitors chat at once.
+
+Visitors can rate each answer with 👍 or 👎. Choosing the other button changes the vote, and clicking the active button again withdraws it, so each answer has at most one vote per conversation. Votes appear in the **User Feedback** tab of the **Dashboard**, and in the bot's **Sessions** view next to the question they rate.
+
+<Info>
+LangBot matches a vote to its question using the reply history it keeps in memory. A vote on an answer from before a LangBot restart, or on an answer that has dropped out of a long or long-idle conversation, is still recorded but is not shown next to its question.
+</Info>

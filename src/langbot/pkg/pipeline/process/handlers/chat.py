@@ -12,6 +12,7 @@ from ..stream_results import coalesce_stream_results
 from ... import entities
 from ... import monitoring_helper
 from ... import plugin_diagnostics
+from ...stream_output import stream_output_enabled
 
 import langbot_plugin.api.entities.events as events
 from ....agent.runner.config_resolver import RunnerConfigResolver
@@ -148,10 +149,7 @@ class ChatMessageHandler(handler.MessageHandler):
                         yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
                         return
 
-                try:
-                    is_stream = await query.adapter.is_stream_output_supported()
-                except AttributeError:
-                    is_stream = False
+                is_stream = await stream_output_enabled(query)
 
                 # Create a single resp_message_id for the entire streaming response
                 resp_message_id = uuid.uuid4()

@@ -70,6 +70,7 @@ export class WebSocketClient {
     private pipelineId: string,
     private sessionType: 'person' | 'group' = 'person',
     private token?: string,
+    private sessionId?: string,
   ) {}
 
   /**
@@ -116,6 +117,9 @@ export class WebSocketClient {
           `api/v1/pipelines/${encodeURIComponent(this.pipelineId)}/ws/connect`,
         );
         url.searchParams.set('session_type', this.sessionType);
+        if (this.sessionId) {
+          url.searchParams.set('session_id', this.sessionId);
+        }
         const socket = new WebSocket(url.toString());
         this.ws = socket;
         if (!this.recoveryListenersAttached) {

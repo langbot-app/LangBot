@@ -22,6 +22,7 @@ from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType
 from ..workspace.errors import WorkspaceError, WorkspaceInvariantError
 from .config_coercion import coerce_pipeline_config
 from .pool import get_query_execution_context
+from .stream_output import stream_output_enabled
 from ..i18n import language_scope, t
 from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
@@ -269,7 +270,7 @@ class RuntimePipeline:
                 query.message_event, platform_events.GroupMessage
             ):
                 result.user_notice.insert(0, platform_message.At(target=query.message_event.sender.id))
-            stream_output_supported = await query.adapter.is_stream_output_supported()
+            stream_output_supported = await stream_output_enabled(query)
             await self._assert_execution_active(query)
             if stream_output_supported and query.resp_messages:
                 await query.adapter.reply_message_chunk(
@@ -572,11 +573,7 @@ class RuntimePipeline:
         message = platform_message.MessageChain([platform_message.Plain(text=text)])
         quote_origin = query.pipeline_config.get('output', {}).get('misc', {}).get('quote-origin', False)
         try:
-            if (
-                await query.adapter.is_stream_output_supported()
-                and last_chunk is not None
-                and last_chunk.resp_message_id
-            ):
+            if await stream_output_enabled(query) and last_chunk is not None and last_chunk.resp_message_id:
                 chunk = provider_message.MessageChunk(
                     role='assistant',
                     content=text,

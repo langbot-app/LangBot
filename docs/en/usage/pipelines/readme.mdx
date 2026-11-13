@@ -51,6 +51,10 @@ You can [customize any variable through plugins](/en/plugin/dev/apis/common.html
 
 ![Dify Workflow Start Node Configuration](/images/zh/workshop/dify-service-api/dify_workflow_var.png)
 
+## Debug Chat
+
+Open **Debug Chat** on a pipeline to talk to it from the WebUI in private or group chat mode. Each browser tab has its own conversation per pipeline, so several members can debug the same pipeline at once without receiving each other's replies. Reloading the tab continues the conversation, and **Reset Conversation** clears only this tab's conversation.
+
 ## Other Configurations
 
 If a pipeline's Runner plugin is still starting, LangBot waits up to 30 seconds for that installed, enabled plugin before reporting it unavailable. This does not install plugins or confirm permissions automatically. If the Runner is missing, open **Plugins** in the same Workspace to check installation, enablement and permission confirmation. For failed downloads, dependencies or initialization, inspect the installation task and Plugin Runtime logs, resolve the cause and retry. If the plugin is running but the selected Runner is absent, check the plugin version and select an available Runner in the pipeline's AI settings. The monitoring error includes the failure details.
