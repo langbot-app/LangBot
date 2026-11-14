@@ -101,6 +101,15 @@ Common fields:
 stdio MCP runs inside Box. Dependency install and process startup are subject to the sandbox profile, network permission, resource limits, and the mount allowlist.
 </Warning>
 
+## Share to LangBot Space
+
+A remote MCP server can be submitted to the marketplace with **Share to Space** on its detail page. Only remote servers can be shared for now.
+
+- Connect it successfully first; its tool list is published with it.
+- Credentials are never uploaded. Credential-like headers, URL parameters and path segments become `${VAR}` placeholders, and the dialog shows exactly what will be published.
+- When someone installs it from the marketplace, the server stays disabled and its detail page lists the placeholders to fill. Replace them with your own values, save, then enable it.
+- Submissions become public after review.
+
 ## Common Issues
 
 | Symptom | What to check |

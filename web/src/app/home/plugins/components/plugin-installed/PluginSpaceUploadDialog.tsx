@@ -392,7 +392,12 @@ export default function PluginSpaceUploadDialog({
             {t('plugins.spaceUpload.title')}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            {t('plugins.spaceUpload.description', { author, name })}
+            {t(
+              config && !config.debug
+                ? 'plugins.spaceUpload.descriptionInstalled'
+                : 'plugins.spaceUpload.description',
+              { author, name },
+            )}
           </DialogDescription>
         </DialogHeader>
 
@@ -700,6 +705,17 @@ export default function PluginSpaceUploadDialog({
               {/* STEP 1: Plugin Card with Language Switcher + Changelog */}
               {currentStep === 1 && (
                 <div className="space-y-3.5">
+                  {config && !config.debug && (
+                    <Alert className="py-2.5">
+                      <Info className="size-4" />
+                      <AlertTitle className="text-sm">
+                        {t('plugins.spaceUpload.installedPackageTitle')}
+                      </AlertTitle>
+                      <AlertDescription className="text-xs">
+                        {t('plugins.spaceUpload.installedPackageHint')}
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   {/* Clean Section Header */}
                   <div className="flex items-center justify-between px-0.5">
                     <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">

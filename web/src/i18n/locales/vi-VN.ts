@@ -1906,6 +1906,12 @@ const viVN = {
     debugging: 'Gỡ lỗi',
     uploadLocalPlugin: 'Tải lên Plugin cục bộ',
     spaceUpload: {
+      descriptionInstalled:
+        'Tải plugin cài cục bộ {{author}}/{{name}} lên chợ tiện ích.',
+      shareInstalledAction: 'Chia sẻ lên Space',
+      installedPackageTitle: 'Gói plugin đã cài sẽ được tải lên',
+      installedPackageHint:
+        'Plugin cài cục bộ được tải lên nguyên gói .lbpkg; tác giả, tên và phiên bản lấy từ manifest.',
       menuAction: 'Tải lên chợ ứng dụng',
       title: 'Tải plugin lên chợ ứng dụng',
       description:
@@ -3576,6 +3582,7 @@ const viVN = {
       skill: 'Kỹ năng',
       knowledge_base: 'Cơ sở tri thức',
       mcp_server: 'Máy chủ MCP',
+      content: 'Nội dung chia sẻ',
       runtime: 'Môi trường chạy',
       system: 'Hệ thống',
       resource: 'Tài nguyên',
@@ -3586,6 +3593,8 @@ const viVN = {
       error: 'Thất bại',
     },
     actions: {
+      content_publish: 'Chia sẻ nội dung lên Space',
+      plugin_publish: 'Xuất bản tiện ích lên Space',
       audit_log_view: 'Xem nhật ký thao tác',
       settings_update: 'Cập nhật cài đặt truy vết',
       settings_view: 'Xem cài đặt truy vết',
@@ -4233,6 +4242,103 @@ const viVN = {
       failed: 'Thất bại',
       rate_limited: 'Hết hạn mức',
       skipped: 'Bỏ qua',
+    },
+  },
+  promptLibrary: {
+    open: 'Thư viện prompt',
+    title: 'Thư viện prompt',
+    description:
+      'Tìm prompt đã được duyệt trên LangBot Space. Nhớ lưu cấu hình sau khi áp dụng.',
+    kindMessaging: 'Hội thoại',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Tìm theo tên, mô tả, thẻ hoặc nội dung',
+    tabAll: 'Tất cả',
+    tabFavorites: 'Yêu thích',
+    favoritesNeedAccount: 'Liên kết LangBot Account để dùng mục yêu thích',
+    otherKindHint:
+      'Bạn đang xem prompt {{kind}}, được viết cho mục đích khác. Hãy kiểm tra trước khi áp dụng.',
+    noFavorites: 'Chưa có prompt yêu thích',
+    empty: 'Không có prompt phù hợp',
+    loadFailed: 'Tải thư viện prompt thất bại',
+    favoriteFailed: 'Không thể cập nhật yêu thích',
+    applied: 'Đã áp dụng. Lưu để có hiệu lực.',
+    uses: '{{count}} lượt dùng',
+    favorite: 'Yêu thích',
+    variablesHint: 'Biến:',
+    append: 'Thêm vào prompt hiện tại',
+    replace: 'Thay prompt hiện tại',
+    replaceTitle: 'Thay prompt hiện tại?',
+    replaceDescription:
+      'Prompt hiện tại sẽ bị ghi đè (vẫn có thể hủy trước khi lưu).',
+    selectHint: 'Chọn một prompt bên trái để xem',
+  },
+  spaceShare: {
+    shareShort: 'Chia sẻ',
+    shareToSpace: 'Chia sẻ lên Space',
+    findingsBlockTitle:
+      'Phát hiện thông tin xác thực, hãy xóa trước khi chia sẻ',
+    findingsWarnTitle: 'Có dữ liệu cá nhân hoặc nội bộ',
+    submitFailed: 'Gửi thất bại',
+    submittedTitle: 'Đã gửi duyệt',
+    submittedAgentReview:
+      '{{id}} đang được duyệt tự động và sẽ xuất hiện trên LangBot Space khi được duyệt.',
+    submittedManualReview: '{{id}} đang chờ duyệt thủ công.',
+    viewProgress: 'Xem tiến độ trên LangBot Space',
+    needAccountTitle: 'Cần LangBot Account',
+    needAccount:
+      'Hãy liên kết LangBot Account trong cài đặt tài khoản; nội dung sẽ đăng dưới hồ sơ nhà sáng tạo.',
+    needCreatorTitle: 'Chưa có hồ sơ nhà sáng tạo',
+    needCreator: 'Thiết lập hồ sơ nhà sáng tạo trên LangBot Space để gửi.',
+    openCreator: 'Thiết lập',
+    acknowledgeWarnings: 'Tôi xác nhận thông tin này có thể công khai',
+    displayName: 'Tên hiển thị',
+    identifier: 'Định danh',
+    descriptionLabel: 'Mô tả',
+    tags: 'Thẻ',
+    tagsPlaceholder: 'Phân cách bằng dấu phẩy, tối đa 8',
+    changelog: 'Nhật ký thay đổi',
+    reviewNotice:
+      'Nội dung được duyệt trước khi công khai trên LangBot Space. Chia sẻ lại cùng tên sẽ tạo phiên bản mới.',
+    submit: 'Gửi duyệt',
+    promptTitle: 'Chia sẻ prompt lên LangBot Space',
+    promptDescriptionMessaging:
+      'Đăng dưới dạng prompt hội thoại để người khác dùng trong cấu hình pipeline.',
+    promptDescriptionAgent:
+      'Đăng dưới dạng prompt Agent để người khác dùng trong cấu hình Agent.',
+    detectedVariables: 'Biến phát hiện:',
+    skillTitle: 'Chia sẻ Skill lên LangBot Space',
+    skillDescription:
+      'Tải gói Skill hiện tại. Quá trình duyệt kiểm tra script và yêu cầu ra ngoài.',
+    packageFiles: 'Tệp sẽ gửi',
+    mcpTitle: 'Chia sẻ máy chủ MCP lên LangBot Space',
+    mcpDescription:
+      'Chỉ hỗ trợ MCP từ xa. Thông tin xác thực không được tải lên mà được thay bằng biến giữ chỗ.',
+    mcpPublishedConfig: 'Cấu hình sẽ đăng',
+    mcpToolsCount: 'Kèm {{count}} công cụ',
+    mcpRedactedTitle: 'Đã xóa {{count}} thông tin xác thực',
+    mcpRedactedHint:
+      'Người cài sẽ được yêu cầu nhập các giá trị này. Đặt nhãn dễ hiểu:',
+    mcpInputLabelPlaceholder: 'Nhãn (mặc định: {{label}})',
+    mcpNoCredentials:
+      'Không có thông tin xác thực; cấu hình được đăng nguyên trạng.',
+    mcpNeedsConnection:
+      'Hãy kết nối thành công trước; danh sách công cụ sẽ được đăng kèm',
+    mcpFillInputsTitle: 'Điền thông tin xác thực trước khi bật',
+    mcpFillInputs:
+      'MCP cộng đồng này cần giá trị của bạn cho {{names}}. Thay thế, lưu rồi bật.',
+    finding: {
+      openai_key: 'Khóa OpenAI',
+      anthropic_key: 'Khóa Anthropic',
+      github_token: 'Token GitHub',
+      slack_token: 'Token Slack',
+      aws_access_key: 'Khóa AWS',
+      google_api_key: 'Khóa Google API',
+      private_key: 'Khóa riêng',
+      jwt: 'Token JWT',
+      langbot_key: 'Khóa LangBot',
+      email: 'Địa chỉ email',
+      phone: 'Số điện thoại',
+      private_url: 'URL nội bộ',
     },
   },
 };

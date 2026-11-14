@@ -51,6 +51,15 @@ You can [customize any variable through plugins](/en/plugin/dev/apis/common.html
 
 ![Dify Workflow Start Node Configuration](/images/zh/workshop/dify-service-api/dify_workflow_var.png)
 
+### Prompt library
+
+With the built-in Agent, the **Prompt** field has two buttons:
+
+- **Prompt library** opens a dialog to search reviewed prompts shared on LangBot Space. Pipelines show conversation prompts by default and Agents show Agent prompts; you can switch to the other kind. Choose **Replace current prompt** or **Append to current prompt**, then save.
+- **Share** submits the current prompt to LangBot Space. Prompts containing credentials such as API keys or tokens are refused; emails, phone numbers and internal URLs need your confirmation. A prompt becomes public once it passes review.
+
+With a LangBot Account bound to the instance you can favorite prompts. Favorites belong to the account, so they also appear on the LangBot Space website when you sign in with it.
+
 ## Other Configurations
 
 If a pipeline's Runner plugin is still starting, LangBot waits up to 30 seconds for that installed, enabled plugin before reporting it unavailable. This does not install plugins or confirm permissions automatically. If the Runner is missing, open **Plugins** in the same Workspace to check installation, enablement and permission confirmation. For failed downloads, dependencies or initialization, inspect the installation task and Plugin Runtime logs, resolve the cause and retry. If the plugin is running but the selected Runner is absent, check the plugin version and select an available Runner in the pipeline's AI settings. The monitoring error includes the failure details.

@@ -1,4 +1,5 @@
 import { hasModelReasoningAbility } from '@/app/home/components/reasoning/model-reasoning';
+import PromptLibraryToolbar from '@/app/home/components/space-share/PromptLibraryToolbar';
 import {
   DynamicFormItemType,
   IDynamicFormItemSchema,
@@ -2038,8 +2039,17 @@ export default function DynamicFormItemComponent({
       )
         ? field.value
         : [{ role: 'system', content: '' }];
+      const promptLibraryKind = systemContext?.prompt_library_kind;
       return (
         <div className="min-w-0 space-y-2">
+          {(promptLibraryKind === 'messaging' ||
+            promptLibraryKind === 'agent') && (
+            <PromptLibraryToolbar
+              kind={promptLibraryKind}
+              value={promptItems}
+              onChange={(messages) => field.onChange(messages)}
+            />
+          )}
           {promptItems.map(
             (item: { role: string; content: string }, index: number) => (
               <div

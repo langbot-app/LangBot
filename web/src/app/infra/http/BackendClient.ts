@@ -6,6 +6,17 @@ import type {
   AlertSummary,
 } from '@/app/infra/entities/alerts';
 import type {
+  ContentSubmissionResult,
+  LibraryPrompt,
+  MCPSharePreview,
+  MyContentSubmission,
+  PromptKind,
+  PromptMessage,
+  ShareFinding,
+  ShareMetadata,
+  SpaceShareContext,
+} from '@/app/infra/entities/space-share';
+import type {
   WorkspaceSandboxSettings,
   E2BConfigInput,
 } from '@/app/infra/entities/workspace';
@@ -1678,6 +1689,110 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/plugins/${encodeURIComponent(author)}/${encodeURIComponent(name)}/space-upload/git-sync`,
       payload,
     );
+  }
+
+  // ============ LangBot Space sharing / prompt library (LANG-439) ============
+  public getSpaceShareContext(): Promise<SpaceShareContext> {
+    return this.get('/api/v1/space-share/context');
+  }
+
+  public listLibraryPrompts(params: {
+    kind?: PromptKind;
+    q?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<{ prompts: LibraryPrompt[]; total: number }> {
+    return this.get('/api/v1/space-share/prompts/library', params);
+  }
+
+  public trackLibraryPromptUse(author: string, name: string): Promise<object> {
+    return this.post(
+      `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+    );
+  }
+
+  public listFavoritePrompts(kind?: PromptKind): Promise<{
+    available: boolean;
+    prompts: LibraryPrompt[];
+    prompt_ids: string[];
+  }> {
+    return this.get('/api/v1/space-share/prompts/favorites', { kind });
+  }
+
+  public setPromptFavorite(
+    author: string,
+    name: string,
+    favorite: boolean,
+  ): Promise<{ favorited: boolean; favorite_count: number }> {
+    const url = `/api/v1/space-share/prompts/favorites/${encodeURIComponent(author)}/${encodeURIComponent(name)}`;
+    return favorite ? this.put(url) : this.delete(url);
+  }
+
+  public previewPromptShare(payload: {
+    kind: PromptKind;
+    messages: PromptMessage[];
+  }): Promise<{ payload: object; findings: ShareFinding[] }> {
+    return this.post('/api/v1/space-share/prompts/preview', payload);
+  }
+
+  public sharePrompt(
+    payload: ShareMetadata & {
+      kind: PromptKind;
+      language: string;
+      messages: PromptMessage[];
+      variables: { name: string; description?: string }[];
+      acknowledge_warnings?: boolean;
+    },
+  ): Promise<ContentSubmissionResult> {
+    return this.post('/api/v1/space-share/prompts', payload);
+  }
+
+  public previewSkillShare(skillName: string): Promise<{
+    files: { path: string; size: number }[];
+    findings: ShareFinding[];
+    size: number;
+  }> {
+    return this.get(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}/preview`,
+    );
+  }
+
+  public shareSkill(
+    skillName: string,
+    payload: ShareMetadata,
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/skills/${encodeURIComponent(skillName)}`,
+      payload,
+    );
+  }
+
+  public previewMCPShare(
+    serverName: string,
+    overrides?: object,
+  ): Promise<MCPSharePreview> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}/preview`,
+      { overrides },
+    );
+  }
+
+  public shareMCP(
+    serverName: string,
+    payload: ShareMetadata & { overrides?: object },
+  ): Promise<ContentSubmissionResult> {
+    return this.post(
+      `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}`,
+      payload,
+    );
+  }
+
+  public listMyContentSubmissions(): Promise<{
+    available: boolean;
+    submissions: MyContentSubmission[];
+  }> {
+    return this.get('/api/v1/space-share/submissions');
   }
 
   public getBoxRuntimeStatus(): Promise<ApiRespBoxStatus> {

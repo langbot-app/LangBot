@@ -1,4 +1,6 @@
 import EntityLoadState from '@/components/EntityLoadState';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import ShareMCPDialog from '@/app/home/components/space-share/ShareMCPDialog';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,7 +27,7 @@ import type { MCPFormHandle } from '@/app/home/mcp/components/mcp-form/MCPForm';
 import { httpClient, systemInfo } from '@/app/infra/http/HttpClient';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { useTranslation } from 'react-i18next';
-import { Server, Trash2 } from 'lucide-react';
+import { KeyRound, Server, Share2, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
@@ -74,6 +76,9 @@ export default function MCPDetailContent({ id }: { id: string }) {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [enableLoaded, setEnableLoaded] = useState(false);
+  const [serverMode, setServerMode] = useState('');
+  const [pendingInputs, setPendingInputs] = useState<string[]>([]);
+  const [showShare, setShowShare] = useState(false);
   const [detailRuntimeStatus, setDetailRuntimeStatus] =
     useState<MCPRuntimeState | null>(null);
 
@@ -126,6 +131,8 @@ export default function MCPDetailContent({ id }: { id: string }) {
           const server = res.server ?? res;
           setServerEnabled(server.enable ?? true);
           setDetailRuntimeStatus(server.runtime_info?.status ?? null);
+          setServerMode(String(server.mode ?? ''));
+          setPendingInputs(server.unfilled_inputs ?? []);
           setEnableLoaded(true);
         })
         .catch(() => setLoadFailed(true));
@@ -152,6 +159,7 @@ export default function MCPDetailContent({ id }: { id: string }) {
     httpClient.getMCPServer(id).then((res) => {
       const server = res.server ?? res;
       setServerEnabled(server.enable ?? true);
+      setPendingInputs(server.unfilled_inputs ?? []);
     });
     refreshMCPServers();
   }
@@ -367,6 +375,21 @@ export default function MCPDetailContent({ id }: { id: string }) {
                 {t('common.test')}
               </Button>
             )}
+            {canManage && ['remote', 'http', 'sse'].includes(serverMode) && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowShare(true)}
+                title={
+                  detailRuntimeStatus === 'connected'
+                    ? undefined
+                    : t('spaceShare.mcpNeedsConnection')
+                }
+              >
+                <Share2 className="mr-1.5 size-4" />
+                {t('spaceShare.shareToSpace')}
+              </Button>
+            )}
             {canManage && (
               <Button
                 type="submit"
@@ -379,6 +402,25 @@ export default function MCPDetailContent({ id }: { id: string }) {
           </div>
         </div>
 
+        {pendingInputs.length > 0 && (
+          <Alert className="mb-3">
+            <KeyRound className="size-4" />
+            <AlertTitle>{t('spaceShare.mcpFillInputsTitle')}</AlertTitle>
+            <AlertDescription>
+              {t('spaceShare.mcpFillInputs', {
+                names: pendingInputs.map((n) => '${' + n + '}').join(', '),
+              })}
+            </AlertDescription>
+          </Alert>
+        )}
+        {showShare && (
+          <ShareMCPDialog
+            open={showShare}
+            onOpenChange={setShowShare}
+            serverName={id}
+            description={''}
+          />
+        )}
         <div className="min-h-0 flex-1">
           <fieldset className="contents" disabled={!canManage}>
             <MCPForm

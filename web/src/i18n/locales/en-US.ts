@@ -1922,6 +1922,12 @@ const enUS = {
     debugging: 'Debugging',
     uploadLocalPlugin: 'Upload Local Plugin',
     spaceUpload: {
+      descriptionInstalled:
+        'Upload the locally installed plugin {{author}}/{{name}} to the marketplace.',
+      shareInstalledAction: 'Share to Space',
+      installedPackageTitle: 'The installed plugin package will be uploaded',
+      installedPackageHint:
+        'A locally installed plugin is uploaded exactly as the .lbpkg it runs; author, name and version come from its manifest. To change them, edit the source, rebuild and reinstall.',
       menuAction: 'Upload to Extension Market',
       title: 'Upload plugin to Extension Market',
       description:
@@ -3598,6 +3604,7 @@ const enUS = {
       skill: 'Skill',
       knowledge_base: 'Knowledge base',
       mcp_server: 'MCP server',
+      content: 'Shared content',
       runtime: 'Runtime',
       system: 'System',
       resource: 'Resource',
@@ -3608,6 +3615,8 @@ const enUS = {
       error: 'Failed',
     },
     actions: {
+      content_publish: 'Share content to Space',
+      plugin_publish: 'Publish extension to Space',
       audit_log_view: 'View operation logs',
       settings_update: 'Update tracing settings',
       settings_view: 'View tracing settings',
@@ -4257,6 +4266,103 @@ const enUS = {
       failed: 'Failed',
       rate_limited: 'Quota reached',
       skipped: 'Skipped',
+    },
+  },
+  promptLibrary: {
+    open: 'Prompt library',
+    title: 'Prompt library',
+    description:
+      'Search reviewed prompts shared on LangBot Space. Save the configuration after applying one.',
+    kindMessaging: 'Conversation',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Search name, description, tags or text',
+    tabAll: 'All',
+    tabFavorites: 'Favorites',
+    favoritesNeedAccount: 'Bind a LangBot Account to favorite prompts',
+    otherKindHint:
+      'You are browsing {{kind}} prompts, written for a different use. Check they fit before applying.',
+    noFavorites: 'No favorite prompts yet',
+    empty: 'No matching prompts',
+    loadFailed: 'Failed to load the prompt library',
+    favoriteFailed: 'Could not update the favorite',
+    applied: 'Applied. Save to take effect.',
+    uses: '{{count}} uses',
+    favorite: 'Favorite',
+    variablesHint: 'Variables:',
+    append: 'Append to current prompt',
+    replace: 'Replace current prompt',
+    replaceTitle: 'Replace the current prompt?',
+    replaceDescription:
+      'The current prompt will be overwritten (you can still discard before saving).',
+    selectHint: 'Select a prompt on the left to preview',
+  },
+  spaceShare: {
+    shareShort: 'Share',
+    shareToSpace: 'Share to Space',
+    findingsBlockTitle:
+      'Possible credentials found — remove them before sharing',
+    findingsWarnTitle: 'Contains personal or internal data',
+    submitFailed: 'Submission failed',
+    submittedTitle: 'Submitted for review',
+    submittedAgentReview:
+      '{{id}} is being reviewed automatically and will appear on LangBot Space once approved.',
+    submittedManualReview: '{{id}} is waiting for a manual review.',
+    viewProgress: 'View review progress on LangBot Space',
+    needAccountTitle: 'LangBot Account required',
+    needAccount:
+      'Bind a LangBot Account in account settings first; submissions are published under its creator profile.',
+    needCreatorTitle: 'No creator profile yet',
+    needCreator: 'Set up a creator profile on LangBot Space to submit.',
+    openCreator: 'Set up',
+    acknowledgeWarnings: 'I confirm this information can be public',
+    displayName: 'Display name',
+    identifier: 'Identifier',
+    descriptionLabel: 'Description',
+    tags: 'Tags',
+    tagsPlaceholder: 'Comma-separated, up to 8',
+    changelog: 'Changelog',
+    reviewNotice:
+      'Submissions are reviewed before they become public on LangBot Space. Sharing the same name again publishes a new version.',
+    submit: 'Submit for review',
+    promptTitle: 'Share prompt to LangBot Space',
+    promptDescriptionMessaging:
+      'Published as a conversation prompt that others can find in pipeline settings.',
+    promptDescriptionAgent:
+      'Published as an Agent prompt that others can find in Agent settings.',
+    detectedVariables: 'Detected variables:',
+    skillTitle: 'Share Skill to LangBot Space',
+    skillDescription:
+      'Uploads the current Skill package. The review checks scripts and outbound requests.',
+    packageFiles: 'Files to submit',
+    mcpTitle: 'Share MCP server to LangBot Space',
+    mcpDescription:
+      'Remote MCP only. Credentials are never uploaded: they become placeholders that installers fill in with their own values.',
+    mcpPublishedConfig: 'Configuration to publish',
+    mcpToolsCount: 'Includes a snapshot of {{count}} tools',
+    mcpRedactedTitle: '{{count}} credentials removed',
+    mcpRedactedHint:
+      'Installers will be asked for these values. Give each a friendly label:',
+    mcpInputLabelPlaceholder: 'Label (default: {{label}})',
+    mcpNoCredentials:
+      'No credentials found; the configuration is published as is.',
+    mcpNeedsConnection:
+      'Connect successfully first; the tool list is published with it',
+    mcpFillInputsTitle: 'Fill in credentials before enabling',
+    mcpFillInputs:
+      'This community MCP server needs your own values for {{names}}. Replace them, save, then enable it.',
+    finding: {
+      openai_key: 'OpenAI key',
+      anthropic_key: 'Anthropic key',
+      github_token: 'GitHub token',
+      slack_token: 'Slack token',
+      aws_access_key: 'AWS access key',
+      google_api_key: 'Google API key',
+      private_key: 'Private key',
+      jwt: 'JWT token',
+      langbot_key: 'LangBot key',
+      email: 'Email address',
+      phone: 'Phone number',
+      private_url: 'Internal URL',
     },
   },
 };
