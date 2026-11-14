@@ -2251,6 +2251,13 @@ const enUS = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'All extensions',
+      allDesc: 'Plugins, MCP servers and skills',
+      pluginDesc: 'Platforms, tools, runners and more',
+      mcpDesc: 'Tools served by external MCP servers',
+      skillDesc: 'Teach Agents new ways of working',
+    },
     certifiedPlugin: 'Certified plugin',
     certificationTooltip:
       'This version has passed a review of data isolation and compatibility with shared runtimes, and its package is signed.',

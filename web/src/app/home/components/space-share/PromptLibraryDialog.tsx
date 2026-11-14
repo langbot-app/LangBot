@@ -12,6 +12,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
+import {
+  Item,
+  ItemContent,
+  ItemDescription,
+  ItemTitle,
+} from '@/components/ui/item';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import {
   AlertDialog,
@@ -284,34 +290,45 @@ export default function PromptLibraryDialog({
                 </div>
               ) : (
                 prompts.map((p) => (
-                  <button
-                    type="button"
+                  <Item
                     key={p.prompt_id}
+                    size="sm"
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={selected?.prompt_id === p.prompt_id}
                     onClick={() => setSelected(p)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setSelected(p);
+                      }
+                    }}
                     className={cn(
-                      'block w-full border-b px-3 py-2.5 text-left last:border-b-0 hover:bg-muted/50',
+                      'cursor-pointer flex-nowrap rounded-none border-0 border-b px-3 py-2.5 last:border-b-0 hover:bg-muted/50',
                       selected?.prompt_id === p.prompt_id && 'bg-muted',
                     )}
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium">
-                        {extractI18nObject(p.label) || p.name}
-                      </span>
-                      {favoriteIds.has(p.prompt_id) && (
-                        <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
-                      )}
-                    </div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      @{p.author} · {extractI18nObject(p.description)}
-                    </div>
-                    <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
-                      {p.language && <span>{p.language}</span>}
-                      <span>
-                        {t('promptLibrary.uses', { count: p.use_count })}
-                      </span>
-                      <span>★ {p.favorite_count}</span>
-                    </div>
-                  </button>
+                    <ItemContent className="min-w-0 gap-0.5">
+                      <ItemTitle className="w-full min-w-0 justify-between">
+                        <span className="truncate">
+                          {extractI18nObject(p.label) || p.name}
+                        </span>
+                        {favoriteIds.has(p.prompt_id) && (
+                          <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
+                        )}
+                      </ItemTitle>
+                      <ItemDescription className="line-clamp-1 text-xs">
+                        @{p.author} · {extractI18nObject(p.description)}
+                      </ItemDescription>
+                      <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+                        {p.language && <span>{p.language}</span>}
+                        <span>
+                          {t('promptLibrary.uses', { count: p.use_count })}
+                        </span>
+                        <span>★ {p.favorite_count}</span>
+                      </div>
+                    </ItemContent>
+                  </Item>
                 ))
               )}
             </div>

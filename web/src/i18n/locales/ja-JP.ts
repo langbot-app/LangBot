@@ -2265,6 +2265,13 @@ const jaJP = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'すべての拡張',
+      allDesc: 'プラグイン・MCP・スキル',
+      pluginDesc: 'プラットフォーム・ツール・ランナーなど',
+      mcpDesc: '外部サービスのツールを接続',
+      skillDesc: 'Agent に新しい作業手順を教える',
+    },
     certifiedPlugin: '認証済みプラグイン',
     certificationTooltip:
       'このバージョンはデータ分離と共有実行環境との互換性の審査に合格し、パッケージに署名されています。',

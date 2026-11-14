@@ -2108,6 +2108,13 @@ const zhHans = {
     },
   },
   market: {
+    typeTiles: {
+      all: '全部扩展',
+      allDesc: '插件、MCP 与技能',
+      pluginDesc: '扩展平台、工具、运行器等能力',
+      mcpDesc: '接入外部服务提供的工具',
+      skillDesc: '让 Agent 学会新的工作方法',
+    },
     certifiedPlugin: '认证插件',
     certificationTooltip:
       '此版本已通过数据隔离与共享运行环境兼容性审核，插件包已签名。',

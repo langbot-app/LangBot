@@ -2105,6 +2105,13 @@ const zhHant = {
     },
   },
   market: {
+    typeTiles: {
+      all: '全部擴充',
+      allDesc: '外掛、MCP 與技能',
+      pluginDesc: '擴充平台、工具、執行器等能力',
+      mcpDesc: '接入外部服務提供的工具',
+      skillDesc: '讓 Agent 學會新的工作方法',
+    },
     certifiedPlugin: '認證外掛',
     certificationTooltip:
       '此版本已通過資料隔離與共享執行環境相容性審核，外掛套件已簽章。',

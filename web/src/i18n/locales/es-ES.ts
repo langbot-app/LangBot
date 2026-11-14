@@ -2283,6 +2283,13 @@ const esES = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Todas las extensiones',
+      allDesc: 'Plugins, MCP y skills',
+      pluginDesc: 'Plataformas, herramientas, runners y más',
+      mcpDesc: 'Herramientas de servidores MCP externos',
+      skillDesc: 'Enseña a los Agents nuevas formas de trabajar',
+    },
     certifiedPlugin: 'Plugin certificado',
     certificationTooltip:
       'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',

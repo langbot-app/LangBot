@@ -2236,6 +2236,13 @@ const viVN = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Tất cả tiện ích',
+      allDesc: 'Plugin, MCP và kỹ năng',
+      pluginDesc: 'Nền tảng, công cụ, runner và hơn thế',
+      mcpDesc: 'Công cụ từ máy chủ MCP bên ngoài',
+      skillDesc: 'Dạy Agent cách làm việc mới',
+    },
     certifiedPlugin: 'Plugin được chứng nhận',
     certificationTooltip:
       'Phiên bản này đã vượt qua đánh giá về cách ly dữ liệu và khả năng tương thích với môi trường chạy dùng chung. Gói đã được ký.',
