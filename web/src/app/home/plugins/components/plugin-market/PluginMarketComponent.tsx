@@ -768,8 +768,8 @@ function MarketPageContent({
               icon: LayoutGrid,
               tone: 'bg-background text-foreground ring-1 ring-inset ring-border',
               activeTone:
-                'bg-primary/5 ring-primary/25 hover:bg-primary/10 dark:bg-primary/10',
-              activeIcon: 'bg-primary text-primary-foreground',
+                'bg-blue-50 ring-blue-200 hover:bg-blue-50 dark:bg-blue-950/40 dark:ring-blue-900',
+              activeIcon: 'bg-blue-500 text-white',
             },
             {
               value: 'plugin',
