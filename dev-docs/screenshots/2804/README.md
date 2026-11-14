@@ -10,7 +10,7 @@ Captured against a real Vite dev server with Playwright, API mocked (no backend)
 | `compare-review.png` | With a permission review pending, the Review button keeps the banner and no follow-up competes with it. |
 | `compare-multi-zh-Hans.png` / `compare-multi-zh-Hant.png` | The Chinese renderings. Copy is native, not translated English, and the traditional locale uses the same word for a plugin as the rest of its file. |
 | `full-review-list.png` | The same button in the pending-review list section, outside the dialog. Both call sites share the short text and the full label. |
-| `compare-review-zh-Hans.png` / `compare-review-zh-Hant.png` | The review button shortens to 审阅 / 審閱 like every other control; the full phrase stays in `aria-label`. The pending banner drops 外掛 for 插件. |
+| `compare-review-zh-Hans.png` / `compare-review-zh-Hant.png` | Pending review now renders as the same row as a follow-up step — icon, text, chevron under the shared heading — instead of a bordered button, so the two end states are indistinguishable. The visible text shortens to Review / 审阅 / 審閱 with the full phrase in `aria-label`; the pending banner drops 外掛 for 插件. |
 
 Reproduce:
 

@@ -167,12 +167,14 @@ test('parser-only install keeps the banner a single line', async ({ page }) => {
 test('pending permission review wins over the follow-up', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'review');
+  // The review is the only row while it is pending: it sits in the same group
+  // the follow-up uses, so the two states look identical and must not stack.
+  const group = dialog.getByRole('group', { name: /Next steps/i });
+  await expect(group).toHaveCount(1);
   await expect(
-    dialog.getByRole('link', { name: /Review permissions|审阅权限|審閱權限/ }),
+    group.getByRole('link', { name: /Review permissions|审阅权限|審閱權限/ }),
   ).toBeVisible();
-  await expect(dialog.getByRole('group', { name: /Next steps/i })).toHaveCount(
-    0,
-  );
+  await expect(group.getByRole('link')).toHaveCount(1);
 });
 
 test('the pending-review list button is short but fully labelled', async ({

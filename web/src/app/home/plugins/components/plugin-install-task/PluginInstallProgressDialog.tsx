@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { backendClient } from '@/app/infra/http';
 import type { Plugin } from '@/app/infra/entities/plugin';
 import {
@@ -8,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ShieldCheck } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
@@ -24,6 +24,7 @@ import {
   PluginInstallTask,
 } from './PluginInstallTaskContext';
 import PluginInstallFollowUp from './PluginInstallFollowUp';
+import PluginNextStepRow from './PluginNextStepRow';
 
 type StageConfig = {
   key: InstallStage;
@@ -172,18 +173,25 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
                   ? t('plugins.installProgress.updateComplete')
                   : t('plugins.installProgress.installComplete')}
           </span>
-          {needsReview && task.pluginName.includes('/') && (
-            <Button asChild variant="outline" size="sm">
-              <Link
-                to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
-                onClick={() => setSelectedTaskId(null)}
-                aria-label={t('pluginPermissions.reviewLabel')}
-              >
-                {t('pluginPermissions.review')}
-              </Link>
-            </Button>
-          )}
         </div>
+        {needsReview && task.pluginName.includes('/') && (
+          <div
+            className="mt-1.5 space-y-1"
+            role="group"
+            aria-label={t('plugins.installProgress.followUp.nextSteps')}
+          >
+            <p className="text-xs font-medium text-green-700 dark:text-green-300">
+              {t('plugins.installProgress.followUp.nextSteps')}
+            </p>
+            <PluginNextStepRow
+              to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
+              icon={ShieldCheck}
+              text={t('pluginPermissions.review')}
+              label={t('pluginPermissions.reviewLabel')}
+              onNavigate={() => setSelectedTaskId(null)}
+            />
+          </div>
+        )}
         {isPlugin && !needsReview && (
           <PluginInstallFollowUp
             plugin={installedPlugin}
