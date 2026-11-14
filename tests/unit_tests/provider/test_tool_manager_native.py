@@ -896,3 +896,96 @@ async def test_workspace_file_script_resolves_the_sandbox_interpreter():
     assert 'python3 required for native file tools' in command
     assert command.endswith(' - <<\'PY\'\nprint("x")\nPY')
     assert '|| command -v python)' not in command
+
+
+# --- langbot-app/LangBot#2847: E2B small-file write cost and observation ---
+
+
+def _remote_write_loader(monkeypatch, *, stdout='{"ok": true, "path": "/workspace/probe.txt"}'):
+    """Loader whose workspace files resolve through Box instead of the host.
+
+    This is exactly the E2B topology: the workspace is not visible on the
+    LangBot host, so `write` takes the Box file-script path.
+    """
+
+    captured: dict = {}
+
+    async def execute_tool(payload, query):
+        captured['payload'] = payload
+        return {'ok': True, 'stdout': stdout}
+
+    box_service = SimpleNamespace(
+        available=True,
+        default_workspace=None,
+        shares_filesystem_with_box=False,
+        execute_tool=execute_tool,
+    )
+    logger = Mock()
+    monkeypatch.setattr(native_loader, '_SECURE_HOST_FILE_OPS_AVAILABLE', True)
+    loader = NativeToolLoader(SimpleNamespace(box_service=box_service, logger=logger))
+    return loader, captured, logger
+
+
+@pytest.mark.asyncio
+async def test_remote_small_write_stays_one_exec_and_never_touches_the_host(monkeypatch):
+    """#2847: a small write on E2B must be a single Box file script.
+
+    The Core side cannot remove the remote round trip — the workspace sync it
+    implies lives in the SDK — but it must not add a second call, a whole-tree
+    upload, or a host-path lookup of its own.
+    """
+
+    loader, captured, _logger = _remote_write_loader(monkeypatch)
+    # E2B has no Core-visible workspace, so the host path must never be read.
+    loader.ap.box_service._tenant_workspace = Mock(
+        side_effect=AssertionError('E2B must not resolve Core host paths')
+    )
+
+    result = await loader.invoke_tool(
+        'write',
+        {'path': '/workspace/draft.txt', 'content': 'tiny'},
+        _make_query(),
+    )
+
+    assert result == {'ok': True, 'path': '/workspace/probe.txt'}
+    assert set(captured['payload']) == {'command', 'timeout_sec'}
+    assert 'tiny' in captured['payload']['command']
+
+
+@pytest.mark.asyncio
+async def test_remote_write_logs_the_tool_level_cost_once(monkeypatch):
+    """The issue asks the tool cost to be observable per request.
+
+    Without this, the extra latency is indistinguishable from Skill activation
+    or sandbox creation, and gets attributed to model inference.
+    """
+
+    loader, _captured, logger = _remote_write_loader(monkeypatch)
+
+    await loader.invoke_tool('write', {'path': '/workspace/draft.txt', 'content': 'tiny'}, _make_query())
+
+    messages = [call.args[0] for call in logger.info.call_args_list]
+    finished = [message for message in messages if message.startswith('box file script finished')]
+    assert len(finished) == 1
+    assert 'tool=write' in finished[0]
+    assert 'query_id=test-query-1' in finished[0]
+    assert 'ok=True' in finished[0]
+    assert 'duration_ms=' in finished[0]
+
+
+@pytest.mark.asyncio
+async def test_remote_write_failure_still_logs_the_cost(monkeypatch):
+    loader, captured, logger = _remote_write_loader(monkeypatch, stdout='')
+
+    async def failing_execute_tool(payload, query):
+        captured['payload'] = payload
+        return {'ok': False, 'stdout': '', 'stderr': 'sandbox gone'}
+
+    loader.ap.box_service.execute_tool = failing_execute_tool
+
+    result = await loader.invoke_tool('write', {'path': '/workspace/draft.txt', 'content': 'tiny'}, _make_query())
+
+    assert result == {'ok': False, 'error': 'sandbox gone'}
+    finished = [m.args[0] for m in logger.info.call_args_list if m.args[0].startswith('box file script finished')]
+    assert len(finished) == 1
+    assert 'ok=False' in finished[0]
