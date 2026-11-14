@@ -4308,6 +4308,12 @@ const enUS = {
     selectHint: 'Select a prompt on the left to preview',
   },
   spaceShare: {
+    modeNew: 'Publish as new',
+    modeUpdate: 'Update existing ({{count}})',
+    pickExisting: 'Choose the item to update',
+    unlisted: 'unlisted',
+    identifierHint:
+      'Lowercase letters, digits, - or _. Fixed after publishing.',
     bindAccount: 'Bind LangBot Account',
     autoTranslateNotice:
       'Write it in one language. We translate it into other languages automatically after upload.',

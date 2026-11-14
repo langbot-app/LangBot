@@ -4284,6 +4284,11 @@ const viVN = {
     selectHint: 'Chọn một prompt bên trái để xem',
   },
   spaceShare: {
+    modeNew: 'Đăng mới',
+    modeUpdate: 'Cập nhật mục có sẵn ({{count}})',
+    pickExisting: 'Chọn mục cần cập nhật',
+    unlisted: 'đã ẩn',
+    identifierHint: 'Chữ thường, số, - hoặc _. Không đổi được sau khi đăng.',
     bindAccount: 'Liên kết tài khoản LangBot',
     autoTranslateNotice:
       'Chỉ cần viết bằng một ngôn ngữ. Chúng tôi sẽ tự động dịch sang các ngôn ngữ khác sau khi tải lên.',

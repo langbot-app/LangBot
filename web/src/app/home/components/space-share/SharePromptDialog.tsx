@@ -48,6 +48,8 @@ export default function SharePromptDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('spaceShare.promptTitle')}
+      itemType="prompt"
+      promptKind={kind}
       description={
         kind === 'agent'
           ? t('spaceShare.promptDescriptionAgent')

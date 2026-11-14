@@ -10,6 +10,7 @@ import type {
   LibraryPrompt,
   MCPSharePreview,
   MyContentSubmission,
+  SpaceOwnedItem,
   PromptKind,
   PromptMessage,
   ShareFinding,
@@ -1786,6 +1787,12 @@ export class BackendClient extends BaseHttpClient {
       `/api/v1/space-share/mcp/${encodeURIComponent(serverName)}`,
       payload,
     );
+  }
+
+  public listMySpaceItems(
+    type: SpaceOwnedItem['item_type'],
+  ): Promise<{ available: boolean; items: SpaceOwnedItem[] }> {
+    return this.get('/api/v1/space-share/items', { type });
   }
 
   public listMyContentSubmissions(): Promise<{

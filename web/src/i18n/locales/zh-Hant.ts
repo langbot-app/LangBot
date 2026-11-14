@@ -4056,6 +4056,11 @@ const zhHant = {
     selectHint: '從左側選擇一個提示詞預覽',
   },
   spaceShare: {
+    modeNew: '發布為新內容',
+    modeUpdate: '更新現有（{{count}}）',
+    pickExisting: '選擇要更新的投稿',
+    unlisted: '已下架',
+    identifierHint: '小寫字母、數字、- 或 _，發布後不可修改',
     bindAccount: '綁定 LangBot 帳號',
     autoTranslateNotice: '只需用一種語言填寫，上傳後我們會自動翻譯為多種語言。',
     shareShort: '分享',

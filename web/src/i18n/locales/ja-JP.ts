@@ -4320,6 +4320,11 @@ const jaJP = {
     selectHint: '左側からプロンプトを選んでプレビュー',
   },
   spaceShare: {
+    modeNew: '新規として公開',
+    modeUpdate: '既存を更新（{{count}}）',
+    pickExisting: '更新する投稿を選択',
+    unlisted: '非公開',
+    identifierHint: '小文字・数字・- または _。公開後は変更できません',
     bindAccount: 'LangBot アカウントを連携',
     autoTranslateNotice:
       '1 つの言語で書くだけで大丈夫です。アップロード後に他の言語へ自動翻訳します。',

@@ -4382,6 +4382,12 @@ const esES = {
     selectHint: 'Selecciona un prompt a la izquierda',
   },
   spaceShare: {
+    modeNew: 'Publicar como nuevo',
+    modeUpdate: 'Actualizar existente ({{count}})',
+    pickExisting: 'Elige el elemento a actualizar',
+    unlisted: 'oculto',
+    identifierHint:
+      'Minúsculas, dígitos, - o _. No se puede cambiar tras publicar.',
     bindAccount: 'Vincular cuenta de LangBot',
     autoTranslateNotice:
       'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',

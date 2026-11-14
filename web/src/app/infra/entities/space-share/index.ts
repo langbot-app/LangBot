@@ -42,6 +42,20 @@ export interface ShareFinding {
   excerpt: string;
 }
 
+/** An item the bound LangBot Account already published (LANG-439). */
+export interface SpaceOwnedItem {
+  item_type: 'prompt' | 'skill' | 'mcp';
+  item_id: string;
+  author: string;
+  name: string;
+  label: Record<string, string>;
+  description: Record<string, string>;
+  version: number;
+  status: 'live' | 'unlisted';
+  kind?: string;
+  updated_at: string;
+}
+
 export interface ShareMetadata {
   name: string;
   label: Record<string, string>;

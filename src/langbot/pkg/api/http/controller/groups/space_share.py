@@ -262,6 +262,32 @@ class SpaceShareRouterGroup(group.RouterGroup):
             return self.success(data=result)
 
         @self.route(
+            '/items',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            """Items the bound LangBot Account already published, so the share
+            dialog can publish a new version of one of them."""
+            token = await space_share.resolve_space_access_token(self.ap, request_context)
+            if not token:
+                return self.success(data={'available': False, 'items': []})
+            item_type = quart.request.args.get('type')
+            if item_type not in (None, '', 'prompt', 'skill', 'mcp'):
+                return self.http_status(400, -1, 'type must be prompt, skill or mcp')
+            try:
+                data = await self.ap.space_service.space_api(
+                    'GET',
+                    '/api/v1/marketplace/content-items/mine',
+                    access_token=token,
+                    params={'type': item_type or None},
+                )
+            except Exception as exc:
+                return self._fail(exc)
+            return self.success(data={'available': True, 'items': (data or {}).get('items') or []})
+
+        @self.route(
             '/submissions',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

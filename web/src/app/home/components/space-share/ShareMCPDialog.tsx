@@ -58,6 +58,7 @@ export default function ShareMCPDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('spaceShare.mcpTitle')}
+      itemType="mcp"
       description={t('spaceShare.mcpDescription')}
       defaultName={shortName}
       defaultLabel={shortName}

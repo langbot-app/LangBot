@@ -44,6 +44,7 @@ export default function ShareSkillDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={t('spaceShare.skillTitle')}
+      itemType="skill"
       description={t('spaceShare.skillDescription')}
       defaultName={skillName}
       defaultLabel={displayName}

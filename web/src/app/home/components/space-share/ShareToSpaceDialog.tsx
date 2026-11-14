@@ -24,11 +24,20 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import { useSpaceBind } from './useSpaceBind';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import type {
   ContentSubmissionResult,
   ShareFinding,
   ShareMetadata,
   SpaceShareContext,
+  SpaceOwnedItem,
 } from '@/app/infra/entities/space-share';
 
 export function slugifyShareName(value: string): string {
@@ -80,6 +89,8 @@ export default function ShareToSpaceDialog({
   onOpenChange,
   title,
   description,
+  itemType,
+  promptKind,
   defaultName,
   defaultLabel,
   defaultDescription,
@@ -93,6 +104,10 @@ export default function ShareToSpaceDialog({
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  /** Type being shared; lists the account's existing items of this type. */
+  itemType: SpaceOwnedItem['item_type'];
+  /** For prompts: only offer existing prompts of the same kind. */
+  promptKind?: string;
   defaultName: string;
   defaultLabel: string;
   defaultDescription: string;
@@ -117,6 +132,10 @@ export default function ShareToSpaceDialog({
   const [error, setError] = useState('');
   const [result, setResult] = useState<ContentSubmissionResult | null>(null);
   const { bind: bindAccount, binding } = useSpaceBind();
+  // Publish as a new item, or as a new version of one already published.
+  const [mode, setMode] = useState<'new' | 'update'>('new');
+  const [owned, setOwned] = useState<SpaceOwnedItem[]>([]);
+  const [target, setTarget] = useState<SpaceOwnedItem | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -128,14 +147,69 @@ export default function ShareToSpaceDialog({
     setError('');
     setResult(null);
     setCtxLoading(true);
+    setMode('new');
+    setTarget(null);
+    setOwned([]);
     httpClient
       .getSpaceShareContext()
-      .then(setCtx)
+      .then(async (c) => {
+        setCtx(c);
+        if (!c?.space_connected || !c.has_creator_profile) return;
+        const res = await httpClient
+          .listMySpaceItems(itemType)
+          .catch(() => ({ items: [] as SpaceOwnedItem[] }));
+        const items = (res.items || []).filter(
+          (it) => !promptKind || !it.kind || it.kind === promptKind,
+        );
+        setOwned(items);
+        // Sharing something that already has a published twin (same
+        // identifier) most likely means updating it.
+        const twin = items.find(
+          (it) => it.name === slugifyShareName(defaultName),
+        );
+        if (twin) pickTarget(twin);
+      })
       .catch(() => setCtx(null))
       .finally(() => setCtxLoading(false));
-  }, [open, defaultName, defaultLabel, defaultDescription]);
+    // pickTarget only sets state; it is stable for this effect's purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    open,
+    defaultName,
+    defaultLabel,
+    defaultDescription,
+    itemType,
+    promptKind,
+  ]);
 
   const locale = (i18n.language || 'en_US').replace('-', '_');
+  const pickText = (obj: Record<string, string>) =>
+    obj[locale] ||
+    obj.en_US ||
+    obj.zh_Hans ||
+    Object.values(obj).find((v) => v && v.trim()) ||
+    '';
+
+  function pickTarget(it: SpaceOwnedItem) {
+    setMode('update');
+    setTarget(it);
+    setName(it.name);
+    setLabel(pickText(it.label || {}) || it.name);
+    setDesc(pickText(it.description || {}));
+  }
+
+  const switchMode = (next: 'new' | 'update') => {
+    if (next === mode) return;
+    if (next === 'update' && owned.length > 0) {
+      pickTarget(target || owned[0]);
+      return;
+    }
+    setMode('new');
+    setTarget(null);
+    setName(slugifyShareName(defaultName));
+    setLabel(defaultLabel);
+    setDesc(defaultDescription);
+  };
   const blocking = findings.some((f) => f.severity === 'block');
   const warns = findings.some((f) => f.severity === 'warn');
   const ready =
@@ -144,6 +218,7 @@ export default function ShareToSpaceDialog({
     canSubmit &&
     !blocking &&
     (!warns || ack) &&
+    (mode === 'new' || !!target) &&
     /^[a-z0-9][a-z0-9_-]{1,63}$/.test(name) &&
     label.trim() !== '' &&
     desc.trim() !== '';
@@ -154,8 +229,9 @@ export default function ShareToSpaceDialog({
     try {
       const meta: ShareMetadata = {
         name,
-        label: { [locale]: label.trim() },
-        description: { [locale]: desc.trim() },
+        // Updates keep the item's other languages and replace this one.
+        label: { ...(target?.label || {}), [locale]: label.trim() },
+        description: { ...(target?.description || {}), [locale]: desc.trim() },
         // Contributors don't tag; Space assigns tags during review.
         tags: [],
         changelog: changelog.trim(),
@@ -257,6 +333,52 @@ export default function ShareToSpaceDialog({
                 {t('spaceShare.acknowledgeWarnings')}
               </label>
             )}
+            {owned.length > 0 && (
+              <div className="space-y-2">
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={mode}
+                  onValueChange={(v) => v && switchMode(v as 'new' | 'update')}
+                >
+                  <ToggleGroupItem value="new" className="px-3">
+                    {t('spaceShare.modeNew')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="update" className="px-3">
+                    {t('spaceShare.modeUpdate', { count: owned.length })}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+                {mode === 'update' && (
+                  <Select
+                    value={target?.item_id}
+                    onValueChange={(id) => {
+                      const it = owned.find((x) => x.item_id === id);
+                      if (it) pickTarget(it);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder={t('spaceShare.pickExisting')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {owned.map((it) => (
+                        <SelectItem key={it.item_id} value={it.item_id}>
+                          <span className="truncate">
+                            {pickText(it.label || {}) || it.name}
+                          </span>
+                          <span className="ml-2 font-mono text-xs text-muted-foreground">
+                            @{it.item_id} · v{it.version}
+                            {it.status === 'unlisted'
+                              ? ` · ${t('spaceShare.unlisted')}`
+                              : ''}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>{t('spaceShare.displayName')}</Label>
@@ -267,14 +389,33 @@ export default function ShareToSpaceDialog({
               </div>
               <div className="space-y-1.5">
                 <Label>{t('spaceShare.identifier')}</Label>
-                <div className="flex items-center rounded-md border bg-muted/30 pl-2 text-sm text-muted-foreground">
-                  <span className="shrink-0">@{ctx.creator_slug}/</span>
-                  <Input
-                    className="border-0 bg-transparent pl-0.5 shadow-none focus-visible:ring-0"
-                    value={name}
-                    onChange={(e) => setName(e.target.value.toLowerCase())}
-                  />
-                </div>
+                {mode === 'update' ? (
+                  <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 font-mono text-sm text-muted-foreground">
+                    @{ctx.creator_slug}/{name}
+                    <span className="ml-auto pl-2 font-sans text-xs">
+                      v{target ? target.version + 1 : ''}
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    {/* Looks and behaves like a normal input; the creator
+                        prefix is fixed, the name after it is editable. */}
+                    <div className="flex h-9 items-center rounded-md border border-input bg-background text-sm shadow-xs transition-[color,box-shadow] focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+                      <span className="shrink-0 select-none pl-3 font-mono text-muted-foreground">
+                        @{ctx.creator_slug}/
+                      </span>
+                      <Input
+                        className="h-full min-w-0 flex-1 rounded-none border-0 bg-transparent pl-0 font-mono shadow-none focus-visible:ring-0 dark:bg-transparent"
+                        value={name}
+                        placeholder="my-prompt"
+                        onChange={(e) => setName(e.target.value.toLowerCase())}
+                      />
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {t('spaceShare.identifierHint')}
+                    </p>
+                  </>
+                )}
               </div>
             </div>
             <div className="space-y-1.5">
@@ -285,7 +426,7 @@ export default function ShareToSpaceDialog({
                 onChange={(e) => setDesc(e.target.value)}
               />
             </div>
-            {showChangelog && (
+            {(showChangelog || mode === 'update') && (
               <div className="space-y-1.5">
                 <Label>{t('spaceShare.changelog')}</Label>
                 <Textarea

@@ -4055,6 +4055,11 @@ const zhHans = {
     selectHint: '从左侧选择一个提示词预览',
   },
   spaceShare: {
+    modeNew: '发布为新内容',
+    modeUpdate: '更新已有（{{count}}）',
+    pickExisting: '选择要更新的投稿',
+    unlisted: '已下架',
+    identifierHint: '小写字母、数字、- 或 _，发布后不可修改',
     bindAccount: '绑定 LangBot 账号',
     autoTranslateNotice: '只需用一种语言填写，上传后我们会自动翻译为多种语言。',
     shareShort: '分享',
