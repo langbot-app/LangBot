@@ -37,6 +37,22 @@ def plan(source, preferences=None):
     return planner().plan_legacy_pipeline(source, preferences)
 
 
+@pytest.mark.parametrize('model', ['', 'model-1'])
+def test_plugin_only_migration_preserves_non_ai_config_without_enabling_runner(model):
+    source = source_for('local-agent')
+    source['ai']['local-agent']['model'] = {'primary': model, 'fallbacks': []}
+    preferences = {'enable_all_plugins': False, 'plugins': [{'author': 'local', 'name': 'business_plugin'}]}
+    before = copy.deepcopy((source, preferences))
+    result = planner().plan_legacy_pipeline(source, preferences, plugin_only=True)
+    assert result['state'] == 'ready'
+    assert result['target_plugin'] is None
+    assert result['target_runner_id'] is None
+    assert result['config']['ai'] == {'runner': {'id': '', 'expire-time': 0}, 'runner_config': {}}
+    assert {k: v for k, v in result['config'].items() if k != 'ai'} == {k: v for k, v in source.items() if k != 'ai'}
+    assert (source, preferences) == before
+    assert planner().plan_legacy_pipeline(result['config'], preferences, plugin_only=True)['state'] == 'already_current'
+
+
 def assert_block(result, code, field=None):
     assert result['state'] == 'blocked'
     assert result['config'] is None

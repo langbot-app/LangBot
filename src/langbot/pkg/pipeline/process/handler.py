@@ -17,6 +17,11 @@ class MessageHandler(metaclass=abc.ABCMeta):
     async def initialize(self):
         pass
 
+    def plugin_only(self) -> bool:
+        """Keep unclaimed messages silent when the instance runs only plugins."""
+        data = getattr(getattr(self.ap, 'instance_config', None), 'data', {})
+        return isinstance(data, dict) and data.get('system', {}).get('plugin_only') is True
+
     @abc.abstractmethod
     async def handle(
         self,

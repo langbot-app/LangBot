@@ -13,6 +13,27 @@ from unittest.mock import AsyncMock, Mock
 from tests.factories import FakeApp, command_query
 
 
+@pytest.mark.usefixtures('mock_circular_import_chain')
+@pytest.mark.asyncio
+@pytest.mark.parametrize('plugin_reply', [False, True])
+async def test_plugin_only_commands_preserve_plugins_and_skip_builtins(fake_app, mock_event_ctx, plugin_reply):
+    from tests.factories import text_chain
+
+    fake_app.instance_config.data.setdefault('system', {})['plugin_only'] = True
+    fake_app.sess_mgr.get_session = AsyncMock(side_effect=AssertionError('unclaimed command must stay silent'))
+    mock_event_ctx.is_prevented_default.return_value = plugin_reply
+    mock_event_ctx.event.reply_message_chain = text_chain('plugin reply') if plugin_reply else None
+    fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
+    query = command_query('help')
+    results = [result async for result in get_command_handler().CommandHandler(fake_app).handle(query)]
+    fake_app.plugin_connector.emit_event.assert_awaited_once()
+    fake_app.sess_mgr.get_session.assert_not_awaited()
+    assert results[0].result_type == (
+        get_entities().ResultType.CONTINUE if plugin_reply else get_entities().ResultType.INTERRUPT
+    )
+    assert bool(query.resp_messages) is plugin_reply
+
+
 # ============== FIXTURE USING IMPORT ISOLATION UTILITY ==============
 
 

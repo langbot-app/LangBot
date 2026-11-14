@@ -78,6 +78,8 @@ class CommandHandler(handler.MessageHandler):
             else:
                 yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
 
+        elif self.plugin_only():
+            yield entities.StageProcessResult(result_type=entities.ResultType.INTERRUPT, new_query=query)
         else:
             session = await self.ap.sess_mgr.get_session(query)
 
