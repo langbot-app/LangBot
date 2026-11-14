@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { backendClient } from '@/app/infra/http';
+import type { Plugin } from '@/app/infra/entities/plugin';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ShieldCheck } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
@@ -22,6 +23,7 @@ import {
   InstallStage,
   PluginInstallTask,
 } from './PluginInstallTaskContext';
+import PluginInstallFollowUp, { NextStepLink } from './PluginInstallFollowUp';
 
 type StageConfig = {
   key: InstallStage;
@@ -99,19 +101,24 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
   const [pendingConfirmation, setPendingConfirmation] = useState<
     boolean | null
   >(task.pendingConfirmation ?? null);
+  const [installedPlugin, setInstalledPlugin] = useState<Plugin | null>(null);
   useEffect(() => {
     if (!isDone || !isPlugin) return;
     let cancelled = false;
     setPendingConfirmation(task.pendingConfirmation ?? null);
+    setInstalledPlugin(null);
     const [author, name] = task.pluginName.split('/');
     if (author && name) {
       void backendClient
         .getPlugin(author, name)
         .then(({ plugin }) => {
-          if (!cancelled)
-            setPendingConfirmation(
-              plugin.permission_status?.pending_confirmation ?? false,
-            );
+          if (cancelled) return;
+          setPendingConfirmation(
+            plugin.permission_status?.pending_confirmation ?? false,
+          );
+          // The post-install follow-up steps depend on the components that
+          // actually shipped, so they come from the installed manifest.
+          setInstalledPlugin(plugin);
         })
         .catch(() => {});
     }
@@ -153,26 +160,36 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
 
   if (isDone) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
-        <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
-        <span className="flex-1 text-sm text-green-700 dark:text-green-300 font-medium break-words">
-          {needsReview
-            ? t('pluginPermissions.pending')
-            : !isPlugin
-              ? t('addExtension.installStage.installed')
-              : task.operation === 'upgrade'
-                ? t('plugins.installProgress.updateComplete')
-                : t('plugins.installProgress.installComplete')}
-        </span>
+      <div className="px-3 py-2.5 rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-green-600 dark:text-green-400" />
+          <span className="flex-1 text-sm text-green-700 dark:text-green-300 font-medium break-words">
+            {needsReview
+              ? t('pluginPermissions.pending')
+              : !isPlugin
+                ? t('addExtension.installStage.installed')
+                : task.operation === 'upgrade'
+                  ? t('plugins.installProgress.updateComplete')
+                  : t('plugins.installProgress.installComplete')}
+          </span>
+        </div>
         {needsReview && task.pluginName.includes('/') && (
-          <Button asChild variant="outline" size="sm">
-            <Link
+          <div className="mt-1.5">
+            <NextStepLink
               to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
-              onClick={() => setSelectedTaskId(null)}
+              icon={ShieldCheck}
+              label={t('pluginPermissions.reviewLabel')}
+              onNavigate={() => setSelectedTaskId(null)}
             >
               {t('pluginPermissions.review')}
-            </Link>
-          </Button>
+            </NextStepLink>
+          </div>
+        )}
+        {isPlugin && !needsReview && (
+          <PluginInstallFollowUp
+            plugin={installedPlugin}
+            onNavigate={() => setSelectedTaskId(null)}
+          />
         )}
       </div>
     );

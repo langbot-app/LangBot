@@ -2100,6 +2100,12 @@ const zhHans = {
       installCompletePlugin: '插件安装成功',
       installCompleteMCP: 'MCP 服务器安装成功',
       installCompleteSkill: '技能安装成功',
+      followUp: {
+        nextSteps: '下一步',
+        agents: '新建 Agent 或插件处理器',
+        pipelines: '创建流水线',
+        knowledge: '创建知识库',
+      },
       dismiss: '关闭',
       background: '后台运行',
       taskQueue: '插件任务',

@@ -2192,6 +2192,12 @@ const thTH = {
       installCompletePlugin: 'ติดตั้งปลั๊กอินสำเร็จ',
       installCompleteMCP: 'ติดตั้งเซิร์ฟเวอร์ MCP สำเร็จ',
       installCompleteSkill: 'ติดตั้งสกิลสำเร็จ',
+      followUp: {
+        nextSteps: 'ขั้นตอนถัดไป',
+        agents: 'สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
+        pipelines: 'สร้างไปป์ไลน์',
+        knowledge: 'สร้างฐานความรู้',
+      },
       dismiss: 'ปิด',
       background: 'ทำงานเบื้องหลัง',
       taskQueue: 'งานติดตั้ง',
