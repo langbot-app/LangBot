@@ -16,7 +16,7 @@ from langbot.pkg.platform.adapters.wecomcs.api_impl import WecomCSAPIMixin
 from langbot.pkg.platform.adapters.wecomcs.event_converter import WecomCSEventConverter
 from langbot.pkg.platform.adapters.wecomcs.message_converter import WecomCSMessageConverter
 from langbot.pkg.platform.adapters.wecomcs.platform_api import PLATFORM_API_MAP
-from langbot.pkg.platform.adapters.wecomcs.types import parse_private_chat_id
+from langbot.pkg.platform.adapters.wecomcs.types import split_private_chat_id
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
 from langbot_plugin.api.entities.builtin.platform.errors import NotSupportedError
@@ -36,6 +36,7 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
     ] = {}
     _message_cache: dict[str, platform_events.MessageReceivedEvent] = {}
     _user_cache: dict[str, typing.Any] = {}
+    _kfid_by_user: dict[str, str] = {}
 
     class Config:
         arbitrary_types_allowed = True
@@ -70,6 +71,7 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
             listeners={},
             _message_cache={},
             _user_cache={},
+            _kfid_by_user={},
         )
         self._register_native_handlers()
 
@@ -107,7 +109,9 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
         if target_type not in ('person', 'private'):
             raise NotSupportedError(f'send_message:{target_type}')
 
-        external_userid, open_kfid = parse_private_chat_id(target_id)
+        external_userid, open_kfid = split_private_chat_id(target_id)
+        if not open_kfid:
+            open_kfid = await self._resolve_open_kfid(external_userid)
         content_list = await WecomCSMessageConverter.yiri2target(message, self.bot)
         raw_results = []
         for content in content_list:
@@ -224,6 +228,7 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
 
     async def _handle_native_event(self, event: WecomCSEvent):
         self.bot_account_id = event.receiver_id or self.bot_account_id
+        self._remember_open_kfid(event.user_id, event.receiver_id)
         try:
             if event.message_id and str(event.message_id) in self._message_cache:
                 await self.logger.debug(f'Skip duplicated WeComCS message: {event.message_id}')
@@ -261,6 +266,44 @@ class WecomCSAdapter(WecomCSAPIMixin, abstract_platform_adapter.AbstractPlatform
         ):
             while len(cache) > 4096:
                 cache.pop(next(iter(cache)), None)
+
+    def _remember_open_kfid(self, external_userid: typing.Any, open_kfid: typing.Any) -> None:
+        user = str(external_userid or '')
+        kfid = str(open_kfid or '')
+        if not user or not kfid:
+            return
+        self._kfid_by_user.pop(user, None)
+        self._kfid_by_user[user] = kfid
+        while len(self._kfid_by_user) > 4096:
+            self._kfid_by_user.pop(next(iter(self._kfid_by_user)), None)
+
+    async def _resolve_open_kfid(self, external_userid: str) -> str:
+        """Find the open_kfid for a bare external_userid target.
+
+        Pipeline launcher ids (and anything persisted from them, e.g. the
+        HumanTakeover plugin's session target) carry only the customer's
+        external_userid. Prefer the account the customer last wrote to; when
+        that is unknown (e.g. after a restart) fall back to the only customer
+        service account of this app.
+        """
+        cached = self._kfid_by_user.get(external_userid)
+        if cached:
+            return cached
+        try:
+            accounts = await self.bot.list_kf_accounts()
+        except Exception as exc:
+            raise ValueError(
+                'WeComCS target_id must be formatted as "external_userid|open_kfid"; '
+                f'could not look up customer service accounts to resolve open_kfid: {exc}'
+            ) from exc
+        kfids = [str(a.get('open_kfid')) for a in accounts if a.get('open_kfid')]
+        if len(kfids) == 1:
+            return kfids[0]
+        raise ValueError(
+            'WeComCS target_id must be formatted as "external_userid|open_kfid": '
+            f'cannot infer open_kfid for this customer ({len(kfids)} customer service accounts found). '
+            'Wait for the customer to send a new message, or pass the full target id.'
+        )
 
     async def _send_content(self, open_kfid: str, external_userid: str, msgid: str, content: dict):
         content_type = content.get('type')
