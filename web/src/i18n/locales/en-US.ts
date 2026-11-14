@@ -4276,6 +4276,7 @@ const enUS = {
     },
   },
   promptLibrary: {
+    originalLanguage: 'original',
     open: 'Prompt library',
     title: 'Prompt library',
     description:
@@ -4304,6 +4305,8 @@ const enUS = {
     selectHint: 'Select a prompt on the left to preview',
   },
   spaceShare: {
+    autoTranslateNotice:
+      'Write it in one language. We translate it into other languages automatically after upload.',
     shareShort: 'Share',
     shareToSpace: 'Share to Space',
     findingsBlockTitle:

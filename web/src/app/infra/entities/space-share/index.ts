@@ -21,6 +21,8 @@ export interface LibraryPrompt {
   tags: string[] | null;
   messages: PromptMessage[];
   variables: { name: string; description?: string }[] | null;
+  /** Other language versions of `messages`, keyed by locale (LANG-439). */
+  translations?: Record<string, { messages: PromptMessage[] }> | null;
   version: number;
   use_count: number;
   favorite_count: number;

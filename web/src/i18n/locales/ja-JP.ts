@@ -4288,6 +4288,7 @@ const jaJP = {
     },
   },
   promptLibrary: {
+    originalLanguage: '原文',
     open: 'プロンプトライブラリ',
     title: 'プロンプトライブラリ',
     description:
@@ -4316,6 +4317,8 @@ const jaJP = {
     selectHint: '左側からプロンプトを選んでプレビュー',
   },
   spaceShare: {
+    autoTranslateNotice:
+      '1 つの言語で書くだけで大丈夫です。アップロード後に他の言語へ自動翻訳します。',
     shareShort: '共有',
     shareToSpace: 'Space に共有',
     findingsBlockTitle:

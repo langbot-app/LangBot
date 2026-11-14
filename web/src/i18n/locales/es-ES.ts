@@ -4350,6 +4350,7 @@ const esES = {
     },
   },
   promptLibrary: {
+    originalLanguage: 'original',
     open: 'Biblioteca de prompts',
     title: 'Biblioteca de prompts',
     description:
@@ -4378,6 +4379,8 @@ const esES = {
     selectHint: 'Selecciona un prompt a la izquierda',
   },
   spaceShare: {
+    autoTranslateNotice:
+      'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',
     shareShort: 'Compartir',
     shareToSpace: 'Compartir en Space',
     findingsBlockTitle:

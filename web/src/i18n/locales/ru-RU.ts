@@ -4298,6 +4298,7 @@ const ruRU = {
     },
   },
   promptLibrary: {
+    originalLanguage: 'оригинал',
     open: 'Библиотека промптов',
     title: 'Библиотека промптов',
     description:
@@ -4327,6 +4328,8 @@ const ruRU = {
     selectHint: 'Выберите промпт слева',
   },
   spaceShare: {
+    autoTranslateNotice:
+      'Достаточно одного языка. После загрузки мы автоматически переведём текст на другие языки.',
     shareShort: 'Поделиться',
     shareToSpace: 'Поделиться в Space',
     findingsBlockTitle:

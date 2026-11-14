@@ -4193,6 +4193,7 @@ const thTH = {
     },
   },
   promptLibrary: {
+    originalLanguage: 'ต้นฉบับ',
     open: 'คลังพรอมต์',
     title: 'คลังพรอมต์',
     description:
@@ -4220,6 +4221,8 @@ const thTH = {
     selectHint: 'เลือกพรอมต์ทางซ้ายเพื่อดูตัวอย่าง',
   },
   spaceShare: {
+    autoTranslateNotice:
+      'เขียนเพียงภาษาเดียวก็พอ เราจะแปลเป็นภาษาอื่นให้อัตโนมัติหลังอัปโหลด',
     shareShort: 'แชร์',
     shareToSpace: 'แชร์ไปยัง Space',
     findingsBlockTitle: 'พบข้อมูลรับรองที่น่าสงสัย ลบออกก่อนแชร์',

@@ -4024,6 +4024,7 @@ const zhHans = {
     },
   },
   promptLibrary: {
+    originalLanguage: '原文',
     open: '提示词库',
     title: '提示词库',
     description:
@@ -4051,6 +4052,7 @@ const zhHans = {
     selectHint: '从左侧选择一个提示词预览',
   },
   spaceShare: {
+    autoTranslateNotice: '只需用一种语言填写，上传后我们会自动翻译为多种语言。',
     shareShort: '分享',
     shareToSpace: '分享到 Space',
     findingsBlockTitle: '发现疑似凭据，删除后才能分享',

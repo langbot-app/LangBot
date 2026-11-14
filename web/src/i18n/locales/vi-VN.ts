@@ -4252,6 +4252,7 @@ const viVN = {
     },
   },
   promptLibrary: {
+    originalLanguage: 'bản gốc',
     open: 'Thư viện prompt',
     title: 'Thư viện prompt',
     description:
@@ -4280,6 +4281,8 @@ const viVN = {
     selectHint: 'Chọn một prompt bên trái để xem',
   },
   spaceShare: {
+    autoTranslateNotice:
+      'Chỉ cần viết bằng một ngôn ngữ. Chúng tôi sẽ tự động dịch sang các ngôn ngữ khác sau khi tải lên.',
     shareShort: 'Chia sẻ',
     shareToSpace: 'Chia sẻ lên Space',
     findingsBlockTitle:

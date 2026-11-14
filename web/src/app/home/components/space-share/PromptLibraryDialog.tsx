@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Star, Loader2, MessagesSquare, Search } from 'lucide-react';
+import {
+  Bot,
+  Languages,
+  Star,
+  Loader2,
+  MessagesSquare,
+  Search,
+} from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +36,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import {
+  pickPromptVersion,
+  promptLanguageName,
+  promptVersions,
+} from './prompt-i18n';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { cn } from '@/lib/utils';
 import type {
@@ -73,7 +92,7 @@ export default function PromptLibraryDialog({
   hasCurrentContent: boolean;
   onApply: (messages: PromptMessage[], mode: 'replace' | 'append') => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [kind, setKind] = useState<PromptKind>(defaultKind);
   const [tab, setTab] = useState<Tab>('all');
   const [query, setQuery] = useState('');
@@ -82,6 +101,18 @@ export default function PromptLibraryDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<LibraryPrompt | null>(null);
+  // Apply the WebUI language's version by default (with fallback); the user
+  // can pick another language before applying.
+  const [chosenLanguage, setChosenLanguage] = useState<string | null>(null);
+  const versions = useMemo(
+    () => (selected ? promptVersions(selected) : []),
+    [selected],
+  );
+  const version = selected
+    ? versions.find((v) => v.language === chosenLanguage) ||
+      pickPromptVersion(versions, i18n.language)
+    : null;
+  useEffect(() => setChosenLanguage(null), [selected?.prompt_id]);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoritesAvailable, setFavoritesAvailable] = useState(false);
   const [confirmReplace, setConfirmReplace] = useState(false);
@@ -179,9 +210,9 @@ export default function PromptLibraryDialog({
   };
 
   const apply = (mode: 'replace' | 'append') => {
-    if (!selected) return;
+    if (!selected || !version) return;
     onApply(
-      selected.messages.map((m) => ({ role: m.role, content: m.content })),
+      version.messages.map((m) => ({ role: m.role, content: m.content })),
       mode,
     );
     void httpClient
@@ -321,7 +352,17 @@ export default function PromptLibraryDialog({
                         @{p.author} · {extractI18nObject(p.description)}
                       </ItemDescription>
                       <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                        {p.language && <span>{p.language}</span>}
+                        <span>
+                          {(() => {
+                            const v = pickPromptVersion(
+                              promptVersions(p),
+                              i18n.language,
+                            );
+                            return v.language === 'und'
+                              ? null
+                              : promptLanguageName(v.language);
+                          })()}
+                        </span>
                         <span>
                           {t('promptLibrary.uses', { count: p.use_count })}
                         </span>
@@ -369,7 +410,41 @@ export default function PromptLibraryDialog({
                     )}
                   </div>
                   <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                    {selected.messages.map((m, i) => (
+                    {versions.length > 1 && version && (
+                      <div className="flex justify-end">
+                        <Select
+                          value={version.language}
+                          onValueChange={setChosenLanguage}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="h-7 w-auto gap-1.5 text-xs"
+                          >
+                            <Languages className="size-3.5 text-muted-foreground" />
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent align="end">
+                            {versions.map((v) => (
+                              <SelectItem
+                                key={v.language}
+                                value={v.language}
+                                className="text-xs"
+                              >
+                                {v.language === 'und'
+                                  ? t('promptLibrary.originalLanguage')
+                                  : promptLanguageName(v.language)}
+                                {v.original && v.language !== 'und' && (
+                                  <span className="ml-1 text-muted-foreground">
+                                    ({t('promptLibrary.originalLanguage')})
+                                  </span>
+                                )}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {(version?.messages || selected.messages).map((m, i) => (
                       <div key={i} className="rounded-md bg-muted/40 p-2.5">
                         <div className="mb-1 text-[11px] font-medium uppercase text-muted-foreground">
                           {m.role}

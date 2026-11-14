@@ -4025,6 +4025,7 @@ const zhHant = {
     },
   },
   promptLibrary: {
+    originalLanguage: '原文',
     open: '提示詞庫',
     title: '提示詞庫',
     description:
@@ -4052,6 +4053,7 @@ const zhHant = {
     selectHint: '從左側選擇一個提示詞預覽',
   },
   spaceShare: {
+    autoTranslateNotice: '只需用一種語言填寫，上傳後我們會自動翻譯為多種語言。',
     shareShort: '分享',
     shareToSpace: '分享到 Space',
     findingsBlockTitle: '發現疑似憑證，刪除後才能分享',

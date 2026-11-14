@@ -289,6 +289,7 @@ export default function ShareToSpaceDialog({
               </div>
             )}
             <p className="text-xs text-muted-foreground">
+              {t('spaceShare.autoTranslateNotice')}{' '}
               {t('spaceShare.reviewNotice')}
             </p>
             {error && (
