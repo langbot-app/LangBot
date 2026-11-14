@@ -440,6 +440,7 @@ const PluginInstalledComponent = forwardRef<
                   variant="outline"
                   className="shrink-0"
                   onClick={() => handleExtensionClick(extension)}
+                  aria-label={t('pluginPermissions.reviewLabel')}
                 >
                   {t('pluginPermissions.review')}
                 </Button>

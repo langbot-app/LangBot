@@ -175,6 +175,56 @@ test('pending permission review wins over the follow-up', async ({ page }) => {
   );
 });
 
+test('the pending-review list button is short but fully labelled', async ({
+  page,
+}) => {
+  await installLangBotApiMocks(page, { authenticated: true });
+  const plugin = {
+    permission_status: {
+      compatibility_mode: false,
+      pending_confirmation: true,
+    },
+    install_source: 'marketplace',
+    install_info: {},
+    debug: false,
+    manifest: {
+      manifest: {
+        metadata: {
+          author: 'qa-review',
+          name: 'list-review',
+          label: { en_US: 'list-review fixture' },
+          version: '1.0.0',
+          description: { en_US: 'pending review fixture' },
+        },
+        spec: {},
+      },
+    },
+    components: [],
+  };
+  await page.route('**/api/v1/plugins', (route) =>
+    route.fulfill({ json: { code: 0, data: { plugins: [plugin] } } }),
+  );
+  await page.route('**/api/v1/extensions', (route) =>
+    route.fulfill({
+      json: { code: 0, data: { extensions: [{ type: 'plugin', plugin }] } },
+    }),
+  );
+  await page.goto('/home/extensions');
+
+  // The amber section lists the plugin with its own button, outside the dialog.
+  const section = page.getByRole('region', {
+    name: /Permission confirmation required/i,
+  });
+  const button = section.getByRole('button', { name: /Review permissions/i });
+  await expect(button).toBeVisible();
+  // Visible text is the short form; the phrase lives in the label.
+  await expect(button).toHaveText('Review');
+  await page.screenshot({
+    path: `${SHOTS}/review-list.png`,
+    fullPage: true,
+  });
+});
+
 /**
  * Chinese rendering. The follow-up is user-facing copy, so it must read as
  * natural Chinese rather than a translated English sentence: no repeated
