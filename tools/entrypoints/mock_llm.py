@@ -288,6 +288,7 @@ class Handler(BaseHTTPRequestHandler):
             entry['faults'].append({'kind': kind, 'seconds': seconds, 'elapsed_seconds': time.monotonic() - start})
 
     def do_POST(self):
+        started = time.monotonic()
         entry = {
             'request_id': uuid.uuid4().hex,
             'time': time.time(),
@@ -385,6 +386,7 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             entry['disconnected'] = True
         finally:
+            entry['duration_seconds'] = time.monotonic() - started
             self.server.record(entry)
 
     def stream_response(self, body, scenario, message, base, finish, entry):

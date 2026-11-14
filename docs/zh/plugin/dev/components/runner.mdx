@@ -35,6 +35,8 @@ class Echo(Runner):
         )
 ```
 
+`message.completed` 只表示一条消息结束。模型、工具和状态操作全部完成后，使用 `run.completed`、`run.failed` 或 `run.cancelled` 明确结束 Run。Host 校验并完成该事件的内部处理后，会先持久化终态，再关闭结果流；下游消息投递可能仍未完成。合法终态之后的结果不再处理。
+
 ## 清单文件：运行器
 
 将 `welcome.yaml` 修改为：

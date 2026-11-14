@@ -14,7 +14,9 @@
     "core_pid_file": "/path/to/core.pid",
     "runtime_pid_file": "/path/to/runtime.pid",
     "box_pid_file": "/path/to/box.pid",
-    "box_data_root": "/path/to/core/box"
+    "box_data_root": "/path/to/core/box",
+    "box_mock_base_url": "http://127.0.0.1:18081/v1",
+    "rag_mock_base_url": "http://127.0.0.1:18082/v1"
   },
   "plugins": [
     {
@@ -38,6 +40,30 @@
         "name": "regression mock",
         "requester": "openai-chat-completions",
         "base_url": "${mock_base_url}",
+        "api_keys": [
+          "test-only"
+        ]
+      }
+    },
+    {
+      "id": "box_provider",
+      "kind": "provider",
+      "body": {
+        "name": "regression Box mock",
+        "requester": "openai-chat-completions",
+        "base_url": "${box_mock_base_url}",
+        "api_keys": [
+          "test-only"
+        ]
+      }
+    },
+    {
+      "id": "rag_provider",
+      "kind": "provider",
+      "body": {
+        "name": "regression RAG mock",
+        "requester": "openai-chat-completions",
+        "base_url": "${rag_mock_base_url}",
         "api_keys": [
           "test-only"
         ]
@@ -79,7 +105,7 @@
       "type": "llm",
       "body": {
         "name": "mock-smoke-box",
-        "provider_uuid": "${mock_provider}",
+        "provider_uuid": "${box_provider}",
         "abilities": [
           "func_call"
         ],
@@ -97,7 +123,7 @@
       "type": "llm",
       "body": {
         "name": "mock-rag",
-        "provider_uuid": "${mock_provider}",
+        "provider_uuid": "${rag_provider}",
         "abilities": [
           "func_call"
         ],
@@ -443,12 +469,21 @@
   ],
   "phases": [
     {
-      "name": "sustained",
-      "duration_seconds": 540,
-      "rps": 1,
-      "workers": 4,
+      "name": "mixed-normal",
+      "duration_seconds": 180,
+      "rps": 2,
+      "workers": 8,
+      "cooldown_seconds": 30,
+      "groups": 8,
+      "members_per_group": 3
+    },
+    {
+      "name": "mixed-expanded",
+      "duration_seconds": 300,
+      "rps": 4,
+      "workers": 12,
       "cooldown_seconds": 60,
-      "groups": 4,
+      "groups": 16,
       "members_per_group": 3
     }
   ],

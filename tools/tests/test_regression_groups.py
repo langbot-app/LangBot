@@ -61,6 +61,33 @@ class GroupTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 validate(current)
 
+    def test_mixed_profiles_route_models_to_independent_backends_and_multiple_box_groups(self):
+        root = Path(__file__).resolve().parents[1] / 'profiles'
+        for name in ('groups', 'endurance'):
+            with self.subTest(profile=name):
+                profile = json.loads((root / (name + '.json')).read_text())
+                validate(profile)
+                resources = {item['id']: item for item in profile['resources']}
+                endpoints = set()
+                for model, provider, endpoint in (
+                    ('chat_model', 'mock_provider', 'mock_base_url'),
+                    ('box_model', 'box_provider', 'box_mock_base_url'),
+                    ('rag_model', 'rag_provider', 'rag_mock_base_url'),
+                ):
+                    self.assertEqual(resources[model]['body']['provider_uuid'], '${' + provider + '}')
+                    self.assertEqual(resources[provider]['body']['base_url'], '${' + endpoint + '}')
+                    endpoints.add(profile['vars'][endpoint])
+                self.assertEqual(len(endpoints), 3)
+                cases = [case['name'] for case in profile['cases'] for _ in range(case.get('weight', 1))]
+                for phase in profile['phases']:
+                    assignments = [cases[index % len(cases)] for index in range(phase['groups'])]
+                    self.assertGreaterEqual(assignments.count('box'), 2)
+                    self.assertGreaterEqual(phase['workers'], len(cases))
+                runner = resources['box_pipeline']['body']['config']['ai']['runner_config']
+                self.assertEqual(
+                    next(iter(runner.values()))['box-session-id-template'], '{launcher_type}_{launcher_id}'
+                )
+
     def test_signed_groups_continue_across_phases_and_stop_after_bad_reply(self):
         secret = 'test-group-signing-key'
         histories = {}
