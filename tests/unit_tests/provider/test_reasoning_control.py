@@ -190,19 +190,68 @@ def test_anthropic_adaptive_and_always_on_profiles(monkeypatch):
     assert legacy['levels'] == ['provider_default', 'low', 'medium', 'high']
 
 
-def test_deepseek_profiles_match_model_generation(monkeypatch):
+@pytest.mark.parametrize(
+    ('model_name', 'expected_levels', 'expected_legacy_levels'),
+    [
+        ('deepseek-flash', ['provider_default', 'disabled', 'low', 'high', 'max'], ['enabled']),
+        ('deepseek-chat', ['provider_default', 'disabled', 'low', 'high', 'max'], ['enabled']),
+        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'max'], ['xhigh']),
+        ('deepseek-v4-pro', ['provider_default', 'disabled', 'low', 'high', 'max'], ['xhigh']),
+        ('deepseek-reasoner', ['provider_default', 'disabled'], None),
+        ('deepseek-r1', ['provider_default'], None),
+        ('deepseek-custom', ['provider_default', 'disabled', 'enabled'], None),
+    ],
+)
+def test_deepseek_profiles_match_model_generation(model_name, expected_levels, expected_legacy_levels, monkeypatch):
     request = _requester('deepseek', 'deepseek-chat-completions')
     monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
 
-    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-v4-flash', abilities=[]))[
-        'levels'
-    ] == ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
-    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-chat', abilities=[]))[
-        'levels'
-    ] == ['provider_default', 'disabled', 'enabled']
-    assert request.get_reasoning_capabilities(_runtime_model(request, name='deepseek-r1', abilities=[]))['levels'] == [
-        'provider_default'
-    ]
+    capabilities = request.get_reasoning_capabilities(_runtime_model(request, name=model_name, abilities=[]))
+
+    assert capabilities['levels'] == expected_levels
+    assert capabilities.get('legacy_levels') == expected_legacy_levels
+
+
+@pytest.mark.parametrize(
+    ('model_name', 'level', 'expected_args'),
+    [
+        ('deepseek-flash', 'enabled', {'extra_body': {'thinking': {'type': 'enabled'}}}),
+        ('deepseek-v4-pro', 'xhigh', {'extra_body': {'thinking': {'type': 'enabled'}, 'reasoning_effort': 'xhigh'}}),
+    ],
+)
+def test_deepseek_levels_removed_from_table_keep_working(model_name, level, expected_args, monkeypatch):
+    request = _requester('deepseek', 'deepseek-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+
+    assert request._build_reasoning_args(_runtime_model(request, level, name=model_name)) == expected_args
+
+
+@pytest.mark.parametrize(
+    ('model_name', 'level', 'accepted'),
+    [
+        ('deepseek-flash', 'high', True),
+        ('deepseek-flash', 'enabled', True),
+        ('deepseek-flash', 'xhigh', False),
+        ('deepseek-v4-flash', 'high', True),
+        ('deepseek-v4-flash', 'xhigh', True),
+        ('deepseek-v4-flash', 'enabled', False),
+        ('deepseek-reasoner', 'disabled', True),
+        ('deepseek-reasoner', 'high', False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_saving_runner_config_uses_the_deepseek_table(model_name, level, accepted, monkeypatch):
+    request = _requester('deepseek', 'deepseek-chat-completions')
+    monkeypatch.setattr(request, '_supports_reasoning', lambda _: False)
+    model = _runtime_model(request, name=model_name)
+    ap = SimpleNamespace(model_mgr=SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model)))
+    runner_config = {'model': {'primary': 'model', 'fallbacks': [], 'reasoning': {'model': level}}}
+
+    if accepted:
+        await reasoning.validate_runner_reasoning_levels(ap, 'workspace', runner_config)
+    else:
+        with pytest.raises(ValueError, match=f'not supported by model {model_name}'):
+            await reasoning.validate_runner_reasoning_levels(ap, 'workspace', runner_config)
 
 
 @pytest.mark.parametrize(
@@ -329,7 +378,7 @@ def test_doubao_exposes_documented_effort_range(monkeypatch):
             'claude-sonnet-4-6',
             ['provider_default', 'disabled', 'low', 'medium', 'high', 'xhigh', 'max'],
         ),
-        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']),
+        ('deepseek-v4-flash', ['provider_default', 'disabled', 'low', 'high', 'max']),
         ('kimi-k2.6', ['provider_default', 'disabled', 'enabled']),
         ('qwen-plus', ['provider_default', 'disabled', 'enabled']),
         ('doubao-seed-2-1-pro-260628', ['provider_default', 'disabled', 'low', 'medium', 'high']),

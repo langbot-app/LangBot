@@ -14,6 +14,7 @@ from ....pipeline.extension_preferences import (
     normalize_extension_preferences,
     validate_extension_preferences,
 )
+from ....provider.modelmgr import reasoning as model_reasoning
 from ....workspace.errors import WorkspaceNotFoundError
 from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
 from ...application.plugin_permissions import workspace_operation_grants
@@ -219,6 +220,7 @@ class PipelineService:
         if 'config' not in pipeline_data or pipeline_data['config'] == {}:
             pipeline_data['config'] = await self.get_default_pipeline_config(context, runner_id)
         RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
+        await self._validate_model_reasoning_levels(context, pipeline_data['config'])
 
         # Ensure extensions_preferences is set with enable_all_plugins and enable_all_mcp_servers=True by default
         if 'extensions_preferences' not in pipeline_data:
@@ -286,6 +288,10 @@ class PipelineService:
                 current_config if current_config is not None else {},
             )
             RunnerConfigResolver.validate_pipeline_config(pipeline_data['config'])
+            # Only a changed AI section can introduce a bad level. Writes that resend it
+            # untouched, such as bot trigger updates, must not fail on an older value.
+            if pipeline_data['config'].get('ai') != old_ai:
+                await self._validate_model_reasoning_levels(context, pipeline_data['config'])
         if 'extensions_preferences' in pipeline_data:
             current_pipeline = await self.get_pipeline(context, pipeline_uuid, include_secret=True)
             if current_pipeline is None:
@@ -563,3 +569,9 @@ class PipelineService:
             field_name='mcp_resources',
         )
         return validated
+
+    async def _validate_model_reasoning_levels(self, context: TenantContext, config: dict[str, typing.Any]) -> None:
+        runner_id = RunnerConfigResolver.resolve_runner_id(config)
+        if runner_id is not None:
+            runner_config = RunnerConfigResolver.resolve_runner_config(config, runner_id)
+            await model_reasoning.validate_runner_reasoning_levels(self.ap, context, runner_config)

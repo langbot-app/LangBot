@@ -831,6 +831,82 @@ class TestAgentServiceCreateUpdateDelete:
         )
 
 
+def _reasoning_agent_config(level: str = 'medium') -> dict:
+    runner_id = 'plugin:test/runner/default'
+    return {
+        'runner': {'id': runner_id, 'expire-time': 0},
+        'runner_config': {runner_id: {'model': {'primary': 'model', 'fallbacks': [], 'reasoning': {'model': level}}}},
+    }
+
+
+def _make_reasoning_app() -> SimpleNamespace:
+    capabilities = {'supported': True, 'levels': ['provider_default', 'disabled', 'low', 'high', 'max']}
+    model = SimpleNamespace(
+        model_entity=SimpleNamespace(name='deepseek-flash', abilities=['reasoning'], extra_args={}),
+        provider=SimpleNamespace(
+            provider_entity=SimpleNamespace(requester='deepseek-chat-completions'),
+            requester=SimpleNamespace(get_reasoning_capabilities=Mock(return_value=capabilities)),
+        ),
+    )
+    app = _make_app()
+    app.model_mgr = SimpleNamespace(get_model_by_uuid=AsyncMock(return_value=model))
+    return app
+
+
+class TestAgentServiceReasoningLevels:
+    async def test_create_rejects_unsupported_level_before_write(self):
+        app = _make_reasoning_app()
+
+        with pytest.raises(ValueError, match='not supported by model deepseek-flash'):
+            await AgentService(app).create_agent(WORKSPACE_UUID, {'name': 'A', 'config': _reasoning_agent_config()})
+
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    async def test_create_saves_supported_level(self):
+        app = _make_reasoning_app()
+        config = _reasoning_agent_config('high')
+
+        await AgentService(app).create_agent(WORKSPACE_UUID, {'name': 'A', 'config': config})
+
+        app.model_mgr.get_model_by_uuid.assert_awaited_once_with(WORKSPACE_UUID, 'model')
+        insert_values = _compiled_params(app.persistence_mgr.execute_async.await_args.args[0])
+        assert insert_values['config']['runner_config'] == config['runner_config']
+
+    @pytest.mark.parametrize(
+        'stored_config',
+        [None, _reasoning_agent_config('high')],
+        ids=['other-runner-section', 'changed-level'],
+    )
+    async def test_update_rejects_unsupported_level_before_write(self, stored_config):
+        app = _make_reasoning_app()
+        service = AgentService(app)
+        service._get_agent_row = AsyncMock(return_value=_agent_row(config=stored_config))
+
+        with pytest.raises(ValueError, match='not supported by model deepseek-flash'):
+            await service.update_agent(WORKSPACE_UUID, 'agent-1', {'config': _reasoning_agent_config()})
+
+        app.persistence_mgr.execute_async.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        'update',
+        [
+            {'name': 'Renamed'},
+            {'config': {**_reasoning_agent_config(), 'allowed_tools': ['exec']}},
+        ],
+        ids=['no-config', 'other-config-field'],
+    )
+    async def test_update_leaving_runner_section_unchanged_does_not_recheck_stored_level(self, update):
+        app = _make_reasoning_app()
+        app.persistence_mgr.execute_async = AsyncMock(return_value=Mock())
+        service = AgentService(app)
+        service._get_agent_row = AsyncMock(return_value=_agent_row(config=_reasoning_agent_config()))
+
+        await service.update_agent(WORKSPACE_UUID, 'agent-1', update)
+
+        app.model_mgr.get_model_by_uuid.assert_not_awaited()
+        app.persistence_mgr.execute_async.assert_awaited_once()
+
+
 async def test_event_processor_can_be_created_before_selecting_a_plugin():
     app = _make_app()
     service = AgentService(app)

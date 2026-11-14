@@ -602,9 +602,13 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
             return minimax.reasoning_levels(normalized_name)
 
         if family == 'deepseek' and normalized_name.startswith('deepseek-'):
-            if normalized_name.startswith('deepseek-v4-'):
-                return ['provider_default', 'disabled', 'low', 'high', 'xhigh', 'max']
-            if 'reasoner' in normalized_name or '-r1' in normalized_name:
+            # DeepSeek's /models declares low, high and max for deepseek-flash, which also serves
+            # deepseek-chat and deepseek-v4-flash, and for deepseek-v4-pro.
+            if normalized_name.startswith('deepseek-v4-') or normalized_name in ('deepseek-flash', 'deepseek-chat'):
+                return ['provider_default', 'disabled', 'low', 'high', 'max']
+            if 'reasoner' in normalized_name:
+                return ['provider_default', 'disabled']
+            if '-r1' in normalized_name:
                 return ['provider_default']
             return ['provider_default', 'disabled', 'enabled']
 
@@ -731,6 +735,9 @@ class LiteLLMRequester(requester.ProviderAPIRequester):
         }
         if family == 'qwen' and 'disabled' in capabilities['levels'] and 'enabled' not in capabilities['levels']:
             capabilities['legacy_levels'] = ['enabled']
+        elif family == 'deepseek' and 'low' in capabilities['levels']:
+            # Each id keeps the one level it offered before sharing this table, so saved configs still work.
+            capabilities['legacy_levels'] = ['xhigh' if 'deepseek-v4-' in normalized_name else 'enabled']
         if self._uses_openrouter_protocol():
             capabilities['budget_tokens'] = {'min': 1, 'max': 32768}
         elif family == 'anthropic' and not self._is_anthropic_adaptive_model(normalized_name):

@@ -4,6 +4,8 @@ import typing
 import copy
 
 if typing.TYPE_CHECKING:
+    from ...api.http.service.tenant import TenantContext
+    from ...core.app import Application
     from .requester import RuntimeLLMModel
 
 
@@ -167,6 +169,41 @@ def model_with_reasoning_level(
     scoped_model = copy.copy(model)
     scoped_model.reasoning_config_override = copy.deepcopy(config)
     return scoped_model
+
+
+async def validate_runner_reasoning_levels(
+    ap: Application,
+    context: TenantContext,
+    runner_config: typing.Mapping[str, typing.Any],
+) -> None:
+    """Reject reasoning levels in a Runner's model selection that the models cannot honor.
+
+    Such a level is a static config error that would otherwise save cleanly and
+    only fail at run time behind a generic Runner error. This applies the same
+    checks as the model API and the run-time path, so they cannot disagree.
+    """
+    selection = runner_config.get('model')
+    if not isinstance(selection, dict) or 'reasoning' not in selection:
+        return
+    levels = selection['reasoning']
+    if not isinstance(levels, dict):
+        # Runners fail the run on any other value, including an explicit null.
+        raise ValueError('Model reasoning settings must be an object')
+
+    fallbacks = selection.get('fallbacks')
+    selected_models = [selection.get('primary'), *(fallbacks if isinstance(fallbacks, list) else [])]
+    for model_uuid, level in levels.items():
+        # Runners only read the levels of selected models, and None means no override.
+        if model_uuid not in selected_models or level in (None, 'provider_default'):
+            continue
+        try:
+            model = await ap.model_mgr.get_model_by_uuid(context, model_uuid)
+        except ValueError:
+            # A deleted or unloadable model is a separate problem; it must not block saving.
+            continue
+        scoped_model = model_with_reasoning_level(model, level)
+        capabilities = model.provider.requester.get_reasoning_capabilities(scoped_model)
+        validate_reasoning_capabilities({'level': level}, capabilities, model.model_entity.name)
 
 
 def resolve_reasoning_config(model, extra_args=None):
