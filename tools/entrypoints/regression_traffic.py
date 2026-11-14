@@ -517,6 +517,7 @@ def main():
     def sample():
         with (args.output / 'resources.jsonl').open('w') as stream:
             while not stop.is_set():
+                sample_started = time.monotonic()
                 row = {
                     'time': time.time(),
                     'elapsed': time.monotonic() - started,
@@ -546,7 +547,8 @@ def main():
                         'status': dict(Counter(item['status'] for item in rows)),
                     }
                 (args.output / 'progress.json').write_text(json.dumps(progress))
-                stop.wait(3)
+                # Collection time counts toward the three-second sampling cadence.
+                stop.wait(max(0, sample_started + 3 - time.monotonic()))
 
     def worker(index):
         nonlocal next_case, admitted_requests
