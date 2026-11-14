@@ -3,10 +3,97 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import posixpath
 import stat
 import uuid
+
+
+def workspace_usage(
+    root: str, stop_after_bytes: int, max_entries: int
+) -> tuple[int, int, bool]:
+    """Bound a no-follow workspace scan by both bytes and directory entries."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+    def scan(descriptor):
+        try:
+            return descriptor, os.scandir(descriptor)
+        except BaseException:
+            os.close(descriptor)
+            raise
+
+    stack = [scan(os.open(root, flags))]
+    total = entries = 0
+    try:
+        while stack:
+            directory, iterator = stack[-1]
+            entry = next(iterator, None)
+            if entry is None:
+                iterator.close()
+                os.close(directory)
+                stack.pop()
+                continue
+            entries += 1
+            if entries > max_entries:
+                return total, entries, True
+            try:
+                info = os.stat(entry.name, dir_fd=directory, follow_symlinks=False)
+                if stat.S_ISDIR(info.st_mode):
+                    child = os.open(entry.name, flags, dir_fd=directory)
+                    stack.append(scan(child))
+                else:
+                    total += info.st_size
+            except FileNotFoundError:
+                continue
+            if total > stop_after_bytes:
+                return total, entries, False
+        return total, entries, False
+    finally:
+        for directory, iterator in reversed(stack):
+            iterator.close()
+            os.close(directory)
+
+
+def run_files_cleanup_script(io_scope: str) -> str:
+    """Remove one run's IO directories without following sandbox symlinks."""
+    return f"""import os, stat
+scope = {json.dumps(io_scope)}
+flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+def remove(parent, name):
+    info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if not stat.S_ISDIR(info.st_mode):
+        os.unlink(name, dir_fd=parent)
+        return
+    child = os.open(name, flags, dir_fd=parent)
+    try:
+        current = os.fstat(child)
+        if (info.st_dev, info.st_ino) != (current.st_dev, current.st_ino):
+            raise ValueError('Run cleanup directory changed')
+        with os.scandir(child) as entries:
+            for entry in entries:
+                remove(child, entry.name)
+    finally:
+        os.close(child)
+    os.rmdir(name, dir_fd=parent)
+root = os.open('/workspace', flags)
+try:
+    for name in ('inbox', 'outbox', '.langbot-snapshots'):
+        try:
+            parent = os.open(name, flags, dir_fd=root)
+        except FileNotFoundError:
+            continue
+        try:
+            try:
+                info = os.stat(scope, dir_fd=parent, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            remove(parent, scope)
+        finally:
+            os.close(parent)
+finally:
+    os.close(root)
+"""
 
 
 def workspace_relative_path(mount_path: str, path: str) -> str:

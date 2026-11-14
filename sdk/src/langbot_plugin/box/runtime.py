@@ -11,7 +11,10 @@ import json
 import logging
 import os
 from pathlib import Path
+import posixpath
+import shutil
 import stat
+import tempfile
 import time
 import uuid
 import weakref
@@ -53,6 +56,7 @@ from .models import (
     BoxManagedProcessSpec,
     BoxManagedProcessStatus,
     BoxMountSpec,
+    BoxRunFilesCleanupRequest,
     BoxSessionInfo,
     BoxSpec,
     E2BConnectionConfig,
@@ -65,6 +69,7 @@ from .models import (
 from .security import validate_shared_workspace_probe_name
 from .tenancy import (
     box_namespace,
+    box_runtime_namespace,
     namespace_session_id,
 )
 from langbot_plugin.storage import collect_storage_directories, storage_total_bytes
@@ -151,6 +156,7 @@ class _RuntimeSession:
     extra_mounts_key: frozenset[tuple[str, str, str, str, str]] = frozenset()
     closing: bool = False
     idle_ttl_sec: int | None = None
+    owned_workspace: tuple[str, int, int] | None = None
 
 
 def _compute_extra_mounts_key(
@@ -263,6 +269,9 @@ class BoxRuntime:
             minimum=1,
             maximum=MAX_RUNTIME_RPC_FILE_BYTES,
         )
+        self.max_workspace_entries = _bounded_runtime_limit(
+            limits, "max_workspace_entries", 100_000, minimum=1, maximum=1_000_000
+        )
         self.completed_process_retention_sec = _bounded_runtime_limit(
             limits,
             "completed_process_retention_sec",
@@ -287,6 +296,9 @@ class BoxRuntime:
         ] = weakref.WeakValueDictionary()
         self._session_leases: collections.Counter[str] = collections.Counter()
         self._creating_session_tasks: dict[str, asyncio.Task] = {}
+        self._failed_start_workspaces: dict[
+            str, tuple[tuple[str, int, int], tuple[str, str]]
+        ] = {}
         self._managed_starting_count = 0
         self._shutdown_in_progress = False
         self._reaper_task: asyncio.Task | None = None
@@ -401,6 +413,20 @@ class BoxRuntime:
         previous_admission_policy = self._admission_policy
         candidate_config = dict(self._box_config)
         candidate_config.update(config)
+        mode = candidate_config.get("file_transfer_mode", "legacy")
+        if mode not in {"legacy", "network"}:
+            raise BoxValidationError("file_transfer_mode must be legacy or network")
+        if (
+            self._sessions
+            or self._creating_session_tasks
+            or self._failed_start_workspaces
+        ) and (mode == "network") != self.network_workspace:
+            raise BoxValidationError("Workspace mode requires a Box Runtime restart")
+        if mode == "network":
+            incoming_local = dict(config.get("local") or {})
+            for field in ("host_root", "default_workspace", "allowed_mount_roots"):
+                incoming_local.pop(field, None)
+            candidate_config["local"] = {**self._local_config(), **incoming_local}
         limits = candidate_config.get("limits") or {}
         if not isinstance(limits, dict):
             raise ValueError("box.limits must be an object")
@@ -439,6 +465,13 @@ class BoxRuntime:
             minimum=1,
             maximum=MAX_RUNTIME_RPC_FILE_BYTES,
         )
+        max_workspace_entries = _bounded_runtime_limit(
+            limits,
+            "max_workspace_entries",
+            self.max_workspace_entries,
+            minimum=1,
+            maximum=1_000_000,
+        )
         completed_process_retention_sec = _bounded_runtime_limit(
             limits,
             "completed_process_retention_sec",
@@ -473,6 +506,7 @@ class BoxRuntime:
         self.max_completed_processes = max_completed_processes
         self.max_admission_records = max_admission_records
         self.max_rpc_file_bytes = max_rpc_file_bytes
+        self.max_workspace_entries = max_workspace_entries
         self.completed_process_retention_sec = completed_process_retention_sec
         self.max_artifact_cache_bytes = max_artifact_cache_bytes
         self.artifact_cache_ttl_sec = artifact_cache_ttl_sec
@@ -493,6 +527,70 @@ class BoxRuntime:
     @property
     def admission_required(self) -> bool:
         return bool(self._admission_policy.required)
+
+    @property
+    def network_workspace(self) -> bool:
+        return self._box_config.get("file_transfer_mode", "legacy") == "network"
+
+    def _validate_network_spec(
+        self, spec: BoxSpec, context: ActionContext | None
+    ) -> None:
+        if not self.network_workspace:
+            return
+        if context is None:
+            raise BoxValidationError(
+                "Network workspaces require a trusted Workspace context"
+            )
+        if spec.host_path is not None or spec.extra_mounts:
+            raise BoxValidationError(
+                "Network workspaces accept Runtime artifact references, not host paths"
+            )
+        if spec.mount_path != DEFAULT_BOX_MOUNT_PATH:
+            raise BoxValidationError("Network workspace mount_path must be /workspace")
+
+    def _allocate_network_workspace(
+        self, context: ActionContext, session_id: str
+    ) -> tuple[str, int, int]:
+        root = (
+            self._managed_workspace_root()
+            if self.admission_required
+            else self._default_workspace()
+            or str(self._identity.data_dir / "workspaces")
+        )
+        parent = (
+            Path(root)
+            / ".langbot-network-workspaces"
+            / self.instance_id.replace(":", "%3A")
+        )
+        parent.mkdir(parents=True, exist_ok=True)
+        resolved = parent.resolve()
+        if not self._path_is_under(str(resolved), os.path.realpath(root)):
+            raise BoxValidationError(
+                "Runtime workspace directory escapes its configured root"
+            )
+        prefix = (
+            hashlib.sha256(
+                (box_runtime_namespace(context) + ":" + session_id).encode()
+            ).hexdigest()[:24]
+            + "-"
+        )
+        path = tempfile.mkdtemp(prefix=prefix, dir=resolved)
+        info = os.stat(path, follow_symlinks=False)
+        return path, info.st_dev, info.st_ino
+
+    @staticmethod
+    def _remove_owned_workspace(owner: tuple[str, int, int]) -> None:
+        path, device, inode = owner
+        try:
+            info = os.stat(path, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != (
+            device,
+            inode,
+        ):
+            raise BoxError("Runtime workspace ownership changed during cleanup")
+        shutil.rmtree(path)
 
     @property
     def admission_policy(self) -> SandboxAdmissionPolicy:
@@ -627,11 +725,31 @@ class BoxRuntime:
         context = ActionContext.model_validate(action_context).without_installation()
         namespace = box_namespace(context)
         host_roots: list[tuple[str, Path, str, str | None]] = []
+        async with self._lock:
+            sessions = [
+                self._sessions[session_id]
+                for session_id in self._workspace_session_ids_locked(context)
+                if session_id in self._sessions
+            ]
+            managed_processes = sum(
+                len(session.managed_processes) for session in sessions
+            )
+            failed_workspaces = [
+                owner
+                for owner, key in self._failed_start_workspaces.values()
+                if key == (context.instance_uuid, context.workspace_uuid)
+            ]
+        if self.network_workspace:
+            owners = [
+                s.owned_workspace for s in sessions if s.owned_workspace is not None
+            ]
+            for index, owner in enumerate([*owners, *failed_workspaces]):
+                host_roots.append((f"workspace-{index}", Path(owner[0]), "root", None))
         try:
             managed_root = self._managed_workspace_root()
         except BoxReadinessError:
             managed_root = None
-        if managed_root is not None:
+        if managed_root is not None and not self.network_workspace:
             tenants_root = _resolve_local_path(os.path.join(managed_root, "tenants"))
             if not self._path_is_under(tenants_root, managed_root):
                 raise BoxAdmissionError(
@@ -650,16 +768,6 @@ class BoxRuntime:
         directories = await asyncio.to_thread(collect_storage_directories, host_roots)
         for directory in directories:
             directory["scope"] = "runtime_host"
-
-        async with self._lock:
-            sessions = [
-                self._sessions[session_id]
-                for session_id in self._workspace_session_ids_locked(context)
-                if session_id in self._sessions
-            ]
-            managed_processes = sum(
-                len(runtime_session.managed_processes) for runtime_session in sessions
-            )
 
         sandbox_reports = await asyncio.gather(
             *(
@@ -700,6 +808,22 @@ done
             workdir="/",
             timeout_sec=15,
         )
+        if runtime_session.owned_workspace is not None:
+            spec = spec.model_copy(
+                update={
+                    field: getattr(runtime_session.info, field)
+                    for field in (
+                        "host_path",
+                        "host_path_mode",
+                        "mount_path",
+                        "network",
+                        "cpus",
+                        "memory_mb",
+                        "pids_limit",
+                        "read_only_rootfs",
+                    )
+                }
+            )
         async with runtime_session.lock:
             if runtime_session.closing:
                 raise BoxSessionNotFoundError(
@@ -1006,14 +1130,30 @@ done
             raise BoxAdmissionError("Managed sandbox network access is disabled")
         if spec.mount_path != DEFAULT_BOX_MOUNT_PATH:
             raise BoxAdmissionError("Managed sandbox mount_path is runtime-owned")
-        if spec.workdir != DEFAULT_BOX_MOUNT_PATH and not spec.workdir.startswith(
-            f"{DEFAULT_BOX_MOUNT_PATH}/"
-        ):
+        workspace_workdir = (
+            spec.workdir == DEFAULT_BOX_MOUNT_PATH
+            or spec.workdir.startswith(f"{DEFAULT_BOX_MOUNT_PATH}/")
+        )
+        artifact_workdir = (
+            self.network_workspace
+            and posixpath.normpath(spec.workdir) == spec.workdir
+            and "\\" not in spec.workdir
+            and "\x00" not in spec.workdir
+            and all(part not in {"", ".", ".."} for part in spec.workdir.split("/")[1:])
+            and any(
+                spec.workdir == mount.mount_path
+                or spec.workdir.startswith(mount.mount_path + "/")
+                for mount in spec.artifact_mounts
+            )
+        )
+        if not workspace_workdir and not artifact_workdir:
             raise BoxAdmissionError(
-                "Managed sandbox workdir must stay under /workspace"
+                "Managed sandbox workdir must stay under /workspace or a referenced artifact"
             )
 
-        workspace_path = self._canonical_workspace_path(context)
+        workspace_path = (
+            None if self.network_workspace else self._canonical_workspace_path(context)
+        )
         if spec.host_path is not None:
             submitted_host_path = _resolve_local_path(spec.host_path)
             if submitted_host_path != workspace_path:
@@ -1475,6 +1615,7 @@ done
     ) -> BoxExecutionResult:
         if not spec.cmd:
             raise BoxValidationError("cmd must not be empty")
+        self._validate_network_spec(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -1499,6 +1640,8 @@ done
             track_active_exec=True,
             action_context=action_context,
         )
+        if self.network_workspace:
+            spec = spec.model_copy(update={"host_path": session.info.host_path})
 
         result: BoxExecutionResult | None = None
         cleanup_task: asyncio.Task[None] | None = None
@@ -1525,7 +1668,17 @@ done
                     f"timeout_sec={spec.timeout_sec}"
                 )
                 try:
+                    await self._enforce_network_workspace_quota(
+                        session, spec, "before execution"
+                    )
                     result = await session.backend.exec(session.info, spec)
+                    try:
+                        await self._enforce_network_workspace_quota(
+                            session, spec, "after execution"
+                        )
+                    except BoxValidationError:
+                        session.closing = True
+                        raise
                 except asyncio.CancelledError:
                     execution_cancelled = True
                     session.closing = True
@@ -1544,9 +1697,13 @@ done
                     else:
                         self._active_exec_counts.pop(spec.session_id, None)
 
-                    if execution_cancelled or (
-                        result is not None
-                        and result.status == BoxExecutionStatus.TIMED_OUT
+                    if (
+                        session.closing
+                        or execution_cancelled
+                        or (
+                            result is not None
+                            and result.status == BoxExecutionStatus.TIMED_OUT
+                        )
                     ):
                         cleanup_task = self._drop_session_locked(spec.session_id)
             if cleanup_task is not None:
@@ -1574,6 +1731,96 @@ done
         action_context: ActionContext,
     ) -> bytes:
         return await self._transfer_file(session_id, path, action_context)
+
+    async def _enforce_network_workspace_quota(
+        self, session: _RuntimeSession, spec: BoxSpec, phase: str
+    ) -> None:
+        if session.owned_workspace is None or spec.workspace_quota_mb <= 0:
+            return
+        from .file_io import workspace_usage
+
+        limit = spec.workspace_quota_mb * 1024 * 1024
+        try:
+            used, entries, exceeded = await self._artifact_work(
+                workspace_usage,
+                session.owned_workspace[0],
+                limit,
+                self.max_workspace_entries,
+            )
+        except OSError as exc:
+            raise BoxValidationError(
+                f"Cannot measure workspace quota {phase}: {exc}"
+            ) from exc
+        if exceeded:
+            raise BoxValidationError(
+                f"workspace entry limit exceeded {phase}: entries>{self.max_workspace_entries}"
+            )
+        if used > limit:
+            raise BoxValidationError(
+                f"workspace quota exceeded {phase}: used={used} bytes limit={limit} bytes entries={entries}"
+            )
+
+    async def cleanup_run_files(
+        self, session_id: str, io_scope: str, action_context: ActionContext
+    ) -> None:
+        from .file_io import run_files_cleanup_script
+        from .tenancy import session_belongs_to_placement
+
+        request = BoxRunFilesCleanupRequest(session_id=session_id, io_scope=io_scope)
+        if not self.network_workspace:
+            raise BoxValidationError("Run IO cleanup requires network workspace mode")
+        if not session_belongs_to_placement(action_context, session_id):
+            raise BoxValidationError(
+                "Run cleanup session does not belong to this Workspace placement"
+            )
+        if self.admission_required:
+            await self.require_sandbox_admission(action_context)
+        async with self._lock:
+            session = self._sessions.get(session_id)
+            if session is None or session.closing:
+                raise BoxSessionNotFoundError(f"session {session_id} not found")
+            self._session_leases[session_id] += 1
+        try:
+            async with session.lock:
+                if session.closing or self._sessions.get(session_id) is not session:
+                    raise BoxSessionNotFoundError(
+                        f"session {session_id} is being deleted"
+                    )
+                if self.admission_required:
+                    await self.require_sandbox_admission(action_context)
+                if session.info.host_path_mode == BoxHostMountMode.READ_ONLY:
+                    raise BoxValidationError("Cannot clean a read-only workspace")
+                fields = (
+                    "image",
+                    "network",
+                    "host_path",
+                    "host_path_mode",
+                    "mount_path",
+                    "cpus",
+                    "memory_mb",
+                    "pids_limit",
+                    "read_only_rootfs",
+                    "workspace_quota_mb",
+                )
+                spec = BoxSpec(
+                    session_id=session_id,
+                    cmd="python3 - <<'LBPY'\n"
+                    + run_files_cleanup_script(request.io_scope)
+                    + "\nLBPY",
+                    timeout_sec=min(30, self.admission_policy.max_timeout_sec)
+                    if self.admission_required
+                    else 30,
+                    workdir=DEFAULT_BOX_MOUNT_PATH,
+                    **{field: getattr(session.info, field) for field in fields},
+                )
+                result = await session.backend.exec(session.info, spec)
+                if not result.ok:
+                    raise BoxError(f"Run IO cleanup failed: {result.stderr[-1000:]}")
+        finally:
+            async with self._lock:
+                self._session_leases[session_id] -= 1
+                if self._session_leases[session_id] <= 0:
+                    self._session_leases.pop(session_id, None)
 
     async def _transfer_file(
         self,
@@ -1733,6 +1980,7 @@ done
         spec: BoxSpec,
         action_context: ActionContext | None = None,
     ) -> dict:
+        self._validate_network_spec(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -2243,14 +2491,24 @@ done
         if self.admission_required:
             await self.require_sandbox_admission(action_context)
         async with self._lock:
-            used = len(self._workspace_session_ids_locked(action_context))
+            failed = sum(
+                key == (action_context.instance_uuid, action_context.workspace_uuid)
+                for _, key in self._failed_start_workspaces.values()
+            )
+            used = len(self._workspace_session_ids_locked(action_context)) + failed
             limit = self.max_sessions
             if self.admission_required:
                 limit = min(
                     limit, self._require_admission_locked(action_context).max_sessions
                 )
             remaining = max(
-                0, min(limit - used, self.max_sessions - len(self._sessions))
+                0,
+                min(
+                    limit - used,
+                    self.max_sessions
+                    - len(self._sessions)
+                    - len(self._failed_start_workspaces),
+                ),
             )
             return {"limit": limit, "used": used, "remaining": remaining}
 
@@ -2330,6 +2588,11 @@ done
                 async with self._lock:
                     if self._shutdown_in_progress:
                         raise BoxRuntimeUnavailableError("Box runtime is shutting down")
+                    if spec.session_id in self._failed_start_workspaces:
+                        raise BoxError(
+                            "Box startup failed with uncertain workspace consumers; "
+                            "the workspace remains fenced pending operator cleanup"
+                        )
                     self._reap_expired_admissions_locked()
                     await self._reap_expired_sessions_locked()
                     if self.admission_required:
@@ -2375,7 +2638,19 @@ done
                                     "E2B configuration cannot change after Box creation"
                                 )
                             backend = existing.backend
-                            self._assert_session_compatible(existing.info, spec)
+                            comparison = spec
+                            if self.network_workspace:
+                                comparison = spec.model_copy(
+                                    update={
+                                        "host_path": existing.info.host_path,
+                                        "host_path_mode": (
+                                            BoxHostMountMode.NONE
+                                            if backend.name == "e2b"
+                                            else spec.host_path_mode
+                                        ),
+                                    }
+                                )
+                            self._assert_session_compatible(existing.info, comparison)
                             if (
                                 not backend.execution_scoped_mounts
                                 and existing.extra_mounts_key != new_extra_mounts_key
@@ -2452,6 +2727,7 @@ done
                         len(self._sessions)
                         + len(self._creating_session_tasks)
                         + len(self._closing_session_tasks)
+                        + len(self._failed_start_workspaces)
                         >= self.max_sessions
                     ):
                         raise BoxCapacityExceededError(
@@ -2466,20 +2742,43 @@ done
                         self._creating_session_tasks[spec.session_id] = current_task
 
                 info: BoxSessionInfo | None = None
+                owned_workspace = None
+                cancelled = False
                 try:
-                    info = await backend.start_session(spec)
-                    runtime_session = _RuntimeSession(
-                        info=info,
-                        backend=backend,
-                        lock=asyncio.Lock(),
-                        workspace_key=workspace_key,
-                        extra_mounts_key=new_extra_mounts_key,
-                        idle_ttl_sec=spec.idle_ttl_sec,
-                    )
-                    async with self._lock:
-                        if self._shutdown_in_progress:
-                            runtime_session.closing = True
+                    backend_spec = spec
+                    if self.network_workspace:
+                        if backend.name == "e2b":
+                            backend_spec = spec.model_copy(
+                                update={
+                                    "host_path": None,
+                                    "host_path_mode": BoxHostMountMode.NONE,
+                                }
+                            )
                         else:
+                            if spec.host_path_mode == BoxHostMountMode.NONE:
+                                raise BoxValidationError(
+                                    "Network workspace mount cannot be disabled"
+                                )
+                            owned_workspace = self._allocate_network_workspace(
+                                context, spec.session_id
+                            )
+                            backend_spec = spec.model_copy(
+                                update={"host_path": owned_workspace[0]}
+                            )
+
+                    async def start_session():
+                        info = await backend.start_session(backend_spec)
+                        runtime_session = _RuntimeSession(
+                            info=info,
+                            backend=backend,
+                            lock=asyncio.Lock(),
+                            workspace_key=workspace_key,
+                            extra_mounts_key=new_extra_mounts_key,
+                            idle_ttl_sec=spec.idle_ttl_sec,
+                            owned_workspace=owned_workspace,
+                        )
+                        async with self._lock:
+                            runtime_session.closing = self._shutdown_in_progress
                             self._sessions[spec.session_id] = runtime_session
                             if (
                                 not runtime_session.info.persistent
@@ -2493,9 +2792,58 @@ done
                                 ).add(spec.session_id)
                             if track_active_exec:
                                 self._active_exec_counts[spec.session_id] += 1
-                    if runtime_session.closing:
-                        await backend.stop_session(info)
+                        return runtime_session
+
+                    if self.network_workspace:
+                        creation = asyncio.create_task(start_session())
+                        while not creation.done():
+                            try:
+                                await asyncio.shield(creation)
+                            except asyncio.CancelledError:
+                                cancelled = True
+                        runtime_session = creation.result()
+                    else:
+                        runtime_session = await start_session()
+                    info = runtime_session.info
+                    if cancelled or runtime_session.closing:
+
+                        async def retire_created_session():
+                            async with self._lock:
+                                cleanup = self._drop_session_locked(spec.session_id)
+                            if cleanup is not None:
+                                await self._wait_for_session_cleanup(
+                                    spec.session_id, cleanup
+                                )
+
+                        retirement = asyncio.create_task(retire_created_session())
+                        while not retirement.done():
+                            try:
+                                await asyncio.shield(retirement)
+                            except asyncio.CancelledError:
+                                cancelled = True
+                            except Exception:
+                                break
+                        try:
+                            retirement.result()
+                        except Exception:
+                            if not cancelled:
+                                raise
+                            self.logger.exception(
+                                "Cancelled Box startup cleanup failed; session remains fenced"
+                            )
+                        if cancelled:
+                            raise asyncio.CancelledError
                         raise BoxRuntimeUnavailableError("Box runtime is shutting down")
+                except BaseException:
+                    if info is None and owned_workspace is not None:
+                        # A failed start does not prove that every backend consumer exited.
+                        self._failed_start_workspaces[spec.session_id] = (
+                            owned_workspace,
+                            workspace_key,
+                        )
+                    if cancelled:
+                        raise asyncio.CancelledError from None
+                    raise
                 finally:
                     async with self._lock:
                         if (
@@ -2506,6 +2854,7 @@ done
                         if (
                             spec.session_id not in self._sessions
                             and spec.session_id not in self._closing_session_tasks
+                            and spec.session_id not in self._failed_start_workspaces
                         ):
                             self._release_workspace_slot_locked(
                                 workspace_key, spec.session_id
@@ -2820,6 +3169,10 @@ done
                 self._managed_process_session_ids.discard(session_id)
                 if self._artifact_cache is not None:
                     await self._artifact_work(self._artifact_cache.release, session_id)
+                if runtime_session.owned_workspace is not None:
+                    await self._artifact_work(
+                        self._remove_owned_workspace, runtime_session.owned_workspace
+                    )
                 cleaned_up = True
         except Exception as exc:
             self.logger.warning(
@@ -3036,6 +3389,8 @@ done
 
     def _session_to_dict(self, info: BoxSessionInfo) -> dict:
         result = info.model_dump(mode="json")
+        if self.network_workspace:
+            result["host_path"] = None
         session = self._sessions.get(info.session_id)
         result["status"] = (
             "closing"

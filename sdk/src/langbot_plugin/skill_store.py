@@ -557,6 +557,45 @@ class SkillStore:
                 current_registry=current,
             )
 
+    def _prepare_skill_zip(
+        self, file_bytes: bytes, temporary: str, data: dict
+    ) -> tuple[str, dict]:
+        """Validate one uploaded draft and retain it only in caller-owned staging."""
+
+        if not file_bytes:
+            raise ValueError("Uploaded file is empty")
+        self._validate_zip_upload_size(file_bytes)
+        source, _allow_root = self._extract_uploaded_skill_to_temp(
+            file_bytes, temporary
+        )
+        entry = self._find_skill_entry(source)
+        if entry is None:
+            raise ValueError("Skill draft archive must contain one root SKILL.md")
+        scanned = self._load_skill_package(*entry)
+        self._validate_agent_skill_package(
+            source, scanned.get("metadata") or {}, require_directory_name=False
+        )
+        payload = {
+            key: data.get(key) or scanned.get(key, "")
+            for key in ("name", "display_name", "description", "instructions")
+        }
+        return source, payload
+
+    def import_skill_zip(
+        self,
+        file_bytes: bytes,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
+        """Publish one uploaded draft with the same CAS as directory imports."""
+
+        with tempfile.TemporaryDirectory(prefix="langbot-skill-draft-") as temporary:
+            source, payload = self._prepare_skill_zip(file_bytes, temporary, data)
+            return self.import_skill_directory(
+                source, payload, source_root=temporary, base_revision=base_revision
+            )
+
     def _require_scoped_path(self, path: str, label: str) -> str:
         """Keep host-path operations inside this Workspace's skill root.
 

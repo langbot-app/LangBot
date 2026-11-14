@@ -4,8 +4,9 @@ Box can receive an immutable package over its authenticated control connection,
 verify it, and mount its own copy without a Core filesystem path. The protocol is
 generic: it carries a tree manifest and digest, not Skill names or CRUD operations.
 Both Core and Box need the coordinated SDK and a Runtime with POSIX
-descriptor-relative file IO (Linux is the validated deployment). Existing native Skill execution and
-draft publication keep their current paths until the next network-runtime stage.
+descriptor-relative file IO (Linux is the validated deployment). Explicit
+`box.file_transfer_mode: network` connects native Skill execution and draft
+publication to this protocol; legacy mode retains its shared-path behavior.
 
 ## Host boundary and transfer
 
@@ -26,14 +27,20 @@ to hits and misses. There is no caller-supplied download URL or user API token.
 `BoxSpec.artifact_mounts` selects a `BoxArtifactMountSpec` by digest. Runtime
 resolves it inside the authorized Workspace cache into a generic read-only mount
 at `/opt/langbot-artifacts/<digest>`, then uses the existing backend. Core's
-untrusted execution payloads reject this field; future Host orchestration must
-compose it only from authorized run pins. A cached digest is not a capability.
+untrusted execution payloads reject this field; Host orchestration composes it only
+from authorized run pins before each execution. A cached digest is not a capability.
 
 Archive bytes are limited to 64 MiB. This is separate from the attachment upload
 limit. Backend projection limits still apply, including E2B's 10 MiB per-file
 limit. Tree validation also limits file count and total expanded size. Publication
 rejects extra/missing files, unsafe paths, links, special files and byte/digest
 mismatches. Failed preparation leaves no executable partial tree.
+
+Draft registration has a separate ingress limit: Core requests a link-free
+ZIP_STORED snapshot inside Box, bounded to 20 MiB, 512 entries, 16 MiB per file
+and depth 16. Lower configured file-transfer limits also apply. Core downloads
+only its own snapshot path, verifies the receipt, then validates and publishes
+with revision CAS; rejection leaves the original draft intact.
 
 ## Cache ownership and lifecycle
 

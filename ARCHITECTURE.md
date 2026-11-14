@@ -194,15 +194,16 @@ LocalAgent CI verifies this contract against the latest stable published SDK.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
-remains subject to Runtime idle expiry. Persistent workspace files survive expiry,
-but processes and container-local state do not.
+remains subject to Runtime idle expiry. Legacy shared workspace files survive expiry.
+In explicit network mode Runtime owns the workspace and removes it after the backend
+has stopped; reusable session files last only for that session.
 
 Box is the optional sandbox subsystem used by native execution tools, stdio MCP servers, agent-side skill authoring, and managed processes. Skill storage and read-only access are Core responsibilities and remain available without Box.
 
 In this repo:
 
 - `pkg/box/service.py` is the application-facing facade for exec, sessions, managed processes, status, reconnects, quotas, generic mounts, and sandbox profiles.
-- Its internal `prepare_skill_artifact` seam checks a pinned repository publication and prepares the Runtime's own verified cache over authenticated RPC. Existing user execution payloads cannot choose cache digests; native execution integration remains separate. See [Runtime artifact cache](dev-docs/BOX_ARTIFACT_CACHE.md).
+- Its internal `prepare_skill_artifact` seam checks a pinned repository publication and prepares the Runtime's own verified cache over authenticated RPC. In explicit network mode each execution composes artifact references from authorized run pins; user execution payloads cannot choose cache digests or host mounts. See [Runtime artifact cache](dev-docs/BOX_ARTIFACT_CACHE.md).
 - [Outbox export failures](dev-docs/BOX_OUTBOX_EXPORT.md) documents bounded reads, permission fallback, and cleanup after Runner acceptance.
 - `pkg/box/connector.py` connects to the Box Runtime over stdio when Core launches it (Windows, Linux and macOS alike), or over WebSocket for Docker, `--standalone-box`, or an explicit `box.runtime.endpoint`. The rule is shared with the Plugin Runtime connector through `ManagedRuntimeConnector.select_runtime_transport()`.
 - Core-launched Box subprocesses receive a stable `LANGBOT_BOX_INSTANCE_ID`:
@@ -216,12 +217,13 @@ In this repo:
   ownership. The SDK implementation requires the instance-scoped cleanup change;
   the pinned SDK version is unchanged here.
 - `pkg/provider/tools/loaders/native.py` is the Core orchestration seam: the
-  Skill loader supplies generic read-only mounts to Box execution. `mcp_stdio.py`
+  Skill loader supplies generic read-only mounts in legacy mode and pinned artifact
+  references in network mode. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
-- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or explicit database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`, independently of Box. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
+- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or explicit database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Legacy resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`. Network mode reads resources in bounded disposable staging and sends exact publications to Box without that cache. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
-Durable Box Workspace storage is shared across placement generations, but
+Legacy durable Box Workspace storage is shared across placement generations, but
 sandbox sessions and managed processes are generation-scoped. LangBot validates
 the current execution binding before an MCP stdio relay attach and sends the
 Workspace/generation binding in authenticated headers, so a placement cutover
@@ -242,7 +244,7 @@ In `sdk/`:
   rather than silently resolving a new version. This does not add automatic run resumption. Core mounts only activated and authorized Skills. Published
   trees are never agent write targets: authoring happens in Workspace drafts and
   an explicit registration/update atomically publishes the next revision. Core
-  turns those package roots and content digests into generic read-only mounts;
+  turns those package roots or authorized content digests into generic read-only mounts;
   Box does not understand Skill names, metadata, revisions, files, or CRUD.
 
 Skill execution paths include the publication digest (`/opt/langbot-artifacts/<digest>`).
@@ -266,6 +268,14 @@ Skill storage uses `skills.root`. Box execution config lives under `box:`:
 `box.local.skills_root` key is read only as an online-upgrade fallback and is
 marked for removal in the next major version. Start LangBot with
 `--standalone-box` when connecting to an externally launched Box runtime.
+
+Explicit `box.file_transfer_mode: network` removes Core's shared workspace/root
+requirement. Runtime must acknowledge network workspace support during INIT and
+keeps its own independently configured local roots. Draft registration archives a
+bounded, link-free directory inside Box, downloads it through the authenticated
+file protocol, then validates and publishes once with the existing revision CAS.
+Run completion removes only that run's inbox, outbox and snapshots through Runtime;
+drafts and other runs remain. This does not switch defaults or migrate existing data.
 
 ## HTTP API, Web UI, and MCP Server
 

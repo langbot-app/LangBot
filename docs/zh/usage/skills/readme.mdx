@@ -53,11 +53,11 @@ storage:
         backend: database
 ```
 
-`skills.root/.database-cache` 仅在读取资源或准备执行快照时生成，可在没有执行使用它时删除并重建。列表和版本包下载不依赖本地缓存；两个 Core 使用同一数据库时无需共享这份缓存。脚本执行仍遵守现有 Box 挂载要求，并未切换为 Runtime 网络下载技能。
+使用配套的 Core 和 Box Runtime 时，可显式设置 `box.file_transfer_mode: network`：Core 按运行固定版本传输技能包，Box 校验后缓存并只读挂载；Core 与 Box 无需共享技能或工作目录。数据库模式下，激活和执行不再创建 `skills.root/.database-cache`，资源读取只使用请求期间的临时目录。`register_skill` 通过网络取回沙箱草稿，校验后一次发布；新版本不会改变已开始运行的版本。运行结束清理该运行的输入、输出和临时快照，草稿保留到 Box 会话结束。Box 会话过期或删除后，其工作目录也会删除；需要保留的文件请先导出。默认仍为 `legacy`，旧共享挂载和缓存行为保留，不自动迁移数据。源码开发需同时安装仓库 SDK，旧 Runtime 会拒绝网络工作区配置。
 
 使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应内容无法读取。修改凭据后重启 Core。
 
-数据库模式的版本包上限为 64 MiB。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
+数据库模式的版本包上限为 64 MiB。网络模式的 `register_skill` 草稿使用未压缩 ZIP，上限为 20 MiB、512 个条目、单文件 16 MiB、目录深度 16；较低的 Box 文件传输配置限额仍会生效，超限会保留原草稿。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
 
 
 ## 在流水线启用

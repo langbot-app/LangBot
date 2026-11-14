@@ -117,6 +117,7 @@ def mock_runtime():
     """
     runtime = mock.MagicMock()
     runtime.admission_required = False
+    runtime.network_workspace = False
     runtime.max_admission_records = 100
     runtime.max_rpc_file_bytes = 20 * 1024 * 1024
     runtime.blocking_executor = None
@@ -940,7 +941,7 @@ async def test_init(handler, mock_runtime):
     config = {"backend": "docker"}
     resp = await _invoke(handler, LangBotToBoxAction.INIT, config)
     assert resp.code == 0
-    assert resp.data == {"initialized": True}
+    assert resp.data == {"initialized": True, "network_workspace": False}
     mock_runtime.init.assert_called_once_with(config)
 
 

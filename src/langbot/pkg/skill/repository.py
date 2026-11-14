@@ -147,6 +147,11 @@ class SkillRepository:
         snapshot: bool = False,
         revision: str | None = None,
     ) -> dict | None:
+        if (
+            self.database_backed
+            and getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        ):
+            return await self._call(context, 'get_skill', name, revision=revision)
         if revision is not None:
             return await self._call(context, 'get_skill_snapshot', name, revision)
         return await self._call(context, 'get_skill_snapshot' if snapshot else 'get_skill', name)
@@ -188,6 +193,16 @@ class SkillRepository:
             source_root=self._workspace_root(namespace),
             base_revision=base_revision,
         )
+
+    async def import_skill_zip(
+        self,
+        context: TenantContext,
+        file_bytes: bytes,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
+        return await self._call(context, 'import_skill_zip', file_bytes, data, base_revision=base_revision)
 
     async def update_skill(
         self,

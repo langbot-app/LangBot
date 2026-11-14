@@ -127,6 +127,14 @@ class BoxRuntimeClient(abc.ABC):
     ) -> bytes:
         raise NotImplementedError
 
+    async def cleanup_run_files(
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        raise NotImplementedError
+
     async def verify_shared_workspace(self, marker_name: str) -> dict:
         raise NotImplementedError
 
@@ -562,7 +570,28 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         )
 
     async def init(self, config: dict) -> None:
-        await self._call(LangBotToBoxAction.INIT, config)
+        result = await self._call(LangBotToBoxAction.INIT, config)
+        if config.get("file_transfer_mode") == "network" and (
+            not isinstance(result, dict) or result.get("network_workspace") is not True
+        ):
+            raise BoxRuntimeUnavailableError(
+                "Network workspaces require an updated Box Runtime"
+            )
+
+    async def cleanup_run_files(
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        if action_context is None:
+            raise ValueError("Run cleanup requires a trusted Workspace context")
+        return await self._call(
+            LangBotToBoxAction.CLEANUP_RUN_FILES,
+            {"session_id": session_id, "io_scope": io_scope},
+            timeout=45.0,
+            action_context=action_context,
+        )
 
     async def verify_shared_workspace(self, marker_name: str) -> dict:
         return await self._call(
