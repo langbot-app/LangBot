@@ -336,6 +336,25 @@ export default function ExtensionCardComponent({
                     </DropdownMenuItem>
                   )}
                   {cardVO.type === 'plugin' &&
+                    !cardVO.debug &&
+                    (cardVO.install_source === 'local' ||
+                      cardVO.install_source === 'github') &&
+                    onUploadToSpace && (
+                      <DropdownMenuItem
+                        className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onUploadToSpace(cardVO);
+                          setDropdownOpen(false);
+                        }}
+                      >
+                        <Upload className="w-4 h-4" />
+                        <span>
+                          {t('plugins.spaceUpload.shareInstalledAction')}
+                        </span>
+                      </DropdownMenuItem>
+                    )}
+                  {cardVO.type === 'plugin' &&
                     cardVO.install_source === 'marketplace' && (
                       <DropdownMenuItem
                         className="flex flex-row items-center justify-start gap-[0.4rem] cursor-pointer"

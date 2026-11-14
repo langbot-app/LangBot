@@ -83,3 +83,7 @@ Plugin built successfully: dist/tmp/RockChinQ-HelloPlugin-0.1.0.lbpkg
 发布流程本身不涉及认证：插件默认以专属模式运行。如果这个版本还要申请认证，见[认证插件与共享运行](/zh/plugin/certified-plugins)。
 
 有任何问题，您可以发送邮件到`hello@langbot.app`或通过[社区](/zh/insight/community)联系我们。
+
+## 从 WebUI 分享本地安装的插件
+
+除了调试中的插件，通过「本地上传」或 GitHub 安装的插件也可以在「已安装」列表的菜单中点击「分享到 Space」。此时会原样上传当前安装的 `.lbpkg`，作者、名称和版本以包内 `manifest.yaml` 为准，不能在弹窗里修改；作者必须与你的 LangBot Space 创作者标识一致。需要修改时，请改源码、提升版本并重新打包安装后再分享。

@@ -1949,6 +1949,12 @@ const esES = {
     debugging: 'Depuración',
     uploadLocalPlugin: 'Subir plugin local',
     spaceUpload: {
+      descriptionInstalled:
+        'Sube el plugin instalado localmente {{author}}/{{name}} al mercado.',
+      shareInstalledAction: 'Compartir en Space',
+      installedPackageTitle: 'Se subirá el paquete instalado',
+      installedPackageHint:
+        'Un plugin instalado localmente se sube tal cual su .lbpkg; autor, nombre y versión salen del manifest.',
       menuAction: 'Subir a la tienda de extensiones',
       title: 'Subir plugin a la tienda de extensiones',
       description:
@@ -2277,6 +2283,13 @@ const esES = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Todas las extensiones',
+      allDesc: 'Plugins, MCP y skills',
+      pluginDesc: 'Plataformas, herramientas, runners y más',
+      mcpDesc: 'Herramientas de servidores MCP externos',
+      skillDesc: 'Enseña a los Agents nuevas formas de trabajar',
+    },
     certifiedPlugin: 'Plugin certificado',
     certificationTooltip:
       'Esta versión ha superado la revisión de aislamiento de datos y compatibilidad con entornos compartidos. El paquete está firmado.',
@@ -3654,6 +3667,7 @@ const esES = {
       skill: 'Habilidad',
       knowledge_base: 'Base de conocimiento',
       mcp_server: 'Servidor MCP',
+      content: 'Contenido compartido',
       runtime: 'Entorno de ejecución',
       system: 'Sistema',
       resource: 'Recurso',
@@ -3664,6 +3678,8 @@ const esES = {
       error: 'Fallido',
     },
     actions: {
+      content_publish: 'Compartir contenido en Space',
+      plugin_publish: 'Publicar extensión en Space',
       audit_log_view: 'Ver registros de operación',
       settings_update: 'Actualizar ajustes de trazabilidad',
       settings_view: 'Ver ajustes de trazabilidad',
@@ -4331,6 +4347,114 @@ const esES = {
       failed: 'Fallido',
       rate_limited: 'Cuota agotada',
       skipped: 'Omitido',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Las plantillas están en camino ✨',
+    emptyBody: 'Pulsa «Compartir» junto a un prompt y sé el primero.',
+    bindToFavorite: 'Vincula una cuenta para guardar favoritos',
+    originalLanguage: 'original',
+    open: 'Biblioteca de prompts',
+    title: 'Biblioteca de prompts',
+    description:
+      'Busca prompts revisados compartidos en LangBot Space. Guarda la configuración después de aplicar uno.',
+    kindMessaging: 'Conversación',
+    kindAgent: 'Agent',
+    searchPlaceholder: 'Buscar nombre, descripción, etiquetas o texto',
+    tabAll: 'Todos',
+    tabFavorites: 'Favoritos',
+    favoritesNeedAccount: 'Vincula una LangBot Account para usar favoritos',
+    otherKindHint:
+      'Estás viendo prompts de tipo {{kind}}, pensados para otro uso. Revísalos antes de aplicar.',
+    noFavorites: 'Aún no hay favoritos',
+    empty: 'No hay prompts coincidentes',
+    loadFailed: 'No se pudo cargar la biblioteca',
+    favoriteFailed: 'No se pudo actualizar el favorito',
+    applied: 'Aplicado. Guarda para que surta efecto.',
+    uses: '{{count}} usos',
+    favorite: 'Favorito',
+    variablesHint: 'Variables:',
+    append: 'Añadir al prompt actual',
+    replace: 'Reemplazar prompt actual',
+    replaceTitle: '¿Reemplazar el prompt actual?',
+    replaceDescription:
+      'El prompt actual se sobrescribirá (puedes descartar antes de guardar).',
+    selectHint: 'Selecciona un prompt a la izquierda',
+  },
+  spaceShare: {
+    modeNew: 'Publicar como nuevo',
+    modeUpdate: 'Actualizar existente ({{count}})',
+    pickExisting: 'Elige el elemento a actualizar',
+    unlisted: 'oculto',
+    identifierHint:
+      'Minúsculas, dígitos, - o _. No se puede cambiar tras publicar.',
+    bindAccount: 'Vincular cuenta de LangBot',
+    autoTranslateNotice:
+      'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',
+    shareShort: 'Compartir',
+    shareToSpace: 'Compartir en Space',
+    findingsBlockTitle:
+      'Se detectaron posibles credenciales: elimínalas antes de compartir',
+    findingsWarnTitle: 'Contiene datos personales o internos',
+    submitFailed: 'Error al enviar',
+    submittedTitle: 'Enviado a revisión',
+    submittedAgentReview:
+      '{{id}} se está revisando automáticamente y aparecerá en LangBot Space al aprobarse.',
+    submittedManualReview: '{{id}} espera una revisión manual.',
+    viewProgress: 'Ver el progreso en LangBot Space',
+    needAccountTitle: 'Se requiere una LangBot Account',
+    needAccount:
+      'Vincula una cuenta de LangBot para compartir. Tu aportación se publica con el perfil de creador de esa cuenta en LangBot Space.',
+    needCreatorTitle: 'Aún no tienes perfil de creador',
+    needCreator:
+      'Configura un perfil de creador en LangBot Space para compartir. Solo hace falta una vez.',
+    openCreator: 'Configurar perfil de creador',
+    acknowledgeWarnings: 'Confirmo que esta información puede ser pública',
+    displayName: 'Nombre visible',
+    identifier: 'Identificador',
+    descriptionLabel: 'Descripción',
+    changelog: 'Cambios',
+    reviewNotice:
+      'Los envíos se revisan antes de publicarse en LangBot Space. Compartir el mismo nombre publica una nueva versión.',
+    submit: 'Enviar a revisión',
+    promptTitle: 'Compartir prompt en LangBot Space',
+    promptDescriptionMessaging:
+      'Se publica como prompt de conversación para la configuración de pipelines.',
+    promptDescriptionAgent:
+      'Se publica como prompt de Agent para la configuración de Agents.',
+    detectedVariables: 'Variables detectadas:',
+    skillTitle: 'Compartir Skill en LangBot Space',
+    skillDescription:
+      'Sube el paquete actual de la Skill. La revisión comprueba scripts y peticiones externas.',
+    packageFiles: 'Archivos a enviar',
+    mcpTitle: 'Compartir servidor MCP en LangBot Space',
+    mcpDescription:
+      'Solo MCP remoto. Las credenciales nunca se suben: se sustituyen por marcadores que cada instalador rellena.',
+    mcpPublishedConfig: 'Configuración a publicar',
+    mcpToolsCount: 'Incluye {{count}} herramientas',
+    mcpRedactedTitle: '{{count}} credenciales eliminadas',
+    mcpRedactedHint:
+      'Se pedirán estos valores al instalar. Ponles un nombre claro:',
+    mcpInputLabelPlaceholder: 'Etiqueta (por defecto: {{label}})',
+    mcpNoCredentials: 'No hay credenciales; se publica tal cual.',
+    mcpNeedsConnection:
+      'Conecta correctamente primero; se publica la lista de herramientas',
+    mcpFillInputsTitle: 'Rellena las credenciales antes de activar',
+    mcpFillInputs:
+      'Este MCP de la comunidad necesita tus valores para {{names}}. Sustitúyelos, guarda y actívalo.',
+    finding: {
+      openai_key: 'Clave de OpenAI',
+      anthropic_key: 'Clave de Anthropic',
+      github_token: 'Token de GitHub',
+      slack_token: 'Token de Slack',
+      aws_access_key: 'Clave de acceso de AWS',
+      google_api_key: 'Clave de API de Google',
+      private_key: 'Clave privada',
+      jwt: 'Token JWT',
+      langbot_key: 'Clave de LangBot',
+      email: 'Correo electrónico',
+      phone: 'Número de teléfono',
+      private_url: 'URL interna',
     },
   },
 };

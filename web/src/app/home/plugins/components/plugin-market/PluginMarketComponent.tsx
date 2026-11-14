@@ -16,13 +16,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { Separator } from '@/components/ui/separator';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import {
   Search,
   Puzzle,
   Server,
@@ -34,26 +27,22 @@ import {
   FileText,
   AppWindow,
   Bot,
-  SlidersHorizontal,
   X,
-  Info,
+  LayoutGrid,
 } from 'lucide-react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import PluginMarketCardComponent from './plugin-market-card/PluginMarketCardComponent';
 import { PluginMarketCardVO } from './plugin-market-card/PluginMarketCardVO';
 import { resolveInstalledState } from './marketplace-installed';
 import { useMarketplaceInstalledIndex } from './useMarketplaceInstalledIndex';
 import { RecommendationLists } from './RecommendationLists';
+import { MarketChipRow, MarketTypeTiles } from './MarketTypeTiles';
 import type { RecommendationList } from './RecommendationLists';
 import {
   getCloudServiceClient,
   getCloudServiceClientSync,
 } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
@@ -121,13 +110,6 @@ function MarketPageContent({
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const extensionTypeOptions = [
-    { value: 'all', label: t('market.filters.allFormats'), icon: null },
-    { value: 'plugin', label: t('market.typePlugin'), icon: Puzzle },
-    { value: 'mcp', label: t('market.typeMCP'), icon: Server },
-    { value: 'skill', label: t('market.typeSkill'), icon: Sparkles },
-  ];
-
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(
     () =>
@@ -154,10 +136,6 @@ function MarketPageContent({
     const saved = loadMarketFilters().typeFilter;
     return saved && MARKET_TYPE_VALUES.includes(saved) ? saved : 'all';
   });
-  const activeAdvancedFilters =
-    (typeFilter === 'all' ? 0 : 1) +
-    (componentFilter === 'all' ? 0 : 1) +
-    (activeRunnerUsage ? 1 : 0);
   const [selectedTags, setSelectedTags] = useState<string[]>(
     () => loadMarketFilters().selectedTags ?? [],
   );
@@ -308,6 +286,9 @@ function MarketPageContent({
   );
 
   // 获取插件列表
+  // Latest page-1 request wins; quick type switches must not let an older
+  // response overwrite the list the user switched to.
+  const fetchSeq = useRef(0);
   const fetchPlugins = useCallback(
     async (
       page: number,
@@ -315,6 +296,7 @@ function MarketPageContent({
       reset: boolean = false,
       queryOverride?: string,
     ) => {
+      const seq = page === 1 ? ++fetchSeq.current : fetchSeq.current;
       if (page === 1) {
         setIsLoading(true);
       } else {
@@ -339,6 +321,7 @@ function MarketPageContent({
             tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
           });
 
+        if (seq !== fetchSeq.current) return;
         const data: ApiRespMarketplacePlugins = response;
         const newPlugins = data.plugins.map(transformToVO);
         const total = data.total;
@@ -357,11 +340,14 @@ function MarketPageContent({
               : plugins.length + newPlugins.length) < total,
         );
       } catch (error) {
+        if (seq !== fetchSeq.current) return;
         console.error('Failed to fetch plugins:', error);
         toast.error(t('market.loadFailed'));
       } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        if (seq === fetchSeq.current) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     },
     [
@@ -447,6 +433,7 @@ function MarketPageContent({
       types.forEach((type, i) => {
         counts[type] = results[i];
       });
+      counts.all = results.reduce((sum, n) => sum + n, 0);
       setTypeCounts(counts);
     } catch (error) {
       console.error('Failed to fetch extension type counts:', error);
@@ -490,7 +477,6 @@ function MarketPageContent({
   const handleSortChange = useCallback((value: string) => {
     setSortOption(value);
     setCurrentPage(1);
-    setPlugins([]);
   }, []);
 
   // Handle type filter change
@@ -502,7 +488,6 @@ function MarketPageContent({
       }
       setCurrentPage(1);
       setSelectedTags([]);
-      setPlugins([]);
 
       // Update URL query param to keep it in sync
       const params = new URLSearchParams(searchParams);
@@ -523,7 +508,6 @@ function MarketPageContent({
     (value: string) => {
       setComponentFilter(value);
       setCurrentPage(1);
-      setPlugins([]);
 
       const params = new URLSearchParams(searchParams);
       if (value !== 'Runner') {
@@ -717,13 +701,22 @@ function MarketPageContent({
   // const handleInstallPlugin = (plugin: PluginV4) => {
   // };
 
+  const handleRunnerUsageChange = (value: string) => {
+    setRunnerUsage(value);
+    setCurrentPage(1);
+    const params = new URLSearchParams(searchParams);
+    if (value === 'all') params.delete('runner_usage');
+    else params.set('runner_usage', value);
+    setSearchParams(params, { replace: true });
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Fixed header section with search, sort, and status */}
       <div className="flex-none px-3 sm:px-4 py-2 sm:py-4 space-y-4 sm:space-y-6 container mx-auto">
         {/* 搜索、排序和筛选入口 */}
-        <div className="flex w-full items-center justify-center gap-2 sm:gap-3">
-          <div className="relative min-w-0 flex-1 lg:max-w-xl">
+        <div className="flex w-full items-center gap-2 sm:gap-3">
+          <div className="relative min-w-0 flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
             <Input
               placeholder={
@@ -766,155 +759,85 @@ function MarketPageContent({
               </SelectContent>
             </Select>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="relative shrink-0 px-3 sm:px-4"
-                >
-                  <SlidersHorizontal className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    {t('market.filters.more')}
-                  </span>
-                  {activeAdvancedFilters > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] leading-none text-primary-foreground">
-                      {activeAdvancedFilters}
-                    </span>
-                  )}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-[320px] space-y-4">
-                <div>
-                  <div className="text-sm font-medium">
-                    {t('market.filters.advancedTitle')}
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {t('market.filters.advancedDescription')}
-                  </div>
-                </div>
-                <Separator />
-                <div className="space-y-2">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    {t('market.filters.technicalType')}
-                  </div>
-                  <ToggleGroup
-                    type="single"
-                    spacing={2}
-                    size="sm"
-                    value={typeFilter}
-                    onValueChange={(value) => {
-                      if (value) handleTypeFilterChange(value);
-                    }}
-                    className="flex flex-wrap justify-start gap-2"
-                  >
-                    {extensionTypeOptions.map((option) => {
-                      const Icon = option.icon;
-                      const count = typeCounts[option.value];
-                      return (
-                        <ToggleGroupItem
-                          key={option.value}
-                          value={option.value}
-                          aria-label={option.label}
-                          className="cursor-pointer text-xs"
-                        >
-                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
-                          {option.label}
-                          {typeof count === 'number' && (
-                            <span className="ml-1 text-muted-foreground">
-                              ({count})
-                            </span>
-                          )}
-                        </ToggleGroupItem>
-                      );
-                    })}
-                  </ToggleGroup>
-                </div>
-                <Separator />
-                <div className="space-y-2">
-                  <div className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
-                    {t('market.filterByComponent')}
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <button
-                          type="button"
-                          className="inline-flex text-muted-foreground/70 hover:text-foreground"
-                          aria-label={t('market.filterByComponentHint')}
-                        >
-                          <Info className="size-3.5" />
-                        </button>
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-64">
-                        {t('market.filterByComponentHint')}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                  <ToggleGroup
-                    type="single"
-                    spacing={2}
-                    size="sm"
-                    value={componentFilter}
-                    onValueChange={(value) => {
-                      if (value) handleComponentFilterChange(value);
-                    }}
-                    className="flex flex-wrap justify-start gap-2"
-                  >
-                    {componentOptions.map((option) => {
-                      const Icon = option.icon;
-                      return (
-                        <ToggleGroupItem
-                          key={option.value}
-                          value={option.value}
-                          aria-label={option.label}
-                          className="cursor-pointer text-xs"
-                        >
-                          {Icon && <Icon className="mr-1 h-3.5 w-3.5" />}
-                          {option.label}
-                        </ToggleGroupItem>
-                      );
-                    })}
-                  </ToggleGroup>
-                </div>
-                {componentFilter === 'Runner' && (
-                  <div className="space-y-2">
-                    <div className="text-xs font-medium text-muted-foreground">
-                      {t('market.runnerUsage')}
-                    </div>
-                    <ToggleGroup
-                      type="single"
-                      size="sm"
-                      value={runnerUsage}
-                      onValueChange={(value) => {
-                        if (!value) return;
-                        setRunnerUsage(value);
-                        setCurrentPage(1);
-                        setPlugins([]);
-                        const params = new URLSearchParams(searchParams);
-                        if (value === 'all') params.delete('runner_usage');
-                        else params.set('runner_usage', value);
-                        setSearchParams(params, { replace: true });
-                      }}
-                    >
-                      <ToggleGroupItem value="all">
-                        {t('market.runnerUsageAll')}
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="agent">
-                        {t('market.runnerUsageAgent')}
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="event">
-                        {t('market.runnerUsageEvent')}
-                      </ToggleGroupItem>
-                    </ToggleGroup>
-                  </div>
-                )}
-              </PopoverContent>
-            </Popover>
-
             {headerActions}
           </div>
         </div>
 
+        {/* Extension types as peer tiles (LANG-439) */}
+        <MarketTypeTiles
+          options={[
+            {
+              value: 'all',
+              label: t('market.typeTiles.all'),
+              description: t('market.typeTiles.allDesc'),
+              icon: LayoutGrid,
+              tone: 'bg-background text-foreground ring-1 ring-inset ring-border',
+              activeTone:
+                'bg-blue-50 ring-blue-200 hover:bg-blue-50 dark:bg-blue-950/40 dark:ring-blue-900',
+              activeIcon: 'bg-blue-500 text-white',
+            },
+            {
+              value: 'plugin',
+              label: t('market.typePlugin'),
+              description: t('market.typeTiles.pluginDesc'),
+              icon: Puzzle,
+              tone: 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300',
+              activeTone:
+                'bg-violet-50 ring-violet-200 hover:bg-violet-50 dark:bg-violet-950/40 dark:ring-violet-900',
+              activeIcon: 'bg-violet-500 text-white',
+            },
+            {
+              value: 'mcp',
+              label: t('market.typeMCP'),
+              description: t('market.typeTiles.mcpDesc'),
+              icon: Server,
+              tone: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300',
+              activeTone:
+                'bg-sky-50 ring-sky-200 hover:bg-sky-50 dark:bg-sky-950/40 dark:ring-sky-900',
+              activeIcon: 'bg-sky-500 text-white',
+            },
+            {
+              value: 'skill',
+              label: t('market.typeSkill'),
+              description: t('market.typeTiles.skillDesc'),
+              icon: Sparkles,
+              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300',
+              activeTone:
+                'bg-emerald-50 ring-emerald-200 hover:bg-emerald-50 dark:bg-emerald-950/40 dark:ring-emerald-900',
+              activeIcon: 'bg-emerald-500 text-white',
+            },
+          ].map((o) => ({ ...o, count: typeCounts[o.value] }))}
+          value={componentFilter !== 'all' ? 'plugin' : typeFilter}
+          onChange={(value) => {
+            if (componentFilter !== 'all') handleComponentFilterChange('all');
+            handleTypeFilterChange(value);
+          }}
+        />
+
+        {typeFilter === 'plugin' && (
+          <div className="space-y-2">
+            <MarketChipRow
+              options={componentOptions}
+              value={componentFilter}
+              onChange={handleComponentFilterChange}
+            />
+            {componentFilter === 'Runner' && (
+              <MarketChipRow
+                size="sm"
+                options={[
+                  { value: 'all', label: t('market.runnerUsageAll') },
+                  { value: 'agent', label: t('market.runnerUsageAgent') },
+                  { value: 'event', label: t('market.runnerUsageEvent') },
+                ]}
+                value={runnerUsage}
+                onChange={handleRunnerUsageChange}
+              />
+            )}
+          </div>
+        )}
+
         {/* 用真实标签做快速筛选 —— 始终单行横向滚动，避免标签变多时换行错位 */}
-        <div className="relative mx-auto w-full max-w-4xl">
+        <div className="relative w-full">
           <div className="scrollbar-hide flex items-center gap-1.5 overflow-x-auto pb-1 pr-6">
             <Button
               type="button"
@@ -972,7 +895,7 @@ function MarketPageContent({
             />
           )}
 
-        {isLoading ? (
+        {isLoading && plugins.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
           </div>
@@ -991,7 +914,13 @@ function MarketPageContent({
           </div>
         ) : (
           <>
-            <div className="grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
+            <div
+              aria-busy={isLoading}
+              className={cn(
+                'grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))] transition-opacity duration-150',
+                isLoading && 'pointer-events-none opacity-50',
+              )}
+            >
               {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}

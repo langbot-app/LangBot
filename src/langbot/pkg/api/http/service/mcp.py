@@ -94,6 +94,26 @@ def _mask_secret_structure(value):
     return _SECRET_MASK
 
 
+_MCP_PLACEHOLDER = re.compile(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}')
+
+
+def unfilled_mcp_placeholders(extra_args) -> list[str]:
+    """Return placeholder names still present in a remote MCP's url/headers."""
+
+    if not isinstance(extra_args, dict):
+        return []
+    values = [str(extra_args.get('url') or '')]
+    headers = extra_args.get('headers')
+    if isinstance(headers, dict):
+        values.extend(str(v) for v in headers.values())
+    names: list[str] = []
+    for value in values:
+        for name in _MCP_PLACEHOLDER.findall(value):
+            if name not in names:
+                names.append(name)
+    return names
+
+
 def redact_mcp_secrets(value):
     """Return a recursively redacted copy of MCP configuration data."""
 
@@ -308,7 +328,11 @@ class MCPService:
             **server_data,
             'runtime_info': session.get_runtime_info_dict() if session else None,
         }
-        return redact_mcp_secrets(response_data)
+        redacted = redact_mcp_secrets(response_data)
+        # Names (never values) of ``${VAR}`` placeholders left by a community
+        # MCP install (LANG-439); the masked config cannot reveal them.
+        redacted['unfilled_inputs'] = unfilled_mcp_placeholders(server_data.get('extra_args'))
+        return redacted
 
     async def _get_mcp_server_by_name_raw(
         self,

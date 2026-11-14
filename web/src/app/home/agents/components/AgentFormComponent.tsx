@@ -74,6 +74,9 @@ const OTHER_TOOL_SCOPES = [
   'skill',
 ] as const;
 
+// Prompt fields in Agent configuration search the Agent prompt library (LANG-439).
+const AGENT_FORM_SYSTEM_CONTEXT = { prompt_library_kind: 'agent' };
+
 export interface RunnerStatus {
   label: string;
   description?: string;
@@ -672,6 +675,7 @@ function AgentFormComponent(
           <DynamicFormComponent
             itemConfigList={stage.config}
             initialValues={initialValues}
+            systemContext={AGENT_FORM_SYSTEM_CONTEXT}
             renderItem={
               isRunnerSelector
                 ? ({ config, field }) =>

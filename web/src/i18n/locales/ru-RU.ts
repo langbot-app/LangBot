@@ -1943,6 +1943,12 @@ const ruRU = {
     debugging: 'Отладка',
     uploadLocalPlugin: 'Загрузить локальный плагин',
     spaceUpload: {
+      descriptionInstalled:
+        'Загрузить локально установленный плагин {{author}}/{{name}} в маркетплейс.',
+      shareInstalledAction: 'Поделиться в Space',
+      installedPackageTitle: 'Будет загружен установленный пакет',
+      installedPackageHint:
+        'Локально установленный плагин загружается как есть; автор, имя и версия берутся из manifest.',
       menuAction: 'Загрузить в маркетплейс',
       title: 'Загрузить плагин в маркетплейс',
       description:
@@ -2265,6 +2271,13 @@ const ruRU = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'Все расширения',
+      allDesc: 'Плагины, MCP и навыки',
+      pluginDesc: 'Платформы, инструменты, раннеры и др.',
+      mcpDesc: 'Инструменты внешних MCP-серверов',
+      skillDesc: 'Новые навыки для агентов',
+    },
     certifiedPlugin: 'Сертифицированный плагин',
     certificationTooltip:
       'Эта версия прошла проверку изоляции данных и совместимости с общей средой выполнения. Пакет подписан.',
@@ -3615,6 +3628,7 @@ const ruRU = {
       skill: 'Навык',
       knowledge_base: 'База знаний',
       mcp_server: 'MCP-сервер',
+      content: 'Опубликованный контент',
       runtime: 'Среда выполнения',
       system: 'Система',
       resource: 'Ресурс',
@@ -3625,6 +3639,8 @@ const ruRU = {
       error: 'Ошибка',
     },
     actions: {
+      content_publish: 'Публикация в Space',
+      plugin_publish: 'Публикация расширения в Space',
       audit_log_view: 'Просмотр журнала операций',
       settings_update: 'Изменение настроек трассировки',
       settings_view: 'Просмотр настроек трассировки',
@@ -4279,6 +4295,116 @@ const ruRU = {
       failed: 'Ошибка',
       rate_limited: 'Квота исчерпана',
       skipped: 'Пропущено',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'Шаблоны уже в пути ✨',
+    emptyBody: 'Нажмите «Поделиться» рядом с промптом и станьте первым!',
+    bindToFavorite: 'Привяжите аккаунт для избранного',
+    originalLanguage: 'оригинал',
+    open: 'Библиотека промптов',
+    title: 'Библиотека промптов',
+    description:
+      'Поиск проверенных промптов из LangBot Space. После применения сохраните настройки.',
+    kindMessaging: 'Диалог',
+    kindAgent: 'Агент',
+    searchPlaceholder: 'Поиск по названию, описанию, тегам или тексту',
+    tabAll: 'Все',
+    tabFavorites: 'Избранное',
+    favoritesNeedAccount:
+      'Привяжите LangBot Account, чтобы пользоваться избранным',
+    otherKindHint:
+      'Вы просматриваете промпты «{{kind}}» для другого сценария. Проверьте их перед применением.',
+    noFavorites: 'Избранного пока нет',
+    empty: 'Ничего не найдено',
+    loadFailed: 'Не удалось загрузить библиотеку',
+    favoriteFailed: 'Не удалось обновить избранное',
+    applied: 'Применено. Сохраните, чтобы вступило в силу.',
+    uses: '{{count}} исп.',
+    favorite: 'В избранное',
+    variablesHint: 'Переменные:',
+    append: 'Добавить к текущему',
+    replace: 'Заменить текущий',
+    replaceTitle: 'Заменить текущий промпт?',
+    replaceDescription:
+      'Текущий промпт будет перезаписан (до сохранения можно отменить).',
+    selectHint: 'Выберите промпт слева',
+  },
+  spaceShare: {
+    modeNew: 'Опубликовать как новое',
+    modeUpdate: 'Обновить существующее ({{count}})',
+    pickExisting: 'Выберите, что обновить',
+    unlisted: 'скрыто',
+    identifierHint:
+      'Строчные буквы, цифры, - или _. После публикации не меняется.',
+    bindAccount: 'Привязать аккаунт LangBot',
+    autoTranslateNotice:
+      'Достаточно одного языка. После загрузки мы автоматически переведём текст на другие языки.',
+    shareShort: 'Поделиться',
+    shareToSpace: 'Поделиться в Space',
+    findingsBlockTitle:
+      'Найдены возможные учётные данные — удалите их перед публикацией',
+    findingsWarnTitle: 'Содержит личные или внутренние данные',
+    submitFailed: 'Не удалось отправить',
+    submittedTitle: 'Отправлено на проверку',
+    submittedAgentReview:
+      '{{id}} проходит автоматическую проверку и появится в LangBot Space после одобрения.',
+    submittedManualReview: '{{id}} ожидает ручной проверки.',
+    viewProgress: 'Статус проверки в LangBot Space',
+    needAccountTitle: 'Нужен LangBot Account',
+    needAccount:
+      'Привяжите аккаунт LangBot, чтобы делиться. Материал публикуется от профиля автора этого аккаунта в LangBot Space.',
+    needCreatorTitle: 'Нет профиля автора',
+    needCreator:
+      'Создайте профиль автора в LangBot Space, чтобы делиться. Это нужно сделать один раз.',
+    openCreator: 'Создать профиль автора',
+    acknowledgeWarnings: 'Подтверждаю, что эти данные можно публиковать',
+    displayName: 'Отображаемое имя',
+    identifier: 'Идентификатор',
+    descriptionLabel: 'Описание',
+    changelog: 'Изменения',
+    reviewNotice:
+      'Материалы проверяются перед публикацией в LangBot Space. Повторная публикация с тем же именем создаёт новую версию.',
+    submit: 'Отправить на проверку',
+    promptTitle: 'Поделиться промптом в LangBot Space',
+    promptDescriptionMessaging:
+      'Публикуется как промпт для диалогов в настройках пайплайнов.',
+    promptDescriptionAgent:
+      'Публикуется как промпт агента в настройках агентов.',
+    detectedVariables: 'Найденные переменные:',
+    skillTitle: 'Поделиться Skill в LangBot Space',
+    skillDescription:
+      'Загружает текущий пакет Skill. Проверка смотрит скрипты и внешние запросы.',
+    packageFiles: 'Файлы для отправки',
+    mcpTitle: 'Поделиться MCP-сервером в LangBot Space',
+    mcpDescription:
+      'Только удалённые MCP. Учётные данные не загружаются: они заменяются заполнителями.',
+    mcpPublishedConfig: 'Публикуемая конфигурация',
+    mcpToolsCount: 'Включает {{count}} инструментов',
+    mcpRedactedTitle: 'Удалено учётных данных: {{count}}',
+    mcpRedactedHint:
+      'При установке попросят эти значения. Можно задать понятные названия:',
+    mcpInputLabelPlaceholder: 'Название (по умолч.: {{label}})',
+    mcpNoCredentials:
+      'Учётные данные не найдены; конфигурация публикуется как есть.',
+    mcpNeedsConnection:
+      'Сначала успешно подключитесь — список инструментов публикуется вместе',
+    mcpFillInputsTitle: 'Заполните учётные данные перед включением',
+    mcpFillInputs:
+      'Для этого MCP из сообщества укажите свои значения {{names}}, сохраните и включите.',
+    finding: {
+      openai_key: 'Ключ OpenAI',
+      anthropic_key: 'Ключ Anthropic',
+      github_token: 'Токен GitHub',
+      slack_token: 'Токен Slack',
+      aws_access_key: 'Ключ доступа AWS',
+      google_api_key: 'Ключ Google API',
+      private_key: 'Закрытый ключ',
+      jwt: 'JWT-токен',
+      langbot_key: 'Ключ LangBot',
+      email: 'Адрес эл. почты',
+      phone: 'Номер телефона',
+      private_url: 'Внутренний URL',
     },
   },
 };

@@ -1466,9 +1466,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
+        # Community-published MCP servers carry ``${VAR}`` placeholders instead
+        # of credentials (LANG-439). Install them disabled so nothing connects
+        # with a placeholder; the WebUI asks for the values before enabling.
+        required_inputs = mcp_data.get('required_inputs') or []
         server_data = {
             'name': name,
-            'enable': True,
+            'enable': not required_inputs,
             'mode': mode,
             'extra_args': extra_args,
             'readme': readme,
@@ -2591,6 +2595,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 plugin_name,
                 manifest_overrides=manifest_overrides,
             )
+
+    async def get_installed_plugin_package(self, author: str, plugin_name: str) -> dict[str, Any]:
+        """Return the exact archive an installed local/GitHub plugin runs (LANG-439).
+
+        Every installation persists its verified ``.lbpkg`` by digest, so the
+        shared package is byte-identical to what this Workspace installed.
+        Marketplace installations are refused: they already live on Space.
+        """
+        execution_context, setting = await self._setting_for_plugin(author, plugin_name)
+        if setting.install_source not in (PluginInstallSource.LOCAL.value, PluginInstallSource.GITHUB.value):
+            raise ValueError('Only locally installed or GitHub-installed plugins can be shared to LangBot Space')
+        package = await self._load_artifact_package(execution_context, setting.artifact_digest)
+        if package is None:
+            raise ValueError('The installed plugin package is missing; reinstall the plugin and try again')
+        manifest, _, _ = inspect_plugin_archive_metadata(package, require_manifest=True)
+        metadata = (manifest or {}).get('metadata') or {}
+        version = str(metadata.get('version') or '')
+        return {
+            'package': package,
+            'filename': f'{author}-{plugin_name}-{version or "local"}.lbpkg',
+            'install_source': setting.install_source,
+            'version': version,
+            'artifact_digest': setting.artifact_digest,
+        }
 
     async def git_sync_plugin(
         self,

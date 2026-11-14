@@ -18,6 +18,16 @@ from ....cloud.model_catalog import LANGBOT_MODELS_PROVIDER_REQUESTER
 
 
 _CREDITS_CACHE_TTL_SECONDS = 60
+
+
+class SpaceAPIError(Exception):
+    """A LangBot Space API call failed; ``status`` is the HTTP status."""
+
+    def __init__(self, status: int, message: str) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 _CREDITS_CACHE_MAX_ENTRIES = 4096
 
 
@@ -410,6 +420,64 @@ class SpaceService:
             if data.get('code') != 0:
                 raise ValueError(data.get('msg') or 'Failed to publish plugin')
             return data.get('data', {})
+
+    async def space_api(
+        self,
+        method: str,
+        path: str,
+        *,
+        access_token: str | None = None,
+        params: dict | None = None,
+        json_body: typing.Any = None,
+        form: aiohttp.FormData | None = None,
+    ) -> typing.Any:
+        """Call a LangBot Space JSON API and return its ``data`` (LANG-439).
+
+        Raises ``SpaceAPIError`` with Space's message and HTTP status so the
+        caller can surface it to the WebUI unchanged.
+        """
+        space_url = self._get_space_config()['url'].rstrip('/')
+        headers = {'Authorization': f'Bearer {access_token}'} if access_token else {}
+        session = httpclient.get_session()
+        kwargs: dict[str, typing.Any] = {'headers': headers}
+        if params:
+            kwargs['params'] = {k: v for k, v in params.items() if v not in (None, '')}
+        if json_body is not None:
+            kwargs['json'] = json_body
+        if form is not None:
+            kwargs['data'] = form
+        async with session.request(method, f'{space_url}{path}', **kwargs) as response:
+            try:
+                payload = await httpclient.read_json_limited(response)
+            except Exception:
+                payload = {}
+            if response.status != 200 or not isinstance(payload, dict) or payload.get('code') != 0:
+                msg = ''
+                if isinstance(payload, dict):
+                    msg = payload.get('msg') or payload.get('message') or ''
+                raise SpaceAPIError(response.status, msg or f'LangBot Space returned HTTP {response.status}')
+            return payload.get('data')
+
+    async def submit_content(
+        self,
+        access_token: str,
+        item_type: str,
+        metadata: dict,
+        *,
+        file_bytes: bytes | None = None,
+        filename: str = 'artifact.zip',
+    ) -> dict:
+        """Submit a skill / remote MCP / prompt for Space review (LANG-439)."""
+        import json as _json
+
+        form = aiohttp.FormData()
+        form.add_field('item_type', item_type)
+        form.add_field('metadata', _json.dumps(metadata, ensure_ascii=False))
+        if file_bytes is not None:
+            form.add_field('file', file_bytes, filename=filename, content_type='application/zip')
+        return await self.space_api(
+            'POST', '/api/v1/marketplace/content-submissions', access_token=access_token, form=form
+        )
 
     async def get_recommended_chat_model(self, context: typing.Any) -> dict:
         """Resolve Space's first ranked chat model to a local Workspace model."""

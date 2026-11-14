@@ -1934,6 +1934,13 @@ const jaJP = {
     debugging: 'デバッグ中',
     uploadLocalPlugin: 'ローカルプラグインのアップロード',
     spaceUpload: {
+      descriptionInstalled:
+        'ローカルインストールのプラグイン {{author}}/{{name}} をマーケットにアップロードします。',
+      shareInstalledAction: 'Space に共有',
+      installedPackageTitle:
+        'インストール済みのプラグインパッケージをアップロードします',
+      installedPackageHint:
+        'ローカルインストールのプラグインは実行中の .lbpkg をそのままアップロードします。作者・名前・バージョンは manifest に従います。',
       menuAction: 'プラグインマーケットにアップロード',
       title: 'プラグインをプラグインマーケットにアップロード',
       description:
@@ -2258,6 +2265,13 @@ const jaJP = {
     },
   },
   market: {
+    typeTiles: {
+      all: 'すべての拡張',
+      allDesc: 'プラグイン・MCP・スキル',
+      pluginDesc: 'プラットフォーム・ツール・ランナーなど',
+      mcpDesc: '外部サービスのツールを接続',
+      skillDesc: 'Agent に新しい作業手順を教える',
+    },
     certifiedPlugin: '認証済みプラグイン',
     certificationTooltip:
       'このバージョンはデータ分離と共有実行環境との互換性の審査に合格し、パッケージに署名されています。',
@@ -3614,6 +3628,7 @@ const jaJP = {
       skill: 'スキル',
       knowledge_base: 'ナレッジベース',
       mcp_server: 'MCP サーバー',
+      content: '共有コンテンツ',
       runtime: 'ランタイム',
       system: 'システム',
       resource: 'リソース',
@@ -3624,6 +3639,8 @@ const jaJP = {
       error: '失敗',
     },
     actions: {
+      content_publish: 'コンテンツを Space に共有',
+      plugin_publish: '拡張を Space に公開',
       audit_log_view: '操作ログを閲覧',
       settings_update: 'トレーサビリティ設定を変更',
       settings_view: 'トレーサビリティ設定を閲覧',
@@ -4268,6 +4285,114 @@ const jaJP = {
       failed: '失敗',
       rate_limited: '上限到達',
       skipped: 'スキップ',
+    },
+  },
+  promptLibrary: {
+    emptyTitle: 'テンプレートを準備中です ✨',
+    emptyBody: 'プロンプト横の「共有」から、最初の投稿者になりましょう！',
+    bindToFavorite: 'アカウント連携でお気に入り',
+    originalLanguage: '原文',
+    open: 'プロンプトライブラリ',
+    title: 'プロンプトライブラリ',
+    description:
+      'LangBot Space で共有・審査済みのプロンプトを検索します。適用後は設定を保存してください。',
+    kindMessaging: '会話プロンプト',
+    kindAgent: 'Agent プロンプト',
+    searchPlaceholder: '名前・説明・タグ・本文で検索',
+    tabAll: 'すべて',
+    tabFavorites: 'お気に入り',
+    favoritesNeedAccount: 'LangBot アカウントを連携するとお気に入りを使えます',
+    otherKindHint:
+      '{{kind}}を表示中です。別の用途向けに書かれているため、適用前に確認してください。',
+    noFavorites: 'お気に入りはまだありません',
+    empty: '該当するプロンプトはありません',
+    loadFailed: 'プロンプトライブラリの読み込みに失敗しました',
+    favoriteFailed: 'お気に入りの更新に失敗しました',
+    applied: '適用しました。保存すると反映されます。',
+    uses: '{{count}} 回使用',
+    favorite: 'お気に入り',
+    variablesHint: '変数：',
+    append: '現在のプロンプトに追加',
+    replace: '現在のプロンプトを置き換え',
+    replaceTitle: '現在のプロンプトを置き換えますか？',
+    replaceDescription:
+      '現在の内容は上書きされます（保存前なら破棄できます）。',
+    selectHint: '左側からプロンプトを選んでプレビュー',
+  },
+  spaceShare: {
+    modeNew: '新規として公開',
+    modeUpdate: '既存を更新（{{count}}）',
+    pickExisting: '更新する投稿を選択',
+    unlisted: '非公開',
+    identifierHint: '小文字・数字・- または _。公開後は変更できません',
+    bindAccount: 'LangBot アカウントを連携',
+    autoTranslateNotice:
+      '1 つの言語で書くだけで大丈夫です。アップロード後に他の言語へ自動翻訳します。',
+    shareShort: '共有',
+    shareToSpace: 'Space に共有',
+    findingsBlockTitle:
+      '認証情報らしき値があります。削除してから共有してください',
+    findingsWarnTitle: '個人情報や内部情報が含まれています',
+    submitFailed: '送信に失敗しました',
+    submittedTitle: '審査に送信しました',
+    submittedAgentReview:
+      '{{id}} を自動審査中です。承認後 LangBot Space に掲載されます。',
+    submittedManualReview: '{{id}} は手動審査待ちです。',
+    viewProgress: 'LangBot Space で審査状況を見る',
+    needAccountTitle: 'LangBot アカウントが必要です',
+    needAccount:
+      'LangBot アカウントを連携すると投稿できます。投稿はそのアカウントの LangBot Space クリエイタープロフィールで公開されます。',
+    needCreatorTitle: 'クリエイタープロフィールがありません',
+    needCreator:
+      'LangBot Space でクリエイタープロフィールを設定すると投稿できます。設定は一度だけです。',
+    openCreator: 'クリエイタープロフィールを設定',
+    acknowledgeWarnings: 'この情報を公開して問題ないことを確認しました',
+    displayName: '表示名',
+    identifier: '識別子',
+    descriptionLabel: '説明',
+    changelog: '変更内容',
+    reviewNotice:
+      '投稿は審査後に LangBot Space で公開されます。同じ名前で再共有すると新しいバージョンになります。',
+    submit: '審査に送信',
+    promptTitle: 'プロンプトを LangBot Space に共有',
+    promptDescriptionMessaging:
+      '「会話プロンプト」として公開され、他のユーザーがパイプライン設定で検索できます。',
+    promptDescriptionAgent:
+      '「Agent プロンプト」として公開され、他のユーザーが Agent 設定で検索できます。',
+    detectedVariables: '検出した変数：',
+    skillTitle: 'Skill を LangBot Space に共有',
+    skillDescription:
+      '現在の Skill パッケージをアップロードします。審査ではスクリプトと外部通信を確認します。',
+    packageFiles: '送信するファイル',
+    mcpTitle: 'MCP サーバーを LangBot Space に共有',
+    mcpDescription:
+      'リモート MCP のみ対応。認証情報はアップロードされず、プレースホルダーに置き換えられます。',
+    mcpPublishedConfig: '公開される設定',
+    mcpToolsCount: '{{count}} 個のツールのスナップショットを含みます',
+    mcpRedactedTitle: '{{count}} 件の認証情報を除去しました',
+    mcpRedactedHint:
+      'インストール時にこれらの値の入力を求められます。わかりやすい名前を付けられます：',
+    mcpInputLabelPlaceholder: '表示名（既定：{{label}}）',
+    mcpNoCredentials:
+      '認証情報は見つかりませんでした。設定はそのまま公開されます。',
+    mcpNeedsConnection:
+      '先に接続テストを成功させてください。ツール一覧も公開されます',
+    mcpFillInputsTitle: '認証情報を入力してから有効化してください',
+    mcpFillInputs:
+      'このコミュニティ MCP では {{names}} を自分の値に置き換え、保存してから有効化してください。',
+    finding: {
+      openai_key: 'OpenAI キー',
+      anthropic_key: 'Anthropic キー',
+      github_token: 'GitHub トークン',
+      slack_token: 'Slack トークン',
+      aws_access_key: 'AWS アクセスキー',
+      google_api_key: 'Google API キー',
+      private_key: '秘密鍵',
+      jwt: 'JWT トークン',
+      langbot_key: 'LangBot キー',
+      email: 'メールアドレス',
+      phone: '電話番号',
+      private_url: '内部 URL',
     },
   },
 };
