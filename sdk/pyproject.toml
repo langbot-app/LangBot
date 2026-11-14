@@ -1,6 +1,6 @@
 [project]
 name = "langbot-plugin"
-version = "0.7.24"
+version = "0.7.25"
 description = "This package contains the SDK, CLI for building plugins for LangBot, plus the runtime for hosting LangBot plugins"
 readme = "README.md"
 authors = [
