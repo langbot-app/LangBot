@@ -3213,6 +3213,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 'is_active': str(row[0].is_active if isinstance(row, tuple) else row.is_active),
                 'platform': row[0].platform if isinstance(row, tuple) else row.platform,
                 'user_id': row[0].user_id if isinstance(row, tuple) else row.user_id,
+                'user_name': row[0].user_name if isinstance(row, tuple) else row.user_name,
             }
             for row in rows
         ]
