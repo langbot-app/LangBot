@@ -4276,6 +4276,7 @@ const enUS = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'Bind an account to favorite',
     originalLanguage: 'original',
     open: 'Prompt library',
     title: 'Prompt library',
@@ -4305,6 +4306,7 @@ const enUS = {
     selectHint: 'Select a prompt on the left to preview',
   },
   spaceShare: {
+    bindAccount: 'Bind LangBot Account',
     autoTranslateNotice:
       'Write it in one language. We translate it into other languages automatically after upload.',
     shareShort: 'Share',
@@ -4320,10 +4322,11 @@ const enUS = {
     viewProgress: 'View review progress on LangBot Space',
     needAccountTitle: 'LangBot Account required',
     needAccount:
-      'Bind a LangBot Account in account settings first; submissions are published under its creator profile.',
+      'Bind a LangBot Account to share. Your contribution is published under that account’s LangBot Space creator profile.',
     needCreatorTitle: 'No creator profile yet',
-    needCreator: 'Set up a creator profile on LangBot Space to submit.',
-    openCreator: 'Set up',
+    needCreator:
+      'Set up a creator profile on LangBot Space to share. You only need to do this once.',
+    openCreator: 'Set up creator profile',
     acknowledgeWarnings: 'I confirm this information can be public',
     displayName: 'Display name',
     identifier: 'Identifier',

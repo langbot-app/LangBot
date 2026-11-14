@@ -4298,6 +4298,7 @@ const ruRU = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'Привяжите аккаунт для избранного',
     originalLanguage: 'оригинал',
     open: 'Библиотека промптов',
     title: 'Библиотека промптов',
@@ -4328,6 +4329,7 @@ const ruRU = {
     selectHint: 'Выберите промпт слева',
   },
   spaceShare: {
+    bindAccount: 'Привязать аккаунт LangBot',
     autoTranslateNotice:
       'Достаточно одного языка. После загрузки мы автоматически переведём текст на другие языки.',
     shareShort: 'Поделиться',
@@ -4343,10 +4345,11 @@ const ruRU = {
     viewProgress: 'Статус проверки в LangBot Space',
     needAccountTitle: 'Нужен LangBot Account',
     needAccount:
-      'Сначала привяжите LangBot Account в настройках; публикация идёт от его профиля автора.',
+      'Привяжите аккаунт LangBot, чтобы делиться. Материал публикуется от профиля автора этого аккаунта в LangBot Space.',
     needCreatorTitle: 'Нет профиля автора',
-    needCreator: 'Создайте профиль автора в LangBot Space.',
-    openCreator: 'Настроить',
+    needCreator:
+      'Создайте профиль автора в LangBot Space, чтобы делиться. Это нужно сделать один раз.',
+    openCreator: 'Создать профиль автора',
     acknowledgeWarnings: 'Подтверждаю, что эти данные можно публиковать',
     displayName: 'Отображаемое имя',
     identifier: 'Идентификатор',

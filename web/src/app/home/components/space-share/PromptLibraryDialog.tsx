@@ -49,6 +49,7 @@ import {
   promptLanguageName,
   promptVersions,
 } from './prompt-i18n';
+import { useSpaceBind } from './useSpaceBind';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { cn } from '@/lib/utils';
 import type {
@@ -115,6 +116,7 @@ export default function PromptLibraryDialog({
   useEffect(() => setChosenLanguage(null), [selected?.prompt_id]);
   const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
   const [favoritesAvailable, setFavoritesAvailable] = useState(false);
+  const { bind, binding } = useSpaceBind();
   const [confirmReplace, setConfirmReplace] = useState(false);
 
   useEffect(() => {
@@ -391,7 +393,7 @@ export default function PromptLibraryDialog({
                         @{selected.author} · v{selected.version}
                       </div>
                     </div>
-                    {favoritesAvailable && (
+                    {favoritesAvailable ? (
                       <Button
                         type="button"
                         variant="ghost"
@@ -406,6 +408,18 @@ export default function PromptLibraryDialog({
                               'fill-amber-500 text-amber-500',
                           )}
                         />
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-xs text-muted-foreground"
+                        disabled={binding}
+                        onClick={() => void bind()}
+                      >
+                        <Star className="size-3.5" />
+                        {t('promptLibrary.bindToFavorite')}
                       </Button>
                     )}
                   </div>

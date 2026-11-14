@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Checkbox } from '@/components/ui/checkbox';
 import { httpClient } from '@/app/infra/http/HttpClient';
+import { useSpaceBind } from './useSpaceBind';
 import type {
   ContentSubmissionResult,
   ShareFinding,
@@ -116,6 +117,7 @@ export default function ShareToSpaceDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<ContentSubmissionResult | null>(null);
+  const { bind: bindAccount, binding } = useSpaceBind();
 
   useEffect(() => {
     if (!open) return;
@@ -211,22 +213,39 @@ export default function ShareToSpaceDialog({
           <Alert>
             <AlertTriangle className="size-4" />
             <AlertTitle>{t('spaceShare.needAccountTitle')}</AlertTitle>
-            <AlertDescription>{t('spaceShare.needAccount')}</AlertDescription>
+            <AlertDescription>
+              <p>{t('spaceShare.needAccount')}</p>
+              <Button
+                size="sm"
+                className="mt-2"
+                disabled={binding}
+                onClick={() => void bindAccount()}
+              >
+                {binding ? (
+                  <Loader2 className="mr-1 size-3.5 animate-spin" />
+                ) : (
+                  <ExternalLink className="mr-1 size-3.5" />
+                )}
+                {t('spaceShare.bindAccount')}
+              </Button>
+            </AlertDescription>
           </Alert>
         ) : !ctx.has_creator_profile ? (
           <Alert>
             <AlertTriangle className="size-4" />
             <AlertTitle>{t('spaceShare.needCreatorTitle')}</AlertTitle>
             <AlertDescription>
-              {t('spaceShare.needCreator')}{' '}
-              <a
-                className="underline"
-                href={`${ctx.space_web_url}/profile?tab=creator`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                {t('spaceShare.openCreator')}
-              </a>
+              <p>{t('spaceShare.needCreator')}</p>
+              <Button asChild size="sm" variant="outline" className="mt-2">
+                <a
+                  href={`${ctx.space_web_url}/profile?tab=creator`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {t('spaceShare.openCreator')}
+                  <ExternalLink className="ml-1 size-3.5" />
+                </a>
+              </Button>
             </AlertDescription>
           </Alert>
         ) : (

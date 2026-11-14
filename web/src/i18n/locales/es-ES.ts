@@ -4350,6 +4350,7 @@ const esES = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'Vincula una cuenta para guardar favoritos',
     originalLanguage: 'original',
     open: 'Biblioteca de prompts',
     title: 'Biblioteca de prompts',
@@ -4379,6 +4380,7 @@ const esES = {
     selectHint: 'Selecciona un prompt a la izquierda',
   },
   spaceShare: {
+    bindAccount: 'Vincular cuenta de LangBot',
     autoTranslateNotice:
       'Escríbelo en un solo idioma. Lo traduciremos automáticamente a otros idiomas después de subirlo.',
     shareShort: 'Compartir',
@@ -4394,10 +4396,11 @@ const esES = {
     viewProgress: 'Ver el progreso en LangBot Space',
     needAccountTitle: 'Se requiere una LangBot Account',
     needAccount:
-      'Vincula primero una LangBot Account en la configuración; se publicará con su perfil de creador.',
+      'Vincula una cuenta de LangBot para compartir. Tu aportación se publica con el perfil de creador de esa cuenta en LangBot Space.',
     needCreatorTitle: 'Aún no tienes perfil de creador',
-    needCreator: 'Crea un perfil de creador en LangBot Space para publicar.',
-    openCreator: 'Configurar',
+    needCreator:
+      'Configura un perfil de creador en LangBot Space para compartir. Solo hace falta una vez.',
+    openCreator: 'Configurar perfil de creador',
     acknowledgeWarnings: 'Confirmo que esta información puede ser pública',
     displayName: 'Nombre visible',
     identifier: 'Identificador',

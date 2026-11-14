@@ -4288,6 +4288,7 @@ const jaJP = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'アカウント連携でお気に入り',
     originalLanguage: '原文',
     open: 'プロンプトライブラリ',
     title: 'プロンプトライブラリ',
@@ -4317,6 +4318,7 @@ const jaJP = {
     selectHint: '左側からプロンプトを選んでプレビュー',
   },
   spaceShare: {
+    bindAccount: 'LangBot アカウントを連携',
     autoTranslateNotice:
       '1 つの言語で書くだけで大丈夫です。アップロード後に他の言語へ自動翻訳します。',
     shareShort: '共有',
@@ -4332,11 +4334,11 @@ const jaJP = {
     viewProgress: 'LangBot Space で審査状況を見る',
     needAccountTitle: 'LangBot アカウントが必要です',
     needAccount:
-      'まずアカウント設定で LangBot アカウントを連携してください。投稿はそのクリエイター名義で公開されます。',
+      'LangBot アカウントを連携すると投稿できます。投稿はそのアカウントの LangBot Space クリエイタープロフィールで公開されます。',
     needCreatorTitle: 'クリエイタープロフィールがありません',
     needCreator:
-      'LangBot Space でクリエイタープロフィールを設定すると投稿できます。',
-    openCreator: '設定する',
+      'LangBot Space でクリエイタープロフィールを設定すると投稿できます。設定は一度だけです。',
+    openCreator: 'クリエイタープロフィールを設定',
     acknowledgeWarnings: 'この情報を公開して問題ないことを確認しました',
     displayName: '表示名',
     identifier: '識別子',

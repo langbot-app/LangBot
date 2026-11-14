@@ -4025,6 +4025,7 @@ const zhHant = {
     },
   },
   promptLibrary: {
+    bindToFavorite: '綁定帳號後可收藏',
     originalLanguage: '原文',
     open: '提示詞庫',
     title: '提示詞庫',
@@ -4053,6 +4054,7 @@ const zhHant = {
     selectHint: '從左側選擇一個提示詞預覽',
   },
   spaceShare: {
+    bindAccount: '綁定 LangBot 帳號',
     autoTranslateNotice: '只需用一種語言填寫，上傳後我們會自動翻譯為多種語言。',
     shareShort: '分享',
     shareToSpace: '分享到 Space',
@@ -4065,10 +4067,10 @@ const zhHant = {
     viewProgress: '在 LangBot Space 查看審核進度',
     needAccountTitle: '需要綁定 LangBot 帳號',
     needAccount:
-      '請先在帳號設定中綁定 LangBot 帳號，投稿會以該帳號的創作者身分發布。',
+      '綁定後即可投稿，內容會以該帳號在 LangBot Space 的創作者身分發布。',
     needCreatorTitle: '還沒有創作者身分',
-    needCreator: '在 LangBot Space 設定創作者身分後即可投稿。',
-    openCreator: '去設定',
+    needCreator: '在 LangBot Space 設定創作者身分後即可投稿，只需填寫一次。',
+    openCreator: '前往設定創作者身分',
     acknowledgeWarnings: '我已確認這些資訊可以公開',
     displayName: '顯示名稱',
     identifier: '識別碼',

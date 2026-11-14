@@ -4024,6 +4024,7 @@ const zhHans = {
     },
   },
   promptLibrary: {
+    bindToFavorite: '绑定账号后可收藏',
     originalLanguage: '原文',
     open: '提示词库',
     title: '提示词库',
@@ -4052,6 +4053,7 @@ const zhHans = {
     selectHint: '从左侧选择一个提示词预览',
   },
   spaceShare: {
+    bindAccount: '绑定 LangBot 账号',
     autoTranslateNotice: '只需用一种语言填写，上传后我们会自动翻译为多种语言。',
     shareShort: '分享',
     shareToSpace: '分享到 Space',
@@ -4064,10 +4066,10 @@ const zhHans = {
     viewProgress: '在 LangBot Space 查看审核进度',
     needAccountTitle: '需要绑定 LangBot 账号',
     needAccount:
-      '请先在账号设置中绑定 LangBot 账号，投稿会以该账号的创作者身份发布。',
+      '绑定后即可投稿，内容会以该账号在 LangBot Space 的创作者身份发布。',
     needCreatorTitle: '还没有创作者身份',
-    needCreator: '在 LangBot Space 设置创作者身份后即可投稿。',
-    openCreator: '去设置',
+    needCreator: '在 LangBot Space 设置创作者身份后即可投稿，只需填写一次。',
+    openCreator: '去设置创作者身份',
     acknowledgeWarnings: '我已确认这些信息可以公开',
     displayName: '显示名称',
     identifier: '标识',

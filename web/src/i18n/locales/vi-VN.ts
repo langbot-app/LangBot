@@ -4252,6 +4252,7 @@ const viVN = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'Liên kết tài khoản để yêu thích',
     originalLanguage: 'bản gốc',
     open: 'Thư viện prompt',
     title: 'Thư viện prompt',
@@ -4281,6 +4282,7 @@ const viVN = {
     selectHint: 'Chọn một prompt bên trái để xem',
   },
   spaceShare: {
+    bindAccount: 'Liên kết tài khoản LangBot',
     autoTranslateNotice:
       'Chỉ cần viết bằng một ngôn ngữ. Chúng tôi sẽ tự động dịch sang các ngôn ngữ khác sau khi tải lên.',
     shareShort: 'Chia sẻ',
@@ -4296,10 +4298,11 @@ const viVN = {
     viewProgress: 'Xem tiến độ trên LangBot Space',
     needAccountTitle: 'Cần LangBot Account',
     needAccount:
-      'Hãy liên kết LangBot Account trong cài đặt tài khoản; nội dung sẽ đăng dưới hồ sơ nhà sáng tạo.',
+      'Liên kết tài khoản LangBot để đóng góp. Nội dung sẽ được đăng dưới hồ sơ nhà sáng tạo của tài khoản đó trên LangBot Space.',
     needCreatorTitle: 'Chưa có hồ sơ nhà sáng tạo',
-    needCreator: 'Thiết lập hồ sơ nhà sáng tạo trên LangBot Space để gửi.',
-    openCreator: 'Thiết lập',
+    needCreator:
+      'Thiết lập hồ sơ nhà sáng tạo trên LangBot Space để đóng góp. Chỉ cần làm một lần.',
+    openCreator: 'Thiết lập hồ sơ nhà sáng tạo',
     acknowledgeWarnings: 'Tôi xác nhận thông tin này có thể công khai',
     displayName: 'Tên hiển thị',
     identifier: 'Định danh',

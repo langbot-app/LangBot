@@ -4193,6 +4193,7 @@ const thTH = {
     },
   },
   promptLibrary: {
+    bindToFavorite: 'ผูกบัญชีเพื่อบันทึกรายการโปรด',
     originalLanguage: 'ต้นฉบับ',
     open: 'คลังพรอมต์',
     title: 'คลังพรอมต์',
@@ -4221,6 +4222,7 @@ const thTH = {
     selectHint: 'เลือกพรอมต์ทางซ้ายเพื่อดูตัวอย่าง',
   },
   spaceShare: {
+    bindAccount: 'ผูกบัญชี LangBot',
     autoTranslateNotice:
       'เขียนเพียงภาษาเดียวก็พอ เราจะแปลเป็นภาษาอื่นให้อัตโนมัติหลังอัปโหลด',
     shareShort: 'แชร์',
@@ -4235,10 +4237,11 @@ const thTH = {
     viewProgress: 'ดูความคืบหน้าบน LangBot Space',
     needAccountTitle: 'ต้องใช้ LangBot Account',
     needAccount:
-      'ผูก LangBot Account ในการตั้งค่าบัญชีก่อน ผลงานจะเผยแพร่ในนามโปรไฟล์ครีเอเตอร์',
+      'ผูกบัญชี LangBot เพื่อส่งผลงาน ผลงานจะเผยแพร่ในนามโปรไฟล์ผู้สร้างของบัญชีนั้นบน LangBot Space',
     needCreatorTitle: 'ยังไม่มีโปรไฟล์ครีเอเตอร์',
-    needCreator: 'ตั้งค่าโปรไฟล์ครีเอเตอร์บน LangBot Space เพื่อส่งผลงาน',
-    openCreator: 'ตั้งค่า',
+    needCreator:
+      'ตั้งค่าโปรไฟล์ผู้สร้างบน LangBot Space เพื่อส่งผลงาน ทำเพียงครั้งเดียว',
+    openCreator: 'ตั้งค่าโปรไฟล์ผู้สร้าง',
     acknowledgeWarnings: 'ยืนยันว่าข้อมูลนี้เปิดเผยได้',
     displayName: 'ชื่อที่แสดง',
     identifier: 'รหัส',
