@@ -139,6 +139,23 @@ Once Box Runtime configures a token, it rejects LangBot clients without the same
 
 Set `box.file_transfer_mode: network` to transfer attachments through the authenticated Box connection without a shared Core/Runtime directory. Both sides need the SDK/Runtime file-transfer actions. The default `legacy` mode preserves existing transfer paths during rollout. In network mode, file bytes use chunked RPC. Small sandbox commands prepare output snapshots and acknowledge cleanup, including files outside `/workspace`. Temporary export snapshots require workspace disk space. Cloud startup also validates shared-workspace readiness, whose migration is tracked in stage 5 of #3010. Output export in network mode requires a writable workspace for temporary snapshots; use `legacy` for `offline_readonly` exports. In OSS network mode, writable E2B workspace files stay in the sandbox instead of being mirrored to the host.
 
+### Runtime package cache
+
+With matching Core and SDK sources, the Host can prepare immutable packages over the authenticated Box connection. Runtime verifies the archive and tree digest before making a read-only cache entry visible. Cache hits still require the current Workspace context; a digest alone grants no access. This prepares the network execution contract; existing Skill tools still use their current mount path during rollout.
+
+```yaml
+box:
+  limits:
+    max_artifact_cache_bytes: 268435456
+    artifact_cache_ttl_sec: 300
+```
+
+The defaults allow 256 MiB of reusable package content and metadata, with a 300-second idle lifetime. The maximum values are 256 MiB and 86,400 seconds. Packages mounted by a live session remain protected, including while a managed process runs. If protected packages fill the cache, preparing another package fails explicitly. Sandbox projections and writable workspaces have separate limits.
+
+Runtime owns this cache below `LANGBOT_BOX_DATA_DIR`; it does not use a Core package directory. Evicted packages are fetched and verified again. GC removes only disposable cache entries, never database publications. Each archive is limited to 64 MiB; backend limits such as E2B’s 10 MiB per file still apply. The separate attachment-transfer limit remains unchanged.
+
+This cache requires POSIX descriptor-relative file IO; Linux is the validated Runtime platform. Changing these limits after the cache has been used requires restarting Box Runtime. Entries left protected by a Runtime crash continue to occupy capacity. For maintenance, stop the affected Runtime and its callers, confirm that its old backend sessions and processes have retired, then clear only its disposable cache.
+
 ## SDK (`sdk/`) Architecture
 
 `sdk/src/langbot_plugin` contains the following:

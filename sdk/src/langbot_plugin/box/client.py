@@ -15,6 +15,7 @@ from langbot_plugin.entities.io.context import ActionContext
 from .actions import LangBotToBoxAction
 from .errors import BoxError, BoxRuntimeUnavailableError
 from .models import (
+    BoxArtifactDescriptor,
     BoxExecutionResult,
     BoxExecutionStatus,
     BoxManagedProcessInfo,
@@ -129,6 +130,14 @@ class BoxRuntimeClient(abc.ABC):
     async def verify_shared_workspace(self, marker_name: str) -> dict:
         raise NotImplementedError
 
+    async def prepare_artifact(
+        self,
+        descriptor: BoxArtifactDescriptor,
+        content: bytes | None = None,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        raise NotImplementedError
+
     async def upsert_sandbox_admission_grant(
         self, grant: SandboxAdmissionGrant
     ) -> dict:
@@ -196,6 +205,13 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         timeout: float = 15.0,
         action_context: ActionContext | None = None,
     ) -> dict[str, Any]:
+        if action in {
+            LangBotToBoxAction.EXEC,
+            LangBotToBoxAction.CREATE_SESSION,
+        } and not data.get("artifact_mounts"):
+            data = {
+                key: value for key, value in data.items() if key != "artifact_mounts"
+            }
         try:
             return await self.handler.call_action(
                 action,
@@ -207,6 +223,7 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                     LangBotToBoxAction.EXEC,
                     LangBotToBoxAction.UPLOAD_FILE,
                     LangBotToBoxAction.DOWNLOAD_FILE,
+                    LangBotToBoxAction.PREPARE_ARTIFACT,
                 },
             )
         except BoxRuntimeUnavailableError:
@@ -336,6 +353,47 @@ class ActionRPCBoxClient(BoxRuntimeClient):
             return content
         finally:
             await self._cleanup_file_transfer(file_key, action_context, local=True)
+
+    async def prepare_artifact(
+        self,
+        descriptor: BoxArtifactDescriptor,
+        content: bytes | None = None,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        """Probe a scoped cache and transfer a complete archive only on a miss."""
+        if action_context is None:
+            raise ValueError(
+                "Artifact preparation requires a trusted Workspace context"
+            )
+        descriptor = BoxArtifactDescriptor.model_validate(descriptor)
+        payload = {"descriptor": descriptor.model_dump(mode="json")}
+        ready = await self._call(
+            LangBotToBoxAction.PREPARE_ARTIFACT,
+            payload,
+            timeout=60.0,
+            action_context=action_context,
+        )
+        if ready.get("ready") or content is None:
+            return ready
+        if (
+            not isinstance(content, bytes)
+            or len(content) != descriptor.archive_size
+            or hashlib.sha256(content).hexdigest() != descriptor.archive_sha256
+        ):
+            raise ValueError("Artifact archive does not match its descriptor")
+        file_key = "ft1_" + uuid.uuid4().hex + uuid.uuid4().hex
+        try:
+            await self.handler.send_file(
+                content, "", action_context=action_context, file_key=file_key
+            )
+            return await self._call(
+                LangBotToBoxAction.PREPARE_ARTIFACT,
+                {**payload, "file_key": file_key},
+                timeout=120.0,
+                action_context=action_context,
+            )
+        finally:
+            await self._cleanup_file_transfer(file_key, action_context, local=False)
 
     async def shutdown(self) -> None:
         if self._handler is not None:

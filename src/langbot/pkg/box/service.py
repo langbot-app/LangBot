@@ -488,6 +488,40 @@ class BoxService:
         except Exception:
             return False
 
+    async def prepare_skill_artifact(self, context: TenantContext, name: str, revision: str) -> dict:
+        """Prepare an already-authorized pinned publication in the Runtime cache.
+
+        This Host-only seam does not grant a plugin or run access to a Skill.
+        Callers must resolve their resource authorization before using it.
+        """
+        execution_context = await self.require_workspace_sandbox(context)
+        prepare = getattr(self.client, 'prepare_artifact', None)
+        if not callable(prepare):
+            raise BoxValidationError('Runtime artifact caching requires a compatible SDK; update Core and SDK together')
+        from langbot_plugin.box.models import ARTIFACT_MOUNT_ROOT, BoxArtifactDescriptor
+
+        if not revision:
+            raise BoxValidationError('Runtime artifacts require an explicit pinned revision')
+        package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
+        descriptor = BoxArtifactDescriptor(
+            content_digest=package['revision'],
+            manifest=package['manifest'],
+            archive_size=package['size'],
+            archive_sha256=package['sha256'],
+        )
+        if descriptor.content_digest != revision:
+            raise BoxValidationError('Skill package does not match the pinned revision')
+        receipt = await prepare(descriptor, package['content'], action_context=self._action_context(execution_context))
+        await self._validated_execution_context(execution_context)
+        expected_mount = f'{ARTIFACT_MOUNT_ROOT}/{revision[7:]}'
+        if (
+            receipt.get('ready') is not True
+            or receipt.get('content_digest') != revision
+            or receipt.get('mount_path') != expected_mount
+        ):
+            raise BoxValidationError('Runtime artifact receipt does not match the pinned publication')
+        return receipt
+
     def _managed_policy_payload(
         self,
         context: TenantContext,
@@ -498,6 +532,8 @@ class BoxService:
         """Reject tenant-owned policy fields and apply the Cloud hard policy."""
 
         payload = dict(spec_payload)
+        if payload.get('artifact_mounts'):
+            raise BoxAdmissionError('Runtime artifact mounts must be composed by the Host')
         trusted_mounts = self._normalize_trusted_read_only_mounts(trusted_read_only_mounts or [])
         if not self._cloud_managed:
             if trusted_mounts:

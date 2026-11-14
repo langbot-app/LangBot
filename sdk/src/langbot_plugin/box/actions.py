@@ -17,6 +17,7 @@ class LangBotToBoxAction(ActionType):
     EXEC = "box_exec"
     UPLOAD_FILE = "box_upload_file"
     DOWNLOAD_FILE = "box_download_file"
+    PREPARE_ARTIFACT = "box_prepare_artifact"
     DELETE_FILE_TRANSFER = "box_delete_file_transfer"
     CREATE_SESSION = "box_create_session"
     GET_SESSION = "box_get_session"

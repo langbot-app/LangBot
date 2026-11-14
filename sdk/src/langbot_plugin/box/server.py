@@ -54,6 +54,8 @@ from .errors import (
     BoxSessionNotFoundError,
 )
 from .models import (
+    MAX_ARTIFACT_ARCHIVE_BYTES,
+    BoxArtifactDescriptor,
     BoxExecutionResult,
     BoxFileRequest,
     BoxFileUploadRequest,
@@ -389,6 +391,7 @@ class BoxServerHandler(Handler):
             CommonAction.FILE_CHUNK.value,
             LangBotToBoxAction.UPLOAD_FILE.value,
             LangBotToBoxAction.DOWNLOAD_FILE.value,
+            LangBotToBoxAction.PREPARE_ARTIFACT.value,
             LangBotToBoxAction.EXEC.value,
             LangBotToBoxAction.CREATE_SESSION.value,
             LangBotToBoxAction.GET_SESSION.value,
@@ -412,7 +415,7 @@ class BoxServerHandler(Handler):
     ):
         super().__init__(
             connection,
-            max_file_bytes=runtime.max_rpc_file_bytes,
+            max_file_bytes=max(runtime.max_rpc_file_bytes, MAX_ARTIFACT_ARCHIVE_BYTES),
         )
         self._runtime = runtime
         self._host_control_authenticated = bool(host_control_authenticated)
@@ -671,6 +674,24 @@ class BoxServerHandler(Handler):
                 data["file_key"], action_context=self._action_context()
             )
             return ActionResponse.success({})
+
+        @self.action(LangBotToBoxAction.PREPARE_ARTIFACT)
+        async def prepare_artifact(data: dict[str, Any]) -> ActionResponse:
+            descriptor = BoxArtifactDescriptor.model_validate(data["descriptor"])
+            context = self._action_context()
+            file_key = data.get("file_key")
+            try:
+                content = (
+                    await self.read_local_file(file_key, action_context=context)
+                    if file_key is not None
+                    else None
+                )
+                return ActionResponse.success(
+                    await self._runtime.prepare_artifact(descriptor, content, context)
+                )
+            finally:
+                if file_key is not None:
+                    await self.delete_local_file(file_key, action_context=context)
 
         @self.action(LangBotToBoxAction.CREATE_SESSION)
         async def create_session(data: dict[str, Any]) -> ActionResponse:

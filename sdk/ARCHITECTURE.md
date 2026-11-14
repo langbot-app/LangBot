@@ -446,6 +446,7 @@ Important modules:
 
 - `box/server.py`: CLI entrypoint, aiohttp WebSocket routes, `BoxServerHandler` action registration.
 - `box/runtime.py`: session lifecycle, per-session locks, TTL cleanup, command execution, managed processes.
+- `box/artifact_cache.py`: Workspace-scoped verified packages, atomic read-only publication, session pins and capacity/idle GC under the Runtime identity data root.
 - `box/models.py`: generic `BoxSpec`/read-only mount contracts, execution results, managed-process specs.
 - `box/client.py`: action-RPC client used by LangBot-side connector/service.
 - `box/actions.py`: `LangBotToBoxAction` enum.
@@ -476,7 +477,16 @@ publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
 verified execution caches; its database CAS owns the authoritative catalog.
 
-LangBot Core composes pinned revisions into generic read-only `BoxMountSpec`
+The `PREPARE_ARTIFACT` action accepts a generic manifest/tree digest and a completed
+namespace-owned archive transfer. Cache hits still require the trusted current
+Workspace context and admission. `BoxSpec.artifact_mounts` references only digests;
+Runtime resolves them into its own read-only mounts and protects them until session
+cleanup finishes. It does not resolve a Core path or expose its cache host path.
+The Core Host-only preparation seam is available before the separate migration of
+native Skill execution and draft publication. See
+[Runtime artifact cache](../dev-docs/BOX_ARTIFACT_CACHE.md) for limits and ownership.
+
+LangBot Core also composes pinned revisions into generic read-only `BoxMountSpec`
 values. Ordinary fixed mounts include `content_digest` and `manifest_path` in
 the session signature; supported digest-addressed packages are excluded from it.
 Digest-addressed packages use the reserved

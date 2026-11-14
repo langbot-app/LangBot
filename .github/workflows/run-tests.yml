@@ -154,6 +154,10 @@ jobs:
         run: |
           uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core \
             -q --tb=short -rs --junitxml=sdk-core-results.xml
+      - name: Run Runtime artifact transport
+        run: >-
+          uv run --no-sync pytest tests/integration/skill/test_runtime_artifact_cache.py
+          -q --tb=short
       - name: Upload Core and SDK contract results
         if: always()
         uses: actions/upload-artifact@v4

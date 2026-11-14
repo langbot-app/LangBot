@@ -284,7 +284,7 @@ async def test_execute_sends_spec_and_parses_result(client, handler):
     # Verify the EXEC action, json-serialized spec payload, and 300s timeout.
     args, kwargs = handler.call_action.call_args
     assert args[0] is LangBotToBoxAction.EXEC
-    assert args[1] == spec.model_dump(mode="json")
+    assert args[1] == spec.model_dump(mode="json", exclude={"artifact_mounts"})
     assert kwargs["timeout"] == 300.0
     assert kwargs["cancel_peer_on_cancel"] is True
 
@@ -401,7 +401,37 @@ async def test_create_session_sends_spec(client, handler):
     assert result == {"session_id": "new-sess", "backend_name": "nsjail"}
     args = handler.call_action.call_args.args
     assert args[0] is LangBotToBoxAction.CREATE_SESSION
-    assert args[1] == spec.model_dump(mode="json")
+    assert args[1] == spec.model_dump(mode="json", exclude={"artifact_mounts"})
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("method", "action"),
+    [
+        ("execute", LangBotToBoxAction.EXEC),
+        ("create_session", LangBotToBoxAction.CREATE_SESSION),
+    ],
+)
+async def test_nonempty_artifact_mounts_are_preserved(client, handler, method, action):
+    handler.call_action.return_value = {
+        "session_id": "artifact-session",
+        "backend_name": "host",
+        "status": "completed",
+        "exit_code": 0,
+        "duration_ms": 1,
+    }
+    digest = "sha256:" + "a" * 64
+    spec = BoxSpec(
+        session_id="artifact-session",
+        cmd="true",
+        artifact_mounts=[{"content_digest": digest}],
+    )
+
+    await getattr(client, method)(spec)
+
+    args = handler.call_action.call_args.args
+    assert args[0] is action
+    assert args[1]["artifact_mounts"] == [{"content_digest": digest}]
 
 
 @pytest.mark.anyio
