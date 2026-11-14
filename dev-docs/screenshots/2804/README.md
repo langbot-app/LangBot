@@ -1,0 +1,21 @@
+# #2804 post-install follow-up — screenshot evidence
+
+Captured against a real Vite dev server with Playwright, API mocked (no backend).
+`before` is `master@09ef402a`; `after` is the tip of this branch.
+
+| shot | what it proves |
+| --- | --- |
+| `compare-multi.png` | A plugin with Runner + Tool + Command + KnowledgeEngine shows one link per distinct step, and the pipeline step exactly once — the "no duplicate of the same kind" criterion. Before: nothing. |
+| `compare-parser.png` | A Parser-only plugin adds no follow-up; the banner stays one line in both. |
+| `compare-review.png` | With a permission review pending, the Review button keeps the banner and no follow-up competes with it. |
+
+Reproduce:
+
+```sh
+cd web
+pnpm exec playwright test --config playwright.followup-shots.config.ts
+```
+
+The spec asserts the rendered links, so these images cannot drift from the
+component without the test failing. On `master` the multi-component case fails
+(no links) while the other two pass — that pair is the regression proof.
