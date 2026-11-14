@@ -218,8 +218,8 @@ async def test_cancelled_start_waits_for_creation_then_retires_owned_workspace(
 )
 async def test_managed_network_workdir_requires_a_prepared_scoped_artifact(
     tmp_path,
-    publication,
-    scenario,  # noqa: F811
+    publication,  # noqa: F811
+    scenario,
 ):
     runtime, backend = _runtime(tmp_path)
     runtime.init({"file_transfer_mode": "network"})
