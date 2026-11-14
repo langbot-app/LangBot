@@ -70,7 +70,10 @@ test('renders a link per distinct follow-up', () => {
     'pipeline once',
   );
   assert.equal((html.match(/href="\/home\/agents\?id=new"/g) || []).length, 1);
-  assert.equal((html.match(/href="\/home\/knowledge\?id=new"/g) || []).length, 1);
+  assert.equal(
+    (html.match(/href="\/home\/knowledge\?id=new"/g) || []).length,
+    1,
+  );
 });
 
 test('renders nothing without a follow-up component', () => {
