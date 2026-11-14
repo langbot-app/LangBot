@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import pathlib
 from unittest.mock import AsyncMock, patch
 
@@ -16,6 +17,9 @@ from langbot_plugin.api.definition.abstract.platform.event_logger import Abstrac
 from langbot_plugin.api.entities.builtin.platform import entities as platform_entities
 from langbot_plugin.api.entities.builtin.platform import events as platform_events
 from langbot_plugin.api.entities.builtin.platform import message as platform_message
+
+
+PDF_BYTES = b'%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n'
 
 
 class DummyLogger(AbstractEventLogger):
@@ -53,6 +57,7 @@ class DummyWecomClient(WecomClient):
         self.get_access_token = AsyncMock(return_value='access-token')
         self.send_to_all = AsyncMock()
         self.handle_unified_webhook = AsyncMock(return_value='success')
+        self.download_media_id_to_bytes = AsyncMock(return_value=PDF_BYTES)
 
     def on_message(self, msg_type: str):
         def decorator(func):
@@ -233,3 +238,97 @@ async def test_wecom_send_reply_and_platform_api_use_underlying_client():
     assert token_status == {'valid': True}
     assert user_info['name'] == 'Alice'
     assert sent_all == {'ok': True}
+
+
+@pytest.mark.asyncio
+async def test_wecom_event_converter_maps_file_message_to_eba():
+    """A WeCom self-built app `MsgType=file` callback carries MediaId and
+    FileName, but the converter only mapped text/image, so the message fell
+    through to a `platform_specific` event no pipeline subscribes to."""
+
+    adapter = make_adapter()
+    payload = {
+        'ToUserName': 'corp-id',
+        'FromUserName': 'user-1',
+        'CreateTime': 1_714_000_000,
+        'MsgType': 'file',
+        'Content': None,
+        'MsgId': 12346,
+        'AgentID': 1000002,
+        'MediaId': 'file-media-id',
+        'FileName': 'report.pdf',
+    }
+
+    event = await WecomEventConverter.target2yiri(WecomEvent.from_payload(payload), adapter.bot)
+
+    assert isinstance(event, platform_events.MessageReceivedEvent)
+    file_component = next(
+        component for component in event.message_chain if isinstance(component, platform_message.File)
+    )
+    assert file_component.id == 'file-media-id'
+    assert file_component.name == 'report.pdf'
+    # An id-only File is unresolvable downstream (`get_file_url` used to raise,
+    # and the Runner import path only reads base64/url/path), so the bytes are
+    # inlined the same way images inline their PicUrl.
+    assert file_component.base64 == 'data:application/pdf;base64,' + base64.b64encode(PDF_BYTES).decode()
+    adapter.bot.download_media_id_to_bytes.assert_awaited_once_with('file-media-id')
+
+
+@pytest.mark.asyncio
+async def test_wecom_get_message_parses_file_media_id():
+    payload = """<xml>
+    <ToUserName>corp-id</ToUserName>
+    <FromUserName>user-1</FromUserName>
+    <CreateTime>1714000000</CreateTime>
+    <MsgType>file</MsgType>
+    <MediaId>file-media-id</MediaId>
+    <FileName>report.pdf</FileName>
+    <MsgId>12346</MsgId>
+    <AgentID>1000002</AgentID>
+    </xml>"""
+
+    client = make_adapter().bot
+    message_data = await client.get_message(payload)
+
+    assert message_data['MsgType'] == 'file'
+    assert message_data['MediaId'] == 'file-media-id'
+    assert message_data['FileName'] == 'report.pdf'
+
+
+@pytest.mark.asyncio
+async def test_wecom_file_download_failure_still_yields_the_component():
+    """A failed media/get must not drop the message; the id stays for retries."""
+
+    adapter = make_adapter()
+    adapter.bot.download_media_id_to_bytes = AsyncMock(side_effect=Exception('token expired'))
+    payload = {
+        'ToUserName': 'corp-id',
+        'FromUserName': 'user-1',
+        'CreateTime': 1_714_000_000,
+        'MsgType': 'file',
+        'Content': None,
+        'MsgId': 12347,
+        'AgentID': 1000002,
+        'MediaId': 'file-media-id',
+        'FileName': 'report.pdf',
+        'FileSize': '2048',
+    }
+
+    event = await WecomEventConverter.target2yiri(WecomEvent.from_payload(payload), adapter.bot)
+
+    file_component = next(
+        component for component in event.message_chain if isinstance(component, platform_message.File)
+    )
+    assert file_component.base64 == ''
+    assert file_component.id == 'file-media-id'
+    assert file_component.size == 2048
+
+
+@pytest.mark.asyncio
+async def test_wecom_get_file_url_embeds_the_media_id():
+    adapter = make_adapter()
+    adapter.bot.access_token = 'access-token'
+
+    url = await adapter.get_file_url('file-media-id')
+
+    assert url == 'https://qyapi.weixin.qq.com/cgi-bin/media/get?access_token=access-token&media_id=file-media-id'

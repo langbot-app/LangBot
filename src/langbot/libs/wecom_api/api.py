@@ -6,6 +6,7 @@ import binascii
 import contextvars
 import functools
 import httpx
+import json
 import os
 import traceback
 from urllib.parse import quote
@@ -445,9 +446,15 @@ class WecomClient:
             'MsgId': int(root.find('MsgId').text) if root.find('MsgId') is not None else None,
             'AgentID': int(root.find('AgentID').text) if root.find('AgentID') is not None else None,
         }
-        if message_data['MsgType'] == 'image':
+        if message_data['MsgType'] in ('image', 'voice', 'file'):
             message_data['MediaId'] = root.find('MediaId').text if root.find('MediaId') is not None else None
+        if message_data['MsgType'] == 'image':
             message_data['PicUrl'] = root.find('PicUrl').text if root.find('PicUrl') is not None else None
+        if message_data['MsgType'] == 'file':
+            # Self-built apps send only a MediaId, FileName and FileSize for
+            # files; the bytes have to be fetched through media/get.
+            message_data['FileName'] = root.find('FileName').text if root.find('FileName') is not None else None
+            message_data['FileSize'] = root.find('FileSize').text if root.find('FileSize') is not None else None
 
         return message_data
 
@@ -656,6 +663,34 @@ class WecomClient:
         async with self._http_client_context() as client:
             async with client.stream('GET', url) as response:
                 response.raise_for_status()
+                return await _read_httpx_media_limited(response)
+
+    @_bounded_token_retry
+    async def download_media_id_to_bytes(self, media_id: str) -> bytes:
+        """Download the bytes behind an inbound `MediaId`.
+
+        WeCom only hands out a `MediaId` for inbound image/voice/file
+        callbacks; the bytes live behind `media/get` and need the app
+        access token. The response is either the media stream or a JSON error
+        body, so a wrong token is retried once exactly like the send paths.
+        """
+        if not media_id:
+            raise ValueError('media_id is required')
+        if not await self.check_access_token():
+            self.access_token = await self.get_access_token(self.secret)
+        url = f'{self.base_url}/media/get?access_token={self.access_token}&media_id={quote(media_id, safe="")}'
+        async with self._http_client_context() as client:
+            async with client.stream('GET', url) as response:
+                response.raise_for_status()
+                content_type = response.headers.get('Content-Type', '')
+                if 'application/json' in content_type:
+                    payload = await response.aread()
+                    data = json.loads(payload or b'{}')
+                    errcode = data.get('errcode')
+                    if errcode in (40014, 42001):
+                        self.access_token = await self.get_access_token(self.secret)
+                        return await self.download_media_id_to_bytes(media_id)
+                    raise Exception(f'Failed to download WeCom media: {data}')
                 return await _read_httpx_media_limited(response)
 
     # 进行media_id的获取

@@ -171,8 +171,11 @@ class WecomAdapter(WecomAPIMixin, abstract_platform_adapter.AbstractPlatformAdap
         async def on_message(event: WecomEvent):
             await self._handle_native_event(event)
 
-        self.bot.on_message('text')(on_message)
-        self.bot.on_message('image')(on_message)
+        # Every inbound type the converter maps to `message.received` has to
+        # be subscribed here; the client only invokes registered handlers, so a
+        # missing line turns the message into a silent no-op (langbot-app/LangBot#2835).
+        for message_type in ('text', 'image', 'file'):
+            self.bot.on_message(message_type)(on_message)
 
     async def _handle_native_event(self, event: WecomEvent):
         self.bot_account_id = event.receiver_id or self.bot_account_id

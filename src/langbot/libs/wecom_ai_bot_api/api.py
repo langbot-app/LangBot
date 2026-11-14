@@ -603,14 +603,15 @@ async def parse_wecom_bot_message(
             'download_url': download_url,
             'extra': file_info,
         }
-        # if (file_data.get('filesize') or 0) <= max_inline_file_size:
-        #     file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
-        #     if file_bytes:
-        #         file_data['base64'] = _bytes_to_data_uri(file_bytes)
-        #         if dl_filename and not file_data.get('filename'):
-        #             file_data['filename'] = dl_filename
-
-        # 应为需要解密，但是目前暂时不能下载到内部进行解密，所以先将下载链接拼接aeskey返回给用户，由插件去处理该链接的下载和解密逻辑
+        # The file URL points at AES-256-CBC ciphertext. Decrypt here like the
+        # `mixed` branch already does, otherwise every Runner uploads the
+        # ciphertext and document extractors reject the file.
+        if (file_data.get('filesize') or 0) <= max_inline_file_size:
+            file_bytes, dl_filename = await _safe_download(download_url, per_msg_aeskey)
+            if file_bytes:
+                file_data['base64'] = await asyncio.to_thread(_bytes_to_data_uri, file_bytes)
+                if dl_filename and not file_data.get('filename'):
+                    file_data['filename'] = dl_filename
         file_data['download_url'] = download_url + f'?aeskey={per_msg_aeskey}'
         message_data['file'] = file_data
     elif msg_type == 'link':

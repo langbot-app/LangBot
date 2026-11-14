@@ -159,28 +159,28 @@ class OpenClawWeixinMessageConverter(abstract_platform_adapter.AbstractMessageCo
                     components.append(platform_message.Unknown(text='[Voice]'))
 
             elif item.type == MessageItem.FILE and item.file_item:
-                components.append(platform_message.Unknown(text=f'[File: {item.file_item.file_name or ""}]'))
-
-            # TODO: enable after full testing
-            # elif item.type == MessageItem.FILE and item.file_item:
-            #     file_name = item.file_item.file_name or ''
-            #     file_size = int(item.file_item.len) if item.file_item.len else 0
-            #     if hasattr(item.file_item, '_downloaded_bytes') and item.file_item._downloaded_bytes:
-            #         b64 = base64.b64encode(item.file_item._downloaded_bytes).decode('utf-8')
-            #         components.append(
-            #             platform_message.File(
-            #                 name=file_name,
-            #                 size=file_size,
-            #                 base64=b64,
-            #             )
-            #         )
-            #     else:
-            #         components.append(
-            #             platform_message.File(
-            #                 name=file_name,
-            #                 size=file_size,
-            #             )
-            #         )
+                file_name = item.file_item.file_name or ''
+                try:
+                    file_size = int(item.file_item.len or 0)
+                except (TypeError, ValueError):
+                    file_size = 0
+                downloaded = getattr(item.file_item, '_downloaded_bytes', None)
+                if downloaded:
+                    b64 = base64.b64encode(downloaded).decode('utf-8')
+                    components.append(
+                        platform_message.File(
+                            name=file_name,
+                            size=file_size or len(downloaded),
+                            base64=b64,
+                        )
+                    )
+                else:
+                    components.append(
+                        platform_message.File(
+                            name=file_name,
+                            size=file_size,
+                        )
+                    )
 
             elif item.type == MessageItem.VIDEO and item.video_item:
                 components.append(platform_message.Unknown(text='[Video]'))
@@ -724,7 +724,7 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
             await self.listeners[type(event)](event, self)
 
     async def _download_media_items(self, msg: WeixinMessage):
-        """Download CDN media for image items in the message."""
+        """Download CDN media (images, voice, files) before event conversion."""
         if not msg.item_list:
             return
 
@@ -744,12 +744,11 @@ class OpenClawWeixinAdapter(abstract_platform_adapter.AbstractMessagePlatformAda
                         voice_bytes = await self.client.download_media(item.voice_item.media)
                         item.voice_item._downloaded_bytes = voice_bytes
 
-                # TODO: enable after full testing
-                # elif item.type == MessageItem.FILE and item.file_item and item.file_item.media:
-                #     if item.file_item.media.encrypt_query_param and item.file_item.media.aes_key:
-                #         file_bytes = await self.client.download_media(item.file_item.media)
-                #         item.file_item._downloaded_bytes = file_bytes
-                #
+                elif item.type == MessageItem.FILE and item.file_item and item.file_item.media:
+                    if item.file_item.media.encrypt_query_param and item.file_item.media.aes_key:
+                        file_bytes = await self.client.download_media(item.file_item.media)
+                        item.file_item._downloaded_bytes = file_bytes
+
                 # elif item.type == MessageItem.VIDEO and item.video_item and item.video_item.media:
                 #     if item.video_item.media.encrypt_query_param and item.video_item.media.aes_key:
                 #         video_bytes = await self.client.download_media(item.video_item.media)
