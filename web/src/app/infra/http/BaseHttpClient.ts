@@ -30,6 +30,8 @@ export interface RequestConfig extends AxiosRequestConfig {
   retry?: number; // 重试次数
   /** Account-scoped endpoints must not receive a stale Workspace selector. */
   skipWorkspace?: boolean;
+  /** Set after one retry of a transient authentication failure. */
+  authRetried?: boolean;
 }
 
 /**
@@ -115,11 +117,27 @@ export abstract class BaseHttpClient {
       (response: AxiosResponse<ResponseData>) => {
         return response;
       },
-      (error: AxiosError<ResponseData>) => {
+      async (error: AxiosError<ResponseData>) => {
         // 统一错误处理
         if (error.response) {
           const { status, data } = error.response;
           const errMsg = (data as { msg?: string })?.msg || error.message;
+          const errCode = (data as { code?: unknown })?.code;
+
+          // The server could not verify the session right now (saturated
+          // resolver/executor, database blip). The session is fine: retry
+          // once instead of treating it like an expired login.
+          const retryConfig = error.config as RequestConfig | undefined;
+          if (
+            status === 503 &&
+            errCode === 'authentication_unavailable' &&
+            retryConfig &&
+            !retryConfig.authRetried
+          ) {
+            retryConfig.authRetried = true;
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            return this.instance.request(retryConfig);
+          }
 
           switch (status) {
             case 401:
@@ -129,15 +147,24 @@ export abstract class BaseHttpClient {
                 // pending second factor) must not reload the page, otherwise the
                 // TOTP challenge step would be lost.
                 const hadSession = Boolean(localStorage.getItem('token'));
+                const isTokenCheck =
+                  error.request?.responseURL?.includes('/check-token') ?? false;
+                // One stray 401 must not end a live session: confirm with
+                // check-token first and keep the session unless the server
+                // positively says the token is no longer valid.
+                if (
+                  hadSession &&
+                  !isTokenCheck &&
+                  (await this.sessionStillValid()) !== false
+                ) {
+                  break;
+                }
                 localStorage.removeItem('token');
                 localStorage.removeItem('userEmail');
                 clearActiveWorkspaceUuid();
                 setCurrentWorkspaceSnapshot(null);
                 clearWorkspaceBootstrapSnapshot();
-                if (
-                  hadSession &&
-                  !error.request.responseURL.includes('/check-token')
-                ) {
+                if (hadSession && !isTokenCheck) {
                   window.location.href = '/login';
                 }
               }
@@ -167,6 +194,31 @@ export abstract class BaseHttpClient {
         });
       },
     );
+  }
+
+  /**
+   * Ask the server whether the stored token is still valid, bypassing the
+   * interceptors. true = valid, false = rejected (401), null = unknown.
+   */
+  protected async sessionStillValid(): Promise<boolean | null> {
+    const token =
+      typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+    if (!token) return false;
+    try {
+      const response = await axios.get(
+        `${this.baseURL}/api/v1/user/check-token`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 10000,
+          validateStatus: () => true,
+        },
+      );
+      if (response.status >= 200 && response.status < 300) return true;
+      if (response.status === 401) return false;
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   // 转换下划线为驼峰

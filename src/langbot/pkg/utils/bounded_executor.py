@@ -147,6 +147,13 @@ def _validated_limits(
     return workers, pending, scope_limit
 
 
+def dns_pool_limits(max_workers: int) -> tuple[int, int]:
+    """Resolver pool size for a main pool of ``max_workers`` threads."""
+
+    workers = max(4, min(16, max_workers // 4))
+    return workers, max(64, workers * 16)
+
+
 class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
     """Thread pool with a hard cap on running plus queued submissions."""
 
@@ -169,8 +176,16 @@ class BoundedThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
         )
         # asyncio DNS uses the default executor too. Keep a separately bounded
         # resolver pool so long-lived SDK calls cannot starve control-plane DNS.
+        # Size it with the main pool: a fixed 2 workers / 32 queued saturated
+        # on Cloud (thousands of Workspaces reconnecting bots and syncing), and
+        # every new database or HTTP connection then failed its lookup.
+        dns_workers, dns_pending = dns_pool_limits(max_workers)
         self._dns_executor = (
-            BoundedThreadPoolExecutor(max_workers=2, max_pending=32, thread_name_prefix='langbot-dns')
+            BoundedThreadPoolExecutor(
+                max_workers=dns_workers,
+                max_pending=dns_pending,
+                thread_name_prefix='langbot-dns',
+            )
             if thread_name_prefix != 'langbot-dns'
             else None
         )

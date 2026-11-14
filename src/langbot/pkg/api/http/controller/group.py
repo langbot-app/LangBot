@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import abc
+import asyncio
 import typing
 import enum
 import quart
+import sqlalchemy.exc
 import time
 import traceback
 import inspect
@@ -679,7 +681,49 @@ class RouterGroup(abc.ABC):
             elif 'ctx' in parameters:
                 kwargs['ctx'] = request_context
 
+    @staticmethod
+    def _is_transient_auth_failure(error: Exception) -> bool:
+        """Infrastructure failures while authenticating, not bad credentials.
+
+        Answering these with 401 made the WebUI tear down perfectly valid
+        sessions whenever the resolver/blocking pools were saturated or DNS
+        and the database blipped (LANG-439: Cloud users bounced to /login).
+        """
+
+        if isinstance(error, PermissionError):
+            return False
+        if isinstance(
+            error,
+            (
+                bounded_executor.BlockingWorkCapacityError,
+                TaskCapacityError,
+                OSError,  # includes socket.gaierror, ConnectionError, TimeoutError
+                asyncio.TimeoutError,
+                sqlalchemy.exc.OperationalError,
+                sqlalchemy.exc.InterfaceError,
+                sqlalchemy.exc.TimeoutError,
+            ),
+        ):
+            return True
+        return False
+
     def _auth_error_response(self, error: Exception) -> typing.Any:
+        if self._is_transient_auth_failure(error):
+            request_id = self.request_id()
+            logger = getattr(self.ap, 'logger', self.quart_app.logger)
+            logger.warning(
+                f'Authentication temporarily unavailable request_id={request_id} '
+                f'error_type={type(error).__name__}: {error}'
+            )
+            response = quart.jsonify(
+                {
+                    'code': 'authentication_unavailable',
+                    'msg': 'Authentication is temporarily unavailable, please retry',
+                    'request_id': request_id,
+                }
+            )
+            response.headers['Retry-After'] = '1'
+            return response, 503
         if isinstance(error, AuthorizationError):
             return self.http_status(error.status_code, error.error_code, str(error))
         if isinstance(error, WorkspaceNotFoundError):
