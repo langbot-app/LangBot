@@ -146,10 +146,10 @@ test('multi-component install shows one link per distinct next step', async ({
   const dialog = await shoot(page, 'multi');
 
   await expect(
-    dialog.getByRole('link', { name: /create an Agent/i }),
+    dialog.getByRole('link', { name: /Create an Agent/i }),
   ).toBeVisible();
   await expect(
-    dialog.getByRole('link', { name: /create a pipeline/i }),
+    dialog.getByRole('link', { name: /Create a pipeline/i }),
   ).toHaveCount(1);
   await expect(
     dialog.getByRole('link', { name: /knowledge base/i }),
@@ -159,7 +159,9 @@ test('multi-component install shows one link per distinct next step', async ({
 test('parser-only install keeps the banner a single line', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'parser');
-  await expect(dialog.getByRole('link', { name: /Next:/i })).toHaveCount(0);
+  await expect(dialog.getByRole('group', { name: /Next steps/i })).toHaveCount(
+    0,
+  );
 });
 
 test('pending permission review wins over the follow-up', async ({ page }) => {
@@ -168,7 +170,9 @@ test('pending permission review wins over the follow-up', async ({ page }) => {
   await expect(
     dialog.getByRole('link', { name: /Review permissions/i }),
   ).toBeVisible();
-  await expect(dialog.getByRole('link', { name: /Next:/i })).toHaveCount(0);
+  await expect(dialog.getByRole('group', { name: /Next steps/i })).toHaveCount(
+    0,
+  );
 });
 
 /**
@@ -179,14 +183,8 @@ test('pending permission review wins over the follow-up', async ({ page }) => {
  */
 test.describe('chinese', () => {
   for (const [locale, expected] of [
-    [
-      'zh-Hans',
-      ['下一步：新建 Agent 或插件处理器', '下一步：创建一条流水线来使用它'],
-    ],
-    [
-      'zh-Hant',
-      ['下一步：建立 Agent 或插件處理器', '下一步：建立一條流水線來使用它'],
-    ],
+    ['zh-Hans', ['新建 Agent 或插件处理器', '创建流水线']],
+    ['zh-Hant', ['建立 Agent 或插件處理器', '建立流水線']],
   ] as const) {
     test(`${locale} follow-up copy renders`, async ({ page }) => {
       await installLangBotApiMocks(page, {

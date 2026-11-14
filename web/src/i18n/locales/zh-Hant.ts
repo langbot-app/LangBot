@@ -2017,9 +2017,10 @@ const zhHant = {
       installCompleteMCP: 'MCP 伺服器安裝成功',
       installCompleteSkill: '技能安裝成功',
       followUp: {
-        agents: '下一步：建立 Agent 或插件處理器',
-        pipelines: '下一步：建立一條流水線來使用它',
-        knowledge: '下一步：建立知識庫來存放它的資料',
+        nextSteps: '下一步',
+        agents: '建立 Agent 或插件處理器',
+        pipelines: '建立流水線',
+        knowledge: '建立知識庫',
       },
       dismiss: '關閉',
       background: '背景執行',

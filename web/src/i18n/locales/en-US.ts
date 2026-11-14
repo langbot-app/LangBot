@@ -2150,9 +2150,10 @@ const enUS = {
       installCompleteMCP: 'MCP Server installed successfully',
       installCompleteSkill: 'Skill installed successfully',
       followUp: {
-        agents: 'Next: create an Agent or plugin processor',
-        pipelines: 'Next: create a pipeline to use it',
-        knowledge: 'Next: create a knowledge base for it',
+        nextSteps: 'Next steps',
+        agents: 'Create an Agent or plugin processor',
+        pipelines: 'Create a pipeline',
+        knowledge: 'Create a knowledge base',
       },
       dismiss: 'Dismiss',
       background: 'Run in Background',

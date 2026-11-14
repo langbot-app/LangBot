@@ -2105,9 +2105,10 @@ const thTH = {
       installCompleteMCP: 'ติดตั้งเซิร์ฟเวอร์ MCP สำเร็จ',
       installCompleteSkill: 'ติดตั้งสกิลสำเร็จ',
       followUp: {
-        agents: 'ถัดไป: สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
-        pipelines: 'ถัดไป: สร้างไปป์ไลน์เพื่อใช้งานมัน',
-        knowledge: 'ถัดไป: สร้างฐานความรู้สำหรับเก็บข้อมูลของมัน',
+        nextSteps: 'ขั้นตอนถัดไป',
+        agents: 'สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
+        pipelines: 'สร้างไปป์ไลน์',
+        knowledge: 'สร้างฐานความรู้',
       },
       dismiss: 'ปิด',
       background: 'ทำงานเบื้องหลัง',

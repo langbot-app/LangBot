@@ -44,7 +44,14 @@ export default function PluginInstallFollowUp({
   if (kinds.length === 0) return null;
 
   return (
-    <div className="mt-1.5 space-y-1">
+    <div
+      className="mt-1.5 space-y-1"
+      role="group"
+      aria-label={t('plugins.installProgress.followUp.nextSteps')}
+    >
+      <p className="text-xs font-medium text-green-700 dark:text-green-300">
+        {t('plugins.installProgress.followUp.nextSteps')}
+      </p>
       {kinds.map((kind) => {
         const { to, icon: Icon, i18nKey } = FOLLOW_UP_PRESENTATION[kind];
         return (

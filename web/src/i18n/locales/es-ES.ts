@@ -2183,9 +2183,10 @@ const esES = {
       installCompleteMCP: 'Servidor MCP instalado correctamente',
       installCompleteSkill: 'Skill instalada correctamente',
       followUp: {
-        agents: 'Siguiente: crea un Agent o un procesador de plugin',
-        pipelines: 'Siguiente: crea una canalización para usarlo',
-        knowledge: 'Siguiente: crea una base de conocimiento para sus datos',
+        nextSteps: 'Próximos pasos',
+        agents: 'Crea un Agent o un procesador de plugin',
+        pipelines: 'Crea una canalización',
+        knowledge: 'Crea una base de conocimiento',
       },
       dismiss: 'Descartar',
       background: 'Ejecutar en segundo plano',
