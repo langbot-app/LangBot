@@ -136,6 +136,9 @@ class PersistenceMode(enum.StrEnum):
 class PersistenceManager:
     """Persistence module manager"""
 
+    _sqlite_locked_retry_attempts = 5
+    _sqlite_locked_retry_base_seconds = 0.1
+
     ap: app.Application
 
     db: database.BaseDatabaseManager
@@ -1819,10 +1822,22 @@ class PersistenceManager:
             raise TenantScopeRequiredError(
                 'Cloud persistence access requires an explicit Workspace or discovery scope/unit of work'
             )
-        async with self.get_db_engine().connect() as conn:
-            result = await conn.execute(*args, **kwargs)
-            await conn.commit()
-            return result
+        for attempt in range(self._sqlite_locked_retry_attempts):
+            try:
+                async with self.get_db_engine().connect() as conn:
+                    result = await conn.execute(*args, **kwargs)
+                    await conn.commit()
+                    return result
+            except sqlalchemy.exc.OperationalError as exc:
+                if 'database is locked' not in str(exc).lower() or attempt >= self._sqlite_locked_retry_attempts - 1:
+                    raise
+                delay = self._sqlite_locked_retry_base_seconds * (2**attempt)
+                self.ap.logger.warning(
+                    f'SQLite database is locked, retrying query in {delay:.1f}s '
+                    f'({attempt + 1}/{self._sqlite_locked_retry_attempts})'
+                )
+                await asyncio.sleep(delay)
+        raise RuntimeError('unreachable sqlite locked retry state')
 
     @staticmethod
     async def _execute_on_scoped_connection(

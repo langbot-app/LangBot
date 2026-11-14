@@ -227,7 +227,10 @@ class SessionManager:
                 for key in tuple(workspace_keys)
                 if (session := self._session_index.get(key)) is not None and self._session_is_idle(session)
             ),
-            key=lambda session: float(getattr(session, '_langbot_last_accessed', 0.0)),
+            key=lambda session: (
+                float(getattr(session, '_langbot_last_accessed', 0.0)),
+                int(getattr(session, '_langbot_access_revision', 0)),
+            ),
         )
         for session in idle_workspace_sessions[:overflow]:
             self._remove_session(session)
@@ -267,6 +270,19 @@ class SessionManager:
 
     async def initialize(self):
         pass
+
+    def cleanup_inactive_sessions(self, max_idle_seconds: int) -> int:
+        """Remove idle sessions older than max_idle_seconds from the scoped session cache."""
+        if max_idle_seconds <= 0:
+            return 0
+        cutoff = time.monotonic() - max_idle_seconds
+        deleted = 0
+        for session in tuple(self._session_index.values()):
+            if self._session_is_idle(session) and getattr(session, '_langbot_last_accessed', cutoff + 1) <= cutoff:
+                self._remove_session(session)
+                deleted += 1
+        self._compact_session_expiry_heap(force=True)
+        return deleted
 
     async def get_session(self, query: pipeline_query.Query) -> provider_session.Session:
         """获取会话"""

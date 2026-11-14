@@ -92,6 +92,27 @@ def get_session_module():
     return import_module('langbot.pkg.provider.session.sessionmgr')
 
 
+@pytest.mark.asyncio
+async def test_manual_cleanup_retains_active_sessions_and_updates_workspace_index():
+    module = get_session_module()
+    manager = module.SessionManager(
+        SimpleNamespace(instance_config=SimpleNamespace(data={'concurrency': {'session': 2}}))
+    )
+    idle = await manager.get_session(scoped_query(workspace_uuid='idle-workspace'))
+    active = await manager.get_session(scoped_query(workspace_uuid='active-workspace'))
+    old_time = module.time.monotonic() - 7200
+    object.__setattr__(idle, '_langbot_last_accessed', old_time)
+    object.__setattr__(active, '_langbot_last_accessed', old_time)
+    await active._semaphore.acquire()
+    try:
+        assert manager.cleanup_inactive_sessions(3600) == 1
+        assert manager.session_list == [active]
+        assert 'idle-workspace' not in manager._session_keys_by_workspace
+        assert manager.cleanup_inactive_sessions(0) == 0
+    finally:
+        active._semaphore.release()
+
+
 class TestSessionManagerInit:
     """Tests for SessionManager initialization."""
 
