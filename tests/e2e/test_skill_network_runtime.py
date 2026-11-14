@@ -31,7 +31,6 @@ import yaml
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import create_async_engine
 
-from langbot_plugin.box.models import E2BConnectionConfig
 from langbot.pkg.entity.persistence.workspace import Workspace
 from tests.e2e.test_network_file_plugin_runtime import _SECRET, _provider_presence, _turn, _write_file_runner
 from tests.e2e.test_runner_plugin_runtime import QA_RUNNER_ID, _ensure_qa_plugin, _free_port, _wait_for_qa_runner
@@ -131,6 +130,8 @@ def core_pair_configure(tmp_path, monkeypatch):
     assert backend in {'host', 'docker', 'nsjail', 'e2b'}
     connection = None
     if backend == 'e2b':
+        from langbot_plugin.box.models import E2BConnectionConfig
+
         connection = E2BConnectionConfig(
             api_key=os.environ['E2B_API_KEY'],
             api_url=os.environ['E2B_API_URL'],
