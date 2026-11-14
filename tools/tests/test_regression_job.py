@@ -26,6 +26,7 @@ class ControlledJob(Job):
         self.health = health
         self.fail_install = fail_install
         self.calls = []
+        self.overrides = []
         self.env['LBCTL_TEST_ROOT'] = str(output.parent)
 
     def command(self, args, timeout=900):
@@ -62,19 +63,18 @@ class ControlledJob(Job):
         if args[:2] == ['docker', 'ps']:
             if 'label=langbot.box=true' in args:
                 return 0, '', ''
-            return (
-                0,
-                '\n'.join(
-                    f'id-{name} {name}'
-                    for name in ('langbot', 'langbot_plugin_runtime', 'langbot_box', 'regression_mock')
-                ),
-                '',
-            )
+            services = ['langbot', 'langbot_plugin_runtime', 'langbot_box', 'regression_mock']
+            override = self.private / 'compose.override.json'
+            if override.exists():
+                services.extend(name for name in json.loads(override.read_text())['services'] if name not in services)
+            return 0, '\n'.join(f'id-{name} {name}' for name in services), ''
         if args[:2] == ['docker', 'inspect']:
             if '{{.State.Pid}}' in args:
                 return 0, str(os.getpid()), ''
             return 0, json.dumps({'network': {'IPAddress': '127.0.0.1'}}), ''
         if args[:2] == ['docker', 'compose']:
+            if 'up' in args:
+                self.overrides.append(json.loads((self.private / 'compose.override.json').read_text()))
             if 'logs' in args:
                 return 0, self.redact(self.env.get('LANGBOT_QA_API_KEY', '') + '\n' + 't' * 32), ''
             return 0, '', ''
@@ -125,6 +125,20 @@ class JobTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'requires published'):
                 load_profile(path)
 
+    def test_mixed_profile_uses_owned_compose_backend_addresses(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'job.json'
+            suite = Path(__file__).resolve().parents[1] / 'profiles/groups.json'
+            path.write_text(json.dumps({'version': 1, 'suite': str(suite), 'deployment': {'version': 'v4.11.0'}}))
+            variables = load_profile(path)[1]['vars']
+            for key, service in (
+                ('mock_base_url', 'regression_mock'),
+                ('box_mock_base_url', 'regression_mock_box'),
+                ('rag_mock_base_url', 'regression_mock_rag'),
+            ):
+                self.assertEqual(variables[key], f'http://{service}:18080/v1')
+            self.assertEqual(variables['embedding_base_url'], variables['mock_base_url'])
+
     def test_lifecycle_success_and_partial_install_recovery(self):
         class Health(BaseHTTPRequestHandler):
             def do_GET(self):
@@ -151,6 +165,10 @@ class JobTests(unittest.TestCase):
                 }
                 suite = profile()
                 suite['coverage_suite'] = 'smoke'
+                suite.setdefault('vars', {}).update(
+                    box_mock_base_url='http://regression_mock_box:18080/v1',
+                    rag_mock_base_url='http://regression_mock_rag:18080/v1',
+                )
                 suite['resources'] = [{'id': 'chat', 'kind': 'pipeline', 'body': {'name': 'QA', 'config': {'ai': {}}}}]
                 suite['cases'][0].update(args=['pipeline', 'run', '${chat}'], expect='TEST_OK')
                 suite['phases'][0].update(duration_seconds=0.5, rps=4, workers=2)
@@ -164,6 +182,17 @@ class JobTests(unittest.TestCase):
                 self.assertFalse((job.private / 'api-key').exists())
                 self.assertIn('--purge-data', job.calls[-1])
                 self.assertNotIn('t' * 32, (job.output / 'services.log').read_text())
+                mocks = job.overrides[-1]['services']
+                for kind in ('box', 'rag'):
+                    service = 'regression_mock_' + kind
+                    self.assertIn(service, job.state['containers'])
+                    self.assertEqual(mocks[service]['command'][-1], '/results/' + service + '.jsonl')
+                    self.assertEqual(mocks[service]['networks'], ['langbot_network'])
+                compose_calls = [call for call in job.calls if call[:2] == ['docker', 'compose']]
+                for operation in ('logs', 'down'):
+                    call = next(call for call in compose_calls if operation in call)
+                    self.assertIn(str(job.private / 'compose.override.json'), call)
+                self.assertIn('--remove-orphans', next(call for call in compose_calls if 'down' in call))
 
                 job = ControlledJob(manifest, suite, root / 'profile.json', root / 'failed', health, fail_install=True)
                 result = job.run()

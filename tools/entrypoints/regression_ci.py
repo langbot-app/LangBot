@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import secrets
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -117,7 +118,19 @@ def ready(url, processes, timeout=120):
     raise RuntimeError(f'Service did not become ready: {url}')
 
 
+def allocate_ports():
+    # Keep reservations open together so this Job never selects the same port twice.
+    with ExitStack() as reservations:
+        ports = {}
+        for name in ('core', 'runtime', 'debug', 'box', 'mock', 'mock_box', 'mock_rag'):
+            listener = reservations.enter_context(socket.socket())
+            listener.bind(('127.0.0.1', 0))
+            ports[name] = listener.getsockname()[1]
+        return ports
+
+
 def run(args):
+    ports = allocate_ports()
     if subprocess.check_output(
         ['docker', 'ps', '-a', '--filter', 'label=langbot.box=true', '--format', '{{.ID}}'], text=True, timeout=10
     ).strip():
@@ -173,7 +186,7 @@ def run(args):
         processes.remove(process)
         pids[name] = start(name, command)
         if name == 'runtime':
-            ready('http://127.0.0.1:15340/healthz', processes, timeout=remaining())
+            ready(f'http://127.0.0.1:{ports["runtime"]}/healthz', processes, timeout=remaining())
         ready(profile['observe']['health']['core'], processes, timeout=remaining())
         while True:
             previous_timeout = suite.timeout
@@ -206,13 +219,15 @@ def run(args):
                 if args.plugins is not None
                 else prepare_published_plugins(root / 'plugins', args.plugin_manifest)
             )
-        config_path = create_minimal_config(private, port=15301)
+        config_path = create_minimal_config(private, port=ports['core'])
         create_test_directories(private)
         config = yaml.safe_load(config_path.read_text())
         config.setdefault('space', {})['url'] = services.enter_context(package_marketplace(root / 'plugins', packages))
         config['api'].update(global_api_key=key, host='127.0.0.1')
-        config['plugin'].update(enable=True, runtime_ws_url='ws://127.0.0.1:15340/control/ws')
-        config['box'].update(enabled=True, backend='local', runtime={'endpoint': 'ws://127.0.0.1:15310/control/ws'})
+        config['plugin'].update(enable=True, runtime_ws_url=f'ws://127.0.0.1:{ports["runtime"]}/control/ws')
+        config['box'].update(
+            enabled=True, backend='local', runtime={'endpoint': f'ws://127.0.0.1:{ports["box"]}/control/ws'}
+        )
         config['box']['local'].update(
             host_root=str(private / 'box'), allowed_mount_roots=[str(private / 'box')], image='python:3.12-alpine'
         )
@@ -233,7 +248,7 @@ def run(args):
                     'current_context': 'smoke',
                     'contexts': {
                         'smoke': {
-                            'endpoint': 'http://127.0.0.1:15301',
+                            'endpoint': f'http://127.0.0.1:{ports["core"]}',
                             'credential': {'type': 'env', 'name': 'LANGBOT_QA_API_KEY'},
                         }
                     },
@@ -242,13 +257,21 @@ def run(args):
         )
         profile['cli'] = {'executable': str(args.lbctl.resolve()), 'config': str(cli_config)}
         profile['vars'].update(
-            mock_base_url='http://127.0.0.1:18080/v1',
-            embedding_base_url='http://127.0.0.1:18080/v1',
-            core_base_url='http://127.0.0.1:15301',
-            core_health='http://127.0.0.1:15301/healthz',
+            mock_base_url=f'http://127.0.0.1:{ports["mock"]}/v1',
+            embedding_base_url=f'http://127.0.0.1:{ports["mock"]}/v1',
+            box_mock_base_url=f'http://127.0.0.1:{ports["mock_box"]}/v1',
+            rag_mock_base_url=f'http://127.0.0.1:{ports["mock_rag"]}/v1',
+            core_base_url=f'http://127.0.0.1:{ports["core"]}',
+            core_health=f'http://127.0.0.1:{ports["core"]}/healthz',
             core_db=str(private / 'data/langbot.db'),
             mock_records=str(root / 'mock-requests.jsonl'),
         )
+        if args.suite == 'endurance':
+            require(
+                len({profile['vars'][name] for name in ('mock_base_url', 'box_mock_base_url', 'rag_mock_base_url')})
+                == 3,
+                'Mixed generation Providers require three distinct endpoints',
+            )
         profile['plugins'] = []
         if 'smoke' in profile:
             profile['smoke']['required_plugins'] = [entry['id'] for entry in packages['plugins']]
@@ -258,17 +281,35 @@ def run(args):
             for document in resource.get('documents', []):
                 document['file'] = str((profile_path.parent / document['file']).resolve())
         pids = {}
-        pids['mock'] = start(
-            'mock',
-            [
-                sys.executable,
-                str(ROOT / 'tools/entrypoints/mock_llm.py'),
-                '--port',
-                '18080',
-                '--record',
-                str(root / 'mock-requests.jsonl'),
-            ],
-        )
+        mocks = {'mock': ports['mock']}
+        mock_args = []
+        if args.suite == 'endurance':
+            mocks.update(mock_box=ports['mock_box'], mock_rag=ports['mock_rag'])
+            # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
+            scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+            for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
+                scenarios[model]['delay_seconds'] = 0.6
+            for step in scenarios['mock-smoke-box']['steps']:
+                for call in step.get('tool_calls', []):
+                    call['arguments']['command'] = (
+                        'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; sleep 1; ' + call['arguments']['command']
+                    )
+            scenario_path = private / 'mixed-scenarios.json'
+            scenario_path.write_text(json.dumps(scenarios, indent=2))
+            mock_args = ['--scenarios', str(scenario_path)]
+        for name, port in mocks.items():
+            pids[name] = start(
+                name,
+                [
+                    sys.executable,
+                    str(ROOT / 'tools/entrypoints/mock_llm.py'),
+                    '--port',
+                    str(port),
+                    '--record',
+                    str(root / (name + '-requests.jsonl')),
+                    *mock_args,
+                ],
+            )
         pids['runtime'] = start(
             'runtime',
             [
@@ -277,9 +318,9 @@ def run(args):
                 'langbot_plugin.cli.__init__',
                 'rt',
                 '--ws-control-port',
-                '15340',
+                str(ports['runtime']),
                 '--ws-debug-port',
-                '15341',
+                str(ports['debug']),
             ],
         )
         pids['box'] = start(
@@ -292,7 +333,7 @@ def run(args):
                 '--host',
                 '127.0.0.1',
                 '--ws-control-port',
-                '15310',
+                str(ports['box']),
             ],
         )
         pids['core'] = start(
@@ -300,9 +341,9 @@ def run(args):
         )
         profile['observe'] = {
             'health': {
-                'core': 'http://127.0.0.1:15301/healthz',
-                'box': 'http://127.0.0.1:15310/readyz',
-                'mock': 'http://127.0.0.1:18080/healthz',
+                'core': f'http://127.0.0.1:{ports["core"]}/healthz',
+                'box': f'http://127.0.0.1:{ports["box"]}/readyz',
+                **{name: f'http://127.0.0.1:{port}/healthz' for name, port in mocks.items()},
             },
             'pids': pids,
         }
@@ -406,6 +447,21 @@ def run(args):
                 pids,
                 env,
             )
+        if args.suite == 'endurance':
+            from tools.regression.regression_mixed import verify_mixed
+
+            mixed = verify_mixed(
+                root / 'gate/suite',
+                private / 'data/langbot.db',
+                {
+                    'chat': root / 'mock-requests.jsonl',
+                    'box': root / 'mock_box-requests.jsonl',
+                    'rag_chat': root / 'mock_rag-requests.jsonl',
+                },
+            )
+            (root / 'gate/mixed.json').write_text(json.dumps(mixed, indent=2) + '\n')
+            result['mixed'] = mixed
+            result['passed'] = result['passed'] and mixed['passed']
         evidence = [root / 'gate/suite']
         if restart_result is not None:
             evidence.append(root / 'restart-checks')

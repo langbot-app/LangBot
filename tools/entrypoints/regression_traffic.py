@@ -28,6 +28,116 @@ def percentile(values, fraction):
     return sorted(values)[max(0, math.ceil(len(values) * fraction) - 1)] if values else None
 
 
+def http_concurrency(rows):
+    """Measure successful group HTTP intervals, excluding subsequent ledger verification."""
+    group_rows = [row for row in rows if row.get('group_id')]
+    selected = [row for row in group_rows if row.get('status') == 'ok']
+
+    def intervals(items):
+        if not items:
+            return {'status': 'unknown', 'requests': 0, 'peak_in_flight': None, 'overlap_seconds': None}
+        events = []
+        for row in items:
+            begin, seconds = row.get('elapsed'), row.get('seconds')
+            if (
+                any(
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not math.isfinite(value)
+                    or value < 0
+                    for value in (begin, seconds)
+                )
+                or seconds == 0
+            ):
+                return {'status': 'unknown', 'requests': len(items), 'peak_in_flight': None, 'overlap_seconds': None}
+            events.extend(((begin, 1), (begin + seconds, -1)))
+        active = peak = 0
+        overlap = 0.0
+        previous = min(event[0] for event in events)
+        for stamp, change in sorted(events):
+            if active >= 2:
+                overlap += stamp - previous
+            active += change
+            peak = max(peak, active)
+            previous = stamp
+        return {'status': 'observed', 'requests': len(items), 'peak_in_flight': peak, 'overlap_seconds': overlap}
+
+    return {
+        **intervals(selected),
+        'basis': 'successful_group_http_intervals_excluding_ledger_verification',
+        'cases': {
+            name: intervals([row for row in selected if row['case'] == name])
+            for name in dict.fromkeys(row['case'] for row in group_rows)
+        },
+    }
+
+
+def resource_observations(samples):
+    """Summarize sampled container/session scale and queue recovery; absence is unknown."""
+
+    def peak(values):
+        valid = [
+            value
+            for value in values
+            if not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value) and value >= 0
+        ]
+        return {
+            'status': 'observed' if values and len(valid) == len(values) else 'unknown',
+            'peak': max(valid) if valid else None,
+            'samples': len(valid),
+            'missing_samples': len(values) - len(valid),
+        }
+
+    containers = []
+    for row in samples:
+        entries = row.get('containers')
+        try:
+            counts = [int(item['PIDs']) for item in entries] if isinstance(entries, list) else None
+            containers.append(
+                sum(value > 0 for value in counts)
+                if counts is not None and all(value >= 0 for value in counts) and not row.get('container_error')
+                else None
+            )
+        except (ValueError, KeyError, TypeError):
+            containers.append(None)
+    running = peak(containers)
+    running['basis'] = 'docker_stats_rows_with_positive_pids'
+    sessions = peak([row.get('health', {}).get('box', {}).get('body.resources.sessions') for row in samples])
+    load = [row for row in samples if row.get('phase') == 'load']
+    cooldown = [row for row in samples if row.get('phase') == 'cooldown']
+    tail = []
+    if cooldown:
+        end = max(row['elapsed'] for row in cooldown)
+        tail = [row for row in cooldown if row['elapsed'] >= end - 30]
+    queues = {}
+    for target, metrics in {
+        'core': ('body.resources.query_pool.queued',),
+        'box': (
+            'body.resources.blocking_executor.pending',
+            'body.resources.creating_session_tasks',
+            'body.resources.closing_session_tasks',
+        ),
+    }.items():
+        for metric in metrics:
+            before, after = [
+                peak([row.get('health', {}).get(target, {}).get(metric) for row in rows]) for rows in (load, tail)
+            ]
+            queues[target + '.' + metric] = {
+                'status': 'observed' if before['status'] == after['status'] == 'observed' else 'unknown',
+                'load_peak': before['peak'],
+                'cooldown_tail_max': after['peak'],
+                'load_samples': before['samples'],
+                'cooldown_tail_samples': after['samples'],
+                'missing_samples': before['missing_samples'] + after['missing_samples'],
+            }
+    return {
+        'running_containers': running,
+        'box_sessions': sessions,
+        'queues': queues,
+        'cooldown_tail_window_seconds': 30,
+    }
+
+
 def missing_containers(error, candidates):
     messages = {
         prefix + container: container
@@ -548,6 +658,7 @@ def main():
             row = {
                 'case': case['name'],
                 'group_id': group['id'],
+                'token': token,
                 'member_id': member,
                 'turn': group['turn'],
                 'time': time.time(),
@@ -644,6 +755,8 @@ def main():
             args.ledger_db, args.workspace, phase_start_id, conversations, verified_ids
         )
     samples = [json.loads(line) for line in (args.output / 'resources.jsonl').read_text().splitlines()]
+    summary['http_concurrency'] = http_concurrency(rows)
+    summary['resource_observations'] = resource_observations(samples)
     summary['health_samples'] = len(samples)
     summary['health_failures'] = sum(
         any('error' in target for target in [*sample['targets'].values(), *sample['health'].values()])
