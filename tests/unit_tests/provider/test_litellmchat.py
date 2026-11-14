@@ -113,6 +113,45 @@ class TestBuildLiteLLMModelName:
         assert result == 'anthropic/claude-3'
 
 
+class TestKnownReasoningLevelsDeepSeek:
+    """Test _known_reasoning_levels DeepSeek capability table (issue #2834)"""
+
+    def _levels(self, model_name, family='deepseek'):
+        requester = litellmchat.LiteLLMRequester(ap=Mock(), config={'custom_llm_provider': ''})
+        return requester._known_reasoning_levels(model_name, family)
+
+    def test_flash_aliases_share_one_table(self):
+        """deepseek-flash / deepseek-chat are aliases of the same backend model as deepseek-v4-*"""
+        expected = ['provider_default', 'disabled', 'low', 'high', 'max']
+        assert self._levels('deepseek-flash') == expected
+        assert self._levels('deepseek-v4-flash') == expected
+        assert self._levels('deepseek-chat') == expected
+        assert self._levels('deepseek-v4-pro') == expected
+
+    def test_no_undeclared_levels(self):
+        """Only levels declared by DeepSeek's /models endpoint are offered"""
+        for name in ('deepseek-flash', 'deepseek-chat', 'deepseek-v4-flash', 'deepseek-v4-pro'):
+            levels = self._levels(name)
+            assert 'xhigh' not in levels
+            assert 'enabled' not in levels
+
+    def test_reasoner_stays_always_on(self):
+        """deepseek-reasoner keeps the always-on table (no `disabled` offered)"""
+        assert self._levels('deepseek-reasoner') == ['provider_default']
+        assert self._levels('deepseek-r1') == ['provider_default']
+
+    def test_provider_prefix_is_stripped(self):
+        expected = ['provider_default', 'disabled', 'low', 'high', 'max']
+        assert self._levels('deepseek/deepseek-flash') == expected
+
+    def test_other_deepseek_names_keep_enabled(self):
+        """Unlisted deepseek- models keep the generic thinking on/off table"""
+        assert self._levels('deepseek-unknown-model') == ['provider_default', 'disabled', 'enabled']
+
+    def test_non_deepseek_family_unaffected(self):
+        assert self._levels('deepseek-flash', family='openai') is None
+
+
 class TestExtractUsage:
     """Test _extract_usage method"""
 
