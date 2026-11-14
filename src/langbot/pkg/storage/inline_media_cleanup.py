@@ -26,12 +26,19 @@ if TYPE_CHECKING:
 ROWS_PER_TABLE = 100
 CHARACTERS_PER_TABLE = 8 * 1024 * 1024
 CURSOR_PREFIX = 'inline_media_ttl_v1:'
+# Same markers _redact_columns requires; rows without any of them cannot change.
+INLINE_IMAGE_MARKERS = ('base64', 'data:image/')
+
+
+def _may_contain_inline_images(model, fields) -> sa.ColumnElement[bool]:
+    """SQL superset of the rows _redact_columns could change."""
+    return sa.or_(*(getattr(model, field).contains(marker) for field in fields for marker in INLINE_IMAGE_MARKERS))
 
 
 def _redact_columns(values: dict) -> dict:
     updates = {}
     for name, raw in values.items():
-        if not raw or ('base64' not in raw and 'data:image/' not in raw):
+        if not raw or not any(marker in raw for marker in INLINE_IMAGE_MARKERS):
             continue
         try:
             payload = json.loads(raw)
@@ -48,6 +55,12 @@ async def cleanup_inline_media(ap: Application, context: ExecutionContext, reten
 
     Bound each table by both candidate count and serialized payload characters. One
     oversized row is processed on its own so it cannot permanently block the cursor.
+
+    Candidates are limited to this Workspace's rows that can contain an inline
+    image, so a Workspace with nothing to expire costs one query per table.
+    Cloud runs this for thousands of Workspaces every hour; walking every old
+    row (or, for events, every Workspace's old events) one transaction at a time
+    kept the event loop busy for most of each maintenance pass.
     """
     if not isinstance(context, ExecutionContext) or not context.workspace_uuid:
         raise WorkspaceRequiredError('Inline media cleanup requires an ExecutionContext')
@@ -60,10 +73,11 @@ async def cleanup_inline_media(ap: Application, context: ExecutionContext, reten
             MonitoringMessage,
             MonitoringMessage.timestamp,
             MonitoringMessage.workspace_uuid == workspace,
+            None,
             ('message_content', 'variables'),
         ),
-        (EventLog, EventLog.created_at, EventLog.workspace_id == workspace, ('input_json', 'metadata_json')),
-        (AgentRun, AgentRun.created_at, AgentRun.workspace_id == workspace, ('metadata_json',)),
+        (EventLog, EventLog.created_at, EventLog.workspace_id == workspace, None, ('input_json', 'metadata_json')),
+        (AgentRun, AgentRun.created_at, AgentRun.workspace_id == workspace, None, ('metadata_json',)),
         (
             AgentRunEvent,
             AgentRunEvent.created_at,
@@ -72,18 +86,26 @@ async def cleanup_inline_media(ap: Application, context: ExecutionContext, reten
                     AgentRun.run_id == AgentRunEvent.run_id, AgentRun.workspace_id == workspace
                 )
             ),
+            # Events have no Workspace column. Their run is created before them,
+            # so an expired event belongs to an expired run of this Workspace;
+            # select candidates through ix_agent_run_media_ttl instead of
+            # scanning every Workspace's events.
+            AgentRunEvent.run_id.in_(
+                sa.select(AgentRun.run_id).where(AgentRun.workspace_id == workspace, AgentRun.created_at < cutoff)
+            ),
             ('data_json', 'metadata_json'),
         ),
         (
             Transcript,
             Transcript.created_at,
             Transcript.workspace_id == workspace,
+            None,
             ('content_json', 'attachment_refs_json', 'metadata_json'),
         ),
     )
     manager = ap.persistence_mgr
     cleaned = 0
-    for model, timestamp, scope, fields in sources:
+    for model, timestamp, scope, candidate_scope, fields in sources:
         consumed = 0
         cursor_key = CURSOR_PREFIX + model.__tablename__
         cursor_filter = (WorkspaceMetadata.workspace_uuid == workspace, WorkspaceMetadata.key == cursor_key)
@@ -93,11 +115,11 @@ async def cleanup_inline_media(ap: Application, context: ExecutionContext, reten
                     sa.select(WorkspaceMetadata.value).where(*cursor_filter).with_for_update()
                 )
                 cursor_raw = cursor_result.scalar_one_or_none()
-                # Events have no Workspace column. Limit indexed candidates before
-                # checking ownership so other Workspaces cannot cause unbounded scans.
-                query = sa.select(model.id, timestamp).where(timestamp < cutoff)
-                if model is not AgentRunEvent:
-                    query = query.where(scope)
+                query = sa.select(model.id, timestamp).where(
+                    timestamp < cutoff,
+                    scope if candidate_scope is None else candidate_scope,
+                    _may_contain_inline_images(model, fields),
+                )
                 if cursor_raw is not None:
                     after_time, after_id = json.loads(cursor_raw)
                     query = query.where(

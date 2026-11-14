@@ -627,6 +627,10 @@ class MaintenanceService:
         return count
 
     def _non_negative_int(self, value: Any, default: int, name: str) -> int:
+        if value is None:
+            # An empty YAML key means "use the default"; warning here would log
+            # once per Workspace on every maintenance pass.
+            return default
         try:
             parsed = int(value)
         except (TypeError, ValueError):
@@ -638,6 +642,10 @@ class MaintenanceService:
         return parsed
 
     def _positive_int(self, value: Any, default: int, name: str) -> int:
+        if value is None:
+            # An empty YAML key means "use the default"; warning here would log
+            # once per Workspace on every maintenance pass.
+            return default
         try:
             parsed = int(value)
         except (TypeError, ValueError):

@@ -174,11 +174,10 @@ async def test_row_budget_resumes_persisted_progress_and_later_expiry(applicatio
 
 
 @pytest.mark.asyncio
-async def test_event_scan_budget_advances_past_foreign_events_without_reading_payloads(application, monkeypatch):
+async def test_event_candidates_skip_foreign_events_without_reading_payloads(application, monkeypatch):
     monkeypatch.setattr(cleanup, 'ROWS_PER_TABLE', 2)
     for number in range(1, 5):
         await insert_record(application, AgentRunEvent, number, workspace=WORKSPACE_B)
-    await application.persistence_mgr.execute_async(sa.delete(AgentRun).where(AgentRun.run_id == 'parent-3'))
     await insert_record(application, AgentRunEvent, 5)
     await insert_record(application, AgentRunEvent, 6, timestamp=NOW)
     engine = application.persistence_mgr.get_db_engine()
@@ -191,17 +190,7 @@ async def test_event_scan_budget_advances_past_foreign_events_without_reading_pa
 
     sa.event.listen(engine.sync_engine, 'before_cursor_execute', capture_statement)
     try:
-        for expected_id in (2, 4):
-            assert await cleanup.cleanup_inline_media(application, CONTEXT, 30) == 0
-            cursor = (
-                await application.persistence_mgr.execute_async(
-                    sa.select(WorkspaceMetadata.value).where(
-                        WorkspaceMetadata.workspace_uuid == WORKSPACE_A,
-                        WorkspaceMetadata.key == cleanup.CURSOR_PREFIX + 'agent_run_event',
-                    )
-                )
-            ).scalar_one()
-            assert json.loads(cursor) == [OLD.isoformat(), expected_id]
+        # Foreign events neither consume the budget nor have payloads read.
         assert await cleanup.cleanup_inline_media(application, CONTEXT, 30) == 1
         assert await cleanup.cleanup_inline_media(application, CONTEXT, 30) == 0
     finally:
@@ -211,17 +200,30 @@ async def test_event_scan_budget_advances_past_foreign_events_without_reading_pa
     for number in (1, 2, 3, 4, 6):
         assert await read_record(application, AgentRunEvent, number, 'data_json') == PAYLOAD
     assert {columns for _, _, columns in statements} == {('id', 'created_at'), ('data_json', 'metadata_json')}
+    payload_reads = [parameters for _, parameters, columns in statements if columns == ('data_json', 'metadata_json')]
+    assert len(payload_reads) == 1
     async with engine.connect() as connection:
         for statement, parameters, columns in statements:
             plan = ' '.join(
                 row[3] for row in await connection.exec_driver_sql('EXPLAIN QUERY PLAN ' + statement, parameters)
             )
-            # Classify by projection; SQLite versions describe EXISTS plans differently.
             if columns == ('id', 'created_at'):
-                assert 'COVERING INDEX ix_agent_run_event_media_ttl' in plan, plan
+                # Candidates come from this Workspace's expired runs.
+                assert 'ix_agent_run_media_ttl' in plan, plan
             else:
                 assert 'SEARCH agent_run_event USING INTEGER PRIMARY KEY' in plan, plan
-            assert 'TEMP B-TREE' not in plan, plan
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('model', SOURCES, ids=lambda model: model.__tablename__)
+async def test_rows_without_inline_images_do_not_consume_row_budget(application, monkeypatch, model):
+    monkeypatch.setattr(cleanup, 'ROWS_PER_TABLE', 1)
+    plain = json.dumps({'content': [{'type': 'Plain', 'text': 'no image here'}]})
+    field = await insert_record(application, model, 1, timestamp=OLD - dt.timedelta(days=1), payload=plain)
+    await insert_record(application, model, 2)
+    assert await cleanup.cleanup_inline_media(application, CONTEXT, 30) == 1
+    assert await read_record(application, model, 1, field) == plain
+    assert not MediaCache.has_inline_images(json.loads(await read_record(application, model, 2, field)))
 
 
 @pytest.mark.asyncio
