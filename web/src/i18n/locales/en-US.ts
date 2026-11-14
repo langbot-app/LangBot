@@ -4276,6 +4276,8 @@ const enUS = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'Templates are on their way ✨',
+    emptyBody: 'Hit “Share” next to a prompt and be the first!',
     bindToFavorite: 'Bind an account to favorite',
     originalLanguage: 'original',
     open: 'Prompt library',
@@ -4331,8 +4333,6 @@ const enUS = {
     displayName: 'Display name',
     identifier: 'Identifier',
     descriptionLabel: 'Description',
-    tags: 'Tags',
-    tagsPlaceholder: 'Comma-separated, up to 8',
     changelog: 'Changelog',
     reviewNotice:
       'Submissions are reviewed before they become public on LangBot Space. Sharing the same name again publishes a new version.',

@@ -111,7 +111,6 @@ export default function ShareToSpaceDialog({
   const [name, setName] = useState('');
   const [label, setLabel] = useState('');
   const [desc, setDesc] = useState('');
-  const [tags, setTags] = useState('');
   const [changelog, setChangelog] = useState('');
   const [ack, setAck] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -124,7 +123,6 @@ export default function ShareToSpaceDialog({
     setName(slugifyShareName(defaultName));
     setLabel(defaultLabel);
     setDesc(defaultDescription);
-    setTags('');
     setChangelog('');
     setAck(false);
     setError('');
@@ -158,10 +156,8 @@ export default function ShareToSpaceDialog({
         name,
         label: { [locale]: label.trim() },
         description: { [locale]: desc.trim() },
-        tags: tags
-          .split(/[,，]/)
-          .map((s) => s.trim())
-          .filter(Boolean),
+        // Contributors don't tag; Space assigns tags during review.
+        tags: [],
         changelog: changelog.trim(),
       };
       setResult(await onSubmit(meta, ack));
@@ -287,14 +283,6 @@ export default function ShareToSpaceDialog({
                 rows={2}
                 value={desc}
                 onChange={(e) => setDesc(e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>{t('spaceShare.tags')}</Label>
-              <Input
-                value={tags}
-                placeholder={t('spaceShare.tagsPlaceholder')}
-                onChange={(e) => setTags(e.target.value)}
               />
             </div>
             {showChangelog && (

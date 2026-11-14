@@ -4298,6 +4298,8 @@ const ruRU = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'Шаблоны уже в пути ✨',
+    emptyBody: 'Нажмите «Поделиться» рядом с промптом и станьте первым!',
     bindToFavorite: 'Привяжите аккаунт для избранного',
     originalLanguage: 'оригинал',
     open: 'Библиотека промптов',
@@ -4354,8 +4356,6 @@ const ruRU = {
     displayName: 'Отображаемое имя',
     identifier: 'Идентификатор',
     descriptionLabel: 'Описание',
-    tags: 'Теги',
-    tagsPlaceholder: 'Через запятую, до 8',
     changelog: 'Изменения',
     reviewNotice:
       'Материалы проверяются перед публикацией в LangBot Space. Повторная публикация с тем же именем создаёт новую версию.',

@@ -4193,6 +4193,8 @@ const thTH = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'เทมเพลตกำลังมา ✨',
+    emptyBody: 'กด “แชร์” ข้างพรอมต์ แล้วมาเป็นคนแรกกัน!',
     bindToFavorite: 'ผูกบัญชีเพื่อบันทึกรายการโปรด',
     originalLanguage: 'ต้นฉบับ',
     open: 'คลังพรอมต์',
@@ -4246,8 +4248,6 @@ const thTH = {
     displayName: 'ชื่อที่แสดง',
     identifier: 'รหัส',
     descriptionLabel: 'คำอธิบาย',
-    tags: 'แท็ก',
-    tagsPlaceholder: 'คั่นด้วยจุลภาค สูงสุด 8',
     changelog: 'บันทึกการเปลี่ยนแปลง',
     reviewNotice:
       'ผลงานจะถูกตรวจก่อนเผยแพร่บน LangBot Space การแชร์ชื่อเดิมอีกครั้งจะเป็นเวอร์ชันใหม่',

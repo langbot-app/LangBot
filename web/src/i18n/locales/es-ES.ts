@@ -4350,6 +4350,8 @@ const esES = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'Las plantillas están en camino ✨',
+    emptyBody: 'Pulsa «Compartir» junto a un prompt y sé el primero.',
     bindToFavorite: 'Vincula una cuenta para guardar favoritos',
     originalLanguage: 'original',
     open: 'Biblioteca de prompts',
@@ -4405,8 +4407,6 @@ const esES = {
     displayName: 'Nombre visible',
     identifier: 'Identificador',
     descriptionLabel: 'Descripción',
-    tags: 'Etiquetas',
-    tagsPlaceholder: 'Separadas por comas, máx. 8',
     changelog: 'Cambios',
     reviewNotice:
       'Los envíos se revisan antes de publicarse en LangBot Space. Compartir el mismo nombre publica una nueva versión.',

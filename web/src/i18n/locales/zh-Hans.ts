@@ -4024,6 +4024,8 @@ const zhHans = {
     },
   },
   promptLibrary: {
+    emptyTitle: '模板还在准备中 ✨',
+    emptyBody: '在提示词旁点「分享」，来当第一个分享的人吧～',
     bindToFavorite: '绑定账号后可收藏',
     originalLanguage: '原文',
     open: '提示词库',
@@ -4074,8 +4076,6 @@ const zhHans = {
     displayName: '显示名称',
     identifier: '标识',
     descriptionLabel: '简介',
-    tags: '标签',
-    tagsPlaceholder: '用逗号分隔，最多 8 个',
     changelog: '更新说明',
     reviewNotice:
       '提交后会经过审核，通过后公开在 LangBot Space；同一作者再次分享同名内容会发布为新版本。',

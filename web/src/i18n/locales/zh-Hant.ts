@@ -4025,6 +4025,8 @@ const zhHant = {
     },
   },
   promptLibrary: {
+    emptyTitle: '範本還在準備中 ✨',
+    emptyBody: '在提示詞旁點「分享」，來當第一個分享的人吧～',
     bindToFavorite: '綁定帳號後可收藏',
     originalLanguage: '原文',
     open: '提示詞庫',
@@ -4075,8 +4077,6 @@ const zhHant = {
     displayName: '顯示名稱',
     identifier: '識別碼',
     descriptionLabel: '簡介',
-    tags: '標籤',
-    tagsPlaceholder: '以逗號分隔，最多 8 個',
     changelog: '更新說明',
     reviewNotice:
       '提交後會經過審核，通過後公開在 LangBot Space；同一作者再次分享同名內容會發布為新版本。',

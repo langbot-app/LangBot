@@ -8,6 +8,7 @@ import {
   Loader2,
   MessagesSquare,
   Search,
+  Sparkles,
 } from 'lucide-react';
 import {
   Dialog,
@@ -315,6 +316,18 @@ export default function PromptLibraryDialog({
                 </div>
               ) : error ? (
                 <div className="p-6 text-sm text-destructive">{error}</div>
+              ) : prompts.length === 0 && tab === 'all' && !query.trim() ? (
+                <div className="flex h-full flex-col items-center justify-center gap-2 px-6 py-12 text-center">
+                  <div className="flex size-12 items-center justify-center rounded-full bg-amber-50 text-amber-500 dark:bg-amber-950/40">
+                    <Sparkles className="size-6" />
+                  </div>
+                  <div className="text-sm font-medium">
+                    {t('promptLibrary.emptyTitle')}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('promptLibrary.emptyBody')}
+                  </div>
+                </div>
               ) : prompts.length === 0 ? (
                 <div className="p-6 text-center text-sm text-muted-foreground">
                   {tab === 'favorites'

@@ -4288,6 +4288,8 @@ const jaJP = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'テンプレートを準備中です ✨',
+    emptyBody: 'プロンプト横の「共有」から、最初の投稿者になりましょう！',
     bindToFavorite: 'アカウント連携でお気に入り',
     originalLanguage: '原文',
     open: 'プロンプトライブラリ',
@@ -4343,8 +4345,6 @@ const jaJP = {
     displayName: '表示名',
     identifier: '識別子',
     descriptionLabel: '説明',
-    tags: 'タグ',
-    tagsPlaceholder: 'カンマ区切り、最大 8 個',
     changelog: '変更内容',
     reviewNotice:
       '投稿は審査後に LangBot Space で公開されます。同じ名前で再共有すると新しいバージョンになります。',

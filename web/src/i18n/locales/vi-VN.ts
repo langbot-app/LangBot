@@ -4252,6 +4252,8 @@ const viVN = {
     },
   },
   promptLibrary: {
+    emptyTitle: 'Mẫu đang được chuẩn bị ✨',
+    emptyBody: 'Bấm “Chia sẻ” cạnh prompt và trở thành người đầu tiên nhé!',
     bindToFavorite: 'Liên kết tài khoản để yêu thích',
     originalLanguage: 'bản gốc',
     open: 'Thư viện prompt',
@@ -4307,8 +4309,6 @@ const viVN = {
     displayName: 'Tên hiển thị',
     identifier: 'Định danh',
     descriptionLabel: 'Mô tả',
-    tags: 'Thẻ',
-    tagsPlaceholder: 'Phân cách bằng dấu phẩy, tối đa 8',
     changelog: 'Nhật ký thay đổi',
     reviewNotice:
       'Nội dung được duyệt trước khi công khai trên LangBot Space. Chia sẻ lại cùng tên sẽ tạo phiên bản mới.',
