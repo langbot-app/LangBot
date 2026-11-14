@@ -4273,7 +4273,7 @@ const enUS = {
     title: 'Prompt library',
     description:
       'Search reviewed prompts shared on LangBot Space. Save the configuration after applying one.',
-    kindMessaging: 'Conversation',
+    kindMessaging: 'Messaging',
     kindAgent: 'Agent',
     searchPlaceholder: 'Search name, description, tags or text',
     tabAll: 'All',
@@ -4326,7 +4326,7 @@ const enUS = {
     submit: 'Submit for review',
     promptTitle: 'Share prompt to LangBot Space',
     promptDescriptionMessaging:
-      'Published as a conversation prompt that others can find in pipeline settings.',
+      'Published as a Messaging prompt that others can find in pipeline settings.',
     promptDescriptionAgent:
       'Published as an Agent prompt that others can find in Agent settings.',
     detectedVariables: 'Detected variables:',
