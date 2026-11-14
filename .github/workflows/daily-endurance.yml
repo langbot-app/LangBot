@@ -405,6 +405,7 @@ jobs:
       LANGBOT_NETWORK_PLUGIN_E2E: '1'
       LANGBOT_CORE_NETWORK_BACKEND: host
       LANGBOT_PERSISTENCE_CORE_E2E: '1'
+      LANGBOT_SKILL_NETWORK_E2E: '1'
       LANGBOT_PERSISTENCE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_test
       LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_core
       LANGBOT_PERSISTENCE_MINIO_ENDPOINT: http://127.0.0.1:9000
@@ -441,6 +442,8 @@ jobs:
           mkdir -p .qa/persistence-runtime
           docker exec "${{ job.services.postgres.id }}" \
             psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_core;'
+          docker exec "${{ job.services.postgres.id }}" \
+            psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_skill_network;'
           docker run -d --name langbot-persistence-minio -p 127.0.0.1:9000:9000 \
             -e MINIO_ROOT_USER="$LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY" \
             -e MINIO_ROOT_PASSWORD="$LANGBOT_PERSISTENCE_MINIO_SECRET_KEY" \
@@ -462,6 +465,14 @@ jobs:
             --required-suite skill_persistence -q --tb=short -rs \
             --basetemp=.qa/persistence-runtime/processes \
             --junitxml=.qa/persistence-runtime/skill-persistence.xml
+      - name: Run two-Core Skill execution and draft publication without shared paths
+        env:
+          LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_skill_network
+        run: |
+          uv run --no-sync pytest tests/e2e/test_skill_network_runtime.py \
+            --required-suite skill_network -q --tb=short -rs \
+            --basetemp=.qa/persistence-runtime/skill-network-processes \
+            --junitxml=.qa/persistence-runtime/skill-network.xml
       - name: Preserve execution scope and service logs
         if: always()
         run: |

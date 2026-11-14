@@ -16,7 +16,6 @@ from langbot_plugin.runtime.io.connection import Connection
 
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import BoxRuntimeUnavailableError
-from langbot_plugin.box.actions import LangBotToBoxAction
 from langbot_plugin.box.security import (
     BOX_CONTROL_TOKEN_ENV,
     BOX_CONTROL_TOKEN_HEADER,
@@ -68,7 +67,13 @@ def _get_runtime_endpoint(box_cfg: dict) -> str:
 
 
 def _filter_config_for_runtime(box_cfg: dict) -> dict:
-    return {k: v for k, v in box_cfg.items() if k not in _INTERNAL_BOX_CONFIG_KEYS}
+    config = {k: v for k, v in box_cfg.items() if k not in _INTERNAL_BOX_CONFIG_KEYS}
+    if config.get('file_transfer_mode') == 'network':
+        local = dict(config.get('local') or {})
+        for key in ('host_root', 'default_workspace', 'allowed_mount_roots', 'skills_root'):
+            local.pop(key, None)
+        config['local'] = local
+    return config
 
 
 def resolve_box_ws_relay_url(ap: core_app.Application) -> str:
@@ -411,7 +416,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             try:
                 await handler.call_action(CommonAction.PING, {})
                 if self._filtered_box_config:
-                    await handler.call_action(LangBotToBoxAction.INIT, self._filtered_box_config)
+                    await self.client.init(self._filtered_box_config)
                     self.ap.logger.debug('Sent box configuration to Box runtime via INIT.')
                 self.ap.logger.info(f'Connected to Box runtime via {transport_name}.')
                 connection_ready = True

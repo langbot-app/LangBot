@@ -108,6 +108,29 @@ class DatabaseSkillRepository:
             'filename': f'{record["skill"]["name"]}.zip',
         }
 
+    async def _import_zip(self, context, file_bytes: bytes, data: dict, *, base_revision: str | None) -> dict:
+        with tempfile.TemporaryDirectory(prefix='langbot-skill-draft-') as temporary:
+            store = SkillStore(temporary + '/store')
+            source, payload = await run_blocking_atomic(store._prepare_skill_zip, file_bytes, temporary, data)
+            current = await self._record(context, payload['name'])
+            archive = await self._archive(context, current) if current is not None else None
+
+            def publish():
+                if current is not None:
+                    store.restore_skill_publication(current['skill'], current['manifest'], archive, make_current=True)
+                result = store.import_skill_directory(
+                    source, payload, source_root=temporary, base_revision=base_revision
+                )
+                return store.export_skill_publication(result['name'])
+
+            publication = await run_blocking_atomic(publish)
+        await self._publish(
+            context,
+            [publication],
+            {payload['name']: current['skill']['revision'] if current is not None else None},
+        )
+        return dict(publication['skill'])
+
     async def _publish(self, context, publications: list[dict], bases: dict[str, str | None]) -> None:
         for publication in publications:
             if len(publication['file_bytes']) > MAX_PUBLICATION_BYTES:
@@ -185,6 +208,8 @@ class DatabaseSkillRepository:
                 )
 
     async def call(self, context, namespace: str, method: str, *args, **kwargs):
+        if method == 'import_skill_zip':
+            return await self._import_zip(context, *args, **kwargs)
         if method == 'list_skills':
             async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
                 rows = (
@@ -230,6 +255,16 @@ class DatabaseSkillRepository:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))
             if record is None:
                 raise ValueError(f'Skill "{args[0]}" not found')
+            if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+                archive = await self._archive(context, record)
+
+                def read_resource():
+                    with tempfile.TemporaryDirectory(prefix='langbot-skill-read-') as temporary:
+                        store = SkillStore(temporary)
+                        store.restore_skill_publication(record['skill'], record['manifest'], archive, make_current=True)
+                        return getattr(store, method)(*args, **kwargs)
+
+                return await run_blocking_atomic(read_resource)
             skill = await self._materialize(context, namespace, record)
             store = self.cache.scoped(namespace)
             if method == 'list_skill_files':

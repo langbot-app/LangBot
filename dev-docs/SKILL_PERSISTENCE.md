@@ -36,11 +36,13 @@ Deleting a registration retains its versions for authorized pinned runs.
 
 Lists, ordinary metadata and package downloads do not build filesystem caches.
 SkillManager refreshes the database catalog at request/run boundaries; an active
-run continues to use its pinned version. Resource reads and execution snapshots
+run continues to use its pinned version. In legacy mode, resource reads and execution snapshots
 restore the exact authorized publication under
 `skills.root/.database-cache/tenants/<namespace>`. This directory is disposable,
 but callers must not remove it while execution is using it. Legacy catalogs live
 outside this cache and are not imported or modified by enabling database mode.
+Explicit network mode returns path-free metadata, reads resources in disposable
+request-scoped staging, and transfers the pinned package to Runtime's own cache.
 
 `GET /api/v1/skills/<name>/package?revision=<revision>` returns a ZIP with its
 revision and byte digest headers. Authentication and Workspace resource-read
@@ -53,8 +55,11 @@ HTTP clients can use the authenticated binary endpoint. Existing MCP,
 assistant, plugin and Runner Skill operations retain their current permissions;
 the binary package operation is not advertised to them. The Host can prepare a
 pinned publication through the [Runtime artifact cache](BOX_ARTIFACT_CACHE.md)
-without materializing a Core tree. Current native script execution still uses the
-existing Box mount contract; replacing that orchestration is a separate stage.
+without materializing a Core tree. Native script execution uses these references
+when `box.file_transfer_mode: network` is explicitly enabled. Draft registration
+downloads a bounded ZIP from Box and publishes through the same tenant CAS;
+validation, cancellation before publication or a stale base cannot publish a
+partial version. The original sandbox draft is retained.
 
 Public media retains its existing anonymous HTTP contract. Writes require a
 trusted Workspace scope and explicitly register `public_media`. Reads use an
@@ -88,6 +93,6 @@ other databases share it, include their complete reference sets too. Delete only
 absent keys older than the operational grace period.
 Do not use an age-only S3 lifecycle rule on the publication prefix: retained
 versions can remain valid indefinitely. Keep every referenced content row and
-every published version. Automatic legacy import, default switching and Runtime
-execution integration are separate stages tracked by #3010. Runtime-owned cache
+every published version. Automatic legacy import and default switching remain
+separate stages tracked by #3010. Runtime-owned cache
 GC is described in the artifact-cache contract above.

@@ -40,8 +40,8 @@ HostProcessBackend = pytest.importorskip('langbot_plugin.box.host_backend').Host
 
 
 pytestmark = pytest.mark.skipif(
-    not callable(getattr(ActionRPCBoxClient, 'upload_file', None)),
-    reason='requires the in-tree or released Box network file-transfer SDK',
+    any(not callable(getattr(ActionRPCBoxClient, name, None)) for name in ('prepare_artifact', 'cleanup_run_files')),
+    reason='requires the in-tree or released Box network workspace APIs',
 )
 
 
@@ -91,10 +91,13 @@ async def network_files(tmp_path, monkeypatch):
     action_context = _ACTION_CONTEXT.model_copy(update={'instance_uuid': instance_uuid})
     created_e2b = []
     e2b_connection = None
-    core_host_root = ''
-    config = {'backend': backend_name, 'limits': {'max_sessions': 1}}
+    runtime_workspace_root = str(tmp_path / 'runtime-workspace-root')
+    monkeypatch.setenv(
+        'LANGBOT_BOX_CONFIG',
+        json.dumps({'local': {'host_root': runtime_workspace_root, 'default_workspace': 'default'}}),
+    )
+    config = {'backend': backend_name, 'file_transfer_mode': 'network', 'limits': {'max_sessions': 1}}
     if backend_name in {'docker', 'nsjail'}:
-        core_host_root = str(tmp_path / 'runtime-workspace-root')
         output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
         if backend_name == 'docker':
             await _require_existing_docker_image()
@@ -134,7 +137,6 @@ async def network_files(tmp_path, monkeypatch):
         monkeypatch.setattr(AsyncSandbox, 'create', create_one_bounded_sandbox)
         config['backend'] = 'docker'
         backend = DockerBackend(logger)
-        core_host_root = str(tmp_path / 'core-local')
         output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
     else:
         backend = HostProcessBackend(logger)
@@ -195,10 +197,11 @@ async def network_files(tmp_path, monkeypatch):
             handler_task = asyncio.create_task(handler.run())
             client = ActionRPCBoxClient(logger)
             client.set_handler(handler)
+            await client.init({'file_transfer_mode': 'network'})
             ap = make_app(
                 logger,
-                allowed_mount_roots=[core_host_root] if core_host_root else [],
-                host_root=core_host_root,
+                allowed_mount_roots=[],
+                host_root='',
             )
             ap.workspace_service.instance_uuid = instance_uuid
             ap.workspace_service.get_execution_binding.return_value = SimpleNamespace(
@@ -211,6 +214,8 @@ async def network_files(tmp_path, monkeypatch):
             ap.instance_config.data['box']['runtime']['endpoint'] = url
             service = BoxService(ap, client=client)
             service._available = True
+            assert service.default_workspace is None
+            assert runtime.network_workspace is True
             query = make_query()
             object.__setattr__(query, 'instance_uuid', instance_uuid)
             object.__setattr__(query, '_box_binding', None)
@@ -258,7 +263,7 @@ async def network_files(tmp_path, monkeypatch):
                     session = runtime._sessions[namespace_session_id(action_context, query._box_binding.session_id)]
                     assert runtime._backend is backend and session.info.backend_name == 'e2b'
                     assert session.backend.connection_config == e2b_connection
-                    assert service.default_workspace, 'Exercise a configured Core host workspace'
+                    assert service.default_workspace is None
                     assert session.info.host_path is None, 'Network mode must disable the writable E2B host mirror'
                     assert len(created_e2b) == 1
                     await require_e2b_presence(True)
@@ -281,7 +286,7 @@ async def network_files(tmp_path, monkeypatch):
                     shutil.rmtree(output_root)
                 elif backend_name == 'e2b' and created_e2b:
                     await require_e2b_presence(False)
-                    assert not any(path.is_file() for path in Path(core_host_root).rglob('*'))
+                    assert not any(path.is_file() for path in Path(runtime_workspace_root).rglob('*'))
                 elif backend_name == 'nsjail':
                     assert not any((tmp_path / 'nsjail-sessions').glob('*')), (
                         'nsjail session directories survived cleanup'
@@ -333,10 +338,46 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
     message = exported_message(box.query, [item['id']])
     assert _decode(message[0].base64) == _CONTENT
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
     assert await _command(box, 'printf unrelated-command') == 'unrelated-command'
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failed_import', [False, True])
+async def test_run_cleanup_removes_exact_import_scopes_and_keeps_other_runs(network_files, monkeypatch, failed_import):
+    box = network_files
+    binding = box.query._box_binding
+    source = File(name='cleanup.bin', base64=base64.b64encode(b'current input').decode())
+    reference = '../' + 'x' * 600
+    object.__setattr__(box.query, '_input_components', {reference: source})
+    await _command(
+        box,
+        'mkdir -p /workspace/draft /workspace/inbox/other-run && '
+        'printf draft > /workspace/draft/keep && printf other > /workspace/inbox/other-run/keep',
+    )
+    if failed_import:
+
+        async def incomplete_materialization(query):
+            imported = '/workspace/inbox/' + query._box_binding.io_scope + '/cleanup.bin'
+            await box.client.upload_file(binding.session_id, imported, b'partial', box.action_context)
+            raise BoxError('incomplete input materialization')
+
+        monkeypatch.setattr(box.service, 'materialize_inbound_attachments', incomplete_materialization)
+        with pytest.raises(BoxError, match='incomplete input'):
+            await box.runner.import_attachments(box.query, [reference])
+        assert not binding.imported
+    else:
+        await box.runner.import_attachments(box.query, [reference])
+    assert len(binding.import_scopes) == 1
+    scope = next(iter(binding.import_scopes))
+    assert '/' not in scope and len(scope) <= 512
+    imported = '/workspace/inbox/' + scope + '/cleanup.bin'
+    assert await _command(box, 'test -f ' + shlex.quote(imported)) == ''
+    await box.service.cleanup_run_files(box.query)
+    assert await _command(box, 'test ! -e /workspace/inbox/' + shlex.quote(scope)) == ''
+    assert await _command(box, 'cat /workspace/draft/keep /workspace/inbox/other-run/keep') == 'draftother'
 
 
 @pytest.mark.asyncio
@@ -361,7 +402,7 @@ async def test_network_failed_batch_download_accepts_nothing_and_keeps_sources(n
     assert not box.query._box_binding.exported
     assert not box.query._box_binding.exported_fingerprints
     assert await _command(box, f'cat {shlex.quote(first_path)} && cat {shlex.quote(second_path)}') == 'firstsecond'
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
     monkeypatch.setattr(box.client, 'download_file', download_file)
     result = await box.runner.export_files(box.query, [first_path, second_path])
     assert {item['name'] for item in result['items']} == {'first.bin', 'second.bin'}
@@ -387,7 +428,7 @@ async def test_network_cleanup_warning_keeps_accepted_handles_and_changed_source
     assert item['id'] in box.query._box_binding.exported
     assert _decode(exported_message(box.query, [item['id']])[0].base64) == b'original'
     assert await _command(box, f'cat {shlex.quote(path)}') == 'changed'
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
 
 
 @pytest.mark.asyncio
@@ -401,7 +442,7 @@ async def test_network_legacy_outbox_collection_supports_large_files(network_fil
     collected = await box.service.collect_outbound_attachments(box.query)
     assert len(collected) == 1 and _decode(collected[0]['base64']) == _CONTENT
     assert await box.service.collect_outbound_attachments(box.query) == []
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
 
 
 @pytest.mark.asyncio
@@ -454,7 +495,7 @@ async def test_network_export_repeated_cancel_waits_for_preparation_and_cleans_s
     export = asyncio.create_task(box.runner.export_files(box.query, [path]))
     try:
         await asyncio.wait_for(prepared.wait(), timeout=5)
-        assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'")
+        assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'")
         export.cancel()
         await asyncio.sleep(0)
         await asyncio.sleep(0)
@@ -472,4 +513,4 @@ async def test_network_export_repeated_cancel_waits_for_preparation_and_cleans_s
     assert not box.query._box_binding.exported
     assert not box.query._box_binding.exported_fingerprints
     assert await _command(box, 'cat ' + shlex.quote(path)) == 'preserved'
-    assert await _command(box, "find /workspace -maxdepth 1 -name '.langbot-export-*'") == ''
+    assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''

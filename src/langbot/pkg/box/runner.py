@@ -27,6 +27,7 @@ class RunBoxBinding:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     read_only_mounts: list[dict] = field(default_factory=list)
     exported_fingerprints: dict = field(default_factory=dict)
+    import_scopes: set[str] = field(default_factory=set)
 
 
 def prepare_input_files(query, agent_input):
@@ -194,6 +195,7 @@ class RunnerBoxService:
             selected_backend=backend,
             selected_e2b_config=getattr(query, '_sandbox_e2b_config', None) if query is not None else None,
             selected_limits=getattr(query, '_sandbox_limits', None) if query is not None else None,
+            query=query,
         )
         return self.public_session(result)
 
@@ -261,7 +263,9 @@ class RunnerBoxService:
                     continue
                 transfer = copy.copy(query)
                 # Each input has its own directory: repeated imports cannot erase other files.
-                object.__setattr__(transfer, '_box_binding', replace(binding, io_scope=f'{binding.io_scope}-{key}'))
+                scope = f'{binding.io_scope}-{hashlib.sha256(key.encode()).hexdigest()}'
+                binding.import_scopes.add(scope)
+                object.__setattr__(transfer, '_box_binding', replace(binding, io_scope=scope))
                 transfer.message_chain = pm.MessageChain([available[key]])
                 items = await self.box.materialize_inbound_attachments(transfer)
                 if not items:

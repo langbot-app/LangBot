@@ -22,6 +22,7 @@ The Runner, LocalAgent and KnowledgeEngine workflows trigger on Core and SDK cha
 | --- | --- | --- |
 | File import/export, Runtime envelopes, persistent grants, reply delivery | `network_plugin` below | Full Core + Plugin Runtime + installed test Runner + Box on loopback; host is the account-free baseline |
 | Skill publication, content aliases, media, cache or database schema | `skill_persistence` below | Disposable PostgreSQL + MinIO and two real Core processes; includes SQLite, PostgreSQL and named-S3 replicas, CAS, retained versions, migration/RLS, restart and deleted-cache recovery |
+| Network Skill execution, resource reads or draft registration | `skill_network` below | Two real Core processes with independent Plugin/Box Runtimes and no shared Skill/workspace roots; run pins across publication, registration, grants, restart and cancellation |
 | Box backend execution, mounts, sessions or file transfer | Relevant `sdk/tests/box` and Core Box tests; repeat network delivery on the changed supported backend | Docker/Podman, nsjail or E2B as applicable; host success does not establish another backend's behavior |
 
 ```sh
@@ -39,6 +40,11 @@ export LANGBOT_PERSISTENCE_CORE_E2E=1
 uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
   tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
   --required-suite skill_persistence -q -rs --junitxml=skill-persistence.xml
+
+# Use another fresh task-owned database for this independent pair of Core processes.
+export LANGBOT_PERSISTENCE_CORE_POSTGRES_URL='postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_skill_network'
+LANGBOT_SKILL_NETWORK_E2E=1 uv run --no-sync pytest tests/e2e/test_skill_network_runtime.py \
+  --required-suite skill_network -q -rs --junitxml=skill-network.xml
 ```
 
 `tests/utils/required_suites.py` enforces the selected behavior obligations and rejects missing cases, skips, xfails and xpasses. Do not use `-k`, `-m` or `--deselect` to turn partial execution into acceptance. The explicit paths above keep collection narrow; the suite still fails if a required contract is missing.

@@ -81,6 +81,8 @@ def register_created_skill_visibility(query: pipeline_query.Query, skill_name: s
 def build_execution_mounts(ap: app.Application, query: pipeline_query.Query) -> list[dict]:
     """Mount only immutable revisions pinned by this run's activations."""
 
+    if getattr(getattr(ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+        return []
     mounts: list[dict] = []
     for skill_name, skill_data in get_activated_skills(query).items():
         package_root = str(skill_data.get('package_root', '') or '').strip()
