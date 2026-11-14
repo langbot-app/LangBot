@@ -174,6 +174,10 @@ class BuildAppStage(stage.BootingStage):
         ap.persistence_mgr = persistence_mgr_inst
         await persistence_mgr_inst.initialize()
 
+        from ...persistence import bot_command_migration
+
+        await bot_command_migration.migrate_global_command_config(ap)
+
         if deployment.multi_workspace_enabled:
             directory_projection_service = DirectoryProjectionService(
                 ap,
@@ -289,6 +293,11 @@ class BuildAppStage(stage.BootingStage):
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         ap.tool_mgr = llm_tool_mgr_inst
         await llm_tool_mgr_inst.initialize()
+
+        # Bot message policies are compiled lazily; routing and Messaging stages share this.
+        from ...message_policy import manager as message_policy_manager
+
+        ap.message_policy_mgr = message_policy_manager.MessagePolicyManager(ap)
 
         im_mgr_inst = im_mgr.PlatformManager(ap=ap)
         ap.platform_mgr = im_mgr_inst

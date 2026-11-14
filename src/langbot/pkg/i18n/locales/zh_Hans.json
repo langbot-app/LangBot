@@ -1,6 +1,10 @@
 {
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "找不到 Agent 运行器：{runner}。请打开插件页面，检查是否已安装、启用并确认权限。如果启动失败，请检查安装任务和运行时日志后重试。",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "插件 {plugin} 未声明权限。请在插件设置中确认兼容模式访问权限。",
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled 必须是布尔值",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected 必须是命令名称列表",
+  "Platform command registration requires a running supported bot": "平台注册需要支持此功能且正在运行的机器人",
+  "Command arguments": "命令参数",
   "Request failed.": "请求失败。",
   "Too many requests. Please try again later.": "请求过于频繁，请稍后重试。",
   "Your message contains inappropriate content. Please revise it.": "消息中存在不合适的内容，请修改。",

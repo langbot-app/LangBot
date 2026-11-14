@@ -46,6 +46,7 @@ from ..workspace.errors import WorkspaceInvariantError
 from .logger import EventLogger
 from ..utils import constants
 from .adapter_names import canonical_adapter_name
+from .command_registration import PlatformCommandEvent, PlatformCommandRegistrar
 
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.events as plugin_events
@@ -119,6 +120,7 @@ class RuntimeBot:
         self.logger = logger
         self._shutdown_lock = asyncio.Lock()
         self._shutdown_complete = False
+        self._platform_command_sync_lock = asyncio.Lock()
 
     async def assert_execution_active(self) -> None:
         """Fail closed when this long-lived adapter belongs to a stale placement."""
@@ -1051,6 +1053,296 @@ class RuntimeBot:
         except Exception as exc:
             await self.logger.warning(f'Failed to persist monitoring ingress: {exc}')
 
+    @staticmethod
+    def _command_text_from_event(event: platform_events.MessageReceivedEvent) -> str:
+        """Plain text of a message; mentions such as ``@bot /draw`` must not hide the prefix."""
+        return ''.join(
+            component.text for component in event.message_chain if isinstance(component, platform_message.Plain)
+        ).strip()
+
+    async def _resolve_command_processors(self, processors: list) -> list[tuple[str, dict]]:
+        """Resolve enabled command processor bindings to (plugin_id, agent) in priority order."""
+        from ..command import processor as command_processor
+
+        resolved: list[tuple[str, dict]] = []
+        for item in processors:
+            if not isinstance(item, dict) or not item.get('enabled', True):
+                continue
+            processor_uuid = item.get('processor_uuid')
+            if not processor_uuid:
+                continue
+            agent = await self.ap.agent_service.get_agent(self.execution_context, processor_uuid)
+            if not agent or agent.get('kind') != command_processor.COMMAND_PROCESSOR_KIND:
+                continue
+            plugin_id = command_processor.plugin_id_from_component_ref(agent.get('component_ref'))
+            if plugin_id is not None:
+                resolved.append((plugin_id, agent))
+        return resolved
+
+    async def _match_plugin_command(
+        self,
+        event: platform_events.EBAEvent,
+    ) -> tuple[str, str, str, str, dict, str] | None:
+        """Match an incoming message against the bot's command processors.
+
+        Returns (plugin_id, command_name, command_text, full_command_text, command_config,
+        processor_uuid) if a registered command name matches, else None.
+        """
+        from ..command import processor as command_processor
+
+        if not isinstance(event, platform_events.MessageReceivedEvent):
+            return None
+
+        command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
+        if not isinstance(command_settings, dict) or not command_settings.get('enabled', True):
+            return None
+
+        prefixes = command_settings.get('prefixes', ['/'])
+        if not isinstance(prefixes, list) or not prefixes:
+            prefixes = ['/']
+
+        processors = command_settings.get('processors', [])
+        if not isinstance(processors, list) or not processors:
+            return None
+
+        full_command_text = self._command_text_from_event(event)
+        if not full_command_text:
+            return None
+
+        # Longest prefix match
+        matched_prefix = None
+        for prefix in sorted(prefixes, key=len, reverse=True):
+            if isinstance(prefix, str) and prefix and full_command_text.startswith(prefix):
+                matched_prefix = prefix
+                break
+
+        if isinstance(event, PlatformCommandEvent):
+            command_text = f'{event.command_name} {event.command_args}'.strip()
+        elif matched_prefix is None:
+            return None
+        else:
+            command_text = full_command_text[len(matched_prefix) :].strip()
+        if not command_text:
+            return None
+
+        command_name = command_text.split()[0]
+
+        plugin_connector = getattr(self.ap, 'plugin_connector', None)
+        if plugin_connector is None:
+            return None
+
+        resolved = await self._resolve_command_processors(processors)
+        if not resolved:
+            return None
+
+        try:
+            available_commands = await plugin_connector.list_commands([plugin_id for plugin_id, _ in resolved])
+        except Exception as exc:
+            await self.logger.warning(f'Failed to list plugin commands: {exc}')
+            return None
+
+        commands_by_plugin: dict[str, set[str]] = {}
+        for cmd in available_commands:
+            owner = str(getattr(cmd, 'owner', '') or '').strip()
+            name = command_processor.command_name(cmd)
+            if owner and name:
+                commands_by_plugin.setdefault(owner, set()).add(name)
+
+        # Registered names only, in binding priority order.
+        for plugin_id, agent in resolved:
+            if command_name in commands_by_plugin.get(plugin_id, set()):
+                return (
+                    plugin_id,
+                    command_name,
+                    command_text,
+                    full_command_text,
+                    command_processor.instance_command_config(agent, command_name),
+                    str(agent.get('uuid') or ''),
+                )
+
+        return None
+
+    async def _try_handle_plugin_command(
+        self,
+        event: platform_events.EBAEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        execution_id: str | None = None,
+        node: str = '',
+    ) -> bool:
+        """Attempt to match and execute a plugin command within event delivery scope."""
+        matched = await self._match_plugin_command(event)
+        if matched is None:
+            return False
+        plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
+        await self._execute_matched_plugin_command(
+            event=event,
+            adapter=adapter,
+            plugin_id=plugin_id,
+            command_name=cmd_name,
+            command_text=cmd_text,
+            full_command_text=full_cmd_text,
+            command_config=cmd_config,
+            processor_uuid=processor_uuid,
+            execution_id=execution_id,
+            node=node,
+        )
+        return True
+
+    async def _execute_matched_plugin_command(
+        self,
+        event: platform_events.MessageReceivedEvent,
+        adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
+        plugin_id: str,
+        command_name: str,
+        command_text: str,
+        full_command_text: str,
+        execution_id: str | None = None,
+        node: str = '',
+        command_config: dict | None = None,
+        processor_uuid: str = '',
+    ) -> None:
+        """Execute a matched plugin command and reply with the result."""
+        legacy_event = event.to_legacy_event() if hasattr(event, 'to_legacy_event') else event
+        is_group_message = (
+            isinstance(legacy_event, platform_events.GroupMessage)
+            or getattr(event, 'chat_type', None) == 'group'
+            or getattr(event, 'group', None) is not None
+        )
+        launcher_type = (
+            provider_session.LauncherTypes.GROUP if is_group_message else provider_session.LauncherTypes.PERSON
+        )
+        launcher_id = (
+            legacy_event.group.id
+            if is_group_message
+            else (getattr(legacy_event, 'sender', None) and legacy_event.sender.id) or getattr(event, 'chat_id', '')
+        )
+        sender_id = getattr(legacy_event, 'sender', None) and legacy_event.sender.id or launcher_id
+
+        if hasattr(adapter, 'get_launcher_id'):
+            custom_launcher_id = adapter.get_launcher_id(legacy_event)
+            if custom_launcher_id:
+                launcher_id = custom_launcher_id
+
+        sess_mgr = getattr(self.ap, 'sess_mgr', None)
+        if sess_mgr and hasattr(sess_mgr, 'get_session_by_launcher'):
+            session = await sess_mgr.get_session_by_launcher(
+                self.execution_context,
+                self.bot_entity.uuid,
+                launcher_type,
+                launcher_id,
+                sender_id,
+            )
+        else:
+            session = None
+
+        query_id = int(time.time() * 1000)
+        query_uuid = str(uuid.uuid4())
+        cmd_ctx = await self.ap.cmd_mgr.build_context(
+            command_text=command_text,
+            full_command_text=full_command_text,
+            session=session,
+            instance_uuid=self.execution_context.instance_uuid,
+            workspace_uuid=self.execution_context.workspace_uuid,
+            placement_generation=self.execution_context.placement_generation,
+            query_id=str(query_id),
+            query_uuid=query_uuid,
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=launcher_type.value,
+            launcher_id=launcher_id,
+            config=command_config,
+        )
+
+        event_type = getattr(event, 'type', None) or 'message.received'
+        route_ref = f'plugin_command:{plugin_id}/{command_name}'
+        binding = {
+            'id': route_ref,
+            'target_type': 'plugin_command',
+            'target_uuid': f'{plugin_id}/{command_name}',
+            'event_pattern': event_type,
+        }
+
+        from ..telemetry import trace as trace_mod
+
+        trace_mod.admit()
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='matched',
+            binding=binding,
+            target_type='plugin_command',
+            target_uuid=f'{plugin_id}/{command_name}',
+            text=f'Event {event_type} matched plugin command {command_name} from plugin {plugin_id}',
+        )
+
+        from ..command.runs import CommandRunRecorder
+
+        run_recorder = CommandRunRecorder(self.ap, self.execution_context.workspace_uuid)
+        if processor_uuid:
+            await run_recorder.start(
+                processor_uuid=processor_uuid,
+                plugin_id=plugin_id,
+                command_name=command_name,
+                full_command_text=full_command_text,
+                bot_uuid=self.bot_entity.uuid,
+                conversation_id=f'{launcher_type.value}_{launcher_id}',
+                source='platform',
+                launcher={'type': launcher_type.value, 'id': str(launcher_id), 'sender_id': str(sender_id)},
+            )
+        command_error: str | None = None
+
+        try:
+            with trace_mod.scope(route_ref=route_ref):
+                async for ret in self.ap.cmd_mgr.execute_command(cmd_ctx, bound_plugins=[plugin_id]):
+                    await run_recorder.output(ret)
+                    if ret.error is not None:
+                        command_error = str(ret.error)
+                    components: list[platform_message.MessageComponent] = []
+                    if ret.error is not None:
+                        components.append(platform_message.Plain(text=str(ret.error)))
+                        await self.logger.info(f'Command({query_id}) error: {ret.error}')
+                    else:
+                        if ret.text is not None:
+                            components.append(platform_message.Plain(text=ret.text))
+                        if ret.image_url is not None:
+                            components.append(platform_message.Image(url=ret.image_url))
+                        if ret.image_base64 is not None:
+                            components.append(platform_message.Image(base64=ret.image_base64))
+                        if ret.file_url is not None:
+                            components.append(platform_message.File(url=ret.file_url, name=ret.file_name or ''))
+
+                    if components:
+                        chain = platform_message.MessageChain(components)
+                        await adapter.reply_message(
+                            message_source=legacy_event,
+                            message=chain,
+                            quote_origin=False,
+                        )
+                        await self.logger.info(f'Command({query_id}) replied: {chain}')
+        except Exception as exc:
+            await self._record_event_route_trace(
+                event_type=event_type,
+                status='failed',
+                level='error',
+                binding=binding,
+                target_type='plugin_command',
+                target_uuid=f'{plugin_id}/{command_name}',
+                failure_code='command_execution_failed',
+                reason=str(exc),
+                text=f'Plugin command {plugin_id}/{command_name} failed: {exc}',
+            )
+            await run_recorder.finish(error=str(exc))
+            raise
+
+        await run_recorder.finish(error=command_error)
+
+        await self._record_event_route_trace(
+            event_type=event_type,
+            status='delivered',
+            binding=binding,
+            target_type='plugin_command',
+            target_uuid=f'{plugin_id}/{command_name}',
+            text=f'Plugin command {plugin_id}/{command_name} delivered successfully',
+        )
+
     async def _handle_platform_event_body(
         self,
         event: platform_events.EBAEvent,
@@ -1063,27 +1355,53 @@ class RuntimeBot:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
-            primary_handler = (
-                self._handle_interaction_submission
-                if isinstance(event, platform_events.InteractionCallbackEvent)
-                else self._dispatch_eba_event_to_processor
-            )
-            subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
-            seen = set()
-            tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
-            for subscription in subscriptions:
-                processor_uuid = subscription.get('processor_uuid')
-                if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
-                    continue
-                seen.add(processor_uuid)
-                tasks.append(
+            command_handled = False
+            command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
+            processors = command_settings.get('processors', []) if isinstance(command_settings, dict) else []
+            if (
+                isinstance(event, platform_events.MessageReceivedEvent)
+                and command_settings.get('enabled', True)
+                and processors
+            ):
+                cmd_tasks = [
                     self._run_event_delivery(
-                        self._dispatch_plugin_subscription, event, adapter, processor_uuid, execution_id
+                        self._try_handle_plugin_command,
+                        event=event,
+                        adapter=adapter,
+                        execution_id=execution_id,
+                        node=node,
                     )
+                ]
+                cmd_results = await asyncio.gather(*cmd_tasks, return_exceptions=True)
+                if cmd_results and cmd_results[0] is True:
+                    command_handled = True
+                    results = [None]
+                elif cmd_results and isinstance(cmd_results[0], BaseException):
+                    results = cmd_results
+                    command_handled = True
+
+            if not command_handled:
+                primary_handler = (
+                    self._handle_interaction_submission
+                    if isinstance(event, platform_events.InteractionCallbackEvent)
+                    else self._dispatch_eba_event_to_processor
                 )
-            # Start all deliveries together. A slow or failed subscriber cannot block
-            # another subscriber or the primary route from receiving the event.
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+                subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
+                seen = set()
+                tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
+                for subscription in subscriptions:
+                    processor_uuid = subscription.get('processor_uuid')
+                    if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
+                        continue
+                    seen.add(processor_uuid)
+                    tasks.append(
+                        self._run_event_delivery(
+                            self._dispatch_plugin_subscription, event, adapter, processor_uuid, execution_id
+                        )
+                    )
+                # Start all deliveries together. A slow or failed subscriber cannot block
+                # another subscriber or the primary route from receiving the event.
+                results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException as exc:
             from ..telemetry.execution import describe_exception, is_cancellation
 
@@ -1290,6 +1608,7 @@ class RuntimeBot:
                         adapter,
                         pipeline_uuid=event_binding.get('target_uuid'),
                         routed_by_event_binding=True,
+                        route_id=str(event_binding.get('id') or '') or None,
                     )
                 return await self._record_event_route_trace(
                     event_type=event_type,
@@ -1513,6 +1832,7 @@ class RuntimeBot:
         pipeline_uuid_override: str | None = None,
         routed_by_event_binding: bool = False,
         variables: dict[str, typing.Any] | None = None,
+        route_id: str | None = None,
     ) -> None:
         await self.assert_execution_active()
         is_group_message = isinstance(event, platform_events.GroupMessage)
@@ -1589,6 +1909,7 @@ class RuntimeBot:
             routed_by_rule=routed_by_rule,
             variables=variables,
             execution_context=self.execution_context,
+            route_id=route_id,
         )
 
     async def _handle_interaction_submission(
@@ -1669,6 +1990,7 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         pipeline_uuid: str | None = None,
         routed_by_event_binding: bool = False,
+        route_id: str | None = None,
     ) -> None:
         if not isinstance(event, platform_events.MessageReceivedEvent):
             event_type = getattr(event, 'type', None) or event.__class__.__name__
@@ -1680,6 +2002,7 @@ class RuntimeBot:
             adapter,
             pipeline_uuid_override=pipeline_uuid,
             routed_by_event_binding=routed_by_event_binding,
+            route_id=route_id,
         )
 
     async def initialize(self):
@@ -1806,6 +2129,18 @@ class RuntimeBot:
             platform_events.EBAEvent,
             tenant_scoped_listener(on_eba_event),
         )
+        if isinstance(self.adapter, PlatformCommandRegistrar):
+
+            async def sync_commands():
+                try:
+                    await self.ap.bot_service.sync_platform_commands(self.execution_context, self.bot_entity.uuid)
+                except Exception as exc:
+                    await self.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
+
+            settings = self.bot_entity.command_settings or {}
+            self.adapter.configure_platform_commands(
+                settings.get('prefixes', ['/'])[0], tenant_scoped_listener(sync_commands)
+            )
 
     def _observe_alert(self, *, error: Exception | None = None, recovered: bool = False) -> None:
         """Report adapter crashes and restarts to Workspace alerts."""
@@ -1921,10 +2256,34 @@ class PlatformManager:
         )
         return instance_uuid, workspace_uuid, bot_uuid
 
+    def _invalidate_message_policy(self, key: tuple[str, str, str]) -> None:
+        """Drop compiled message policies of a bot whose runtime was replaced or removed."""
+        policy_mgr = getattr(self.ap, 'message_policy_mgr', None)
+        if policy_mgr is not None:
+            policy_mgr.invalidate_bot(key[1], key[2])
+
+    def find_runtime_bot(
+        self,
+        context: ExecutionContext | None,
+        bot_uuid: str,
+    ) -> RuntimeBot | None:
+        """Return a loaded bot of the caller's placement without touching the database.
+
+        For hot paths that already hold a validated execution scope. The
+        WebSocket proxy bot is not a stored bot and is never returned.
+        """
+        if context is None:
+            return None
+        bot = self._bots_by_key.get((context.instance_uuid, context.workspace_uuid, bot_uuid))
+        if bot is None or bot.placement_generation != context.placement_generation:
+            return None
+        return bot
+
     def _register_runtime_bot(self, bot: RuntimeBot) -> RuntimeBot | None:
         key = self._runtime_bot_key(bot)
         previous = self._bots_by_key.get(key)
         self._bots_by_key[key] = bot
+        self._invalidate_message_policy(key)
         self._bot_keys_by_workspace.setdefault(key[1], set()).add(key)
         self._bot_keys_by_uuid.setdefault(key[2], set()).add(key)
         return previous
@@ -1936,6 +2295,7 @@ class PlatformManager:
         bot = self._bots_by_key.pop(key, None)
         if bot is None:
             return None
+        self._invalidate_message_policy(key)
         workspace_keys = self._bot_keys_by_workspace.get(key[1])
         if workspace_keys is not None:
             workspace_keys.discard(key)
@@ -2472,15 +2832,42 @@ class PlatformManager:
         return self.adapter_dict[name]
 
     def get_available_adapters_info(self) -> list[dict]:
-        return [
-            component.to_plain_dict() for component in self.adapter_components if component.metadata.name != 'websocket'
-        ]
+        result = []
+        for component in self.adapter_components:
+            if component.metadata.name == 'websocket':
+                continue
+            item = component.to_plain_dict()
+            adapter_class = self.adapter_dict.get(component.metadata.name)
+            if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                item['spec']['command_registration'] = dataclasses.asdict(
+                    adapter_class.command_registration_capability()
+                )
+            result.append(item)
+        return result
+
+    async def sync_workspace_commands(self, context):
+        for bot in tuple(self.bots):
+            if (
+                bot.workspace_uuid == context.workspace_uuid
+                and bot.placement_generation == context.placement_generation
+                and isinstance(bot.adapter, PlatformCommandRegistrar)
+            ):
+                try:
+                    await self.ap.bot_service.sync_platform_commands(context, bot.bot_entity.uuid)
+                except Exception as exc:
+                    self.ap.logger.warning(f'Platform command synchronization failed: {type(exc).__name__}')
 
     def get_available_adapter_info_by_name(self, name: str) -> dict | None:
         name = canonical_adapter_name(name)
         for component in self.adapter_components:
             if component.metadata.name == name:
-                return component.to_plain_dict()
+                item = component.to_plain_dict()
+                adapter_class = self.adapter_dict.get(name)
+                if adapter_class is not None and hasattr(adapter_class, 'command_registration_capability'):
+                    item['spec']['command_registration'] = dataclasses.asdict(
+                        adapter_class.command_registration_capability()
+                    )
+                return item
         return None
 
     def get_available_adapter_manifest_by_name(self, name: str) -> engine.Component | None:

@@ -755,11 +755,34 @@ async def runtime_pipeline_factory(pipeline_app, load_pipeline_modules):
             instance = cls(pipeline_app)
             await instance.initialize(query.pipeline_config)
             containers.append(pipelinemgr.StageInstContainer(name, instance))
+        # The test states one legacy-shaped config. Store it the way the schema
+        # migration does: Messaging keeps its part, the bot's route carries the
+        # rest as a message policy override.
+        from langbot.pkg.message_policy import schema as policy_schema
+
+        messaging_config, policy_override = policy_schema.split_legacy_config(query.pipeline_config)
+        bot_entity = SimpleNamespace(
+            uuid=query.bot_uuid,
+            message_policy=policy_schema.neutral_policy(),
+            event_bindings=[
+                {
+                    'id': 'contract-route',
+                    'event_pattern': 'message.received',
+                    'target_type': 'pipeline',
+                    'target_uuid': query.pipeline_uuid,
+                    'enabled': True,
+                    'policy': policy_override,
+                }
+            ],
+        )
+        pipeline_app.platform_mgr = SimpleNamespace(
+            find_runtime_bot=lambda _context, _bot_uuid: SimpleNamespace(bot_entity=bot_entity)
+        )
         entity = SimpleNamespace(
             uuid=query.pipeline_uuid,
             workspace_uuid=context.workspace_uuid,
             name='Contract pipeline',
-            config=query.pipeline_config,
+            config=messaging_config,
             extensions_preferences={'enable_all_plugins': False, 'plugins': [{'author': 'test', 'name': 'observer'}]},
         )
         return pipelinemgr.RuntimePipeline(pipeline_app, entity, containers, context)

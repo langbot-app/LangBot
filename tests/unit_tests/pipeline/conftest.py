@@ -18,6 +18,7 @@ from unittest.mock import AsyncMock, Mock
 #   stage.py → core.app → pipelinemgr → stage.stage_class (not yet bound).
 import langbot.pkg.pipeline.pipelinemgr  # noqa: F401
 from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.message_policy.manager import MessagePolicyManager
 
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
@@ -52,6 +53,10 @@ class MockApplication:
                 placement_generation=1,
             )
         )
+        # Stages resolve the message policy of a query through the manager. With
+        # no platform manager every bot is unknown, so the neutral policy applies
+        # unless a test binds one (see ``bind_policy``).
+        self.message_policy_mgr = MessagePolicyManager(self)
         # Skill manager is optional; PreProcessor only touches it for the
         # local-agent runner. None keeps the skill-binding branch inert.
         self.skill_mgr = None

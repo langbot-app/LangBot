@@ -1,6 +1,10 @@
 {
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "ไม่พบตัวรัน Agent: {runner} เปิดหน้าปลั๊กอินเพื่อตรวจสอบการติดตั้ง การเปิดใช้งาน และสิทธิ์ หากเริ่มทำงานไม่สำเร็จ ให้ตรวจสอบงานติดตั้งและบันทึกรันไทม์แล้วลองอีกครั้ง",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "ปลั๊กอิน {plugin} ไม่ได้ประกาศสิทธิ์ โปรดตรวจสอบการเข้าถึงในโหมดความเข้ากันได้ในการตั้งค่าปลั๊กอิน",
+  "platform_commands.enabled must be a boolean": "platform_commands.enabled ต้องเป็นค่าบูลีน",
+  "platform_commands.selected must be a list of command names": "platform_commands.selected ต้องเป็นรายการชื่อคำสั่ง",
+  "Platform command registration requires a running supported bot": "การลงทะเบียนคำสั่งต้องใช้บอทที่รองรับและกำลังทำงาน",
+  "Command arguments": "อาร์กิวเมนต์คำสั่ง",
   "Request failed.": "คำขอล้มเหลว",
   "Too many requests. Please try again later.": "มีคำขอมากเกินไป โปรดลองอีกครั้งภายหลัง",
   "Your message contains inappropriate content. Please revise it.": "ข้อความมีเนื้อหาไม่เหมาะสม โปรดแก้ไข",

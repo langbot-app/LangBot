@@ -55,7 +55,7 @@ async def test_mcp_session_tools_use_task_owned_scopes_and_real_services(tmp_pat
     application.pipeline_service = PipelineService(application)
     application.provider_service = ModelProviderService(application)
     application.pipeline_mgr = PipelineManager(application)
-    for section in ('trigger', 'safety', 'ai', 'speech', 'output'):
+    for section in ('ai', 'speech', 'output'):
         with open(get_resource_path(f'templates/metadata/pipeline/{section}.yaml')) as metadata_file:
             setattr(application, f'pipeline_config_meta_{section}', yaml.safe_load(metadata_file))
     application.plugin_connector = PluginRuntimeConnector(application, None)

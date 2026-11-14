@@ -551,10 +551,9 @@ test.describe('bot advanced flows', () => {
     await createPlaywrightBot(page, 'Route Status Bot');
 
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
-    await expect(page.getByText('Supported events')).toBeVisible();
-    await expect(page.getByText('5 event types')).toBeVisible();
-    await expect(page.getByText('Messages · 2')).toBeVisible();
-    await expect(page.getByText('Groups · 2')).toBeVisible();
+    await expect(
+      page.getByRole('button', { name: /Supported events/ }),
+    ).toBeVisible();
     await expect(page.getByText('Internal server error')).toHaveCount(0);
     await expect(
       page.getByText('Events that match no route are ignored.'),
@@ -576,13 +575,17 @@ test.describe('bot advanced flows', () => {
       page.getByRole('button', { name: /^Delete$/ }),
     ).toBeInViewport();
 
-    await routingCard.getByRole('button', { name: 'View all' }).click();
+    await routingCard.getByRole('button', { name: /Supported events/ }).click();
+    const eventsDialog = page.getByRole('dialog');
+    await expect(eventsDialog.getByText('5 event types')).toBeVisible();
     await expect(
-      routingCard.getByText('Messages', { exact: true }),
+      eventsDialog.getByText('Messages', { exact: true }),
     ).toBeVisible();
     await expect(
-      routingCard.getByText('Groups', { exact: true }),
+      eventsDialog.getByText('Groups', { exact: true }),
     ).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(eventsDialog).toHaveCount(0);
 
     await routingCard.getByRole('button', { name: 'Add behavior' }).click();
     await page.getByRole('menuitem', { name: /Reply to messages/ }).click();

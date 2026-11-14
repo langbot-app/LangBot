@@ -115,11 +115,12 @@ a pipeline retain these independent settings.
 | Tool | Purpose |
 | --- | --- |
 | `get_system_info` | Version, edition, instance id |
-| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read) |
+| `list_bots` / `get_bot` / `create_bot` / `update_bot` / `delete_bot` | Manage messaging-platform bots (secrets redacted on read); supports `command_settings` |
+| `list_plugin_commands` | List commands provided by installed plugins in the current Workspace |
 | `list_bot_event_route_statuses` | Inspect bot event-route runtime status |
-| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline and Event processor types |
-| `get_processor_metadata` | Discover installed event-capable Runner components, schemas and supported event patterns. |
-| `list_processor_runs` / `get_processor_run_events` | Read one Agent or plugin processor run history and logs; paginate with `before_id` / `after_sequence`. |
+| `list_processors` / `get_processor` / `create_processor` / `update_processor` / `delete_processor` | Manage the peer Agent, Pipeline, Event processor and Command processor types |
+| `get_processor_metadata` | Discover installed event-capable Runner components and command-providing plugins, schemas and supported event patterns. |
+| `list_processor_runs` / `get_processor_run_events` | Read one Agent, Event processor or Command processor run history and logs; paginate with `before_id` / `after_sequence`. |
 | `debug_agent` | Execute a synthetic Agent event (`processor_uuid`, `payload`); requires `runtime.operate`. Returns final text and up to 1000 execution events (thinking, text, tool arguments/results). Platform tools use Mock; other configured tools execute normally. Optional `payload.mock`: `errors`/`results` keyed by platform tool name, `unsupported_apis` lists unavailable platform APIs. |
 | `list_pipelines` / `get_pipeline` / `create_pipeline` / `update_pipeline` / `delete_pipeline` | Manage pipelines |
 | `list_llm_models` / `get_llm_model` / `list_embedding_models` / `list_asr_models` / `list_tts_models` / `list_model_providers` | Inspect models & providers |
@@ -243,6 +244,38 @@ instance shares its configuration and runtime state. Use a separate instance for
 independent settings. Optional plugin behavior belongs in the Runner config schema.
 `debug_agent` accepts the complete typed event in `payload.data` for this kind.
 Legacy EventListener plugins remain in the Pipeline lifecycle.
+
+## Command processors
+
+Telegram and Discord expose `spec.command_registration` in adapter metadata.
+Set `command_settings.platform_commands` to `{"enabled": true, "selected": ["draw"]}`
+alongside the bot prefixes and processor bindings. This replaces all platform commands,
+including manually configured commands; disabling registration clears previously managed lists.
+Save first, then call `sync_bot_platform_commands(bot_uuid)` (HTTP:
+`POST /api/v1/bots/{uuid}/platform-commands/sync`, `resource.manage`). The bot must be running.
+Read `platform_command_sync` and `platform_command_registration` from `get_bot` for
+sync time, errors and per-command filtering reasons. Unchanged command lists skip
+platform writes. Synchronization also runs on startup and plugin installation changes.
+Telegram menu commands need `/` among the bot prefixes; Discord interactions bypass
+prefix matching and reply through interaction followups. Only `message.received` is handled.
+
+A command processor (`kind: "command_processor"`) is one configuration instance of a
+plugin's Command components. Create it with `component_ref: "plugin:<author>/<name>"`
+from `command_processors` in `get_processor_metadata`, plus optional `parameters`
+keyed by command name; each command's values are validated against its manifest
+`spec.config`. Plugins without `spec.config` get an empty configuration and work
+unchanged. Create several instances of one plugin for different settings and bind
+one per bot through `command_settings.processors` (`[{"processor_uuid", "enabled"}]`,
+priority order). Bot-level commands only react to `message.received`; a message whose
+first word after a bot prefix equals a registered command name is handled by that
+command and skips plugin processors, event routes and the Pipeline.
+
+Every command execution, from a bot or from debugging, is recorded as a run of its
+command processor: `list_processor_runs` lists them and `get_processor_run_events`
+returns one `command.output` event per command reply (`text`, `image_url`,
+`file_url` or `error`). To debug, call `debug_agent` with `payload.text` set to a
+command line without the bot prefix, such as `"draw a cat"`; it runs once with admin
+privilege, never replies on a platform, and returns `outputs`, `status` and `run_id`.
 
 `list_processor_runs` includes `created_at_ms`, `started_at_ms`, and
 `finished_at_ms`: Host lifecycle times in epoch milliseconds. Use the start and finish times for elapsed processing time; select a run and call `get_processor_run_events` for its

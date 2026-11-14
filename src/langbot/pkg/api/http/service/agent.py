@@ -41,6 +41,8 @@ from ....agent.runner.platform_tools import (
     resolve_agent_platform_tool_names,
     validate_debug_mock_options,
 )
+from ....command import processor as command_processor
+from ....command import runs as command_runs
 from ....entity.persistence import agent as persistence_agent
 from ....workspace.errors import WorkspaceNotFoundError
 from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
@@ -52,7 +54,9 @@ from .tenant import TenantContext, require_workspace_uuid, scope_statement
 AGENT_KIND_AGENT = 'agent'
 AGENT_KIND_PIPELINE = 'pipeline'
 AGENT_KIND_EVENT_PROCESSOR = 'event_processor'
+AGENT_KIND_COMMAND_PROCESSOR = command_processor.COMMAND_PROCESSOR_KIND
 PIPELINE_EVENT_PATTERNS = ['message.received']
+PROCESSOR_RUN_KINDS = {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR, AGENT_KIND_COMMAND_PROCESSOR}
 AGENT_DEFAULT_EVENT_PATTERNS = ['*']
 
 
@@ -90,8 +94,10 @@ class AgentService:
                 dumped = item.model_dump(mode='json')
                 event_processors.append(dumped)
         ws_catalog = get_workspace_operations_catalog(self.ap, context)
+        command_processors = await self._list_command_processor_components(context)
         return {
             'event_processors': event_processors,
+            'command_processors': command_processors,
             'runner_config': ai_metadata,
             'platform_tools': platform_tool_catalog(),
             'host_tools': host_tools,
@@ -110,6 +116,11 @@ class AgentService:
                     'message_only': True,
                 },
                 {'name': AGENT_KIND_EVENT_PROCESSOR, 'supported_event_patterns': ['*'], 'message_only': False},
+                {
+                    'name': AGENT_KIND_COMMAND_PROCESSOR,
+                    'supported_event_patterns': command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS,
+                    'message_only': True,
+                },
             ],
         }
 
@@ -159,6 +170,11 @@ class AgentService:
         non-message event envelopes.
         """
         agent = await self.get_agent(context, agent_uuid)
+        if agent is not None and agent.get('kind') == AGENT_KIND_COMMAND_PROCESSOR:
+            result = await self._debug_command_processor(context, agent, payload)
+            if on_result is not None:
+                await on_result(result)
+            return result
         if agent is None or agent.get('kind') not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
             raise ValueError('Agent not found')
 
@@ -447,11 +463,13 @@ class AgentService:
             )
             return {'uuid': pipeline_uuid, 'kind': AGENT_KIND_PIPELINE}
 
-        if kind not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR}:
+        if kind not in {AGENT_KIND_AGENT, AGENT_KIND_EVENT_PROCESSOR, AGENT_KIND_COMMAND_PROCESSOR}:
             raise ValueError(f'Unsupported agent kind: {kind}')
 
         if kind == AGENT_KIND_EVENT_PROCESSOR:
             config, runner_id, patterns = await self._prepare_event_processor(context, agent_data)
+        elif kind == AGENT_KIND_COMMAND_PROCESSOR:
+            config, runner_id, patterns = await self._prepare_command_processor(context, agent_data)
         else:
             config = agent_data['config'] if 'config' in agent_data else await self._get_default_agent_config(context)
             config, runner_id, _ = RunnerConfigResolver.resolve_agent_config(config)
@@ -475,7 +493,8 @@ class AgentService:
             'uuid': new_uuid,
             'name': agent_data.get('name') or t('New Agent'),
             'description': agent_data.get('description') or '',
-            'emoji': agent_data.get('emoji') or ('🧩' if kind == AGENT_KIND_EVENT_PROCESSOR else '🤖'),
+            'emoji': agent_data.get('emoji')
+            or {AGENT_KIND_EVENT_PROCESSOR: '🧩', AGENT_KIND_COMMAND_PROCESSOR: '⌨️'}.get(kind, '🤖'),
             'kind': kind,
             'component_ref': runner_id,
             'config': config,
@@ -501,6 +520,16 @@ class AgentService:
             for field in ('name', 'description', 'emoji', 'config', 'supported_event_patterns')
             if field in agent_data
         }
+        if existing_agent.kind == AGENT_KIND_COMMAND_PROCESSOR:
+            if any(field in agent_data for field in ('config', 'component_ref', 'plugin_id', 'parameters')):
+                config, component_ref, patterns = await self._prepare_command_processor(
+                    context, agent_data, existing_agent
+                )
+                update_data.update(config=config, component_ref=component_ref, supported_event_patterns=patterns)
+            else:
+                update_data.pop('supported_event_patterns', None)
+            await self._write_agent_update(context, agent_uuid, update_data)
+            return
         if existing_agent.kind == AGENT_KIND_EVENT_PROCESSOR and any(
             field in agent_data for field in ('config', 'component_ref', 'parameters', 'supported_event_patterns')
         ):
@@ -525,6 +554,9 @@ class AgentService:
             else:
                 new_config['allowed_workspace_operations'] = old_ops
 
+        await self._write_agent_update(context, agent_uuid, update_data)
+
+    async def _write_agent_update(self, context: TenantContext, agent_uuid: str, update_data: dict) -> None:
         result = await self.ap.persistence_mgr.execute_async(
             scope_statement(
                 sqlalchemy.update(persistence_agent.Agent)
@@ -608,21 +640,195 @@ class AgentService:
         # not subscribe to events until configuration is saved and validated.
         return config, component_ref, [] if draft else descriptor.supported_event_patterns
 
+    async def _debug_command_processor(
+        self,
+        context: RequestContext,
+        agent: dict[str, typing.Any],
+        payload: dict[str, typing.Any],
+    ) -> dict[str, typing.Any]:
+        """Execute one command against a command processor without delivering to a platform.
+
+        ``text`` is the command line without a bot prefix, e.g. ``draw a cat``.
+        The operator runs it with admin privilege because debug requires
+        runtime-operate permission on the Workspace.
+        """
+        command_text = str(payload.get('text') or '').strip()
+        if not command_text:
+            raise ValueError('Command text is required')
+        if len(command_text) > 20_000:
+            raise ValueError('Debug input is too long')
+        plugin_id = command_processor.plugin_id_from_component_ref(agent.get('component_ref'))
+        if plugin_id is None:
+            raise ValueError('Command processor has no plugin')
+        command_name = command_text.split()[0]
+        manifests = await self.ap.plugin_connector.list_commands([plugin_id])
+        if not any(
+            str(getattr(item, 'owner', '') or '') == plugin_id and command_processor.command_name(item) == command_name
+            for item in manifests
+        ):
+            raise ValueError(f'Command not found: {command_name}')
+
+        processor_uuid = agent['uuid']
+        execution_context = ExecutionContext.from_request(context, query_uuid=f'debug:{processor_uuid}')
+        launcher_id = f'debug:{processor_uuid}'
+        session = await self.ap.sess_mgr.get_session_by_launcher(
+            execution_context,
+            f'debug:{processor_uuid}',
+            'person',
+            launcher_id,
+            'debug-user',
+        )
+        recorder = command_runs.CommandRunRecorder(self.ap, require_workspace_uuid(context))
+        await recorder.start(
+            processor_uuid=processor_uuid,
+            plugin_id=plugin_id,
+            command_name=command_name,
+            full_command_text=command_text,
+            bot_uuid=None,
+            conversation_id=launcher_id,
+            source='debug',
+        )
+        ctx = await self.ap.cmd_mgr.build_context(
+            command_text=command_text,
+            full_command_text=command_text,
+            session=session,
+            instance_uuid=execution_context.instance_uuid,
+            workspace_uuid=execution_context.workspace_uuid,
+            placement_generation=execution_context.placement_generation,
+            query_id=str(int(time.time() * 1000)),
+            query_uuid=str(uuid.uuid4()),
+            bot_uuid='',
+            launcher_type='person',
+            launcher_id=launcher_id,
+            config=command_processor.instance_command_config(agent, command_name),
+        )
+        ctx.privilege = 2
+        outputs: list[dict[str, typing.Any]] = []
+        error: str | None = None
+        try:
+            async for ret in self.ap.cmd_mgr.execute_command(ctx, bound_plugins=[plugin_id]):
+                await recorder.output(ret)
+                outputs.append(command_runs.command_return_payload(ret))
+                if ret.error is not None:
+                    error = str(ret.error)
+        except Exception as exc:
+            error = str(exc)
+        await recorder.finish(error=error)
+        return {
+            'run_id': recorder.run_id,
+            'status': 'failed' if error else 'completed',
+            'command': command_name,
+            'outputs': outputs,
+            'error': error,
+        }
+
+    async def _list_command_processor_components(self, context: TenantContext) -> list[dict[str, typing.Any]]:
+        """Group installed Command components by plugin for the command processor form."""
+        connector = getattr(self.ap, 'plugin_connector', None)
+        if connector is None:
+            return []
+        try:
+            manifests = await connector.list_commands()
+        except Exception as exc:
+            self.ap.logger.warning(f'Failed to load plugin commands for processor metadata: {exc}')
+            return []
+        grouped: dict[str, list[dict[str, typing.Any]]] = {}
+        for manifest in manifests:
+            plugin_id = str(getattr(manifest, 'owner', '') or '')
+            name = command_processor.command_name(manifest)
+            if not plugin_id or not name:
+                continue
+            metadata = manifest.metadata
+            grouped.setdefault(plugin_id, []).append(
+                {
+                    'name': name,
+                    'label': metadata.label.to_dict() if metadata.label is not None else {'en_US': name},
+                    'description': metadata.description.to_dict() if metadata.description is not None else None,
+                    'config_schema': command_processor.command_config_schema(manifest),
+                }
+            )
+        return [
+            {
+                'id': command_processor.component_ref_for_plugin(plugin_id),
+                'plugin_id': plugin_id,
+                'commands': sorted(commands, key=lambda item: item['name']),
+            }
+            for plugin_id, commands in sorted(grouped.items())
+        ]
+
+    async def _prepare_command_processor(self, context, data, existing=None):
+        """Validate one plugin's command configuration against its declared Command schemas."""
+        draft = existing is None and 'config' not in data and 'parameters' not in data
+        existing_config = existing.config if existing is not None and isinstance(existing.config, dict) else {}
+        config = copy.deepcopy(data.get('config', existing_config))
+        if not isinstance(config, dict):
+            raise ValueError('Processor configuration must be an object')
+        component_ref = data.get('component_ref')
+        if component_ref is None and data.get('plugin_id'):
+            component_ref = command_processor.component_ref_for_plugin(str(data['plugin_id']))
+        if component_ref is None and existing is not None:
+            component_ref = existing.component_ref
+        plugin_id = command_processor.plugin_id_from_component_ref(component_ref)
+        if plugin_id is None:
+            raise ValueError('Select an installed plugin that provides commands')
+
+        try:
+            manifests = await self.ap.plugin_connector.list_commands([plugin_id])
+        except Exception as exc:
+            raise ValueError('Plugin commands are unavailable') from exc
+        manifests = [item for item in manifests if str(getattr(item, 'owner', '') or '') == plugin_id]
+        if not manifests:
+            raise ValueError('Select an installed plugin that provides commands')
+
+        parameters = data.get('parameters')
+        if parameters is None:
+            parameters = config.get('command_config', {})
+        if not isinstance(parameters, dict):
+            raise ValueError('Processor parameters must be an object')
+
+        command_config: dict[str, dict[str, typing.Any]] = {}
+        for manifest in manifests:
+            name = command_processor.command_name(manifest)
+            schema = command_processor.command_config_schema(manifest)
+            values = parameters.get(name, {})
+            if not isinstance(values, dict):
+                raise ValueError(f'Command parameters must be an object: {name}')
+            values = command_processor.merge_command_config(schema, values)
+            if draft:
+                values = await self.ap.llm_model_service.apply_default_model(context, schema, values)
+            for field in schema:
+                if not draft and field.get('required') and values.get(field['name']) in (None, ''):
+                    raise ValueError(f'Required command parameter: {name}.{field["name"]}')
+            command_config[name] = values
+
+        config = {'plugin': {'id': plugin_id}, 'command_config': command_config}
+        return (
+            config,
+            command_processor.component_ref_for_plugin(plugin_id),
+            list(command_processor.COMMAND_PROCESSOR_EVENT_PATTERNS),
+        )
+
+    @staticmethod
+    def _processor_run_binding_id(processor: dict[str, typing.Any], processor_id: str) -> str | None:
+        """Plugin processors are identified by binding; Agents by agent_id."""
+        if processor.get('kind') == AGENT_KIND_EVENT_PROCESSOR:
+            return f'event_processor:{processor_id}'
+        if processor.get('kind') == AGENT_KIND_COMMAND_PROCESSOR:
+            return command_runs.binding_id(processor_id)
+        return None
+
     async def get_processor_runs(self, context, processor_id, *, before_id=None):
         """Read only this Workspace's Agent or plugin processor runs."""
         from ....agent.runner.run_ledger_store import RunLedgerStore
 
         processor = await self.get_agent(context, processor_id)
-        if processor is None or processor.get('kind') not in {'agent', AGENT_KIND_EVENT_PROCESSOR}:
+        if processor is None or processor.get('kind') not in PROCESSOR_RUN_KINDS:
             raise ValueError('Processor not found')
         store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
+        binding_id = self._processor_run_binding_id(processor, processor_id)
         items, cursor, has_more, total = await store.list_runs(
             workspace_id=require_workspace_uuid(context),
-            **(
-                {'binding_id': f'event_processor:{processor_id}'}
-                if processor.get('kind') == AGENT_KIND_EVENT_PROCESSOR
-                else {'agent_id': processor_id}
-            ),
+            **({'binding_id': binding_id} if binding_id else {'agent_id': processor_id}),
             before_id=before_id,
         )
         return {'items': items, 'next_cursor': cursor, 'has_more': has_more, 'total': total}
@@ -632,16 +838,17 @@ class AgentService:
         from ....agent.runner.run_ledger_store import RunLedgerStore
 
         processor = await self.get_agent(context, processor_id)
-        if processor is None or processor.get('kind') not in {'agent', AGENT_KIND_EVENT_PROCESSOR}:
+        if processor is None or processor.get('kind') not in PROCESSOR_RUN_KINDS:
             raise ValueError('Processor not found')
         store = RunLedgerStore(self.ap.persistence_mgr.get_db_engine())
         run = await store.get_run(run_id)
+        binding_id = self._processor_run_binding_id(processor, processor_id)
         if (
             run is None
             or run.get('workspace_id') != require_workspace_uuid(context)
             or not (
-                run.get('binding_id') == f'event_processor:{processor_id}'
-                if processor.get('kind') == AGENT_KIND_EVENT_PROCESSOR
+                run.get('binding_id') == binding_id
+                if binding_id
                 else run.get('agent_id') == processor_id
                 or (
                     run.get('agent_id') is None
@@ -715,7 +922,7 @@ class AgentService:
             'supported_event_patterns': (
                 supported_event_patterns if isinstance(supported_event_patterns, list) else AGENT_DEFAULT_EVENT_PATTERNS
             ),
-            'message_only': False,
+            'message_only': item['kind'] == AGENT_KIND_COMMAND_PROCESSOR,
         }
         if not include_config:
             item.pop('config', None)

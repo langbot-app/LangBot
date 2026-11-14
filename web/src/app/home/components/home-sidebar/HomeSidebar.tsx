@@ -105,6 +105,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { RiTerminalBoxLine } from '@remixicon/react';
 import {
   Tooltip,
   TooltipContent,
@@ -749,15 +750,16 @@ function NavItems({
             isAgents && !inPopover && sidebarData.agentsGroupByKind;
 
           const agentGroupOrder: Array<
-            'agent' | 'pipeline' | 'event_processor'
-          > = ['agent', 'pipeline', 'event_processor'];
+            'agent' | 'pipeline' | 'event_processor' | 'command_processor'
+          > = ['agent', 'pipeline', 'event_processor', 'command_processor'];
           const agentGroupLabelKey: Record<
-            'agent' | 'pipeline' | 'event_processor',
+            'agent' | 'pipeline' | 'event_processor' | 'command_processor',
             string
           > = {
             agent: 'agents.kindBadgeAgent',
             pipeline: 'agents.kindBadgePipeline',
             event_processor: 'agents.eventProcessor.configurations',
+            command_processor: 'agents.commandProcessor.type',
           };
 
           const groupOrder: Array<'plugin' | 'mcp' | 'skill'> = [
@@ -913,14 +915,18 @@ function NavItems({
                           <span
                             className="ml-auto flex shrink-0 items-center text-muted-foreground"
                             title={
-                              item.kind === 'event_processor'
-                                ? t('agents.eventProcessor.configurations')
-                                : item.kind === 'pipeline'
-                                  ? t('agents.kindBadgePipeline')
-                                  : t('agents.kindBadgeAgent')
+                              item.kind === 'command_processor'
+                                ? t('agents.commandProcessor.type')
+                                : item.kind === 'event_processor'
+                                  ? t('agents.eventProcessor.configurations')
+                                  : item.kind === 'pipeline'
+                                    ? t('agents.kindBadgePipeline')
+                                    : t('agents.kindBadgeAgent')
                             }
                           >
-                            {item.kind === 'event_processor' ? (
+                            {item.kind === 'command_processor' ? (
+                              <RiTerminalBoxLine className="size-3.5" />
+                            ) : item.kind === 'event_processor' ? (
                               <Puzzle className="size-3.5" />
                             ) : item.kind === 'pipeline' ? (
                               <Workflow className="size-3.5" />

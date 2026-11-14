@@ -17,6 +17,57 @@ from tests.factories import FakeApp, command_query
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 
+@pytest.mark.asyncio
+async def test_pipeline_command_uses_schema_defaults_and_bound_plugins():
+    from types import SimpleNamespace
+    from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+
+    fake_app = FakeApp()
+    manager = CommandManager(fake_app)
+    manager.cmd_list = []
+    manager.is_admin = AsyncMock(return_value=False)
+    manifest = SimpleNamespace(
+        metadata=SimpleNamespace(name='draw'),
+        spec={
+            'config': [
+                {'name': 'style', 'default': 'plain'},
+            ]
+        },
+    )
+    fake_app.plugin_connector.list_commands = AsyncMock(return_value=[manifest])
+    received = []
+
+    async def execute(context, plugins):
+        received.append((context, plugins))
+        yield CommandReturn(text='ok')
+
+    fake_app.plugin_connector.execute_command = execute
+    query = command_query('draw cat')
+    query.variables['_pipeline_bound_plugins'] = ['author/draw']
+    session = provider_session.Session(
+        launcher_type=provider_session.LauncherTypes.PERSON, launcher_id='user', sender_id='user'
+    )
+    results = [result async for result in manager.execute('draw cat', '/draw cat', query, session)]
+    assert results[0].text == 'ok'
+    assert received[0][1] == ['author/draw']
+    if 'config' in type(received[0][0]).model_fields:
+        assert received[0][0].config == {'style': 'plain'}
+
+
+def test_command_config_skips_context_without_sdk_field():
+    from types import SimpleNamespace
+    from pydantic import BaseModel
+
+    class LegacyContext(BaseModel):
+        command: str
+
+    context = LegacyContext(command='draw')
+    CommandManager._apply_command_config(
+        context, SimpleNamespace(spec={'config': [{'name': 'style', 'default': 'plain'}]})
+    )
+    assert context.model_dump() == {'command': 'draw'}
+
+
 class TestCommandManagerInit:
     """Tests for CommandManager initialization."""
 

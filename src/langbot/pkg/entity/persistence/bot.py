@@ -54,6 +54,17 @@ class Bot(Base):
     enable = sqlalchemy.Column(sqlalchemy.Boolean, nullable=False, default=False)
     event_bindings = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='[]')
     plugin_processors = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='[]')
+    platform_command_sync = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='{}', default=dict)
+    command_settings = sqlalchemy.Column(
+        sqlalchemy.JSON,
+        nullable=False,
+        server_default='{"enabled": true, "prefixes": ["/"], "processors": []}',
+        default=lambda: {'enabled': True, 'prefixes': ['/'], 'processors': []},
+    )
+    # Who the bot answers and how replies are sent; a route in ``event_bindings``
+    # may override it with its own ``policy``. An empty object means "admit
+    # everything, change nothing".
+    message_policy = sqlalchemy.Column(sqlalchemy.JSON, nullable=False, server_default='{}', default=dict)
     created_at = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now())
     updated_at = sqlalchemy.Column(
         sqlalchemy.DateTime,

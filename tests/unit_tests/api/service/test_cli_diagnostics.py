@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 import quart
 
+from langbot.pkg.message_policy.manager import MessagePolicyManager
 from langbot.pkg.api.http.context import (
     ExecutionContext,
     PrincipalContext,
@@ -132,6 +133,7 @@ def runtime_app(monitoring_service):
         return SimpleNamespace(adapter=adapters[context.workspace_uuid])
 
     ap.platform_mgr = SimpleNamespace(get_websocket_proxy_bot=proxy)
+    ap.message_policy_mgr = MessagePolicyManager(ap)
     return ap
 
 

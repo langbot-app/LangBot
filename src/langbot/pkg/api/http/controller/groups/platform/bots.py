@@ -54,6 +54,15 @@ class BotsRouterGroup(group.RouterGroup):
             return self.success(data={'uuid': bot_uuid})
 
         @self.route(
+            '/_/message-policy/metadata',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(request_context: RequestContext) -> str:
+            return self.success(data=self.ap.bot_service.get_message_policy_metadata())
+
+        @self.route(
             '/<bot_uuid>',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

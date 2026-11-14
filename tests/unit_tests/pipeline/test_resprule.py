@@ -10,6 +10,8 @@ from importlib import import_module
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
+from .outer_stage_harness import bind_policy
+
 
 def get_modules():
     """Lazy import to ensure proper initialization order"""
@@ -32,6 +34,7 @@ async def test_person_message_skip(mock_app, sample_query):
 
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -56,7 +59,8 @@ async def test_group_message_no_match(mock_app, sample_query):
 
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    stage.rule_matchers = [mock_rule]
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rule_matchers = [mock_rule]
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -68,7 +72,10 @@ async def test_group_message_no_match(mock_app, sample_query):
 @pytest.mark.asyncio
 async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query):
     resprule, entities, rule, _ = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': True, 'prefix': ['!', '！']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.launcher_id = '12345'
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!stop')])
@@ -79,7 +86,8 @@ async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query
     mock_rule.match = AsyncMock()
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    stage.rule_matchers = [mock_rule]
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rule_matchers = [mock_rule]
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -90,7 +98,10 @@ async def test_group_stop_command_bypasses_response_rules(mock_app, sample_query
 @pytest.mark.asyncio
 async def test_other_group_commands_still_obey_response_rules(mock_app, sample_query):
     resprule, entities, rule, rule_entities = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': True, 'prefix': ['!', '！']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.launcher_id = '12345'
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!list')])
@@ -103,7 +114,8 @@ async def test_other_group_commands_still_obey_response_rules(mock_app, sample_q
     )
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    stage.rule_matchers = [mock_rule]
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rule_matchers = [mock_rule]
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -114,7 +126,10 @@ async def test_other_group_commands_still_obey_response_rules(mock_app, sample_q
 @pytest.mark.asyncio
 async def test_group_stop_obeys_response_rules_when_commands_are_disabled(mock_app, sample_query):
     resprule, entities, rule, rule_entities = get_modules()
-    mock_app.instance_config.data['command'] = {'enable': False, 'prefix': ['!']}
+    mock_app.platform_mgr = None
+    mock_app.bot_service = Mock(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': False, 'prefixes': ['!']}})
+    )
     sample_query.launcher_type = provider_session.LauncherTypes.GROUP
     sample_query.message_chain = platform_message.MessageChain([platform_message.Plain(text='!stop')])
     sample_query.pipeline_config = {
@@ -126,7 +141,8 @@ async def test_group_stop_obeys_response_rules_when_commands_are_disabled(mock_a
     )
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    stage.rule_matchers = [mock_rule]
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rule_matchers = [mock_rule]
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -166,7 +182,8 @@ async def test_group_message_match(mock_app, sample_query):
 
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
-    stage.rule_matchers = [mock_rule]
+    policy = await bind_policy(mock_app, sample_query)
+    policy.rule_matchers = [mock_rule]
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -240,6 +257,7 @@ async def test_routed_group_messages_still_obey_response_rules(mock_app, sample_
     sample_query.message_chain = platform_message.MessageChain(parts)
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -312,6 +330,7 @@ async def test_group_response_rule_configuration(
     sample_query.message_chain = platform_message.MessageChain(parts)
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -332,6 +351,7 @@ async def test_dify_form_action_does_not_require_another_mention(mock_app, sampl
     }
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 
@@ -360,6 +380,7 @@ async def test_incomplete_form_callback_does_not_bypass_response_rules(mock_app,
     }
     stage = resprule.GroupRespondRuleCheckStage(mock_app)
     await stage.initialize(sample_query.pipeline_config)
+    await bind_policy(mock_app, sample_query)
 
     result = await stage.process(sample_query, 'GroupRespondRuleCheckStage')
 

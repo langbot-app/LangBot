@@ -49,10 +49,6 @@ alerts:
     # Seconds between delivery / auto-resolve passes.
     tick_seconds: 30
 command:
-    enable: true
-    prefix:
-    - '!'
-    - ！
     privilege: {}
 concurrency:
     pipeline: 20

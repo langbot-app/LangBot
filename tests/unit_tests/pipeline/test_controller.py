@@ -8,14 +8,16 @@ import pytest
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.agent.runner.errors import RunnerNotFoundError
+from langbot.pkg.message_policy.manager import MessagePolicyManager
 from langbot.pkg.pipeline.controller import Controller
 from langbot.pkg.pipeline.pool import QueryPool
 
 
 def make_app():
     app = SimpleNamespace()
-    app.instance_config = SimpleNamespace(
-        data={'concurrency': {'pipeline': 10}, 'command': {'enable': True, 'prefix': ['!', '！']}}
+    app.instance_config = SimpleNamespace(data={'concurrency': {'pipeline': 10}})
+    app.bot_service = SimpleNamespace(
+        get_bot=AsyncMock(return_value={'command_settings': {'enabled': True, 'prefixes': ['!', '！']}})
     )
     app.logger = MagicMock()
     app.pipeline_mgr = SimpleNamespace()
@@ -26,7 +28,14 @@ def make_app():
     app.agent_run_orchestrator.try_claim_steering_from_query = AsyncMock()
     app.agent_run_orchestrator.cancel_active_from_query = AsyncMock()
     app.cmd_mgr = SimpleNamespace(resolve_privilege=AsyncMock(return_value=1))
+    app.message_policy_mgr = MessagePolicyManager(app)
     return app
+
+
+def use_bot_policy(app, policy):
+    """Give every bot the scheduler looks up this message policy."""
+    bot = SimpleNamespace(bot_entity=SimpleNamespace(message_policy=policy, event_bindings=[]))
+    app.platform_mgr = SimpleNamespace(find_runtime_bot=lambda _context, _bot_uuid: bot)
 
 
 def make_pipeline():
@@ -47,6 +56,7 @@ def make_query(query_id: int, pipeline_uuid: str):
     return SimpleNamespace(
         query_id=query_id,
         pipeline_uuid=pipeline_uuid,
+        bot_uuid='bot-test',
         variables={},
         _execution_context=context,
     )
@@ -80,7 +90,9 @@ async def test_try_claim_steering_sets_pipeline_context_before_claiming():
     claimed = await controller._try_claim_steering_before_session_slot(query)
 
     assert claimed is True
-    assert query.pipeline_config is pipeline.pipeline_entity.config
+    # The Messaging config, with the message policy in effect laid over it.
+    assert query.pipeline_config['ai'] is pipeline.pipeline_entity.config['ai']
+    assert {'trigger', 'safety', 'output'} <= set(query.pipeline_config)
     assert query.variables['_pipeline_bound_plugins'] == ['test/runner']
     app.agent_run_orchestrator.try_claim_steering_from_query.assert_awaited_once_with(query)
 
@@ -137,9 +149,14 @@ async def test_busy_group_steering_obeys_response_rules(sample_query, text, expe
         launcher_id=sample_query.launcher_id,
     )
     pipeline = make_pipeline()
-    pipeline.pipeline_entity.config['trigger'] = {
-        'group-respond-rules': {'at': True, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
-    }
+    use_bot_policy(
+        app,
+        {
+            'trigger': {
+                'group-respond-rules': {'enabled': True, 'at': True, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
+            }
+        },
+    )
     app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
     app.agent_run_orchestrator.try_claim_steering_from_query.return_value = claim_result
     sample_query.launcher_type = LauncherTypes.GROUP
@@ -168,9 +185,10 @@ async def test_busy_group_stop_bypasses_response_rule_gate(sample_query):
         launcher_id=sample_query.launcher_id,
     )
     pipeline = make_pipeline()
-    pipeline.pipeline_entity.config['trigger'] = {
-        'group-respond-rules': {'at': True, 'prefix': [], 'regexp': [], 'random': 0}
-    }
+    use_bot_policy(
+        app,
+        {'trigger': {'group-respond-rules': {'enabled': True, 'at': True, 'prefix': [], 'regexp': [], 'random': 0}}},
+    )
     app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
     app.agent_run_orchestrator.cancel_active_from_query.return_value = 'run-group-stop'
     sample_query.launcher_type = LauncherTypes.GROUP
@@ -231,9 +249,14 @@ async def test_busy_group_command_is_recognized_after_trigger_prefix_is_removed(
         launcher_id=sample_query.launcher_id,
     )
     pipeline = make_pipeline()
-    pipeline.pipeline_entity.config['trigger'] = {
-        'group-respond-rules': {'at': False, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
-    }
+    use_bot_policy(
+        app,
+        {
+            'trigger': {
+                'group-respond-rules': {'enabled': True, 'at': False, 'prefix': ['qa:'], 'regexp': [], 'random': 0}
+            }
+        },
+    )
     app.pipeline_mgr.get_pipeline_by_uuid.return_value = pipeline
     sample_query.launcher_type = LauncherTypes.GROUP
     sample_query.message_chain = MessageChain([Plain(text='qa: !list')])
