@@ -60,6 +60,7 @@ from .models import (
     BoxFileRequest,
     BoxFileUploadRequest,
     BoxManagedProcessSpec,
+    BoxRunFilesCleanupRequest,
     BoxSpec,
     SandboxAdmissionGrant,
     SandboxAdmissionRevocation,
@@ -391,6 +392,7 @@ class BoxServerHandler(Handler):
             CommonAction.FILE_CHUNK.value,
             LangBotToBoxAction.UPLOAD_FILE.value,
             LangBotToBoxAction.DOWNLOAD_FILE.value,
+            LangBotToBoxAction.CLEANUP_RUN_FILES.value,
             LangBotToBoxAction.PREPARE_ARTIFACT.value,
             LangBotToBoxAction.EXEC.value,
             LangBotToBoxAction.CREATE_SESSION.value,
@@ -675,6 +677,16 @@ class BoxServerHandler(Handler):
             )
             return ActionResponse.success({})
 
+        @self.action(LangBotToBoxAction.CLEANUP_RUN_FILES)
+        async def cleanup_run_files(data: dict[str, Any]) -> ActionResponse:
+            request = BoxRunFilesCleanupRequest.model_validate(data)
+            await self._runtime.cleanup_run_files(
+                self._session_id(request.session_id),
+                request.io_scope,
+                self._action_context(),
+            )
+            return ActionResponse.success({"cleaned": True})
+
         @self.action(LangBotToBoxAction.PREPARE_ARTIFACT)
         async def prepare_artifact(data: dict[str, Any]) -> ActionResponse:
             descriptor = BoxArtifactDescriptor.model_validate(data["descriptor"])
@@ -870,7 +882,12 @@ class BoxServerHandler(Handler):
                     "or WebSocket control protected by LANGBOT_BOX_CONTROL_TOKEN"
                 )
             self._runtime.init(data)
-            return ActionResponse.success({"initialized": True})
+            return ActionResponse.success(
+                {
+                    "initialized": True,
+                    "network_workspace": self._runtime.network_workspace,
+                }
+            )
 
         @self.action(LangBotToBoxAction.SHUTDOWN)
         async def shutdown(data: dict[str, Any]) -> ActionResponse:

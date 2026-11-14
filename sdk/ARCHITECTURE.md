@@ -426,8 +426,9 @@ clients are incompatible with this selected-path contract.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
-remains subject to Runtime idle expiry. Persistent workspace files survive expiry,
-but processes and container-local state do not.
+remains subject to Runtime idle expiry. Legacy shared workspace files survive expiry;
+Runtime-owned network workspaces are removed after successful backend stop.
+Processes and container-local state do not survive.
 
 `lbp box` enters `box/server.py::main()` and serves `BoxRuntime` through action RPC.
 
@@ -445,7 +446,7 @@ LangBot BoxService
 Important modules:
 
 - `box/server.py`: CLI entrypoint, aiohttp WebSocket routes, `BoxServerHandler` action registration.
-- `box/runtime.py`: session lifecycle, per-session locks, TTL cleanup, command execution, managed processes.
+- `box/runtime.py`: session lifecycle, per-session locks, TTL cleanup, command execution, managed processes. Explicit network mode allocates Runtime-owned workspaces, accepts artifact references instead of host mounts, and masks local paths in session responses. INIT acknowledges this capability; Core and Runtime must be upgraded together.
 - `box/artifact_cache.py`: Workspace-scoped verified packages, atomic read-only publication, session pins and capacity/idle GC under the Runtime identity data root.
 - `box/models.py`: generic `BoxSpec`/read-only mount contracts, execution results, managed-process specs.
 - `box/client.py`: action-RPC client used by LangBot-side connector/service.
@@ -482,11 +483,11 @@ namespace-owned archive transfer. Cache hits still require the trusted current
 Workspace context and admission. `BoxSpec.artifact_mounts` references only digests;
 Runtime resolves them into its own read-only mounts and protects them until session
 cleanup finishes. It does not resolve a Core path or expose its cache host path.
-The Core Host-only preparation seam is available before the separate migration of
-native Skill execution and draft publication. See
+Core uses this Host-only preparation seam for native Skill execution in explicit
+network mode; draft publication returns a bounded sandbox ZIP through file RPC. See
 [Runtime artifact cache](../dev-docs/BOX_ARTIFACT_CACHE.md) for limits and ownership.
 
-LangBot Core also composes pinned revisions into generic read-only `BoxMountSpec`
+In legacy mode, LangBot Core composes pinned revisions into generic read-only `BoxMountSpec`
 values. Ordinary fixed mounts include `content_digest` and `manifest_path` in
 the session signature; supported digest-addressed packages are excluded from it.
 Digest-addressed packages use the reserved
@@ -519,9 +520,14 @@ Run-bound tool calls propagate scoped cancellation through Plugin Runtime to Box
 EXEC. Cancellation cleanup uses the original request scope and remains bounded
 when cancellation repeats or the invocation is revoked.
 Cancelling an active execution retires its sandbox, as a command timeout
-does; persistent workspace files survive, but container-local files and managed
-processes do not. Cancelling a queued execution leaves the active sandbox alone.
+does; legacy shared workspace files survive, while Runtime-owned network workspaces
+are removed only after successful backend stop. Container-local files and managed
+processes do not survive. Cancelling a queued execution leaves the active sandbox alone.
 Failed cleanup keeps the session fenced until a later acquire/delete retries it.
+An uncertain backend startup retains its workspace and consumes capacity until
+operator cleanup; restarting Runtime does not establish that old consumers exited.
+Run IO cleanup accepts only one scope component and removes its inbox, outbox and
+temporary snapshots inside an existing session, without creating a replacement.
 
 There is no supported `python -m langbot_plugin.box` entrypoint; use `lbp box`.
 

@@ -53,11 +53,11 @@ storage:
         backend: database
 ```
 
-`skills.root/.database-cache` is built only for resource reads and execution snapshots. It can be deleted and rebuilt when no execution is using it. Listings and package downloads do not depend on the local cache; Core replicas sharing the database need not share this cache. Script execution still follows the existing Box mount requirements; Runtime network download of Skills is not enabled by this change.
+With matching Core and Box Runtime builds, explicitly set `box.file_transfer_mode: network`: Core transfers the run-pinned package, and Box verifies, caches and mounts it read-only. Core and Box need no shared Skill or workspace directories. In database mode, activation and execution no longer create `skills.root/.database-cache`; resource reads use request-scoped temporary staging. `register_skill` retrieves a sandbox draft over the network, validates it and publishes once. Publication does not change an active run's version. Run completion removes its input, output and snapshots; drafts remain until the Box session ends. Expiring or deleting a Box session also deletes its workspace, so export files that must be kept. The default remains `legacy`, with existing shared mounts and cache behavior and no automatic data migration. Source deployments must install the in-tree SDK on both sides; older Runtimes cannot accept network workspace configuration.
 
 For object storage, configure `type: s3`, `endpoint_url`, `bucket`, `region`, `access_key_id` and `secret_access_key` under `storage.content.backends.<name>`, then set `storage.content.backend` to that name. Keep historical names and endpoint/bucket/region locations available. Changing the write backend does not move old content; removing or retargeting an old configuration makes its content unavailable. Restart Core after credential changes.
 
-Database version packages are limited to 64 MiB. Concurrent updates reject conflicting overwrites, and activated runs retain their pinned version.
+Database version packages are limited to 64 MiB. In network mode, `register_skill` drafts use an uncompressed ZIP limited to 20 MiB, 512 entries, 16 MiB per file and directory depth 16. Lower Box file-transfer limits still apply; rejected drafts remain intact. Concurrent updates reject conflicting overwrites, and activated runs retain their pinned version.
 
 
 ## Enabling in a Pipeline

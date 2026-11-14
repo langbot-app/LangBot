@@ -7,6 +7,7 @@ import pytest
 REQUIRED_CONTRACTS = {
     'sdk_core': {'execution_routing', 'rag_file_transfer', 'rag_cancellation'},
     'network_plugin': {'registered_runner_file_delivery'},
+    'skill_network': {'two_core_skill_network'},
     'skill_persistence': {
         'skill_publication_recovery',
         'persistent_media_isolation',

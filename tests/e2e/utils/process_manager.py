@@ -29,6 +29,7 @@ class LangBotProcess:
         collect_coverage: bool = True,
         debug: bool = False,
         cli_args: list[str] | None = None,
+        env_overrides: dict[str, str] | None = None,
     ):
         self.project_root = project_root
         self.work_dir = work_dir  # Directory containing data/config.yaml
@@ -37,6 +38,7 @@ class LangBotProcess:
         self.collect_coverage = collect_coverage
         self.debug = debug
         self.cli_args = cli_args or []
+        self.env_overrides = env_overrides or {}
         self.process: Optional[subprocess.Popen] = None
         self._stdout_file = None
         self._stderr_file = None
@@ -52,6 +54,7 @@ class LangBotProcess:
 
         # Prepare environment
         env = os.environ.copy()
+        env.update(self.env_overrides)
         env['PYTHONPATH'] = str(self.project_root / 'src')
         for proxy_key in (
             'HTTP_PROXY',

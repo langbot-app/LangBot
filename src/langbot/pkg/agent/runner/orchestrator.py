@@ -746,6 +746,12 @@ class AgentRunOrchestrator:
                 close_execution_trace(self.ap, trace_binding.state, 'completed')
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
+                cleanup = getattr(getattr(self.ap, 'box_service', None), 'cleanup_run_files', None)
+                if callable(cleanup):
+                    try:
+                        await cleanup(execution_query)
+                    except Exception as exc:
+                        self.ap.logger.warning(f'Failed to clean transient Box files for run {run_id}: {exc}')
                 object.__delattr__(execution_query, '_box_binding')
             session = await self._session_registry.unregister(run_id)
             await reply_streams.close()

@@ -79,8 +79,11 @@ class SkillToolLoader(loader.ToolLoader):
         return None
 
     def _skill_registration_available(self) -> bool:
-        """Host skill scanning is disabled for Cloud-managed sandboxes."""
-        return not bool(getattr(getattr(self.ap, 'box_service', None), 'managed_admission_required', False))
+        """Managed sandboxes publish drafts only through the network protocol."""
+        box = getattr(self.ap, 'box_service', None)
+        if getattr(box, 'file_transfer_mode', None) == 'network':
+            return callable(getattr(box, 'export_skill_draft', None))
+        return not bool(getattr(box, 'managed_admission_required', False))
 
     async def has_tool(self, name: str, *, sandbox_available: bool | None = None) -> bool:
         if not self._is_available() or name not in SKILL_TOOL_NAMES:
@@ -208,6 +211,12 @@ class SkillToolLoader(loader.ToolLoader):
             )
             if skill_data is None:
                 raise ValueError('The run-pinned Skill revision is unavailable')
+        if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+            skill_data = {
+                key: value
+                for key, value in skill_data.items()
+                if key not in {'package_root', 'manifest_path', 'source_path'}
+            }
         skill_data = skill_loader.register_activated_skill(query, skill_data)
         telemetry_features.increment(self.ap, 'activated_skills', query=query)
 
@@ -317,35 +326,46 @@ class SkillToolLoader(loader.ToolLoader):
         if not sandbox_path:
             raise ValueError('path is required')
 
-        # Resolve sandbox path to host path
         execution_context = self._execution_context(query)
-        host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
-
-        # Get or create skill service
         skill_service = getattr(self.ap, 'skill_service', None)
         if skill_service is None:
             raise ValueError('Skill service not available')
 
-        # Scan and register the skill
-        scanned = await skill_service.scan_directory_async(execution_context, host_path)
-
-        # Override name if provided
-        skill_name = str(parameters.get('name') or scanned['name']).strip()
-        if not skill_name:
-            raise ValueError('skill name is required')
-
         base_revision = str(parameters.get('base_revision', '') or '').strip() or None
-        published = await skill_service.import_skill_directory(
-            execution_context,
-            host_path,
-            {
-                'name': skill_name,
-                'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
-                'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
-                'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
-            },
-            base_revision=base_revision,
-        )
+        if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+            from ....box.runner import binding_for
+
+            binding_for(query)
+            archive = await self.ap.box_service.export_skill_draft(query, sandbox_path)
+            published = await skill_service.import_skill_zip(
+                execution_context,
+                file_bytes=archive,
+                data={
+                    key: str(parameters.get(key) or '').strip()
+                    if key != 'instructions'
+                    else str(parameters.get(key) or '')
+                    for key in ('name', 'display_name', 'description', 'instructions')
+                },
+                base_revision=base_revision,
+            )
+            skill_name = published['name']
+        else:
+            host_path = self._resolve_workspace_directory(sandbox_path, execution_context)
+            scanned = await skill_service.scan_directory_async(execution_context, host_path)
+            skill_name = str(parameters.get('name') or scanned['name']).strip()
+            if not skill_name:
+                raise ValueError('skill name is required')
+            published = await skill_service.import_skill_directory(
+                execution_context,
+                host_path,
+                {
+                    'name': skill_name,
+                    'display_name': str(parameters.get('display_name') or scanned.get('display_name', '')).strip(),
+                    'description': str(parameters.get('description') or scanned.get('description', '')).strip(),
+                    'instructions': str(parameters.get('instructions') or scanned.get('instructions', '')),
+                },
+                base_revision=base_revision,
+            )
         skill_loader.register_created_skill_visibility(query, skill_name)
 
         return {

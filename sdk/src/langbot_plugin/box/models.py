@@ -693,3 +693,19 @@ class BoxFileRequest(pydantic.BaseModel):
 class BoxFileUploadRequest(BoxFileRequest):
     size: int = pydantic.Field(ge=0)
     sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BoxRunFilesCleanupRequest(pydantic.BaseModel):
+    """Delete only the fixed IO directories belonging to one run scope."""
+
+    model_config = pydantic.ConfigDict(extra="forbid", strict=True)
+
+    session_id: str = pydantic.Field(min_length=1)
+    io_scope: str = pydantic.Field(min_length=1, max_length=512)
+
+    @pydantic.field_validator("io_scope")
+    @classmethod
+    def validate_io_scope(cls, value: str) -> str:
+        if value in {".", ".."} or any(char in value for char in "/\\\x00"):
+            raise ValueError("io_scope must be one directory component")
+        return value
