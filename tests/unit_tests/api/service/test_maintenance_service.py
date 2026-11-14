@@ -772,9 +772,9 @@ class TestMaintenanceServicePositiveInt:
         # Execute
         result = service._positive_int(None, 5, 'test_param')
 
-        # Verify
+        # Verify: an unset key silently falls back (no per-Workspace log spam)
         assert result == 5
-        assert ap.logger.warning.called
+        assert not ap.logger.warning.called
 
     def test_positive_int_negative_value(self):
         """Returns default for negative value."""
