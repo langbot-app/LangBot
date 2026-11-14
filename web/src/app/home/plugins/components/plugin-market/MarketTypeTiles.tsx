@@ -8,7 +8,12 @@ export interface TypeTileOption {
   label: string;
   description: string;
   icon: LucideIcon;
+  /** Icon tile colours when idle. */
   tone: string;
+  /** Tile background + inset ring when selected. */
+  activeTone: string;
+  /** Icon tile colours when selected. */
+  activeIcon: string;
   count?: number;
 }
 
@@ -40,19 +45,20 @@ export function MarketTypeTiles({
           <Button
             key={o.value}
             type="button"
-            variant="outline"
+            variant="ghost"
             aria-pressed={active}
             onClick={() => onChange(o.value)}
             className={cn(
-              'h-auto min-w-0 justify-start gap-3 whitespace-normal rounded-xl p-3 text-left font-normal',
-              active &&
-                'border-foreground/60 bg-accent/40 shadow-sm ring-1 ring-foreground/10',
+              'h-auto min-w-0 justify-start gap-3 whitespace-normal rounded-xl p-3 text-left font-normal transition-colors',
+              active
+                ? cn('ring-1 ring-inset', o.activeTone)
+                : 'bg-muted/40 hover:bg-muted/80',
             )}
           >
             <span
               className={cn(
-                'flex size-10 shrink-0 items-center justify-center rounded-lg',
-                o.tone,
+                'flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors',
+                active ? o.activeIcon : o.tone,
               )}
             >
               <Icon className="size-5" strokeWidth={1.75} />

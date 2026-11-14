@@ -109,7 +109,6 @@ function MarketPageContent({
   const { t } = useTranslation();
   const [searchParams, setSearchParams] = useSearchParams();
 
-
   const [searchQuery, setSearchQuery] = useState('');
   const [componentFilter, setComponentFilter] = useState<string>(
     () =>
@@ -767,7 +766,10 @@ function MarketPageContent({
               label: t('market.typeTiles.all'),
               description: t('market.typeTiles.allDesc'),
               icon: LayoutGrid,
-              tone: 'bg-muted text-foreground',
+              tone: 'bg-background text-foreground ring-1 ring-inset ring-border',
+              activeTone:
+                'bg-primary/5 ring-primary/25 hover:bg-primary/10 dark:bg-primary/10',
+              activeIcon: 'bg-primary text-primary-foreground',
             },
             {
               value: 'plugin',
@@ -775,6 +777,9 @@ function MarketPageContent({
               description: t('market.typeTiles.pluginDesc'),
               icon: Puzzle,
               tone: 'bg-violet-50 text-violet-600 dark:bg-violet-950/50 dark:text-violet-300',
+              activeTone:
+                'bg-violet-50 ring-violet-200 hover:bg-violet-50 dark:bg-violet-950/40 dark:ring-violet-900',
+              activeIcon: 'bg-violet-500 text-white',
             },
             {
               value: 'mcp',
@@ -782,6 +787,9 @@ function MarketPageContent({
               description: t('market.typeTiles.mcpDesc'),
               icon: Server,
               tone: 'bg-sky-50 text-sky-600 dark:bg-sky-950/50 dark:text-sky-300',
+              activeTone:
+                'bg-sky-50 ring-sky-200 hover:bg-sky-50 dark:bg-sky-950/40 dark:ring-sky-900',
+              activeIcon: 'bg-sky-500 text-white',
             },
             {
               value: 'skill',
@@ -789,6 +797,9 @@ function MarketPageContent({
               description: t('market.typeTiles.skillDesc'),
               icon: Sparkles,
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300',
+              activeTone:
+                'bg-emerald-50 ring-emerald-200 hover:bg-emerald-50 dark:bg-emerald-950/40 dark:ring-emerald-900',
+              activeIcon: 'bg-emerald-500 text-white',
             },
           ].map((o) => ({ ...o, count: typeCounts[o.value] }))}
           value={componentFilter !== 'all' ? 'plugin' : typeFilter}
