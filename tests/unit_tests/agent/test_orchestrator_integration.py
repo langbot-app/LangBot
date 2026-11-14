@@ -891,9 +891,19 @@ async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cance
     stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
     await anext(stream)
     if cancel_while_waiting:
+        snapshot_read = asyncio.Event()
+        get_run = orchestrator.journal.get_run
+
+        async def get_run_then_signal(*args, **kwargs):
+            snapshot = await get_run(*args, **kwargs)
+            snapshot_read.set()
+            return snapshot
+
+        orchestrator.journal.get_run = get_run_then_signal
         pending = asyncio.create_task(anext(stream))
-        # Cancel the provider wait, not an arbitrary journal DB operation.
+        # Prefetch can start before the Host finishes its post-message ledger read.
         await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)
+        await asyncio.wait_for(snapshot_read.wait(), timeout=2)
         pending.cancel()
         with pytest.raises(asyncio.CancelledError):
             await pending
