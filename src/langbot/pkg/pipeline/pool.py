@@ -5,6 +5,7 @@ import dataclasses
 import inspect
 import typing
 import uuid
+from copy import deepcopy
 
 import langbot_plugin.api.definition.abstract.platform.adapter as abstract_platform_adapter
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -275,9 +276,8 @@ class QueryPool:
         async with self.condition:
             self._admit_query_locked(execution_context.workspace_uuid)
             query_id = self.query_id_counter
-            initial_variables: dict[str, typing.Any] = {'_routed_by_rule': routed_by_rule}
-            if variables:
-                initial_variables.update(variables)
+            initial_variables: dict[str, typing.Any] = deepcopy(variables) if variables is not None else {}
+            initial_variables['_routed_by_rule'] = routed_by_rule
             query = pipeline_query.Query(
                 instance_uuid=execution_context.instance_uuid,
                 workspace_uuid=execution_context.workspace_uuid,

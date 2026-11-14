@@ -116,10 +116,16 @@ async def plugin_security_api(plugin_module):
         }
     )
     application.plugin_connector.get_plugin_logs = AsyncMock(return_value=['private runtime line'])
-    application.plugin_connector.set_plugin_config = AsyncMock()
+    stored_config = copy.deepcopy(RAW_CONFIG)
+
+    async def persist_config(_author, _name, config):
+        nonlocal stored_config
+        stored_config = copy.deepcopy(config)
+
+    application.plugin_connector.set_plugin_config = AsyncMock(side_effect=persist_config)
 
     persistence_result = Mock()
-    persistence_result.scalar_one_or_none.return_value = RAW_CONFIG
+    persistence_result.scalar_one_or_none.side_effect = lambda: stored_config
     application.persistence_mgr.execute_async = AsyncMock(return_value=persistence_result)
     application.persistence_mgr.tenant_uow = None
 
@@ -219,6 +225,10 @@ async def test_manager_read_is_redacted_but_write_preserves_or_replaces_secrets(
     assert (await read_response.get_json())['data']['config']['apiKey'] == '***'
     assert preserved_write.status_code == 200
     assert replaced_write.status_code == 200
+    preserved_response = (await preserved_write.get_json())['data']['config']
+    assert preserved_response['enabled'] is False
+    assert preserved_response['apiKey'] == '***'
+    assert (await replaced_write.get_json())['data']['config']['apiKey'] == '***'
     assert application.plugin_connector.set_plugin_config.await_args_list == [
         call('example', 'secure-plugin', preserved),
         call('example', 'secure-plugin', replacement),

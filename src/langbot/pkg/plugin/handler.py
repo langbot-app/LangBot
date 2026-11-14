@@ -3399,13 +3399,15 @@ class RuntimeConnectionHandler(handler.Handler):
         """Set plugin config"""
         action_context = self.require_outbound_installation_context()
         # update plugin setting
-        await self.ap.persistence_mgr.execute_async(
+        update_result = await self.ap.persistence_mgr.execute_async(
             sqlalchemy.update(persistence_plugin.PluginSetting)
             .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
             .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
             .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
             .values(config=config)
         )
+        if update_result.rowcount == 0:
+            raise ValueError(f'Plugin setting not found: {plugin_author}/{plugin_name}')
 
         # restart plugin
         gen = self.call_action_generator(
@@ -3418,7 +3420,24 @@ class RuntimeConnectionHandler(handler.Handler):
         async for ret in gen:
             pass
 
-        return {}
+        result = await self.ap.persistence_mgr.execute_async(
+            sqlalchemy.select(persistence_plugin.PluginSetting)
+            .where(persistence_plugin.PluginSetting.workspace_uuid == action_context.workspace_uuid)
+            .where(persistence_plugin.PluginSetting.plugin_author == plugin_author)
+            .where(persistence_plugin.PluginSetting.plugin_name == plugin_name)
+        )
+        setting = result.first()
+        if setting is None:
+            raise ValueError(f'Plugin setting disappeared after save: {plugin_author}/{plugin_name}')
+
+        saved_config = setting.config
+        if saved_config != config:
+            raise RuntimeError(
+                f'Plugin config save verification failed for {plugin_author}/{plugin_name}: '
+                'saved config differs from requested config'
+            )
+
+        return {'config': saved_config}
 
     async def emit_event(
         self,

@@ -641,7 +641,10 @@ class PluginsRouterGroup(group.RouterGroup):
             quart.g.operation_log_changes = config_changes
             if rule is not None and config_changes:
                 quart.g.operation_log_summary = settings_service.build_summary(rule, config_changes)
-            return self.success(data={})
+            saved_config = await self._get_stored_plugin_config(request_context, author, plugin_name, plugin)
+            if saved_config != config:
+                raise RuntimeError('Plugin config save verification failed: saved config differs from requested config')
+            return self.success(data={'config': redact_plugin_secrets(saved_config)})
 
         @self.route(
             '/<author>/<plugin_name>/readme',
