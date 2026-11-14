@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { Bot, Heart, Loader2, MessagesSquare, Search } from 'lucide-react';
+import { Bot, Star, Loader2, MessagesSquare, Search } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -255,7 +255,7 @@ export default function PromptLibraryDialog({
                     : t('promptLibrary.favoritesNeedAccount')
                 }
               >
-                <Heart className="size-3.5" />
+                <Star className="size-3.5" />
                 {t('promptLibrary.tabFavorites')}
               </ToggleGroupItem>
             </ToggleGroup>
@@ -298,7 +298,7 @@ export default function PromptLibraryDialog({
                         {extractI18nObject(p.label) || p.name}
                       </span>
                       {favoriteIds.has(p.prompt_id) && (
-                        <Heart className="size-3.5 shrink-0 fill-rose-500 text-rose-500" />
+                        <Star className="size-3.5 shrink-0 fill-amber-500 text-amber-500" />
                       )}
                     </div>
                     <div className="truncate text-xs text-muted-foreground">
@@ -309,7 +309,7 @@ export default function PromptLibraryDialog({
                       <span>
                         {t('promptLibrary.uses', { count: p.use_count })}
                       </span>
-                      <span>♥ {p.favorite_count}</span>
+                      <span>★ {p.favorite_count}</span>
                     </div>
                   </button>
                 ))
@@ -341,11 +341,11 @@ export default function PromptLibraryDialog({
                         onClick={() => void toggleFavorite(selected)}
                         title={t('promptLibrary.favorite')}
                       >
-                        <Heart
+                        <Star
                           className={cn(
                             'size-4',
                             favoriteIds.has(selected.prompt_id) &&
-                              'fill-rose-500 text-rose-500',
+                              'fill-amber-500 text-amber-500',
                           )}
                         />
                       </Button>
