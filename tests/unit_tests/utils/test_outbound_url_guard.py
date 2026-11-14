@@ -22,6 +22,9 @@ from langbot.pkg.utils.outbound_url import (
         'http://169.254.169.254/latest/meta-data/',
         'http://[::1]/',
         'http://0.0.0.0/',
+        'http://100.100.100.200/latest/meta-data/',
+        'http://100.64.0.1/',
+        'http://[::ffff:100.127.255.254]/',
     ],
 )
 def test_internal_addresses_are_refused(url):
@@ -48,6 +51,17 @@ def test_hostname_resolving_to_internal_is_refused(monkeypatch):
     )
     with pytest.raises(UnsafeOutboundUrlError):
         assert_safe_outbound_url('http://internal.example.com/x')
+
+
+def test_hostname_resolving_to_shared_address_space_is_refused(monkeypatch):
+    """100.64.0.0/10 (carrier-grade NAT, Alibaba Cloud metadata) is not public."""
+    monkeypatch.setattr(
+        socket,
+        'getaddrinfo',
+        lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('100.100.100.200', 80))],
+    )
+    with pytest.raises(UnsafeOutboundUrlError):
+        assert_safe_outbound_url('http://metadata.example.com/latest/meta-data/')
 
 
 def test_allowed_domains_restricts_destination(monkeypatch):

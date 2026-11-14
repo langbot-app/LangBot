@@ -45,6 +45,10 @@ def _reject_reason(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> str | N
         return 'reserved address'
     if ip.is_unspecified:
         return 'unspecified address'
+    if not ip.is_global:
+        # Catches ranges the checks above miss, such as the shared address
+        # space 100.64.0.0/10 that holds the Alibaba Cloud metadata endpoint.
+        return 'non-public address'
     return None
 
 
