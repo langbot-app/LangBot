@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "description": "Module sets for tools.entrypoints.gc_baseline --load. Populations differ by an order of magnitude between profiles, so always name the profile when quoting a number.",
+  "profiles": {
+    "bare": {
+      "description": "No preload; only interpreter startup objects (~10k). Compare runs on one host only.",
+      "modules": []
+    },
+    "core": {
+      "description": "Core application import chain only (~240k objects on Linux/3.12). Not the #2852 baseline population; use 'load-complete' for that.",
+      "modules": [
+        "langbot.pkg.core.app"
+      ]
+    },
+    "load-complete": {
+      "description": "Closest approximation of the #2852 'complete load' condition (~730k objects here vs the issue's ~1.04M): Core, the LLM client stack and the heavy platform SDKs. Still short of the issue, which also had the plugin runtime and every adapter loaded.",
+      "modules": [
+        "langbot.pkg.core.app",
+        "litellm",
+        "langbot.pkg.platform.sources.lark",
+        "langbot.pkg.platform.sources.discord",
+        "langbot.pkg.platform.sources.slack"
+      ]
+    },
+    "http-adapters": {
+      "description": "Core plus the inbound HTTP controller stack, for comparing adapter-disabled runs against the loaded set.",
+      "modules": [
+        "langbot.pkg.core.app",
+        "langbot.pkg.api.http.controller.main"
+      ]
+    }
+  }
+}
