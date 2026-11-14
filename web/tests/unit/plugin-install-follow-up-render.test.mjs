@@ -32,6 +32,19 @@ function loadTs(relPath, deps = {}) {
 }
 
 test('renders a link per distinct follow-up', () => {
+  const row = loadTs(
+    '../../src/app/home/plugins/components/plugin-install-task/PluginNextStepRow.tsx',
+    {
+      'react-router-dom': {
+        Link: ({ to, children, ...p }) =>
+          React.createElement('a', { href: to, ...p }, children),
+      },
+      'lucide-react': new Proxy(
+        {},
+        { get: () => () => React.createElement('i') },
+      ),
+    },
+  );
   const follow = loadTs(
     '../../src/app/home/plugins/components/plugin-install-task/plugin-follow-up.ts',
   );
@@ -50,6 +63,7 @@ test('renders a link per distinct follow-up', () => {
         { get: () => () => React.createElement('i') },
       ),
       './plugin-follow-up': follow,
+      './PluginNextStepRow': row,
     },
   );
   const plugin = {
@@ -74,6 +88,19 @@ test('renders a link per distinct follow-up', () => {
 });
 
 test('renders nothing without a follow-up component', () => {
+  const row = loadTs(
+    '../../src/app/home/plugins/components/plugin-install-task/PluginNextStepRow.tsx',
+    {
+      'react-router-dom': {
+        Link: ({ to, children, ...p }) =>
+          React.createElement('a', { href: to, ...p }, children),
+      },
+      'lucide-react': new Proxy(
+        {},
+        { get: () => () => React.createElement('i') },
+      ),
+    },
+  );
   const follow = loadTs(
     '../../src/app/home/plugins/components/plugin-install-task/plugin-follow-up.ts',
   );
@@ -90,6 +117,7 @@ test('renders nothing without a follow-up component', () => {
         { get: () => () => React.createElement('i') },
       ),
       './plugin-follow-up': follow,
+      './PluginNextStepRow': row,
     },
   );
   const html = renderToStaticMarkup(
