@@ -2020,9 +2020,9 @@ const zhHans = {
       installCompleteMCP: 'MCP 服务器安装成功',
       installCompleteSkill: '技能安装成功',
       followUp: {
-        agents: '下一步：为这个插件新建 Agent 或插件处理器',
-        pipelines: '下一步：创建一条流水线来使用这个插件',
-        knowledge: '下一步：为这个插件创建知识库',
+        agents: '下一步：新建 Agent 或插件处理器',
+        pipelines: '下一步：创建一条流水线来使用它',
+        knowledge: '下一步：创建知识库来保存它的资料',
       },
       dismiss: '关闭',
       background: '后台运行',

@@ -54,9 +54,9 @@ export default function PluginInstallFollowUp({
             onClick={onNavigate}
             className="flex items-center gap-1.5 text-xs text-green-700 hover:underline dark:text-green-300"
           >
-            <Icon className="w-3.5 h-3.5 shrink-0" />
+            <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             <span className="flex-1">{t(i18nKey)}</span>
-            <ArrowRight className="w-3.5 h-3.5 shrink-0" />
+            <ArrowRight className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
           </Link>
         );
       })}

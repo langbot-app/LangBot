@@ -2140,9 +2140,9 @@ const viVN = {
       installCompleteMCP: 'Đã cài đặt máy chủ MCP thành công',
       installCompleteSkill: 'Đã cài đặt kỹ năng thành công',
       followUp: {
-        agents: 'Tiếp theo: tạo Agent hoặc bộ xử lý plugin cho plugin này',
-        pipelines: 'Tiếp theo: tạo pipeline để dùng plugin này',
-        knowledge: 'Tiếp theo: tạo cơ sở tri thức cho plugin này',
+        agents: 'Tiếp theo: tạo Agent hoặc bộ xử lý plugin',
+        pipelines: 'Tiếp theo: tạo pipeline để dùng nó',
+        knowledge: 'Tiếp theo: tạo cơ sở tri thức để chứa dữ liệu của nó',
       },
       dismiss: 'Bỏ qua',
       background: 'Chạy nền',

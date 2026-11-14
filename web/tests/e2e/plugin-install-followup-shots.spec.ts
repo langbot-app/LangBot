@@ -63,7 +63,11 @@ function pluginFor(author: string, name: string, kinds: readonly string[]) {
   };
 }
 
-async function shoot(page: import('@playwright/test').Page, shape: Shape) {
+async function shoot(
+  page: import('@playwright/test').Page,
+  shape: Shape,
+  locale?: string,
+) {
   const author = shape === 'review' ? 'qa-review' : 'qa';
   const name = `${shape}-followup`;
   const plugin = pluginFor(author, name, KINDS[shape]);
@@ -104,7 +108,10 @@ async function shoot(page: import('@playwright/test').Page, shape: Shape) {
   );
 
   await page.goto('/home/extensions');
-  const queue = page.getByRole('button', { name: /Plugin Tasks/ });
+  // The label is localized, so match every locale's wording.
+  const queue = page.getByRole('button', {
+    name: /Plugin Tasks|插件任务|安裝任務/,
+  });
   await queue.click();
   // The task label also appears in the page behind the popover.
   await page
@@ -119,15 +126,14 @@ async function shoot(page: import('@playwright/test').Page, shape: Shape) {
     dialog
       .getByText(
         shape === 'review'
-          ? 'Permission confirmation required'
-          : 'Installation successful',
-        { exact: false },
+          ? /Permission confirmation required|需要确认权限|需要確認權限/
+          : /Installation successful|安装成功|安裝成功/,
       )
       .first(),
   ).toBeVisible();
 
   await page.screenshot({
-    path: `${SHOTS}/${shape}.png`,
+    path: `${SHOTS}/${shape}${locale ? `-${locale}` : ''}.png`,
     fullPage: true,
   });
   return dialog;
@@ -163,4 +169,39 @@ test('pending permission review wins over the follow-up', async ({ page }) => {
     dialog.getByRole('link', { name: /Review permissions/i }),
   ).toBeVisible();
   await expect(dialog.getByRole('link', { name: /Next:/i })).toHaveCount(0);
+});
+
+/**
+ * Chinese rendering. The follow-up is user-facing copy, so it must read as
+ * natural Chinese rather than a translated English sentence: no repeated
+ * "这个插件" in every line, and the traditional locale has to use the same
+ * word for a plugin as the rest of its own file (插件, not 外掛).
+ */
+test.describe('chinese', () => {
+  for (const [locale, expected] of [
+    [
+      'zh-Hans',
+      ['下一步：新建 Agent 或插件处理器', '下一步：创建一条流水线来使用它'],
+    ],
+    [
+      'zh-Hant',
+      ['下一步：建立 Agent 或插件處理器', '下一步：建立一條流水線來使用它'],
+    ],
+  ] as const) {
+    test(`${locale} follow-up copy renders`, async ({ page }) => {
+      await installLangBotApiMocks(page, {
+        authenticated: true,
+        language: locale,
+      });
+      const dialog = await shoot(page, 'multi', locale);
+
+      for (const text of expected) {
+        await expect(dialog.getByRole('link', { name: text })).toBeVisible();
+      }
+      // The pipeline step stays a single link in Chinese too.
+      await expect(
+        dialog.getByRole('link', { name: /流水[线線]/ }),
+      ).toHaveCount(1);
+    });
+  }
 });
