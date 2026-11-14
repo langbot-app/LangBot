@@ -35,6 +35,8 @@ class Echo(Runner):
         )
 ```
 
+`message.completed` ends one message. Use `run.completed`, `run.failed`, or `run.cancelled` to end the Run explicitly, after all model, tool, and state work is finished. Once the Host has validated and processed that terminal event, it persists the terminal state before closing the result stream. Downstream message delivery can finish later. Results after a valid terminal event are not processed.
+
 ## Manifest File: Runner
 
 Replace `welcome.yaml` with:

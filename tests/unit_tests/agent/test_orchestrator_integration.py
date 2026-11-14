@@ -708,6 +708,7 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
     from langbot.pkg.i18n import t, language_scope
 
     store = RunLedgerStore(clean_agent_state)
+    cleaned_up = []
     resumed = []
 
     class CancellingConnector(FakePluginConnector):
@@ -720,8 +721,16 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
                 'run.failed': {'code': 'cancelled', 'error': 'Runner cancellation diagnostic', 'retryable': False},
                 'run.completed': {'finish_reason': 'stop'},
             }[result_type]
-            yield {'type': result_type, 'sequence': 7, 'data': data}
-            resumed.append(True)
+            try:
+                yield {'type': result_type, 'sequence': 7, 'data': data}
+                resumed.append(True)
+                yield {
+                    'type': 'message.completed',
+                    'sequence': 8,
+                    'data': {'message': {'role': 'assistant', 'content': 'must not be delivered'}},
+                }
+            finally:
+                cleaned_up.append(True)
 
     connector = CancellingConnector()
     ap = FakeApplication(connector, clean_agent_state)
@@ -751,6 +760,8 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
     run_id = connector.contexts[0]['run_id']
     run = await store.get_run(run_id)
     events, *_ = await store.page_run_events(run_id=run_id, limit=10)
+    assert cleaned_up == [True]
+    assert not any(event['type'] == 'message.completed' for event in events)
     terminals = [event for event in observed if event['type'] in {'run.completed', 'run.failed'}]
     assert len(terminals) == 1
     assert [event['type'] for event in events if event['type'] != 'admin.run_cancel'] == [
@@ -764,13 +775,13 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
         assert run['status'] == 'cancelled'
         assert terminals[0]['data']['code'] == 'cancelled'
     if result_type == 'tool.call.started':
-        assert not resumed
         assert run['status_reason'] == 'cancel during export recovery'
         assert [event['sequence'] for event in events] == ([7, 8, 9] if admin_audit else [7, 8])
         assert terminals[0]['sequence'] == events[-1]['sequence']
         assert events[-1]['source'] == 'host'
         assert terminals[0]['data']['error'] == t('Task was cancelled', locale=locale)
     else:
+        assert not resumed
         assert len(events) == 1
         assert events[0]['source'] == 'runner'
         if result_type == 'run.failed':
@@ -778,20 +789,108 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('cancel_while_waiting', [False, True])
-async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting):
+@pytest.mark.parametrize(
+    ('result_type', 'data', 'status'),
+    [
+        (
+            'run.completed',
+            {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            'completed',
+        ),
+        ('run.failed', {'error': 'boom', 'code': 'fake.error', 'retryable': False}, 'failed'),
+        ('run.failed', {'error': 'stopped', 'code': 'cancelled', 'retryable': False}, 'cancelled'),
+        ('run.cancelled', {'reason': 'stopped', 'cleanup_confirmed': True}, 'cancelled'),
+    ],
+)
+async def test_terminal_is_persisted_before_runner_stream_cleanup(clean_agent_state, monkeypatch, result_type, data, status):
+    """Transport cleanup must not hold a validated terminal run open."""
+    cleanup_started = asyncio.Event()
+    release_cleanup = asyncio.Event()
+    usage = {'prompt_tokens': 2, 'completion_tokens': 1, 'total_tokens': 3}
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
+
+    class SlowCleanupConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            try:
+                yield {'type': result_type, 'data': data, 'usage': usage}
+            finally:
+                cleanup_started.set()
+                await release_cleanup.wait()
+
+    connector = SlowCleanupConnector()
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [message async for message in orchestrator.run_from_query(make_query())]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_started.wait(), timeout=2)
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == status
+        assert run['finished_at'] is not None
+        assert run['usage'] == usage
+        assert not task.done()
+        # Cleanup crossing the deadline must not change an already-finalized outcome.
+        connector.contexts[0]['runtime']['deadline_at'] = 0
+    finally:
+        release_cleanup.set()
+        outcomes = await asyncio.wait_for(asyncio.gather(task, return_exceptions=True), timeout=2)
+
+    if result_type == 'run.failed':
+        assert isinstance(outcomes[0], RunnerExecutionError)
+        assert outcomes[0].error_code == data['code']
+    else:
+        assert not isinstance(outcomes[0], BaseException)
+    assert record_execution.call_args.kwargs['outcome'] == ('success' if status == 'completed' else status)
+    assert await get_session_registry().list_active_runs() == []
+
+
+@pytest.mark.asyncio
+async def test_completed_run_message_is_terminal_before_consumer_resumes(clean_agent_state, monkeypatch):
+    record_execution = Mock()
+    monkeypatch.setattr('langbot.pkg.agent.runner.orchestrator.record_execution', record_execution)
     connector = FakePluginConnector(
         results=[
-            {'type': 'message.delta', 'data': {'chunk': {'role': 'assistant', 'content': 'first'}}},
-            {'type': 'run.completed', 'data': {'finish_reason': 'stop'}},
+            {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
         ]
     )
+    orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
+    stream = orchestrator.run_from_query(make_query())
+    try:
+        assert (await anext(stream)).content == 'done'
+        run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+        assert run['status'] == 'completed'
+    finally:
+        await stream.aclose()
+    run = await RunLedgerStore(clean_agent_state).get_run(connector.contexts[0]['run_id'])
+    assert run['status'] == 'completed'
+    assert record_execution.call_args.kwargs['outcome'] == 'success'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_while_waiting', [False, True])
+@pytest.mark.parametrize('message_type', ['message.delta', 'message.completed'])
+async def test_consumer_exit_finalizes_cancelled_ledger(clean_agent_state, cancel_while_waiting, message_type):
+    class WaitingConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            payload_key = 'chunk' if message_type == 'message.delta' else 'message'
+            yield {'type': message_type, 'data': {payload_key: {'role': 'assistant', 'content': 'first'}}}
+            self.delay_entered.set()
+            await asyncio.Event().wait()
+
+    connector = WaitingConnector()
     orchestrator = AgentRunOrchestrator(FakeApplication(connector, clean_agent_state), FakeRegistry(make_descriptor()))
     plan = orchestrator.query_bridge.build_plan(make_query())
     stream = orchestrator.run(plan.event, plan.binding, adapter_context={'_execution_context': TEST_CONTEXT})
     await anext(stream)
     if cancel_while_waiting:
-        connector.delay = 10
         pending = asyncio.create_task(anext(stream))
         # Cancel the provider wait, not an arbitrary journal DB operation.
         await asyncio.wait_for(connector.delay_entered.wait(), timeout=2)

@@ -48,14 +48,29 @@ class RunnerInvoker:
                 context=context,
             )
 
+            next_result = None
             try:
                 while True:
+                    if next_result is None:
+                        next_result = asyncio.create_task(self._next_with_deadline(gen, descriptor, context))
                     try:
-                        result_dict = await self._next_with_deadline(gen, descriptor, context)
+                        result_dict = await next_result
                     except StopAsyncIteration:
                         break
+                    next_result = None
+                    if not isinstance(result_dict, dict) or result_dict.get('type') not in (
+                        'run.completed',
+                        'run.failed',
+                        'run.cancelled',
+                    ):
+                        # One pending frame keeps Host persistence out of the next transport read.
+                        next_result = asyncio.create_task(self._next_with_deadline(gen, descriptor, context))
                     yield result_dict
             finally:
+                if next_result is not None:
+                    if not next_result.done():
+                        next_result.cancel()
+                    await asyncio.gather(next_result, return_exceptions=True)
                 await self._close_generator(gen, descriptor)
 
         except asyncio.TimeoutError as e:
