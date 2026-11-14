@@ -42,6 +42,7 @@ import {
   getCloudServiceClientSync,
 } from '@/app/infra/http';
 import { useTranslation } from 'react-i18next';
+import { cn } from '@/lib/utils';
 import { PluginV4, PluginV4Status } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { toast } from 'sonner';
@@ -285,6 +286,9 @@ function MarketPageContent({
   );
 
   // 获取插件列表
+  // Latest page-1 request wins; quick type switches must not let an older
+  // response overwrite the list the user switched to.
+  const fetchSeq = useRef(0);
   const fetchPlugins = useCallback(
     async (
       page: number,
@@ -292,6 +296,7 @@ function MarketPageContent({
       reset: boolean = false,
       queryOverride?: string,
     ) => {
+      const seq = page === 1 ? ++fetchSeq.current : fetchSeq.current;
       if (page === 1) {
         setIsLoading(true);
       } else {
@@ -316,6 +321,7 @@ function MarketPageContent({
             tags_filter: selectedTags.length > 0 ? selectedTags : undefined,
           });
 
+        if (seq !== fetchSeq.current) return;
         const data: ApiRespMarketplacePlugins = response;
         const newPlugins = data.plugins.map(transformToVO);
         const total = data.total;
@@ -334,11 +340,14 @@ function MarketPageContent({
               : plugins.length + newPlugins.length) < total,
         );
       } catch (error) {
+        if (seq !== fetchSeq.current) return;
         console.error('Failed to fetch plugins:', error);
         toast.error(t('market.loadFailed'));
       } finally {
-        setIsLoading(false);
-        setIsLoadingMore(false);
+        if (seq === fetchSeq.current) {
+          setIsLoading(false);
+          setIsLoadingMore(false);
+        }
       }
     },
     [
@@ -468,7 +477,6 @@ function MarketPageContent({
   const handleSortChange = useCallback((value: string) => {
     setSortOption(value);
     setCurrentPage(1);
-    setPlugins([]);
   }, []);
 
   // Handle type filter change
@@ -480,7 +488,6 @@ function MarketPageContent({
       }
       setCurrentPage(1);
       setSelectedTags([]);
-      setPlugins([]);
 
       // Update URL query param to keep it in sync
       const params = new URLSearchParams(searchParams);
@@ -501,7 +508,6 @@ function MarketPageContent({
     (value: string) => {
       setComponentFilter(value);
       setCurrentPage(1);
-      setPlugins([]);
 
       const params = new URLSearchParams(searchParams);
       if (value !== 'Runner') {
@@ -698,7 +704,6 @@ function MarketPageContent({
   const handleRunnerUsageChange = (value: string) => {
     setRunnerUsage(value);
     setCurrentPage(1);
-    setPlugins([]);
     const params = new URLSearchParams(searchParams);
     if (value === 'all') params.delete('runner_usage');
     else params.set('runner_usage', value);
@@ -890,7 +895,7 @@ function MarketPageContent({
             />
           )}
 
-        {isLoading ? (
+        {isLoading && plugins.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <LoadingSpinner text={t('market.loading')} />
           </div>
@@ -909,7 +914,13 @@ function MarketPageContent({
           </div>
         ) : (
           <>
-            <div className="grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))]">
+            <div
+              aria-busy={isLoading}
+              className={cn(
+                'grid gap-6 mt-6 [grid-template-columns:repeat(auto-fill,minmax(min(100%,24rem),1fr))] transition-opacity duration-150',
+                isLoading && 'pointer-events-none opacity-50',
+              )}
+            >
               {visiblePlugins.map((plugin) => (
                 <PluginMarketCardComponent
                   key={plugin.pluginId}

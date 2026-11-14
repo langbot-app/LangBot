@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -36,6 +37,9 @@ export function MarketTypeTiles({
   value: string;
   onChange: (value: string) => void;
 }) {
+  // Mouse users switch on press (feels instant); keyboard and touch still
+  // switch on click so Enter/Space work and touch scrolling is not hijacked.
+  const pressedByMouse = useRef(false);
   return (
     <div className="grid w-full grid-cols-2 gap-2.5 lg:grid-cols-4 lg:gap-3">
       {options.map((o) => {
@@ -47,9 +51,17 @@ export function MarketTypeTiles({
             type="button"
             variant="ghost"
             aria-pressed={active}
-            onClick={() => onChange(o.value)}
+            onPointerDown={(e) => {
+              pressedByMouse.current = e.pointerType === 'mouse';
+              if (pressedByMouse.current && e.button === 0 && !active) {
+                onChange(o.value);
+              }
+            }}
+            onClick={(e) => {
+              if (e.detail === 0 || !pressedByMouse.current) onChange(o.value);
+            }}
             className={cn(
-              'h-auto min-w-0 justify-start gap-3 whitespace-normal rounded-xl p-3 text-left font-normal transition-colors',
+              'h-auto min-w-0 select-none justify-start gap-3 whitespace-normal rounded-xl p-3 text-left font-normal transition-colors duration-100 active:translate-y-0 active:scale-100',
               active
                 ? cn('ring-1 ring-inset', o.activeTone)
                 : 'bg-muted/40 hover:bg-muted/80',
