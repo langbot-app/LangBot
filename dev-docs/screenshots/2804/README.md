@@ -9,6 +9,7 @@ Captured against a real Vite dev server with Playwright, API mocked (no backend)
 | `compare-parser.png` | A Parser-only plugin adds no follow-up; the banner stays one line in both. |
 | `compare-review.png` | With a permission review pending, the Review button keeps the banner and no follow-up competes with it. |
 | `compare-multi-zh-Hans.png` / `compare-multi-zh-Hant.png` | The Chinese renderings. Copy is native, not translated English, and the traditional locale uses the same word for a plugin as the rest of its file. |
+| `compare-review-zh-Hans.png` / `compare-review-zh-Hant.png` | The review button shortens to 审阅 / 審閱 like every other control; the full phrase stays in `aria-label`. The pending banner drops 外掛 for 插件. |
 
 Reproduce:
 

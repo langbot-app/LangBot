@@ -21,7 +21,8 @@ export default {
   dangerous: '危险操作',
   sendsMessages: '可发送机器人消息',
   requires: '需要 {{permissions}}',
-  review: '审阅权限',
+  review: '审阅',
+  reviewLabel: '审阅权限',
   confirmDescription:
     '向此插件安装授予选中的权限。危险权限和机器人发消息能力已单独标出。',
   grantInPlugin: '需先在插件权限中授予此操作',

@@ -21,7 +21,8 @@ export default {
   dangerous: 'อันตราย',
   sendsMessages: 'ส่งข้อความบอต',
   requires: 'ต้องมี {{permissions}}',
-  review: 'ตรวจสอบสิทธิ์',
+  review: 'ตรวจสอบ',
+  reviewLabel: 'ตรวจสอบสิทธิ์',
   confirmDescription:
     'ให้สิทธิ์ที่เลือกแก่ปลั๊กอินนี้ โดยเน้นสิทธิ์อันตรายและการส่งข้อความบอตแยกไว้',
   grantInPlugin: 'ให้สิทธิ์การดำเนินการนี้ในการตั้งค่าสิทธิ์ปลั๊กอินก่อน',

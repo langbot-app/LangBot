@@ -177,6 +177,7 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
               <Link
                 to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
                 onClick={() => setSelectedTaskId(null)}
+                aria-label={t('pluginPermissions.reviewLabel')}
               >
                 {t('pluginPermissions.review')}
               </Link>

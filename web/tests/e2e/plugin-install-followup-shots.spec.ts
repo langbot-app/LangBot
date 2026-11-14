@@ -126,7 +126,7 @@ async function shoot(
     dialog
       .getByText(
         shape === 'review'
-          ? /Permission confirmation required|需要确认权限|需要確認權限/
+          ? /Permission confirmation required|需要确认插件权限|需要確認插件權限/
           : /Installation successful|安装成功|安裝成功/,
       )
       .first(),
@@ -168,7 +168,7 @@ test('pending permission review wins over the follow-up', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'review');
   await expect(
-    dialog.getByRole('link', { name: /Review permissions/i }),
+    dialog.getByRole('link', { name: /Review permissions|审阅权限|審閱權限/ }),
   ).toBeVisible();
   await expect(dialog.getByRole('group', { name: /Next steps/i })).toHaveCount(
     0,
@@ -186,6 +186,22 @@ test.describe('chinese', () => {
     ['zh-Hans', ['新建 Agent 或插件处理器', '创建流水线']],
     ['zh-Hant', ['建立 Agent 或插件處理器', '建立流水線']],
   ] as const) {
+    test(`${locale} review button stays short with a full label`, async ({
+      page,
+    }) => {
+      await installLangBotApiMocks(page, {
+        authenticated: true,
+        language: locale,
+      });
+      const dialog = await shoot(page, 'review', locale);
+      const button = dialog.getByRole('link', {
+        name: locale === 'zh-Hans' ? /审阅权限/ : /審閱權限/,
+      });
+      await expect(button).toBeVisible();
+      // Visible text is the short form; the full phrase lives in the label.
+      await expect(button).toHaveText(locale === 'zh-Hans' ? '审阅' : '審閱');
+    });
+
     test(`${locale} follow-up copy renders`, async ({ page }) => {
       await installLangBotApiMocks(page, {
         authenticated: true,

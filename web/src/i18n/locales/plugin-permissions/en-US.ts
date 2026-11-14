@@ -21,7 +21,8 @@ export default {
   dangerous: 'Dangerous',
   sendsMessages: 'Sends bot messages',
   requires: 'Requires {{permissions}}',
-  review: 'Review permissions',
+  review: 'Review',
+  reviewLabel: 'Review permissions',
   confirmDescription:
     'Grant the selected permissions to this plugin installation. Dangerous permissions and bot messaging are highlighted.',
   grantInPlugin: 'Grant this operation in plugin permissions first',

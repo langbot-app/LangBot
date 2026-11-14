@@ -22,7 +22,8 @@ export default {
   dangerous: 'Peligroso',
   sendsMessages: 'Envía mensajes del bot',
   requires: 'Requiere {{permissions}}',
-  review: 'Revisar permisos',
+  review: 'Revisar',
+  reviewLabel: 'Revisar permisos',
   confirmDescription:
     'Concede los permisos seleccionados a esta instalación. Se destacan los permisos peligrosos y el envío de mensajes.',
   grantInPlugin:
