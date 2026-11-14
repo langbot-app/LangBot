@@ -31,6 +31,11 @@ from .models import (
 )
 from .security import validate_sandbox_security
 
+# Depth bound of the remote listing. It is also the truncation signal: an entry
+# sitting at this depth may have unseen children, so a sync that sees one must
+# not prune.
+_E2B_SYNC_MAX_DEPTH = 16
+_E2B_SYNC_SKIP_DIRECTORIES = {".git", ".venv", "__pycache__", "node_modules"}
 _MAX_E2B_SYNC_FILES = 2048
 _MAX_E2B_SYNC_ENTRIES = 2048
 _MAX_E2B_SYNC_FILE_BYTES = 10 * 1024 * 1024
@@ -64,7 +69,7 @@ def _build_e2b_host_manifest(host_root: str) -> tuple[str, dict]:
         host_root,
         max_files=_MAX_E2B_SYNC_FILES,
         max_total_bytes=_MAX_E2B_SYNC_TOTAL_BYTES,
-        skip_directories={".git", ".venv", "__pycache__", "node_modules"},
+        skip_directories=_E2B_SYNC_SKIP_DIRECTORIES,
         subject="E2B immutable mount",
     )
 
@@ -1090,7 +1095,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
             dirs[:] = [
                 directory
                 for directory in dirs
-                if directory not in {".git", "__pycache__", ".venv", "node_modules"}
+                if directory not in _E2B_SYNC_SKIP_DIRECTORIES
                 and not self._path_is_shadowed(
                     posixpath.join(portable_rel_dir, directory).lstrip("/"),
                     excluded,
@@ -1151,10 +1156,23 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         host_root: str,
         excluded_relative_paths: set[str] | None = None,
     ) -> None:
-        """Best-effort download of an E2B mount into the matching host path."""
+        """Best-effort download of an E2B mount into the matching host path.
+
+        The remote tree is authoritative for the paths this sync owns. E2B has
+        no bind mounts, so the mount is emulated by copying the host tree in
+        before each execution and back out afterwards; the upload side alone
+        made the two trees equal, so a file the agent deleted inside the sandbox
+        stayed on the host and the next upload copied it straight back in.
+        Removing the host copy here is what breaks that loop.
+
+        Deletion is skipped when the tree could not be listed at all, when the
+        listing was truncated by the depth, entry or file caps (the unseen tail
+        would otherwise be deleted blindly), or for excluded projections that
+        another mount owns.
+        """
         await run_blocking_with_backpressure(os.makedirs, host_root, exist_ok=True)
         try:
-            entries = await sandbox.files.list(remote_root, depth=16)
+            entries = await sandbox.files.list(remote_root, depth=_E2B_SYNC_MAX_DEPTH)
         except Exception as exc:
             self.logger.debug(
                 f"Failed to list E2B mount for sync {remote_root}: {self._safe_error(exc)}"
@@ -1164,6 +1182,8 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
         synced_files = 0
         synced_bytes = 0
         pending = []
+        truncated_listing = len(entries) > _MAX_E2B_SYNC_ENTRIES
+        seen_relative_paths: set[str] = set()
 
         async def download(remote_path):
             try:
@@ -1231,6 +1251,10 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                 or host_path.startswith(real_host_root + os.sep)
             ):
                 continue
+            seen_relative_paths.add(rel_path)
+            if rel_path.count("/") + 1 >= _E2B_SYNC_MAX_DEPTH:
+                # The listing is depth-bounded; deeper children were never seen.
+                truncated_listing = True
 
             entry_type = getattr(getattr(entry, "type", None), "value", "")
             try:
@@ -1240,6 +1264,7 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                     )
                 elif entry_type == "file":
                     if synced_files >= _MAX_E2B_SYNC_FILES:
+                        truncated_listing = True
                         break
                     declared_size = int(getattr(entry, "size", 0) or 0)
                     if declared_size > _MAX_E2B_SYNC_FILE_BYTES:
@@ -1255,6 +1280,73 @@ if candidate != manifest or 'sha256:'+hashlib.sha256(body).hexdigest() != expect
                 )
         if pending:
             await flush_downloads()
+
+        if truncated_listing:
+            return
+        await run_blocking_with_backpressure(
+            self._prune_host_entries,
+            host_root,
+            seen_relative_paths,
+            excluded,
+        )
+
+    def _prune_host_entries(
+        self,
+        host_root: str,
+        seen_relative_paths: set[str],
+        excluded: set[str],
+    ) -> None:
+        """Delete host copies of paths the sandbox no longer has.
+
+        Only paths this sync is responsible for are pruned: the upload pass
+        skips ``.git``/``.venv``/``__pycache__``/``node_modules`` and mount
+        projections, so the same paths are kept here. Children are visited
+        before their parent, so an emptied directory is removed as well.
+
+        Symlinks are kept under both names. The listing names the link, never
+        the file behind it, so pruning on the listing alone would delete every
+        link; the target is kept as well because the upload dereferences it and
+        would otherwise re-add a file the sandbox dropped.
+        """
+        real_host_root = os.path.realpath(host_root)
+        keep = set(seen_relative_paths)
+        for root, dirs, files in os.walk(real_host_root):
+            rel_dir = os.path.relpath(root, real_host_root)
+            portable_rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
+            for name in files + dirs:
+                target = os.path.join(root, name)
+                if not os.path.islink(target):
+                    continue
+                keep.add(posixpath.join(portable_rel_dir, name).lstrip("/"))
+                resolved = os.path.realpath(target)
+                if resolved.startswith(real_host_root + os.sep):
+                    keep.add(
+                        os.path.relpath(resolved, real_host_root).replace(os.sep, "/")
+                    )
+
+        for root, dirs, files in os.walk(real_host_root, topdown=False):
+            rel_dir = os.path.relpath(root, real_host_root)
+            portable_rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
+            for name in files + dirs:
+                if name in _E2B_SYNC_SKIP_DIRECTORIES:
+                    continue
+                relative = posixpath.join(portable_rel_dir, name).lstrip("/")
+                if relative in keep or self._path_is_shadowed(relative, excluded):
+                    continue
+                target = os.path.join(root, name)
+                if os.path.isdir(target) and not os.path.islink(target):
+                    try:
+                        os.rmdir(target)
+                    except OSError:
+                        # Not empty: a kept child is still inside.
+                        pass
+                    continue
+                try:
+                    os.unlink(target)
+                except OSError as exc:
+                    self.logger.debug(
+                        f"Failed to prune E2B-synced host path {target}: {exc}"
+                    )
 
     @staticmethod
     def _main_mount_shadow_paths(spec: BoxSpec) -> set[str]:
