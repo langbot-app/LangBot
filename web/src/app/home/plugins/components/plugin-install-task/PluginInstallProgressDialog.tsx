@@ -23,8 +23,7 @@ import {
   InstallStage,
   PluginInstallTask,
 } from './PluginInstallTaskContext';
-import PluginInstallFollowUp from './PluginInstallFollowUp';
-import PluginNextStepRow from './PluginNextStepRow';
+import PluginInstallFollowUp, { NextStepLink } from './PluginInstallFollowUp';
 
 type StageConfig = {
   key: InstallStage;
@@ -175,21 +174,15 @@ function TaskProgressContent({ task }: { task: PluginInstallTask }) {
           </span>
         </div>
         {needsReview && task.pluginName.includes('/') && (
-          <div
-            className="mt-1.5 space-y-1"
-            role="group"
-            aria-label={t('plugins.installProgress.followUp.nextSteps')}
-          >
-            <p className="text-xs font-medium text-green-700 dark:text-green-300">
-              {t('plugins.installProgress.followUp.nextSteps')}
-            </p>
-            <PluginNextStepRow
+          <div className="mt-1.5">
+            <NextStepLink
               to={`/home/extensions?id=${encodeURIComponent(task.pluginName)}`}
               icon={ShieldCheck}
-              text={t('pluginPermissions.review')}
               label={t('pluginPermissions.reviewLabel')}
               onNavigate={() => setSelectedTaskId(null)}
-            />
+            >
+              {t('pluginPermissions.review')}
+            </NextStepLink>
           </div>
         )}
         {isPlugin && !needsReview && (

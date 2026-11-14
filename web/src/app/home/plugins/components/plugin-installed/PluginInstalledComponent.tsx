@@ -437,8 +437,7 @@ const PluginInstalledComponent = forwardRef<
                 </div>
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="shrink-0"
+                  className="shrink-0 bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
                   onClick={() => handleExtensionClick(extension)}
                   aria-label={t('pluginPermissions.reviewLabel')}
                 >

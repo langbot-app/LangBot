@@ -145,21 +145,26 @@ test('multi-component install shows one link per distinct next step', async ({
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'multi');
 
-  await expect(
-    dialog.getByRole('link', { name: /Create an Agent/i }),
-  ).toBeVisible();
+  const agent = dialog.getByRole('link', { name: /Create an Agent/i });
+  await expect(agent).toBeVisible();
   await expect(
     dialog.getByRole('link', { name: /Create a pipeline/i }),
   ).toHaveCount(1);
   await expect(
     dialog.getByRole('link', { name: /knowledge base/i }),
   ).toBeVisible();
+  // Each row goes straight into the create form, not the bare list.
+  await expect(agent).toHaveAttribute('href', '/home/agents?id=new');
+
+  // And clicking actually navigates there (the row closes the dialog too).
+  await agent.click();
+  await expect(page).toHaveURL(/\/home\/agents\?id=new/);
 });
 
 test('parser-only install keeps the banner a single line', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'parser');
-  await expect(dialog.getByRole('group', { name: /Next steps/i })).toHaveCount(
+  await expect(dialog.getByRole('list', { name: /Next steps/i })).toHaveCount(
     0,
   );
 });
@@ -167,14 +172,21 @@ test('parser-only install keeps the banner a single line', async ({ page }) => {
 test('pending permission review wins over the follow-up', async ({ page }) => {
   await installLangBotApiMocks(page, { authenticated: true });
   const dialog = await shoot(page, 'review');
-  // The review is the only row while it is pending: it sits in the same group
-  // the follow-up uses, so the two states look identical and must not stack.
-  const group = dialog.getByRole('group', { name: /Next steps/i });
-  await expect(group).toHaveCount(1);
-  await expect(
-    group.getByRole('link', { name: /Review permissions|审阅权限|審閱權限/ }),
-  ).toBeVisible();
-  await expect(group.getByRole('link')).toHaveCount(1);
+  // The review renders in the same row shape the follow-up uses, so the two
+  // states look alike; it must be the only row and no follow-up may stack on
+  // top of it.
+  const review = dialog.getByRole('link', {
+    name: /Review permissions|审阅权限|審閱權限/,
+  });
+  await expect(review).toBeVisible();
+  await expect(review).toHaveAttribute(
+    'href',
+    /\/home\/extensions\?id=qa-review%2Freview-followup/,
+  );
+  await expect(dialog.getByRole('list', { name: /Next steps/i })).toHaveCount(
+    0,
+  );
+  await expect(dialog.getByRole('link')).toHaveCount(1);
 });
 
 test('the pending-review list button is short but fully labelled', async ({

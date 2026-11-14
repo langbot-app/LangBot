@@ -32,19 +32,6 @@ function loadTs(relPath, deps = {}) {
 }
 
 test('renders a link per distinct follow-up', () => {
-  const row = loadTs(
-    '../../src/app/home/plugins/components/plugin-install-task/PluginNextStepRow.tsx',
-    {
-      'react-router-dom': {
-        Link: ({ to, children, ...p }) =>
-          React.createElement('a', { href: to, ...p }, children),
-      },
-      'lucide-react': new Proxy(
-        {},
-        { get: () => () => React.createElement('i') },
-      ),
-    },
-  );
   const follow = loadTs(
     '../../src/app/home/plugins/components/plugin-install-task/plugin-follow-up.ts',
   );
@@ -63,7 +50,6 @@ test('renders a link per distinct follow-up', () => {
         { get: () => () => React.createElement('i') },
       ),
       './plugin-follow-up': follow,
-      './PluginNextStepRow': row,
     },
   );
   const plugin = {
@@ -79,28 +65,15 @@ test('renders a link per distinct follow-up', () => {
   );
   console.log(html);
   assert.equal(
-    (html.match(/href="\/home\/pipelines"/g) || []).length,
+    (html.match(/href="\/home\/pipelines\?id=new"/g) || []).length,
     1,
     'pipeline once',
   );
-  assert.equal((html.match(/href="\/home\/agents"/g) || []).length, 1);
-  assert.equal((html.match(/href="\/home\/knowledge"/g) || []).length, 1);
+  assert.equal((html.match(/href="\/home\/agents\?id=new"/g) || []).length, 1);
+  assert.equal((html.match(/href="\/home\/knowledge\?id=new"/g) || []).length, 1);
 });
 
 test('renders nothing without a follow-up component', () => {
-  const row = loadTs(
-    '../../src/app/home/plugins/components/plugin-install-task/PluginNextStepRow.tsx',
-    {
-      'react-router-dom': {
-        Link: ({ to, children, ...p }) =>
-          React.createElement('a', { href: to, ...p }, children),
-      },
-      'lucide-react': new Proxy(
-        {},
-        { get: () => () => React.createElement('i') },
-      ),
-    },
-  );
   const follow = loadTs(
     '../../src/app/home/plugins/components/plugin-install-task/plugin-follow-up.ts',
   );
@@ -117,7 +90,6 @@ test('renders nothing without a follow-up component', () => {
         { get: () => () => React.createElement('i') },
       ),
       './plugin-follow-up': follow,
-      './PluginNextStepRow': row,
     },
   );
   const html = renderToStaticMarkup(

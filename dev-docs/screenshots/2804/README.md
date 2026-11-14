@@ -5,7 +5,7 @@ Captured against a real Vite dev server with Playwright, API mocked (no backend)
 
 | shot | what it proves |
 | --- | --- |
-| `compare-multi.png` | A plugin with Runner + Tool + Command + KnowledgeEngine shows one link per distinct step, and the pipeline step exactly once — the "no duplicate of the same kind" criterion. Before: nothing. |
+| `compare-multi.png` | A plugin with Runner + Tool + Command + KnowledgeEngine shows one row per distinct step, and the pipeline step exactly once — the "no duplicate of the same kind" criterion. Each row is a bordered control that opens the create form directly (`?id=new`). Before: nothing. |
 | `compare-parser.png` | A Parser-only plugin adds no follow-up; the banner stays one line in both. |
 | `compare-review.png` | With a permission review pending, the Review button keeps the banner and no follow-up competes with it. |
 | `compare-multi-zh-Hans.png` / `compare-multi-zh-Hant.png` | The Chinese renderings. Copy is native, not translated English, and the traditional locale uses the same word for a plugin as the rest of its file. |
