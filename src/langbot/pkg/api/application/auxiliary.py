@@ -633,6 +633,10 @@ async def sandbox_update(ap, context, payload):
     )
 
 
+async def sandbox_reset(ap, context, payload):
+    return await ap.box_service.reset_workspace_backend(context)
+
+
 async def sandbox_check(ap, context, payload):
     return await ap.box_service.get_workspace_backend_settings(context, refresh=True, e2b_draft=payload.e2b)
 
@@ -661,6 +665,15 @@ def operations() -> list[Operation]:
             Permission.WORKSPACE_UPDATE,
             sandbox_update,
             SandboxUpdate,
+            dict,
+            True,
+            principals=administrators,
+        ),
+        Operation(
+            'workspace.sandbox.reset',
+            Permission.WORKSPACE_UPDATE,
+            sandbox_reset,
+            Empty,
             dict,
             True,
             principals=administrators,

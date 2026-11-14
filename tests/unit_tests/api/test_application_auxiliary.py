@@ -220,11 +220,12 @@ async def test_sandbox_management_is_not_exposed_to_plugin_tools(foundation):
     ap.box_service = SimpleNamespace(get_workspace_backend_settings=AsyncMock(return_value={'backend': 'docker'}))
     assert await api.execute('workspace.sandbox.get', context, {}) == {'backend': 'docker'}
     catalog = {item['id']: item for item in api.operation_catalog()}
-    for suffix in ('get', 'update', 'check', 'test'):
+    for suffix in ('get', 'update', 'reset', 'check', 'test'):
         item = catalog['workspace.sandbox.' + suffix]
         assert item['exposure'] == 'none'
         assert 'plugin' not in item['principals'] and 'processor' not in item['principals']
     assert catalog['workspace.sandbox.test']['side_effect']
+    assert catalog['workspace.sandbox.reset']['side_effect']
     plugin = dataclasses.replace(
         context,
         principal=dataclasses.replace(

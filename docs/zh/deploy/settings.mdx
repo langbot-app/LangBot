@@ -9,6 +9,12 @@ LangBot 的运行配置位于 `data/config.yaml`。首次启动会从默认模�
 大多数自部署用户只需要关注公网地址、数据库/向量库、对象存储与 Box Runtime。未理解用途的容量和 Cloud 安全上限建议保持默认值。
 </Info>
 
+## 工作区沙箱覆盖
+
+工作区沙箱设置覆盖部署默认配置。使用配套的 Core 和 `lbctl`，先运行 `lbctl sandbox config reset --dry-run` 检查前置条件，再运行 `lbctl sandbox config reset --yes` 清除工作区保存的后端、E2B 连接及凭据和资源限制。后续任务继承部署默认配置，已有任务保留配置快照。
+
+接口为 `DELETE /api/v1/workspaces/current/sandbox`，操作标识为 `workspace.sandbox.reset`，需要 `workspace.update` 权限。响应以 `{reset: true}` 确认重置提交，通过 GET 独立回读继承的配置，支持重复重置。CLI 写后回读还需要 `workspace.view` 权限。
+
 ## 完整默认配置
 
 ```yaml

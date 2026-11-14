@@ -8,6 +8,10 @@ adoption of this boundary belongs in separate changes.
 
 ## Workspace operations
 
+Workspace sandbox reset is `workspace.sandbox.reset`, available to members, API keys and support administrators with `workspace.update` through `DELETE /api/v1/workspaces/current/sandbox`. It atomically removes this Workspace's backend, private E2B configuration and limit overrides. Repeated reset is supported. In-flight tasks retain their snapshots. The operation has `exposure='none'`, so MCP, Workspace assistant and plugin tools do not acquire it. The SDK proxy catalog is unchanged. `lbctl` requires `workspace.view` for its independent readback.
+
+The CLI capability response also advertises the existing `plugin.permissions.get` operation. Permission approval continues to use the existing account-only confirmation path. `lbctl` reads requested/effective permissions and directs the user to the WebUI extensions page in the selected Workspace.
+
 `ap.application_api.operation_catalog()` returns the explicit operation allowlist,
 with version, permission, principal constraints, side effects, execution mode,
 and JSON schemas for inputs and results. The catalog covers the existing

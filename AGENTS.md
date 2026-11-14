@@ -50,6 +50,10 @@ uv run pytest tests/manual/mcp_smoke.py
 
 ## Before-Merge Acceptance
 
+Before pushing a Core branch, run the complete `tests/unit_tests/ tests/smoke/` suite used by `.github/workflows/run-tests.yml`, with both the locked PyPI SDK and the in-tree SDK. Run the required security and SDK protocol contracts from the same workflow. Focused feature tests supplement this baseline. For operation-catalog changes, include `tests/unit_tests/api/test_operation_docs.py` and check documentation coverage, ID uniqueness, risks and exposure. Use the Ruff version pinned in `.github/workflows/lint.yml` for lint and format checks.
+
+Linux test containers need Git and a temporary filesystem that permits executing test helper scripts. After pushing, inspect the workflow runs for the exact pushed SHA and follow failures through diagnosis, repair and verification. Report the final run results and any unverified environments when handing off the branch.
+
 Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. PR unit/smoke checks alone do not establish cross-component behavior. Use the [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) for commands and environment requirements:
 
 - Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.

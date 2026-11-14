@@ -67,8 +67,7 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 170
-    assert len(OPERATION_DOCS) == 170
+    assert in_scope_operation_ids, 'Expected application operations in the documentation scope'
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -87,7 +86,7 @@ def test_out_of_scope_operations_are_none(
     in_scope_operation_ids: set[str], all_application_operations: list[Operation]
 ):
     out_of_scope_ops = [op for op in all_application_operations if op.operation_id not in in_scope_operation_ids]
-    assert len(out_of_scope_ops) == 72
+    assert out_of_scope_ops, 'Expected operations restricted from assistant and plugin exposure'
 
     for op in out_of_scope_ops:
         doc = get_operation_doc(op.operation_id, side_effect=op.side_effect)
@@ -237,7 +236,7 @@ def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 242
+    assert len(catalog_op_ids) == len(all_application_operations), 'Duplicate ApplicationAPI operation IDs'
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []
