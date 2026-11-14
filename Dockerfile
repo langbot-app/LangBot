@@ -118,8 +118,8 @@ FROM python:3.12-slim-trixie AS langbot
 RUN printf 'deb http://deb.debian.org/debian forky main\n' > /etc/apt/sources.list.d/sqlite.list \
     && printf 'Package: libsqlite3-0\nPin: release n=forky\nPin-Priority: 990\n\nPackage: *\nPin: release n=forky\nPin-Priority: -1\n' > /etc/apt/preferences.d/sqlite \
     && apt-get update \
-    && apt-get install -y --no-install-recommends libsqlite3-0=3.53.4-2 \
-    && python -c 'import sqlite3; assert sqlite3.sqlite_version == "3.53.4"' \
+    && apt-get install -y --no-install-recommends libsqlite3-0=3.54.1-2 \
+    && python -c 'import sqlite3; assert sqlite3.sqlite_version == "3.54.1"' \
     && rm -rf /var/lib/apt/lists/*
 
 RUN apt-get update \
