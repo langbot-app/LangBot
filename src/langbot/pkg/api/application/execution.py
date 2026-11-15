@@ -865,7 +865,17 @@ class ExecutionAPI:
                     action_handler = getattr(handler, '_raw_actions', {}).get(
                         operation.action, handler.actions[operation.action]
                     )
-                    yield operation, action_handler, data
+                    from ...telemetry import usage
+
+                    retrieval_origin = 'plugin'
+                    if context.run_id is not None:
+                        processor_type = session['authorization'].get('processor_type')
+                        retrieval_origin = 'pipeline' if processor_type == 'pipeline' else 'agent'
+                    usage_token = usage.origin.set(retrieval_origin)
+                    try:
+                        yield operation, action_handler, data
+                    finally:
+                        usage.origin.reset(usage_token)
         finally:
             handler._current_action_context.reset(token)
 

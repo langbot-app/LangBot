@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import quart
+import functools
 
 from ...authz import Permission
 from ...context import RequestContext
 from ...service import space_share
 from ...service.space import SpaceAPIError
 from .. import group
+from .....telemetry import usage
 
 
 @group.group_class('space_share', '/api/v1/space-share')
@@ -20,6 +22,7 @@ class SpaceShareRouterGroup(group.RouterGroup):
     """
 
     def _fail(self, exc: Exception):
+        quart.g.usage_error = type(exc).__name__
         if isinstance(exc, space_share.ShareError):
             body = {'code': -1, 'msg': str(exc), 'data': {'findings': exc.findings} if exc.findings else None}
             return quart.jsonify(body), exc.status
@@ -27,6 +30,40 @@ class SpaceShareRouterGroup(group.RouterGroup):
             status = exc.status if 400 <= exc.status < 500 else 502
             return self.http_status(status, -1, str(exc))
         raise exc
+
+    def route(self, rule, **options):
+        register = super().route(rule, **options)
+
+        def decorate(fn):
+            if rule.endswith('/preview') or rule in ('/prompts', '/skills/<skill_name>', '/mcp/<path:server_name>'):
+                content_type = (
+                    'skill' if rule.startswith('/skills/') else 'mcp' if rule.startswith('/mcp/') else 'prompt'
+                )
+                return register(usage.observe_share(self.ap, content_type, preview=rule.endswith('/preview'))(fn))
+
+            @functools.wraps(fn)
+            async def observed(*args, **kwargs):
+                response = await fn(*args, **kwargs)
+                try:
+                    context = kwargs.get('request_context')
+                    status = response[1] if isinstance(response, tuple) else response.status_code
+                    body = await quart.request.get_json(silent=True) or {}
+                    if rule.endswith('/use') and status < 400:
+                        usage.inc(self.ap, context.workspace_uuid, 'ugc.prompt.apply', kind=body.get('kind', 'other'))
+                    elif rule == '/prompts/library':
+                        usage.inc(
+                            self.ap,
+                            context.workspace_uuid,
+                            'ugc.library.browse',
+                            kind=quart.request.args.get('kind', 'other'),
+                        )
+                except Exception:
+                    pass
+                return response
+
+            return register(observed)
+
+        return decorate
 
     async def _body(self) -> dict:
         data = await quart.request.get_json(silent=True)

@@ -26,6 +26,7 @@ from mcp.server.fastmcp import FastMCP
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
 from ...i18n import language_scope
+from ...telemetry import usage
 from ...i18n.workspace import get_workspace_language, set_workspace_language
 
 if typing.TYPE_CHECKING:
@@ -718,9 +719,27 @@ class LangBotMCPServer:
             @functools.wraps(fn)
             async def observed(*args, **kwargs):
                 context = get_request_context()
-                async with self.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
-                    with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
-                        return await fn(*args, **kwargs)
+                status = '5xx'
+                try:
+                    async with self.ap.persistence_mgr.tenant_scope(context.workspace_uuid):
+                        with language_scope(await get_workspace_language(self.ap, context.workspace_uuid)):
+                            result = await fn(*args, **kwargs)
+                            status = '2xx'
+                            return result
+                except Exception as exc:
+                    status = f'{getattr(exc, "status_code", 500) // 100}xx'
+                    raise
+                finally:
+                    domain = next((domain for domain in usage.MCP_DOMAINS if domain in fn.__name__), 'system')
+                    usage.inc(
+                        self.ap,
+                        context.workspace_uuid,
+                        'api.call',
+                        group=f'mcp:{domain}',
+                        method='POST',
+                        client='mcp',
+                        status=status,
+                    )
 
             return self.mcp.tool(**options)(observed)
 

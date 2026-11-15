@@ -57,6 +57,7 @@ export interface SpaceOwnedItem {
 }
 
 export interface ShareMetadata {
+  mode?: 'new' | 'update';
   name: string;
   label: Record<string, string>;
   description: Record<string, string>;

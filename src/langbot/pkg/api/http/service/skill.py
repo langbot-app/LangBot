@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urlparse
 import httpx
 
 from ....core import app
+from ....telemetry import usage
 from ....skill.utils import parse_frontmatter
 from ....utils import httpclient
 from ..context import ExecutionContext
@@ -191,6 +192,7 @@ class SkillService:
         await self._reload_skills(execution_context)
         return result
 
+    @usage.observe_install('skill', 'github')
     async def install_from_github(self, context: TenantContext, data: dict) -> list[dict]:
         execution_context = await self._execution_context(context)
         repository = self._repository()
@@ -249,6 +251,7 @@ class SkillService:
             source_subdir=source_subdir,
         )
 
+    @usage.observe_install('skill', 'local')
     async def install_from_zip_upload(
         self,
         context: TenantContext,

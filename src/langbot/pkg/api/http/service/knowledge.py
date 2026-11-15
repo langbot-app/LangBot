@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ....i18n import t
+from ....telemetry import usage
 
 import sqlalchemy
 
@@ -258,6 +259,7 @@ class KnowledgeService:
         if kb is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
         if kb.get('initialized', True) is False:
+            usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
             return
 
         runtime_kb = await self.ap.rag_mgr.load_knowledge_base(context, kb)
@@ -279,6 +281,8 @@ class KnowledgeService:
                     .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
                 )
                 raise
+
+        usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
 
     async def _check_doc_capability(self, context: TenantContext, kb_uuid: str, operation: str) -> None:
         """Check if the KB's Knowledge Engine supports document operations.
@@ -393,7 +397,8 @@ class KnowledgeService:
     ) -> None:
         """删除知识库"""
         require_workspace_uuid(context)
-        if await self.get_knowledge_base(context, kb_uuid) is None:
+        knowledge_base = await self.get_knowledge_base(context, kb_uuid)
+        if knowledge_base is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
 
         execution_context = self._execution_context(context)
@@ -403,6 +408,7 @@ class KnowledgeService:
                 await self._delete_knowledge_base_records(context, kb_uuid)
         else:
             await self._delete_knowledge_base_records(context, kb_uuid)
+        usage.inc(self.ap, context.workspace_uuid, 'kb.delete', engine=knowledge_base.get('knowledge_engine_plugin_id'))
 
     async def _delete_knowledge_base_records(self, context: RequestContext | ExecutionContext, kb_uuid: str) -> None:
         workspace_uuid = require_workspace_uuid(context)
