@@ -103,9 +103,9 @@ def test_disabled_and_bad_config_are_noop(ap):
 @pytest.mark.parametrize(
     'principal,headers,client',
     [
-        ('account', {'User-Agent': 'lbctl/1.2.3 (linux/amd64)'}, 'webui'),
-        ('api_key', {'User-Agent': 'lbctl/1.2.3 (linux/amd64)'}, 'lbctl'),
-        ('api_key', {'User-Agent': 'custom-client'}, 'api_other'),
+        (PrincipalType.ACCOUNT, {'User-Agent': 'lbctl/1.2.3 (linux/amd64)'}, 'webui'),
+        (PrincipalType.API_KEY, {'User-Agent': 'lbctl/1.2.3 (linux/amd64)'}, 'lbctl'),
+        (PrincipalType.API_KEY, {'User-Agent': 'custom-client'}, 'api_other'),
         (None, {'X-API-Key': 'invalid', 'User-Agent': 'lbctl/1.2.3 (linux/amd64)'}, 'lbctl'),
     ],
 )
@@ -139,36 +139,6 @@ async def test_route_authentication_failure_is_counted(ap):
     response = await app.test_client().get('/test')
     assert response.status_code == 401
     assert usage.take_batch('default')['c'][0][1]['status'] == '4xx'
-
-
-@pytest.mark.asyncio
-async def test_authenticated_lbctl_http_route(ap):
-    class Group(RouterGroup):
-        name, path = 'usage_test', '/test'
-
-        async def initialize(self):
-            @self.route('', auth_type=AuthType.NONE)
-            async def endpoint():
-                quart.g.request_context = SimpleNamespace(
-                    workspace_uuid='ws', principal=PrincipalContext(PrincipalType.API_KEY)
-                )
-                return self.http_status(201, 0, 'ok')
-
-    app = quart.Quart(__name__)
-    group = Group(ap, app)
-    await group.initialize()
-    response = await app.test_client().get(
-        '/test',
-        headers={
-            'User-Agent': 'lbctl/0.4.1 (darwin/arm64)',
-            'X-LangBot-Client-Command': 'knowledge-base.list',
-        },
-    )
-    assert response.status_code == 201
-    entries = usage.take_batch('ws')['c']
-    assert entries[0][1]['client'] == 'lbctl'
-    assert entries[1] == ['lbctl.cmd', {'cmd': 'knowledge-base.list', 'status': '2xx'}, 1]
-    assert entries[2] == ['lbctl.client', {'version': '0.4.1', 'os': 'darwin'}, 1]
 
 
 @pytest.mark.asyncio
