@@ -172,6 +172,59 @@ async def test_workspace_sandbox_reset_clears_only_its_overrides_and_is_idempote
     box.client.get_backends.assert_not_awaited()
 
 
+@pytest.mark.parametrize('failure_stage', ['execute', 'commit'])
+async def test_workspace_sandbox_reset_rolls_back_and_masks_storage_errors(workspace_api, monkeypatch, failure_stage):
+    from sqlalchemy.ext.asyncio import AsyncSessionTransaction
+
+    from langbot.pkg.box.service import BoxService
+    from langbot.pkg.box.settings import get_settings, set_backend
+    from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
+
+    ap, client, _, token = workspace_api
+    current = (await (await client.get('/api/v1/workspaces/current', headers=_auth(token))).get_json())['data']
+    workspace_uuid = current['workspace']['uuid']
+    headers = _auth(token, workspace_uuid)
+    ap.box_service = BoxService(ap, client=SimpleNamespace())
+    await set_backend(
+        ap, workspace_uuid, 'docker', e2b_config={'api_key': 'saved-private-key'}, limits={'timeout_sec': 60}
+    )
+    before = await get_settings(ap, workspace_uuid)
+    original_execute = TenantUnitOfWork.execute
+    original_commit = AsyncSessionTransaction.commit
+    deleted = False
+    private_error = 'storage-private-error-must-not-escape'
+
+    async def execute(uow, statement, *args, **kwargs):
+        nonlocal deleted
+        result = await original_execute(uow, statement, *args, **kwargs)
+        if isinstance(statement, sqlalchemy.sql.dml.Delete) and statement.table.name == WorkspaceMetadata.__tablename__:
+            deleted = True
+            if failure_stage == 'execute':
+                raise RuntimeError(private_error)
+        return result
+
+    async def commit(transaction):
+        if deleted:
+            raise RuntimeError(private_error)
+        return await original_commit(transaction)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TenantUnitOfWork, 'execute', execute)
+        if failure_stage == 'commit':
+            patch.setattr(AsyncSessionTransaction, 'commit', commit)
+        failed = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+
+    assert deleted
+    assert failed.status_code == 400
+    public = await failed.get_data(as_text=True)
+    assert 'Sandbox settings could not be reset' in public
+    assert private_error not in public and 'saved-private-key' not in public
+    assert await get_settings(ap, workspace_uuid) == before
+    retried = await client.delete('/api/v1/workspaces/current/sandbox', headers=headers)
+    assert retried.status_code == 200 and (await retried.get_json())['data'] == {'reset': True}
+    assert await get_settings(ap, workspace_uuid) == {'backend': None, 'e2b': None, 'limits': None}
+
+
 async def test_account_bootstrap_uses_the_account_resolved_from_the_token(workspace_api):
     application, client, _, owner_token = workspace_api
     account = await application.user_service.get_authenticated_account(owner_token)

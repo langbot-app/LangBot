@@ -150,6 +150,12 @@ jobs:
           uv run --no-sync python -c "import langbot_plugin, pathlib; print(pathlib.Path(langbot_plugin.__file__).parent)"
       - name: Run unit + smoke tests
         run: uv run --no-sync pytest tests/unit_tests/ tests/smoke/ -q --tb=short
+      - name: Cover Workspace HTTP integration
+        # SQLAlchemy's async bridge switches greenlets during database requests.
+        run: |
+          uv run --no-sync coverage run --source=langbot --branch --concurrency=thread,greenlet \
+            -m pytest tests/integration/api/test_workspaces.py -q --tb=short
+          uv run --no-sync coverage xml
       - name: Run required Core and SDK protocol contracts
         run: |
           uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core \
@@ -161,6 +167,17 @@ jobs:
           name: sdk-core-results
           path: sdk-core-results.xml
           if-no-files-found: warn
+
+      - name: Upload Workspace HTTP coverage to Codecov
+        if: always() && hashFiles('coverage.xml') != ''
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          flags: workspace-http
+          name: workspace-http-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   sqlalchemy-compat:
     name: SQLAlchemy ${{ matrix.sqlalchemy-version }} compatibility
