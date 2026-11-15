@@ -37,11 +37,23 @@ limit. Tree validation also limits file count and total expanded size. Publicati
 rejects extra/missing files, unsafe paths, links, special files and byte/digest
 mismatches. Failed preparation leaves no executable partial tree.
 
-Draft registration has a separate ingress limit: Core requests a link-free
-ZIP_STORED snapshot inside Box, bounded to 20 MiB, 512 entries, 16 MiB per file
-and depth 16. Lower configured file-transfer limits also apply. Core downloads
-only its own snapshot path, verifies the receipt, then validates and publishes
-with revision CAS; rejection leaves the original draft intact.
+Draft registration uses the existing authenticated download action with
+`directory_archive=true`. Runtime reads a stable, link-free tree into a bounded
+in-memory ZIP_STORED archive: 20 MiB, 512 entries, 16 MiB per file, 64 MiB expanded
+and depth 16. Lower file-transfer limits also apply. The session lease, execution
+lock, admission and generation checks cover archive creation and file transfer;
+sources inside or containing an additional mount are rejected. The usual file
+chunks and digest receipt carry the archive to Core, which validates it and
+publishes with revision CAS. No workspace snapshot is created; rejection and
+cancellation retain the original draft. Network INIT acknowledges this capability.
+
+Runtime removes a network workspace only after its backend stops. If Docker left
+foreign-owned private directories, Runtime uses a bounded cleanup container from
+the original immutable image, then confirms that helper has stopped before
+removing the empty, inode-verified root. This path requires Docker 25+, Python 3
+in the image and no declared image volumes. It preserves daemon user namespaces
+and isolation controls. Unmapped ownership or a denied cleanup keeps the session
+fenced for a later retry or operator maintenance.
 
 ## Cache ownership and lifecycle
 

@@ -256,21 +256,32 @@ class DatabaseSkillRepository:
                 if result.rowcount != 1:
                     raise ValueError(f'Skill "{name}" not found')
             return {'deleted': name}
+        if method in {'list_skill_resources', 'read_skill_resource'} and (
+            getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        ):
+            content = self.content
+            async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+                record = await self._record(context, args[0], kwargs.get('expected_revision'))
+                if record is None:
+                    raise ValueError(f'Skill "{args[0]}" not found')
+                await content._validate(context)
+                row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+            # Release the database connection before object-store IO and ZIP validation.
+            archive = await content._read(row, MAX_PUBLICATION_BYTES)
+            read_publication = (
+                SkillStore.list_publication_resources
+                if method == 'list_skill_resources'
+                else SkillStore.read_publication_resource
+            )
+            return await run_blocking_atomic(
+                read_publication, record['skill'], record['manifest'], archive, *args[1:], **kwargs
+            )
         if method in {'list_skill_files', 'read_skill_file', 'list_skill_resources', 'read_skill_resource'}:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))
             if record is None:
                 raise ValueError(f'Skill "{args[0]}" not found')
             if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
                 archive = await self._archive(context, record)
-                if method in {'list_skill_resources', 'read_skill_resource'}:
-                    read_publication = (
-                        SkillStore.list_publication_resources
-                        if method == 'list_skill_resources'
-                        else SkillStore.read_publication_resource
-                    )
-                    return await run_blocking_atomic(
-                        read_publication, record['skill'], record['manifest'], archive, *args[1:], **kwargs
-                    )
 
                 def read_resource():
                     with tempfile.TemporaryDirectory(prefix='langbot-skill-read-') as temporary:

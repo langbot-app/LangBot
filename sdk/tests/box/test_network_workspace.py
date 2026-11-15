@@ -74,7 +74,9 @@ async def network_runtime(tmp_path, monkeypatch):
         ("legacy", {}, True),
         ("network", {}, False),
         ("network", {"network_workspace": False}, False),
-        ("network", {"network_workspace": True}, True),
+        ("network", {"network_workspace": True}, False),
+        ("network", {"network_workspace": True, "directory_archive": False}, False),
+        ("network", {"network_workspace": True, "directory_archive": True}, True),
     ],
 )
 async def test_init_requires_explicit_network_ack(mode, ack, accepted):

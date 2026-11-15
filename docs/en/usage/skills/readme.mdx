@@ -59,6 +59,8 @@ For object storage, configure `type: s3`, `endpoint_url`, `bucket`, `region`, `a
 
 Database version packages are limited to 64 MiB. In network mode, `register_skill` drafts use an uncompressed ZIP limited to 20 MiB, 512 entries, 16 MiB per file and directory depth 16. Lower Box file-transfer limits still apply; rejected drafts remain intact. Concurrent updates reject conflicting overwrites, and activated runs retain their pinned version.
 
+Runtime archives drafts in memory without workspace snapshots. Reclaiming Docker private directories owned by another UID requires Docker 25+, Python 3 in the image and no image `VOLUME` declarations. If UID/GID mappings or isolation policy prevent safe cleanup, the Box remains unavailable for reuse and reports the error until retry or operator maintenance.
+
 
 ## Enabling in a Pipeline
 

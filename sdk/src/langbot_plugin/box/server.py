@@ -57,7 +57,7 @@ from .models import (
     MAX_ARTIFACT_ARCHIVE_BYTES,
     BoxArtifactDescriptor,
     BoxExecutionResult,
-    BoxFileRequest,
+    BoxFileDownloadRequest,
     BoxFileUploadRequest,
     BoxManagedProcessSpec,
     BoxRunFilesCleanupRequest,
@@ -651,12 +651,13 @@ class BoxServerHandler(Handler):
 
         @self.action(LangBotToBoxAction.DOWNLOAD_FILE)
         async def download_file(data: dict[str, Any]) -> ActionResponse:
-            request = BoxFileRequest.model_validate(data)
+            request = BoxFileDownloadRequest.model_validate(data)
             context = self._action_context()
             content = await self._runtime.download_file(
                 self._session_id(request.session_id),
                 request.path,
                 context,
+                directory_archive=request.directory_archive,
             )
             await self.send_file(
                 content, "", action_context=context, file_key=request.file_key
@@ -886,6 +887,7 @@ class BoxServerHandler(Handler):
                 {
                     "initialized": True,
                     "network_workspace": self._runtime.network_workspace,
+                    "directory_archive": True,
                 }
             )
 

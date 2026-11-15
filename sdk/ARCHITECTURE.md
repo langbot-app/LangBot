@@ -485,7 +485,10 @@ Workspace context and admission. `BoxSpec.artifact_mounts` references only diges
 Runtime resolves them into its own read-only mounts and protects them until session
 cleanup finishes. It does not resolve a Core path or expose its cache host path.
 Core uses this Host-only preparation seam for native Skill execution in explicit
-network mode; draft publication returns a bounded sandbox ZIP through file RPC. See
+network mode; draft publication requests `directory_archive=true` through the
+existing download/file-chunk protocol. Runtime creates the bounded ZIP in memory,
+with no sandbox snapshot, under the session lease and execution lock. The network
+INIT response acknowledges directory archive support. See
 [Runtime artifact cache](../dev-docs/BOX_ARTIFACT_CACHE.md) for limits and ownership.
 
 In legacy mode, LangBot Core composes pinned revisions into generic read-only `BoxMountSpec`
@@ -525,6 +528,11 @@ does; legacy shared workspace files survive, while Runtime-owned network workspa
 are removed only after successful backend stop. Container-local files and managed
 processes do not survive. Cancelling a queued execution leaves the active sandbox alone.
 Failed cleanup keeps the session fenced until a later acquire/delete retries it.
+Docker foreign-UID workspace cleanup uses the stopped container's immutable image
+in a restricted helper, retaining daemon user namespaces. Pending helpers must be
+confirmed retired on every retry before the workspace root can be removed. This
+path requires Docker 25+, image Python 3 and no declared image volumes; denied or
+unmapped ownership retains the fence rather than weakening isolation.
 An uncertain backend startup retains its workspace and consumes capacity until
 operator cleanup; restarting Runtime does not establish that old consumers exited.
 Run IO cleanup accepts only one scope component and removes its inbox, outbox and

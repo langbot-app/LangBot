@@ -12,7 +12,6 @@ import logging
 import os
 from pathlib import Path
 import posixpath
-import shutil
 import stat
 import tempfile
 import time
@@ -580,17 +579,9 @@ class BoxRuntime:
 
     @staticmethod
     def _remove_owned_workspace(owner: tuple[str, int, int]) -> None:
-        path, device, inode = owner
-        try:
-            info = os.stat(path, follow_symlinks=False)
-        except FileNotFoundError:
-            return
-        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != (
-            device,
-            inode,
-        ):
-            raise BoxError("Runtime workspace ownership changed during cleanup")
-        shutil.rmtree(path)
+        from .file_io import remove_owned_workspace
+
+        remove_owned_workspace(owner)
 
     @property
     def admission_policy(self) -> SandboxAdmissionPolicy:
@@ -1729,8 +1720,16 @@ done
         session_id: str,
         path: str,
         action_context: ActionContext,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
-        return await self._transfer_file(session_id, path, action_context)
+        if directory_archive and not self.network_workspace:
+            raise BoxValidationError(
+                "Directory archives require network workspace mode"
+            )
+        return await self._transfer_file(
+            session_id, path, action_context, directory_archive=directory_archive
+        )
 
     async def _enforce_network_workspace_quota(
         self, session: _RuntimeSession, spec: BoxSpec, phase: str
@@ -1836,6 +1835,7 @@ done
         action_context: ActionContext,
         *,
         content: bytes | None = None,
+        directory_archive: bool = False,
     ):
         from .file_io import workspace_relative_path
         from .tenancy import session_belongs_to_placement
@@ -1859,15 +1859,27 @@ done
                     )
                 if self.admission_required:
                     await self.require_sandbox_admission(action_context)
-                workspace_relative_path(session.info.mount_path, path)
+                if not (directory_archive and path == session.info.mount_path):
+                    workspace_relative_path(session.info.mount_path, path)
                 for _, mount_path, _, _, _ in session.extra_mounts_key:
-                    if path == mount_path or path.startswith(
-                        mount_path.rstrip("/") + "/"
+                    if (
+                        path == mount_path
+                        or path.startswith(mount_path.rstrip("/") + "/")
+                        or (
+                            directory_archive
+                            and mount_path.startswith(path.rstrip("/") + "/")
+                        )
                     ):
                         raise BoxValidationError(
                             "File transfer cannot access additional mounts"
                         )
                 backend = session.backend
+                if directory_archive:
+                    return await backend.download_directory(
+                        session.info,
+                        path,
+                        min(self.max_rpc_file_bytes, 20 * 1024 * 1024),
+                    )
                 if content is not None:
                     await backend.upload_file(
                         session.info, path, content, self.max_rpc_file_bytes
@@ -2775,6 +2787,7 @@ done
 
                     async def start_session():
                         info = await backend.start_session(backend_spec)
+                        info._runtime_workspace_owner = owned_workspace
                         runtime_session = _RuntimeSession(
                             info=info,
                             backend=backend,
@@ -3177,8 +3190,8 @@ done
                 if self._artifact_cache is not None:
                     await self._artifact_work(self._artifact_cache.release, session_id)
                 if runtime_session.owned_workspace is not None:
-                    await self._artifact_work(
-                        self._remove_owned_workspace, runtime_session.owned_workspace
+                    await backend.remove_owned_workspace(
+                        runtime_session.info, runtime_session.owned_workspace
                     )
                 cleaned_up = True
         except Exception as exc:

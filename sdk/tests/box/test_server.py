@@ -941,7 +941,11 @@ async def test_init(handler, mock_runtime):
     config = {"backend": "docker"}
     resp = await _invoke(handler, LangBotToBoxAction.INIT, config)
     assert resp.code == 0
-    assert resp.data == {"initialized": True, "network_workspace": False}
+    assert resp.data == {
+        "initialized": True,
+        "network_workspace": False,
+        "directory_archive": True,
+    }
     mock_runtime.init.assert_called_once_with(config)
 
 

@@ -176,6 +176,114 @@ async def test_database_package_metadata_retains_revision_scope_without_archive_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('operation', ['list_skill_resources', 'read_skill_resource'])
+async def test_network_resource_reads_share_short_transactions_and_keep_validation(
+    storage, tmp_path, monkeypatch, operation
+):
+    from langbot_plugin.skill_store import SkillStore
+
+    from langbot.pkg.entity.persistence.skill import SkillVersion
+    from langbot.pkg.skill.repository import SkillRepository
+
+    if not callable(getattr(SkillStore, 'read_publication_resource', None)):
+        pytest.skip('requires publication resource SDK')
+    published = SkillStore(str(tmp_path / 'published'))
+    skill = published.create_skill({'name': 'packet', 'description': 'Read guide', 'instructions': 'Use resources.'})
+    skill = published.write_skill_file(
+        'packet', 'references/guide.md', 'verified guide', base_revision=skill['revision']
+    )
+    publication = published.export_skill_publication('packet', skill['revision'])
+    store = storage.content_store
+    manager = storage.ap.persistence_mgr
+    engine = manager.get_db_engine()
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync))
+    objects = {}
+    loads = []
+
+    async def save(key, value):
+        objects[key] = value
+
+    async def load(key, *, max_bytes):
+        assert manager.current_session() is None, 'Object storage IO retained a database transaction'
+        loads.append(key)
+        assert len(objects[key]) <= max_bytes
+        return objects[key]
+
+    provider = SimpleNamespace(save=save, delete=AsyncMock(), load_bounded=load)
+    monkeypatch.setattr(store, '_s3', AsyncMock(return_value=(provider, {})))
+    storage.ap.instance_config.data['storage']['content'] = {'backend': 'archive'}
+    ref = await store.put(
+        context(), owner_type='skill', owner='packet', key=skill['revision'], value=publication['file_bytes']
+    )
+    async with manager.tenant_uow(WORKSPACE) as uow:
+        await uow.execute(
+            sa.insert(SkillVersion).values(
+                uuid='version-one',
+                workspace_uuid=WORKSPACE,
+                instance_uuid='instance',
+                name='packet',
+                revision=skill['revision'],
+                manifest_json=publication['manifest'],
+                skill_json=publication['skill'],
+                content_ref=ref,
+            )
+        )
+    storage.ap.storage_mgr = storage
+    storage.ap.box_service = SimpleNamespace(file_transfer_mode='network')
+    storage.ap.instance_config.data['skills'] = {'persistence': 'database', 'root': str(tmp_path / 'cache')}
+    bindings = []
+    generation = [1]
+    workspaces = sa.Table('workspaces', sa.MetaData(), sa.Column('uuid', sa.String(36)))
+
+    async def binding(workspace, *, expected_generation):
+        bindings.append((workspace, expected_generation))
+        async with manager.tenant_uow(workspace) as uow:
+            await uow.execute(sa.select(workspaces.c.uuid).where(workspaces.c.uuid == workspace))
+        return SimpleNamespace(instance_uuid='instance', workspace_uuid=workspace, placement_generation=generation[0])
+
+    storage.ap.workspace_service.get_execution_binding = binding
+    repository = SkillRepository(storage.ap)
+    begins = []
+
+    def began(connection):
+        begins.append(connection)
+
+    path = 'references' if operation == 'list_skill_resources' else 'references/guide.md'
+    read = getattr(repository, operation)
+    sa.event.listen(engine.sync_engine, 'begin', began)
+    try:
+        result = await read(context(), 'packet', path, expected_revision=skill['revision'])
+    finally:
+        sa.event.remove(engine.sync_engine, 'begin', began)
+    assert len(begins) == 2
+    assert bindings == [(WORKSPACE, 1), (WORKSPACE, 1)]
+    assert result['revision'] == skill['revision']
+    if operation == 'list_skill_resources':
+        assert [entry['name'] for entry in result['entries']] == ['guide.md']
+    else:
+        assert result['content'] == 'verified guide'
+    original = objects[loads[-1]]
+    objects[loads[-1]] = original[:-1] + bytes([original[-1] ^ 1])
+    with pytest.raises(ValueError, match='digest verification'):
+        await read(context(), 'packet', path, expected_revision=skill['revision'])
+    objects[loads[-1]] = original
+    original_record = repository._database._record
+
+    async def record_then_cutover(*args, **kwargs):
+        result = await original_record(*args, **kwargs)
+        generation[0] = 2
+        return result
+
+    monkeypatch.setattr(repository._database, '_record', record_then_cutover)
+    before = len(loads)
+    with pytest.raises(WorkspaceRequiredError):
+        await read(context(), 'packet', path, expected_revision=skill['revision'])
+    assert len(loads) == before
+    assert manager.current_session() is None
+
+
+@pytest.mark.asyncio
 async def test_scoped_alias_replaces_content_without_mutating_previous_ref(storage):
     kwargs = dict(owner_type='upload_image', owner='account', key='same.png')
     key = await storage.save_scoped(context(), **kwargs, value=b'first')

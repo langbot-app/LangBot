@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import io
 import json
 import os
 import posixpath
+import shutil
 import stat
 import uuid
+import zipfile
 
 
 def workspace_usage(
@@ -185,6 +188,258 @@ def read_workspace_file(root: str, relative: str, max_bytes: int) -> bytes:
             if len(content) > max_bytes:
                 raise ValueError("Workspace file exceeds the transfer size limit")
             return content
+
+
+def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> bytes:
+    """Read a bounded, stable directory tree without links or workspace staging."""
+    if (
+        not isinstance(relative, str)
+        or "\\" in relative
+        or "\x00" in relative
+        or (
+            relative
+            and (
+                relative.startswith("/")
+                or posixpath.normpath(relative) != relative
+                or any(part in ("", ".", "..") for part in relative.split("/"))
+            )
+        )
+    ):
+        raise ValueError("Directory path must stay inside the session workspace")
+    if type(max_bytes) is not int or max_bytes < 0:
+        raise ValueError("Directory archive size limit must be nonnegative")
+    limit = min(max_bytes, 20 * 1024 * 1024)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+    def identity(info):
+        return (
+            info.st_dev,
+            info.st_ino,
+            info.st_size,
+            info.st_mtime_ns,
+            info.st_ctime_ns,
+        )
+
+    class BoundedArchive(io.BytesIO):
+        def write(self, data):
+            if self.tell() + len(data) > limit:
+                raise ValueError("Directory archive exceeds the transfer size limit")
+            return super().write(data)
+
+    source_path = relative + "/unused" if relative else "unused"
+    with _parent_directory(root, source_path, create=False) as (source_fd, _name):
+        entries = []
+        directories = []
+        total = 0
+
+        def source_entry(path, is_directory):
+            descriptor = os.dup(source_fd)
+            try:
+                parts = path.split("/")
+                for part in parts[:-1]:
+                    child = os.open(part, flags, dir_fd=descriptor)
+                    os.close(descriptor)
+                    descriptor = child
+                return os.open(
+                    parts[-1],
+                    flags
+                    if is_directory
+                    else os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=descriptor,
+                )
+            finally:
+                os.close(descriptor)
+
+        def scan(descriptor, prefix="", depth=0):
+            nonlocal total
+            if depth > 16:
+                raise ValueError("Directory archive exceeds the depth limit (16)")
+            names = set()
+            directories.append((prefix, identity(os.fstat(descriptor)), names))
+            with os.scandir(descriptor) as children:
+                for child in children:
+                    names.add(child.name)
+                    path = prefix + child.name
+                    if (
+                        "\\" in child.name
+                        or "\x00" in child.name
+                        or (
+                            not prefix and len(child.name) >= 2 and child.name[1] == ":"
+                        )
+                    ):
+                        raise ValueError("Unsafe directory archive path: " + path)
+                    if len(entries) >= 512:
+                        raise ValueError(
+                            "Directory archive exceeds the entry limit (512)"
+                        )
+                    info = child.stat(follow_symlinks=False)
+                    is_directory = stat.S_ISDIR(info.st_mode)
+                    if not is_directory:
+                        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                            raise ValueError(
+                                "Directory contains a link or special file: " + path
+                            )
+                        if info.st_size > 16 * 1024 * 1024:
+                            raise ValueError(
+                                "Directory file exceeds the size limit: " + path
+                            )
+                        total += info.st_size
+                        if total > 64 * 1024 * 1024:
+                            raise ValueError(
+                                "Directory archive exceeds the expanded size limit"
+                            )
+                    entries.append((path, info, is_directory))
+                    if is_directory:
+                        child_fd = os.open(child.name, flags, dir_fd=descriptor)
+                        try:
+                            if identity(os.fstat(child_fd)) != identity(info):
+                                raise ValueError("Directory changed: " + path)
+                            scan(child_fd, path + "/", depth + 1)
+                        finally:
+                            os.close(child_fd)
+
+        scan(source_fd)
+        with BoundedArchive() as output:
+            with zipfile.ZipFile(
+                output, "w", compression=zipfile.ZIP_STORED, allowZip64=False
+            ) as archive:
+                for path, expected, is_directory in entries:
+                    member = zipfile.ZipInfo(path + "/" if is_directory else path)
+                    member.create_system = 3
+                    mode = (
+                        stat.S_IFDIR | 0o755
+                        if is_directory
+                        else stat.S_IFREG
+                        | (0o755 if expected.st_mode & 0o111 else 0o644)
+                    )
+                    member.external_attr = mode << 16
+                    if is_directory:
+                        archive.writestr(member, b"")
+                        continue
+                    with os.fdopen(source_entry(path, False), "rb") as source:
+                        before = os.fstat(source.fileno())
+                        if (
+                            not stat.S_ISREG(before.st_mode)
+                            or before.st_nlink != 1
+                            or identity(before) != identity(expected)
+                        ):
+                            raise ValueError("Directory file changed: " + path)
+                        copied = 0
+                        with archive.open(member, "w") as target:
+                            while chunk := source.read(65536):
+                                copied += len(chunk)
+                                if copied > expected.st_size:
+                                    raise ValueError("Directory file changed: " + path)
+                                target.write(chunk)
+                        if copied != expected.st_size or identity(
+                            os.fstat(source.fileno())
+                        ) != identity(expected):
+                            raise ValueError("Directory file changed: " + path)
+
+            for path, expected, names in directories:
+                descriptor = (
+                    source_entry(path.rstrip("/"), True) if path else os.dup(source_fd)
+                )
+                try:
+                    if identity(os.fstat(descriptor)) != expected:
+                        raise ValueError("Directory changed: " + path)
+                    remaining = set(names)
+                    with os.scandir(descriptor) as children:
+                        for child in children:
+                            if child.name not in remaining:
+                                raise ValueError("Directory changed: " + path)
+                            remaining.remove(child.name)
+                    if remaining:
+                        raise ValueError("Directory changed: " + path)
+                finally:
+                    os.close(descriptor)
+            for path, expected, is_directory in entries:
+                if is_directory:
+                    continue
+                descriptor = source_entry(path, False)
+                try:
+                    current = os.fstat(descriptor)
+                    if (
+                        not stat.S_ISREG(current.st_mode)
+                        or current.st_nlink != 1
+                        or identity(current) != identity(expected)
+                    ):
+                        raise ValueError("Directory file changed: " + path)
+                finally:
+                    os.close(descriptor)
+            return output.getvalue()
+
+
+def clear_workspace_directory(root: str, device: int, inode: int) -> None:
+    """Clear an identity-bound workspace without following links or other devices."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    entries = 0
+
+    def clear(directory):
+        nonlocal entries
+        with os.scandir(directory) as children:
+            for child in children:
+                entries += 1
+                if entries > 100_000:
+                    raise ValueError("Workspace cleanup exceeds the entry limit")
+                expected = child.stat(follow_symlinks=False)
+                if not stat.S_ISDIR(expected.st_mode):
+                    os.unlink(child.name, dir_fd=directory)
+                    continue
+                if expected.st_dev != device:
+                    raise ValueError("Workspace cleanup cannot cross a filesystem")
+                descriptor = os.open(child.name, flags, dir_fd=directory)
+                try:
+                    current = os.fstat(descriptor)
+                    if (current.st_dev, current.st_ino) != (
+                        expected.st_dev,
+                        expected.st_ino,
+                    ):
+                        raise ValueError("Workspace cleanup directory changed")
+                    clear(descriptor)
+                    current = os.stat(
+                        child.name, dir_fd=directory, follow_symlinks=False
+                    )
+                    if (current.st_dev, current.st_ino) != (
+                        expected.st_dev,
+                        expected.st_ino,
+                    ):
+                        raise ValueError("Workspace cleanup directory changed")
+                    os.rmdir(child.name, dir_fd=directory)
+                finally:
+                    os.close(descriptor)
+
+    with _parent_directory(root, "unused", create=False) as (directory, _name):
+        info = os.fstat(directory)
+        if (info.st_dev, info.st_ino) != (device, inode):
+            raise ValueError("Runtime workspace ownership changed during cleanup")
+        clear(directory)
+
+
+def remove_owned_workspace(
+    owner: tuple[str, int, int], *, empty_only: bool = False
+) -> None:
+    """Remove only the workspace still matching Runtime's allocated identity."""
+    path, device, inode = owner
+    try:
+        os.stat(path, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    parent_path, name = posixpath.split(path)
+    with _parent_directory(parent_path, name, create=False) as (parent, _name):
+        try:
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISDIR(info.st_mode) or (info.st_dev, info.st_ino) != (
+            device,
+            inode,
+        ):
+            raise ValueError("Runtime workspace ownership changed during cleanup")
+        if empty_only:
+            os.rmdir(name, dir_fd=parent)
+        else:
+            shutil.rmtree(path)
 
 
 def write_workspace_file(

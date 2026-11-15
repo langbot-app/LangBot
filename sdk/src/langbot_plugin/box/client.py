@@ -124,6 +124,8 @@ class BoxRuntimeClient(abc.ABC):
         session_id: str,
         path: str,
         action_context: ActionContext | None = None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
         raise NotImplementedError
 
@@ -337,6 +339,8 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         session_id: str,
         path: str,
         action_context: ActionContext | None = None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
         """Read one complete file and verify its transfer receipt."""
         if action_context is None:
@@ -345,7 +349,12 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         try:
             result = await self._call(
                 LangBotToBoxAction.DOWNLOAD_FILE,
-                {"session_id": session_id, "path": path, "file_key": file_key},
+                {
+                    "session_id": session_id,
+                    "path": path,
+                    "file_key": file_key,
+                    **({"directory_archive": True} if directory_archive else {}),
+                },
                 timeout=60.0,
                 action_context=action_context,
             )
@@ -572,7 +581,9 @@ class ActionRPCBoxClient(BoxRuntimeClient):
     async def init(self, config: dict) -> None:
         result = await self._call(LangBotToBoxAction.INIT, config)
         if config.get("file_transfer_mode") == "network" and (
-            not isinstance(result, dict) or result.get("network_workspace") is not True
+            not isinstance(result, dict)
+            or result.get("network_workspace") is not True
+            or result.get("directory_archive") is not True
         ):
             raise BoxRuntimeUnavailableError(
                 "Network workspaces require an updated Box Runtime"

@@ -1240,9 +1240,7 @@ class BoxService:
             await self._cleanup_network_script(query, selected_files_cleanup_script(root), 'export snapshot')
 
     async def export_skill_draft(self, query, sandbox_path: str) -> bytes:
-        from .draft_files import MAX_DRAFT_ARCHIVE_BYTES, skill_draft_script
         from .runner import binding_for
-        from .selected_files import selected_files_cleanup_script
 
         if self.file_transfer_mode != 'network':
             raise BoxValidationError('Network Skill draft export requires box.file_transfer_mode=network')
@@ -1262,63 +1260,17 @@ class BoxService:
             ).host_path_mode
             == BoxHostMountMode.READ_ONLY
         ):
-            raise BoxValidationError('Network Skill draft export requires a writable workspace for temporary snapshots')
-        root = (
-            '/workspace/.langbot-snapshots/'
-            + self._attachment_query_key(query)
-            + '/.langbot-export-'
-            + uuid.uuid4().hex
+            raise BoxValidationError('Network Skill draft export requires a writable workspace')
+        content = await self.client.download_file(
+            self.resolve_box_session_id(query),
+            sandbox_path,
+            action_context=self._action_context(context),
+            directory_archive=True,
         )
-        try:
-            preparation = asyncio.create_task(
-                self._execute_file_script(query, skill_draft_script(sandbox_path, root), prepare_artifacts=False)
-            )
-            try:
-                result = await asyncio.shield(preparation)
-            except asyncio.CancelledError:
-                while not preparation.done():
-                    try:
-                        await asyncio.shield(preparation)
-                    except asyncio.CancelledError:
-                        continue
-                    except Exception:
-                        break
-                if not preparation.cancelled():
-                    preparation.exception()
-                raise
-            if not result.ok:
-                raise BoxValidationError(
-                    f'Failed to prepare Skill draft (exit code {result.exit_code}); '
-                    f'the original draft was retained: {(result.stderr or "")[-4000:]}'
-                )
-            try:
-                metadata = json.loads(result.stdout)
-                path = metadata['snapshot_path']
-                size = metadata['size']
-                digest = metadata['sha256']
-                if (
-                    not isinstance(path, str)
-                    or posixpath.basename(posixpath.dirname(path)) != posixpath.basename(root)
-                    or not re.fullmatch(r'[0-9a-f]{32}[.]bin', posixpath.basename(path))
-                    or type(size) is not int
-                    or not 0 <= size <= MAX_DRAFT_ARCHIVE_BYTES
-                    or not isinstance(digest, str)
-                    or not re.fullmatch(r'[0-9a-f]{64}', digest)
-                ):
-                    raise ValueError('Invalid Skill draft receipt')
-            except (KeyError, TypeError, ValueError) as exc:
-                raise BoxValidationError('Invalid Skill draft snapshot response') from exc
-            content = await self.client.download_file(
-                self.resolve_box_session_id(query),
-                root + '/' + posixpath.basename(path),
-                action_context=self._action_context(context),
-            )
-            if len(content) != size or hashlib.sha256(content).hexdigest() != digest:
-                raise BoxValidationError('Skill draft snapshot size or digest mismatch')
-            await self._validated_execution_context(context)
-            return content
-        finally:
-            await self._cleanup_network_script(query, selected_files_cleanup_script(root), 'Skill draft snapshot')
+        if len(content) > 20 * _MIB:
+            raise BoxValidationError('Skill draft archive exceeds the size limit (20 MiB)')
+        await self._validated_execution_context(context)
+        return content
 
     async def _read_outbox_network(self, query):
         from .sandbox_files import outbox_script

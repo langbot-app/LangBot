@@ -126,6 +126,8 @@ def _write_skill_runner(root):
 @pytest.fixture
 def core_pair_configure(tmp_path, monkeypatch):
     processes = []
+    workspace_parents = []
+    owned_workspaces = set()
     backend = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
     assert backend in {'host', 'docker', 'nsjail', 'e2b'}
     connection = None
@@ -166,6 +168,7 @@ def core_pair_configure(tmp_path, monkeypatch):
         assert len({plugin_port, debug_port, box_port}) == 3
         instance_id = root.name + '-' + uuid.uuid4().hex
         box_root = runtime_root / 'box'
+        workspace_parents.append(box_root / 'workspaces/default/.langbot-network-workspaces' / instance_id)
         runtime_config = {
             'backend': 'docker' if backend == 'e2b' else backend,
             'local': {'host_root': str(box_root / 'workspaces'), 'allowed_mount_roots': [str(box_root)]},
@@ -228,9 +231,14 @@ def core_pair_configure(tmp_path, monkeypatch):
         return ['--standalone-runtime', '--standalone-box']
 
     configure.sessions = []
+    configure.workspace_parents = workspace_parents
+    configure.owned_workspaces = owned_workspaces
     try:
         yield configure
     finally:
+        for parent in workspace_parents:
+            if parent.exists():
+                owned_workspaces.update(parent.iterdir())
         timed_out = []
         for process, streams in reversed(processes):
             if process.poll() is None:
@@ -246,6 +254,18 @@ def core_pair_configure(tmp_path, monkeypatch):
         assert not timed_out, f'Runtime did not finish graceful shutdown in 30 seconds: {timed_out}'
         for info, connection in configure.sessions:
             _backend_presence(info, False, connection)
+        for parent in workspace_parents:
+            remaining = list(parent.iterdir()) if parent.exists() else []
+            assert not remaining, f'Runtime retained owned workspace entries: {remaining}'
+        assert not any(os.path.lexists(path) for path in owned_workspaces), owned_workspaces
+        print(
+            json.dumps({
+                'event': 'runtime_workspaces_removed',
+                'observed_paths': sorted(map(str, owned_workspaces)),
+                'remaining_entries': [],
+            }),
+            flush=True,
+        )
 
 
 @pytest.fixture
@@ -476,6 +496,11 @@ def test_two_cores_use_independent_runtimes_for_pinned_skills_and_drafts(
         )
         _backend_presence(sessions[0], True, connection)
         core_pair_configure.sessions.append((sessions[0], connection))
+    if backend != 'e2b':
+        for parent in core_pair_configure.workspace_parents:
+            entries = set(parent.iterdir())
+            assert entries, f'Runtime did not allocate an owned workspace under {parent}'
+            core_pair_configure.owned_workspaces.update(entries)
     assert a.client.get(old_url, headers=headers).content == original_package
 
     draft_name = 'runtime-created-probe'

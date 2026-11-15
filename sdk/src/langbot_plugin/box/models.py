@@ -597,6 +597,12 @@ BUILTIN_PROFILES: dict[str, BoxProfile] = {
 
 
 class BoxSessionInfo(pydantic.BaseModel):
+    _runtime_workspace_owner: tuple[str, int, int] | None = pydantic.PrivateAttr(
+        default=None
+    )
+    _runtime_image_id: str | None = pydantic.PrivateAttr(default=None)
+    _workspace_cleanup_container: str | None = pydantic.PrivateAttr(default=None)
+
     session_id: str
     backend_name: str
     backend_session_id: str
@@ -693,6 +699,10 @@ class BoxFileRequest(pydantic.BaseModel):
 class BoxFileUploadRequest(BoxFileRequest):
     size: int = pydantic.Field(ge=0)
     sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BoxFileDownloadRequest(BoxFileRequest):
+    directory_archive: bool = False
 
 
 class BoxRunFilesCleanupRequest(pydantic.BaseModel):
