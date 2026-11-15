@@ -73,7 +73,10 @@ class CIProfileTest(unittest.TestCase):
                     self.assertEqual(profile['coverage_suite'], 'scenarios')
                     self.assertEqual(profile['smoke']['group_turns'], 3)
                 else:
-                    self.assertEqual(profile['phases'][0]['duration_seconds'], 540)
+                    self.assertEqual([phase['groups'] for phase in profile['phases']], [8, 16])
+                    self.assertEqual(
+                        sum(phase['duration_seconds'] + phase['cooldown_seconds'] for phase in profile['phases']), 570
+                    )
                 self.assertEqual('execution' in profile, name == 'daily')
         daily, _ = suite_profile('daily', 'test-run')
         self.assertEqual(daily['execution'], {'total_seconds': 1800, 'drain_seconds': 120, 'cooldown_seconds': 60})
@@ -234,6 +237,86 @@ class DailySummaryTest(unittest.TestCase):
             self.assertIn('Preparation or teardown failed', text)
             self.assertIn('langbot-team/LocalAgent@1.2.3', text)
             self.assertIn('not confirmed', text)
+
+
+class MixedScheduleTest(unittest.TestCase):
+    def commands(self):
+        path = Path(__file__).resolve().parents[2] / '.github/workflows/daily-endurance.yml'
+        steps = yaml.safe_load(path.read_text())['jobs']['endurance']['steps']
+        return {step.get('name'): step.get('run') for step in steps}
+
+    def test_one_owned_deployment_selects_mixed_or_finite_contracts(self):
+        command = self.commands()['Run mixed load or weekly contracts']
+        for event, requested, weekday, suite in [
+            ('schedule', '', '6', 'endurance'),
+            ('schedule', '', '7', 'scenarios'),
+            ('workflow_dispatch', 'mixed', '7', 'endurance'),
+            ('workflow_dispatch', 'contracts', '6', 'scenarios'),
+        ]:
+            with self.subTest(event=event, requested=requested), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                bindir = root / 'bin'
+                bindir.mkdir()
+                for name, body in {
+                    'date': 'printf "%s\\n" "$TEST_WEEKDAY"',
+                    'uv': 'printf "%s\\n" "$@" >> "$TEST_ARGS"',
+                }.items():
+                    path = bindir / name
+                    path.write_text('#!/bin/sh\n' + body + '\n')
+                    path.chmod(0o700)
+                subprocess.run(
+                    ['bash', '-e', '-c', command],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        'PATH': str(bindir) + os.pathsep + os.environ['PATH'],
+                        'GITHUB_EVENT_NAME': event,
+                        'WORKLOAD': requested,
+                        'TEST_WEEKDAY': weekday,
+                        'TEST_ARGS': str(root / 'args'),
+                        'SCENARIO_GROUPS': 'faults lifecycle',
+                        'EXTRA_PLUGINS': 'misc/EssentialCommands',
+                        'RESTART_SERVICES': 'true',
+                    },
+                )
+                args = (root / 'args').read_text().splitlines()
+                self.assertEqual(args.count('tools.entrypoints.regression_ci'), 1)
+                self.assertEqual(args[args.index('--suite') + 1], suite)
+                self.assertEqual('--scenario-groups' in args, suite == 'scenarios')
+                self.assertEqual('--restart-services' in args, suite == 'scenarios')
+                self.assertEqual(
+                    (root / '.qa/daily-workload.txt').read_text().strip(),
+                    'mixed' if suite == 'endurance' else 'contracts',
+                )
+
+    def test_mixed_summary_requires_its_independent_execution_evidence(self):
+        command = self.commands()['Publish observations']
+        for mixed in (None, {'passed': False, 'outcome': 'INCOMPLETE'}, {'passed': True, 'outcome': 'PASS'}):
+            with self.subTest(mixed=mixed), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                target = root / '.qa/daily/gate/suite'
+                target.mkdir(parents=True)
+                (root / '.qa/daily-workload.txt').write_text('mixed\n')
+                (target / 'summary.json').write_text(json.dumps({'passed': True, 'phases': []}))
+                (target.parent / 'gate.json').write_text(json.dumps({'passed': True}))
+                if mixed is not None:
+                    (target.parent / 'mixed.json').write_text(json.dumps(mixed))
+                summary = root / 'summary.md'
+                subprocess.run(
+                    ['bash', '-e', '-c', command],
+                    cwd=root,
+                    check=True,
+                    capture_output=True,
+                    env={
+                        **os.environ,
+                        'PATH': str(Path(sys.executable).parent) + os.pathsep + os.environ['PATH'],
+                        'GITHUB_STEP_SUMMARY': str(summary),
+                        'GITHUB_SHA': 'candidate',
+                    },
+                )
+                self.assertEqual('Daily regression: PASS' in summary.read_text(), bool(mixed and mixed['passed']))
 
 
 if __name__ == '__main__':

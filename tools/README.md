@@ -474,97 +474,98 @@ The existing required check names remain `Regression tools` and `Core smoke (60s
 soak tests use the existing Suite and Job entry points with separately calibrated
 latency, throughput and resource budgets; the one-minute smoke does not replace them.
 
-## Daily regression
+## Daily mixed workload and weekly contracts
 
-`Daily Endurance` runs independently of PR checks at 19:23 UTC (03:23
-Asia/Shanghai) on the default branch. GitHub may delay scheduled starts. It also
-supports **Run workflow** with a selected branch. The schedule becomes active
-only after the workflow is merged into the default branch; it is not a required
-merge check.
+`Daily Endurance` keeps one owned Core/Runtime/Box deployment per run. At the
+existing 19:23 UTC schedule (03:23 Asia/Shanghai), Monday through Saturday run the
+mixed business load; Sunday runs the finite contract pass. Selection uses the
+Asia/Shanghai weekday when the scheduled run starts, so delayed GitHub runs may
+start later than the cron time. Manual dispatch selects `workload: mixed` or
+`contracts`. The job is independent of PR merge checks.
 
-The workflow reuses the disposable smoke stack and builds plugins from this checkout.
-`--suite daily` consumes 46 base cases plus the selected local groups, requires its first pass, then
-repeats ordered cases within one **1800-second** window. The clock starts before
-creating scenario resources and includes a 120-second reserve for drain/API
-cleanup and a 60-second cooldown. Service and plugin preparation precede this
-clock. A separate 1860-second process guard allows startup and final reporting;
-it does not grant extra scenario time. The whole job retains its 45-minute limit.
+The mixed mode uses the existing `endurance` profile and harness:
 
-The scheduled job enables all local groups (including `plugins`) and the optional one-time restart
-checks. Manual dispatch exposes both switches. `--scenario-groups` accepts a
-space-separated selection; supplying the flag with no values runs only base
-cases. `scenarios` and `daily` enable all three groups when the flag is omitted.
+- Three signed HTTP Bots route chat, Box-tool and RAG traffic to separate Pipelines.
+  LocalAgent, LangRAG and GeneralParsers are built from this checkout and installed
+  once. Three independent loopback generation servers back distinct Providers;
+  embedding uses its own Provider and the main mock endpoint, and is not counted
+  as an additional generation backend.
+- The first phase runs 8 groups, 3 rotating members per group, 2 target RPS and
+  8 workers for 180 seconds, followed by 30 seconds of cooldown. The second keeps
+  those conversations and expands to 16 groups, 4 target RPS and 12 workers for
+  300 seconds, followed by 60 seconds of cooldown. The `2/1/1` chat/Box/RAG mix
+  creates at least two Box groups in each phase. Groups are serial internally
+  and concurrent across groups; workers bound in-flight requests rather than
+  generating an unbounded client backlog.
+- Box reuse remains scoped to each group, not to the whole Pipeline. Every exec
+  reports its real hostname. Acceptance checks observed Provider request tokens,
+  group history, source Bots, distinct reused Box identities and overlapping
+  persisted Box tool-event windows. Configured group/worker counts alone cannot
+  establish concurrent execution. Event windows include transport and scheduling,
+  and are not CPU timings.
 
-| Group | Additional behavior |
+The configured phases total 570 seconds within the 900-second execution guard;
+service, image and plugin preparation precede that guard. The whole GitHub job
+retains its 45-minute timeout. Edit the existing `groups.json`/`endurance.json`
+profiles for prepared-stack load settings; the generic Suite also accepts
+`--groups`, `--members-per-group`, `--rps`, `--workers` and `--duration` overrides.
+The source CI entrypoint uses the committed endurance profile.
+
+`gate/mixed.json` records the independent mixed-workload verdict and observed
+counts. Each phase retains requests, group membership, HTTP overlap,
+AgentRun reconciliation, live container/session counts and sampled queue
+load/cooldown observations. Missing metrics remain `unknown` and leave mixed acceptance incomplete. Each
+phase must observe all four queue metrics and a zero queue throughout its final
+cooldown window. Every generation Provider must overlap another Provider in
+recorded service time; this does not require a three-way intersection. A sampled
+live Box session or container does not by itself prove busy execution. Business, health,
+resource and mixed-evidence failures still fail the job. Throughput/P95 remain
+observations on hosted runners; no performance threshold is calibrated or changed.
+
+The Sunday/manual contract mode runs `--suite scenarios` once, under the existing
+300-second execution guard, with the existing optional restart checks. It retains
+the base cases and these selected local groups:
+
+| Group | Behavior retained by the finite contract pass |
 |---|---|
 | `faults` | Cancel/timeout cleanup, model retry side effects, partial stream failure, exhausted fallback, Box path rejection |
 | `resources` | API-key revocation, direct Agent execution, document deletion with a surviving retrieval control |
-| `plugins` | EssentialCommands version command without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
+| `plugins` | EssentialCommands without model/AgentRun execution; FAQManager Page API CRUD and search freshness |
 | `lifecycle` | Signed HTTP callback 5xx retry identity and subsequent delivery |
 
-For example, select resource and callback cases with
-`--suite scenarios --scenario-groups resources lifecycle`. Add
-`--restart-services` to check Core history after restart and a Runtime restart
-during an active request. These checks run only against services owned by this
-disposable runner, once before the fixed-PID resource sampler starts. Their
-elapsed time is deducted from both scenario and outer process budgets; the
-resource baseline never joins measurements from old and new PIDs. Failed restart
-checks retain their own evidence and fail the run before repeated traffic starts.
+Manual `scenario_groups`, `extra_plugins` and `restart_services` inputs apply only
+to contract mode. By default all four groups, EssentialCommands/FAQManager and
+one-time Core/Runtime restart checks are enabled. The short base business pass
+provides the fixtures for these assertions; it is no longer repeatedly traversed
+for 30 minutes. Restart receipts, exact terminal run IDs, coverage and owned API
+cleanup remain part of acceptance. Disabled groups are unexecuted, not passes.
 
-Credential revocation and restart diagnostics use an ephemeral user created
-through the normal initialization/login APIs in the runner's new private database.
-Generic Suite callers must provide `LANGBOT_QA_USER_TOKEN` for credential tests;
-missing prerequisites are skipped and produce an incomplete result. Disabled
-groups remain unexecuted in coverage, and a saved profile cannot execute a case
-whose group is disabled. Expected failed/cancelled/timeout Runs are recorded by
-exact ID and status; extra, missing or nonterminal Runs still fail reconciliation.
+This rotation reduces repeated deployments and business traffic without deleting
+independent assertions. Mixed success does not replace API contracts, live Dify/n8n,
+Skill persistence, upgrade/migration or backend-specific acceptance. Those retain
+their own inputs and execution requirements. Both modes use one Workspace and do
+not establish cross-Workspace isolation or real model/provider capacity.
 
-Fault cases reuse one Box per case and suite, with unique files per invocation.
-This bounds normal sandbox growth while preserving cancellation side-effect
-checks. The callback receiver uses the standard library and loopback; Core and
-the runner must share a network namespace. Document deletion and callback retry
-identity have separate narrow contracts: they do not establish document update
-semantics or exactly-once effects at an arbitrary callback receiver. Plugin
-upgrade rollback and cases needing additional environments remain explicit gaps.
-
-The daily profile uses the existing endurance resource allowances with a
-180-second warmup before baseline sampling. Each pipeline that enables Box uses
-one stable reuse key unique to this CI run, so conversations created by repeated
-cycles reuse that pipeline's sandbox. This measures repeated tool use; it does not test
-cross-group Box file isolation. The profile uses one Workspace and does not
-establish isolation between tenants. Conversation history and AgentRuns still
-accumulate and are reported. Resource excesses remain failures.
-
-Throughput and full-step P95 are observations. Business assertions, unknown
-results, health failures, incomplete evidence and resource limits determine the
-verdict. Summaries include first-pass completion, cycles, plugin installation
-readback, final ledger reconciliation and coverage. Manifests, case results,
-coverage, cycles, execution stages, resource samples and service logs are retained
-for 30 days, including failures. Hosted runners do not provide a controlled
-performance baseline. No automatic comparison between runs is enabled.
-
-To run the same entrypoint on a disposable Linux host with an idle Docker daemon:
+Run either mode on a disposable Linux host with an idle Docker daemon:
 
 ```sh
-uv run --no-sync python -m tools.entrypoints.regression_ci --suite daily --restart-services \
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite endurance \
+  --lbctl /path/to/lbctl --plugins plugins --output .qa/mixed-001
+
+uv run --no-sync python -m tools.entrypoints.regression_ci --suite scenarios \
+  --scenario-groups faults resources lifecycle plugins --restart-services \
   --lbctl /path/to/lbctl --plugins plugins \
-  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/daily-001
+  --extra-plugins misc/EssentialCommands misc/FAQManager --output .qa/contracts-001
 ```
 
-`--suite smoke` retains the 60-second gate. `--suite scenarios` runs the shared
-expanded profile once under a 300-second guard. `--suite endurance` retains the
-separate ten-minute load profile under a 900-second guard; its CI entry point also
-reports throughput/P95 without applying their thresholds. All suites use
-published plugins when `--plugins` is omitted. Both workflows explicitly select
-`--plugins plugins` so source changes are tested in the same PR. Daily additionally
-selects `misc/EssentialCommands misc/FAQManager`; manual dispatch can change the
-space-separated `extra_plugins` list or leave it empty. `--extra-plugins` requires
-source mode and accepts categorized plugin paths, without removing the three base
-plugins. Missing or incompatible packages fail preparation, with no silent fallback.
-Existing conversation Pipelines allow only the base plugins; plugin-specific cases
-bind their own extensions to avoid changing unrelated prompts/tools. The suite attempts owned API cleanup
-even after failures. The CI owner then stops its service processes and removes
-its Box containers; a process guard timeout can interrupt API cleanup.
+The older `--suite daily` repeated-scenario entry remains available for explicit
+reproduction, but the schedule no longer selects it. `smoke` and `scenarios`
+retain their 60- and 300-second guards. Source mode installs the selected checkout's
+plugins; omitting `--plugins` retains the published package route. Missing or
+incompatible packages fail preparation. All runs preserve ownership-scoped cleanup
+and stop only the processes and sandboxes belonging to that run. GitHub retains
+mode, verdicts, phase records, mock requests and service logs for 30 days,
+including failures; `.private/` credentials are not uploaded.
 
 ## Durable state lifecycle job
 
@@ -591,7 +592,7 @@ checks graceful process restart durability, not abrupt power loss or migrations.
 
 ## Daily API contract job
 
-`daily-endurance.yml` runs API contracts alongside the 30-minute endurance job
+`daily-endurance.yml` runs API contracts alongside the mixed/weekly-contract job
 on separate runners, at the existing daily schedule and on manual dispatch.
 The API job uses the GitHub run ID as its shuffle seed, so each daily run explores
 a different order and a rerun keeps the same seed. It has a 15-minute job timeout,
@@ -680,19 +681,22 @@ The suite is opt-in and adds no daily schedule or PR gate.
 ## Sustained regression and baseline comparison
 
 [`profiles/endurance.json`](profiles/endurance.json) runs
-nine minutes of mixed chat/Box/RAG traffic at 1 request/second across four stable
-groups, followed by one minute without traffic to check recovery. Configure its
+the two-phase 8-to-16-group chat/Box/RAG ramp described above, with cooldown
+after each phase. Configure its
 CLI context, plugin inputs, model endpoints, Core SQLite path and Core/Runtime/Box
 PID files as for smoke. Set `plugins: []` to reuse initialized plugins. Configure
 `observe.box_data_root` to the target deployment's Box mount root; the caller must
 have Docker inspection access. Do not start another Box runtime on a shared daemon.
+The generic Suite and release Job run the profile's business and resource checks.
+The independent wire/Provider/Box concurrency and cooldown verdict is supplied by
+`regression_ci --suite endurance`.
 
 ```sh
 uv run --no-sync python -m tools.entrypoints.regression_suite validate \
   --profile /path/to/endurance.json
 uv run --no-sync python -m tools.entrypoints.regression_suite run \
   --profile /path/to/endurance.json --output .qa/endurance-baseline
-# For an hour including the one-minute cooldown, use --duration 3540.
+# --duration overrides each phase; edit phase durations separately to preserve the ramp.
 ```
 
 This profile checks more than reply text:

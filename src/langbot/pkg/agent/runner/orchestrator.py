@@ -26,6 +26,7 @@ from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
 from .descriptor import RunnerDescriptor
+from .errors import RunnerExecutionError
 from .config_schema import extract_prompt_config
 from .execution_context import (
     append_mcp_resource_context_to_event,
@@ -315,6 +316,7 @@ class AgentRunOrchestrator:
         terminal_status: str | None = None
         terminal_reason: str | None = None
         terminal_usage: dict[str, typing.Any] | None = None
+        finalized: dict[str, typing.Any] | None = None
         execution_outcome = 'unknown'
         execution_error = ''
         auto_reply_enabled = (
@@ -572,7 +574,18 @@ class AgentRunOrchestrator:
                             )
                             assistant_transcript_written = True
 
-                        result = await self.result_normalizer.normalize(result_dict, descriptor)
+                        try:
+                            result = await self.result_normalizer.normalize(result_dict, descriptor)
+                        except RunnerExecutionError as exc:
+                            if result_type == 'run.failed':
+                                # Persist the failure before closing the Runner's transport.
+                                finalized = await self._finalize_run(
+                                    run_id=run_id,
+                                    status=terminal_status,
+                                    status_reason=terminal_reason if terminal_status == 'cancelled' else str(exc),
+                                    usage=terminal_usage,
+                                )
+                            raise
                         file_ids = result_dict.get('data', {}).get('file_ids', [])
                         if file_ids:
                             if result_type != 'message.completed' or result is None:
@@ -643,15 +656,23 @@ class AgentRunOrchestrator:
                             )
                             auto_reply_stream_open = False
 
+                        if terminal_status is not None:
+                            # A terminal event ends execution; transport cleanup may still wait.
+                            finalized = await self._finalize_run(
+                                run_id=run_id,
+                                status=terminal_status,
+                                status_reason=terminal_reason,
+                                usage=terminal_usage,
+                            )
+
                         if result is not None:
                             yield result
 
+                        if terminal_status is not None:
+                            break
+
                         run_snapshot = await self.journal.get_run(run_id)
-                        if (
-                            terminal_status is None
-                            and run_snapshot
-                            and run_snapshot.get('cancel_requested_at') is not None
-                        ):
+                        if run_snapshot and run_snapshot.get('cancel_requested_at') is not None:
                             terminal_status = 'cancelled'
                             terminal_reason = run_snapshot.get('status_reason') or 'cancel_requested'
                             # The Host closes the stream here, so it owns the missing terminal event.
@@ -677,13 +698,20 @@ class AgentRunOrchestrator:
                             cancelled_result['sequence'] = cancelled_event['sequence']
                             if result_observer is not None:
                                 await result_observer(cancelled_result)
+                            finalized = await self._finalize_run(
+                                run_id=run_id,
+                                status=terminal_status,
+                                status_reason=terminal_reason,
+                                usage=terminal_usage,
+                            )
                             await self.result_normalizer.normalize(cancelled_result, descriptor)
-            finalized = await self._finalize_run(
-                run_id=run_id,
-                status=terminal_status or 'completed',
-                status_reason=terminal_reason,
-                usage=terminal_usage,
-            )
+            if finalized is None:
+                finalized = await self._finalize_run(
+                    run_id=run_id,
+                    status=terminal_status or 'completed',
+                    status_reason=terminal_reason,
+                    usage=terminal_usage,
+                )
             ledger_status = finalized.get('status') if isinstance(finalized, dict) else None
             if isinstance(ledger_status, str) and ledger_status != (terminal_status or 'completed'):
                 # Another writer finished the run first; report what the run
@@ -698,34 +726,44 @@ class AgentRunOrchestrator:
             }.get(terminal_status or '', 'unknown')
             execution_error = '' if execution_outcome == 'success' else (terminal_reason or execution_outcome)
         except (asyncio.CancelledError, GeneratorExit):
-            execution_outcome = 'cancelled'
-            execution_error = 'cancelled'
-            await self._finalize_run(
-                run_id=run_id,
-                status='cancelled',
-                status_reason='consumer_cancelled',
-                usage=terminal_usage,
-            )
+            if finalized is None:
+                execution_outcome = 'cancelled'
+                execution_error = 'cancelled'
+                await self._finalize_run(
+                    run_id=run_id,
+                    status='cancelled',
+                    status_reason='consumer_cancelled',
+                    usage=terminal_usage,
+                )
+            else:
+                status = finalized.get('status', 'unknown')
+                execution_outcome = 'success' if status == 'completed' else status
+                execution_error = '' if execution_outcome == 'success' else (finalized.get('status_reason') or status)
             raise
         except Exception as exc:
-            execution_outcome = (
-                'cancelled'
-                if terminal_status == 'cancelled'
-                else 'timeout'
-                if self._is_deadline_exhausted(context)
-                else 'failed'
-            )
+            if finalized is None:
+                execution_outcome = (
+                    'cancelled'
+                    if terminal_status == 'cancelled'
+                    else 'timeout'
+                    if self._is_deadline_exhausted(context)
+                    else 'failed'
+                )
+            else:
+                status = finalized.get('status', 'unknown')
+                execution_outcome = 'success' if status == 'completed' else status
             # A chain that broke must always carry a reason, even for a bare exception.
             from ...telemetry.execution import describe_exception
 
             execution_error = describe_exception(exc)
             failed_usage = terminal_usage
-            await self._finalize_run(
-                run_id=run_id,
-                status=execution_outcome,
-                status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
-                usage=failed_usage,
-            )
+            if finalized is None:
+                await self._finalize_run(
+                    run_id=run_id,
+                    status=execution_outcome,
+                    status_reason=terminal_reason if execution_outcome == 'cancelled' else str(exc),
+                    usage=failed_usage,
+                )
             raise
         finally:
             record_execution(
