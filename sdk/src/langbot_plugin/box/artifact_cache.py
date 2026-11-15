@@ -640,6 +640,38 @@ class ArtifactCache:
                 self._owners.setdefault(owner, set()).add(entry.key)
             return mounts
 
+    def pin_from_owner(
+        self, context: ActionContext, digests: list[str], source_owner: str, owner: str
+    ) -> None:
+        """Retain this operation's verified lease without rereading the same tree."""
+        if not isinstance(owner, str) or not owner or len(owner) > 512:
+            raise ValueError("Artifact pin requires a bounded session owner")
+        with self._lock:
+            namespace = workspace_namespace(
+                context.instance_uuid, context.workspace_uuid
+            )
+            entries = []
+            for digest in dict.fromkeys(digests):
+                entry = self._entries.get((namespace, digest))
+                if (
+                    entry is None
+                    or entry.key not in self._owners.get(source_owner, set())
+                    or source_owner not in entry.owners
+                    or not entry.protected
+                ):
+                    raise ValueError("Artifact pin requires an active verified lease")
+                info = os.stat(entry.path, follow_symlinks=False)
+                if (
+                    not stat.S_ISDIR(info.st_mode)
+                    or (info.st_dev, info.st_ino) != entry.identity
+                ):
+                    raise ValueError("Artifact cache identity changed during lease")
+                entries.append(entry)
+            for entry in entries:
+                entry.owners.add(owner)
+                entry.last_used = time.monotonic()
+                self._owners.setdefault(owner, set()).add(entry.key)
+
     def release(self, owner: str) -> None:
         with self._lock:
             owned = self._owners.get(owner)

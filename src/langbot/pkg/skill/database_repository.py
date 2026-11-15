@@ -97,6 +97,19 @@ class DatabaseSkillRepository:
     async def get_package(
         self, context, name: str, revision: str | None = None, *, metadata_only: bool = False
     ) -> dict:
+        if metadata_only:
+            async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
+                record = await self._record(context, name, revision)
+                if record is None:
+                    raise ValueError(f'Skill "{name}" not found')
+                metadata = await self.content.metadata(context, record['content_ref'])
+            return {
+                'revision': record['skill']['revision'],
+                'manifest': record['manifest'],
+                'filename': f'{record["skill"]["name"]}.zip',
+                'sha256': metadata['digest'],
+                'size': metadata['size'],
+            }
         record = await self._record(context, name, revision)
         if record is None:
             raise ValueError(f'Skill "{name}" not found')
@@ -105,12 +118,8 @@ class DatabaseSkillRepository:
             'manifest': record['manifest'],
             'filename': f'{record["skill"]["name"]}.zip',
         }
-        if metadata_only:
-            metadata = await self.content.metadata(context, record['content_ref'])
-            package.update(sha256=metadata['digest'], size=metadata['size'])
-        else:
-            content = await self._archive(context, record)
-            package.update(content=content, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
+        content = await self._archive(context, record)
+        package.update(content=content, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
         return package
 
     async def _import_zip(self, context, file_bytes: bytes, data: dict, *, base_revision: str | None) -> dict:

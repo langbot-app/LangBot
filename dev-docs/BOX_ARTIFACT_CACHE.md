@@ -69,6 +69,10 @@ process cleanup completes. Session reuse can therefore retain more than one
 revision without changing an existing mount underneath a process. Cancellation or
 failed cleanup must not release a still-mounted version.
 
+Each execution fully validates its pending cache lease. Adding that same protected
+lease to the session checks scope, owner and directory identity under the GC lock
+without hashing the tree again. Later executions still perform full validation.
+
 `box.limits.max_artifact_cache_bytes` bounds reusable trees and metadata to a
 default and maximum of 268435456 bytes. `artifact_cache_ttl_sec` defaults to 300,
 with a maximum of 86400 seconds. A fixed 256-entry limit also bounds metadata and

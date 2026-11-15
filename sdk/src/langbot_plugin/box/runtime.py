@@ -1555,7 +1555,7 @@ done
         self, spec: BoxSpec, action_context: ActionContext | None
     ):
         if not spec.artifact_mounts:
-            yield spec, []
+            yield spec, [], None
             return
         if action_context is None:
             raise BoxValidationError(
@@ -1588,16 +1588,27 @@ done
                         }
                     ),
                     digests,
+                    owner,
                 )
             finally:
                 await self._artifact_work(cache.release, owner)
 
     async def _pin_session_artifacts(
-        self, session_id: str, context: ActionContext | None, digests: list[str]
+        self,
+        session_id: str,
+        context: ActionContext | None,
+        digests: list[str],
+        source_owner: str | None,
     ) -> None:
         if digests:
+            if context is None or source_owner is None:
+                raise BoxValidationError(
+                    "Artifact pin requires a verified execution lease"
+                )
             cache = await self._get_artifact_cache()
-            await self._artifact_work(cache.acquire, context, digests, session_id)
+            await self._artifact_work(
+                cache.pin_from_owner, context, digests, source_owner, session_id
+            )
 
     async def execute(
         self,
@@ -1617,14 +1628,18 @@ done
         async with self._resolved_artifact_spec(spec, action_context) as (
             resolved,
             digests,
+            owner,
         ):
-            return await self._execute_resolved(resolved, action_context, digests)
+            return await self._execute_resolved(
+                resolved, action_context, digests, owner
+            )
 
     async def _execute_resolved(
         self,
         spec: BoxSpec,
         action_context: ActionContext | None,
         artifact_digests: list[str],
+        artifact_owner: str | None,
     ) -> BoxExecutionResult:
         session = await self._get_or_create_session(
             spec,
@@ -1644,7 +1659,7 @@ done
                         f"session {spec.session_id} is being deleted"
                     )
                 await self._pin_session_artifacts(
-                    spec.session_id, action_context, artifact_digests
+                    spec.session_id, action_context, artifact_digests, artifact_owner
                 )
                 if session.closing:
                     raise BoxSessionNotFoundError(
@@ -2010,6 +2025,7 @@ done
         async with self._resolved_artifact_spec(spec, action_context) as (
             resolved,
             digests,
+            owner,
         ):
             session = await self._get_or_create_session(
                 resolved, action_context=action_context
@@ -2020,7 +2036,7 @@ done
                         f"session {resolved.session_id} is being deleted"
                     )
                 await self._pin_session_artifacts(
-                    resolved.session_id, action_context, digests
+                    resolved.session_id, action_context, digests, owner
                 )
                 return self._session_to_dict(session.info)
 

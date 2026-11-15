@@ -432,3 +432,27 @@ async def test_cancelled_execution_releases_artifact_pins_after_backend_stop(
     await runtime.reap_artifact_cache()
     assert not cache.probe(_CONTEXT, descriptor)
     backend.stop_session.assert_awaited_once()
+
+
+async def test_each_execution_revalidates_cached_bytes_even_with_a_session_pin(
+    network_runtime,
+    publication,  # noqa: F811
+):
+    runtime, backend = network_runtime
+    descriptor, content, _ = publication()
+    await runtime.prepare_artifact(descriptor, content, _CONTEXT)
+    spec = _spec(
+        artifact_mounts=[BoxArtifactMountSpec(content_digest=descriptor.content_digest)]
+    )
+    assert (await runtime.execute(spec, _CONTEXT)).ok
+    cache = runtime.artifact_cache
+    (mount,) = cache.acquire(_CONTEXT, [descriptor.content_digest], "fault-injection")
+    path = Path(mount.host_path, "README.md")
+    path.chmod(0o644)
+    path.write_bytes(b"changed immutable publication")
+    path.chmod(0o444)
+    cache.release("fault-injection")
+    executed = backend.exec_calls
+    with pytest.raises(ValueError):
+        await runtime.execute(spec, _CONTEXT)
+    assert backend.exec_calls == executed

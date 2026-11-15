@@ -128,9 +128,9 @@ async def test_s3_metadata_does_not_contact_the_source_backend(storage, monkeypa
 
 
 @pytest.mark.asyncio
-async def test_database_package_metadata_retains_revision_scope_without_archive_io(storage, monkeypatch):
+async def test_database_package_metadata_retains_revision_scope_without_archive_io(storage, tmp_path, monkeypatch):
     from langbot.pkg.entity.persistence.skill import SkillVersion
-    from langbot.pkg.skill.database_repository import DatabaseSkillRepository
+    from langbot.pkg.skill.repository import SkillRepository
 
     storage.ap.storage_mgr = storage
     engine = storage.ap.persistence_mgr.get_db_engine()
@@ -157,8 +157,44 @@ async def test_database_package_metadata_retains_revision_scope_without_archive_
         )
     archive_read = AsyncMock(wraps=storage.content_store.get)
     monkeypatch.setattr(storage.content_store, 'get', archive_read)
-    repository = DatabaseSkillRepository(storage.ap, cache=None)
-    package = await repository.get_package(context(), 'packet', revision, metadata_only=True)
+    manager = storage.ap.persistence_mgr
+    bindings, begins, content_columns = [], [], []
+    generation = [1]
+    workspaces = sa.Table('workspaces', sa.MetaData(), sa.Column('uuid', sa.String(36)))
+
+    async def binding(workspace, *, expected_generation):
+        bindings.append((workspace, expected_generation))
+        async with manager.tenant_uow(workspace) as uow:
+            await uow.execute(sa.select(workspaces.c.uuid).where(workspaces.c.uuid == workspace))
+        return SimpleNamespace(instance_uuid='instance', workspace_uuid=workspace, placement_generation=generation[0])
+
+    def began(connection):
+        begins.append(connection)
+
+    def selected(connection, cursor, statement, parameters, execution_context, executemany):
+        compiled = execution_context.compiled
+        if compiled is not None and isinstance(compiled.statement, sa.sql.Select):
+            columns = compiled.statement.selected_columns
+            fields = [column.name for column in columns if getattr(column.table, 'name', None) == 'content_objects']
+            if fields:
+                content_columns.append(fields)
+
+    storage.ap.workspace_service.get_execution_binding = binding
+    storage.ap.instance_config.data['skills'] = {'persistence': 'database', 'root': str(tmp_path / 'cache')}
+    skills = SkillRepository(storage.ap)
+    repository = skills._database
+    sa.event.listen(engine.sync_engine, 'begin', began)
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', selected)
+    try:
+        package = await skills.get_skill_package(context(), 'packet', revision, metadata_only=True)
+    finally:
+        sa.event.remove(engine.sync_engine, 'begin', began)
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', selected)
+    assert len(begins) == 2
+    assert bindings == [(WORKSPACE, 1), (WORKSPACE, 1)]
+    assert content_columns and all(
+        {'size', 'digest'} <= set(fields) and 'value' not in fields for fields in content_columns
+    )
     assert package == {
         'revision': revision,
         'manifest': manifest,
@@ -173,6 +209,17 @@ async def test_database_package_metadata_retains_revision_scope_without_archive_
     full = await repository.get_package(context(), 'packet', revision)
     assert full == {**package, 'content': body}
     archive_read.assert_awaited_once()
+    original_record = repository._record
+
+    async def record_then_cutover(*args, **kwargs):
+        result = await original_record(*args, **kwargs)
+        generation[0] = 2
+        return result
+
+    monkeypatch.setattr(repository, '_record', record_then_cutover)
+    with pytest.raises(WorkspaceRequiredError):
+        await skills.get_skill_package(context(), 'packet', revision, metadata_only=True)
+    assert manager.current_session() is None
 
 
 @pytest.mark.asyncio

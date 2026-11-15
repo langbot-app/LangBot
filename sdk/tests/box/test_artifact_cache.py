@@ -116,6 +116,45 @@ def test_pins_block_capacity_and_idle_gc_then_allow_reconstruction(
     cache.release("rebuilt-session")
 
 
+def test_verified_lease_keeps_session_pin_after_temporary_owner_is_released(
+    tmp_path, publication
+):
+    descriptor, content, files = publication()
+    cache = ArtifactCache(tmp_path / "cache", idle_ttl_sec=0)
+    cache.prepare(_CONTEXT, descriptor, content)
+    (mount,) = cache.acquire(_CONTEXT, [descriptor.content_digest], "pending")
+    cache.pin_from_owner(_CONTEXT, [descriptor.content_digest], "pending", "session")
+    cache.release("pending")
+    with pytest.raises(ValueError, match="active verified lease"):
+        cache.pin_from_owner(
+            _CONTEXT, [descriptor.content_digest], "pending", "stale-session"
+        )
+    cache.reap()
+    assert Path(mount.host_path, "README.md").read_bytes() == files["README.md"]
+    cache.release("session")
+    cache.reap()
+    assert not cache.probe(_CONTEXT, descriptor)
+
+
+def test_verified_lease_cannot_pin_another_workspaces_identical_package(
+    tmp_path, publication
+):
+    descriptor, content, _ = publication()
+    cache = ArtifactCache(tmp_path / "cache", idle_ttl_sec=0)
+    cache.prepare(_CONTEXT, descriptor, content)
+    cache.acquire(_CONTEXT, [descriptor.content_digest], "pending")
+    foreign = _CONTEXT.model_copy(update={"workspace_uuid": "workspace-b"})
+    cache.prepare(foreign, descriptor, content)
+    with pytest.raises(ValueError, match="active verified lease"):
+        cache.pin_from_owner(
+            foreign, [descriptor.content_digest], "pending", "foreign-session"
+        )
+    cache.reap()
+    assert not cache.probe(foreign, descriptor)
+    assert cache.probe(_CONTEXT, descriptor)
+    cache.release("pending")
+
+
 def test_restart_reaps_clean_entries_but_preserves_crash_pins(tmp_path, publication):
     descriptor, content, _ = publication()
     root = tmp_path / "cache"
