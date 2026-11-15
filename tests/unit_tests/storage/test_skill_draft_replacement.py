@@ -7,6 +7,7 @@ import zipfile
 
 import pytest
 import sqlalchemy as sa
+from langbot_plugin.skill_store import SkillStore
 
 from langbot.pkg.entity.persistence.content import ContentObject
 from langbot.pkg.entity.persistence.skill import SkillRegistry, SkillVersion
@@ -16,6 +17,10 @@ from tests.unit_tests.storage import test_content_store as content_fixtures
 
 storage = content_fixtures.storage
 CONTEXT = content_fixtures.context()
+pytestmark = pytest.mark.skipif(
+    not callable(getattr(SkillStore, '_prepare_skill_zip', None)),
+    reason='requires the in-tree Skill draft SDK',
+)
 
 
 def draft(version, *, name='packet', resource='current.txt'):
