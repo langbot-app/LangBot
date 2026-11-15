@@ -48,6 +48,7 @@ from langbot_plugin.utils.log import configure_process_logging
 from .actions import LangBotToBoxAction
 from .errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxManagedProcessConflictError,
     BoxManagedProcessNotFoundError,
     BoxReadinessError,
@@ -614,6 +615,8 @@ class BoxServerHandler(Handler):
                         spec,
                         action_context=context,
                     )
+            except BoxArtifactNotPreparedError as exc:
+                return ActionResponse.error(f"BoxArtifactNotPreparedError: {exc}")
             except (pydantic.ValidationError, ValueError) as exc:
                 if data.get("e2b_config") is not None:
                     return ActionResponse.error(
@@ -888,6 +891,7 @@ class BoxServerHandler(Handler):
                     "initialized": True,
                     "network_workspace": self._runtime.network_workspace,
                     "directory_archive": True,
+                    "artifact_cache_preflight": True,
                 }
             )
 

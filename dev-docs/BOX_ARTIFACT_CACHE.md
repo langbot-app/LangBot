@@ -31,6 +31,14 @@ at `/opt/langbot-artifacts/<digest>`, then uses the existing backend. Core's
 untrusted execution payloads reject this field; Host orchestration composes it only
 from authorized run pins before each execution. A cached digest is not a capability.
 
+Native execution sends those references directly. Runtime fully validates the
+scoped cache before session acquisition. Only a typed cache-preflight failure,
+guaranteeing that the user command has not started, permits Core to prepare the
+authorized publications and retry once. Warm execution does not read package
+metadata in Core. Generic backend errors, timeouts, cancellation and session
+errors are never replayed. Network INIT must acknowledge this preflight contract;
+the client recognizes its error only from the transport's exact exception prefix.
+
 Archive bytes are limited to 64 MiB. This is separate from the attachment upload
 limit. Backend projection limits still apply, including E2B's 10 MiB per-file
 limit. Tree validation also limits file count and total expanded size. Publication

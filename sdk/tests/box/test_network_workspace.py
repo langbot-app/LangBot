@@ -11,6 +11,7 @@ import pytest
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxCapacityExceededError,
     BoxError,
     BoxRuntimeUnavailableError,
@@ -76,7 +77,34 @@ async def network_runtime(tmp_path, monkeypatch):
         ("network", {"network_workspace": False}, False),
         ("network", {"network_workspace": True}, False),
         ("network", {"network_workspace": True, "directory_archive": False}, False),
-        ("network", {"network_workspace": True, "directory_archive": True}, True),
+        ("network", {"network_workspace": True, "directory_archive": True}, False),
+        (
+            "network",
+            {
+                "network_workspace": True,
+                "directory_archive": True,
+                "artifact_cache_preflight": False,
+            },
+            False,
+        ),
+        (
+            "network",
+            {
+                "network_workspace": True,
+                "directory_archive": True,
+                "artifact_cache_preflight": 1,
+            },
+            False,
+        ),
+        (
+            "network",
+            {
+                "network_workspace": True,
+                "directory_archive": True,
+                "artifact_cache_preflight": True,
+            },
+            True,
+        ),
     ],
 )
 async def test_init_requires_explicit_network_ack(mode, ack, accepted):
@@ -256,7 +284,7 @@ async def test_managed_network_workdir_requires_a_prepared_scoped_artifact(
             assert (await runtime.execute(spec, context)).ok
             assert backend.exec_calls == 1
         elif scenario == "missing":
-            with pytest.raises(ValueError, match="not prepared"):
+            with pytest.raises(BoxArtifactNotPreparedError, match="not prepared"):
                 await runtime.execute(spec, context)
             assert backend.started_specs == []
         else:
@@ -452,7 +480,26 @@ async def test_each_execution_revalidates_cached_bytes_even_with_a_session_pin(
     path.write_bytes(b"changed immutable publication")
     path.chmod(0o444)
     cache.release("fault-injection")
-    executed = backend.exec_calls
-    with pytest.raises(ValueError):
+    executed = list(backend.exec_calls)
+    with pytest.raises(BoxArtifactNotPreparedError):
         await runtime.execute(spec, _CONTEXT)
     assert backend.exec_calls == executed
+
+
+async def test_missing_artifact_is_rejected_before_session_or_backend_work(
+    network_runtime,
+    publication,  # noqa: F811
+    monkeypatch,
+):
+    runtime, backend = network_runtime
+    descriptor, _, _ = publication()
+    get_session = mock.AsyncMock(wraps=runtime._get_or_create_session)
+    monkeypatch.setattr(runtime, "_get_or_create_session", get_session)
+    with pytest.raises(BoxArtifactNotPreparedError):
+        await runtime.execute(
+            _spec(artifact_mounts=[{"content_digest": descriptor.content_digest}]),
+            _CONTEXT,
+        )
+    get_session.assert_not_awaited()
+    assert backend.started_sessions == 0 and backend.exec_calls == []
+    assert runtime._sessions == {} and runtime.artifact_cache._owners == {}

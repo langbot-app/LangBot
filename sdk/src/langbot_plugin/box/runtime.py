@@ -577,12 +577,6 @@ class BoxRuntime:
         info = os.stat(path, follow_symlinks=False)
         return path, info.st_dev, info.st_ino
 
-    @staticmethod
-    def _remove_owned_workspace(owner: tuple[str, int, int]) -> None:
-        from .file_io import remove_owned_workspace
-
-        remove_owned_workspace(owner)
-
     @property
     def admission_policy(self) -> SandboxAdmissionPolicy:
         return self._admission_policy

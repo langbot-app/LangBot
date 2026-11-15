@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from ..artifact import build_tree_manifest, validate_tree_manifest
 from ..entities.io.context import ActionContext
 from ..workspace import workspace_namespace
-from .errors import BoxCapacityExceededError
+from .errors import BoxArtifactNotPreparedError, BoxCapacityExceededError
 from .file_io import _parent_directory
 from .models import ARTIFACT_MOUNT_ROOT, BoxHostMountMode, BoxMountSpec
 
@@ -606,10 +606,15 @@ class ArtifactCache:
                     raise ValueError("Invalid artifact content digest")
                 entry = self._entries.get((namespace, digest))
                 if entry is None:
-                    raise ValueError(
+                    raise BoxArtifactNotPreparedError(
                         "Artifact revision is not prepared for this Workspace"
                     )
-                self._validate_entry(entry)
+                try:
+                    self._validate_entry(entry)
+                except (OSError, ValueError) as exc:
+                    raise BoxArtifactNotPreparedError(
+                        "Artifact revision failed cache validation"
+                    ) from exc
                 entries.append(entry)
             mounts = [
                 BoxMountSpec(

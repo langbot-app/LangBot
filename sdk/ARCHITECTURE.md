@@ -484,8 +484,12 @@ namespace-owned archive transfer. Cache hits still require the trusted current
 Workspace context and admission. `BoxSpec.artifact_mounts` references only digests;
 Runtime resolves them into its own read-only mounts and protects them until session
 cleanup finishes. It does not resolve a Core path or expose its cache host path.
-Core uses this Host-only preparation seam for native Skill execution in explicit
-network mode; draft publication requests `directory_archive=true` through the
+In explicit network mode, Core sends authorized pinned references directly for
+native execution. Runtime cache acquisition verifies them before any user command
+starts. A typed missing/invalid-cache preflight error permits one preparation and
+retry; backend, timeout, cancellation and session failures never permit replay.
+Network INIT explicitly acknowledges this contract. Core still uses the Host-only
+preparation seam for cache recovery. Draft publication requests `directory_archive=true` through the
 existing download/file-chunk protocol. Runtime creates the bounded ZIP in memory,
 with no sandbox snapshot, under the session lease and execution lock. The network
 INIT response acknowledges directory archive support. See

@@ -21,6 +21,7 @@ from langbot_plugin.box.client import (
 )
 from langbot_plugin.box.errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxBackendUnavailableError,
     BoxError,
     BoxManagedProcessConflictError,
@@ -44,6 +45,7 @@ from langbot_plugin.box.models import (
 )
 from langbot_plugin.box.tenancy import namespace_session_id
 from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.errors import ActionCallError, ActionCallTimeoutError
 
 
 @pytest.fixture
@@ -132,6 +134,36 @@ def test_translate_action_error_matches_prefix_anywhere_in_message():
         Exception("ActionCallError: BoxSessionNotFoundError: no such session")
     )
     assert type(err) is BoxSessionNotFoundError
+
+
+@pytest.mark.parametrize(
+    "error,expected",
+    [
+        (
+            ActionCallError("BoxArtifactNotPreparedError: missing"),
+            BoxArtifactNotPreparedError,
+        ),
+        (
+            ActionCallError("BoxError: BoxArtifactNotPreparedError: already executed"),
+            BoxError,
+        ),
+        (BoxError("BoxArtifactNotPreparedError: already executed"), BoxError),
+        (ActionCallTimeoutError("BoxArtifactNotPreparedError: timed out"), BoxError),
+        (RuntimeError("BoxArtifactNotPreparedError: local error"), BoxError),
+    ],
+)
+def test_preflight_error_requires_the_exact_remote_exception(error, expected):
+    assert type(_translate_action_error(error)) is expected
+
+
+@pytest.mark.anyio
+async def test_execute_preserves_the_remote_preflight_error(client, handler):
+    handler.call_action.side_effect = ActionCallError(
+        "BoxArtifactNotPreparedError: missing"
+    )
+    with pytest.raises(BoxArtifactNotPreparedError):
+        await client.execute(BoxSpec(session_id="cold", cmd="echo once"))
+    handler.call_action.assert_awaited_once()
 
 
 # ── _call error handling ──────────────────────────────────────────────

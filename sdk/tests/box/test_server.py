@@ -23,6 +23,7 @@ from langbot_plugin.box import server
 from langbot_plugin.box.actions import LangBotToBoxAction
 from langbot_plugin.box.errors import (
     BoxAdmissionError,
+    BoxArtifactNotPreparedError,
     BoxManagedProcessConflictError,
     BoxManagedProcessNotFoundError,
     BoxSessionNotFoundError,
@@ -945,8 +946,20 @@ async def test_init(handler, mock_runtime):
         "initialized": True,
         "network_workspace": False,
         "directory_archive": True,
+        "artifact_cache_preflight": True,
     }
     mock_runtime.init.assert_called_once_with(config)
+
+
+async def test_exec_preserves_preflight_error_for_the_wire_handler(
+    handler, mock_runtime
+):
+    mock_runtime.execute.side_effect = BoxArtifactNotPreparedError("not prepared")
+    response = await _invoke(
+        handler, LangBotToBoxAction.EXEC, {"session_id": "cold", "cmd": "echo once"}
+    )
+    assert response.code != 0
+    assert response.message == "BoxArtifactNotPreparedError: not prepared"
 
 
 async def test_init_rejects_host_without_secure_control(mock_connection, mock_runtime):

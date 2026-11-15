@@ -11,6 +11,7 @@ from typing import Any
 
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.errors import ActionCallError
 
 from .actions import LangBotToBoxAction
 from .errors import BoxError, BoxRuntimeUnavailableError
@@ -164,6 +165,7 @@ def _translate_action_error(exc: Exception) -> BoxError:
     from .errors import (
         BoxBackendUnavailableError,
         BoxAdmissionError,
+        BoxArtifactNotPreparedError,
         BoxManagedProcessConflictError,
         BoxManagedProcessNotFoundError,
         BoxCapacityExceededError,
@@ -174,6 +176,11 @@ def _translate_action_error(exc: Exception) -> BoxError:
     )
 
     msg = str(exc)
+    # Only this exact remote preflight failure permits replaying an exec.
+    if isinstance(exc, ActionCallError) and exc.message.startswith(
+        "BoxArtifactNotPreparedError:"
+    ):
+        return BoxArtifactNotPreparedError(msg)
     _ERROR_PREFIX_MAP: list[tuple[str, type[BoxError]]] = [
         ("BoxAdmissionError:", BoxAdmissionError),
         ("BoxReadinessError:", BoxReadinessError),
@@ -584,6 +591,7 @@ class ActionRPCBoxClient(BoxRuntimeClient):
             not isinstance(result, dict)
             or result.get("network_workspace") is not True
             or result.get("directory_archive") is not True
+            or result.get("artifact_cache_preflight") is not True
         ):
             raise BoxRuntimeUnavailableError(
                 "Network workspaces require an updated Box Runtime"

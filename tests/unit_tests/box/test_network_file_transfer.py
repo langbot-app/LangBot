@@ -242,6 +242,7 @@ async def network_files(tmp_path, monkeypatch):
                 context=context,
                 acquire_request=acquire_request,
                 output_root=output_root,
+                runtime=runtime,
             )
 
             def reject_host_query_directory(*args, **kwargs):
@@ -359,8 +360,80 @@ async def test_workspace_draft_export_does_not_prepare_skill_packages(network_fi
     archive = await box.service.export_skill_draft(box.query, '/workspace/draft')
     with zipfile.ZipFile(io.BytesIO(archive)) as package:
         assert package.read('SKILL.md') == b'draft'
-    with pytest.raises(AssertionError, match='Unexpected Skill preparation'):
-        await box.service.execute_tool({'command': 'true'}, box.query)
+    assert (await box.service.execute_tool({'command': 'true'}, box.query))['ok']
+
+
+@pytest.mark.asyncio
+async def test_real_rpc_cache_recovery_executes_once_and_never_replays_backend_errors(network_files, monkeypatch):
+    import hashlib
+    import io
+    import stat
+    import zipfile
+
+    from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
+
+    box = network_files
+    body = b'authorized immutable resource\n'
+    manifest = {
+        'algorithm': 'sha256-tree-v1',
+        'files': [
+            {'path': 'README.md', 'size': len(body), 'sha256': hashlib.sha256(body).hexdigest(), 'executable': False}
+        ],
+        'total_bytes': len(body),
+    }
+    revision = (
+        'sha256:'
+        + hashlib.sha256(
+            json.dumps(manifest, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()
+        ).hexdigest()
+    )
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, 'w') as archive:
+        entry = zipfile.ZipInfo('README.md')
+        entry.external_attr = (stat.S_IFREG | 0o644) << 16
+        archive.writestr(entry, body)
+    content = output.getvalue()
+    package = {
+        'revision': revision,
+        'manifest': manifest,
+        'size': len(content),
+        'sha256': hashlib.sha256(content).hexdigest(),
+    }
+    reads = []
+
+    async def get_package(context, name, requested_revision, *, metadata_only=False):
+        assert context.workspace_uuid == box.context.workspace_uuid
+        assert name == 'pinned' and requested_revision == revision
+        reads.append(metadata_only)
+        return package if metadata_only else {**package, 'content': content}
+
+    box.service.ap.skill_repository = SimpleNamespace(get_skill_package=get_package)
+    register_activated_skill(box.query, {'name': 'pinned', 'revision': revision})
+    counter = '/workspace/preflight-counter'
+    command = "printf 'run\\n' >> " + counter + '; cat /opt/langbot-artifacts/' + revision[7:] + '/README.md'
+    assert await _command(box, command) == body.decode().rstrip('\n')
+    assert reads == [True, False]
+    assert await box.client.download_file(box.query._box_binding.session_id, counter, box.action_context) == b'run\n'
+    assert await _command(box, command) == body.decode().rstrip('\n')
+    assert reads == [True, False], 'Warm execution must not read publication metadata or bytes'
+    assert (
+        await box.client.download_file(box.query._box_binding.session_id, counter, box.action_context) == b'run\nrun\n'
+    )
+
+    session = box.runtime._sessions[namespace_session_id(box.action_context, box.query._box_binding.session_id)]
+    original_exec = session.backend.exec
+    executed = []
+
+    async def fail_after_execution(*args, **kwargs):
+        result = await original_exec(*args, **kwargs)
+        executed.append(result.stdout)
+        raise BoxError('Backend command mentioned BoxArtifactNotPreparedError: do not replay')
+
+    monkeypatch.setattr(session.backend, 'exec', fail_after_execution)
+    with pytest.raises(BoxError):
+        await box.service.execute_tool({'command': 'printf actual-side-effect'}, box.query)
+    assert executed == ['actual-side-effect']
+    assert reads == [True, False]
 
 
 @pytest.mark.asyncio

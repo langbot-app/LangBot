@@ -127,11 +127,14 @@ class BoxService:
         self.file_transfer_mode = _get_box_config(ap).get('file_transfer_mode', 'legacy')
         if self.file_transfer_mode not in ('legacy', 'network'):
             raise BoxValidationError('box.file_transfer_mode must be legacy or network')
-        if self.file_transfer_mode == 'network' and any(
-            not callable(getattr(client, name, None))
-            for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files')
-        ):
-            raise BoxValidationError('Network Skill execution requires an updated Core and Box SDK')
+        if self.file_transfer_mode == 'network':
+            from langbot_plugin.box import errors as sdk_box_errors
+
+            if not hasattr(sdk_box_errors, 'BoxArtifactNotPreparedError') or any(
+                not callable(getattr(client, name, None))
+                for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files')
+            ):
+                raise BoxValidationError('Network Skill execution requires an updated Core and Box SDK')
         self.output_limit_chars = output_limit_chars
         self.host_root = self._load_host_root()
         self.allowed_mount_roots = self._load_allowed_mount_roots()
@@ -748,7 +751,16 @@ class BoxService:
         spec_payload.pop('backend', None)
         spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
-        artifact_mounts = await self.prepare_execution_artifacts(query, execution_context) if prepare_artifacts else []
+        artifact_mounts = []
+        if prepare_artifacts and self.file_transfer_mode == 'network':
+            from ..provider.tools.loaders.skill import get_activated_skills
+
+            revisions = dict.fromkeys(
+                str(skill.get('revision') or '') for skill in get_activated_skills(query).values()
+            )
+            if '' in revisions:
+                raise BoxValidationError('Runtime artifacts require an explicit pinned revision')
+            artifact_mounts = [{'content_digest': revision} for revision in revisions]
         spec_payload = self._managed_policy_payload(
             execution_context,
             spec_payload,
@@ -784,10 +796,20 @@ class BoxService:
             raise
         telemetry_features.increment(self.ap, 'sandbox', 'execs', query=query)
         try:
-            result = await self.client.execute(
-                spec,
-                action_context=self._action_context(execution_context),
-            )
+            try:
+                result = await self.client.execute(
+                    spec,
+                    action_context=self._action_context(execution_context),
+                )
+            except BoxError as exc:
+                if not artifact_mounts:
+                    raise
+                from langbot_plugin.box.errors import BoxArtifactNotPreparedError
+
+                if not isinstance(exc, BoxArtifactNotPreparedError):
+                    raise
+                await self.prepare_execution_artifacts(query, execution_context)
+                result = await self.client.execute(spec, action_context=self._action_context(execution_context))
             # A placement may be cut over while a long-running sandbox call is
             # in flight.  Never accept a result produced by the superseded
             # generation.  Runtime-side generation fencing prevents new work;

@@ -12,7 +12,10 @@ import zipfile
 import pytest
 
 from langbot_plugin.box.artifact_cache import ArtifactCache
-from langbot_plugin.box.errors import BoxCapacityExceededError
+from langbot_plugin.box.errors import (
+    BoxArtifactNotPreparedError,
+    BoxCapacityExceededError,
+)
 from langbot_plugin.box.models import BoxArtifactDescriptor
 from langbot_plugin.entities.io.context import ActionContext
 
@@ -70,7 +73,7 @@ def test_publish_is_verified_read_only_and_workspace_scoped(tmp_path, publicatio
     assert cache.probe(_CONTEXT, descriptor)
     foreign = _CONTEXT.model_copy(update={"workspace_uuid": "workspace-b"})
     assert not cache.probe(foreign, descriptor)
-    with pytest.raises(ValueError, match="not prepared"):
+    with pytest.raises(BoxArtifactNotPreparedError, match="not prepared"):
         cache.acquire(foreign, [descriptor.content_digest], "foreign-session")
     (mount,) = cache.acquire(_CONTEXT, [descriptor.content_digest], "session")
     assert mount.mount_path == "/opt/langbot-artifacts/" + descriptor.content_digest[7:]
@@ -82,6 +85,59 @@ def test_publish_is_verified_read_only_and_workspace_scoped(tmp_path, publicatio
         )
     assert stat.S_IMODE(Path(mount.host_path).stat().st_mode) == 0o555
     cache.release("session")
+
+
+@pytest.mark.parametrize("failure", ["missing", "tampered"])
+def test_preflight_failure_does_not_pin_any_part_of_a_batch(
+    tmp_path, publication, failure
+):
+    first, first_bytes, _ = publication(b"first")
+    second, second_bytes, _ = publication(b"second")
+    cache = ArtifactCache(tmp_path / "cache")
+    cache.prepare(_CONTEXT, first, first_bytes)
+    if failure == "tampered":
+        cache.prepare(_CONTEXT, second, second_bytes)
+        entry = next(
+            entry
+            for entry in cache._entries.values()
+            if entry.descriptor["content_digest"] == second.content_digest
+        )
+        path = Path(entry.path, "package/README.md")
+        path.chmod(0o644)
+        path.write_bytes(b"corrupted")
+        path.chmod(0o444)
+    before = {
+        key: (entry.protected, set(entry.owners), entry.last_used)
+        for key, entry in cache._entries.items()
+    }
+    with pytest.raises(BoxArtifactNotPreparedError):
+        cache.acquire(
+            _CONTEXT, [first.content_digest, second.content_digest], "unexecuted"
+        )
+    assert cache._owners == {}
+    assert before == {
+        key: (entry.protected, set(entry.owners), entry.last_used)
+        for key, entry in cache._entries.items()
+    }
+
+
+def test_invalid_arguments_and_pin_write_failure_are_not_preflight_misses(
+    tmp_path, publication, monkeypatch
+):
+    descriptor, content, _ = publication()
+    cache = ArtifactCache(tmp_path / "cache")
+    cache.prepare(_CONTEXT, descriptor, content)
+    with pytest.raises(ValueError, match="bounded session owner"):
+        cache.acquire(_CONTEXT, [descriptor.content_digest], "")
+    with pytest.raises(ValueError, match="Invalid artifact content digest"):
+        cache.acquire(_CONTEXT, ["invalid"], "session")
+
+    def cannot_protect(*args):
+        raise PermissionError("pin state cannot be written")
+
+    monkeypatch.setattr(cache, "_write_protected", cannot_protect)
+    with pytest.raises(PermissionError, match="pin state cannot be written"):
+        cache.acquire(_CONTEXT, [descriptor.content_digest], "session")
 
 
 @pytest.mark.parametrize("capacity", ["bytes", "entries"])
