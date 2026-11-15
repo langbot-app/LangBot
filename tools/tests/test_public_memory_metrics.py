@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from tools.evaluation.public_memory_metrics import evaluate_payload, metrics_at_k
+from tools.evaluation.public_memory_metrics import answer_metrics, evaluate_payload, metrics_at_k
 
 
 class PublicMemoryMetricsTests(unittest.TestCase):
@@ -38,6 +38,25 @@ class PublicMemoryMetricsTests(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["hit@1"], 0.0)
         self.assertEqual(result["summary"]["mrr@1"], 0.0)
+
+    def test_answer_em_f1_and_judge_are_reported(self) -> None:
+        row = {
+            "reference_answer": "7 May 2023",
+            "answer": "May 7, 2023",
+            "judge": {"correct": True},
+        }
+        metrics = answer_metrics(row)
+        self.assertIsNotNone(metrics)
+        self.assertEqual(metrics["exact_match"], 0.0)
+        self.assertEqual(metrics["token_f1"], 1.0)
+        self.assertEqual(metrics["judge_correct"], 1.0)
+
+        result = evaluate_payload(
+            {"results": [{"id": "q1", "gold_evidence_ids": ["D1"], "retrieved_ids": ["D1"], **row}]},
+            k_values=(1,),
+        )
+        self.assertEqual(result["answer_count"], 1)
+        self.assertEqual(result["answer_summary"]["judge_correct"], 1.0)
 
 
 if __name__ == "__main__":

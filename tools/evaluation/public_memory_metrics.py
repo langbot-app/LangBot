@@ -12,6 +12,8 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
+import string
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -120,6 +122,56 @@ def mean_metrics(rows: Sequence[Mapping[str, float]]) -> dict[str, float]:
     }
 
 
+def normalize_answer(value: Any) -> str:
+    """Normalize a short answer for deterministic EM and token F1."""
+
+    text = str(value or "").lower()
+    text = text.translate(str.maketrans("", "", string.punctuation))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def token_f1(prediction: Any, reference: Any) -> float:
+    prediction_tokens = normalize_answer(prediction).split()
+    reference_tokens = normalize_answer(reference).split()
+    if not prediction_tokens or not reference_tokens:
+        return 1.0 if prediction_tokens == reference_tokens else 0.0
+    common = len(set(prediction_tokens) & set(reference_tokens))
+    if not common:
+        return 0.0
+    precision = common / len(prediction_tokens)
+    recall = common / len(reference_tokens)
+    return 2 * precision * recall / (precision + recall)
+
+
+def _answer_references(row: Mapping[str, Any]) -> list[Any]:
+    value = _first_value(row, ("reference_answers", "gold_answers", "reference_answer", "answer"))
+    if isinstance(value, list):
+        return value
+    return [value] if value is not None else []
+
+
+def answer_metrics(row: Mapping[str, Any]) -> dict[str, float] | None:
+    """Compute answer EM/F1 and optional judge label for one row."""
+
+    prediction = _first_value(row, ("answer", "generated_answer", "prediction"))
+    references = _answer_references(row)
+    if prediction is None or not references:
+        return None
+    normalized_prediction = normalize_answer(prediction)
+    exact = max(float(normalized_prediction == normalize_answer(reference)) for reference in references)
+    f1 = max(token_f1(prediction, reference) for reference in references)
+    result: dict[str, float] = {"exact_match": exact, "token_f1": f1}
+    judge = row.get("judge")
+    if isinstance(judge, Mapping):
+        label = judge.get("correct", judge.get("label"))
+        if isinstance(label, str):
+            result["judge_correct"] = 1.0 if label.lower() in {"true", "correct", "pass"} else 0.0
+        elif isinstance(label, bool):
+            result["judge_correct"] = float(label)
+    return result
+
+
 def _first_value(row: Mapping[str, Any], names: Sequence[str]) -> Any:
     for name in names:
         value = row.get(name)
@@ -214,11 +266,15 @@ def evaluate_payload(
     rows = _rows_from_payload(payload)
     per_query: list[dict[str, Any]] = []
     metric_rows: list[dict[str, float]] = []
+    answer_rows: list[dict[str, float]] = []
     for index, row in enumerate(rows, 1):
         relevant = _row_relevant_ids(row, granularity=granularity)
         retrieved = _row_retrieved_ids(row, granularity=granularity)
         metrics = evaluate_query(relevant, retrieved, k_values)
         metric_rows.append(metrics)
+        answer_row = answer_metrics(row)
+        if answer_row is not None:
+            answer_rows.append(answer_row)
         per_query.append(
             {
                 "id": row.get("id", row.get("index", index)),
@@ -226,10 +282,11 @@ def evaluate_payload(
                 "gold_evidence_ids": relevant,
                 "retrieved_ids": retrieved,
                 "metrics": metrics,
+                **({"answer_metrics": answer_row} if answer_row is not None else {}),
             }
         )
 
-    return {
+    result = {
         "schema": SCHEMA,
         "metric_granularity": granularity,
         "k_values": list(k_values),
@@ -237,6 +294,10 @@ def evaluate_payload(
         "queries": per_query,
         "summary": mean_metrics(metric_rows),
     }
+    if answer_rows:
+        result["answer_count"] = len(answer_rows)
+        result["answer_summary"] = mean_metrics(answer_rows)
+    return result
 
 
 def _parser() -> argparse.ArgumentParser:

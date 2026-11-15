@@ -47,9 +47,12 @@ the original ranked order and removes duplicate IDs before calculating metrics.
 ## Metrics
 
 For each cutoff `k`, the scorer reports hit rate, precision, recall, MRR, and
-binary nDCG. Means are calculated over every question, including zero-result
-and failed rows. This keeps denominator handling explicit and prevents a
-successful subset from looking like an overall score.
+binary nDCG. When a row contains a generated answer and one or more reference
+answers, it also reports answer exact match and token F1. A boolean or
+`CORRECT`/`WRONG` judge label is preserved as `judge_correct`. Means are
+calculated over every question for retrieval and every answer-bearing row for
+answer metrics. Zero-result and failed retrieval rows stay in the retrieval
+denominator.
 
 ```bash
 python -m tools.evaluation.public_memory_metrics \
