@@ -47,8 +47,10 @@ from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
 from tests.integration.skill import test_persistent_skill_replicas as persistence_tests
 
-if not hasattr(box_models, 'BoxArtifactDescriptor'):
-    pytest.skip('Runtime artifact caching requires the in-tree or updated SDK', allow_module_level=True)
+if not hasattr(box_models, 'BoxArtifactDescriptor') or not callable(
+    getattr(ActionRPCBoxClient, 'cleanup_run_files', None)
+):
+    pytest.skip('Network artifact transport requires the in-tree or updated workspace SDK', allow_module_level=True)
 
 BoxArtifactDescriptor = box_models.BoxArtifactDescriptor
 E2BConnectionConfig = box_models.E2BConnectionConfig
@@ -97,6 +99,7 @@ async def artifact_box(replicas, tmp_path, monkeypatch):
         monkeypatch.setenv(PLUGIN_FILE_STORAGE_DIR_ENV, str(transfers))
         config = {
             'backend': _BACKEND,
+            'file_transfer_mode': 'network',
             'limits': {'max_sessions': 1, 'max_artifact_cache_bytes': 64 * 1024 * 1024, 'artifact_cache_ttl_sec': 1},
             'local': {'host_root': str(runtime_root / 'workspaces'), 'allowed_mount_roots': [str(runtime_root)]},
         }
@@ -195,6 +198,7 @@ async def artifact_box(replicas, tmp_path, monkeypatch):
                 handler_task = asyncio.create_task(handler.run())
                 client = ActionRPCBoxClient(logger)
                 client.set_handler(handler)
+                await client.init({'file_transfer_mode': 'network'})
                 core.app.instance_config.data['box'] = {
                     'enabled': True,
                     'file_transfer_mode': 'network',
