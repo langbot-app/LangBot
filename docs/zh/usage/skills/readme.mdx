@@ -53,7 +53,7 @@ storage:
         backend: database
 ```
 
-使用配套的 Core 和 Box Runtime 时，可显式设置 `box.file_transfer_mode: network`：Core 按运行固定版本传输技能包，Box 校验后缓存并只读挂载；Core 与 Box 无需共享技能或工作目录。数据库模式下，激活和执行不再创建 `skills.root/.database-cache`，资源读取只使用请求期间的临时目录。`register_skill` 通过网络取回沙箱草稿，校验后一次发布；新版本不会改变已开始运行的版本。运行结束清理该运行的输入、输出和临时快照，草稿保留到 Box 会话结束。Box 会话过期或删除后，其工作目录也会删除；需要保留的文件请先导出。默认仍为 `legacy`，旧共享挂载和缓存行为保留，不自动迁移数据。源码开发需同时安装仓库 SDK，旧 Runtime 会拒绝网络工作区配置。
+使用配套的 Core 和 Box Runtime 时，可显式设置 `box.file_transfer_mode: network`：Core 按运行固定版本传输技能包，Box 校验后缓存并只读挂载；Core 与 Box 无需共享技能或工作目录。数据库模式下，激活和执行不再创建 `skills.root/.database-cache`，Agent 的资源读取直接校验版本包，不需要恢复本地目录。`register_skill` 通过网络取回沙箱草稿，校验后一次发布；新版本不会改变已开始运行的版本。运行结束清理该运行的输入、输出和临时快照，草稿保留到 Box 会话结束。Box 会话过期或删除后，其工作目录也会删除；需要保留的文件请先导出。默认仍为 `legacy`，旧共享挂载和缓存行为保留，不自动迁移数据。源码开发需同时安装仓库 SDK，旧 Runtime 会拒绝网络工作区配置。
 
 使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应内容无法读取。修改凭据后重启 Core。
 

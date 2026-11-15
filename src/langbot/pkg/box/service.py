@@ -504,7 +504,9 @@ class BoxService:
 
         if not revision:
             raise BoxValidationError('Runtime artifacts require an explicit pinned revision')
-        package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
+        package = await self.ap.skill_repository.get_skill_package(
+            execution_context, name, revision, metadata_only=True
+        )
         descriptor = BoxArtifactDescriptor(
             content_digest=package['revision'],
             manifest=package['manifest'],
@@ -513,7 +515,16 @@ class BoxService:
         )
         if descriptor.content_digest != revision:
             raise BoxValidationError('Skill package does not match the pinned revision')
-        receipt = await prepare(descriptor, package['content'], action_context=self._action_context(execution_context))
+        receipt = await prepare(
+            descriptor, package.get('content'), action_context=self._action_context(execution_context)
+        )
+        if receipt.get('ready') is not True and 'content' not in package:
+            content_package = await self.ap.skill_repository.get_skill_package(execution_context, name, revision)
+            if any(content_package[key] != package[key] for key in ('revision', 'manifest', 'size', 'sha256')):
+                raise BoxValidationError('Skill package metadata changed during artifact preparation')
+            receipt = await prepare(
+                descriptor, content_package['content'], action_context=self._action_context(execution_context)
+            )
         await self._validated_execution_context(execution_context)
         expected_mount = f'{ARTIFACT_MOUNT_ROOT}/{revision[7:]}'
         if (
@@ -717,6 +728,7 @@ class BoxService:
         *,
         skip_host_mount_validation: bool = False,
         trusted_read_only_mounts: list[dict] | None = None,
+        prepare_artifacts: bool = True,
     ) -> BoxExecutionResult:
         """Execute within the bound Workspace and preserve the raw result for file transfers."""
         if not self._available:
@@ -736,7 +748,7 @@ class BoxService:
         spec_payload.pop('backend', None)
         spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
-        artifact_mounts = await self.prepare_execution_artifacts(query, execution_context)
+        artifact_mounts = await self.prepare_execution_artifacts(query, execution_context) if prepare_artifacts else []
         spec_payload = self._managed_policy_payload(
             execution_context,
             spec_payload,
@@ -1090,7 +1102,7 @@ class BoxService:
                 await self._cleanup_network_script(query, script, 'incomplete attachment batch')
             raise
 
-    async def _execute_file_script(self, query, script):
+    async def _execute_file_script(self, query, script, *, prepare_artifacts: bool = True):
         return await self._execute_spec_payload_result(
             {
                 'cmd': f"python3 - <<'LBPY'\n{script}\nLBPY",
@@ -1098,10 +1110,11 @@ class BoxService:
                 'session_id': self.resolve_box_session_id(query),
             },
             query,
+            prepare_artifacts=prepare_artifacts,
         )
 
     async def _cleanup_network_script(self, query, script, subject):
-        cleanup = asyncio.create_task(self._execute_file_script(query, script))
+        cleanup = asyncio.create_task(self._execute_file_script(query, script, prepare_artifacts=False))
         interrupted = False
         while not cleanup.done():
             try:
@@ -1257,7 +1270,9 @@ class BoxService:
             + uuid.uuid4().hex
         )
         try:
-            preparation = asyncio.create_task(self._execute_file_script(query, skill_draft_script(sandbox_path, root)))
+            preparation = asyncio.create_task(
+                self._execute_file_script(query, skill_draft_script(sandbox_path, root), prepare_artifacts=False)
+            )
             try:
                 result = await asyncio.shield(preparation)
             except asyncio.CancelledError:

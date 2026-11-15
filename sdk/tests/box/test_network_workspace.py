@@ -323,6 +323,42 @@ async def test_runtime_enforces_quota_on_its_own_workspace(network_runtime, boun
     assert spec.session_id not in runtime._sessions
 
 
+async def test_empty_run_cleanup_keeps_other_runs_without_starting_a_command(
+    network_runtime,
+):
+    runtime, backend = network_runtime
+    spec = _spec()
+    await runtime.create_session(spec, _CONTEXT)
+    workspace = Path(runtime._sessions[spec.session_id].info.host_path)
+    backend.exec = mock.AsyncMock(wraps=backend.exec)
+    await runtime.cleanup_run_files(spec.session_id, "current", _CONTEXT)
+    for directory in ("inbox", "outbox", ".langbot-snapshots"):
+        (workspace / directory / "other").mkdir(parents=True)
+        (workspace / directory / "other" / "keep").write_text("other")
+    await runtime.cleanup_run_files(spec.session_id, "current", _CONTEXT)
+    backend.exec.assert_not_called()
+    assert all(
+        (workspace / name / "other" / "keep").read_text() == "other"
+        for name in ("inbox", "outbox", ".langbot-snapshots")
+    )
+
+
+def test_uncertain_run_paths_require_cleanup_without_following_links(tmp_path):
+    from langbot_plugin.box.file_io import run_files_present
+
+    root, outside = tmp_path / "workspace", tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (outside / "current").write_text("keep")
+    info = root.stat()
+    owner = (str(root), info.st_dev, info.st_ino)
+    assert not run_files_present(owner, "current")
+    assert run_files_present((str(root), info.st_dev, info.st_ino + 1), "current")
+    (root / "inbox").symlink_to(outside, target_is_directory=True)
+    assert run_files_present(owner, "current")
+    assert (outside / "current").read_text() == "keep"
+
+
 async def test_run_cleanup_uses_real_sandbox_and_cannot_resurrect_deleted_session(
     tmp_path, monkeypatch
 ):

@@ -41,8 +41,10 @@ restore the exact authorized publication under
 `skills.root/.database-cache/tenants/<namespace>`. This directory is disposable,
 but callers must not remove it while execution is using it. Legacy catalogs live
 outside this cache and are not imported or modified by enabling database mode.
-Explicit network mode returns path-free metadata, reads resources in disposable
-request-scoped staging, and transfers the pinned package to Runtime's own cache.
+Explicit network mode returns path-free metadata and reads resources directly
+from the verified archive without restoring a tree. Runtime cache probes use
+scoped version/manifest/size/digest metadata; archive bytes are fetched only on a
+miss. Both hits and misses retain placement and sandbox admission checks.
 
 `GET /api/v1/skills/<name>/package?revision=<revision>` returns a ZIP with its
 revision and byte digest headers. Authentication and Workspace resource-read

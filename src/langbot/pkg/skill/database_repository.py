@@ -94,19 +94,24 @@ class DatabaseSkillRepository:
         result.update(skill)
         return result
 
-    async def get_package(self, context, name: str, revision: str | None = None) -> dict:
+    async def get_package(
+        self, context, name: str, revision: str | None = None, *, metadata_only: bool = False
+    ) -> dict:
         record = await self._record(context, name, revision)
         if record is None:
             raise ValueError(f'Skill "{name}" not found')
-        content = await self._archive(context, record)
-        return {
-            'content': content,
+        package = {
             'revision': record['skill']['revision'],
             'manifest': record['manifest'],
-            'sha256': hashlib.sha256(content).hexdigest(),
-            'size': len(content),
             'filename': f'{record["skill"]["name"]}.zip',
         }
+        if metadata_only:
+            metadata = await self.content.metadata(context, record['content_ref'])
+            package.update(sha256=metadata['digest'], size=metadata['size'])
+        else:
+            content = await self._archive(context, record)
+            package.update(content=content, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
+        return package
 
     async def _import_zip(self, context, file_bytes: bytes, data: dict, *, base_revision: str | None) -> dict:
         with tempfile.TemporaryDirectory(prefix='langbot-skill-draft-') as temporary:
@@ -257,6 +262,15 @@ class DatabaseSkillRepository:
                 raise ValueError(f'Skill "{args[0]}" not found')
             if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
                 archive = await self._archive(context, record)
+                if method in {'list_skill_resources', 'read_skill_resource'}:
+                    read_publication = (
+                        SkillStore.list_publication_resources
+                        if method == 'list_skill_resources'
+                        else SkillStore.read_publication_resource
+                    )
+                    return await run_blocking_atomic(
+                        read_publication, record['skill'], record['manifest'], archive, *args[1:], **kwargs
+                    )
 
                 def read_resource():
                     with tempfile.TemporaryDirectory(prefix='langbot-skill-read-') as temporary:

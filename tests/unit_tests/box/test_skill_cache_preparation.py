@@ -74,9 +74,93 @@ async def test_prepare_reads_the_authoritative_pin_and_validates_receipt(tmp_pat
     else:
         with pytest.raises(BoxValidationError, match='receipt does not match'):
             await box.prepare_skill_artifact(_CONTEXT, 'pinned', revision)
-    box.ap.skill_repository.get_skill_package.assert_awaited_with(_CONTEXT, 'pinned', revision)
+    box.ap.skill_repository.get_skill_package.assert_awaited_with(_CONTEXT, 'pinned', revision, metadata_only=True)
     descriptor, transferred = client.prepare_artifact.await_args.args
     assert descriptor.content_digest == revision
     assert descriptor.manifest == manifest
     assert transferred == content
     assert client.prepare_artifact.await_args.kwargs['action_context'].workspace_uuid == _CONTEXT.workspace_uuid
+
+
+def package_and_receipt():
+    manifest = {'algorithm': 'sha256-tree-v1', 'files': [], 'total_bytes': 0}
+    revision = (
+        'sha256:'
+        + hashlib.sha256(
+            json.dumps(manifest, ensure_ascii=False, separators=(',', ':'), sort_keys=True).encode()
+        ).hexdigest()
+    )
+    content = b'archive bytes'
+    package = {
+        'revision': revision,
+        'manifest': manifest,
+        'content': content,
+        'size': len(content),
+        'sha256': hashlib.sha256(content).hexdigest(),
+    }
+    receipt = {'ready': True, 'content_digest': revision, 'mount_path': '/opt/langbot-artifacts/' + revision[7:]}
+    return package, receipt
+
+
+@pytest.mark.asyncio
+async def test_warm_artifact_hit_never_reads_the_archive(tmp_path):
+    box, client = service(tmp_path)
+    package, receipt = package_and_receipt()
+    metadata = {key: value for key, value in package.items() if key != 'content'}
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(return_value=metadata))
+    client.prepare_artifact.return_value = receipt
+    assert await box.prepare_skill_artifact(_CONTEXT, 'pinned', package['revision']) == receipt
+    box.ap.skill_repository.get_skill_package.assert_awaited_once_with(
+        _CONTEXT, 'pinned', package['revision'], metadata_only=True
+    )
+    assert client.prepare_artifact.await_args.args[1] is None
+
+
+@pytest.mark.asyncio
+async def test_artifact_miss_reads_and_transfers_the_same_pinned_archive(tmp_path):
+    box, client = service(tmp_path)
+    package, receipt = package_and_receipt()
+    metadata = {key: value for key, value in package.items() if key != 'content'}
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(side_effect=[metadata, package]))
+    client.prepare_artifact.side_effect = [{**receipt, 'ready': False}, receipt]
+    assert await box.prepare_skill_artifact(_CONTEXT, 'pinned', package['revision']) == receipt
+    calls = box.ap.skill_repository.get_skill_package.await_args_list
+    assert calls[0].kwargs == {'metadata_only': True}
+    assert calls[1].args == (_CONTEXT, 'pinned', package['revision']) and not calls[1].kwargs
+    first, second = client.prepare_artifact.await_args_list
+    assert first.args[1] is None and second.args[1] == package['content']
+    assert first.args[0] == second.args[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('changed', ['revision', 'manifest', 'size', 'sha256'])
+async def test_artifact_miss_rejects_changed_publication_metadata(tmp_path, changed):
+    box, client = service(tmp_path)
+    package, receipt = package_and_receipt()
+    metadata = {key: value for key, value in package.items() if key != 'content'}
+    different = {
+        'revision': 'sha256:' + '0' * 64,
+        'manifest': {**package['manifest'], 'total_bytes': 1},
+        'size': package['size'] + 1,
+        'sha256': '0' * 64,
+    }
+    box.ap.skill_repository = SimpleNamespace(
+        get_skill_package=AsyncMock(side_effect=[metadata, {**package, changed: different[changed]}])
+    )
+    client.prepare_artifact.return_value = {**receipt, 'ready': False}
+    with pytest.raises(BoxValidationError, match='metadata changed'):
+        await box.prepare_skill_artifact(_CONTEXT, 'pinned', package['revision'])
+    client.prepare_artifact.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_warm_artifact_hit_still_revalidates_the_generation(tmp_path):
+    box, client = service(tmp_path)
+    package, receipt = package_and_receipt()
+    metadata = {key: value for key, value in package.items() if key != 'content'}
+    box.ap.skill_repository = SimpleNamespace(get_skill_package=AsyncMock(return_value=metadata))
+    box._validated_execution_context = AsyncMock(side_effect=[_CONTEXT, BoxValidationError('stale placement')])
+    client.prepare_artifact.return_value = receipt
+    with pytest.raises(BoxValidationError, match='stale placement'):
+        await box.prepare_skill_artifact(_CONTEXT, 'pinned', package['revision'])
+    client.prepare_artifact.assert_awaited_once()

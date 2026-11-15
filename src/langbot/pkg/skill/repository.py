@@ -159,12 +159,15 @@ class SkillRepository:
     async def create_skill(self, context: TenantContext, skill: dict) -> dict:
         return await self._call(context, 'create_skill', skill)
 
-    async def get_skill_package(self, context: TenantContext, name: str, revision: str | None = None) -> dict:
+    async def get_skill_package(
+        self, context: TenantContext, name: str, revision: str | None = None, *, metadata_only: bool = False
+    ) -> dict:
         execution_context = await self._validated_execution_context(context)
         if self._database is not None:
-            return await self._database.get_package(execution_context, name, revision)
+            return await self._database.get_package(execution_context, name, revision, metadata_only=metadata_only)
         if not callable(getattr(self._store, 'export_skill_publication', None)):
             raise ValueError('Skill package downloads require a compatible SDK; update Core and SDK together')
+        # Filesystem metadata requires an archive export; retain its bytes for a cold miss.
         publication = await self._call(execution_context, 'export_skill_publication', name, revision)
         content = publication['file_bytes']
         return {

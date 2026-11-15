@@ -345,6 +345,25 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
 
 
 @pytest.mark.asyncio
+async def test_workspace_draft_export_does_not_prepare_skill_packages(network_files, monkeypatch):
+    import io
+    import zipfile
+
+    box = network_files
+    await _command(box, 'mkdir -p /workspace/draft && printf draft > /workspace/draft/SKILL.md')
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError('Unexpected Skill preparation')
+
+    monkeypatch.setattr(box.service, 'prepare_execution_artifacts', forbidden)
+    archive = await box.service.export_skill_draft(box.query, '/workspace/draft')
+    with zipfile.ZipFile(io.BytesIO(archive)) as package:
+        assert package.read('SKILL.md') == b'draft'
+    with pytest.raises(AssertionError, match='Unexpected Skill preparation'):
+        await box.service.execute_tool({'command': 'true'}, box.query)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('failed_import', [False, True])
 async def test_run_cleanup_removes_exact_import_scopes_and_keeps_other_runs(network_files, monkeypatch, failed_import):
     box = network_files

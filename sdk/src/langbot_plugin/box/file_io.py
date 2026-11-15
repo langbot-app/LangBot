@@ -96,6 +96,33 @@ finally:
 """
 
 
+def run_files_present(owner: tuple[str, int, int], io_scope: str) -> bool:
+    """Check one run without following links; uncertainty requires sandbox cleanup."""
+    root, device, inode = owner
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    try:
+        with _parent_directory(root, "unused", create=False) as (root_fd, _name):
+            info = os.fstat(root_fd)
+            if (info.st_dev, info.st_ino) != (device, inode):
+                return True
+            for parent in ("inbox", "outbox", ".langbot-snapshots"):
+                try:
+                    directory = os.open(parent, flags, dir_fd=root_fd)
+                except FileNotFoundError:
+                    continue
+                try:
+                    try:
+                        os.stat(io_scope, dir_fd=directory, follow_symlinks=False)
+                    except FileNotFoundError:
+                        continue
+                    return True
+                finally:
+                    os.close(directory)
+    except OSError:
+        return True
+    return False
+
+
 def workspace_relative_path(mount_path: str, path: str) -> str:
     for value in (mount_path, path):
         if (

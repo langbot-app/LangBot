@@ -13,9 +13,10 @@ publication to this protocol; legacy mode retains its shared-path behavior.
 `BoxService.prepare_skill_artifact(context, name, revision)` is an internal Host
 API for an already-authorized pinned Skill. Its caller owns run/resource grants;
 this method does not add a plugin, MCP, assistant or HTTP operation. It checks the
-current Workspace placement and sandbox admission, reads that exact publication
-from the repository on every call, and validates the Runtime receipt. Database
-package reads supply their persisted manifest without rebuilding a Core cache.
+current Workspace placement and sandbox admission, checks the exact publication
+metadata on every call, and validates the Runtime receipt. Database probes use
+persisted manifest, size and archive digest without reading the body. Only a miss
+fetches archive bytes; neither path rebuilds a Core cache.
 
 `BoxArtifactDescriptor` contains `content_digest`, `manifest`, `archive_size` and
 `archive_sha256`. `ActionRPCBoxClient.prepare_artifact` first probes the Runtime;

@@ -1,9 +1,12 @@
 """Real database transactions for persistent content and scoped aliases."""
 
 import asyncio
+from dataclasses import replace
 import hashlib
+import json
 import logging
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 import sqlalchemy as sa
@@ -14,6 +17,7 @@ from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import TenantScopeRequiredError
 from langbot.pkg.storage.mgr import StorageMgr
+from langbot.pkg.api.http.authz import WorkspaceRequiredError
 
 
 WORKSPACE = '00000000-0000-0000-0000-000000000001'
@@ -89,6 +93,86 @@ async def test_content_checks_read_limits_and_digest(storage):
         await uow.execute(sa.update(ContentObject).where(ContentObject.ref == ref).values(value=b'changed'))
     with pytest.raises(ValueError, match='digest'):
         await store.get(context(), ref)
+
+
+@pytest.mark.asyncio
+async def test_content_metadata_is_scoped_and_does_not_load_the_body(storage, monkeypatch):
+    store = storage.content_store
+    body = b'x' * (2 * 1024 * 1024)
+    ref = await store.put(context(), owner_type='skill', owner='packet', key='revision', value=body)
+    monkeypatch.setattr(store, '_read', AsyncMock(side_effect=AssertionError('metadata loaded the content body')))
+    assert await store.metadata(context(), ref) == {'size': len(body), 'digest': hashlib.sha256(body).hexdigest()}
+    assert await store.size(context(), ref) == len(body)
+    with pytest.raises(FileNotFoundError):
+        await store.metadata(context(OTHER), ref)
+    with pytest.raises(FileNotFoundError):
+        await store.metadata(context(), 'invalid-ref')
+    with pytest.raises(WorkspaceRequiredError):
+        await store.metadata(replace(context(), placement_generation=2), ref)
+    store._read.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_s3_metadata_does_not_contact_the_source_backend(storage, monkeypatch):
+    store = storage.content_store
+    provider = SimpleNamespace(save=AsyncMock(), delete=AsyncMock())
+    monkeypatch.setattr(store, '_s3', AsyncMock(return_value=(provider, {'key': 'archive-location'})))
+    storage.ap.instance_config.data['storage']['content'] = {'backend': 'archive'}
+    ref = await store.put(context(), owner_type='skill', owner='packet', key='revision', value=b'archive')
+    store._s3.reset_mock()
+    store._s3.side_effect = RuntimeError('source backend unavailable')
+    assert await store.metadata(context(), ref) == {'size': 7, 'digest': hashlib.sha256(b'archive').hexdigest()}
+    store._s3.assert_not_awaited()
+    with pytest.raises(RuntimeError, match='source backend unavailable'):
+        await store.get(context(), ref)
+
+
+@pytest.mark.asyncio
+async def test_database_package_metadata_retains_revision_scope_without_archive_io(storage, monkeypatch):
+    from langbot.pkg.entity.persistence.skill import SkillVersion
+    from langbot.pkg.skill.database_repository import DatabaseSkillRepository
+
+    storage.ap.storage_mgr = storage
+    engine = storage.ap.persistence_mgr.get_db_engine()
+    async with engine.begin() as connection:
+        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync))
+    body = b'x' * (2 * 1024 * 1024)
+    manifest = {'algorithm': 'sha256-tree-v1', 'files': [], 'total_bytes': 0}
+    revision = (
+        'sha256:' + hashlib.sha256(json.dumps(manifest, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    )
+    ref = await storage.content_store.put(context(), owner_type='skill', owner='packet', key=revision, value=body)
+    async with storage.ap.persistence_mgr.tenant_uow(WORKSPACE) as uow:
+        await uow.execute(
+            sa.insert(SkillVersion).values(
+                uuid='version-one',
+                workspace_uuid=WORKSPACE,
+                instance_uuid='instance',
+                name='packet',
+                revision=revision,
+                manifest_json=manifest,
+                skill_json={'name': 'packet', 'revision': revision},
+                content_ref=ref,
+            )
+        )
+    archive_read = AsyncMock(wraps=storage.content_store.get)
+    monkeypatch.setattr(storage.content_store, 'get', archive_read)
+    repository = DatabaseSkillRepository(storage.ap, cache=None)
+    package = await repository.get_package(context(), 'packet', revision, metadata_only=True)
+    assert package == {
+        'revision': revision,
+        'manifest': manifest,
+        'size': len(body),
+        'sha256': hashlib.sha256(body).hexdigest(),
+        'filename': 'packet.zip',
+    }
+    archive_read.assert_not_awaited()
+    for foreign in (context(OTHER), replace(context(), instance_uuid='other-instance')):
+        with pytest.raises(ValueError, match='pinned revision'):
+            await repository.get_package(foreign, 'packet', revision, metadata_only=True)
+    full = await repository.get_package(context(), 'packet', revision)
+    assert full == {**package, 'content': body}
+    archive_read.assert_awaited_once()
 
 
 @pytest.mark.asyncio

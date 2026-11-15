@@ -1763,7 +1763,7 @@ done
     async def cleanup_run_files(
         self, session_id: str, io_scope: str, action_context: ActionContext
     ) -> None:
-        from .file_io import run_files_cleanup_script
+        from .file_io import run_files_cleanup_script, run_files_present
         from .tenancy import session_belongs_to_placement
 
         request = BoxRunFilesCleanupRequest(session_id=session_id, io_scope=io_scope)
@@ -1790,6 +1790,13 @@ done
                     await self.require_sandbox_admission(action_context)
                 if session.info.host_path_mode == BoxHostMountMode.READ_ONLY:
                     raise BoxValidationError("Cannot clean a read-only workspace")
+                if (
+                    session.owned_workspace is not None
+                    and not await self._artifact_work(
+                        run_files_present, session.owned_workspace, request.io_scope
+                    )
+                ):
+                    return
                 fields = (
                     "image",
                     "network",
