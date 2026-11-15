@@ -227,9 +227,6 @@ for (const pendingAsset of [false, true]) {
 
     try {
       await page.goto('/home/plugin-pages?id=qa%2Fscoped-page%2Foverview');
-      // Same initializer race as the hook test: wait for the page's Workspace
-      // bootstrap to land before switching, or it overwrites the switch.
-      await page.waitForTimeout(500);
       await page.getByRole('button', { name: /Alpha Workspace/ }).click();
       await expect(
         page.getByRole('button', { name: 'Alpha page' }),
@@ -249,12 +246,9 @@ for (const pendingAsset of [false, true]) {
 
       await page.getByRole('button', { name: 'Switch Workspace' }).click();
       await page.getByRole('menuitem', { name: /Beta Workspace/ }).click();
-      // The switch navigates away, so the trigger button can be gone before the
-      // label is re-read. Assert the navigation, then the label once it remounts.
+      const switcher = page.getByRole('button', { name: 'Switch Workspace' });
       await expect(page).toHaveURL('/home/monitoring');
-      await expect(
-        page.getByRole('button', { name: /Beta Workspace/ }).first(),
-      ).toBeVisible();
+      await expect(switcher).toContainText('Beta Workspace');
       await expect(
         page.getByRole('button', { name: 'Beta page' }),
       ).toBeVisible();
