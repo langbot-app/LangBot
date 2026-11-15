@@ -227,6 +227,9 @@ for (const pendingAsset of [false, true]) {
 
     try {
       await page.goto('/home/plugin-pages?id=qa%2Fscoped-page%2Foverview');
+      // Same initializer race as the hook test: wait for the page's Workspace
+      // bootstrap to land before switching, or it overwrites the switch.
+      await page.waitForTimeout(500);
       await page.getByRole('button', { name: /Alpha Workspace/ }).click();
       await expect(
         page.getByRole('button', { name: 'Alpha page' }),
@@ -246,9 +249,12 @@ for (const pendingAsset of [false, true]) {
 
       await page.getByRole('button', { name: 'Switch Workspace' }).click();
       await page.getByRole('menuitem', { name: /Beta Workspace/ }).click();
-      const switcher = page.getByRole('button', { name: 'Switch Workspace' });
+      // The switch navigates away, so the trigger button can be gone before the
+      // label is re-read. Assert the navigation, then the label once it remounts.
       await expect(page).toHaveURL('/home/monitoring');
-      await expect(switcher).toContainText('Beta Workspace');
+      await expect(
+        page.getByRole('button', { name: /Beta Workspace/ }).first(),
+      ).toBeVisible();
       await expect(
         page.getByRole('button', { name: 'Beta page' }),
       ).toBeVisible();
@@ -316,15 +322,17 @@ test('plugin asset hook replaces and revokes URLs on a same-document Workspace c
     },
   );
   await page.goto('/home/bots');
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const path = '/src/app/infra/http/currentWorkspaceStore.ts';
-        return (await import(path)).getCurrentWorkspaceSnapshot()?.workspace
-          .uuid;
-      }),
-    )
-    .toBe('asset-first');
+  const snapshotUuid = () =>
+    page.evaluate(async () => {
+      const path = '/src/app/infra/http/currentWorkspaceStore.ts';
+      return (await import(path)).getCurrentWorkspaceSnapshot()?.workspace.uuid;
+    });
+  await expect.poll(snapshotUuid).toBe('asset-first');
+  // The page still runs `initializeWorkspaceInfo`, which writes the server's
+  // Workspace over whatever the selector holds. Switching before it settles
+  // gets overwritten back to the old id, so let it land first.
+  await page.waitForTimeout(500);
+  await expect.poll(snapshotUuid).toBe('asset-first');
   await page.evaluate(async () => {
     const resources = performance
       .getEntriesByType('resource')

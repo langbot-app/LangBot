@@ -1234,10 +1234,12 @@ export class BackendClient extends BaseHttpClient {
   private async getAuthenticatedObjectURL(
     path: string,
     rewritePluginPageSdk = false,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     const response = await this.instance.get<Blob>(path, {
       responseType: 'blob',
-    });
+      workspaceUuid,
+    } as RequestConfig);
     let blob = response.data;
     if (rewritePluginPageSdk && blob.type.startsWith('text/html')) {
       const apiBase =
@@ -1263,10 +1265,12 @@ export class BackendClient extends BaseHttpClient {
     author: string,
     name: string,
     filepath: string,
+    workspaceUuid?: string | null,
   ): Promise<string> {
     return this.getAuthenticatedObjectURL(
       `/api/v1/plugins/${author}/${name}/authenticated-assets/${filepath}`,
       true,
+      workspaceUuid,
     );
   }
 
