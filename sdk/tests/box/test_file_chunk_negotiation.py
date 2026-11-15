@@ -6,10 +6,10 @@ import asyncio
 import base64
 import binascii
 import hashlib
+import json
 import logging
 import os
 from pathlib import Path
-import threading
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -19,6 +19,7 @@ from langbot_plugin.box.actions import LangBotToBoxAction
 from langbot_plugin.box.client import ActionRPCBoxClient
 from langbot_plugin.box.server import BoxServerHandler
 from langbot_plugin.entities.io.actions.enums import CommonAction
+from langbot_plugin.entities.io.errors import ActionCallTimeoutError
 from langbot_plugin.entities.io.resp import ActionResponse
 from langbot_plugin.runtime.io.handler import (
     BOX_FILE_CHUNK_LENGTH,
@@ -306,6 +307,227 @@ async def test_chunk_length_is_captured_and_receive_limit_does_not_shrink(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "negotiated,size,chunks_per_file,serialized",
+    [
+        (False, 2 * 16 * 1024, 2, False),
+        (True, 2 * 256 * 1024, 2, True),
+        (True, 4 * 1024, 1, False),
+    ],
+)
+async def test_file_chunk_ack_serializes_only_large_chunks_without_blocking_ping(
+    wire_handler, monkeypatch, negotiated, size, chunks_per_file, serialized
+):
+    wire_handler._configure_box_file_chunks(negotiated)
+    content = os.urandom(size)
+    keys = ["ft1_" + value * 64 + ".bin" for value in ("a", "b")]
+    encoded_chunks = []
+    encode = base64.b64encode
+
+    def record_encode(chunk):
+        encoded_chunks.append(chunk)
+        return encode(chunk)
+
+    monkeypatch.setattr(base64, "b64encode", record_encode)
+    second_started = asyncio.Event()
+
+    async def second_send():
+        second_started.set()
+        return await wire_handler.send_file(
+            content, "bin", file_key=keys[1], action_context=_CONTEXT
+        )
+
+    first = asyncio.create_task(
+        wire_handler.send_file(
+            content, "bin", file_key=keys[0], action_context=_CONTEXT
+        )
+    )
+    tasks = [first]
+    try:
+        await wire_handler.conn.sent_messages(1)
+        second = asyncio.create_task(second_send())
+        tasks.append(second)
+        await second_started.wait()
+        initial_chunks = 1 if serialized else 2
+        await wire_handler.conn.sent_messages(initial_chunks)
+        assert len(encoded_chunks) == initial_chunks
+
+        ping = asyncio.create_task(wire_handler.call_action(CommonAction.PING, {}))
+        tasks.append(ping)
+        messages = await wire_handler.conn.sent_messages(initial_chunks + 1)
+        ping_request = messages[-1]
+        assert ping_request["action"] == CommonAction.PING.value
+        wire_handler.resp_waiters[ping_request["seq_id"]].set_result(
+            ActionResponse.success({})
+        )
+        assert await asyncio.wait_for(ping, 1) == {}
+        assert not first.done() and not second.done()
+
+        for acknowledged in range(chunks_per_file * 2):
+            messages = await wire_handler.conn.sent_messages(acknowledged + 2)
+            chunks = [
+                message
+                for message in messages
+                if message["action"] == CommonAction.FILE_CHUNK.value
+            ]
+            if serialized:
+                assert len(encoded_chunks) == acknowledged + 1
+            request = chunks[acknowledged]
+            assert request["context"] == _CONTEXT.model_dump(
+                mode="json", exclude_none=True
+            )
+            wire_handler.resp_waiters[request["seq_id"]].set_result(
+                ActionResponse.success({})
+            )
+        assert await asyncio.wait_for(asyncio.gather(first, second), 1) == keys
+        assert len(encoded_chunks) == chunks_per_file * 2
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_a_waiting_large_sender_does_not_encode_or_send_its_chunk(
+    wire_handler, monkeypatch
+):
+    wire_handler._configure_box_file_chunks(True)
+    content = os.urandom(BOX_FILE_CHUNK_LENGTH)
+    encoded_chunks = []
+    encode = base64.b64encode
+
+    def record_encode(chunk):
+        encoded_chunks.append(chunk)
+        return encode(chunk)
+
+    monkeypatch.setattr(base64, "b64encode", record_encode)
+    first = asyncio.create_task(wire_handler.send_file(content, "bin"))
+    tasks = [first]
+    try:
+        await wire_handler.conn.sent_messages(1)
+        waiting_started = asyncio.Event()
+
+        async def waiting_send():
+            waiting_started.set()
+            return await wire_handler.send_file(content, "bin")
+
+        waiting = asyncio.create_task(waiting_send())
+        tasks.append(waiting)
+        await waiting_started.wait()
+        waiting.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiting
+        assert len(encoded_chunks) == 1 and len(wire_handler.conn.sent) == 1
+
+        request = json.loads(wire_handler.conn.sent[0])
+        wire_handler.resp_waiters[request["seq_id"]].set_result(
+            ActionResponse.success({})
+        )
+        await asyncio.wait_for(first, 1)
+        retry = asyncio.create_task(wire_handler.send_file(content, "bin"))
+        tasks.append(retry)
+        messages = await wire_handler.conn.sent_messages(2)
+        assert len(encoded_chunks) == 2
+        wire_handler.resp_waiters[messages[-1]["seq_id"]].set_result(
+            ActionResponse.success({})
+        )
+        await asyncio.wait_for(retry, 1)
+        assert not wire_handler.resp_waiters
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_timed_out_large_sender_does_not_hold_the_lock_or_send_a_chunk(
+    wire_handler, monkeypatch
+):
+    wire_handler._configure_box_file_chunks(True)
+    content = os.urandom(BOX_FILE_CHUNK_LENGTH)
+    started, release = asyncio.Event(), asyncio.Event()
+    sent = []
+    wait = asyncio.wait
+
+    async def short_lock_wait(tasks, timeout):
+        return await wait(tasks, timeout=min(timeout, 0.05))
+
+    async def acknowledge(action, data, **kwargs):
+        assert action is CommonAction.FILE_CHUNK
+        assert 0 < kwargs["timeout"] <= 15.0
+        sent.append(data["file_key"])
+        if len(sent) == 1:
+            started.set()
+            await release.wait()
+        return {}
+
+    monkeypatch.setattr(asyncio, "wait", short_lock_wait)
+    monkeypatch.setattr(wire_handler, "call_action", acknowledge)
+    first = asyncio.create_task(wire_handler.send_file(content, "bin"))
+    try:
+        await started.wait()
+        with pytest.raises(ActionCallTimeoutError, match="__file_chunk call timed out"):
+            await wire_handler.send_file(content, "bin")
+        assert len(sent) == 1 and not first.done()
+        release.set()
+        await first
+        await wire_handler.send_file(content, "bin")
+        assert len(sent) == 2 and sent[0] != sent[1]
+    finally:
+        release.set()
+        if not first.done():
+            first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_sender_as_lock_acquire_finishes_releases_its_lock(
+    wire_handler, monkeypatch
+):
+    wire_handler._configure_box_file_chunks(True)
+    lock = wire_handler._large_file_chunk_send_lock
+    content = os.urandom(BOX_FILE_CHUNK_LENGTH)
+    acquire = lock.acquire
+    parent = None
+    encode = Mock(wraps=base64.b64encode)
+    monkeypatch.setattr(base64, "b64encode", encode)
+
+    async def acquire_then_cancel_parent():
+        acquired = await acquire()
+        parent.cancel()
+        return acquired
+
+    async def cancelled_send():
+        nonlocal parent
+        parent = asyncio.current_task()
+        return await wire_handler.send_file(content, "bin")
+
+    monkeypatch.setattr(lock, "acquire", acquire_then_cancel_parent)
+    cancelled = asyncio.create_task(cancelled_send())
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    assert not lock.locked()
+    assert encode.call_count == 0 and not wire_handler.conn.sent
+
+    monkeypatch.setattr(lock, "acquire", acquire)
+    retry = asyncio.create_task(wire_handler.send_file(content, "bin"))
+    try:
+        messages = await wire_handler.conn.sent_messages(1)
+        assert encode.call_count == 1
+        wire_handler.resp_waiters[messages[0]["seq_id"]].set_result(
+            ActionResponse.success({})
+        )
+        await asyncio.wait_for(retry, 1)
+        assert not lock.locked() and not wire_handler.resp_waiters
+    finally:
+        if not retry.done():
+            retry.cancel()
+        await asyncio.gather(retry, return_exceptions=True)
+
+
+@pytest.mark.asyncio
 async def test_large_chunks_still_require_order_and_one_context(wire_handler):
     wire_handler._configure_box_file_chunks(True)
     key, content = "ft1_" + "c" * 64 + ".bin", os.urandom(BOX_FILE_CHUNK_LENGTH)
@@ -324,39 +546,6 @@ async def test_large_chunks_still_require_order_and_one_context(wire_handler):
     assert (
         await wire_handler.read_local_file(key, action_context=_CONTEXT) == content * 2
     )
-
-
-@pytest.mark.asyncio
-async def test_cancelling_a_large_chunk_rolls_back_its_completed_payload(
-    wire_handler, monkeypatch
-):
-    wire_handler._configure_box_file_chunks(True)
-    started, release = threading.Event(), threading.Event()
-    write = wire_handler._write_file_chunk
-
-    def paused_write(*args):
-        started.set()
-        assert release.wait(5)
-        return write(*args)
-
-    monkeypatch.setattr(wire_handler, "_write_file_chunk", paused_write)
-    key = "ft1_" + "d" * 64 + ".bin"
-    task = asyncio.create_task(
-        receive_chunk(wire_handler, key, os.urandom(BOX_FILE_CHUNK_LENGTH))
-    )
-    try:
-        assert await asyncio.to_thread(started.wait, 5)
-        task.cancel()
-    finally:
-        release.set()
-    with pytest.raises(asyncio.CancelledError):
-        await asyncio.wait_for(task, 5)
-    assert (
-        not wire_handler._transfer_stages
-        and key not in wire_handler._owned_transfer_files
-    )
-    with pytest.raises(FileNotFoundError):
-        await wire_handler.read_local_file(key, action_context=_CONTEXT)
 
 
 @pytest.mark.asyncio

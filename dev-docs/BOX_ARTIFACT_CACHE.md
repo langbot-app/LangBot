@@ -46,8 +46,11 @@ to hits and misses. There is no caller-supplied download URL or user API token.
 Box INIT can negotiate fixed 256 KiB chunks in both directions, reducing serial
 round trips without changing archive bytes. Older peers retain 16 KiB sends;
 ordinary plugin connections retain their original limits. File size, integrity,
-ordering and ownership checks still apply. The larger per-action payload retains
-the existing bounded action admission; it does not add transfer pipelining.
+ordering and ownership checks still apply. Each connection direction admits one
+large chunk through encoding and ACK at a time, preventing concurrent files from
+queuing large messages ahead of control actions.
+Other actions do not acquire this file-send lock. Receive decoding uses the
+existing write lock; the original action admission limits still apply.
 
 `BoxSpec.artifact_mounts` selects a `BoxArtifactMountSpec` by digest. Runtime
 resolves it inside the authorized Workspace cache into a generic read-only mount

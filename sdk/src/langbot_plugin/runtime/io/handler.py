@@ -866,6 +866,7 @@ class Handler(abc.ABC):
         self._deleted_transfer_payloads: set[str] = set()
         self._file_chunk_length = FILE_CHUNK_LENGTH
         self._file_chunk_receive_limit = FILE_CHUNK_LENGTH
+        self._large_file_chunk_send_lock = asyncio.Lock()
 
         self._disconnect_callback = disconnect_callback
 
@@ -2519,6 +2520,30 @@ class Handler(abc.ABC):
             # A later INIT cannot invalidate a transfer already using this limit.
             self._prepare_box_file_chunks()
 
+    async def _acquire_large_file_chunk_send_lock(self) -> None:
+        acquire = asyncio.create_task(self._large_file_chunk_send_lock.acquire())
+        try:
+            done, _ = await asyncio.wait({acquire}, timeout=15.0)
+            if not done:
+                raise asyncio.TimeoutError
+            acquire.result()
+        except BaseException:
+            acquire.cancel()
+            while not acquire.done():
+                try:
+                    await asyncio.shield(acquire)
+                except asyncio.CancelledError:
+                    continue
+                except BaseException:
+                    break
+            if (
+                not acquire.cancelled()
+                and acquire.exception() is None
+                and acquire.result() is True
+            ):
+                self._large_file_chunk_send_lock.release()
+            raise
+
     async def send_file(
         self,
         file_bytes: bytes,
@@ -2547,33 +2572,57 @@ class Handler(abc.ABC):
         file_length = len(file_bytes)
         chunk_amount = max(1, (file_length + chunk_length - 1) // chunk_length)
         for i in range(chunk_amount):
-            if invocation is not None:
-                invocation.require_active()
-            chunk_bytes = file_bytes[i * chunk_length : (i + 1) * chunk_length]
-            chunk_base64 = base64.b64encode(chunk_bytes).decode("utf-8")
-            # response = await self.conn.send(json.dumps({
-            #     "action": CommonAction.FILE_CHUNK.value,
-            #     "data": {
-            #         "file_key": file_key,
-            #         "file_length": file_length,
-            #         "chunk_base64": chunk_base64,
-            #         "chunk_index": i,
-            #         "chunk_amount": chunk_amount,
-            #         "chunk_size": len(chunk_bytes),
-            #     }
-            # }))
-            await self.call_action(
-                CommonAction.FILE_CHUNK,
-                {
-                    "file_key": file_key,
-                    "file_length": file_length,
-                    "chunk_base64": chunk_base64,
-                    "chunk_index": i,
-                    "chunk_amount": chunk_amount,
-                    "chunk_size": len(chunk_bytes),
-                },
-                action_context=action_context,
+            large_chunk = (
+                min(chunk_length, max(0, file_length - i * chunk_length))
+                > FILE_CHUNK_LENGTH
             )
+            if large_chunk:
+                deadline = asyncio.get_running_loop().time() + 15.0
+                try:
+                    await self._acquire_large_file_chunk_send_lock()
+                except asyncio.TimeoutError:
+                    raise ActionCallTimeoutError(
+                        f"Action {CommonAction.FILE_CHUNK.value} call timed out"
+                    ) from None
+            try:
+                if invocation is not None:
+                    invocation.require_active()
+                chunk_bytes = file_bytes[i * chunk_length : (i + 1) * chunk_length]
+                chunk_base64 = base64.b64encode(chunk_bytes).decode("utf-8")
+                # response = await self.conn.send(json.dumps({
+                #     "action": CommonAction.FILE_CHUNK.value,
+                #     "data": {
+                #         "file_key": file_key,
+                #         "file_length": file_length,
+                #         "chunk_base64": chunk_base64,
+                #         "chunk_index": i,
+                #         "chunk_amount": chunk_amount,
+                #         "chunk_size": len(chunk_bytes),
+                #     }
+                # }))
+                timeout_options = (
+                    {"timeout": max(0.0, deadline - asyncio.get_running_loop().time())}
+                    if large_chunk
+                    else {}
+                )
+                await self.call_action(
+                    CommonAction.FILE_CHUNK,
+                    {
+                        "file_key": file_key,
+                        "file_length": file_length,
+                        "chunk_base64": chunk_base64,
+                        "chunk_index": i,
+                        "chunk_amount": chunk_amount,
+                        "chunk_size": len(chunk_bytes),
+                    },
+                    action_context=action_context,
+                    **timeout_options,
+                )
+            finally:
+                if large_chunk:
+                    chunk_bytes = b""
+                    chunk_base64 = ""
+                    self._large_file_chunk_send_lock.release()
         return file_key
 
     async def read_local_file(

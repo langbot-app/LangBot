@@ -298,8 +298,11 @@ Core mechanics:
   offer and acknowledge `file_chunk_256k: true` to use fixed 256 KiB chunks;
   plugin channels and unacknowledged senders retain 16 KiB. The client prepares
   its larger receive limit before offering it, and each send fixes its chunk
-  length for that transfer. Larger chunks retain serial ACKs and the existing
-  action admission limits, increasing the bounded payload memory per action.
+  length for that transfer. Each connection direction admits one large file
+  chunk through encoding and ACK at a time, so concurrent transfers cannot queue
+  many large messages ahead of control actions. Other actions do not acquire this
+  file-send lock. Waiting for this slot consumes the existing ACK timeout budget.
+  Existing action admission and receive limits still apply.
   New transfer keys are high-entropy opaque capabilities;
   the receiver durably binds each capability to its exact authority namespace so
   a later read can recover that namespace after the action or handler ends. An
