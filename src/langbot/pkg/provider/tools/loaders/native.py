@@ -746,7 +746,13 @@ class NativeToolLoader(loader.ToolLoader):
     def _sandbox_child_path(base: str, relative: str) -> str:
         return f'{str(base).rstrip("/")}/{relative}'
 
-    async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
+    async def _run_workspace_file_script(
+        self,
+        script: str,
+        query: pipeline_query.Query,
+        *,
+        tool: str = 'file',
+    ) -> dict:
         # Box file tools need Python 3 (f-strings, etc.). Prefer `python3` and
         # never fall back to unversioned `python`, which may still be Python 2
         # on host-rootfs nsjail mounts (LangBot #2603). Missing python3 yields a
@@ -759,12 +765,23 @@ class NativeToolLoader(loader.ToolLoader):
             'fi; '
             f'"$PYTHON_BIN" - <<\'PY\'\n{script}\nPY'
         )
+        started = time.monotonic()
         result = await self.ap.box_service.execute_tool(
             {
                 'command': command,
                 'timeout_sec': 30,
             },
             query,
+        )
+        # Box file tools go through a full exec round trip on backends without
+        # a host-visible workspace (E2B), which also re-syncs the workspace in
+        # both directions. Log the tool-level cost per query so it can be told
+        # apart from Skill activation, sandbox creation and end-to-end latency
+        # (langbot-app/LangBot#2847).
+        self.ap.logger.info(
+            f'box file script finished: tool={tool} query_id={getattr(query, "query_id", None)} '
+            f'ok={bool(result.get("ok"))} '
+            f'duration_ms={int((time.monotonic() - started) * 1000)}'
         )
         if not result.get('ok'):
             return {'ok': False, 'error': result.get('stderr') or result.get('stdout') or 'Box execution failed'}
@@ -871,7 +888,7 @@ else:
         'max_bytes': max_bytes,
     }}))
 """.strip()
-        return await self._run_workspace_file_script(script, query)
+        return await self._run_workspace_file_script(script, query, tool='read')
 
     async def _write_workspace_via_box(
         self,
@@ -905,7 +922,7 @@ else:
             f.write(content)
         print(json.dumps({{'ok': True, 'path': path}}))
 """.strip()
-        return await self._run_workspace_file_script(script, query)
+        return await self._run_workspace_file_script(script, query, tool='write')
 
     async def _edit_workspace_via_box(
         self,
@@ -946,7 +963,7 @@ else:
             f.write(new_content)
         print(json.dumps({{'ok': True, 'path': path}}))
 """.strip()
-        return await self._run_workspace_file_script(script, query)
+        return await self._run_workspace_file_script(script, query, tool='edit')
 
     async def _glob_workspace_via_box(self, path: str, pattern: str, query: pipeline_query.Query) -> dict:
         script = f"""
@@ -1007,7 +1024,7 @@ else:
         ),
     }}))
 """.strip()
-        return await self._run_workspace_file_script(script, query)
+        return await self._run_workspace_file_script(script, query, tool='glob')
 
     async def _grep_workspace_via_box(
         self,
@@ -1129,7 +1146,7 @@ else:
             'truncated_by': truncated_by,
         }}))
 """.strip()
-        return await self._run_workspace_file_script(script, query)
+        return await self._run_workspace_file_script(script, query, tool='grep')
 
     async def _invoke_read(self, parameters: dict, query: pipeline_query.Query) -> dict:
         path = parameters['path']
