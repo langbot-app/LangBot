@@ -18,6 +18,12 @@ metadata on every call, and validates the Runtime receipt. Database probes use
 persisted manifest, size and archive digest without reading the body. Only a miss
 fetches archive bytes; neither path rebuilds a Core cache.
 
+In database/network mode, Agent resource listings validate the authoritative
+immutable manifest without blob IO. Listing and activation are not content health
+checks: they can succeed with an unavailable or corrupt blob. Content reads still
+validate the complete archive and file bytes; a required blob fetch fails on reads
+or cold execution. Runtime execution still validates every cached byte.
+
 `BoxArtifactDescriptor` contains `content_digest`, `manifest`, `archive_size` and
 `archive_sha256`. `ActionRPCBoxClient.prepare_artifact` first probes the Runtime;
 only a miss transfers the archive using the existing namespace-owned `FILE_CHUNK`

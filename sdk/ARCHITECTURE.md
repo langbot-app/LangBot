@@ -476,8 +476,11 @@ one-time online-upgrade import source.
 `export_skill_publication` and `restore_skill_publication` preserve an exact
 publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
-verified legacy execution caches; network resource helpers verify publication
-archives in memory without restoring a tree. Its database CAS owns the authoritative catalog.
+verified legacy execution caches. In database/network mode, Agent resource listings
+validate the authoritative immutable manifest without blob IO; content reads still
+verify complete archive bytes in memory without restoring a tree. Listing and
+activation are not content health checks: an unavailable or corrupt blob can fail
+later reads or cold execution. Its database CAS owns the authoritative catalog.
 
 The `PREPARE_ARTIFACT` action accepts a generic manifest/tree digest and a completed
 namespace-owned archive transfer. Cache hits still require the trusted current

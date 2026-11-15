@@ -274,16 +274,22 @@ class DatabaseSkillRepository:
                 if record is None:
                     raise ValueError(f'Skill "{args[0]}" not found')
                 await content._validate(context)
-                row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+                if method == 'list_skill_resources':
+                    content._validate_ref(record['content_ref'])
+                else:
+                    row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+            if method == 'list_skill_resources':
+                return await run_blocking_atomic(
+                    SkillStore.list_publication_manifest_resources,
+                    record['skill'],
+                    record['manifest'],
+                    *args[1:],
+                    **kwargs,
+                )
             # Release the database connection before object-store IO and ZIP validation.
             archive = await content._read(row, MAX_PUBLICATION_BYTES)
-            read_publication = (
-                SkillStore.list_publication_resources
-                if method == 'list_skill_resources'
-                else SkillStore.read_publication_resource
-            )
             return await run_blocking_atomic(
-                read_publication, record['skill'], record['manifest'], archive, *args[1:], **kwargs
+                SkillStore.read_publication_resource, record['skill'], record['manifest'], archive, *args[1:], **kwargs
             )
         if method in {'list_skill_files', 'read_skill_file', 'list_skill_resources', 'read_skill_resource'}:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))

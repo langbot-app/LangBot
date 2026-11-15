@@ -39,6 +39,14 @@ def test_network_mode_rejects_an_sdk_without_the_preflight_contract(tmp_path, mo
         service(tmp_path, 'network')
 
 
+def test_network_mode_rejects_an_sdk_without_manifest_listing(tmp_path, monkeypatch):
+    from langbot_plugin.skill_store import SkillStore
+
+    monkeypatch.delattr(SkillStore, 'list_publication_manifest_resources', raising=False)
+    with pytest.raises(BoxValidationError, match='updated Core and Box SDK'):
+        service(tmp_path, 'network')
+
+
 @pytest.mark.asyncio
 async def test_stale_placement_cannot_prepare_or_read_a_package(tmp_path):
     box, client = service(tmp_path)

@@ -129,10 +129,15 @@ class BoxService:
             raise BoxValidationError('box.file_transfer_mode must be legacy or network')
         if self.file_transfer_mode == 'network':
             from langbot_plugin.box import errors as sdk_box_errors
+            from langbot_plugin.skill_store import SkillStore
 
-            if not hasattr(sdk_box_errors, 'BoxArtifactNotPreparedError') or any(
-                not callable(getattr(client, name, None))
-                for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files')
+            if (
+                not hasattr(sdk_box_errors, 'BoxArtifactNotPreparedError')
+                or not callable(getattr(SkillStore, 'list_publication_manifest_resources', None))
+                or any(
+                    not callable(getattr(client, name, None))
+                    for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files')
+                )
             ):
                 raise BoxValidationError('Network Skill execution requires an updated Core and Box SDK')
         self.output_limit_chars = output_limit_chars

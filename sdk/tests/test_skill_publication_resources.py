@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import io
+import json
 import stat
 import zipfile
 
@@ -40,6 +41,13 @@ def listing(publication, path=".", **kwargs):
     )
 
 
+def manifest_listing(publication, path=".", **kwargs):
+    _, package = publication
+    return SkillStore.list_publication_manifest_resources(
+        package["skill"], package["manifest"], path, **kwargs
+    )
+
+
 def reading(publication, path="references/guide.md", **kwargs):
     _, package = publication
     return SkillStore.read_publication_resource(
@@ -56,8 +64,9 @@ def reading(publication, path="references/guide.md", **kwargs):
         ("references/nested", False, 1001),
     ],
 )
+@pytest.mark.parametrize("list_resources", [listing, manifest_listing])
 def test_publication_listing_matches_filesystem_without_writing(
-    publication, tmp_path, path, hidden, limit
+    publication, tmp_path, path, hidden, limit, list_resources
 ):
     store, package = publication
     before = {str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")}
@@ -65,7 +74,8 @@ def test_publication_listing_matches_filesystem_without_writing(
         "sample", path, hidden, limit, expected_revision=package["skill"]["revision"]
     )
     assert (
-        listing(publication, path, include_hidden=hidden, max_entries=limit) == expected
+        list_resources(publication, path, include_hidden=hidden, max_entries=limit)
+        == expected
     )
     assert {str(path.relative_to(tmp_path)) for path in tmp_path.rglob("*")} == before
 
@@ -94,17 +104,31 @@ def test_publication_read_matches_exact_filesystem_result(publication):
         "a\x00b",
     ],
 )
-def test_publication_resource_paths_cannot_escape(publication, path):
+@pytest.mark.parametrize("list_resources", [listing, manifest_listing])
+def test_publication_resource_paths_cannot_escape(publication, path, list_resources):
     with pytest.raises(ValueError):
         reading(publication, path)
     with pytest.raises(ValueError):
-        listing(publication, path)
+        list_resources(publication, path)
 
 
 @pytest.mark.parametrize("limit", [0, -1, True, "1"])
-def test_publication_listing_rejects_invalid_limits(publication, limit):
+@pytest.mark.parametrize("list_resources", [listing, manifest_listing])
+def test_publication_listing_rejects_invalid_limits(publication, limit, list_resources):
     with pytest.raises(ValueError, match="positive integer"):
-        listing(publication, max_entries=limit)
+        list_resources(publication, max_entries=limit)
+
+
+def test_manifest_listing_needs_no_archive_and_preserves_resource_errors(publication):
+    _, package = publication
+    expected = listing(publication)
+    del package["file_bytes"]
+    assert manifest_listing(publication) == expected
+    for path in ["references/guide.md", "missing-directory"]:
+        with pytest.raises(ValueError, match="not found"):
+            manifest_listing(publication, path)
+    with pytest.raises(SkillRevisionMismatchError):
+        manifest_listing(publication, expected_revision="sha256:" + "0" * 64)
 
 
 def test_publication_resource_rejects_missing_nontext_or_wrong_revision(publication):
@@ -212,6 +236,81 @@ def test_publication_resources_reject_invalid_archives(publication, variant):
         listing(modified)
 
 
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "name",
+        "schema",
+        "entry_schema",
+        "unsafe_path",
+        "duplicate_path",
+        "size",
+        "digest",
+        "mode",
+        "total",
+        "file_count",
+        "byte_limit",
+        "noncanonical_order",
+        "excluded_directory",
+        "file_prefix",
+        "missing_skill",
+        "skill_text_limit",
+        "revision",
+    ],
+)
+def test_manifest_listing_validates_complete_publication_metadata(publication, variant):
+    store, original = publication
+    package = copy.deepcopy(original)
+    manifest = package["manifest"]
+    files = manifest["files"]
+    if variant == "name":
+        package["skill"]["name"] = "../sample"
+    elif variant == "schema":
+        manifest["extra"] = True
+    elif variant == "entry_schema":
+        files[0]["extra"] = True
+    elif variant == "unsafe_path":
+        files[0]["path"] = "../SKILL.md"
+    elif variant == "duplicate_path":
+        files[1]["path"] = files[0]["path"]
+    elif variant == "size":
+        files[0]["size"] = True
+    elif variant == "digest":
+        files[0]["sha256"] = "g" * 64
+    elif variant == "mode":
+        files[0]["executable"] = 1
+    elif variant == "total":
+        manifest["total_bytes"] += 1
+    elif variant == "file_count":
+        manifest["files"] = [files[0]] * 2049
+    elif variant == "byte_limit":
+        files[1]["size"] = 256 * 1024 * 1024
+    elif variant == "noncanonical_order":
+        files.reverse()
+    elif variant == "excluded_directory":
+        files[1]["path"] = "node_modules/binary.bin"
+    elif variant == "file_prefix":
+        files[1]["path"] = "references"
+    elif variant == "missing_skill":
+        files.pop(0)
+    elif variant == "skill_text_limit":
+        files[0]["size"] = 1024 * 1024 + 1
+    if variant not in {"total", "file_count"}:
+        manifest["total_bytes"] = sum(entry["size"] for entry in manifest["files"])
+    package["skill"]["revision"] = (
+        "sha256:"
+        + hashlib.sha256(
+            json.dumps(
+                manifest, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+            ).encode("utf-8")
+        ).hexdigest()
+    )
+    if variant == "revision":
+        package["skill"]["revision"] = "sha256:" + "0" * 64
+    with pytest.raises(ValueError):
+        manifest_listing((store, package))
+
+
 def test_publication_limits_are_not_upload_limits(tmp_path):
     source = tmp_path / "many"
     source.mkdir()
@@ -229,6 +328,12 @@ def test_publication_limits_are_not_upload_limits(tmp_path):
         package["skill"], package["manifest"], package["file_bytes"], max_entries=1000
     )
     assert len(result["entries"]) == 514
+    assert (
+        SkillStore.list_publication_manifest_resources(
+            package["skill"], package["manifest"], max_entries=1000
+        )
+        == result
+    )
 
 
 @pytest.mark.parametrize("variant", ["noncanonical_order", "excluded_directory"])
@@ -263,6 +368,8 @@ def test_resource_validation_matches_restoration_tree_rules(
         reading((store, package))
     with pytest.raises(ValueError):
         listing((store, package))
+    with pytest.raises(ValueError):
+        manifest_listing((store, package))
     cache = SkillStore(tmp_path / "invalid-cache")
     with pytest.raises(ValueError):
         cache.restore_skill_publication(

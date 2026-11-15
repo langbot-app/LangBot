@@ -164,9 +164,13 @@ class ContentStore:
             self._delete_after_transaction(provider, object_key, committed=True)
         return ref
 
-    async def _row(self, uow, workspace, ref, *, metadata_only=False):
+    @staticmethod
+    def _validate_ref(ref):
         if not isinstance(ref, str) or not re.fullmatch(r'ct1_[0-9a-f]{64}', ref):
             raise FileNotFoundError('Unknown content reference')
+
+    async def _row(self, uow, workspace, ref, *, metadata_only=False):
+        self._validate_ref(ref)
         columns = (ContentObject.size, ContentObject.digest) if metadata_only else (ContentObject.__table__,)
         row = (
             (

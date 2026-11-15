@@ -232,7 +232,7 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
     from langbot.pkg.entity.persistence.skill import SkillVersion
     from langbot.pkg.skill.repository import SkillRepository
 
-    if not callable(getattr(SkillStore, 'read_publication_resource', None)):
+    if not callable(getattr(SkillStore, 'list_publication_manifest_resources', None)):
         pytest.skip('requires publication resource SDK')
     published = SkillStore(str(tmp_path / 'published'))
     skill = published.create_skill({'name': 'packet', 'description': 'Read guide', 'instructions': 'Use resources.'})
@@ -291,31 +291,74 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
 
     storage.ap.workspace_service.get_execution_binding = binding
     repository = SkillRepository(storage.ap)
-    begins = []
+    begins, content_queries = [], []
 
     def began(connection):
         begins.append(connection)
 
+    def selected(connection, cursor, statement, parameters, execution_context, executemany):
+        compiled = execution_context.compiled
+        if compiled is not None and isinstance(compiled.statement, sa.sql.Select):
+            if any(
+                getattr(column.table, 'name', None) == 'content_objects'
+                for column in compiled.statement.selected_columns
+            ):
+                content_queries.append(statement)
+
     path = 'references' if operation == 'list_skill_resources' else 'references/guide.md'
     read = getattr(repository, operation)
     sa.event.listen(engine.sync_engine, 'begin', began)
+    sa.event.listen(engine.sync_engine, 'before_cursor_execute', selected)
     try:
         result = await read(context(), 'packet', path, expected_revision=skill['revision'])
     finally:
         sa.event.remove(engine.sync_engine, 'begin', began)
+        sa.event.remove(engine.sync_engine, 'before_cursor_execute', selected)
     assert len(begins) == 2
     assert bindings == [(WORKSPACE, 1), (WORKSPACE, 1)]
     assert result['revision'] == skill['revision']
     if operation == 'list_skill_resources':
         assert [entry['name'] for entry in result['entries']] == ['guide.md']
+        assert not content_queries and not loads
     else:
         assert result['content'] == 'verified guide'
-    original = objects[loads[-1]]
-    objects[loads[-1]] = original[:-1] + bytes([original[-1] ^ 1])
-    with pytest.raises(ValueError, match='digest verification'):
-        await read(context(), 'packet', path, expected_revision=skill['revision'])
-    objects[loads[-1]] = original
+        assert content_queries and len(loads) == 1
+    key = next(iter(objects))
+    original = objects[key]
+    objects[key] = original[:-1] + bytes([original[-1] ^ 1])
+    if operation == 'list_skill_resources':
+        assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
+        store._s3.side_effect = RuntimeError('source backend unavailable')
+        assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
+        assert not loads
+        store._s3.side_effect = None
+    else:
+        with pytest.raises(ValueError, match='digest verification'):
+            await read(context(), 'packet', path, expected_revision=skill['revision'])
+    objects[key] = original
+    before = len(loads)
+    for foreign in (context(OTHER), replace(context(), instance_uuid='other-instance')):
+        with pytest.raises(ValueError, match='pinned revision|stale Workspace'):
+            await read(foreign, 'packet', path, expected_revision=skill['revision'])
+    with pytest.raises(ValueError, match='pinned revision'):
+        await read(context(), 'packet', path, expected_revision='sha256:' + '0' * 64)
+    assert len(loads) == before
     original_record = repository._database._record
+
+    if operation == 'list_skill_resources':
+
+        async def bad_record(*args, **kwargs):
+            result = await original_record(*args, **kwargs)
+            return {**result, **invalid}
+
+        monkeypatch.setattr(repository._database, '_record', bad_record)
+        invalid = {'content_ref': 'invalid-ref'}
+        with pytest.raises(FileNotFoundError, match='content reference'):
+            await read(context(), 'packet', path, expected_revision=skill['revision'])
+        invalid = {'manifest': {**publication['manifest'], 'total_bytes': 0}}
+        with pytest.raises(ValueError):
+            await read(context(), 'packet', path, expected_revision=skill['revision'])
+        assert len(loads) == before
 
     async def record_then_cutover(*args, **kwargs):
         result = await original_record(*args, **kwargs)

@@ -393,7 +393,7 @@ class SkillStore:
                     self._remove_staging_tree(staging_root)
 
     @classmethod
-    def _publication_identity(cls, skill: dict, manifest: dict, file_bytes: bytes):
+    def _publication_manifest_identity(cls, skill: dict, manifest: dict):
         name = cls._validate_skill_name(skill.get("name", ""))
         revision, manifest = validate_tree_manifest(
             manifest,
@@ -403,6 +403,37 @@ class SkillStore:
         )
         if revision != skill.get("revision"):
             raise ValueError("Restored Skill manifest does not match its revision")
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        for path in expected:
+            if any(part in _REVISION_SKIP_DIRS for part in path.split("/")[:-1]):
+                raise ValueError(
+                    "Restored Skill archive contains an excluded directory"
+                )
+            parent = posixpath.dirname(path)
+            while parent:
+                if parent in expected:
+                    raise ValueError(
+                        "Restored Skill archive has conflicting file paths"
+                    )
+                parent = posixpath.dirname(parent)
+
+        def tree_order(path):
+            *directories, filename = path.split("/")
+            return [(1, name) for name in directories] + [(0, filename)]
+
+        if sorted(expected, key=tree_order) != list(expected):
+            raise ValueError("Restored Skill manifest is not in canonical tree order")
+        if "SKILL.md" not in expected:
+            raise ValueError("Restored Skill package has no root SKILL.md")
+        if expected["SKILL.md"]["size"] > _MAX_SKILL_TEXT_BYTES:
+            raise ValueError(
+                f"Skill file SKILL.md exceeds the {_MAX_SKILL_TEXT_BYTES}-byte limit"
+            )
+        return name, revision, manifest
+
+    @classmethod
+    def _publication_identity(cls, skill: dict, manifest: dict, file_bytes: bytes):
+        name, revision, manifest = cls._publication_manifest_identity(skill, manifest)
         if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
             raise ValueError("Restored Skill archive is too large")
         return name, revision, manifest
@@ -422,26 +453,6 @@ class SkillStore:
                 raise ValueError("Restored Skill archive requires regular files")
             if member.file_size != entry["size"]:
                 raise ValueError("Restored Skill file size does not match its manifest")
-            if any(
-                part in _REVISION_SKIP_DIRS for part in member.filename.split("/")[:-1]
-            ):
-                raise ValueError(
-                    "Restored Skill archive contains an excluded directory"
-                )
-            parent = posixpath.dirname(member.filename)
-            while parent:
-                if parent in expected:
-                    raise ValueError(
-                        "Restored Skill archive has conflicting file paths"
-                    )
-                parent = posixpath.dirname(parent)
-
-        def tree_order(path):
-            *directories, filename = path.split("/")
-            return [(1, name) for name in directories] + [(0, filename)]
-
-        if sorted(expected, key=tree_order) != list(expected):
-            raise ValueError("Restored Skill manifest is not in canonical tree order")
         return members
 
     @staticmethod
@@ -475,8 +486,6 @@ class SkillStore:
                 "Skill publication does not match the activated revision"
             )
         expected = {entry["path"]: entry for entry in manifest["files"]}
-        if "SKILL.md" not in expected:
-            raise ValueError("Restored Skill package has no root SKILL.md")
         retained = {}
         with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
             for member in cls._publication_members(archive, manifest):
@@ -528,6 +537,42 @@ class SkillStore:
         expected_revision: str | None = None,
     ) -> dict:
         """List an authorized immutable publication without restoring a local tree."""
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        revision, manifest, _ = cls._publication_resource(
+            skill, manifest, file_bytes, None, expected_revision
+        )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def list_publication_manifest_resources(
+        cls,
+        skill: dict,
+        manifest: dict,
+        path: str = ".",
+        include_hidden: bool = False,
+        max_entries: int = 200,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """List an authorized publication's metadata without reading its blob.
+
+        The caller must supply the authoritative published manifest. Its identity
+        and layout are checked here; unread archive bytes are not verified.
+        """
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        _, revision, manifest = cls._publication_manifest_identity(skill, manifest)
+        if expected_revision is not None and revision != expected_revision:
+            raise SkillRevisionMismatchError(
+                "Skill publication does not match the activated revision"
+            )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def _publication_listing_options(cls, path: str, max_entries: int):
         if (
             isinstance(max_entries, bool)
             or not isinstance(max_entries, int)
@@ -535,10 +580,17 @@ class SkillStore:
         ):
             raise ValueError("max_entries must be a positive integer")
         max_entries = min(max_entries, _MAX_SKILL_LIST_ENTRIES)
-        path = cls._publication_resource_path(path)
-        revision, manifest, _ = cls._publication_resource(
-            skill, manifest, file_bytes, None, expected_revision
-        )
+        return cls._publication_resource_path(path), max_entries
+
+    @staticmethod
+    def _list_publication_manifest(
+        skill: dict,
+        revision: str,
+        manifest: dict,
+        path: str,
+        include_hidden: bool,
+        max_entries: int,
+    ) -> dict:
         prefix = "" if path == "." else path + "/"
         children = {}
         for entry in manifest["files"]:
