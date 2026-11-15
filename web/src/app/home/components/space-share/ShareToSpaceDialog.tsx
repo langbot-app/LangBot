@@ -228,6 +228,7 @@ export default function ShareToSpaceDialog({
     setError('');
     try {
       const meta: ShareMetadata = {
+        mode,
         name,
         // Updates keep the item's other languages and replace this one.
         label: { ...(target?.label || {}), [locale]: label.trim() },

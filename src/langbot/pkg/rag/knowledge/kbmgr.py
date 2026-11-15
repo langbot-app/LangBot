@@ -19,6 +19,7 @@ from langbot.pkg.core import app, taskmgr
 from langbot.pkg.core.task_boundary import run_in_workspace_uow
 from langbot.pkg.entity.persistence import rag as persistence_rag
 from langbot.pkg.workspace.errors import WorkspaceInvariantError, WorkspaceNotFoundError
+from langbot.pkg.telemetry import usage
 
 from .base import KnowledgeBaseInterface
 
@@ -126,12 +127,14 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         except (WorkspaceRequiredError, ValueError) as exc:
             raise WorkspaceNotFoundError('Upload not found') from exc
 
+    @usage.observe_runtime('kb.file.ingest')
     async def _store_file_task(
         self,
         execution_context: ExecutionContext,
         file: persistence_rag.File,
         task_context: taskmgr.TaskContext,
         parser_plugin_id: str | None = None,
+        file_size: int | None = None,
     ):
         key = (execution_context.workspace_uuid, self.get_uuid(), file.uuid)
         current_task = asyncio.current_task()
@@ -169,11 +172,12 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             task_context.set_current_action('Processing file')
 
             # Get file size from storage
-            file_size = await self.ap.storage_mgr.size_scoped_object_key(
-                execution_context,
-                file.file_name,
-                expected_owner_type='upload_document',
-            )
+            if file_size is None:
+                file_size = await self.ap.storage_mgr.size_scoped_object_key(
+                    execution_context,
+                    file.file_name,
+                    expected_owner_type='upload_document',
+                )
 
             # Detect MIME type from extension
             mime_type, _ = mimetypes.guess_type(file.file_name)
@@ -354,6 +358,9 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
         if extension == 'zip':
             return await self._store_zip_file(execution_context, file_id, parser_plugin_id=parser_plugin_id)
 
+        file_size = await self.ap.storage_mgr.size_scoped_object_key(
+            execution_context, file_id, expected_owner_type='upload_document'
+        )
         file_uuid = str(uuid.uuid4())
         kb_id = self.knowledge_base_entity.uuid
 
@@ -373,7 +380,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             await self.ap.persistence_mgr.execute_async(sqlalchemy.insert(persistence_rag.File).values(file_obj_data))
             ctx = taskmgr.TaskContext.new()
             coroutine = self._store_file_task(
-                execution_context, file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id
+                execution_context, file_obj, task_context=ctx, parser_plugin_id=parser_plugin_id, file_size=file_size
             )
             try:
                 wrapper = self.ap.task_mgr.create_user_task(
@@ -405,7 +412,21 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                     self._ingestion_tasks.pop(key, None)
 
             wrapper.task.add_done_callback(forget_task)
+        self._record_upload(execution_context, extension, file_size)
         return wrapper.id
+
+    def _record_upload(self, execution_context, extension, file_size):
+        try:
+            usage.inc(
+                self.ap,
+                execution_context.workspace_uuid,
+                'kb.file.upload',
+                engine=self.get_knowledge_engine_plugin_id(),
+                ext=extension,
+                size=usage.bucket(file_size, (1024**2, 10 * 1024**2, 50 * 1024**2), ('<1M', '<10M', '<50M', '>=50M')),
+            )
+        except Exception:
+            pass
 
     async def _store_zip_file(
         self,
@@ -423,6 +444,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             zip_file_id,
             expected_owner_type='upload_document',
         )
+        self._record_upload(execution_context, 'zip', len(zip_bytes))
 
         supported_extensions = {'txt', 'pdf', 'docx', 'md', 'html'}
         stored_file_tasks = []
@@ -532,6 +554,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
             except Exception as e:
                 self.ap.logger.warning(f'Failed to cleanup ZIP file {zip_file_id}: {e}')
 
+    @usage.observe_runtime('kb.retrieve')
     async def retrieve(
         self,
         execution_context: ExecutionContext,
@@ -556,6 +579,7 @@ class RuntimeKnowledgeBase(KnowledgeBaseInterface):
                 entries.append(r)
         return entries
 
+    @usage.observe_runtime('kb.file.delete')
     async def delete_file(self, execution_context: ExecutionContext, file_id: str):
         await self._assert_execution_context(execution_context)
         result = await self.ap.persistence_mgr.execute_async(
@@ -992,6 +1016,7 @@ class RAGManager:
                 raise
 
         self.ap.logger.info(f'Created new Knowledge Base {name} ({kb_uuid}) using plugin {knowledge_engine_plugin_id}')
+        usage.inc(self.ap, execution_context.workspace_uuid, 'kb.create', engine=knowledge_engine_plugin_id)
         return kb
 
     async def load_knowledge_bases_from_db(self):

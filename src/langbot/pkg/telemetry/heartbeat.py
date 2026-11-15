@@ -13,6 +13,8 @@ credentials.
 from __future__ import annotations
 
 import asyncio
+import os
+import re
 import time
 import typing
 from datetime import datetime, timezone
@@ -20,6 +22,7 @@ from datetime import datetime, timezone
 import sqlalchemy
 
 from ..utils import constants, platform as platform_utils
+from . import usage
 
 if typing.TYPE_CHECKING:
     from ..core import app as core_app
@@ -287,6 +290,42 @@ async def build_heartbeat_payload(
     if workspace_resource is not None:
         features.update({key: value for key, value in workspace_resource.items() if key != 'workspace_uuid'})
 
+    features['kb_engines'] = []
+    try:
+        features['kb_engines'] = sorted(
+            {
+                kb.get_knowledge_engine_plugin_id()[:64]
+                for (ws, _kb_uuid), kb in ap.rag_mgr.knowledge_bases.items()
+                if ws == workspace_uuid and kb.get_knowledge_engine_plugin_id()
+            }
+        )[:16]
+    except Exception:
+        pass
+    features['kb_file_count'] = -1
+    cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+    if not cloud_runtime:
+        try:
+            result = await ap.persistence_mgr.execute_async(
+                sqlalchemy.select(sqlalchemy.func.count())
+                .select_from(persistence_rag.File)
+                .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+            )
+            features['kb_file_count'] = result.scalar() or 0
+        except Exception:
+            pass
+    for field, pattern in (('deploy_source', r'[a-z0-9_-]{1,32}'), ('deploy_tool_version', r'[0-9A-Za-z.+_-]{1,32}')):
+        value = os.environ.get(f'LANGBOT_{field.upper()}', '')
+        if re.fullmatch(pattern, value):
+            features[field] = value
+    batch = usage.take_batch(workspace_uuid) if usage.enabled(ap) else None
+    features['lbctl_versions'] = (
+        sorted({dims['version'] for metric, dims, _count in batch['c'] if metric == 'lbctl.client'})[:5]
+        if batch
+        else []
+    )
+    if batch:
+        features['usage'] = batch
+
     return {
         'event_type': 'instance_heartbeat',
         'query_id': '',
@@ -315,6 +354,9 @@ async def build_heartbeat_payloads(ap: core_app.Application) -> list[dict]:
     """Build one heartbeat per active Workspace."""
     bindings = await ap.workspace_service.list_active_execution_bindings()
     workspace_uuids = sorted({binding.workspace_uuid for binding in bindings})
+    cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
+    if len(workspace_uuids) == 1 and not cloud_runtime:
+        ap._telemetry_default_workspace = workspace_uuids[0]
     workspace_create_ts = {
         binding.workspace_uuid: _workspace_created_timestamp(getattr(binding, 'workspace_created_at', None))
         for binding in bindings
@@ -343,7 +385,16 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
                 # Heartbeats are a daily bounded batch, not best-effort query events.
                 # Await each send so the TelemetryManager's 8-task queue cannot drop
                 # Workspaces after the first batch.
-                await ap.telemetry.send(payload)
+                batch = payload['features'].get('usage')
+                try:
+                    sent = await ap.telemetry.send(payload)
+                except Exception:
+                    usage.nack(payload['workspace_uuid'], batch)
+                    raise
+                if sent is True:
+                    usage.ack(payload['workspace_uuid'], batch)
+                else:
+                    usage.nack(payload['workspace_uuid'], batch)
         except Exception as e:
             try:
                 ap.logger.debug(f'Telemetry heartbeat failed: {e}')
@@ -353,4 +404,11 @@ async def heartbeat_loop(ap: core_app.Application) -> None:
         # discovered after startup. A transient startup/projection failure must
         # not suppress synchronization for an entire day.
         cloud_runtime = getattr(getattr(ap.persistence_mgr, 'mode', None), 'value', None) == 'cloud_runtime'
-        await asyncio.sleep(300 if cloud_runtime else HEARTBEAT_INTERVAL_SECONDS)
+        await asyncio.sleep(heartbeat_interval(cloud_runtime))
+
+
+def heartbeat_interval(cloud_runtime: bool) -> int:
+    try:
+        return max(30, int(os.environ['LANGBOT_TELEMETRY_HEARTBEAT_SECONDS']))
+    except (KeyError, ValueError):
+        return 300 if cloud_runtime else HEARTBEAT_INTERVAL_SECONDS

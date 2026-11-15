@@ -219,7 +219,7 @@ export default function PromptLibraryDialog({
       mode,
     );
     void httpClient
-      .trackLibraryPromptUse(selected.author, selected.name)
+      .trackLibraryPromptUse(selected.author, selected.name, selected.kind)
       .catch(() => undefined);
     toast.success(t('promptLibrary.applied'));
     onOpenChange(false);

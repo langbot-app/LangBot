@@ -1707,9 +1707,14 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/space-share/prompts/library', params);
   }
 
-  public trackLibraryPromptUse(author: string, name: string): Promise<object> {
+  public trackLibraryPromptUse(
+    author: string,
+    name: string,
+    kind?: PromptKind,
+  ): Promise<object> {
     return this.post(
       `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+      { kind },
     );
   }
 
