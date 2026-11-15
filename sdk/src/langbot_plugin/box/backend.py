@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import csv
 import dataclasses
 import datetime as dt
 import logging
 import hashlib
 import inspect
+import io
 import json
 import os
 import re
@@ -724,6 +726,15 @@ class CLISandboxBackend(BaseSandboxBackend):
         script += (
             f"clear_workspace_directory('/workspace', {owner[1]!r}, {owner[2]!r})\n"
         )
+        mount = io.StringIO()
+        csv.writer(mount).writerow(
+            [
+                "type=bind",
+                f"src={owner[0]}",
+                "dst=/workspace",
+                "bind-recursive=disabled",
+            ]
+        )
         name = "langbot-workspace-cleanup-" + uuid.uuid4().hex
         args = [
             self.command,
@@ -765,7 +776,7 @@ class CLISandboxBackend(BaseSandboxBackend):
             "--label",
             "langbot.workspace_cleanup=true",
             "--mount",
-            f"type=bind,src={owner[0]},dst=/workspace,bind-recursive=disabled",
+            mount.getvalue().rstrip("\r\n"),
         ]
         if self.cpu_limit_enabled:
             args.extend(["--cpus", "0.5"])

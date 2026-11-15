@@ -326,7 +326,10 @@ def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> byt
                             raise ValueError("Directory file changed: " + path)
                         copied = 0
                         with archive.open(member, "w") as target:
-                            while chunk := source.read(65536):
+                            while True:
+                                chunk = source.read(65536)
+                                if not chunk:
+                                    break
                                 copied += len(chunk)
                                 if copied > expected.st_size:
                                     raise ValueError("Directory file changed: " + path)

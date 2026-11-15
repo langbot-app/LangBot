@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 from types import SimpleNamespace
@@ -192,6 +194,35 @@ async def test_helper_is_pinned_confined_and_retired_before_root_removal(
         "langbot.session_id=owned-session",
     } <= set(_values(create, "--label"))
     assert [argv[1] for argv in case.cli.calls][-3:] == ["start", "rm", "ps"]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("name", ['workspace, "quoted"', 'workspace,\n"quoted"'])
+async def test_cleanup_mount_preserves_csv_characters_in_workspace_path(
+    cleanup_case, host_permission_denied, name
+):
+    case = cleanup_case
+    root = case.root.with_name(name)
+    case.root.rename(root)
+    case.root = case.cli.root = root
+    case.owner = (str(root), *case.owner[1:])
+    case.session.host_path = case.cli.mount_source = str(root)
+    case.session._runtime_workspace_owner = case.owner
+    _write_payload(root)
+
+    await case.backend.remove_owned_workspace(case.session, case.owner)
+
+    create = next(argv for argv in case.cli.calls if argv[1] == "create")
+    assert list(csv.reader(io.StringIO(_values(create, "--mount")[0]))) == [
+        [
+            "type=bind",
+            f"src={root}",
+            "dst=/workspace",
+            "bind-recursive=disabled",
+        ]
+    ]
+    assert not root.exists()
+    assert not case.cli.live
 
 
 @pytest.mark.anyio

@@ -259,11 +259,13 @@ def core_pair_configure(tmp_path, monkeypatch):
             assert not remaining, f'Runtime retained owned workspace entries: {remaining}'
         assert not any(os.path.lexists(path) for path in owned_workspaces), owned_workspaces
         print(
-            json.dumps({
-                'event': 'runtime_workspaces_removed',
-                'observed_paths': sorted(map(str, owned_workspaces)),
-                'remaining_entries': [],
-            }),
+            json.dumps(
+                {
+                    'event': 'runtime_workspaces_removed',
+                    'observed_paths': sorted(map(str, owned_workspaces)),
+                    'remaining_entries': [],
+                }
+            ),
             flush=True,
         )
 
