@@ -2696,11 +2696,15 @@ class BoxService:
 
         selected = await get_backend(self.ap, execution_context.workspace_uuid)
         if selected is not None:
-            candidates = (await self.get_workspace_backend_settings(context))['backends']
-            backend_info = next(
-                (item for item in candidates if item['name'] == selected), {'name': selected, 'available': False}
-            )
-            runtime_status = {**runtime_status, 'backend': backend_info}
+            if selected == 'docker' and isinstance(backend_info, dict) and backend_info.get('name') == 'docker':
+                # Runtime already checked this daemon; do not wait for unrelated backend probes.
+                await self._validated_execution_context(context)
+            else:
+                candidates = (await self.get_workspace_backend_settings(context))['backends']
+                backend_info = next(
+                    (item for item in candidates if item['name'] == selected), {'name': selected, 'available': False}
+                )
+                runtime_status = {**runtime_status, 'backend': backend_info}
         from .settings import get_settings
 
         values = ((await get_settings(self.ap, execution_context.workspace_uuid)).get('limits') or {}).get('config', {})
