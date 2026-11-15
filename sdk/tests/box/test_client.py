@@ -639,7 +639,7 @@ async def test_init_sends_config(client, handler):
     await client.init({"backend": "nsjail", "foo": 1})
     args = handler.call_action.call_args.args
     assert args[0] is LangBotToBoxAction.INIT
-    assert args[1] == {"backend": "nsjail", "foo": 1}
+    assert args[1] == {"backend": "nsjail", "foo": 1, "file_chunk_256k": True}
 
 
 @pytest.mark.anyio

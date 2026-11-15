@@ -586,7 +586,22 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         )
 
     async def init(self, config: dict) -> None:
-        result = await self._call(LangBotToBoxAction.INIT, config)
+        prepare_chunks = getattr(self.handler, "_prepare_box_file_chunks", None)
+        configure_chunks = getattr(self.handler, "_configure_box_file_chunks", None)
+        can_offer_chunks = callable(prepare_chunks) and callable(configure_chunks)
+        payload = {
+            key: value for key, value in config.items() if key != "file_chunk_256k"
+        }
+        if can_offer_chunks:
+            # The peer may send a large chunk before our INIT waiter resumes.
+            prepare_chunks()
+            configure_chunks(False)
+            payload["file_chunk_256k"] = True
+        result = await self._call(LangBotToBoxAction.INIT, payload)
+        if can_offer_chunks:
+            configure_chunks(
+                isinstance(result, dict) and result.get("file_chunk_256k") is True
+            )
         if config.get("file_transfer_mode") == "network" and (
             not isinstance(result, dict)
             or result.get("network_workspace") is not True

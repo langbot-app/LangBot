@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import tempfile
 import uuid
 from collections import OrderedDict
+from functools import partial
 
 import sqlalchemy
 from langbot_plugin.skill_store import SkillRevisionConflictError, SkillRevisionNotFoundError, SkillStore
@@ -12,7 +14,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from ..entity.persistence.skill import SkillRegistry, SkillVersion
-from ..utils.bounded_executor import run_blocking_atomic
+from ..utils.bounded_executor import BlockingWorkCapacityError, run_blocking_atomic
 
 
 MAX_PUBLICATION_BYTES = 64 * 1024 * 1024
@@ -51,6 +53,37 @@ class DatabaseSkillRepository:
             self._discard_resource_archive(next(iter(self._resource_archives)))
         self._resource_archives[key] = {'value': archive, 'size': metadata['size'], 'digest': metadata['digest']}
         self._resource_archive_bytes += len(archive)
+
+    @staticmethod
+    async def _read_resource_parallel(validate_digest, read_resource):
+        async def verify():
+            digest, result = await asyncio.gather(
+                run_blocking_atomic(validate_digest),
+                run_blocking_atomic(read_resource),
+                return_exceptions=True,
+            )
+            if isinstance(digest, BlockingWorkCapacityError):
+                digest = await run_blocking_atomic(validate_digest)
+            if isinstance(digest, BaseException):
+                raise digest
+            if isinstance(result, BlockingWorkCapacityError):
+                result = await run_blocking_atomic(read_resource)
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+        driver = asyncio.create_task(verify())
+        try:
+            return await asyncio.shield(driver)
+        except asyncio.CancelledError:
+            # Keep the Workspace lock until every admitted check actually finishes.
+            drained = asyncio.gather(driver, return_exceptions=True)
+            while not drained.done():
+                try:
+                    await asyncio.shield(drained)
+                except asyncio.CancelledError:
+                    continue
+            raise
 
     @staticmethod
     def _scope(model, context):
@@ -323,16 +356,11 @@ class DatabaseSkillRepository:
                     **kwargs,
                 )
             # Release the database connection before object-store IO and ZIP validation.
-            if cached is not None:
-                try:
-                    archive = content._validated_value(cached['value'], row, MAX_PUBLICATION_BYTES)
-                except (TypeError, ValueError):
-                    self._discard_resource_archive(cache_key)
-                    raise
-            else:
-                archive = bytes(await content._read(row, MAX_PUBLICATION_BYTES))
             try:
-                result = await run_blocking_atomic(
+                archive = (
+                    cached['value'] if cached is not None else bytes(await content._read(row, MAX_PUBLICATION_BYTES))
+                )
+                read_resource = partial(
                     SkillStore.read_publication_resource,
                     record['skill'],
                     record['manifest'],
@@ -340,7 +368,16 @@ class DatabaseSkillRepository:
                     *args[1:],
                     **kwargs,
                 )
-            except Exception:
+                scope_limit = getattr(getattr(self.ap, 'blocking_executor', None), 'max_inflight_per_scope', 0)
+                if cached is not None and isinstance(scope_limit, int) and scope_limit >= 2:
+                    result = await self._read_resource_parallel(
+                        partial(content._validated_value, archive, row, MAX_PUBLICATION_BYTES), read_resource
+                    )
+                else:
+                    if cached is not None:
+                        content._validated_value(archive, row, MAX_PUBLICATION_BYTES)
+                    result = await run_blocking_atomic(read_resource)
+            except BaseException:
                 self._discard_resource_archive(cache_key)
                 raise
             self._remember_resource_archive(cache_key, archive, row)

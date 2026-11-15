@@ -885,13 +885,17 @@ class BoxServerHandler(Handler):
                     "BoxValidationError: host backend requires local stdio control "
                     "or WebSocket control protected by LANGBOT_BOX_CONTROL_TOKEN"
                 )
-            self._runtime.init(data)
+            config = dict(data)
+            large_chunks = config.pop("file_chunk_256k", False) is True
+            self._runtime.init(config)
+            self._configure_box_file_chunks(large_chunks)
             return ActionResponse.success(
                 {
                     "initialized": True,
                     "network_workspace": self._runtime.network_workspace,
                     "directory_archive": True,
                     "artifact_cache_preflight": True,
+                    **({"file_chunk_256k": True} if large_chunks else {}),
                 }
             )
 

@@ -59,6 +59,7 @@ _ORIGINAL_ASYNCIO_TO_THREAD = asyncio.to_thread
 FILE_STORAGE_DIR = "data/temp/lbp"
 SHARED_WORKER_FILE_STORAGE_DIR = "/tmp/lbp-rpc"
 FILE_CHUNK_LENGTH = 1024 * 16  # 16KB
+BOX_FILE_CHUNK_LENGTH = 1024 * 256
 MAX_INFLIGHT_ACTIONS = 128
 MAX_RESERVED_ACTIONS = 4
 MAX_STREAM_QUEUE_SIZE = 128
@@ -863,17 +864,20 @@ class Handler(abc.ABC):
         self._owned_transfer_identities: dict[str, tuple[int, int]] = {}
         self._transfer_stages: dict[str, _TransferStage] = {}
         self._deleted_transfer_payloads: set[str] = set()
+        self._file_chunk_length = FILE_CHUNK_LENGTH
+        self._file_chunk_receive_limit = FILE_CHUNK_LENGTH
 
         self._disconnect_callback = disconnect_callback
 
         @self.action(CommonAction.FILE_CHUNK)
         async def file_chunk(data: dict[str, Any]) -> ActionResponse:
+            chunk_limit = self._file_chunk_receive_limit
             chunk_base64 = data["chunk_base64"]
             chunk_index = data["chunk_index"]
             chunk_amount = data["chunk_amount"]
             if (
                 not isinstance(chunk_base64, str)
-                or len(chunk_base64) > ((FILE_CHUNK_LENGTH + 2) // 3) * 4
+                or len(chunk_base64) > ((chunk_limit + 2) // 3) * 4
             ):
                 raise ValueError("File transfer chunk exceeds the protocol limit")
             if (
@@ -886,10 +890,10 @@ class Handler(abc.ABC):
                 or chunk_index >= chunk_amount
             ):
                 raise ValueError("Invalid file chunk position")
-            chunk_bytes = base64.b64decode(chunk_base64, validate=True)
-            if len(chunk_bytes) > FILE_CHUNK_LENGTH:
-                raise ValueError("File transfer chunk exceeds the protocol limit")
             async with self._file_transfer_lock:
+                chunk_bytes = base64.b64decode(chunk_base64, validate=True)
+                if len(chunk_bytes) > chunk_limit:
+                    raise ValueError("File transfer chunk exceeds the protocol limit")
                 transfer_context = self.resolve_effective_action_context()
                 file_key = _validate_file_key(data["file_key"])
                 worker = asyncio.create_task(
@@ -2504,6 +2508,17 @@ class Handler(abc.ABC):
             raise FileNotFoundError(file_key)
         return stored_context, expected_payload
 
+    def _prepare_box_file_chunks(self) -> None:
+        self._file_chunk_receive_limit = BOX_FILE_CHUNK_LENGTH
+
+    def _configure_box_file_chunks(self, enabled: bool) -> None:
+        self._file_chunk_length = (
+            BOX_FILE_CHUNK_LENGTH if enabled is True else FILE_CHUNK_LENGTH
+        )
+        if enabled is True:
+            # A later INIT cannot invalidate a transfer already using this limit.
+            self._prepare_box_file_chunks()
+
     async def send_file(
         self,
         file_bytes: bytes,
@@ -2516,6 +2531,7 @@ class Handler(abc.ABC):
         from langbot_plugin.api.proxies.invocation import invocation_capability
 
         invocation = invocation_capability(self)
+        chunk_length = self._file_chunk_length
         if self.max_file_bytes is not None and len(file_bytes) > self.max_file_bytes:
             raise ValueError("File transfer exceeds the configured size limit")
         if not isinstance(file_extension, str):
@@ -2529,15 +2545,11 @@ class Handler(abc.ABC):
         elif re.fullmatch(r"ft1_[0-9a-f]{64}" + re.escape(suffix), file_key) is None:
             raise ValueError("Invalid file transfer capability")
         file_length = len(file_bytes)
-        chunk_amount = max(
-            1, (file_length + FILE_CHUNK_LENGTH - 1) // FILE_CHUNK_LENGTH
-        )
+        chunk_amount = max(1, (file_length + chunk_length - 1) // chunk_length)
         for i in range(chunk_amount):
             if invocation is not None:
                 invocation.require_active()
-            chunk_bytes = file_bytes[
-                i * FILE_CHUNK_LENGTH : (i + 1) * FILE_CHUNK_LENGTH
-            ]
+            chunk_bytes = file_bytes[i * chunk_length : (i + 1) * chunk_length]
             chunk_base64 = base64.b64encode(chunk_bytes).decode("utf-8")
             # response = await self.conn.send(json.dumps({
             #     "action": CommonAction.FILE_CHUNK.value,

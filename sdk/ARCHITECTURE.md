@@ -293,8 +293,14 @@ Core mechanics:
 - `Handler.call_action()` waits for one response.
 - `Handler.call_action_generator()` consumes streamed responses.
 - Streaming emits `chunk_status: "continue"` chunks and ends with `"end"`.
-- File transfer uses `CommonAction.FILE_CHUNK` with 16KB base64 chunks stored
-  under `data/temp/lbp/`. New transfer keys are high-entropy opaque capabilities;
+- File transfer uses `CommonAction.FILE_CHUNK` with 16 KiB chunks encoded as
+  base64 and stored under `data/temp/lbp/`. Authenticated Box INIT peers may
+  offer and acknowledge `file_chunk_256k: true` to use fixed 256 KiB chunks;
+  plugin channels and unacknowledged senders retain 16 KiB. The client prepares
+  its larger receive limit before offering it, and each send fixes its chunk
+  length for that transfer. Larger chunks retain serial ACKs and the existing
+  action admission limits, increasing the bounded payload memory per action.
+  New transfer keys are high-entropy opaque capabilities;
   the receiver durably binds each capability to its exact authority namespace so
   a later read can recover that namespace after the action or handler ends. An
   explicit current context must still match, and the receiver never scans other

@@ -43,6 +43,11 @@ only a miss transfers the archive using the existing namespace-owned `FILE_CHUNK
 protocol. `PREPARE_ARTIFACT` consumes the completed transfer. Transport ownership,
 trusted instance/Workspace context, generation fences and sandbox admission apply
 to hits and misses. There is no caller-supplied download URL or user API token.
+Box INIT can negotiate fixed 256 KiB chunks in both directions, reducing serial
+round trips without changing archive bytes. Older peers retain 16 KiB sends;
+ordinary plugin connections retain their original limits. File size, integrity,
+ordering and ownership checks still apply. The larger per-action payload retains
+the existing bounded action admission; it does not add transfer pipelining.
 
 `BoxSpec.artifact_mounts` selects a `BoxArtifactMountSpec` by digest. Runtime
 resolves it inside the authorized Workspace cache into a generic read-only mount
