@@ -2253,6 +2253,12 @@ const jaJP = {
       depsProgress:
         '{{installed}}/{{total}} インストール済み · 残り {{remaining}} 個',
       installComplete: 'プラグインのインストール完了',
+      followUp: {
+        nextSteps: '次のステップ',
+        agents: 'Agent またはプラグインプロセッサを作成',
+        pipelines: 'パイプラインを作成',
+        knowledge: 'ナレッジベースを作成',
+      },
       updateComplete: 'プラグインの更新が完了しました',
       installCompletePlugin: 'プラグインをインストールしました',
       installCompleteMCP: 'MCP サーバーをインストールしました',

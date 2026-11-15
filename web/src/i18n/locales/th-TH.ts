@@ -2188,6 +2188,12 @@ const thTH = {
       depsInfo: '{{count}} แพ็กเกจที่ต้องติดตั้ง',
       depsProgress: 'ติดตั้งแล้ว {{installed}}/{{total}} · เหลือ {{remaining}}',
       installComplete: 'ติดตั้งปลั๊กอินสำเร็จ',
+      followUp: {
+        nextSteps: 'ขั้นตอนถัดไป',
+        agents: 'สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
+        pipelines: 'สร้างไปป์ไลน์',
+        knowledge: 'สร้างฐานความรู้',
+      },
       updateComplete: 'อัปเดตปลั๊กอินสำเร็จ',
       installCompletePlugin: 'ติดตั้งปลั๊กอินสำเร็จ',
       installCompleteMCP: 'ติดตั้งเซิร์ฟเวอร์ MCP สำเร็จ',

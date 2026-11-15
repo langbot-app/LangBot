@@ -2259,6 +2259,12 @@ const ruRU = {
       depsProgress:
         '{{installed}}/{{total}} установлено · {{remaining}} осталось',
       installComplete: 'Плагин успешно установлен',
+      followUp: {
+        nextSteps: 'Дальнейшие шаги',
+        agents: 'Создайте Agent или обработчик плагина',
+        pipelines: 'Создайте конвейер',
+        knowledge: 'Создайте базу знаний',
+      },
       updateComplete: 'Плагин успешно обновлён',
       installCompletePlugin: 'Плагин успешно установлен',
       installCompleteMCP: 'Сервер MCP успешно установлен',

@@ -2239,6 +2239,12 @@ const enUS = {
       depsProgress:
         '{{installed}}/{{total}} installed · {{remaining}} remaining',
       installComplete: 'Installation successful',
+      followUp: {
+        nextSteps: 'Next steps',
+        agents: 'Create an Agent or plugin processor',
+        pipelines: 'Create a pipeline',
+        knowledge: 'Create a knowledge base',
+      },
       updateComplete: 'Plugin updated successfully',
       installCompletePlugin: 'Plugin installed successfully',
       installCompleteMCP: 'MCP Server installed successfully',

@@ -2224,6 +2224,12 @@ const viVN = {
       depsInfo: '{{count}} phụ thuộc cần cài đặt',
       depsProgress: 'Đã cài {{installed}}/{{total}} · Còn lại {{remaining}}',
       installComplete: 'Cài đặt plugin thành công',
+      followUp: {
+        nextSteps: 'Bước tiếp theo',
+        agents: 'Tạo Agent hoặc bộ xử lý plugin',
+        pipelines: 'Tạo pipeline',
+        knowledge: 'Tạo cơ sở tri thức',
+      },
       updateComplete: 'Đã cập nhật plugin thành công',
       installCompletePlugin: 'Đã cài đặt plugin thành công',
       installCompleteMCP: 'Đã cài đặt máy chủ MCP thành công',
