@@ -16,13 +16,26 @@ this method does not add a plugin, MCP, assistant or HTTP operation. It checks t
 current Workspace placement and sandbox admission, checks the exact publication
 metadata on every call, and validates the Runtime receipt. Database probes use
 persisted manifest, size and archive digest without reading the body. Only a miss
-fetches archive bytes; neither path rebuilds a Core cache.
+fetches archive bytes; neither path rebuilds a persistent Core cache.
 
 In database/network mode, Agent resource listings validate the authoritative
 immutable manifest without blob IO. Listing and activation are not content health
-checks: they can succeed with an unavailable or corrupt blob. Content reads still
-validate the complete archive and file bytes; a required blob fetch fails on reads
-or cold execution. Runtime execution still validates every cached byte.
+checks: they can succeed with an unavailable or corrupt blob.
+
+For content reads, Core keeps a private process-local LRU of complete verified ZIP
+bytes, bounded to 32 MiB and 256 entries, with no user configuration. Every request
+still checks current Workspace scope, placement generation, version and content-ref
+metadata in the database, then checks archive SHA and uses the SDK to verify the
+complete ZIP/CRC and every file SHA. Only a successful SDK read admits those same
+immutable bytes to the cache. The budget covers retained cache bytes, not in-flight request
+memory; no local persistent cache or restored tree is created.
+
+A verified cached copy remains readable when its source blob is offline or corrupt;
+content reads therefore are not source-storage health checks either. Cold reads,
+process restart and eviction require fetching and validating the source again.
+Database failure, revoked access or missing version/content-ref records still
+reject a cached read. Runtime execution's full byte validation, pins and GC are
+unchanged by this Core memory cache.
 
 `BoxArtifactDescriptor` contains `content_digest`, `manifest`, `archive_size` and
 `archive_sha256`. `ActionRPCBoxClient.prepare_artifact` first probes the Runtime;
@@ -58,7 +71,10 @@ and depth 16. Lower file-transfer limits also apply. The session lease, executio
 lock, admission and generation checks cover archive creation and file transfer;
 sources inside or containing an additional mount are rejected. The usual file
 chunks and digest receipt carry the archive to Core, which validates it and
-publishes with revision CAS. No workspace snapshot is created; rejection and
+publishes with revision CAS. For a complete replacement draft, Core checks
+`base_revision` against the current database revision and performs the final CAS
+without fetching or restoring the old package. Historical versions and the original
+`created_at` are retained. No workspace snapshot is created; rejection and
 cancellation retain the original draft. Network INIT acknowledges this capability.
 
 Runtime removes a network workspace only after its backend stops. If Docker left

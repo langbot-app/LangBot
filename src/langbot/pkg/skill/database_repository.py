@@ -4,6 +4,7 @@ import hashlib
 import json
 import tempfile
 import uuid
+from collections import OrderedDict
 
 import sqlalchemy
 from langbot_plugin.skill_store import SkillRevisionConflictError, SkillRevisionNotFoundError, SkillStore
@@ -15,19 +16,41 @@ from ..utils.bounded_executor import run_blocking_atomic
 
 
 MAX_PUBLICATION_BYTES = 64 * 1024 * 1024
+_RESOURCE_CACHE_BYTES = 32 * 1024 * 1024
+_RESOURCE_CACHE_ENTRIES = 256
 _LOCAL_FIELDS = {'package_root', 'manifest_path', 'source_path'}
 
 
 class DatabaseSkillRepository:
     """Use the database as authority and the SDK store only for disposable trees."""
 
-    def __init__(self, ap, cache: SkillStore):
+    def __init__(self, ap, cache: SkillStore, validate_context):
         self.ap = ap
         self.cache = cache
+        self._validate_context = validate_context
+        self._resource_archives = OrderedDict()
+        self._resource_archive_bytes = 0
 
     @property
     def content(self):
         return self.ap.storage_mgr.content_store
+
+    def _discard_resource_archive(self, key):
+        cached = self._resource_archives.pop(key, None)
+        if cached is not None:
+            self._resource_archive_bytes -= len(cached['value'])
+
+    def _remember_resource_archive(self, key, archive, metadata):
+        self._discard_resource_archive(key)
+        if len(archive) > _RESOURCE_CACHE_BYTES:
+            return
+        while self._resource_archives and (
+            self._resource_archive_bytes + len(archive) > _RESOURCE_CACHE_BYTES
+            or len(self._resource_archives) >= _RESOURCE_CACHE_ENTRIES
+        ):
+            self._discard_resource_archive(next(iter(self._resource_archives)))
+        self._resource_archives[key] = {'value': archive, 'size': metadata['size'], 'digest': metadata['digest']}
+        self._resource_archive_bytes += len(archive)
 
     @staticmethod
     def _scope(model, context):
@@ -127,15 +150,19 @@ class DatabaseSkillRepository:
             store = SkillStore(temporary + '/store')
             source, payload = await run_blocking_atomic(store._prepare_skill_zip, file_bytes, temporary, data)
             current = await self._record(context, payload['name'])
-            archive = await self._archive(context, current) if current is not None else None
+            if current is not None:
+                SkillStore._require_base_revision(
+                    payload['name'], {'current_revision': current['skill']['revision']}, base_revision
+                )
 
             def publish():
-                if current is not None:
-                    store.restore_skill_publication(current['skill'], current['manifest'], archive, make_current=True)
                 result = store.import_skill_directory(
-                    source, payload, source_root=temporary, base_revision=base_revision
+                    source, payload, source_root=temporary, base_revision=base_revision if current is None else None
                 )
-                return store.export_skill_publication(result['name'])
+                publication = store.export_skill_publication(result['name'])
+                if current is not None and 'created_at' in current['skill']:
+                    publication['skill']['created_at'] = current['skill']['created_at']
+                return publication
 
             publication = await run_blocking_atomic(publish)
         await self._publish(
@@ -270,6 +297,7 @@ class DatabaseSkillRepository:
         ):
             content = self.content
             async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+                await self._validate_context(context)
                 record = await self._record(context, args[0], kwargs.get('expected_revision'))
                 if record is None:
                     raise ValueError(f'Skill "{args[0]}" not found')
@@ -277,7 +305,15 @@ class DatabaseSkillRepository:
                 if method == 'list_skill_resources':
                     content._validate_ref(record['content_ref'])
                 else:
-                    row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+                    cache_key = (context.instance_uuid, context.workspace_uuid, record['content_ref'])
+                    cached = self._resource_archives.get(cache_key)
+                    row = await content._row(
+                        uow, context.workspace_uuid, record['content_ref'], metadata_only=cached is not None
+                    )
+                    if cached is not None and (cached['size'], cached['digest']) != (row['size'], row['digest']):
+                        self._discard_resource_archive(cache_key)
+                        cached = None
+                        row = await content._row(uow, context.workspace_uuid, record['content_ref'])
             if method == 'list_skill_resources':
                 return await run_blocking_atomic(
                     SkillStore.list_publication_manifest_resources,
@@ -287,10 +323,28 @@ class DatabaseSkillRepository:
                     **kwargs,
                 )
             # Release the database connection before object-store IO and ZIP validation.
-            archive = await content._read(row, MAX_PUBLICATION_BYTES)
-            return await run_blocking_atomic(
-                SkillStore.read_publication_resource, record['skill'], record['manifest'], archive, *args[1:], **kwargs
-            )
+            if cached is not None:
+                try:
+                    archive = content._validated_value(cached['value'], row, MAX_PUBLICATION_BYTES)
+                except (TypeError, ValueError):
+                    self._discard_resource_archive(cache_key)
+                    raise
+            else:
+                archive = bytes(await content._read(row, MAX_PUBLICATION_BYTES))
+            try:
+                result = await run_blocking_atomic(
+                    SkillStore.read_publication_resource,
+                    record['skill'],
+                    record['manifest'],
+                    archive,
+                    *args[1:],
+                    **kwargs,
+                )
+            except Exception:
+                self._discard_resource_archive(cache_key)
+                raise
+            self._remember_resource_archive(cache_key, archive, row)
+            return result
         if method in {'list_skill_files', 'read_skill_file', 'list_skill_resources', 'read_skill_resource'}:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))
             if record is None:

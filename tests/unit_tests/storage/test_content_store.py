@@ -303,7 +303,7 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
                 getattr(column.table, 'name', None) == 'content_objects'
                 for column in compiled.statement.selected_columns
             ):
-                content_queries.append(statement)
+                content_queries.append([column.name for column in compiled.statement.selected_columns])
 
     path = 'references' if operation == 'list_skill_resources' else 'references/guide.md'
     read = getattr(repository, operation)
@@ -314,7 +314,7 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
     finally:
         sa.event.remove(engine.sync_engine, 'begin', began)
         sa.event.remove(engine.sync_engine, 'before_cursor_execute', selected)
-    assert len(begins) == 2
+    assert len(begins) == 1
     assert bindings == [(WORKSPACE, 1), (WORKSPACE, 1)]
     assert result['revision'] == skill['revision']
     if operation == 'list_skill_resources':
@@ -323,6 +323,14 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
     else:
         assert result['content'] == 'verified guide'
         assert content_queries and len(loads) == 1
+        content_queries.clear()
+        sa.event.listen(engine.sync_engine, 'before_cursor_execute', selected)
+        try:
+            assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
+        finally:
+            sa.event.remove(engine.sync_engine, 'before_cursor_execute', selected)
+        assert content_queries == [['size', 'digest']]
+        assert len(loads) == 1
     key = next(iter(objects))
     original = objects[key]
     objects[key] = original[:-1] + bytes([original[-1] ^ 1])
@@ -333,9 +341,16 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
         assert not loads
         store._s3.side_effect = None
     else:
+        assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
+        store._s3.side_effect = RuntimeError('source backend unavailable')
+        assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
+        store._s3.side_effect = None
+        cache_key = ('instance', WORKSPACE, ref)
+        repository._database._discard_resource_archive(cache_key)
         with pytest.raises(ValueError, match='digest verification'):
             await read(context(), 'packet', path, expected_revision=skill['revision'])
     objects[key] = original
+    assert await read(context(), 'packet', path, expected_revision=skill['revision']) == result
     before = len(loads)
     for foreign in (context(OTHER), replace(context(), instance_uuid='other-instance')):
         with pytest.raises(ValueError, match='pinned revision|stale Workspace'):
@@ -368,6 +383,9 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
     monkeypatch.setattr(repository._database, '_record', record_then_cutover)
     before = len(loads)
     with pytest.raises(WorkspaceRequiredError):
+        await read(context(), 'packet', path, expected_revision=skill['revision'])
+    assert len(loads) == before
+    with pytest.raises(ValueError, match='stale Workspace'):
         await read(context(), 'packet', path, expected_revision=skill['revision'])
     assert len(loads) == before
     assert manager.current_session() is None

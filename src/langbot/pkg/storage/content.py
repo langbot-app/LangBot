@@ -194,7 +194,13 @@ class ContentStore:
         else:
             provider, _ = await self._s3(row['backend'], row['locator'])
             value = await provider.load_bounded(row['locator']['key'], max_bytes=limit)
-        if len(value) != row['size'] or hashlib.sha256(value).hexdigest() != row['digest']:
+        return self._validated_value(value, row, limit)
+
+    @staticmethod
+    def _validated_value(value, metadata, max_bytes):
+        if metadata['size'] > normalize_read_limit(max_bytes):
+            raise ValueError('Content exceeds the read size limit')
+        if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:
             raise ValueError('Persisted content failed digest verification')
         return value
 

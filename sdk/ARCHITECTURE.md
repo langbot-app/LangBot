@@ -478,9 +478,16 @@ publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
 verified legacy execution caches. In database/network mode, Agent resource listings
 validate the authoritative immutable manifest without blob IO; content reads still
-verify complete archive bytes in memory without restoring a tree. Listing and
-activation are not content health checks: an unavailable or corrupt blob can fail
-later reads or cold execution. Its database CAS owns the authoritative catalog.
+verify complete archive bytes in memory without restoring a tree. Core privately
+retains successful reads' immutable ZIP bytes in a process-local 32 MiB/256-entry
+LRU; this is a retained-cache budget, not an in-flight memory limit, and adds no
+user configuration. Every read rechecks database scope, generation, version and
+content-ref metadata, then archive SHA, full ZIP/CRC and per-file SHA. Listing,
+activation and cached reads are not source-storage health checks: verified cached
+bytes can survive source unavailability or corruption. Cold reads after restart or
+eviction fetch and validate the source again; database failure, revoked access and
+missing version/content-ref records still reject reads. Runtime validation and GC
+are unchanged. Its database CAS owns the authoritative catalog.
 
 The `PREPARE_ARTIFACT` action accepts a generic manifest/tree digest and a completed
 namespace-owned archive transfer. Cache hits still require the trusted current
@@ -494,7 +501,9 @@ retry; backend, timeout, cancellation and session failures never permit replay.
 Network INIT explicitly acknowledges this contract. Core still uses the Host-only
 preparation seam for cache recovery. Draft publication requests `directory_archive=true` through the
 existing download/file-chunk protocol. Runtime creates the bounded ZIP in memory,
-with no sandbox snapshot, under the session lease and execution lock. The network
+with no sandbox snapshot, under the session lease and execution lock. Complete
+replacement drafts check the current database revision and final CAS without
+reading or restoring the old package; history and `created_at` are retained. The network
 INIT response acknowledges directory archive support. See
 [Runtime artifact cache](../dev-docs/BOX_ARTIFACT_CACHE.md) for limits and ownership.
 

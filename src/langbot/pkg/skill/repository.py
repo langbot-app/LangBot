@@ -41,7 +41,7 @@ class SkillRepository:
         if self.database_backed:
             from .database_repository import DatabaseSkillRepository
 
-            self._database = DatabaseSkillRepository(ap, self._store)
+            self._database = DatabaseSkillRepository(ap, self._store, self._validated_execution_context)
         self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
     def _workspace_lock(self, namespace: str) -> asyncio.Lock:
@@ -123,7 +123,14 @@ class SkillRepository:
         return self._store.scoped(self._namespace(context)).root
 
     async def _call(self, context: TenantContext, method_name: str, *args, **kwargs):
-        execution_context = await self._validated_execution_context(context)
+        network_resource = (
+            self._database is not None
+            and method_name in {'list_skill_resources', 'read_skill_resource'}
+            and getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        )
+        execution_context = (
+            self._execution_context(context) if network_resource else await self._validated_execution_context(context)
+        )
         namespace = self._namespace(execution_context)
 
         def invoke():
