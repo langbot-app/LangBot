@@ -240,6 +240,7 @@ class RouterGroup(abc.ABC):
                             except Exception as e:
                                 return await self._localized_auth_error_response(e)
 
+                quart.g.request_context = request_context
                 observed_at = time.monotonic()
                 try:
                     if request_context is not None:
