@@ -132,25 +132,7 @@ import {
 } from '@/app/home/components/workspace-quota/useWorkspaceQuotaStatus';
 import { WorkspaceQuotaTooltip } from '@/app/home/components/workspace-quota/WorkspaceQuotaTooltip';
 import { SidebarGuide } from './SidebarGuide';
-
-// Compare two version strings, returns true if v1 > v2
-function compareVersions(v1: string, v2: string): boolean {
-  const clean1 = v1.replace(/^v/, '');
-  const clean2 = v2.replace(/^v/, '');
-
-  const parts1 = clean1.split('.').map((p) => parseInt(p, 10) || 0);
-  const parts2 = clean2.split('.').map((p) => parseInt(p, 10) || 0);
-
-  const maxLen = Math.max(parts1.length, parts2.length);
-
-  for (let i = 0; i < maxLen; i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-    if (p1 > p2) return true;
-    if (p1 < p2) return false;
-  }
-  return false;
-}
+import { isCoreUpdate } from '@/app/utils/coreVersion';
 
 // Discord brand glyph (lucide-react has no Discord icon).
 function DiscordIcon({ className }: { className?: string }) {
@@ -2007,9 +1989,7 @@ export default function HomeSidebar({
           if (releases.length === 0) throw new Error('empty changelog feed');
           setChangelogReleases(releases);
           if (currentVersion) {
-            setHasNewVersion(
-              compareVersions(releases[0].version, currentVersion),
-            );
+            setHasNewVersion(isCoreUpdate(releases[0].version, currentVersion));
           }
         })
         .catch((changelogError) => {
@@ -2028,7 +2008,7 @@ export default function HomeSidebar({
                 setLatestRelease(latest);
                 if (currentVersion && latest.tag_name) {
                   setHasNewVersion(
-                    compareVersions(latest.tag_name, currentVersion),
+                    isCoreUpdate(latest.tag_name, currentVersion),
                   );
                 }
               }

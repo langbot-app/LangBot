@@ -29,7 +29,11 @@ import {
   changelogPageUrl,
   pickChangelogText,
 } from '@/app/infra/http/LangBotChangelog';
-import { isNewerVersion } from '@/app/utils/versionCompare';
+import {
+  coreReleaseOf,
+  isCoreUpdate,
+  parseCoreVersion,
+} from '@/app/utils/coreVersion';
 
 const COLLAPSED_RELEASE_COUNT = 3;
 
@@ -172,14 +176,14 @@ export default function NewVersionDialog({
   const current = stripV(currentVersion);
 
   const pending = useMemo(
-    () =>
-      current
-        ? releases.filter((r) => isNewerVersion(r.version, current))
-        : releases.slice(0, 1),
+    () => releases.filter((r) => isCoreUpdate(r.version, current)),
     [releases, current],
   );
   const hasUpdate = pending.length > 0;
-  const currentRelease = releases.find((r) => r.version === current);
+  const currentBase = coreReleaseOf(current);
+  const currentRelease = currentBase
+    ? releases.find((r) => r.version === currentBase)
+    : undefined;
   const shown = hasUpdate ? pending : currentRelease ? [currentRelease] : [];
   const visible = expanded ? shown : shown.slice(0, COLLAPSED_RELEASE_COUNT);
   const hiddenCount = shown.length - visible.length;
@@ -226,8 +230,11 @@ export default function NewVersionDialog({
                   </span>
                 )}
               </>
-            ) : (
+            ) : parseCoreVersion(current) ? (
               <span>{t('version.upToDate')}</span>
+            ) : (
+              // A hand-edited version cannot be ordered against releases.
+              <span className="sr-only">v{current}</span>
             )}
           </DialogDescription>
         </DialogHeader>
@@ -257,7 +264,7 @@ export default function NewVersionDialog({
                     release={release}
                     locale={locale}
                     isLatest={hasUpdate && i === 0}
-                    isCurrent={release.version === current}
+                    isCurrent={release.version === currentBase}
                   />
                 </Fragment>
               ))}
