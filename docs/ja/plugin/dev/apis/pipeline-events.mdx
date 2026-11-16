@@ -248,6 +248,10 @@ class PromptPreProcessing(BaseEventModel):
     """この会話の既存メッセージレコード、変更可能、langbot_plugin.api.entities.builtin.provider.message.Messageまたはlangbot_plugin.api.entities.builtin.provider.message.MessageChunk型"""
 ```
 
+このターンの検索証拠は、`Message(role="system", content=...)` を `prompt` または `default_prompt` に追加して渡せます。Host は `prompt` 内で追加または変更されたシステムメッセージを、適用後の `default_prompt` に続けて Runner の `get_prompt()` API から返します。最終的なイベント処理順序を保ち、ターンごとに再構築します。Runner はモデル呼び出しの前にコンテキスト予算を適用します。会話履歴は引き続き Runner の履歴 API から取得します。プロンプト前処理のコンテキストは現在の実行に属します。
+
+イベント処理後のクエリ変数 `_knowledge_base_uuids` が、この実行の自動検索対象を選択します。空リストは自動検索を無効にし、未設定の場合は構成済みの選択を維持します。明示的な検索 API は引き続き実行時に固定されたリソース権限を検証します。メモリプラグインは、自身のクエリ単位の検索を終えてから、そのナレッジベースを自動検索対象から除外してください。
+
 ## EventListener コンテキスト
 
 イベントハンドラーは `event_context.event` から現在のイベントを取得します。`EventContext` の完全なプロパティとメソッドは[コンテキスト API](/ja/plugin/dev/apis/agent-run#eventlistener)を参照してください。

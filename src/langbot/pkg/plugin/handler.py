@@ -3077,12 +3077,16 @@ class RuntimeConnectionHandler(handler.Handler):
 
             prompt = getattr(query, 'prompt', None)
             messages = getattr(prompt, 'messages', []) or []
+            from ..pipeline.preproc.prompt_context import PREPROCESSED_SYSTEM_CONTEXT
+
+            system_context = (getattr(query, 'variables', None) or {}).get(PREPROCESSED_SYSTEM_CONTEXT, [])
             return handler.ActionResponse.success(
                 data={
                     'prompt': [
                         message.model_dump(mode='json') if hasattr(message, 'model_dump') else message
                         for message in messages
-                    ],
+                    ]
+                    + system_context,
                 }
             )
 
