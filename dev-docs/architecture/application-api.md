@@ -3,8 +3,40 @@
 The application package provides a callable business boundary inside Core. A
 consumer supplies a trusted identity and operation arguments, then receives a
 validated result or a stable application error. HTTP, MCP, the management
-assistant and `lbctl` retain their existing entrypoints in this change; their
-adoption of this boundary belongs in separate changes.
+assistant and `lbctl` share this boundary through protocol adapters.
+
+## HTTP operation transport
+
+`OperationsRouterGroup` exposes `/api/v1/operations` with `USER_TOKEN_OR_API_KEY`
+authentication. Catalog and individual-description GETs use `operation_catalog()`,
+filter principal constraints and effective permissions with `authz.has_permission`,
+and omit `exposure: none`. Discovery is not the authorization boundary: explicit
+POSTs may invoke known IDs, including streaming operations omitted from discovery.
+`execute()` and `stream()` enforce their existing principal, permission, input,
+placement and audit rules. No operation handlers are duplicated in the transport.
+
+POST input is a JSON object; empty bodies mean `{}`. Top-level `workspace` and
+`workspace_uuid` selectors are ignored; only the authenticated `RequestContext`
+selects the Workspace. Multipart/binary inputs retain dedicated HTTP routes.
+Application errors preserve status, code, message and details. Streams serialize
+each validated result as an SSE data frame, terminate with `done` on success or
+`error` with `{code,msg}` on failure, and close the application iterator on disconnect.
+Wrong execution modes fail with HTTP 400 before streaming starts.
+
+The `operation.binary_base64` capability advertises recursive binary output
+encoding: HTTP results and SSE events encode `bytes` and `bytearray` as standard
+RFC 4648 base64 with padding, not URL-safe base64. Transport descriptions mark
+binary output fields with `contentEncoding: base64`. Application handlers and
+internal Python consumers retain their original binary values.
+
+API keys can confirm plugin grants under the same `resource.manage` and per-grant
+permission ceiling. Every requested grant is revalidated on API-key confirmation,
+including retained grants; compatibility confirmation still requires the entire
+legacy declaration. This does not allow API keys to grant processor operations.
+Application audit records retain the confirming `api_key_uuid`.
+
+See the public Service API overview in `docs/en/tags/readme.mdx` for requests,
+response formats, SSE handling and capability negotiation.
 
 ## Workspace operations
 
