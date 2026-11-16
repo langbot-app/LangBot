@@ -193,8 +193,10 @@ class LifecycleTest(unittest.TestCase):
             except Exception as exc:
                 errors.append(exc)
 
-        with receiver, patch.object(handler_class, 'send_response', observe_status), patch.object(
-            handler_class, 'end_headers', pause_after_headers
+        with (
+            receiver,
+            patch.object(handler_class, 'send_response', observe_status),
+            patch.object(handler_class, 'end_headers', pause_after_headers),
         ):
             try:
                 workers.append(threading.Thread(target=post, args=(0,)))
