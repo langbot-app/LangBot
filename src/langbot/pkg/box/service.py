@@ -2696,7 +2696,12 @@ class BoxService:
 
         selected = await get_backend(self.ap, execution_context.workspace_uuid)
         if selected is not None:
-            if selected == 'docker' and isinstance(backend_info, dict) and backend_info.get('name') == 'docker':
+            if (
+                self.file_transfer_mode == 'network'
+                and selected == 'docker'
+                and isinstance(backend_info, dict)
+                and backend_info.get('name') == 'docker'
+            ):
                 # Runtime already checked this daemon; do not wait for unrelated backend probes.
                 await self._validated_execution_context(context)
             else:

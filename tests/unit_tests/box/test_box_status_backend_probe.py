@@ -1,4 +1,4 @@
-"""Routine Docker status must not probe unused backends or reuse stale readiness."""
+"""Network Docker status avoids unrelated probes; legacy readiness stays unchanged."""
 
 from unittest.mock import AsyncMock, Mock
 
@@ -10,7 +10,7 @@ from langbot.pkg.box.service import BoxService
 from tests.unit_tests.box.test_box_service import _CONTEXT, make_app
 
 
-def status_service(monkeypatch, selected, backend):
+def status_service(monkeypatch, selected, backend, mode='network'):
     monkeypatch.setattr(settings, 'get_backend', AsyncMock(return_value=selected))
     monkeypatch.setattr(settings, 'get_settings', AsyncMock(return_value={'limits': {'config': {'max_sessions': 2}}}))
     client = Mock()
@@ -21,7 +21,9 @@ def status_service(monkeypatch, selected, backend):
             'capacity': {'limit': 5, 'used': 1, 'remaining': 4},
         }
     )
-    service = BoxService(make_app(Mock(), enabled=True), client=client)
+    app = make_app(Mock(), enabled=True)
+    app.instance_config.data['box']['file_transfer_mode'] = mode
+    service = BoxService(app, client=client)
     service._available = True
     service._validated_execution_context = AsyncMock(return_value=_CONTEXT)
     service.get_workspace_backend_settings = AsyncMock(
@@ -55,6 +57,19 @@ async def test_matching_docker_still_rejects_post_rpc_placement_cutover(monkeypa
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('available', [True, False])
+async def test_legacy_matching_docker_preserves_backend_enumeration(monkeypatch, available):
+    service = status_service(monkeypatch, 'docker', {'name': 'docker', 'available': not available}, mode='legacy')
+    backend = {'name': 'docker', 'available': available}
+    service.get_workspace_backend_settings.return_value = {'backends': [backend]}
+    result = await service.get_status(_CONTEXT)
+    assert result['available'] is available
+    assert result['backend'] == backend
+    service.get_workspace_backend_settings.assert_awaited_once_with(_CONTEXT)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['legacy', 'network'])
 @pytest.mark.parametrize(
     'selected,backend',
     [
@@ -65,8 +80,8 @@ async def test_matching_docker_still_rejects_post_rpc_placement_cutover(monkeypa
         ('docker', 'invalid status'),
     ],
 )
-async def test_overrides_and_other_backends_retain_full_readiness_checks(monkeypatch, selected, backend):
-    service = status_service(monkeypatch, selected, backend)
+async def test_overrides_and_other_backends_retain_full_readiness_checks(monkeypatch, selected, backend, mode):
+    service = status_service(monkeypatch, selected, backend, mode=mode)
     result = await service.get_status(_CONTEXT)
     assert result['available'] is False
     assert result['backend'] == {'name': selected, 'available': False, 'reason': 'readiness_failed'}

@@ -8,6 +8,9 @@ descriptor-relative file IO (Linux is the validated deployment). Explicit
 `box.file_transfer_mode: network` connects native Skill execution and draft
 publication to this protocol; legacy mode retains its shared-path behavior.
 
+Only network mode reuses a fresh matching Docker status without probing unrelated
+backends. Legacy mode retains the full backend readiness enumeration.
+
 ## Host boundary and transfer
 
 `BoxService.prepare_skill_artifact(context, name, revision)` is an internal Host
