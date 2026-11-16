@@ -4,6 +4,10 @@ Run public questions through installed LangBot plugins and the normal Pipeline
 scheduler. Retain exact model inputs, answers, usage, judge labels, configuration
 and the question plan so reported results can be reproduced and inspected.
 
+The first real Pipeline calibration includes raw observations, source audits
+and a separate parser re-ingestion experiment.
+[Calibration artifacts](../../dev-docs/evaluation/2026-11-16-calibration/README.md)
+
 ## Evaluation arms
 
 The primary integration comparison uses LangRAG + LongTermMemory in one Pipeline
@@ -189,8 +193,8 @@ citations so memories can be traced to original facts.
 
 Published vendor accuracy belongs to its recorded model, judge and answer policy.
 Reproducing a vendor score requires that exact run configuration and artifacts.
-PowerContext's `qwen3.7-text-embedding` declaration in its LoCoMo Plus section
-does not establish the embedding used for the separate 90.78% LoCoMo claim.
+PowerContext declares `qwen3.7-text-embedding` in its LoCoMo Plus section.
+The embedding used for its separate 90.78% LoCoMo claim remains unverified.
 
 ## Linux checks
 
