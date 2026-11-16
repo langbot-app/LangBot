@@ -14,6 +14,9 @@ from .....workspace.invitation_delivery import InvitationDeliveryService
 
 
 SYSTEM_CAPABILITY_OPERATIONS = (
+    'operation.invoke',
+    'operation.stream',
+    'plugin.permissions.confirm_api_key',
     'knowledge_engine.list',
     'knowledge_engine.creation_schema',
     'knowledge_engine.retrieval_schema',

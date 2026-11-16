@@ -27,6 +27,37 @@ All Service APIs support two authentication methods:
 
 ## Use API
 
+### Application operations
+
+`GET /api/v1/operations` returns `{"operations": [...]}` containing operations your API key or user token can execute. Filter with `?domain=agent&q=list`. Each description includes `id`, `label`, `summary`, `description`, `domain`, `risk`, `side_effect`, `streaming`, `permission`, `version`, `input_schema`, and `output_schema`. `GET /api/v1/operations/<operation_id>` returns one description, or 404 if hidden, unknown, or unauthorized. Operations with `exposure: none` are omitted from discovery; explicit calls to known IDs still use Application API authorization.
+
+```bash
+curl "$LANGBOT_URL/api/v1/operations" -H "X-API-Key: $LANGBOT_API_KEY"
+curl "$LANGBOT_URL/api/v1/operations/agent.list" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' -d '{}'
+curl -N "$LANGBOT_URL/api/v1/operations/agent.debug.stream/stream" \
+  -H "X-API-Key: $LANGBOT_API_KEY" -H 'Content-Type: application/json' \
+  -d '{"agent_uuid":"YOUR_AGENT_UUID","payload":{"text":"hello"}}'
+```
+
+`POST /api/v1/operations/<operation_id>` accepts the operation input as a JSON object; an empty body means `{}`. Success returns `{"code":0,"msg":"ok","data":<output>}`. Errors return their HTTP status and `{"code":<error_code>,"msg":<message>,"data":<details_or_null>}`: invalid input is 400, missing permissions 403, and unknown operations 404. Calling a streaming operation here, or a non-streaming operation through `/stream`, returns 400 `invalid_execution_mode`.
+
+`POST /api/v1/operations/<operation_id>/stream` returns `text/event-stream`, with each event encoded as `data: <json>` followed by a blank line:
+
+```text
+data: {"kind":"result","data":{}}
+
+event: done
+data: {}
+
+```
+
+Failure terminates with `event: error` and `data: {"code":"permission_denied","msg":"..."}` instead of `done`. Once streaming starts, errors are SSE events, not HTTP status changes; check both.
+
+Workspace identity comes only from the authenticated request context. Top-level `workspace` and `workspace_uuid` input fields are ignored. Binary/multipart uploads retain dedicated routes.
+
+API keys can confirm plugin permissions through `plugin.permissions.update` or the existing permissions route. They need `resource.manage` and every permission required by the requested capabilities and Workspace operations, including retained grants. Compatibility mode still requires confirming all listed permission IDs together. Operation logs identify the confirming API key. Check `/api/v1/system/capabilities` for `operation.invoke`, `operation.stream`, and `plugin.permissions.confirm_api_key` before using these features.
+
 The left sidebar lists all available APIs. You can fill in your instance address (the port address exposed by the backend, default is `http://localhost:5300`) and API Key, then click the `Try it out` button to call the API.
 
 ## Core Concepts

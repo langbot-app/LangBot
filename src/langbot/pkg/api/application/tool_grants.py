@@ -148,10 +148,13 @@ def validate_grant_change(
             )
         )
 
-    if getattr(getattr(editor_context, 'principal', None), 'principal_type', None) not in {
+    granting_principals = {
         PrincipalType.ACCOUNT,
         PrincipalType.SUPPORT_ADMIN,
-    }:
+    }
+    if principal_type == PrincipalType.PLUGIN:
+        granting_principals.add(PrincipalType.API_KEY)
+    if getattr(getattr(editor_context, 'principal', None), 'principal_type', None) not in granting_principals:
         raise ApplicationAPIException(
             ApplicationAPIError(
                 'permission_denied',
