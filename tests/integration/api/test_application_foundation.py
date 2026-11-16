@@ -78,6 +78,8 @@ async def foundation(tmp_path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.p0_permissions
+@pytest.mark.contract('permission_workspace_isolation')
 async def test_webhook_lifecycle_secrets_and_workspace_isolation(foundation):
     api, _, engine = foundation
     created = await api.execute(
