@@ -5,8 +5,10 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 import quart
+from pydantic import BaseModel
 
 from langbot.pkg.api.application import ApplicationAPI, Input, Operation
+from langbot.pkg.api.application.auxiliary import ImageOutput
 from langbot.pkg.api.application.contracts import ApplicationAPIError, ApplicationAPIException
 from langbot.pkg.api.authz import Permission, permissions_for_role
 from langbot.pkg.api.context import PrincipalType
@@ -244,9 +246,65 @@ async def test_stream_permission_error(host):
 
 
 async def test_capability_flags():
-    assert {'operation.invoke', 'operation.stream', 'plugin.permissions.confirm_api_key'} <= set(
-        SYSTEM_CAPABILITY_OPERATIONS
+    assert {
+        'operation.invoke',
+        'operation.stream',
+        'operation.binary_base64',
+        'plugin.permissions.confirm_api_key',
+    } <= set(SYSTEM_CAPABILITY_OPERATIONS)
+
+
+async def test_nested_binary_output(host):
+    class BinaryModel(BaseModel):
+        content: bytes
+
+    original = {'nested': [BinaryModel(content=b'\xfb\xff'), {'raw': bytearray(b'\x00\xff')}], 'tuple': (b'a',)}
+
+    async def handler(ap, context, payload):
+        return original
+
+    host.application_api._operations['agent.list'] = replace(
+        host.application_api._operations['agent.list'], handler=handler
     )
+    http = await client(host)
+    response = await http.post('/api/v1/operations/agent.list', json={}, headers={'X-API-Key': 'test-key'})
+    assert response.status_code == 200
+    assert (await response.get_json())['data'] == {'nested': [{'content': '+/8='}, {'raw': 'AP8='}], 'tuple': ['YQ==']}
+    assert original['nested'][0].content == b'\xfb\xff'
+    assert original['nested'][1]['raw'] == bytearray(b'\x00\xff')
+
+
+async def test_binary_stream_event(host):
+    async def handler(ap, context, payload):
+        async def events():
+            yield {'nested': [{'content': b'\xfb\xff', 'raw': bytearray(b'a')}]}
+
+        return events()
+
+    host.application_api._operations['agent.debug.stream'] = replace(
+        host.application_api._operations['agent.debug.stream'], handler=handler
+    )
+    http = await client(host)
+    response = await http.post(
+        '/api/v1/operations/agent.debug.stream/stream', json={}, headers={'X-API-Key': 'test-key'}
+    )
+    assert response.status_code == 200
+    assert await response.get_data(as_text=True) == (
+        'data: {"nested": [{"content": "+/8=", "raw": "YQ=="}]}\n\nevent: done\ndata: {}\n\n'
+    )
+
+
+async def test_binary_output_schema(host):
+    host.application_api._operations['agent.list'] = replace(
+        host.application_api._operations['agent.list'], output_type=ImageOutput
+    )
+    http = await client(host)
+    response = await http.get('/api/v1/operations/agent.list', headers={'X-API-Key': 'test-key'})
+    properties = (await response.get_json())['output_schema']['properties']
+    assert properties['content'] == {'title': 'Content', 'type': 'string', 'contentEncoding': 'base64'}
+    assert 'contentEncoding' not in properties['media_type']
+    internal = next(item for item in host.application_api.operation_catalog() if item['id'] == 'agent.list')
+    assert internal['output_schema']['properties']['content']['format'] == 'binary'
 
 
 @pytest.mark.parametrize('operation_id', ['agent.create', 'plugin.permissions.update'])

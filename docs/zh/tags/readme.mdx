@@ -37,6 +37,8 @@ data: {}
 
 Workspace 身份只来自认证后的请求上下文，输入顶层的 `workspace`、`workspace_uuid` 会被忽略。二进制和 multipart 上传继续使用专用路由。
 
+支持 `operation.binary_base64` 时，输出任意深度的二进制字段（包括 SSE 事件）均转换为带 padding 的标准 RFC 4648 base64 字符串（非 URL-safe）；`output_schema` 用 `"contentEncoding": "base64"` 标记这些字段，供客户端解码。
+
 API Key 可通过 `plugin.permissions.update` 或现有插件权限路由确认权限，但必须具备 `resource.manage` 以及每项 capability、Workspace 操作要求的全部权限，包括保留的授权，不能授予自己没有的权限。兼容模式仍须一次确认全部列出的权限 ID。操作日志记录确认者的 API Key。调用前可检查 `/api/v1/system/capabilities` 的 `operation.invoke`、`operation.stream`、`plugin.permissions.confirm_api_key` 标识。
 
 ## 获取 API Key

@@ -504,6 +504,7 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
         [
             'operation.invoke',
             'operation.stream',
+            'operation.binary_base64',
             'plugin.permissions.confirm_api_key',
             'bot.list',
             'bot.get',

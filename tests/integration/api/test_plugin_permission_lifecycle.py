@@ -7,6 +7,7 @@ LANGBOT_PERMISSION_E2E=1 .venv/bin/python -m pytest -q -s \
 from __future__ import annotations
 
 import json
+import base64
 from importlib.metadata import version
 import os
 from pathlib import Path
@@ -403,6 +404,27 @@ def test_real_operations_transport(instance):
     assert 'agent.list' in {operation['id'] for operation in operations}
     listed = instance.request('agent.list', 'POST', '/api/v1/operations/agent.list', identity='api_key', json={})
     assert listed.status_code == 200 and listed.json()['code'] == 0, listed.text
+    png = base64.b64decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aG1sAAAAASUVORK5CYII='
+    )
+    uploaded = instance.request(
+        'upload operation image',
+        'POST',
+        '/api/v1/files/images',
+        identity='api_key',
+        files={'file': ('pixel.png', png, 'image/png')},
+    )
+    assert uploaded.status_code == 200, uploaded.text
+    downloaded = instance.request(
+        'file.image.get',
+        'POST',
+        '/api/v1/operations/file.image.get',
+        identity='api_key',
+        json={'file_key': uploaded.json()['data']['file_key']},
+    )
+    assert downloaded.status_code == 200, downloaded.text
+    assert downloaded.json()['data']['media_type'] == 'image/png'
+    assert base64.b64decode(downloaded.json()['data']['content'], validate=True) == png
     archive = instance.directory / 'operations-probe.lbpkg'
     package(archive, 'operations-probe', '0.1.0', [], runner=True)
     with archive.open('rb') as source:

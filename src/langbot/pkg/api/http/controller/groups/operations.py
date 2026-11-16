@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from contextlib import aclosing
+import base64
 import json
+from typing import Any
 
 import quart
+from pydantic import TypeAdapter
 from pydantic_core import to_jsonable_python
 from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 
@@ -29,6 +32,32 @@ _DESCRIPTION_FIELDS = (
 )
 
 
+def _encode_binary(value):
+    if isinstance(value, (bytes, bytearray)):
+        return base64.b64encode(value).decode('ascii')
+    if isinstance(value, dict):
+        return {key: _encode_binary(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_encode_binary(item) for item in value]
+    return value
+
+
+def _json_output(value):
+    return to_jsonable_python(_encode_binary(TypeAdapter(Any).dump_python(value, mode='python')))
+
+
+def _output_schema(schema):
+    if isinstance(schema, list):
+        return [_output_schema(item) for item in schema]
+    if not isinstance(schema, dict):
+        return schema
+    result = {key: _output_schema(value) for key, value in schema.items()}
+    if result.get('type') == 'string' and result.get('format') == 'binary':
+        result.pop('format')
+        result['contentEncoding'] = 'base64'
+    return result
+
+
 @group.group_class('operations', '/api/v1/operations')
 class OperationsRouterGroup(group.RouterGroup):
     def _catalog(self):
@@ -44,7 +73,9 @@ class OperationsRouterGroup(group.RouterGroup):
 
     @staticmethod
     def _description(item):
-        return {field: item[field] for field in _DESCRIPTION_FIELDS}
+        result = {field: item[field] for field in _DESCRIPTION_FIELDS}
+        result['output_schema'] = _output_schema(result['output_schema'])
+        return result
 
     def _operation(self, operation_id):
         for item in self.ap.application_api.operation_catalog():
@@ -99,7 +130,7 @@ class OperationsRouterGroup(group.RouterGroup):
             try:
                 self._operation(operation_id)
                 result = await self.ap.application_api.execute(operation_id, request_context, await self._input())
-                return self.success(to_jsonable_python(result))
+                return self.success(_json_output(result))
             except ApplicationAPIException as exc:
                 return self._error(exc.error)
 
@@ -121,7 +152,7 @@ class OperationsRouterGroup(group.RouterGroup):
                         self.ap.application_api.stream(operation_id, request_context, payload)
                     ) as source:
                         async for event in source:
-                            yield f'data: {json.dumps(to_jsonable_python(event), ensure_ascii=False)}\n\n'
+                            yield f'data: {json.dumps(_json_output(event), ensure_ascii=False)}\n\n'
                 except ApplicationAPIException as exc:
                     error = {'code': exc.error.code, 'msg': exc.error.message}
                     yield f'event: error\ndata: {json.dumps(error, ensure_ascii=False)}\n\n'

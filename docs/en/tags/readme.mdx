@@ -56,6 +56,8 @@ Failure terminates with `event: error` and `data: {"code":"permission_denied","m
 
 Workspace identity comes only from the authenticated request context. Top-level `workspace` and `workspace_uuid` input fields are ignored. Binary/multipart uploads retain dedicated routes.
 
+With capability `operation.binary_base64`, binary output fields at any depth, including SSE events, are standard RFC 4648 base64 strings with padding (not URL-safe); `output_schema` marks these fields with `"contentEncoding": "base64"` for client decoding.
+
 API keys can confirm plugin permissions through `plugin.permissions.update` or the existing permissions route. They need `resource.manage` and every permission required by the requested capabilities and Workspace operations, including retained grants. Compatibility mode still requires confirming all listed permission IDs together. Operation logs identify the confirming API key. Check `/api/v1/system/capabilities` for `operation.invoke`, `operation.stream`, and `plugin.permissions.confirm_api_key` before using these features.
 
 The left sidebar lists all available APIs. You can fill in your instance address (the port address exposed by the backend, default is `http://localhost:5300`) and API Key, then click the `Try it out` button to call the API.

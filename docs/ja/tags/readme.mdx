@@ -37,6 +37,8 @@ data: {}
 
 Workspace は認証済みのコンテキストだけで決まります。入力のトップレベルの `workspace` と `workspace_uuid` は無視されます。バイナリや multipart アップロードには既存の専用ルートを使用します。
 
+`operation.binary_base64` がある場合、SSE イベントを含む任意の深さのバイナリ出力は、パディング付きの標準 RFC 4648 base64 文字列（URL-safe ではない）になります。`output_schema` は対象フィールドを `"contentEncoding": "base64"` で示し、クライアントはこれに従ってデコードします。
+
 API Key は `plugin.permissions.update` または既存の権限ルートで確認できます。`resource.manage` に加え、保持する権限を含めた各 capability と Workspace 操作が必要とするすべての権限を持つ必要があり、自身にない権限は付与できません。互換モードでは全権限 ID を一度に確認します。操作ログには確認した API Key が記録されます。利用前に `/api/v1/system/capabilities` の `operation.invoke`、`operation.stream`、`plugin.permissions.confirm_api_key` を確認してください。
 
 ## APIキーの取得

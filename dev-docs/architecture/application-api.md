@@ -23,6 +23,12 @@ each validated result as an SSE data frame, terminate with `done` on success or
 `error` with `{code,msg}` on failure, and close the application iterator on disconnect.
 Wrong execution modes fail with HTTP 400 before streaming starts.
 
+The `operation.binary_base64` capability advertises recursive binary output
+encoding: HTTP results and SSE events encode `bytes` and `bytearray` as standard
+RFC 4648 base64 with padding, not URL-safe base64. Transport descriptions mark
+binary output fields with `contentEncoding: base64`. Application handlers and
+internal Python consumers retain their original binary values.
+
 API keys can confirm plugin grants under the same `resource.manage` and per-grant
 permission ceiling. Every requested grant is revalidated on API-key confirmation,
 including retained grants; compatibility confirmation still requires the entire
