@@ -320,40 +320,17 @@ class SkillStore:
         The caller must authorize the persisted publication before using it.
         """
 
-        name = self._validate_skill_name(skill.get("name", ""))
-        revision, manifest = validate_tree_manifest(
-            manifest,
-            max_files=_MAX_REVISION_FILES,
-            max_total_bytes=_MAX_REVISION_BYTES,
-            subject="Skill package",
+        name, revision, manifest = self._publication_identity(
+            skill, manifest, file_bytes
         )
-        if revision != skill.get("revision"):
-            raise ValueError("Restored Skill manifest does not match its revision")
-        if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
-            raise ValueError("Restored Skill archive is too large")
         with self._skill_lock(name):
             staging_root, package_root = self._stage_package()
             try:
                 with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
-                    members = archive.infolist()
+                    members = self._publication_members(archive, manifest)
                     expected = {entry["path"]: entry for entry in manifest["files"]}
-                    if len(members) != len(expected) or {
-                        member.filename for member in members
-                    } != set(expected):
-                        raise ValueError(
-                            "Restored Skill archive does not match its manifest"
-                        )
                     for member in members:
                         entry = expected[member.filename]
-                        mode = stat.S_IFMT(member.external_attr >> 16)
-                        if member.is_dir() or mode not in {0, stat.S_IFREG}:
-                            raise ValueError(
-                                "Restored Skill archive requires regular files"
-                            )
-                        if member.file_size != entry["size"]:
-                            raise ValueError(
-                                "Restored Skill file size does not match its manifest"
-                            )
                         destination = os.path.realpath(
                             os.path.join(package_root, *entry["path"].split("/"))
                         )
@@ -414,6 +391,266 @@ class SkillStore:
             finally:
                 if staging_root:
                     self._remove_staging_tree(staging_root)
+
+    @classmethod
+    def _publication_manifest_identity(cls, skill: dict, manifest: dict):
+        name = cls._validate_skill_name(skill.get("name", ""))
+        revision, manifest = validate_tree_manifest(
+            manifest,
+            max_files=_MAX_REVISION_FILES,
+            max_total_bytes=_MAX_REVISION_BYTES,
+            subject="Skill package",
+        )
+        if revision != skill.get("revision"):
+            raise ValueError("Restored Skill manifest does not match its revision")
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        for path in expected:
+            if any(part in _REVISION_SKIP_DIRS for part in path.split("/")[:-1]):
+                raise ValueError(
+                    "Restored Skill archive contains an excluded directory"
+                )
+            parent = posixpath.dirname(path)
+            while parent:
+                if parent in expected:
+                    raise ValueError(
+                        "Restored Skill archive has conflicting file paths"
+                    )
+                parent = posixpath.dirname(parent)
+
+        def tree_order(path):
+            *directories, filename = path.split("/")
+            return [(1, name) for name in directories] + [(0, filename)]
+
+        if sorted(expected, key=tree_order) != list(expected):
+            raise ValueError("Restored Skill manifest is not in canonical tree order")
+        if "SKILL.md" not in expected:
+            raise ValueError("Restored Skill package has no root SKILL.md")
+        if expected["SKILL.md"]["size"] > _MAX_SKILL_TEXT_BYTES:
+            raise ValueError(
+                f"Skill file SKILL.md exceeds the {_MAX_SKILL_TEXT_BYTES}-byte limit"
+            )
+        return name, revision, manifest
+
+    @classmethod
+    def _publication_identity(cls, skill: dict, manifest: dict, file_bytes: bytes):
+        name, revision, manifest = cls._publication_manifest_identity(skill, manifest)
+        if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
+            raise ValueError("Restored Skill archive is too large")
+        return name, revision, manifest
+
+    @staticmethod
+    def _publication_members(archive: zipfile.ZipFile, manifest: dict):
+        members = archive.infolist()
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        if len(members) != len(expected) or {
+            member.filename for member in members
+        } != set(expected):
+            raise ValueError("Restored Skill archive does not match its manifest")
+        for member in members:
+            entry = expected[member.filename]
+            mode = stat.S_IFMT(member.external_attr >> 16)
+            if member.is_dir() or mode not in {0, stat.S_IFREG}:
+                raise ValueError("Restored Skill archive requires regular files")
+            if member.file_size != entry["size"]:
+                raise ValueError("Restored Skill file size does not match its manifest")
+        return members
+
+    @staticmethod
+    def _publication_resource_path(path: str) -> str:
+        relative_path = str(path or ".").strip() or "."
+        if (
+            posixpath.isabs(relative_path)
+            or "\\" in relative_path
+            or "\0" in relative_path
+        ):
+            raise ValueError("path must be relative to the skill package root")
+        normalized = posixpath.normpath(relative_path)
+        if normalized.startswith(".."):
+            raise ValueError("path must stay within the skill package root")
+        return normalized
+
+    @classmethod
+    def _publication_resource(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str | None,
+        expected_revision: str | None,
+    ) -> tuple[str, dict, bytes | None]:
+        name, revision, manifest = cls._publication_identity(
+            skill, manifest, file_bytes
+        )
+        if expected_revision is not None and revision != expected_revision:
+            raise SkillRevisionMismatchError(
+                "Skill publication does not match the activated revision"
+            )
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        retained = {}
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            for member in cls._publication_members(archive, manifest):
+                entry = expected[member.filename]
+                keep = member.filename in {"SKILL.md", path}
+                if keep and entry["size"] > _MAX_SKILL_TEXT_BYTES:
+                    raise ValueError(
+                        f"Skill file {member.filename} exceeds the {_MAX_SKILL_TEXT_BYTES}-byte limit"
+                    )
+                digest = hashlib.sha256()
+                copied = 0
+                content = bytearray()
+                with archive.open(member) as source:
+                    while chunk := source.read(
+                        min(_ZIP_COPY_CHUNK_BYTES, entry["size"] - copied + 1)
+                    ):
+                        copied += len(chunk)
+                        if copied > entry["size"]:
+                            raise ValueError(
+                                "Restored Skill file exceeds its manifest size"
+                            )
+                        digest.update(chunk)
+                        if keep:
+                            content.extend(chunk)
+                if copied != entry["size"] or digest.hexdigest() != entry["sha256"]:
+                    raise ValueError("Restored Skill file does not match its manifest")
+                if keep:
+                    retained[member.filename] = bytes(content)
+        try:
+            metadata, _ = parse_frontmatter(retained["SKILL.md"].decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                "Skill entry file SKILL.md is not valid UTF-8 text"
+            ) from exc
+        if cls._validate_skill_name(metadata.get("name") or "package") != name:
+            raise ValueError("Restored Skill package does not match its publication")
+        return revision, manifest, retained.get(path)
+
+    @classmethod
+    def list_publication_resources(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str = ".",
+        include_hidden: bool = False,
+        max_entries: int = 200,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """List an authorized immutable publication without restoring a local tree."""
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        revision, manifest, _ = cls._publication_resource(
+            skill, manifest, file_bytes, None, expected_revision
+        )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def list_publication_manifest_resources(
+        cls,
+        skill: dict,
+        manifest: dict,
+        path: str = ".",
+        include_hidden: bool = False,
+        max_entries: int = 200,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """List an authorized publication's metadata without reading its blob.
+
+        The caller must supply the authoritative published manifest. Its identity
+        and layout are checked here; unread archive bytes are not verified.
+        """
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        _, revision, manifest = cls._publication_manifest_identity(skill, manifest)
+        if expected_revision is not None and revision != expected_revision:
+            raise SkillRevisionMismatchError(
+                "Skill publication does not match the activated revision"
+            )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def _publication_listing_options(cls, path: str, max_entries: int):
+        if (
+            isinstance(max_entries, bool)
+            or not isinstance(max_entries, int)
+            or max_entries <= 0
+        ):
+            raise ValueError("max_entries must be a positive integer")
+        max_entries = min(max_entries, _MAX_SKILL_LIST_ENTRIES)
+        return cls._publication_resource_path(path), max_entries
+
+    @staticmethod
+    def _list_publication_manifest(
+        skill: dict,
+        revision: str,
+        manifest: dict,
+        path: str,
+        include_hidden: bool,
+        max_entries: int,
+    ) -> dict:
+        prefix = "" if path == "." else path + "/"
+        children = {}
+        for entry in manifest["files"]:
+            if not entry["path"].startswith(prefix):
+                continue
+            remainder = entry["path"][len(prefix) :]
+            name, separator, _ = remainder.partition("/")
+            children[name] = {
+                "path": prefix + name,
+                "name": name,
+                "is_dir": bool(separator),
+                "size": None if separator else entry["size"],
+            }
+        if path != "." and not children:
+            raise ValueError(f"Skill directory not found: {path}")
+        visible = [
+            children[name]
+            for name in sorted(children)
+            if include_hidden or not name.startswith(".")
+        ]
+        entries = visible[:max_entries]
+        for entry in entries:
+            if not entry["is_dir"]:
+                entry["mime_type"] = _resource_mime_type(entry["path"])
+        return {
+            "skill": {"name": skill["name"]},
+            "base_path": path,
+            "entries": entries,
+            "truncated": len(visible) > max_entries,
+            "revision": revision,
+        }
+
+    @classmethod
+    def read_publication_resource(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """Read a verified UTF-8 resource without writing the publication to disk."""
+        path = cls._publication_resource_path(path)
+        revision, _, content = cls._publication_resource(
+            skill, manifest, file_bytes, path, expected_revision
+        )
+        if content is None:
+            raise ValueError(f"Skill file not found: {path}")
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Skill file {path} is not valid UTF-8 text") from exc
+        return {
+            "skill": {"name": skill["name"]},
+            "path": path,
+            "content": text,
+            "revision": revision,
+            "mime_type": _resource_mime_type(path),
+        }
 
     def resolve_skill_package_root(
         self,
@@ -555,6 +792,45 @@ class SkillStore:
                 name,
                 payload,
                 current_registry=current,
+            )
+
+    def _prepare_skill_zip(
+        self, file_bytes: bytes, temporary: str, data: dict
+    ) -> tuple[str, dict]:
+        """Validate one uploaded draft and retain it only in caller-owned staging."""
+
+        if not file_bytes:
+            raise ValueError("Uploaded file is empty")
+        self._validate_zip_upload_size(file_bytes)
+        source, _allow_root = self._extract_uploaded_skill_to_temp(
+            file_bytes, temporary
+        )
+        entry = self._find_skill_entry(source)
+        if entry is None:
+            raise ValueError("Skill draft archive must contain one root SKILL.md")
+        scanned = self._load_skill_package(*entry)
+        self._validate_agent_skill_package(
+            source, scanned.get("metadata") or {}, require_directory_name=False
+        )
+        payload = {
+            key: data.get(key) or scanned.get(key, "")
+            for key in ("name", "display_name", "description", "instructions")
+        }
+        return source, payload
+
+    def import_skill_zip(
+        self,
+        file_bytes: bytes,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
+        """Publish one uploaded draft with the same CAS as directory imports."""
+
+        with tempfile.TemporaryDirectory(prefix="langbot-skill-draft-") as temporary:
+            source, payload = self._prepare_skill_zip(file_bytes, temporary, data)
+            return self.import_skill_directory(
+                source, payload, source_root=temporary, base_revision=base_revision
             )
 
     def _require_scoped_path(self, path: str, label: str) -> str:

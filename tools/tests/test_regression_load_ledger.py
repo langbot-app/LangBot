@@ -204,6 +204,17 @@ class LoadLedgerTests(unittest.TestCase):
 
     def test_slow_ledger_snapshot_does_not_inflate_response_latency(self):
         connect = sqlite3.connect
+        clock = [0]
+        clock_lock = threading.Lock()
+
+        def monotonic():
+            with clock_lock:
+                return clock[0]
+
+        def advance(seconds):
+            with clock_lock:
+                clock[0] += seconds
+
         cases = self.root / 'cases.json'
         cases.write_text(
             json.dumps(
@@ -222,7 +233,7 @@ class LoadLedgerTests(unittest.TestCase):
         )
 
         def slow_connect(*args, **kwargs):
-            time.sleep(0.12)
+            advance(10)
             return connect(*args, **kwargs)
 
         def response(case, group, *_args):
@@ -233,6 +244,7 @@ class LoadLedgerTests(unittest.TestCase):
                     (run_id, 'ws', 'group_' + group, 'completed', '', 'now'),
                 )
                 db.execute('INSERT INTO agent_run_event VALUES (?,1,?,?)', (run_id, 'run.completed', '{}'))
+            advance(1)
             return {'data': {'session_id': group}}
 
         output = self.root / 'run'
@@ -247,7 +259,7 @@ class LoadLedgerTests(unittest.TestCase):
             '--output',
             str(output),
             '--duration',
-            '0.4',
+            '60',
             '--cooldown',
             '0',
             '--rps',
@@ -256,6 +268,8 @@ class LoadLedgerTests(unittest.TestCase):
             '1',
             '--groups',
             '1',
+            '--max-requests',
+            '2',
             '--ledger-db',
             str(self.db),
             '--workspace',
@@ -264,15 +278,19 @@ class LoadLedgerTests(unittest.TestCase):
         with (
             patch.object(sys, 'argv', argv),
             patch.dict('os.environ', {'TEST_GROUP_SECRET': 'test'}),
+            patch(
+                'tools.entrypoints.regression_traffic.time',
+                SimpleNamespace(monotonic=monotonic, time=time.time),
+            ),
             patch('tools.entrypoints.regression_traffic.sqlite3.connect', side_effect=slow_connect),
             patch('tools.entrypoints.regression_traffic.group_request', side_effect=response),
             redirect_stdout(io.StringIO()),
         ):
             main()
         rows = [json.loads(line) for line in (output / 'requests.jsonl').read_text().splitlines()]
-        self.assertGreaterEqual(len(rows), 2)
-        self.assertTrue(all(row['ledger_setup_seconds'] >= 0.12 for row in rows))
-        self.assertTrue(all(row['seconds'] < row['ledger_setup_seconds'] for row in rows))
+        self.assertEqual(len(rows), 2)
+        self.assertEqual([row['ledger_setup_seconds'] for row in rows], [10, 10])
+        self.assertEqual([row['seconds'] for row in rows], [1, 1])
         self.assertTrue(json.loads((output / 'summary.json').read_text())['ledger_closeout']['matched'])
 
 

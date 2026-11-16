@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 from ..artifact import build_tree_manifest, validate_tree_manifest
 from ..entities.io.context import ActionContext
 from ..workspace import workspace_namespace
-from .errors import BoxCapacityExceededError
+from .errors import BoxArtifactNotPreparedError, BoxCapacityExceededError
 from .file_io import _parent_directory
 from .models import ARTIFACT_MOUNT_ROOT, BoxHostMountMode, BoxMountSpec
 
@@ -606,10 +606,15 @@ class ArtifactCache:
                     raise ValueError("Invalid artifact content digest")
                 entry = self._entries.get((namespace, digest))
                 if entry is None:
-                    raise ValueError(
+                    raise BoxArtifactNotPreparedError(
                         "Artifact revision is not prepared for this Workspace"
                     )
-                self._validate_entry(entry)
+                try:
+                    self._validate_entry(entry)
+                except (OSError, ValueError) as exc:
+                    raise BoxArtifactNotPreparedError(
+                        "Artifact revision failed cache validation"
+                    ) from exc
                 entries.append(entry)
             mounts = [
                 BoxMountSpec(
@@ -639,6 +644,38 @@ class ArtifactCache:
                 entry.last_used = time.monotonic()
                 self._owners.setdefault(owner, set()).add(entry.key)
             return mounts
+
+    def pin_from_owner(
+        self, context: ActionContext, digests: list[str], source_owner: str, owner: str
+    ) -> None:
+        """Retain this operation's verified lease without rereading the same tree."""
+        if not isinstance(owner, str) or not owner or len(owner) > 512:
+            raise ValueError("Artifact pin requires a bounded session owner")
+        with self._lock:
+            namespace = workspace_namespace(
+                context.instance_uuid, context.workspace_uuid
+            )
+            entries = []
+            for digest in dict.fromkeys(digests):
+                entry = self._entries.get((namespace, digest))
+                if (
+                    entry is None
+                    or entry.key not in self._owners.get(source_owner, set())
+                    or source_owner not in entry.owners
+                    or not entry.protected
+                ):
+                    raise ValueError("Artifact pin requires an active verified lease")
+                info = os.stat(entry.path, follow_symlinks=False)
+                if (
+                    not stat.S_ISDIR(info.st_mode)
+                    or (info.st_dev, info.st_ino) != entry.identity
+                ):
+                    raise ValueError("Artifact cache identity changed during lease")
+                entries.append(entry)
+            for entry in entries:
+                entry.owners.add(owner)
+                entry.last_used = time.monotonic()
+                self._owners.setdefault(owner, set()).add(entry.key)
 
     def release(self, owner: str) -> None:
         with self._lock:

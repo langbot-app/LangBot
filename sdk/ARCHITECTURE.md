@@ -293,8 +293,17 @@ Core mechanics:
 - `Handler.call_action()` waits for one response.
 - `Handler.call_action_generator()` consumes streamed responses.
 - Streaming emits `chunk_status: "continue"` chunks and ends with `"end"`.
-- File transfer uses `CommonAction.FILE_CHUNK` with 16KB base64 chunks stored
-  under `data/temp/lbp/`. New transfer keys are high-entropy opaque capabilities;
+- File transfer uses `CommonAction.FILE_CHUNK` with 16 KiB chunks encoded as
+  base64 and stored under `data/temp/lbp/`. Authenticated Box INIT peers may
+  offer and acknowledge `file_chunk_256k: true` to use fixed 256 KiB chunks;
+  plugin channels and unacknowledged senders retain 16 KiB. The client prepares
+  its larger receive limit before offering it, and each send fixes its chunk
+  length for that transfer. Each connection direction admits one large file
+  chunk through encoding and ACK at a time, so concurrent transfers cannot queue
+  many large messages ahead of control actions. Other actions do not acquire this
+  file-send lock. Waiting for this slot consumes the existing ACK timeout budget.
+  Existing action admission and receive limits still apply.
+  New transfer keys are high-entropy opaque capabilities;
   the receiver durably binds each capability to its exact authority namespace so
   a later read can recover that namespace after the action or handler ends. An
   explicit current context must still match, and the receiver never scans other
@@ -426,8 +435,9 @@ clients are incompatible with this selected-path contract.
 `message.completed.file_ids` attaches explicitly exported files to Pipeline output;
 Agents send them explicitly with `ctx.reply_files()`, subject to event reply permission.
 The Pipeline wrapper never scans a Box. Binding ends with the run; the reusable Box
-remains subject to Runtime idle expiry. Persistent workspace files survive expiry,
-but processes and container-local state do not.
+remains subject to Runtime idle expiry. Legacy shared workspace files survive expiry;
+Runtime-owned network workspaces are removed after successful backend stop.
+Processes and container-local state do not survive.
 
 `lbp box` enters `box/server.py::main()` and serves `BoxRuntime` through action RPC.
 
@@ -445,7 +455,7 @@ LangBot BoxService
 Important modules:
 
 - `box/server.py`: CLI entrypoint, aiohttp WebSocket routes, `BoxServerHandler` action registration.
-- `box/runtime.py`: session lifecycle, per-session locks, TTL cleanup, command execution, managed processes.
+- `box/runtime.py`: session lifecycle, per-session locks, TTL cleanup, command execution, managed processes. Explicit network mode allocates Runtime-owned workspaces, accepts artifact references instead of host mounts, and masks local paths in session responses. INIT acknowledges this capability; Core and Runtime must be upgraded together.
 - `box/artifact_cache.py`: Workspace-scoped verified packages, atomic read-only publication, session pins and capacity/idle GC under the Runtime identity data root.
 - `box/models.py`: generic `BoxSpec`/read-only mount contracts, execution results, managed-process specs.
 - `box/client.py`: action-RPC client used by LangBot-side connector/service.
@@ -475,18 +485,38 @@ one-time online-upgrade import source.
 `export_skill_publication` and `restore_skill_publication` preserve an exact
 publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
-verified execution caches; its database CAS owns the authoritative catalog.
+verified legacy execution caches. In database/network mode, Agent resource listings
+validate the authoritative immutable manifest without blob IO; content reads still
+verify complete archive bytes in memory without restoring a tree. Core privately
+retains successful reads' immutable ZIP bytes in a process-local 32 MiB/256-entry
+LRU; this is a retained-cache budget, not an in-flight memory limit, and adds no
+user configuration. Every read rechecks database scope, generation, version and
+content-ref metadata, then archive SHA, full ZIP/CRC and per-file SHA. Listing,
+activation and cached reads are not source-storage health checks: verified cached
+bytes can survive source unavailability or corruption. Cold reads after restart or
+eviction fetch and validate the source again; database failure, revoked access and
+missing version/content-ref records still reject reads. Runtime validation and GC
+are unchanged. Its database CAS owns the authoritative catalog.
 
 The `PREPARE_ARTIFACT` action accepts a generic manifest/tree digest and a completed
 namespace-owned archive transfer. Cache hits still require the trusted current
 Workspace context and admission. `BoxSpec.artifact_mounts` references only digests;
 Runtime resolves them into its own read-only mounts and protects them until session
 cleanup finishes. It does not resolve a Core path or expose its cache host path.
-The Core Host-only preparation seam is available before the separate migration of
-native Skill execution and draft publication. See
+In explicit network mode, Core sends authorized pinned references directly for
+native execution. Runtime cache acquisition verifies them before any user command
+starts. A typed missing/invalid-cache preflight error permits one preparation and
+retry; backend, timeout, cancellation and session failures never permit replay.
+Network INIT explicitly acknowledges this contract. Core still uses the Host-only
+preparation seam for cache recovery. Draft publication requests `directory_archive=true` through the
+existing download/file-chunk protocol. Runtime creates the bounded ZIP in memory,
+with no sandbox snapshot, under the session lease and execution lock. Complete
+replacement drafts check the current database revision and final CAS without
+reading or restoring the old package; history and `created_at` are retained. The network
+INIT response acknowledges directory archive support. See
 [Runtime artifact cache](../dev-docs/BOX_ARTIFACT_CACHE.md) for limits and ownership.
 
-LangBot Core also composes pinned revisions into generic read-only `BoxMountSpec`
+In legacy mode, LangBot Core composes pinned revisions into generic read-only `BoxMountSpec`
 values. Ordinary fixed mounts include `content_digest` and `manifest_path` in
 the session signature; supported digest-addressed packages are excluded from it.
 Digest-addressed packages use the reserved
@@ -519,9 +549,19 @@ Run-bound tool calls propagate scoped cancellation through Plugin Runtime to Box
 EXEC. Cancellation cleanup uses the original request scope and remains bounded
 when cancellation repeats or the invocation is revoked.
 Cancelling an active execution retires its sandbox, as a command timeout
-does; persistent workspace files survive, but container-local files and managed
-processes do not. Cancelling a queued execution leaves the active sandbox alone.
+does; legacy shared workspace files survive, while Runtime-owned network workspaces
+are removed only after successful backend stop. Container-local files and managed
+processes do not survive. Cancelling a queued execution leaves the active sandbox alone.
 Failed cleanup keeps the session fenced until a later acquire/delete retries it.
+Docker foreign-UID workspace cleanup uses the stopped container's immutable image
+in a restricted helper, retaining daemon user namespaces. Pending helpers must be
+confirmed retired on every retry before the workspace root can be removed. This
+path requires Docker 25+, image Python 3 and no declared image volumes; denied or
+unmapped ownership retains the fence rather than weakening isolation.
+An uncertain backend startup retains its workspace and consumes capacity until
+operator cleanup; restarting Runtime does not establish that old consumers exited.
+Run IO cleanup accepts only one scope component and removes its inbox, outbox and
+temporary snapshots inside an existing session, without creating a replacement.
 
 There is no supported `python -m langbot_plugin.box` entrypoint; use `lbp box`.
 
