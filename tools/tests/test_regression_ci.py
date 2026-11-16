@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 import yaml
 
-from tools.entrypoints.regression_ci import SUITE_BUDGETS, main, suite_profile
+from tools.entrypoints.regression_ci import SUITE_BUDGETS, main, mixed_scenarios, suite_profile
 from tools.entrypoints.regression_suite import validate
 
 
@@ -53,9 +53,34 @@ class CIProfileTest(unittest.TestCase):
             ({'phases': []}, 'phases must be a non-empty array'),
             ({'thresholds': {'min_rps_ratio': 2}}, 'min_rps_ratio must be <= 1'),
             ({'performance_mode': 'ignored'}, 'performance_mode must be gate or observe'),
+            ({'box_command_delay_seconds': True}, 'box_command_delay_seconds must be a finite number'),
+            ({'box_command_delay_seconds': []}, 'box_command_delay_seconds must be a finite number'),
+            ({'box_command_delay_seconds': float('inf')}, 'box_command_delay_seconds must be a finite number'),
+            ({'box_command_delay_seconds': float('nan')}, 'box_command_delay_seconds must be a finite number'),
+            ({'box_command_delay_seconds': -1}, 'box_command_delay_seconds must be >= 0'),
         ]:
             with self.subTest(settings=settings), self.assertRaisesRegex(ValueError, message):
                 suite_profile('endurance', 'invalid', load_settings=settings)
+
+    def test_mixed_box_duration_is_applied_without_changing_suite_schema(self):
+        original, _ = suite_profile('endurance', 'original')
+        for delay in (0, 4, 0.25):
+            with self.subTest(delay=delay):
+                profile, _ = suite_profile('endurance', 'custom', load_settings={'box_command_delay_seconds': delay})
+                self.assertEqual(profile, original)
+                scenarios = mixed_scenarios(delay)
+                commands = [
+                    call['arguments']['command']
+                    for step in scenarios['mock-smoke-box']['steps']
+                    for call in step.get('tool_calls', [])
+                ]
+                self.assertEqual(len(commands), 2)
+                self.assertTrue(all(f'; sleep {delay}; ' in command for command in commands))
+                self.assertTrue(all('LB_BOX_HOST=' in command for command in commands))
+                self.assertEqual(scenarios['mock-chat']['delay_seconds'], 0.6)
+        default = mixed_scenarios()
+        self.assertEqual(default, mixed_scenarios(1))
+        self.assertNotEqual(default, mixed_scenarios(4))
 
     def test_cli_load_settings_and_budget_are_validated_before_environment_creation(self):
         with tempfile.TemporaryDirectory() as directory:

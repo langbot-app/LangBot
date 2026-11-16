@@ -12,6 +12,7 @@
       "queue_capacity": 16
     }
   ],
+  "box_command_delay_seconds": 4,
   "performance_mode": "gate",
   "thresholds": {
     "min_rps_ratio": 0.8,

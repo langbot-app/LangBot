@@ -25,7 +25,7 @@ from tools.regression.regression_plugins import (
     prepare_source_plugins,
 )
 from tools.regression.regression_local_cases import DEFAULT_GROUPS, api, require
-from tools.entrypoints.regression_suite import Suite, validate
+from tools.entrypoints.regression_suite import Suite, number, validate
 from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -107,12 +107,28 @@ def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None):
             raise ValueError('A load profile requires --suite endurance')
         if not isinstance(load_settings, dict) or not load_settings:
             raise ValueError('A load profile must be a non-empty object')
-        allowed = {'phases', 'thresholds', 'resource_limits', 'performance_mode'}
+        allowed = {'phases', 'thresholds', 'resource_limits', 'performance_mode', 'box_command_delay_seconds'}
         if extra := load_settings.keys() - allowed:
             raise ValueError(f'Unsupported load profile fields: {sorted(extra)}')
-        profile.update(load_settings)
+        number(load_settings.get('box_command_delay_seconds', 1), 'box_command_delay_seconds')
+        profile.update({key: value for key, value in load_settings.items() if key != 'box_command_delay_seconds'})
         validate(profile)
     return profile, profile_path
+
+
+def mixed_scenarios(box_command_delay_seconds=1):
+    """Build the measured mixed stimulus with an explicit Box command duration."""
+    number(box_command_delay_seconds, 'box_command_delay_seconds')
+    scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
+    for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
+        scenarios[model]['delay_seconds'] = 0.6
+    for step in scenarios['mock-smoke-box']['steps']:
+        for call in step.get('tool_calls', []):
+            call['arguments']['command'] = (
+                'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; '
+                f'sleep {box_command_delay_seconds}; ' + call['arguments']['command']
+            )
+    return scenarios
 
 
 def ready(url, processes, timeout=120):
@@ -298,16 +314,10 @@ def run(args):
         if args.suite == 'endurance':
             mocks.update(mock_box=ports['mock_box'], mock_rag=ports['mock_rag'])
             # Fixed provider/tool latency makes overlap observable; this is not a performance baseline.
-            scenarios = json.loads((ROOT / 'tools/fixtures/mock_llm_scenarios.json').read_text())
-            for model in ('mock-chat', 'mock-smoke-box', 'mock-rag'):
-                scenarios[model]['delay_seconds'] = 0.6
-            for step in scenarios['mock-smoke-box']['steps']:
-                for call in step.get('tool_calls', []):
-                    call['arguments']['command'] = (
-                        'printf \'LB_BOX_HOST=%s\\n\' "$(hostname)"; sleep 1; ' + call['arguments']['command']
-                    )
+            scenarios = mixed_scenarios((args.load_settings or {}).get('box_command_delay_seconds', 1))
             scenario_path = private / 'mixed-scenarios.json'
             scenario_path.write_text(json.dumps(scenarios, indent=2))
+            profile['vars']['mock_scenarios_file'] = str(scenario_path)
             mock_args = ['--scenarios', str(scenario_path)]
         for name, port in mocks.items():
             pids[name] = start(
@@ -519,7 +529,7 @@ def main():
     parser.add_argument(
         '--load-profile',
         type=Path,
-        help='Endurance JSON overrides for phases, thresholds, resource limits and performance mode',
+        help='Endurance JSON overrides for load geometry, thresholds, resource limits and Box command delay',
     )
     parser.add_argument('--budget-seconds', type=int, help='Endurance execution guard, excluding service preparation')
     parser.add_argument(

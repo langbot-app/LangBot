@@ -73,6 +73,99 @@ class ArrivalScheduleTests(unittest.TestCase):
         self.assertTrue(summary['conserved'])
 
 
+class CliTrafficArrivalTests(unittest.TestCase):
+    def test_slow_independent_cli_accounts_for_wire_calls_queue_full_and_deadline(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            calls = root / 'cli-calls.jsonl'
+            cli = root / 'lbctl-test'
+            script = r"""
+import json
+from pathlib import Path
+import sys
+import time
+
+started = time.monotonic()
+time.sleep(0.6)
+with Path(sys.argv[-1]).open('a') as stream:
+    stream.write(json.dumps({'args': sys.argv[1:], 'started': started, 'completed': time.monotonic()}) + '\n')
+print(json.dumps({'ok': True, 'data': {'status': 'completed', 'reply': 'CLI_OK'}}))
+"""
+            cli.write_text(f'#!{sys.executable}\n{script}')
+            cli.chmod(0o700)
+            cases = root / 'cases.json'
+            cases.write_text(
+                json.dumps(
+                    [
+                        {
+                            'name': 'chat',
+                            'args': ['pipeline', 'run', 'existing-pipeline', '--message', str(calls)],
+                            'expect': 'CLI_OK',
+                        }
+                    ]
+                )
+            )
+            output = root / 'output'
+            argv = [
+                'regression_traffic',
+                '--lbctl',
+                str(cli),
+                '--config',
+                'unused',
+                '--cases',
+                str(cases),
+                '--output',
+                str(output),
+                '--duration',
+                '0.4',
+                '--rps',
+                '100',
+                '--workers',
+                '1',
+                '--cooldown',
+                '0',
+                '--arrival-mode',
+                'open-loop',
+                '--queue-capacity',
+                '1',
+            ]
+            with patch.object(sys, 'argv', argv), redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as raised:
+                    main()
+            self.assertEqual(raised.exception.code, 1)
+            summary = json.loads((output / 'summary.json').read_text())
+            rows = [json.loads(line) for line in (output / 'requests.jsonl').read_text().splitlines()]
+            arrivals = [json.loads(line) for line in (output / 'arrivals.jsonl').read_text().splitlines()]
+            actual = [json.loads(line) for line in calls.read_text().splitlines()]
+
+            self.assertEqual(len(actual), 1)
+            self.assertEqual(actual[0]['args'][:4], ['--config', 'unused', '-o', 'json'])
+            self.assertEqual(actual[0]['args'][4:7], ['pipeline', 'run', 'existing-pipeline'])
+            self.assertGreaterEqual(actual[0]['completed'] - actual[0]['started'], 0.6)
+            self.assertEqual(len(rows), len(actual))
+            self.assertEqual(rows[0]['status'], 'ok')
+            self.assertLess(rows[0]['dispatch_elapsed'], 0.4)
+            self.assertGreater(rows[0]['completed_elapsed'], 0.4)
+            self.assertNotIn('group_id', rows[0])
+            self.assertEqual(sorted(item['arrival_id'] for item in arrivals), list(range(40)))
+            self.assertTrue(all(item['serialization_key'] is None for item in arrivals))
+
+            counts = Counter(item['outcome'] for item in arrivals)
+            observed = summary['arrivals']
+            self.assertEqual(observed['scheduled'], 40)
+            self.assertEqual(observed['dispatched'], len(actual))
+            self.assertEqual(observed['successful'], len(actual))
+            self.assertGreater(observed['dropped'], 0)
+            self.assertEqual(observed['expired'], 1)
+            self.assertEqual(observed['blocked'], 0)
+            self.assertEqual(observed['queue_peak'], 1)
+            self.assertEqual(observed['queued_at_deadline'], 1)
+            for outcome in ('dispatched', 'dropped', 'expired', 'blocked'):
+                self.assertEqual(observed[outcome], counts[outcome])
+            self.assertEqual(sum(counts.values()), 40)
+            self.assertTrue(observed['conserved'])
+
+
 class GroupTrafficArrivalTests(unittest.TestCase):
     def run_traffic(self, *, fail_first_group=False, overloaded=False):
         requests, errors = [], []

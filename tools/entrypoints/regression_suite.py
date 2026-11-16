@@ -397,7 +397,8 @@ def validate(profile):
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
         if 'max_requests' in phase:
             number(phase['max_requests'], 'max_requests', minimum=1, integer=True)
-        if phase.get('arrival_mode', 'paced') not in {'paced', 'open-loop'}:
+        arrival_mode = phase.get('arrival_mode', 'paced')
+        if not isinstance(arrival_mode, str) or arrival_mode not in {'paced', 'open-loop'}:
             raise ValueError('arrival_mode must be paced or open-loop')
         if 'queue_capacity' in phase:
             number(phase['queue_capacity'], 'queue_capacity', minimum=1, integer=True)

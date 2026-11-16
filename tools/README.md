@@ -166,13 +166,18 @@ uv run --no-sync python -m tools.entrypoints.regression_ci \
   --output .qa/arrival-soak-001
 ```
 
-`--load-profile` accepts only `phases`, `thresholds`, `resource_limits` and
-`performance_mode`, validated before service creation. The existing chat/Box/RAG
+`--load-profile` accepts `phases`, `thresholds`, `resource_limits`,
+`performance_mode` and `box_command_delay_seconds`, validated before service
+creation. The Box command delay must be finite and nonnegative, and defaults to
+one second per command. The existing chat/Box/RAG
 resources, plugin installation, run-ledger verification and independent mixed
 evidence checks remain part of the source-stack run. `--budget-seconds` bounds
 execution after preparation. Both options apply to `--suite endurance`.
 The ramp uses 0.8, 4 and 0.8 aggregate arrivals/second; the soak runs 15 minutes at
-0.8 arrivals/second. Their latency limits are exploratory test settings and need
+0.8 arrivals/second with a four-second delay in each Box command, so different
+Boxes execute concurrently at that arrival rate. The workload fingerprint
+includes the actual generated mock scenario file. Their latency limits are
+exploratory test settings and need
 calibration against measured workloads. Keep the existing Docker-daemon
 prerequisites of the source-stack runner.
 

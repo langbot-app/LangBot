@@ -179,6 +179,8 @@ class ProfileTests(unittest.TestCase):
         validate(current)
         for patch_value in (
             {'arrival_mode': 'unknown'},
+            {'arrival_mode': []},
+            {'arrival_mode': {}},
             {'queue_capacity': 0},
             {'queue_capacity': True},
             {'queue_capacity': 1.5},

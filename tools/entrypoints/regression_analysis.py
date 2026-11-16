@@ -168,9 +168,16 @@ def workload_contract(profile, profile_path):
     }
     contract['timing_contract'] = 'dispatch-after-ledger-snapshot-v1'
     contract['verified_runs'] = bool(profile.get('verification'))
-    contract['mock_scenarios_sha256'] = hashlib.sha256(
-        (Path(__file__).resolve().parents[1] / 'fixtures' / 'mock_llm_scenarios.json').read_bytes()
-    ).hexdigest()
+    scenario_path = Path(
+        resolve(
+            profile.get('vars', {}).get(
+                'mock_scenarios_file', str(Path(__file__).resolve().parents[1] / 'fixtures' / 'mock_llm_scenarios.json')
+            ),
+            variables,
+        )
+    )
+    scenario_path = scenario_path if scenario_path.is_absolute() else profile_path.parent / scenario_path
+    contract['mock_scenarios_sha256'] = hashlib.sha256(scenario_path.read_bytes()).hexdigest()
     return contract
 
 
