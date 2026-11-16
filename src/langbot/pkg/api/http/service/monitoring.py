@@ -2348,6 +2348,42 @@ class MonitoringService(ExecutionDetailsMixin):
             raise LookupError('Session not found')
         # Legacy sessions use uppercase PERSON/GROUP; envelope IDs use lowercase.
         conversation = re.sub(r'^(PERSON|GROUP)_', lambda match: match[1].lower() + '_', session_id)
+        if conversation.startswith('group_') and '#' not in conversation:
+            session_model = persistence_monitoring.MonitoringSession
+            user_id = (
+                await execute(
+                    sqlalchemy.select(session_model.user_id)
+                    .where(
+                        session_model.workspace_uuid == workspace,
+                        session_model.bot_id == bot_id,
+                        session_model.session_id == session_id,
+                        session_model.user_id.is_not(None),
+                        session_model.user_id != '',
+                    )
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if not user_id:
+                msg_model = persistence_monitoring.MonitoringMessage
+                user_id = (
+                    await execute(
+                        sqlalchemy.select(msg_model.user_id)
+                        .where(
+                            msg_model.workspace_uuid == workspace,
+                            msg_model.bot_id == bot_id,
+                            msg_model.session_id == session_id,
+                            sqlalchemy.func.coalesce(msg_model.role, 'user') != 'assistant',
+                            msg_model.user_id.is_not(None),
+                            msg_model.user_id != '',
+                        )
+                        .order_by(msg_model.timestamp.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+            if user_id and conversation.endswith(f'_{user_id}'):
+                stripped = conversation[: -(len(str(user_id)) + 1)]
+                if stripped != 'group':
+                    conversation = stripped
         run = persistence_agent_run.AgentRun
         busy = (
             await execute(
@@ -2403,6 +2439,7 @@ class MonitoringService(ExecutionDetailsMixin):
         start_time: datetime.datetime | None = None,
         end_time: datetime.datetime | None = None,
         user_query: str | None = None,
+        launcher_id: str | None = None,
         is_active: bool | None = None,
         limit: int = 100,
         offset: int = 0,
@@ -2418,6 +2455,7 @@ class MonitoringService(ExecutionDetailsMixin):
                 start_time=start_time,
                 end_time=end_time,
                 user_query=user_query,
+                launcher_id=launcher_id,
                 is_active=is_active,
             ),
             limit,

@@ -289,7 +289,7 @@ class TestMonitoringSessionsEndpoint:
         fake_monitoring_app.monitoring_service.get_sessions.reset_mock()
 
         response = await quart_test_client.get(
-            '/api/v1/monitoring/sessions?botId=bot-1&userQuery=alice&limit=20&offset=40',
+            '/api/v1/monitoring/sessions?botId=bot-1&userQuery=alice&launcherId=group-100&limit=20&offset=40',
             headers={'Authorization': 'Bearer test_token'},
         )
 
@@ -297,6 +297,7 @@ class TestMonitoringSessionsEndpoint:
         kwargs = fake_monitoring_app.monitoring_service.get_sessions.await_args.kwargs
         assert kwargs['bot_ids'] == ['bot-1']
         assert kwargs['user_query'] == 'alice'
+        assert kwargs['launcher_id'] == 'group-100'
         assert kwargs['limit'] == 20
         assert kwargs['offset'] == 40
 

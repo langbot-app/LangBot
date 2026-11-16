@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..entity.persistence.monitoring import MonitoringSession, MonitoringSessionReceipt
 from .datetime_utils import as_naive_utc
-from .session_summary_contract import SessionSummaryChange, message_source_key
+from .session_summary_contract import (
+    SessionSummaryChange,
+    message_source_key,
+    monitoring_session_id_from_conversation,
+)
 
 
 SESSION_KEY = ['workspace_uuid', 'bot_id', 'session_id']
@@ -47,7 +51,7 @@ def ingress_summary_change(workspace: str, row) -> SessionSummaryChange:
     return SessionSummaryChange(
         workspace=workspace,
         bot_id=row['bot_id'],
-        session_id=row['conversation_id'] or '',
+        session_id=monitoring_session_id_from_conversation(row['conversation_id'], row['actor_id']),
         source_key=f'event:{row["event_id"]}',
         timestamp=row['event_time'] or row['created_at'],
         bot_name=metadata.get('bot_name') or '',
@@ -265,9 +269,20 @@ class SessionSummaryWriter:
             )
             if state['covered']:
                 return False
-            if state['session_id'] is not None and state['session_id'] != identity:
-                raise ValueError('An ingress event cannot belong to two conversations')
-            claimed = state['session_id'] is None
+            previous_owner = state['session_id']
+            if previous_owner is not None and previous_owner != identity:
+                if (
+                    previous_owner.startswith('group_')
+                    and '#' not in previous_owner
+                    and change.user_id not in (None, '')
+                    and identity == f'{previous_owner}_{change.user_id}'
+                ):
+                    deltas[previous_owner] = deltas.get(previous_owner, 0) - 1
+                    claimed = True
+                else:
+                    raise ValueError('An ingress event cannot belong to two conversations')
+            else:
+                claimed = previous_owner is None
         elif change.role != 'assistant':
             # Legacy message.id matching is part of the historical detail contract.
             for event_id in sorted({change.source_key.removeprefix('message:'), change.event_id} - {None}):

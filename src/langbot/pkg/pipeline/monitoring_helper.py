@@ -16,6 +16,7 @@ if typing.TYPE_CHECKING:
     from ..core import app
     import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
+from ..persistence.session_summary_contract import build_monitoring_session_id
 from .pool import get_query_execution_context
 
 # Query variable naming the plugin (``author/name``) that owns a Host-built
@@ -114,11 +115,11 @@ def monitoring_session_id(query: typing.Any) -> str:
     """Return the monitoring session id for pipeline and plugin-owned Queries."""
     platform = monitoring_platform(query)
     if platform is not None:
-        launcher_id = getattr(query, 'launcher_id', None)
-        sender_id = getattr(query, 'sender_id', None)
-        if platform == 'group' and sender_id not in (None, ''):
-            return f'{platform}_{launcher_id}_{sender_id}'
-        return f'{platform}_{launcher_id}'
+        return build_monitoring_session_id(
+            platform,
+            getattr(query, 'launcher_id', None),
+            getattr(query, 'sender_id', None),
+        )
     if _origin(query).get('session_id'):
         return _origin(query)['session_id']
     plugin = (getattr(query, 'variables', None) or {}).get(PLUGIN_ATTRIBUTION_VAR)
@@ -249,6 +250,48 @@ async def prepare_monitoring_identity(
         ap.logger.error(f'Failed to prepare monitoring identity: {e}')
 
 
+def extract_sender_name(
+    message_event: typing.Any,
+    variables: typing.Mapping[str, typing.Any] | None = None,
+) -> str | None:
+    """Extract sender display name from a message event or query variables."""
+    sender_name: str | None = None
+
+    sender = getattr(message_event, 'sender', None)
+    if sender is not None:
+        get_name = getattr(sender, 'get_name', None)
+        if callable(get_name):
+            try:
+                sender_name = get_name()
+            except Exception:
+                sender_name = None
+            else:
+                sender_name = sender_name.strip() if isinstance(sender_name, str) else None
+
+        if not sender_name:
+            for attr in (
+                'member_name',
+                'nickname',
+                'remark',
+                'name',
+                'display_name',
+                'username',
+                'user_name',
+                'card',
+            ):
+                value = getattr(sender, attr, None)
+                if isinstance(value, str) and value.strip():
+                    sender_name = value.strip()
+                    break
+
+    if not sender_name and isinstance(variables, typing.Mapping):
+        var_sender_name = variables.get('sender_name')
+        if isinstance(var_sender_name, str) and var_sender_name.strip():
+            sender_name = var_sender_name.strip()
+
+    return sender_name if sender_name else None
+
+
 class MonitoringHelper:
     """Helper class for monitoring operations"""
 
@@ -258,50 +301,11 @@ class MonitoringHelper:
 
     @staticmethod
     def _extract_sender_name(query: pipeline_query.Query) -> str | None:
-        """Extract session display name from query message event."""
-        sender_name: str | None = None
-
-        message_event = getattr(query, 'message_event', None)
-        group = getattr(message_event, 'group', None)
-        group_name = getattr(group, 'name', None) if group is not None else None
-        if isinstance(group_name, str) and group_name.strip():
-            return group_name.strip()
-
-        sender = getattr(message_event, 'sender', None)
-        if sender is not None:
-            get_name = getattr(sender, 'get_name', None)
-            if callable(get_name):
-                try:
-                    sender_name = get_name()
-                except Exception:
-                    sender_name = None
-                else:
-                    sender_name = sender_name.strip() if isinstance(sender_name, str) else None
-
-            if not sender_name:
-                for attr in (
-                    'member_name',
-                    'nickname',
-                    'remark',
-                    'name',
-                    'display_name',
-                    'username',
-                    'user_name',
-                    'card',
-                ):
-                    value = getattr(sender, attr, None)
-                    if isinstance(value, str) and value.strip():
-                        sender_name = value.strip()
-                        break
-
-        if not sender_name:
-            variables = getattr(query, 'variables', None)
-            if isinstance(variables, dict):
-                var_sender_name = variables.get('sender_name')
-                if isinstance(var_sender_name, str) and var_sender_name.strip():
-                    sender_name = var_sender_name.strip()
-
-        return sender_name if sender_name else None
+        """Extract sender display name from query message event."""
+        return extract_sender_name(
+            getattr(query, 'message_event', None),
+            getattr(query, 'variables', None),
+        )
 
     @staticmethod
     async def finish_query(ap, query, message_id: str, status: str) -> None:

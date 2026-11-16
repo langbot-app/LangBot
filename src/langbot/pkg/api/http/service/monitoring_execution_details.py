@@ -139,6 +139,18 @@ class ExecutionDetailsMixin:
                 ),
             ),
         )
+        monitoring_session = sa.case(
+            (
+                sa.and_(
+                    conversation.like('group\\_%', escape='\\'),
+                    ~conversation.like('%#%', escape='\\'),
+                    EventLog.actor_id.is_not(None),
+                    EventLog.actor_id != '',
+                ),
+                conversation + sa.literal('_') + EventLog.actor_id,
+            ),
+            else_=conversation,
+        )
         values = {
             'id': EventLog.event_id,
             'workspace_uuid': EventLog.workspace_id,
@@ -152,7 +164,7 @@ class ExecutionDetailsMixin:
                 self._execution_json_text(EventLog.metadata_json, ('routes', 0, 'target_type')), ''
             ),
             'message_content': sa.func.coalesce(EventLog.input_json, EventLog.input_summary, ''),
-            'session_id': conversation,
+            'session_id': monitoring_session,
             'status': sa.func.coalesce(self._execution_json_text(EventLog.metadata_json, 'status'), 'success'),
             'level': sa.literal('info'),
             'platform': self._execution_json_text(EventLog.metadata_json, 'platform'),

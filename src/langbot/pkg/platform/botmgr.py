@@ -1477,16 +1477,13 @@ class RuntimeBot:
             else:
                 message_content = str(message_chain)
 
-            sender_name = None
-            if hasattr(message_event, 'sender'):
-                if hasattr(message_event.sender, 'nickname'):
-                    sender_name = message_event.sender.nickname
-                elif hasattr(message_event.sender, 'member_name'):
-                    sender_name = message_event.sender.member_name
+            from ..pipeline.monitoring_helper import build_monitoring_session_id, extract_sender_name
+
+            sender_name = extract_sender_name(message_event)
 
             # Use the same session_id format as monitoring_helper.py
-            session_id = f'{launcher_type}_{launcher_id}'
             platform = launcher_type.value if hasattr(launcher_type, 'value') else str(launcher_type)
+            session_id = build_monitoring_session_id(platform, launcher_id, sender_id)
 
             await self.ap.monitoring_service.record_message(
                 self.execution_context,
