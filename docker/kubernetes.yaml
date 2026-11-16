@@ -145,7 +145,7 @@ spec:
       - name: langbot-plugin-runtime
         image: rockchin/langbot:latest
         imagePullPolicy: Always
-        command: ["uv", "run", "-m", "langbot_plugin.cli.__init__", "rt"]
+        command: ["uv", "run", "--no-sync", "-m", "langbot_plugin.cli.__init__", "rt"]
         ports:
         - containerPort: 5400
           name: runtime
@@ -245,9 +245,9 @@ spec:
 # dashboard renders cleanly with sandbox features disabled.
 #
 # IMPORTANT — how the sandbox actually runs:
-#   The bundled image ships only the Docker CLI (no dockerd, no nsjail). The Box
-#   runtime therefore creates sandbox containers by talking to a Docker daemon
-#   over the mounted socket (`/var/run/docker.sock`). Because that daemon
+#   The bundled image ships nsjail and the Docker CLI, but no dockerd. The
+#   Docker backend creates sandbox containers through the mounted Docker daemon
+#   socket (`/var/run/docker.sock`). Because that daemon
 #   resolves bind-mount paths on the NODE filesystem, the Box workspace root
 #   must be the SAME absolute path inside the box container, inside every
 #   sandbox container it spawns, AND on the node. That is why this manifest uses
@@ -509,6 +509,15 @@ spec:
           limits:
             memory: "4Gi"
             cpu: "2000m"
+        # Startup imports legacy content before opening HTTP. Allow 30 minutes;
+        # size this deadline for the deployment's retained data.
+        startupProbe:
+          httpGet:
+            path: /healthz
+            port: 5300
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 180
         # Liveness probe to restart container if it becomes unresponsive
         livenessProbe:
           httpGet:
