@@ -1,0 +1,31 @@
+---
+title: "Artifact 文件接口"
+description: "通过 HTTP 或 MCP 上传、读取、保留和删除当前主体拥有的文件。"
+---
+
+Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能访问当前工作区内属于自己的文件。知道 ID 不代表获得权限，同一工作区的其他成员也不能凭 ID 读取。
+
+沿用工作区 HTTP 认证。读取需要 `resource.view`；创建、保留、释放和删除需要 `resource.manage`。
+
+| 操作 | HTTP |
+| --- | --- |
+| 上传 | `POST /api/v1/artifacts`，multipart `file`，可选 `ttl_seconds` |
+| 元信息 | `GET /api/v1/artifacts/{id}` |
+| 下载 | `GET /api/v1/artifacts/{id}/content`，可选 `max_bytes` |
+| 持久保留 | `POST /api/v1/artifacts/{id}/retain` |
+| 释放保留 | `POST /api/v1/artifacts/{id}/release` |
+| 删除 | `DELETE /api/v1/artifacts/{id}` |
+
+上传返回含 `id` 的元信息。下载返回原始字节，使用附件响应及 digest ETag。上传和下载上限为 10 MiB。`max_bytes` 限制整个文件的读取大小，不表示字节范围；超过限制时拒绝读取，不截断文件。
+
+新上传文件默认 24 小时后过期；`ttl_seconds` 可设为 1 秒至 7 天。retain 添加持久保留标记，不改变访问权限。release 移除该标记并恢复 24 小时临时保留期；重复 release 不续期。仍有标记的文件不能删除，需要先释放。过期资产不能读取或重新保留；清理任务回收过期临时内容。
+
+不存在、已删除和无权访问的 ID 均返回 404。已过期的自有文件返回 `artifact_expired`（410），删除仍在使用的文件返回 `artifact_in_use`（409），读取超限返回 `artifact_too_large`（413），完整性校验失败返回 `artifact_integrity_failed`（422）。
+
+删除立即阻止后续访问，底层字节由维护任务回收；已授权的在途下载可能完成，也可能因并发回收而失败。
+
+## MCP
+
+内置 `/mcp` 服务提供 `create_artifact`、`get_artifact`、`read_artifact`、`retain_artifact`、`release_artifact` 和 `delete_artifact`，使用相同的归属及权限检查。创建参数为 `filename`、`content_base64`，以及可选的 `mime_type` 和 `ttl_seconds`。读取参数为 `artifact_id` 及可选的 `max_bytes`，返回 base64 和元信息。
+
+这些工具用于文件传输，不做文本提取、PDF 页面渲染，也不代表模型已理解图片。初版暂不开放插件工作区授权、插件类型化方法、默认模型工具或 `lbctl` 命令。原有上传接口和运行内 `file_id` 接口继续使用原契约。

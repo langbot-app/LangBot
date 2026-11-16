@@ -122,5 +122,11 @@
   "The plugin is already installed; a member must upgrade or reinstall it": "The plugin is already installed; a member must upgrade or reinstall it",
   "Insufficient balance or quota for this model. Please top up and try again.": "Insufficient balance or quota for this model. Please top up and try again.",
   "No API key is configured for this model provider": "No API key is configured for this model provider",
-  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it."
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.",
+  "Artifact operations require an account or API key": "Artifact operations require an account or API key",
+  "Artifact has expired": "Artifact has expired",
+  "Artifact is still in use": "Artifact is still in use",
+  "Artifact exceeds the read size limit": "Artifact exceeds the read size limit",
+  "Artifact content failed integrity verification": "Artifact content failed integrity verification",
+  "Artifact exceeds the size limit.": "Artifact exceeds the size limit."
 }

@@ -122,5 +122,11 @@
   "The plugin is already installed; a member must upgrade or reinstall it": "该插件已安装，需由成员升级或重新安装",
   "Insufficient balance or quota for this model. Please top up and try again.": "该模型的余额或额度不足，请充值后重试。",
   "No API key is configured for this model provider": "该模型供应商未配置 API Key",
-  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "以下机器人的事件绑定仍在使用此项：{bots}。请先修改这些绑定，再删除。"
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "以下机器人的事件绑定仍在使用此项：{bots}。请先修改这些绑定，再删除。",
+  "Artifact operations require an account or API key": "资产操作需要账户或 API 密钥身份",
+  "Artifact has expired": "资产已过期",
+  "Artifact is still in use": "资产仍在使用中",
+  "Artifact exceeds the read size limit": "资产超过读取大小限制",
+  "Artifact content failed integrity verification": "资产内容完整性校验失败",
+  "Artifact exceeds the size limit.": "资产超过大小限制。"
 }

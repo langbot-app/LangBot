@@ -18,14 +18,20 @@ maintainable. Extend deliberately.
 from __future__ import annotations
 
 import json
+import base64
+import binascii
 import typing
 import functools
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.exceptions import ToolError
+
+from ..application import ApplicationAPIException
+from ..application.artifact_operations import MAX_ARTIFACT_BYTES
 
 from ..http.authz import Permission, require_permission
 from .context import get_request_context
-from ...i18n import language_scope
+from ...i18n import error_text, language_scope
 from ...telemetry import usage
 from ...i18n.workspace import get_workspace_language, set_workspace_language
 
@@ -81,6 +87,88 @@ class LangBotMCPServer:
     def _register_tools(self) -> None:
         ap = self.ap
         mcp = self
+
+        async def artifact_operation(operation, context, payload):
+            try:
+                return await ap.application_api.execute(operation, context, payload)
+            except ApplicationAPIException as exc:
+                raise ToolError(error_text(exc.error.code, exc.error.message)) from exc
+
+        @mcp.tool(
+            description='Upload a base64 file as a temporary caller-owned Artifact (10 MiB maximum). Returns a reference and metadata; does not make it readable by other callers.'
+        )
+        async def create_artifact(
+            filename: str,
+            content_base64: str,
+            mime_type: str = 'application/octet-stream',
+            ttl_seconds: int = 86400,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            if len(content_base64) > 4 * ((MAX_ARTIFACT_BYTES + 2) // 3):
+                raise ToolError(error_text('artifact_too_large', 'Artifact exceeds the size limit.'))
+            try:
+                content = base64.b64decode(content_base64, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise ToolError('Invalid base64 file content') from exc
+            return _dump(
+                await artifact_operation(
+                    'artifact.create',
+                    context,
+                    {
+                        'filename': filename,
+                        'content': content,
+                        'mime_type': mime_type,
+                        'ttl_seconds': ttl_seconds,
+                    },
+                )
+            )
+
+        @mcp.tool(
+            description='Get metadata for a caller-owned Artifact without reading its content. The reference is not an access grant.'
+        )
+        async def get_artifact(artifact_id: str) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(await artifact_operation('artifact.get', context, {'artifact_id': artifact_id}))
+
+        @mcp.tool(
+            description='Transfer exact Artifact bytes as base64 within max_bytes (at most 10 MiB). This file API does not extract text, render PDF pages or establish that a model understands the file.'
+        )
+        async def read_artifact(artifact_id: str, max_bytes: int = MAX_ARTIFACT_BYTES) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            result = await artifact_operation(
+                'artifact.read',
+                context,
+                {
+                    'artifact_id': artifact_id,
+                    'max_bytes': max_bytes,
+                },
+            )
+            return _dump(
+                {
+                    'metadata': result['metadata'],
+                    'encoding': 'base64',
+                    'content': base64.b64encode(result['content']).decode('ascii'),
+                }
+            )
+
+        @mcp.tool(
+            description='Add a persistent pin to a caller-owned Artifact without widening its access permissions.'
+        )
+        async def retain_artifact(artifact_id: str) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(await artifact_operation('artifact.retain', context, {'artifact_id': artifact_id}))
+
+        @mcp.tool(description='Release the caller-owned persistent pin and restore the temporary expiry grace period.')
+        async def release_artifact(artifact_id: str) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(await artifact_operation('artifact.release', context, {'artifact_id': artifact_id}))
+
+        @mcp.tool(
+            description='Delete an unpinned caller-owned Artifact. Refuses deletion while a persistent pin is in use.'
+        )
+        async def delete_artifact(artifact_id: str) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(await artifact_operation('artifact.delete', context, {'artifact_id': artifact_id}))
 
         @mcp.tool(description='Inspect plugin installation permissions and pending member confirmation.')
         async def get_plugin_permissions(author: str, plugin_name: str) -> str:

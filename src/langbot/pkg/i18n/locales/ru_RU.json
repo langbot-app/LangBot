@@ -122,5 +122,11 @@
   "The plugin is already installed; a member must upgrade or reinstall it": "Плагин уже установлен; обновить или переустановить его должен участник",
   "Insufficient balance or quota for this model. Please top up and try again.": "Недостаточно средств или квоты для этой модели. Пополните баланс и повторите попытку.",
   "No API key is configured for this model provider": "Для этого поставщика моделей не настроен ключ API",
-  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Этот элемент всё ещё используется в привязках событий следующих ботов: {bots}. Сначала измените эти привязки, затем удалите его."
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Этот элемент всё ещё используется в привязках событий следующих ботов: {bots}. Сначала измените эти привязки, затем удалите его.",
+  "Artifact operations require an account or API key": "Для операций с артефактами требуется учётная запись или ключ API",
+  "Artifact has expired": "Срок действия артефакта истёк",
+  "Artifact is still in use": "Артефакт всё ещё используется",
+  "Artifact exceeds the read size limit": "Артефакт превышает ограничение размера чтения",
+  "Artifact content failed integrity verification": "Проверка целостности содержимого артефакта не пройдена",
+  "Artifact exceeds the size limit.": "Артефакт превышает ограничение размера."
 }

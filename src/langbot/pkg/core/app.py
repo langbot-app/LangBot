@@ -173,6 +173,7 @@ class Application:
     log_cache: logcache.LogCache = None
 
     storage_mgr: storagemgr.StorageMgr = None
+    artifact_service = None
 
     # ========= HTTP Services =========
 

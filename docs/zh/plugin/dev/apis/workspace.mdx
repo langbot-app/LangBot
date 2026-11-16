@@ -7,6 +7,9 @@ description: 在插件中读取和管理 Agent、流水线、机器人、模型�
 
 每个操作都有一个稳定的 ID，例如 `pipeline.list` 或 `knowledge.base.retrieve`。插件只能调用自己[在 manifest 中声明](/zh/plugin/dev/permissions#声明权限)、并且已由成员授予该安装的操作。
 
+
+Artifact 操作目前仅接受已认证账户和 API 密钥，不属于插件可申请的操作、通配授权或工作区类型化方法。参见 [Artifact 文件接口](/zh/develop/artifacts)。
+
 ## 调用操作
 
 在任意组件中通过 `self.plugin.workspace` 调用。每个操作都有一个按 ID 命名、带类型标注的方法：

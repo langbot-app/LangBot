@@ -17,6 +17,10 @@ class OperationDoc:
 
 
 DOMAINS: dict[str, dict] = {
+    'artifact': {
+        'label': {'zh_Hans': '资产', 'en_US': 'Artifact'},
+        'summary': 'Create and access caller-owned files in the authenticated Workspace.',
+    },
     'adapter': {
         'label': {'zh_Hans': '适配器', 'en_US': 'Adapter'},
         'summary': 'Inspect IM platforms and chat network adapters available in the workspace.',
@@ -121,6 +125,54 @@ DOMAINS: dict[str, dict] = {
 
 
 OPERATION_DOCS: dict[str, OperationDoc] = {
+    'artifact.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Create Artifact', 'zh_Hans': '创建资产'},
+        summary='Create a temporary caller-owned file.',
+        description='Upload bounded bytes with a name, MIME type and lifetime. The opaque ID does not grant access.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Artifact', 'zh_Hans': '查看资产'},
+        summary='Get authorized file metadata without reading bytes.',
+        description='Return name, MIME type, size, digest and lifetime for an owned asset.',
+        risk='read',
+        exposure='none',
+    ),
+    'artifact.read': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact', 'zh_Hans': '读取资产'},
+        summary='Read an owned file within the requested byte limit.',
+        description='Return exact bytes and metadata for authenticated download; this is not model content extraction.',
+        risk='read',
+        exposure='none',
+    ),
+    'artifact.retain': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Retain Artifact', 'zh_Hans': '保留资产'},
+        summary='Retain an owned file until its pin is released.',
+        description='Add a persistent caller-owned pin without changing access permissions.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.release': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Release Artifact', 'zh_Hans': '释放资产'},
+        summary='Release the caller-owned persistent pin.',
+        description='Remove the caller pin and restore the temporary expiry grace period.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.delete': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Delete Artifact', 'zh_Hans': '删除资产'},
+        summary='Delete an unpinned owned file.',
+        description='Refuse deletion while any persistent pin still protects the file.',
+        risk='dangerous',
+        exposure='none',
+    ),
     'adapter.get': OperationDoc(
         domain='adapter',
         label={'zh_Hans': '适配器详情', 'en_US': 'Get Adapter'},

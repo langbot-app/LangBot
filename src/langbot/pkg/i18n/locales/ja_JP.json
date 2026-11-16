@@ -122,5 +122,11 @@
   "The plugin is already installed; a member must upgrade or reinstall it": "このプラグインはすでにインストールされています。アップグレードや再インストールはメンバーが行う必要があります",
   "Insufficient balance or quota for this model. Please top up and try again.": "このモデルの残高またはクォータが不足しています。チャージしてから再試行してください。",
   "No API key is configured for this model provider": "このモデルプロバイダーには API キーが設定されていません",
-  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "次のボットのイベントバインディングがまだこの項目を使用しています：{bots}。先にそれらのバインディングを変更してから削除してください。"
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "次のボットのイベントバインディングがまだこの項目を使用しています：{bots}。先にそれらのバインディングを変更してから削除してください。",
+  "Artifact operations require an account or API key": "アーティファクトの操作にはアカウントまたは API キーが必要です",
+  "Artifact has expired": "アーティファクトの有効期限が切れています",
+  "Artifact is still in use": "アーティファクトは使用中です",
+  "Artifact exceeds the read size limit": "アーティファクトが読み取りサイズの上限を超えています",
+  "Artifact content failed integrity verification": "アーティファクトの内容の整合性検証に失敗しました",
+  "Artifact exceeds the size limit.": "アーティファクトがサイズの上限を超えています。"
 }

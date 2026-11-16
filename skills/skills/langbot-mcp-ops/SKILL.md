@@ -343,3 +343,25 @@ request construction and `preparation_cache_hits` counts retry preparation reuse
 `transport_setup_ms` measures managed pool acquisition, including first-use TLS
 initialization; it is not network TTFT. See `dev-docs/LLM_LATENCY_BENCHMARK.md` for
 controlled request-layer measurements and their scope.
+
+
+## Caller-owned Artifacts
+
+`create_artifact(filename, content_base64, mime_type, ttl_seconds)` uploads at most
+10 MiB and returns an opaque ID and metadata. Use `get_artifact(artifact_id)` to
+inspect it, and `read_artifact(artifact_id, max_bytes)` only when bytes are needed.
+The read result is base64 for file transfer; it does not extract text, render PDF
+pages or prove model understanding. Prefer the authenticated HTTP download route
+for user downloads. See [Artifact API](../../../docs/en/develop/artifacts.mdx).
+
+Reads require `resource.view`; writes require `resource.manage`. The authenticated
+account or API key must own the asset in the current Workspace. An ID is not an
+access grant. Plugin/run references are not accepted by this initial API, and
+Artifact operations are not added to default model tool sets or plugin grants.
+
+Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
+`retain_artifact` adds a persistent pin without broadening access.
+`release_artifact` removes the caller pin and restores a 24-hour grace period;
+repeating release does not extend it. `delete_artifact` refuses pinned files;
+release first when deletion is authorized. Expired references cannot be revived.
+Never treat a denied reference as permission to use a storage key or run handle.

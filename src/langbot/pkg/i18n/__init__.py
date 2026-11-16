@@ -158,6 +158,10 @@ def error_text(code: int | str, message: str) -> str:
     if language.get() == DEFAULT_LANGUAGE:
         return message
     messages = {
+        'artifact_principal_not_supported': 'Artifact operations require an account or API key',
+        'artifact_expired': 'Artifact has expired',
+        'artifact_in_use': 'Artifact is still in use',
+        'artifact_integrity_failed': 'Artifact content failed integrity verification',
         'permission_denied': 'Permission denied',
         'resource_not_found': 'Resource not found',
         'membership_not_found': 'Resource not found',

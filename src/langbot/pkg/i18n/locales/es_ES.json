@@ -122,5 +122,11 @@
   "The plugin is already installed; a member must upgrade or reinstall it": "El plugin ya está instalado; un miembro debe actualizarlo o reinstalarlo",
   "Insufficient balance or quota for this model. Please top up and try again.": "Saldo o cuota insuficiente para este modelo. Recarga e inténtalo de nuevo.",
   "No API key is configured for this model provider": "No hay ninguna clave de API configurada para este proveedor de modelos",
-  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Las vinculaciones de eventos de estos bots aún usan este elemento: {bots}. Cambie primero esas vinculaciones y luego elimínelo."
+  "This item is still used by the event bindings of these bots: {bots}. Change those bindings first, then delete it.": "Las vinculaciones de eventos de estos bots aún usan este elemento: {bots}. Cambie primero esas vinculaciones y luego elimínelo.",
+  "Artifact operations require an account or API key": "Las operaciones de artefactos requieren una cuenta o una clave API",
+  "Artifact has expired": "El artefacto ha caducado",
+  "Artifact is still in use": "El artefacto sigue en uso",
+  "Artifact exceeds the read size limit": "El artefacto supera el límite de tamaño de lectura",
+  "Artifact content failed integrity verification": "Falló la verificación de integridad del contenido del artefacto",
+  "Artifact exceeds the size limit.": "El artefacto supera el límite de tamaño."
 }

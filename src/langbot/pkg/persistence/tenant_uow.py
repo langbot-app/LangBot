@@ -57,6 +57,8 @@ TENANT_TABLE_COLUMNS: dict[str, str] = {
     'binary_storages': 'workspace_uuid',
     'content_objects': 'workspace_uuid',
     'content_aliases': 'workspace_uuid',
+    'artifacts': 'workspace_uuid',
+    'artifact_references': 'workspace_uuid',
     'skill_registry': 'workspace_uuid',
     'skill_versions': 'workspace_uuid',
     'mcp_servers': 'workspace_uuid',

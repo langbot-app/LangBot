@@ -1,0 +1,31 @@
+---
+title: "Artifact file API"
+description: "Upload, read, retain and delete caller-owned files through HTTP or MCP."
+---
+
+Artifacts provide an opaque reference and metadata for a file. An account or API key can access only its own files in the authenticated Workspace. Knowing an ID does not grant access, including to another member of the same Workspace.
+
+Use the normal Workspace HTTP authentication. Reads require `resource.view`; creating, retaining, releasing and deleting require `resource.manage`.
+
+| Action | HTTP |
+| --- | --- |
+| Upload | `POST /api/v1/artifacts`, multipart `file`, optional `ttl_seconds` |
+| Metadata | `GET /api/v1/artifacts/{id}` |
+| Download | `GET /api/v1/artifacts/{id}/content`, optional `max_bytes` |
+| Retain | `POST /api/v1/artifacts/{id}/retain` |
+| Release | `POST /api/v1/artifacts/{id}/release` |
+| Delete | `DELETE /api/v1/artifacts/{id}` |
+
+Uploads return metadata containing an `id`. Downloads return the original bytes with attachment disposition and a digest ETag. Uploads and downloads are limited to 10 MiB. `max_bytes` limits the entire object; it does not request a byte range. A larger object is rejected rather than truncated.
+
+A newly uploaded file expires after 24 hours by default; `ttl_seconds` accepts 1 second through 7 days. Retain adds a persistent pin without changing who may access the file. Release removes that pin and restores a 24-hour grace period. Repeating release does not extend the grace period. Delete refuses a pinned file; release it first. Expired assets cannot be read or revived. Cleanup reclaims expired temporary content.
+
+Missing, deleted and unauthorized IDs return 404. An expired owned file returns `artifact_expired` (410), pinned deletion returns `artifact_in_use` (409), excessive reads return `artifact_too_large` (413), and failed integrity checks return `artifact_integrity_failed` (422).
+
+Deletion blocks subsequent access; maintenance reclaims the underlying bytes. An already-authorized download may complete or fail if those bytes are concurrently reclaimed.
+
+## MCP
+
+The built-in `/mcp` server exposes `create_artifact`, `get_artifact`, `read_artifact`, `retain_artifact`, `release_artifact` and `delete_artifact` with the same ownership and permission checks. Creation takes `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. Reading takes `artifact_id` and optional `max_bytes`, returning base64 plus metadata.
+
+These tools transfer files. They do not extract text, render PDF pages or establish that a model understands an image. The initial API is not available through plugin Workspace grants, plugin typed methods, default model tools or `lbctl`. Existing upload and run `file_id` interfaces continue to use their existing contracts.

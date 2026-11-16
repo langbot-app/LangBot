@@ -1,0 +1,31 @@
+---
+title: "Artifact ファイル API"
+description: "HTTP または MCP で所有するファイルをアップロード、読み取り、保持、削除します。"
+---
+
+Artifact はファイルの不透明な参照とメタデータを提供します。アカウントまたは API キーは、認証されたワークスペース内で自身が所有するファイルにのみアクセスできます。同じワークスペースのメンバーでも、ID を知るだけではアクセスできません。
+
+通常のワークスペース HTTP 認証を使用します。読み取りには `resource.view`、作成、保持、解放、削除には `resource.manage` が必要です。
+
+| 操作 | HTTP |
+| --- | --- |
+| アップロード | `POST /api/v1/artifacts`、multipart `file`、任意の `ttl_seconds` |
+| メタデータ | `GET /api/v1/artifacts/{id}` |
+| ダウンロード | `GET /api/v1/artifacts/{id}/content`、任意の `max_bytes` |
+| 永続保持 | `POST /api/v1/artifacts/{id}/retain` |
+| 保持の解放 | `POST /api/v1/artifacts/{id}/release` |
+| 削除 | `DELETE /api/v1/artifacts/{id}` |
+
+アップロードは `id` を含むメタデータを返します。ダウンロードは元のバイト列を添付ファイルとして返し、digest ETag を付けます。アップロードと読み取りの上限は 10 MiB です。`max_bytes` はファイル全体の上限で、バイト範囲ではありません。上限を超えると、切り詰めずに拒否します。
+
+アップロードしたファイルは既定で 24 時間後に期限切れになります。`ttl_seconds` は 1 秒から 7 日まで指定できます。retain は永続保持の印を追加しますが、アクセス権は変えません。release は印を削除し、24 時間の猶予期間に戻します。繰り返しても猶予期間は延長されません。保持中のファイルを削除するには先に解放してください。期限切れのファイルは読み取りも再保持もできません。クリーンアップ処理が期限切れの一時データを回収します。
+
+存在しない、削除済み、または権限のない ID は 404 を返します。所有ファイルの期限切れは `artifact_expired`（410）、保持中の削除は `artifact_in_use`（409）、読み取り上限超過は `artifact_too_large`（413）、整合性検証の失敗は `artifact_integrity_failed`（422）です。
+
+削除後のアクセスは拒否され、実データは保守処理で回収されます。すでに許可されたダウンロードは完了する場合も、並行した回収によって失敗する場合もあります。
+
+## MCP
+
+組み込み `/mcp` サーバーは、同じ所有者と権限のチェックを適用する `create_artifact`、`get_artifact`、`read_artifact`、`retain_artifact`、`release_artifact`、`delete_artifact` を提供します。作成には `filename`、`content_base64`、任意の `mime_type` と `ttl_seconds` を渡します。読み取りには `artifact_id` と任意の `max_bytes` を渡し、base64 とメタデータを受け取ります。
+
+これらはファイル転送ツールです。テキスト抽出、PDF ページ描画、画像のモデル理解は行いません。初版ではプラグインの Workspace 権限、型付きメソッド、既定のモデルツール、`lbctl` からは利用できません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。

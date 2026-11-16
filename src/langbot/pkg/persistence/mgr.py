@@ -65,6 +65,8 @@ _ALEMBIC_TENANT_TABLES = {
     'binary_storages',
     'content_objects',
     'content_aliases',
+    'artifacts',
+    'artifact_references',
     'skill_registry',
     'skill_versions',
     'mcp_servers',
