@@ -952,6 +952,7 @@ export class BackendClient extends BaseHttpClient {
       startTime?: string;
       endTime?: string;
       userQuery?: string;
+      launcherId?: string;
     },
   ): Promise<{
     sessions: Array<{
@@ -982,6 +983,9 @@ export class BackendClient extends BaseHttpClient {
     }
     if (options.userQuery) {
       queryParams.append('userQuery', options.userQuery);
+    }
+    if (options.launcherId) {
+      queryParams.append('launcherId', options.launcherId);
     }
     return this.get(`/api/v1/monitoring/sessions?${queryParams.toString()}`);
   }

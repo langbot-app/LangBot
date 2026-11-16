@@ -197,3 +197,30 @@ async def test_signed_http_reset_uses_normal_adapter_wiring_and_clears_persisted
     assert (await store.page_transcript('person_peer', bot_id='b', workspace_id='w'))[0]
     async with engine.connect() as conn:
         assert (await conn.execute(sa.select(sa.func.count()).select_from(Transcript))).scalar() == 2
+
+
+@pytest.mark.asyncio
+async def test_reset_group_per_sender_session_resets_shared_group_conversation(context_service):
+    service, engine = context_service
+    store = TranscriptStore(engine)
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.insert(MonitoringSession).values(
+                workspace_uuid='w',
+                bot_id='b',
+                session_id='group_g100_u42',
+                bot_name='Bot',
+                pipeline_id='p',
+                pipeline_name='Pipeline',
+                user_id='u42',
+                user_name='Alice',
+                start_time=datetime.datetime.utcnow(),
+                last_activity=datetime.datetime.utcnow(),
+            )
+        )
+    await store.append_transcript(None, 'event', 'group_g100', 'user', bot_id='b', workspace_id='w', content='old')
+    result = await service.reset_session_context('w', 'b', 'group_g100_u42')
+    assert result == {'reset': True, 'session_id': 'group_g100_u42'}
+    assert await get_reset_generation(engine, 'w', 'b', 'group_g100')
+    assert not (await store.page_transcript('group_g100', bot_id='b', workspace_id='w'))[0]
+
