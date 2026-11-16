@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
-from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+from langbot_plugin.api.entities.builtin.runner.input import InputAttachment, InputAttachmentData
 from langbot_plugin.api.entities.builtin.runner.resources import AgentResources, ModelResource, ToolResource
+from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 
 from pkg.agent_core import LangBotContextHooks, LangBotToolExecutor, ToolCallRequest
 from pkg.messages import build_platform_tools_system_message
@@ -17,7 +19,8 @@ from tests.test_runner import FakeRunnerAPIProxy, make_context
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("granted,has_attachment", [(False, True), (True, False), (True, True)])
-async def test_input_reader_is_discovered_from_the_run_grant_and_traces_no_binary(granted, has_attachment):
+async def test_input_reader_is_discovered_from_the_run_grant_and_uses_installed_sdk_contract(granted, has_attachment):
+    """Released SDKs exercise their raw API; the coordinated SDK must preserve structured media."""
     api = FakeRunnerAPIProxy(models=[ModelResource(model_id="model-primary")])
     ctx = make_context(
         config={"model": {"primary": "model-primary"}, "box-enabled": False},
@@ -32,12 +35,21 @@ async def test_input_reader_is_discovered_from_the_run_grant_and_traces_no_binar
             {"type": "image_base64", "image_base64": payload},
         ]
     )
+    api.read_input_attachment = AsyncMock(
+        return_value=InputAttachmentData(
+            ref="att-1",
+            name="legacy.txt",
+            mime_type="text/plain",
+            data=b"legacy-input",
+        )
+    )
     api._results = asyncio.Queue()
     api._run_id = "input-run"
     assembly = await AgentRunAssembler(api, ctx).assemble()
     names = {tool.name for tool in assembly.tools}
     assert ("langbot_read_input_attachment" in names) is (granted and has_attachment)
     if not (granted and has_attachment):
+        api.read_input_attachment.assert_not_awaited()
         api.read_input_attachment_content.assert_not_awaited()
         return
     prepared = assembly.tool_executor.prepare(
@@ -49,6 +61,18 @@ async def test_input_reader_is_discovered_from_the_run_grant_and_traces_no_binar
         )
     )
     outcome = await assembly.tool_executor.execute(prepared)
+    if not hasattr(RunnerAPIProxy, "read_input_attachment_content"):
+        assert outcome.error is None and outcome.model_only_messages == []
+        assert outcome.result == {
+            "ref": "att-1",
+            "name": "legacy.txt",
+            "mime_type": "text/plain",
+            "size": len(b"legacy-input"),
+            "content_base64": base64.b64encode(b"legacy-input").decode(),
+        }
+        api.read_input_attachment.assert_awaited_once_with("att-1")
+        api.read_input_attachment_content.assert_not_awaited()
+        return
     assert outcome.error is None and outcome.model_only_messages[0].content[0].image_base64 == payload
     api.read_input_attachment_content.assert_awaited_once_with(
         ref="att-1",
