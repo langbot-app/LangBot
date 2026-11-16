@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .....i18n import t
+from .....telemetry import usage
 
 import asyncio
 import base64
@@ -296,6 +297,7 @@ class PluginsRouterGroup(group.RouterGroup):
         )
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Metadata and connection state for the "upload to Space" page."""
+            usage.inc(self.ap, request_context.workspace_uuid, 'ugc.share.preview', type='plugin')
             await self._require_authenticated_plugin_runtime_context(request_context)
             plugin = await _resolve_upload_target(author, plugin_name)
             if plugin is None:
@@ -359,6 +361,7 @@ class PluginsRouterGroup(group.RouterGroup):
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
             permission=Permission.RESOURCE_MANAGE,
         )
+        @usage.observe_share(self.ap, 'plugin')
         async def _(author: str, plugin_name: str, request_context: RequestContext) -> str:
             """Build the debug plugin and publish it to LangBot Space.
 
@@ -458,6 +461,7 @@ class PluginsRouterGroup(group.RouterGroup):
                     changelog=str(data.get('changelog') or ''),
                 )
             except ValueError as exc:
+                quart.g.usage_error = type(exc).__name__
                 return self.http_status(400, -1, str(exc))
 
             quart.g.operation_log_resource_id = f'{author}/{plugin_name}'

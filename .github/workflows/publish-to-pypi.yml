@@ -76,7 +76,8 @@ jobs:
         run: |
           python3 scripts/stamp_build_revision.py
           uv build
-          python3 scripts/check_core_artifacts.py dist/*.whl dist/*.tar.gz
+          python3 scripts/check_core_artifacts.py dist/*.whl
+          python3 scripts/check_core_artifacts.py --source dist/*.tar.gz
 
       - name: Publish to PyPI
         run: |

@@ -1707,9 +1707,14 @@ export class BackendClient extends BaseHttpClient {
     return this.get('/api/v1/space-share/prompts/library', params);
   }
 
-  public trackLibraryPromptUse(author: string, name: string): Promise<object> {
+  public trackLibraryPromptUse(
+    author: string,
+    name: string,
+    kind?: PromptKind,
+  ): Promise<object> {
     return this.post(
       `/api/v1/space-share/prompts/library/${encodeURIComponent(author)}/${encodeURIComponent(name)}/use`,
+      { kind },
     );
   }
 
@@ -2635,6 +2640,23 @@ export class BackendClient extends BaseHttpClient {
     }
 
     return this.get(`/api/v1/monitoring/executions?${queryParams.toString()}`);
+  }
+
+  /** Count-only read of the current Workspace's executions (no aggregates). */
+  public async getExecutionTotal(params: {
+    source: ExecutionSourceFilter;
+    mode?: ExecutionModeFilter;
+  }): Promise<number> {
+    const queryParams = new URLSearchParams({
+      source: params.source,
+      mode: params.mode ?? 'all',
+      limit: '1',
+      summary: 'false',
+    });
+    const result = await this.get<{ total: number }>(
+      `/api/v1/monitoring/executions?${queryParams.toString()}`,
+    );
+    return Number(result?.total) || 0;
   }
 
   public getExecutionDetail(

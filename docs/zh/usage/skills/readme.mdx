@@ -39,25 +39,42 @@ Skill 是一个**按需激活**的指令包：用户描述匹配时，Agent 调�
 
 两种方式都会发布到 Core 管理的技能仓库。
 
-### 数据库存储（显式启用）
+### 数据库存储与升级
 
-默认仍为本地模式；数据库模式需显式启用，使用独立索引。旧技能、上传附件和媒体不会自动导入，原文件保留；已有数据的部署须先迁移再切换，旧链接不会自动回读原后端。此模式将注册信息、不可变版本包和持久附件内容默认存入数据库，对象存储可选。此模式需要配套的 Core 和 SDK；源码开发请先按[运行时开发说明](../../develop/plugin-runtime)安装仓库中的 SDK。多个 Core 应连接同一个外部 PostgreSQL，并使用一致的逻辑实例标识和鉴权配置。修改 `data/config.yaml` 后重启 Core：
+新安装默认使用数据库存储和网络传输，对象存储可选。已有配置保持原来的选择，缺少新字段的旧配置仍使用本地存储和 `legacy`；改为下列配置后，Core 在开放服务前自动迁入可读取的旧 Skill 和本地资产。注册信息、不可变版本包和持久附件内容均使用该存储层。源码安装通过 `uv sync` 自动使用同仓 SDK；独立部署的 Runtime 仍需配套源码或兼容的已发布 SDK，见[运行时开发说明](../../develop/plugin-runtime)。多个 Core 应连接同一个外部 PostgreSQL，并使用一致的逻辑实例标识和鉴权配置。修改 `data/config.yaml` 后重启 Core：
 
 ```yaml
 skills:
     persistence: database
-    root: './data/skills'
+    root: './data/skills'  # 新安装示例；升级请保留原路径
 storage:
     use: persistent
     content:
         backend: database
 ```
 
-`skills.root/.database-cache` 仅在读取资源或准备执行快照时生成，可在没有执行使用它时删除并重建。列表和版本包下载不依赖本地缓存；两个 Core 使用同一数据库时无需共享这份缓存。脚本执行仍遵守现有 Box 挂载要求，并未切换为 Runtime 网络下载技能。
+使用配套的 Core 和 Box Runtime 时，可显式设置 `box.file_transfer_mode: network`：Core 按运行固定版本传输技能包，Box 校验后缓存并只读挂载；Core 与 Box 无需共享技能或工作目录。数据库与网络模式下，激活和执行不再创建 `skills.root/.database-cache`。Agent 列资源目录只校验数据库中的权威不可变清单，不读取包内容；实际读取可复用进程内已验证的版本包，每次仍检查数据库权限及版本记录并完整校验字节，不创建本地持久缓存。列表、激活和缓存命中的读取都不是源存储健康检查：源包离线或损坏时可能继续成功，冷读、重启或淘汰后须重新取包校验；Runtime 执行仍校验全部字节。`register_skill` 通过网络取回完整草稿，校验后一次发布，无需读取旧版本包；历史版本保留，新版本不会改变已开始运行的版本。运行结束清理该运行的输入、输出和临时快照，草稿保留到 Box 会话结束。Box 会话过期或删除后，其工作目录也会删除；需要保留的文件请先导出。已有显式 `legacy` 配置继续使用共享挂载和缓存。独立部署的 Runtime 也需使用配套 SDK，旧 Runtime 会拒绝网络工作区配置。
 
-使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应内容无法读取。修改凭据后重启 Core。
+使用对象存储时，在 `storage.content.backends.<名称>` 下配置 `type: s3`、`endpoint_url`、`bucket`、`region`、`access_key_id` 和 `secret_access_key`，再将 `storage.content.backend` 设置为该名称。保留历史名称及其 endpoint/bucket/region；切换新写入后端不会移动历史内容，删除或改指向旧配置会使相应历史内容无法重新取回。修改凭据后重启 Core。
 
-数据库模式的版本包上限为 64 MiB。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
+数据库模式的版本包上限为 64 MiB。网络模式的 `register_skill` 草稿使用未压缩 ZIP，上限为 20 MiB、512 个条目、单文件 16 MiB、目录深度 16；较低的 Box 文件传输配置限额仍会生效，超限会保留原草稿。并发更新会拒绝冲突覆盖，已激活任务继续使用固定版本。
+
+Runtime 在内存中归档草稿，不在工作目录创建快照。Docker 回收异 UID 的私有目录需要 Docker 25+，镜像中提供 Python 3 且不声明 `VOLUME`。如果用户命名空间的 UID/GID 映射或隔离策略阻止安全清理，该 Box 会保持不可复用并报告错误，等待重试或管理员维护。
+
+
+### 迁移已有部署
+
+旧本地资产迁移当前需要支持安全文件访问的 Linux/POSIX 环境；Windows 旧部署可继续使用原模式，或在 Linux 迁移后连接数据库。网络执行需要 POSIX Box Runtime，Windows Core 可以连接远程 Runtime。
+
+停止所有旧 Core 写入进程后再升级；一次只启动一个迁移实例。把 `skills.root` 保持为**原来的 Skill 根目录**，在该实例设置 `skills.migration.require_source: true` 和 `storage.migration.require_source: true`，并保留旧 Skill 卷及 `data/storage`。这两个检查可分别设置；没有旧本地资产时不启用对应检查。新副本默认不要求旧卷，因此不能仅凭一个空目录判断历史数据是否完整。
+
+迁移保留当前注册、历史版本（包括已删除注册留下的版本）、版本 digest、原媒体链接和私有附件键。数据库进度与每批内容一起提交；中断后重启会续传，源数据变化、同名冲突、损坏包和指定旧卷缺失会阻止服务启动。数据库迁移租约防止多个新实例同时导入，但不能冻结旧版进程，维护窗口必须先停止它们。校验完成后才开放业务；完成记录存数据库，后续副本不再依赖旧卷。Runtime 不兼容会停止网络模式启动；Box 不需要时可显式设 `box.enabled: false`。
+
+网络部署不需要 Core 挂载 Box 的目录。现有 Compose/Kubernetes 清单为兼容旧 `legacy` 部署仍保留该挂载；迁移验收后可移除 Core 的专用 Box 挂载及对应同节点亲和。新部署应使用分开的 Core 数据卷和 Box 卷。Box 使用 Docker daemon 时，仍须保留 Box 与 daemon 之间相同绝对路径的卷；清单通过 `LANGBOT_BOX_CONFIG` 单独设置 Runtime 的工作根目录。不要在升级时直接换掉旧 Box 卷或实例身份。
+
+自动资产迁移仅覆盖当前实例可验证归属的本地文件。没有 Workspace 标识的旧媒体仅由 OSS 单 Workspace 接管；多 Workspace 不猜归属。旧显式 S3 配置继续生效，不能直接改 `storage.use` 期待自动搬迁旧 S3 对象。
+
+保留旧目录及维护窗口的数据库恢复点。新模式产生写入后，旧目录不会同步更新；回退旧版必须同时恢复该恢复点和旧配置，或先将全部新版本与资产导出恢复。仅改回 `filesystem` / `local` 会丢失新写入的可见性。此步骤只解耦 Box 相关文件，配置、插件私有数据及其他 Core 子系统的持久化仍按各自部署要求管理。
 
 
 ## 在流水线启用

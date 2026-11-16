@@ -34,11 +34,15 @@ def test_core_pins_the_in_tree_sdk_version():
     assert (ROOT / 'sdk/src/langbot_plugin/version.py').read_text().strip() == f'__version__ = "{sdk["version"]}"'
 
 
-def test_core_never_resolves_the_sdk_from_the_tree():
-    # Core and its artifacts install the PyPI pin; a uv path source would make
-    # Docker/fnOS/source installs diverge from the published Core wheel.
+def test_core_resolves_the_sdk_from_the_tree():
+    import langbot_plugin
+
     project = tomllib.loads((ROOT / 'pyproject.toml').read_text())
-    assert 'langbot-plugin' not in project.get('tool', {}).get('uv', {}).get('sources', {})
+    source = project['tool']['uv']['sources']['langbot-plugin']
+    assert (ROOT / source['path']).resolve() == ROOT / 'sdk'
+    assert source['editable'] is True
+    assert Path(langbot_plugin.__file__).resolve() == ROOT / 'sdk/src/langbot_plugin/__init__.py'
+    # The SDK retains its own Python floor and standalone environment.
     assert 'workspace' not in project.get('tool', {}).get('uv', {})
 
 
@@ -59,12 +63,9 @@ def test_core_release_jobs_only_accept_core_tags(filename, job):
     )
 
 
-def test_core_release_workflows_run_the_sdk_pin_gate():
-    for filename in ('publish-to-pypi.yml', 'build-docker-image.yml'):
-        text = (WORKFLOWS / filename).read_text()
-        assert 'scripts/check_sdk_release_pin.py' in text, filename
-    docker_checkout = workflow('build-docker-image.yml')['jobs']['publish-docker-image']['steps'][0]
-    assert docker_checkout['with']['fetch-depth'] == 0
+def test_only_independent_core_wheel_publication_requires_a_released_sdk():
+    assert 'scripts/check_sdk_release_pin.py' in (WORKFLOWS / 'publish-to-pypi.yml').read_text()
+    assert 'scripts/check_sdk_release_pin.py' not in (WORKFLOWS / 'build-docker-image.yml').read_text()
 
 
 def test_sdk_workflows_never_touch_core_releases():
@@ -81,17 +82,32 @@ def test_sdk_workflows_never_touch_core_releases():
     assert 'gh release' not in (WORKFLOWS / 'sdk-publish.yml').read_text()
 
 
-def test_core_artifact_checker_rejects_sdk_sources():
+def test_core_artifacts_distinguish_bundled_source_from_independent_wheels():
     artifacts = load_script('check_core_artifacts')
     assert artifacts.forbidden_member('sdk/src/langbot_plugin/__init__.py')
-    assert artifacts.forbidden_member('langbot-4.11.7/sdk/pyproject.toml')
-    assert artifacts.forbidden_member('app/sdk/README.md')
+    assert not artifacts.forbidden_member('langbot-4.11.7/sdk/pyproject.toml', source=True)
+    assert not artifacts.forbidden_member('app/sdk/README.md', source=True)
+    assert artifacts.forbidden_member('plugins/Runner/manifest.yaml', source=True)
+    assert artifacts.forbidden_member('plugin.lbpkg', source=True)
     assert not artifacts.forbidden_member('langbot/pkg/plugin/connector.py')
     assert not artifacts.forbidden_member('app/.venv/lib/python3.12/site-packages/langbot_plugin/__init__.py')
-    assert 'prune sdk' in (ROOT / 'MANIFEST.in').read_text()
-    assert '/sdk export-ignore' in (ROOT / '.gitattributes').read_text()
-    assert 'sdk/' in (ROOT / '.dockerignore').read_text().splitlines()
-    assert "--exclude='/sdk/'" in (ROOT / 'packaging/fnos/build.sh').read_text()
+    assert 'prune sdk' not in (ROOT / 'MANIFEST.in').read_text()
+    assert '/sdk export-ignore' not in (ROOT / '.gitattributes').read_text()
+    assert 'sdk/' not in (ROOT / '.dockerignore').read_text().splitlines()
+    assert "--exclude='/sdk/'" not in (ROOT / 'packaging/fnos/build.sh').read_text()
+
+
+def test_source_artifact_rejects_missing_sdk_and_wheel_rejects_bundled_sdk(tmp_path):
+    artifacts = load_script('check_core_artifacts')
+    with pytest.raises(ValueError, match='SDK'):
+        artifacts.check_artifact(tmp_path, source=True)
+    import zipfile
+
+    wheel = tmp_path / 'langbot-1.0.0-py3-none-any.whl'
+    with zipfile.ZipFile(wheel, 'w') as archive:
+        archive.writestr('langbot_plugin/__init__.py', '')
+    with pytest.raises(ValueError, match='SDK'):
+        artifacts.check_artifact(wheel)
 
 
 def git(cwd: Path, *args: str) -> None:

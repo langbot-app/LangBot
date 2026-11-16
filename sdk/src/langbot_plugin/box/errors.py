@@ -9,12 +9,20 @@ class BoxValidationError(BoxError):
     """Raised when exec tool arguments are invalid."""
 
 
+class BoxArtifactNotPreparedError(BoxError):
+    """Artifact preflight failed before the user command could execute."""
+
+
 class BoxBackendUnavailableError(BoxError):
     """Raised when no supported container backend is available."""
 
 
 class BoxRuntimeUnavailableError(BoxError):
     """Raised when the standalone Box Runtime service is unavailable."""
+
+
+class BoxRuntimeCompatibilityError(BoxRuntimeUnavailableError):
+    """A connected Runtime cannot acknowledge the configured protocol."""
 
 
 class BoxAdmissionError(BoxError):

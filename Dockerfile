@@ -107,6 +107,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY sdk ./sdk
 RUN uv sync --frozen --no-dev --no-install-project --extra audio $UV_SKIP_ONNX $UV_SKIP_K8S
 
 COPY src ./src

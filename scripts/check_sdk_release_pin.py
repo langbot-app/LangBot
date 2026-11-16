@@ -1,8 +1,9 @@
-"""Release gate between Core and the in-tree plugin SDK (``sdk/``).
+"""PyPI wheel release gate between Core and the plugin SDK (``sdk/``).
 
-Core is published with an exact ``langbot-plugin==X`` requirement and installs
-the SDK from PyPI, never from ``sdk/``. Before a Core release this gate proves
-that the pinned SDK is the one in the tree:
+Core source deployments use the in-tree SDK through uv's local path source.
+An independently installed Core wheel uses its ``langbot-plugin==X`` PyPI
+requirement instead. Before publishing that wheel, this gate proves that the
+pinned SDK is the one in the tree:
 
 1. Core pins ``langbot-plugin`` exactly, and the pin equals ``sdk/pyproject.toml``.
 2. ``langbot-plugin==X`` is already on PyPI (release the SDK first).

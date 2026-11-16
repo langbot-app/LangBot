@@ -11,6 +11,7 @@ from typing import Literal
 
 import sqlalchemy
 from pydantic import Field
+from typing_extensions import TypedDict
 
 from .contracts import Input, Operation
 from ..authz import Permission, PermissionDeniedError
@@ -102,6 +103,11 @@ class Upload(Input):
 
 class ImageGet(Input):
     file_key: str
+
+
+class ImageOutput(TypedDict):
+    content: bytes
+    media_type: str
 
 
 class ToolList(Input):
@@ -734,7 +740,7 @@ def operations() -> list[Operation]:
         Operation('task.get', view, task_get, TaskGet, dict),
         Operation('file.image.upload', manage, image_upload, Upload, dict[str, str], True),
         Operation('file.document.upload', manage, document_upload, Upload, dict[str, str], True),
-        Operation('file.image.get', view, image_get, ImageGet, dict[str, bytes | str]),
+        Operation('file.image.get', view, image_get, ImageGet, ImageOutput),
         Operation('box.status', view, box_status, Empty, dict),
         Operation('box.sessions.list', Permission.AUDIT_VIEW, box_sessions, Empty, list[dict]),
         Operation('box.errors.list', Permission.AUDIT_VIEW, box_errors, Empty, list[dict]),

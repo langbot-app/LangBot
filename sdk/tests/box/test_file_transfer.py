@@ -25,7 +25,11 @@ from langbot_plugin.box.server import create_app
 from langbot_plugin.entities.io.actions.enums import CommonAction
 from langbot_plugin.entities.io.context import ActionContext
 from langbot_plugin.runtime.io.connections.ws import WebSocketConnection
-from langbot_plugin.runtime.io.handler import FILE_CHUNK_LENGTH, Handler
+from langbot_plugin.runtime.io.handler import (
+    BOX_FILE_CHUNK_LENGTH,
+    FILE_CHUNK_LENGTH,
+    Handler,
+)
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
 
 
@@ -366,9 +370,13 @@ async def test_partial_network_upload_is_private_and_disconnect_cleans_it(networ
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("negotiated", [False, True])
 async def test_cancelled_upload_preserves_destination_and_can_retry(
-    network_box, monkeypatch
+    network_box, monkeypatch, negotiated
 ):
+    if negotiated:
+        await network_box.client.init({"backend": "host"})
+    chunk_length = BOX_FILE_CHUNK_LENGTH if negotiated else FILE_CHUNK_LENGTH
     destination = network_box.workspace / "cancelled.bin"
     destination.write_bytes(b"original")
     first_chunk = asyncio.Event()
@@ -386,7 +394,7 @@ async def test_cancelled_upload_preserves_destination_and_can_retry(
         return response
 
     monkeypatch.setattr(network_box.handler, "call_action", interrupt_after_first_chunk)
-    content = b"new" * FILE_CHUNK_LENGTH
+    content = b"new" * chunk_length
     upload = asyncio.create_task(
         network_box.client.upload_file(
             "files", "/workspace/cancelled.bin", content, action_context=_CONTEXT
@@ -437,10 +445,14 @@ async def test_upload_receipt_mismatch_keeps_destination(network_box):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("negotiated", [False, True])
 async def test_cancelled_download_cleans_partial_receiver_and_can_retry(
-    network_box, monkeypatch
+    network_box, monkeypatch, negotiated
 ):
-    content = b"download" * FILE_CHUNK_LENGTH
+    if negotiated:
+        await network_box.client.init({"backend": "host"})
+    chunk_length = BOX_FILE_CHUNK_LENGTH if negotiated else FILE_CHUNK_LENGTH
+    content = b"download" * chunk_length
     (network_box.workspace / "download.bin").write_bytes(content)
     first_chunk = asyncio.Event()
     resume_receiver = asyncio.Event()

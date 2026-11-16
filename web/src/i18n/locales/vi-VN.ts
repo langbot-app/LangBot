@@ -234,6 +234,14 @@ const viVN = {
     cancelled: 'Đã hủy',
     ignored: 'Đã bỏ qua',
   },
+  githubStarPrompt: {
+    title: 'LangBot đã xử lý {{total}} sự kiện cho bạn',
+    description:
+      'Nếu LangBot hữu ích với bạn, hãy tặng một Star trên GitHub để nhiều người biết đến hơn.',
+    later: 'Để sau',
+    star: 'Star',
+    close: 'Đóng',
+  },
   assistant: {
     movePosition: 'Di chuyển trợ lý theo chiều ngang',
     resizeHeight: 'Điều chỉnh chiều cao trợ lý',
@@ -2887,6 +2895,21 @@ const viVN = {
     newVersionAvailable: 'Có phiên bản mới',
     viewUpdateGuide: 'Xem hướng dẫn cập nhật',
     noReleaseNotes: 'Không có ghi chú phát hành',
+    latestBadge: 'Mới nhất',
+    currentBadge: 'Hiện tại',
+    viewOnWebsite: 'Xem trên trang web',
+    whatsNewInCurrent: 'Có gì mới trong phiên bản này',
+    releasesIncluded: 'Gồm {{count}} phiên bản',
+    upToDate: 'Bạn đang dùng phiên bản mới nhất',
+    showOlderReleases: 'Hiển thị {{count}} phiên bản cũ hơn',
+    viewFullChangelog: 'Xem toàn bộ nhật ký thay đổi',
+    changeTypes: {
+      new: 'Mới',
+      improved: 'Cải thiện',
+      changed: 'Thay đổi',
+      fixed: 'Sửa lỗi',
+      security: 'Bảo mật',
+    },
   },
   account: {
     settings: 'Cài đặt tài khoản',

@@ -223,6 +223,14 @@ const zhHans = {
     cancelled: '已取消',
     ignored: '已忽略',
   },
+  githubStarPrompt: {
+    title: 'LangBot 已为你处理了 {{total}} 个事件',
+    description:
+      '如果 LangBot 帮上了忙，在 GitHub 上点个 Star，能让更多人发现它。',
+    later: '以后再说',
+    star: 'Star',
+    close: '关闭',
+  },
   assistant: {
     movePosition: '左右移动助手',
     resizeHeight: '调整助手高度',
@@ -2728,6 +2736,21 @@ const zhHans = {
     newVersionAvailable: '有新版本可用',
     viewUpdateGuide: '查看更新方式',
     noReleaseNotes: '暂无更新日志',
+    latestBadge: '最新',
+    currentBadge: '当前版本',
+    viewOnWebsite: '官网查看',
+    whatsNewInCurrent: '当前版本更新内容',
+    releasesIncluded: '包含 {{count}} 个版本的更新',
+    upToDate: '你使用的已是最新版本',
+    showOlderReleases: '展开更早的 {{count}} 个版本',
+    viewFullChangelog: '查看完整更新日志',
+    changeTypes: {
+      new: '新功能',
+      improved: '改进',
+      changed: '变更',
+      fixed: '修复',
+      security: '安全',
+    },
   },
   account: {
     settings: '账户设置',

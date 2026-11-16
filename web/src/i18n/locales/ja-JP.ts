@@ -242,6 +242,14 @@ const jaJP = {
     cancelled: 'キャンセル済み',
     ignored: '無視',
   },
+  githubStarPrompt: {
+    title: 'LangBot はこれまでに {{total}} 件のイベントを処理しました',
+    description:
+      'LangBot がお役に立っているなら、GitHub で Star を付けていただくと、より多くの人に届きます。',
+    later: '後で',
+    star: 'Star',
+    close: '閉じる',
+  },
   assistant: {
     movePosition: 'アシスタントを左右に移動',
     resizeHeight: 'アシスタントの高さを調整',
@@ -2925,6 +2933,21 @@ const jaJP = {
     newVersionAvailable: '新しいバージョンが利用可能',
     viewUpdateGuide: 'アップデート方法を見る',
     noReleaseNotes: 'リリースノートはありません',
+    latestBadge: '最新',
+    currentBadge: '現在のバージョン',
+    viewOnWebsite: '公式サイトで見る',
+    whatsNewInCurrent: 'このバージョンの更新内容',
+    releasesIncluded: '{{count}} 件のリリースを含む',
+    upToDate: '最新バージョンを使用しています',
+    showOlderReleases: '以前の {{count}} 件のリリースを表示',
+    viewFullChangelog: 'すべての更新履歴を見る',
+    changeTypes: {
+      new: '新機能',
+      improved: '改善',
+      changed: '変更',
+      fixed: '修正',
+      security: 'セキュリティ',
+    },
   },
   account: {
     settings: 'アカウント設定',

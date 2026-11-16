@@ -7,6 +7,7 @@ import pytest
 REQUIRED_CONTRACTS = {
     'sdk_core': {'execution_routing', 'rag_file_transfer', 'rag_cancellation'},
     'network_plugin': {'registered_runner_file_delivery'},
+    'skill_network': {'two_core_skill_network'},
     'skill_persistence': {
         'skill_publication_recovery',
         'persistent_media_isolation',
@@ -15,6 +16,9 @@ REQUIRED_CONTRACTS = {
         'postgres_minio',
         'skill_content_rls',
         'two_core_cache_recovery',
+        'legacy_skill_import',
+        'legacy_asset_import',
+        'migration_fencing',
     },
     'session_summary': {
         'reader_dependencies',

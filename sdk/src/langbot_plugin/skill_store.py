@@ -249,6 +249,74 @@ class SkillStore:
         skills.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
         return skills
 
+    def publication_inventory(self) -> dict:
+        """Enumerate current pointers and retained versions during offline import.
+
+        All legacy writers must be stopped. Unlike ordinary discovery, an
+        unreadable package or registry aborts the import rather than disappearing.
+        Archive export subsequently verifies every version's complete contents.
+        """
+        if not os.path.isdir(self.root) or os.path.islink(self.root):
+            raise ValueError("Legacy Skill source must be an accessible directory")
+        if os.path.lexists(self._store_root()):
+            self._require_path_under(self._store_root(), self.root, "Skill store")
+        legacy_names = self._ensure_legacy_packages_published(strict=True)
+        names = []
+        registry_root = self._registry_root()
+        if os.path.lexists(registry_root):
+            self._require_path_under(registry_root, self.root, "Skill registry")
+            for entry in sorted(os.scandir(registry_root), key=lambda item: item.name):
+                if not entry.is_file(follow_symlinks=False) or not entry.name.endswith(
+                    ".json"
+                ):
+                    raise ValueError("Legacy Skill registry contains an unsafe entry")
+                if len(names) >= _MAX_SKILL_LIST_ENTRIES:
+                    raise ValueError("Skill listing exceeds the configured entry limit")
+                names.append(self._validate_skill_name(entry.name[:-5]))
+        # Reuse the catalog's aggregate text budget instead of retaining up to
+        # a thousand individually valid, megabyte-sized instruction documents.
+        skills = self.list_skills()
+        if {skill["name"] for skill in skills} != set(names):
+            raise ValueError("Legacy Skill registry changed during inventory")
+        versions = []
+        revisions_root = self._revisions_root()
+        if os.path.lexists(revisions_root):
+            self._require_path_under(revisions_root, self.root, "Skill revisions")
+            for entry in sorted(os.scandir(revisions_root), key=lambda item: item.name):
+                revision = f"{_REVISION_PREFIX}{entry.name}"
+                self._validate_revision(revision)
+                if not entry.is_dir(follow_symlinks=False):
+                    raise ValueError("Legacy Skill revision must be a directory")
+                if len(versions) >= _MAX_SKILL_SCAN_ENTRIES:
+                    raise ValueError("Skill history exceeds the configured entry limit")
+                package_root = self._require_path_under(
+                    os.path.join(entry.path, "package"), self.root, "Skill revision"
+                )
+                self._require_safe_import_tree(package_root)
+                manifest_path = os.path.join(entry.path, "manifest.json")
+                if not stat.S_ISREG(os.lstat(manifest_path).st_mode):
+                    raise ValueError("Legacy Skill manifest must be a regular file")
+                skill = self._load_skill_package(package_root)
+                digest, _ = load_tree_manifest(
+                    manifest_path,
+                    max_files=_MAX_REVISION_FILES,
+                    max_total_bytes=_MAX_REVISION_BYTES,
+                    subject="Skill package",
+                )
+                if digest != revision:
+                    raise ValueError(
+                        "Legacy Skill manifest does not match its revision"
+                    )
+                versions.append({"name": skill["name"], "revision": revision})
+        retained = {(item["name"], item["revision"]) for item in versions}
+        if any((item["name"], item["revision"]) not in retained for item in skills):
+            raise ValueError("Legacy Skill registry refers to a missing revision")
+        if set(legacy_names) - {name for name, _ in retained}:
+            raise ValueError(
+                "Unregistered legacy Skill packages require review before migration"
+            )
+        return {"skills": skills, "versions": versions}
+
     def get_skill(
         self,
         skill_name: str,
@@ -273,7 +341,11 @@ class SkillStore:
         return self.get_skill(skill_name, revision=revision)
 
     def export_skill_publication(
-        self, skill_name: str, revision: str | None = None
+        self,
+        skill_name: str,
+        revision: str | None = None,
+        *,
+        max_bytes: int | None = None,
     ) -> dict:
         """Export exact published bytes and identity without rewriting SKILL.md."""
 
@@ -288,6 +360,17 @@ class SkillStore:
             skill["package_root"]
         ) != (digest, manifest):
             raise ValueError("Published Skill package does not match its revision")
+        # Stored ZIPs use fixed local/central headers and no archive comments.
+        # Bound allocation before building bytes for database import.
+        if max_bytes is not None:
+            archive_size = 22 + sum(
+                entry["size"] + 76 + 2 * len(entry["path"].encode("utf-8"))
+                for entry in manifest["files"]
+            )
+            if max_bytes <= 0 or archive_size > max_bytes:
+                raise ValueError(
+                    "Skill publication archive exceeds the configured byte limit"
+                )
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
             for entry in manifest["files"]:
@@ -320,40 +403,17 @@ class SkillStore:
         The caller must authorize the persisted publication before using it.
         """
 
-        name = self._validate_skill_name(skill.get("name", ""))
-        revision, manifest = validate_tree_manifest(
-            manifest,
-            max_files=_MAX_REVISION_FILES,
-            max_total_bytes=_MAX_REVISION_BYTES,
-            subject="Skill package",
+        name, revision, manifest = self._publication_identity(
+            skill, manifest, file_bytes
         )
-        if revision != skill.get("revision"):
-            raise ValueError("Restored Skill manifest does not match its revision")
-        if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
-            raise ValueError("Restored Skill archive is too large")
         with self._skill_lock(name):
             staging_root, package_root = self._stage_package()
             try:
                 with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
-                    members = archive.infolist()
+                    members = self._publication_members(archive, manifest)
                     expected = {entry["path"]: entry for entry in manifest["files"]}
-                    if len(members) != len(expected) or {
-                        member.filename for member in members
-                    } != set(expected):
-                        raise ValueError(
-                            "Restored Skill archive does not match its manifest"
-                        )
                     for member in members:
                         entry = expected[member.filename]
-                        mode = stat.S_IFMT(member.external_attr >> 16)
-                        if member.is_dir() or mode not in {0, stat.S_IFREG}:
-                            raise ValueError(
-                                "Restored Skill archive requires regular files"
-                            )
-                        if member.file_size != entry["size"]:
-                            raise ValueError(
-                                "Restored Skill file size does not match its manifest"
-                            )
                         destination = os.path.realpath(
                             os.path.join(package_root, *entry["path"].split("/"))
                         )
@@ -414,6 +474,266 @@ class SkillStore:
             finally:
                 if staging_root:
                     self._remove_staging_tree(staging_root)
+
+    @classmethod
+    def _publication_manifest_identity(cls, skill: dict, manifest: dict):
+        name = cls._validate_skill_name(skill.get("name", ""))
+        revision, manifest = validate_tree_manifest(
+            manifest,
+            max_files=_MAX_REVISION_FILES,
+            max_total_bytes=_MAX_REVISION_BYTES,
+            subject="Skill package",
+        )
+        if revision != skill.get("revision"):
+            raise ValueError("Restored Skill manifest does not match its revision")
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        for path in expected:
+            if any(part in _REVISION_SKIP_DIRS for part in path.split("/")[:-1]):
+                raise ValueError(
+                    "Restored Skill archive contains an excluded directory"
+                )
+            parent = posixpath.dirname(path)
+            while parent:
+                if parent in expected:
+                    raise ValueError(
+                        "Restored Skill archive has conflicting file paths"
+                    )
+                parent = posixpath.dirname(parent)
+
+        def tree_order(path):
+            *directories, filename = path.split("/")
+            return [(1, name) for name in directories] + [(0, filename)]
+
+        if sorted(expected, key=tree_order) != list(expected):
+            raise ValueError("Restored Skill manifest is not in canonical tree order")
+        if "SKILL.md" not in expected:
+            raise ValueError("Restored Skill package has no root SKILL.md")
+        if expected["SKILL.md"]["size"] > _MAX_SKILL_TEXT_BYTES:
+            raise ValueError(
+                f"Skill file SKILL.md exceeds the {_MAX_SKILL_TEXT_BYTES}-byte limit"
+            )
+        return name, revision, manifest
+
+    @classmethod
+    def _publication_identity(cls, skill: dict, manifest: dict, file_bytes: bytes):
+        name, revision, manifest = cls._publication_manifest_identity(skill, manifest)
+        if len(file_bytes) > _MAX_REVISION_BYTES + 4 * 1024 * 1024:
+            raise ValueError("Restored Skill archive is too large")
+        return name, revision, manifest
+
+    @staticmethod
+    def _publication_members(archive: zipfile.ZipFile, manifest: dict):
+        members = archive.infolist()
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        if len(members) != len(expected) or {
+            member.filename for member in members
+        } != set(expected):
+            raise ValueError("Restored Skill archive does not match its manifest")
+        for member in members:
+            entry = expected[member.filename]
+            mode = stat.S_IFMT(member.external_attr >> 16)
+            if member.is_dir() or mode not in {0, stat.S_IFREG}:
+                raise ValueError("Restored Skill archive requires regular files")
+            if member.file_size != entry["size"]:
+                raise ValueError("Restored Skill file size does not match its manifest")
+        return members
+
+    @staticmethod
+    def _publication_resource_path(path: str) -> str:
+        relative_path = str(path or ".").strip() or "."
+        if (
+            posixpath.isabs(relative_path)
+            or "\\" in relative_path
+            or "\0" in relative_path
+        ):
+            raise ValueError("path must be relative to the skill package root")
+        normalized = posixpath.normpath(relative_path)
+        if normalized.startswith(".."):
+            raise ValueError("path must stay within the skill package root")
+        return normalized
+
+    @classmethod
+    def _publication_resource(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str | None,
+        expected_revision: str | None,
+    ) -> tuple[str, dict, bytes | None]:
+        name, revision, manifest = cls._publication_identity(
+            skill, manifest, file_bytes
+        )
+        if expected_revision is not None and revision != expected_revision:
+            raise SkillRevisionMismatchError(
+                "Skill publication does not match the activated revision"
+            )
+        expected = {entry["path"]: entry for entry in manifest["files"]}
+        retained = {}
+        with zipfile.ZipFile(io.BytesIO(file_bytes)) as archive:
+            for member in cls._publication_members(archive, manifest):
+                entry = expected[member.filename]
+                keep = member.filename in {"SKILL.md", path}
+                if keep and entry["size"] > _MAX_SKILL_TEXT_BYTES:
+                    raise ValueError(
+                        f"Skill file {member.filename} exceeds the {_MAX_SKILL_TEXT_BYTES}-byte limit"
+                    )
+                digest = hashlib.sha256()
+                copied = 0
+                content = bytearray()
+                with archive.open(member) as source:
+                    while chunk := source.read(
+                        min(_ZIP_COPY_CHUNK_BYTES, entry["size"] - copied + 1)
+                    ):
+                        copied += len(chunk)
+                        if copied > entry["size"]:
+                            raise ValueError(
+                                "Restored Skill file exceeds its manifest size"
+                            )
+                        digest.update(chunk)
+                        if keep:
+                            content.extend(chunk)
+                if copied != entry["size"] or digest.hexdigest() != entry["sha256"]:
+                    raise ValueError("Restored Skill file does not match its manifest")
+                if keep:
+                    retained[member.filename] = bytes(content)
+        try:
+            metadata, _ = parse_frontmatter(retained["SKILL.md"].decode("utf-8"))
+        except UnicodeDecodeError as exc:
+            raise ValueError(
+                "Skill entry file SKILL.md is not valid UTF-8 text"
+            ) from exc
+        if cls._validate_skill_name(metadata.get("name") or "package") != name:
+            raise ValueError("Restored Skill package does not match its publication")
+        return revision, manifest, retained.get(path)
+
+    @classmethod
+    def list_publication_resources(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str = ".",
+        include_hidden: bool = False,
+        max_entries: int = 200,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """List an authorized immutable publication without restoring a local tree."""
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        revision, manifest, _ = cls._publication_resource(
+            skill, manifest, file_bytes, None, expected_revision
+        )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def list_publication_manifest_resources(
+        cls,
+        skill: dict,
+        manifest: dict,
+        path: str = ".",
+        include_hidden: bool = False,
+        max_entries: int = 200,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """List an authorized publication's metadata without reading its blob.
+
+        The caller must supply the authoritative published manifest. Its identity
+        and layout are checked here; unread archive bytes are not verified.
+        """
+        path, max_entries = cls._publication_listing_options(path, max_entries)
+        _, revision, manifest = cls._publication_manifest_identity(skill, manifest)
+        if expected_revision is not None and revision != expected_revision:
+            raise SkillRevisionMismatchError(
+                "Skill publication does not match the activated revision"
+            )
+        return cls._list_publication_manifest(
+            skill, revision, manifest, path, include_hidden, max_entries
+        )
+
+    @classmethod
+    def _publication_listing_options(cls, path: str, max_entries: int):
+        if (
+            isinstance(max_entries, bool)
+            or not isinstance(max_entries, int)
+            or max_entries <= 0
+        ):
+            raise ValueError("max_entries must be a positive integer")
+        max_entries = min(max_entries, _MAX_SKILL_LIST_ENTRIES)
+        return cls._publication_resource_path(path), max_entries
+
+    @staticmethod
+    def _list_publication_manifest(
+        skill: dict,
+        revision: str,
+        manifest: dict,
+        path: str,
+        include_hidden: bool,
+        max_entries: int,
+    ) -> dict:
+        prefix = "" if path == "." else path + "/"
+        children = {}
+        for entry in manifest["files"]:
+            if not entry["path"].startswith(prefix):
+                continue
+            remainder = entry["path"][len(prefix) :]
+            name, separator, _ = remainder.partition("/")
+            children[name] = {
+                "path": prefix + name,
+                "name": name,
+                "is_dir": bool(separator),
+                "size": None if separator else entry["size"],
+            }
+        if path != "." and not children:
+            raise ValueError(f"Skill directory not found: {path}")
+        visible = [
+            children[name]
+            for name in sorted(children)
+            if include_hidden or not name.startswith(".")
+        ]
+        entries = visible[:max_entries]
+        for entry in entries:
+            if not entry["is_dir"]:
+                entry["mime_type"] = _resource_mime_type(entry["path"])
+        return {
+            "skill": {"name": skill["name"]},
+            "base_path": path,
+            "entries": entries,
+            "truncated": len(visible) > max_entries,
+            "revision": revision,
+        }
+
+    @classmethod
+    def read_publication_resource(
+        cls,
+        skill: dict,
+        manifest: dict,
+        file_bytes: bytes,
+        path: str,
+        *,
+        expected_revision: str | None = None,
+    ) -> dict:
+        """Read a verified UTF-8 resource without writing the publication to disk."""
+        path = cls._publication_resource_path(path)
+        revision, _, content = cls._publication_resource(
+            skill, manifest, file_bytes, path, expected_revision
+        )
+        if content is None:
+            raise ValueError(f"Skill file not found: {path}")
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"Skill file {path} is not valid UTF-8 text") from exc
+        return {
+            "skill": {"name": skill["name"]},
+            "path": path,
+            "content": text,
+            "revision": revision,
+            "mime_type": _resource_mime_type(path),
+        }
 
     def resolve_skill_package_root(
         self,
@@ -555,6 +875,45 @@ class SkillStore:
                 name,
                 payload,
                 current_registry=current,
+            )
+
+    def _prepare_skill_zip(
+        self, file_bytes: bytes, temporary: str, data: dict
+    ) -> tuple[str, dict]:
+        """Validate one uploaded draft and retain it only in caller-owned staging."""
+
+        if not file_bytes:
+            raise ValueError("Uploaded file is empty")
+        self._validate_zip_upload_size(file_bytes)
+        source, _allow_root = self._extract_uploaded_skill_to_temp(
+            file_bytes, temporary
+        )
+        entry = self._find_skill_entry(source)
+        if entry is None:
+            raise ValueError("Skill draft archive must contain one root SKILL.md")
+        scanned = self._load_skill_package(*entry)
+        self._validate_agent_skill_package(
+            source, scanned.get("metadata") or {}, require_directory_name=False
+        )
+        payload = {
+            key: data.get(key) or scanned.get(key, "")
+            for key in ("name", "display_name", "description", "instructions")
+        }
+        return source, payload
+
+    def import_skill_zip(
+        self,
+        file_bytes: bytes,
+        data: dict,
+        *,
+        base_revision: str | None = None,
+    ) -> dict:
+        """Publish one uploaded draft with the same CAS as directory imports."""
+
+        with tempfile.TemporaryDirectory(prefix="langbot-skill-draft-") as temporary:
+            source, payload = self._prepare_skill_zip(file_bytes, temporary, data)
+            return self.import_skill_directory(
+                source, payload, source_root=temporary, base_revision=base_revision
             )
 
     def _require_scoped_path(self, path: str, label: str) -> str:
@@ -1254,31 +1613,54 @@ class SkillStore:
         finally:
             os.close(descriptor)
 
-    def _ensure_legacy_packages_published(self) -> None:
+    def _ensure_legacy_packages_published(self, *, strict: bool = False) -> list[str]:
         """One-time online upgrade from the former mutable directory layout."""
 
         os.makedirs(self.root, exist_ok=True)
         marker = os.path.join(self._store_root(), "legacy-import-complete")
-        if os.path.isfile(marker):
-            return
+        if os.path.isfile(marker) and not strict:
+            return []
         with _exclusive_file_lock(os.path.join(self._locks_root(), "migration.lock")):
-            if os.path.isfile(marker):
-                return
+            completed = os.path.isfile(marker)
+            if completed and not strict:
+                return []
             discovered: list[tuple[str, str]] = []
             for entry in sorted(os.scandir(self.root), key=lambda item: item.name):
+                if strict and entry.is_symlink():
+                    raise ValueError(
+                        "Legacy Skill source cannot contain symbolic links"
+                    )
                 if entry.name == _STORE_DIRECTORY or not entry.is_dir(
                     follow_symlinks=False
                 ):
                     continue
                 discovered.extend(
-                    self._discover_skill_directories(entry.path, max_depth=5)
+                    self._discover_skill_directories(
+                        entry.path, max_depth=5, strict=strict
+                    )
                 )
+                if strict and len(discovered) > _MAX_SKILL_LIST_ENTRIES:
+                    raise ValueError(
+                        "Legacy Skill discovery exceeds the configured package limit"
+                    )
+            names: set[str] = set()
             for package_root, entry_file in discovered:
                 try:
+                    if strict:
+                        self._require_safe_import_tree(package_root)
                     legacy = self._load_skill_package(package_root, entry_file)
                 except Exception:
+                    if strict:
+                        raise
                     continue
                 skill_name = legacy["name"]
+                if strict and skill_name in names:
+                    raise ValueError(f'Duplicate legacy Skill name "{skill_name}"')
+                names.add(skill_name)
+                if completed:
+                    # A previous import may have deleted this registration;
+                    # validate the source without resurrecting its pointer.
+                    continue
                 with self._skill_lock(skill_name):
                     if self._read_registry(skill_name) is not None:
                         continue
@@ -1300,6 +1682,8 @@ class SkillStore:
                         "updated_at", registry["updated_at"]
                     )
                     self._write_registry_atomic(skill_name, registry)
+            if completed:
+                return sorted(names)
             os.makedirs(self._store_root(), exist_ok=True)
             temporary = f"{marker}.{uuid.uuid4().hex}.tmp"
             with open(temporary, "x", encoding="utf-8") as file:
@@ -1308,6 +1692,7 @@ class SkillStore:
                 os.fsync(file.fileno())
             os.replace(temporary, marker)
             self._fsync_directory(self._store_root())
+            return sorted(names)
 
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
@@ -1805,6 +2190,7 @@ class SkillStore:
         *,
         max_scan_entries: int = _MAX_SKILL_SCAN_ENTRIES,
         max_skills: int = _MAX_DISCOVERED_SKILLS,
+        strict: bool = False,
     ) -> list[tuple[str, str]]:
         discovered: list[tuple[str, str]] = []
         queue: collections.deque[tuple[str, int]] = collections.deque([(root_path, 0)])
@@ -1842,9 +2228,15 @@ class SkillStore:
                         entries.append(entry)
                 entries.sort(key=lambda entry: entry.name)
             except OSError:
+                if strict:
+                    raise
                 continue
 
             for entry in entries:
+                if strict and entry.is_symlink():
+                    raise ValueError(
+                        "Legacy Skill discovery cannot follow symbolic links"
+                    )
                 if entry.is_dir(follow_symlinks=False):
                     queue.append((entry.path, depth + 1))
 

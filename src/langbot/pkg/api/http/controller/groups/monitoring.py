@@ -119,6 +119,9 @@ class MonitoringRouterGroup(group.RouterGroup):
                 end_time=end_time,
                 limit=quart.request.args.get('limit', 50),
                 offset=quart.request.args.get('offset', 0),
+                # ``summary=false`` skips the dashboard aggregates for callers
+                # that only need ``total`` (e.g. the WebUI milestone prompt).
+                include_summary=quart.request.args.get('summary', 'true').strip().lower() not in {'false', '0'},
             )
 
             return self.success(data=result)

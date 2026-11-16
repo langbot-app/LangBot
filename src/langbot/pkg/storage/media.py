@@ -216,7 +216,12 @@ class MediaCache:
             Dictionary of cleanup metrics.
         """
         provider = getattr(self.storage_mgr, 'storage_provider', None)
-        if provider is None or provider.__class__.__name__ != 'LocalStorageProvider':
+        if (
+            getattr(self.storage_mgr, 'persistent_content', False) is True
+            or provider is None
+            or provider.__class__.__name__ != 'LocalStorageProvider'
+        ):
+            # Retained legacy files are an upgrade recovery source.
             return {'expired_deleted': 0, 'size_deleted': 0, 'bytes_freed': 0}
 
         target_dir = Path('data/storage') / MEDIA_DIR

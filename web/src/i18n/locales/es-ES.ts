@@ -239,6 +239,14 @@ const esES = {
     cancelled: 'Cancelado',
     ignored: 'Ignorado',
   },
+  githubStarPrompt: {
+    title: 'LangBot ya ha procesado {{total}} eventos por ti',
+    description:
+      'Si LangBot te resulta útil, una estrella en GitHub ayuda a que más personas lo descubran.',
+    later: 'Más tarde',
+    star: 'Star',
+    close: 'Cerrar',
+  },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
     resizeHeight: 'Ajustar la altura del asistente',
@@ -2961,6 +2969,21 @@ const esES = {
     newVersionAvailable: 'Nueva versión disponible',
     viewUpdateGuide: 'Ver guía de actualización',
     noReleaseNotes: 'No hay notas de la versión disponibles',
+    latestBadge: 'Última',
+    currentBadge: 'Actual',
+    viewOnWebsite: 'Ver en el sitio web',
+    whatsNewInCurrent: 'Novedades de esta versión',
+    releasesIncluded: 'Incluye {{count}} versiones',
+    upToDate: 'Estás usando la última versión',
+    showOlderReleases: 'Mostrar {{count}} versiones anteriores',
+    viewFullChangelog: 'Ver el registro de cambios completo',
+    changeTypes: {
+      new: 'Nuevo',
+      improved: 'Mejorado',
+      changed: 'Cambiado',
+      fixed: 'Corregido',
+      security: 'Seguridad',
+    },
   },
   account: {
     settings: 'Configuración de la cuenta',

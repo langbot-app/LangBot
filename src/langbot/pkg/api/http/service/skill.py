@@ -13,6 +13,7 @@ from urllib.parse import quote, unquote, urlparse
 import httpx
 
 from ....core import app
+from ....telemetry import usage
 from ....skill.utils import parse_frontmatter
 from ....utils import httpclient
 from ..context import ExecutionContext
@@ -144,6 +145,22 @@ class SkillService:
         await self._reload_skills(execution_context)
         return self._serialize_skill(updated)
 
+    async def import_skill_zip(
+        self,
+        context: TenantContext,
+        *,
+        file_bytes: bytes,
+        data: dict,
+        base_revision: str | None = None,
+    ) -> dict:
+        """Publish one Box draft without interpreting its sandbox path in Core."""
+        execution_context = await self._execution_context(context)
+        published = await self._repository().import_skill_zip(
+            execution_context, file_bytes, data, base_revision=base_revision
+        )
+        await self._reload_skills(execution_context)
+        return {key: value for key, value in self._serialize_skill(published).items() if key != 'package_root'}
+
     async def delete_skill(self, context: TenantContext, skill_name: str) -> bool:
         execution_context = await self._execution_context(context)
         await self._repository().delete_skill(execution_context, skill_name)
@@ -191,6 +208,7 @@ class SkillService:
         await self._reload_skills(execution_context)
         return result
 
+    @usage.observe_install('skill', 'github')
     async def install_from_github(self, context: TenantContext, data: dict) -> list[dict]:
         execution_context = await self._execution_context(context)
         repository = self._repository()
@@ -249,6 +267,7 @@ class SkillService:
             source_subdir=source_subdir,
         )
 
+    @usage.observe_install('skill', 'local')
     async def install_from_zip_upload(
         self,
         context: TenantContext,

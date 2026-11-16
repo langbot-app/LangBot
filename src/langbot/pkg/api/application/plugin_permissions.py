@@ -237,7 +237,11 @@ def describe_permissions(ap, context, setting) -> dict:
     declaration = expand_declaration(ap, setting.permission_declaration)
     grants = effective_grants(ap, setting)
     snapshot = setting.permission_snapshot
-    can_grant = context.principal.principal_type in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN}
+    can_grant = context.principal.principal_type in {
+        PrincipalType.ACCOUNT,
+        PrincipalType.SUPPORT_ADMIN,
+        PrincipalType.API_KEY,
+    }
     rows = []
     domains = set()
     for category, names in declaration.items():
@@ -304,18 +308,25 @@ async def change_permissions(ap, context, setting, *, workspace_operations, capa
         if not confirm and set(requested[key]) - set(old[key]):
             fail('permission_denied', 'Adding grants requires confirmation')
     if confirm:
-        if context.principal.principal_type not in {PrincipalType.ACCOUNT, PrincipalType.SUPPORT_ADMIN}:
-            fail('permission_denied', 'Only a member can confirm plugin permissions')
+        if context.principal.principal_type not in {
+            PrincipalType.ACCOUNT,
+            PrincipalType.SUPPORT_ADMIN,
+            PrincipalType.API_KEY,
+        }:
+            fail('permission_denied', 'This principal cannot grant permissions')
         if setting.permission_declaration is None and any(
             set(requested[key]) != set(declaration[key]) for key in requested
         ):
             fail('invalid_input', 'Compatibility confirmation requires all legacy capabilities')
+    validate_all = confirm and (
+        setting.permission_declaration is None or context.principal.principal_type == PrincipalType.API_KEY
+    )
     validate_grant_change(
         ap,
         context,
-        [] if confirm and setting.permission_declaration is None else old['workspace_operations'],
+        [] if validate_all else old['workspace_operations'],
         workspace_operations,
-        old_capabilities=[] if confirm and setting.permission_declaration is None else old['capabilities'],
+        old_capabilities=[] if validate_all else old['capabilities'],
         new_capabilities=capabilities,
         principal_type=PrincipalType.PLUGIN,
     )

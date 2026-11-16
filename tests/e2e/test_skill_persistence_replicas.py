@@ -74,7 +74,12 @@ def _start(replica):
 
 
 @pytest.fixture
-def core_pair(tmp_path, monkeypatch):
+def core_pair_configure():
+    return lambda root, config: []
+
+
+@pytest.fixture
+def core_pair(tmp_path, monkeypatch, core_pair_configure):
     url = os.environ.get('LANGBOT_PERSISTENCE_CORE_POSTGRES_URL')
     if not url:
         pytest.skip('LANGBOT_PERSISTENCE_CORE_POSTGRES_URL must identify a fresh task-owned PostgreSQL database')
@@ -114,11 +119,20 @@ def core_pair(tmp_path, monkeypatch):
         config['box']['enabled'] = False
         config['skills'] = {'persistence': 'database', 'root': str(root / 'skills')}
         config['storage'].update(use='persistent', content={'backend': 'database'})
+        cli_args = core_pair_configure(root, config)
         path.write_text(yaml.safe_dump(config), encoding='utf-8')
         path.chmod(0o600)
         replica = SimpleNamespace(
             root=root,
-            process=LangBotProcess(project, root, port=port, timeout=180, collect_coverage=False),
+            process=LangBotProcess(
+                project,
+                root,
+                port=port,
+                timeout=180,
+                collect_coverage=False,
+                cli_args=cli_args,
+                env_overrides={'LANGBOT_PLUGIN_FILE_STORAGE_DIR': str(root / 'rpc-transfers')},
+            ),
             client=httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=30, trust_env=False),
         )
         created.append(replica)

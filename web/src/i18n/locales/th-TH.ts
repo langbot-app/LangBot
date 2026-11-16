@@ -230,6 +230,14 @@ const thTH = {
     cancelled: 'ยกเลิกแล้ว',
     ignored: 'ละเว้นแล้ว',
   },
+  githubStarPrompt: {
+    title: 'LangBot ประมวลผลให้คุณไปแล้ว {{total}} เหตุการณ์',
+    description:
+      'หาก LangBot มีประโยชน์กับคุณ กด Star บน GitHub เพื่อช่วยให้คนอื่นได้รู้จักมากขึ้น',
+    later: 'ไว้ทีหลัง',
+    star: 'Star',
+    close: 'ปิด',
+  },
   assistant: {
     movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
     resizeHeight: 'ปรับความสูงของผู้ช่วย',
@@ -2843,6 +2851,21 @@ const thTH = {
     newVersionAvailable: 'มีเวอร์ชันใหม่',
     viewUpdateGuide: 'ดูคู่มือการอัปเดต',
     noReleaseNotes: 'ไม่มีบันทึกการเผยแพร่',
+    latestBadge: 'ล่าสุด',
+    currentBadge: 'ปัจจุบัน',
+    viewOnWebsite: 'ดูบนเว็บไซต์',
+    whatsNewInCurrent: 'มีอะไรใหม่ในเวอร์ชันนี้',
+    releasesIncluded: 'รวม {{count}} รุ่น',
+    upToDate: 'คุณใช้เวอร์ชันล่าสุดแล้ว',
+    showOlderReleases: 'แสดงรุ่นก่อนหน้า {{count}} รุ่น',
+    viewFullChangelog: 'ดูบันทึกการเปลี่ยนแปลงทั้งหมด',
+    changeTypes: {
+      new: 'ใหม่',
+      improved: 'ปรับปรุง',
+      changed: 'เปลี่ยนแปลง',
+      fixed: 'แก้ไข',
+      security: 'ความปลอดภัย',
+    },
   },
   account: {
     settings: 'การตั้งค่าบัญชี',

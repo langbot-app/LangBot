@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import tempfile
 import uuid
+from collections import OrderedDict
+from functools import partial
 
 import sqlalchemy
 from langbot_plugin.skill_store import SkillRevisionConflictError, SkillRevisionNotFoundError, SkillStore
@@ -11,23 +14,76 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from ..entity.persistence.skill import SkillRegistry, SkillVersion
-from ..utils.bounded_executor import run_blocking_atomic
+from ..utils.bounded_executor import BlockingWorkCapacityError, run_blocking_atomic
 
 
 MAX_PUBLICATION_BYTES = 64 * 1024 * 1024
+_RESOURCE_CACHE_BYTES = 32 * 1024 * 1024
+_RESOURCE_CACHE_ENTRIES = 256
 _LOCAL_FIELDS = {'package_root', 'manifest_path', 'source_path'}
 
 
 class DatabaseSkillRepository:
     """Use the database as authority and the SDK store only for disposable trees."""
 
-    def __init__(self, ap, cache: SkillStore):
+    def __init__(self, ap, cache: SkillStore, validate_context):
         self.ap = ap
         self.cache = cache
+        self._validate_context = validate_context
+        self._resource_archives = OrderedDict()
+        self._resource_archive_bytes = 0
 
     @property
     def content(self):
         return self.ap.storage_mgr.content_store
+
+    def _discard_resource_archive(self, key):
+        cached = self._resource_archives.pop(key, None)
+        if cached is not None:
+            self._resource_archive_bytes -= len(cached['value'])
+
+    def _remember_resource_archive(self, key, archive, metadata):
+        self._discard_resource_archive(key)
+        if len(archive) > _RESOURCE_CACHE_BYTES:
+            return
+        while self._resource_archives and (
+            self._resource_archive_bytes + len(archive) > _RESOURCE_CACHE_BYTES
+            or len(self._resource_archives) >= _RESOURCE_CACHE_ENTRIES
+        ):
+            self._discard_resource_archive(next(iter(self._resource_archives)))
+        self._resource_archives[key] = {'value': archive, 'size': metadata['size'], 'digest': metadata['digest']}
+        self._resource_archive_bytes += len(archive)
+
+    @staticmethod
+    async def _read_resource_parallel(validate_digest, read_resource):
+        async def verify():
+            digest, result = await asyncio.gather(
+                run_blocking_atomic(validate_digest),
+                run_blocking_atomic(read_resource),
+                return_exceptions=True,
+            )
+            if isinstance(digest, BlockingWorkCapacityError):
+                digest = await run_blocking_atomic(validate_digest)
+            if isinstance(digest, BaseException):
+                raise digest
+            if isinstance(result, BlockingWorkCapacityError):
+                result = await run_blocking_atomic(read_resource)
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+        driver = asyncio.create_task(verify())
+        try:
+            return await asyncio.shield(driver)
+        except asyncio.CancelledError:
+            # Keep the Workspace lock until every admitted check actually finishes.
+            drained = asyncio.gather(driver, return_exceptions=True)
+            while not drained.done():
+                try:
+                    await asyncio.shield(drained)
+                except asyncio.CancelledError:
+                    continue
+            raise
 
     @staticmethod
     def _scope(model, context):
@@ -94,19 +150,60 @@ class DatabaseSkillRepository:
         result.update(skill)
         return result
 
-    async def get_package(self, context, name: str, revision: str | None = None) -> dict:
+    async def get_package(
+        self, context, name: str, revision: str | None = None, *, metadata_only: bool = False
+    ) -> dict:
+        if metadata_only:
+            async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
+                record = await self._record(context, name, revision)
+                if record is None:
+                    raise ValueError(f'Skill "{name}" not found')
+                metadata = await self.content.metadata(context, record['content_ref'])
+            return {
+                'revision': record['skill']['revision'],
+                'manifest': record['manifest'],
+                'filename': f'{record["skill"]["name"]}.zip',
+                'sha256': metadata['digest'],
+                'size': metadata['size'],
+            }
         record = await self._record(context, name, revision)
         if record is None:
             raise ValueError(f'Skill "{name}" not found')
-        content = await self._archive(context, record)
-        return {
-            'content': content,
+        package = {
             'revision': record['skill']['revision'],
             'manifest': record['manifest'],
-            'sha256': hashlib.sha256(content).hexdigest(),
-            'size': len(content),
             'filename': f'{record["skill"]["name"]}.zip',
         }
+        content = await self._archive(context, record)
+        package.update(content=content, sha256=hashlib.sha256(content).hexdigest(), size=len(content))
+        return package
+
+    async def _import_zip(self, context, file_bytes: bytes, data: dict, *, base_revision: str | None) -> dict:
+        with tempfile.TemporaryDirectory(prefix='langbot-skill-draft-') as temporary:
+            store = SkillStore(temporary + '/store')
+            source, payload = await run_blocking_atomic(store._prepare_skill_zip, file_bytes, temporary, data)
+            current = await self._record(context, payload['name'])
+            if current is not None:
+                SkillStore._require_base_revision(
+                    payload['name'], {'current_revision': current['skill']['revision']}, base_revision
+                )
+
+            def publish():
+                result = store.import_skill_directory(
+                    source, payload, source_root=temporary, base_revision=base_revision if current is None else None
+                )
+                publication = store.export_skill_publication(result['name'])
+                if current is not None and 'created_at' in current['skill']:
+                    publication['skill']['created_at'] = current['skill']['created_at']
+                return publication
+
+            publication = await run_blocking_atomic(publish)
+        await self._publish(
+            context,
+            [publication],
+            {payload['name']: current['skill']['revision'] if current is not None else None},
+        )
+        return dict(publication['skill'])
 
     async def _publish(self, context, publications: list[dict], bases: dict[str, str | None]) -> None:
         for publication in publications:
@@ -184,7 +281,97 @@ class DatabaseSkillRepository:
                     )
                 )
 
+    @staticmethod
+    def _migration_skill(skill):
+        return json.loads(
+            json.dumps(
+                {key: value for key, value in skill.items() if key not in _LOCAL_FIELDS},
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+    async def import_retained_publication(self, context, publication, uow):
+        """Import verified legacy bytes without changing a current registry pointer."""
+        skill = self._migration_skill(publication['skill'])
+        name = SkillStore._validate_skill_name(skill['name'])
+        revision = skill['revision']
+        SkillStore._validate_revision(revision)
+        archive = publication['file_bytes']
+        if not isinstance(archive, bytes) or len(archive) > MAX_PUBLICATION_BYTES:
+            raise ValueError('Skill migration archive exceeds the database persistence limit')
+        existing = (
+            await uow.execute(
+                sqlalchemy.select(SkillVersion).where(
+                    *self._scope(SkillVersion, context), SkillVersion.name == name, SkillVersion.revision == revision
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.manifest_json != publication['manifest'] or existing.skill_json != skill:
+                raise ValueError(f'Skill migration conflicts with retained version {name}@{revision}')
+            reference = existing.content_ref
+        else:
+            reference = await self.content.put(context, owner_type='skill', owner=name, key=revision, value=archive)
+            await uow.execute(
+                sqlalchemy.insert(SkillVersion).values(
+                    uuid=str(uuid.uuid4()),
+                    workspace_uuid=context.workspace_uuid,
+                    instance_uuid=context.instance_uuid,
+                    name=name,
+                    revision=revision,
+                    manifest_json=publication['manifest'],
+                    skill_json=skill,
+                    content_ref=reference,
+                )
+            )
+        # A checkpoint must not bless a missing/corrupt object-store write or an old target blob.
+        if await self.content.get(context, reference, max_bytes=MAX_PUBLICATION_BYTES) != archive:
+            raise ValueError(f'Skill migration content differs for {name}@{revision}')
+
+    async def publish_migrated_registry(self, context, skills, uow):
+        """Expose the original current pointers only with the final import marker."""
+        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
+        insert = sqlite_insert if dialect == 'sqlite' else pg_insert
+        for source in skills:
+            skill = self._migration_skill(source)
+            name, revision = skill['name'], skill['revision']
+            version = (
+                await uow.execute(
+                    sqlalchemy.select(SkillVersion).where(
+                        *self._scope(SkillVersion, context),
+                        SkillVersion.name == name,
+                        SkillVersion.revision == revision,
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is None or version.skill_json != skill:
+                raise ValueError(f'Skill migration has no verified current version for {name}')
+            await uow.execute(
+                insert(SkillRegistry)
+                .values(
+                    uuid=str(uuid.uuid4()),
+                    workspace_uuid=context.workspace_uuid,
+                    instance_uuid=context.instance_uuid,
+                    name=name,
+                    current_revision=revision,
+                    skill_json=skill,
+                )
+                .on_conflict_do_nothing(index_elements=['workspace_uuid', 'instance_uuid', 'name'])
+            )
+            registry = (
+                await uow.execute(
+                    sqlalchemy.select(SkillRegistry).where(
+                        *self._scope(SkillRegistry, context), SkillRegistry.name == name
+                    )
+                )
+            ).scalar_one()
+            if registry.current_revision != revision or registry.skill_json != skill:
+                raise ValueError(f'Skill migration conflicts with the current database registration for {name}')
+
     async def call(self, context, namespace: str, method: str, *args, **kwargs):
+        if method == 'import_skill_zip':
+            return await self._import_zip(context, *args, **kwargs)
         if method == 'list_skills':
             async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
                 rows = (
@@ -226,10 +413,77 @@ class DatabaseSkillRepository:
                 if result.rowcount != 1:
                     raise ValueError(f'Skill "{name}" not found')
             return {'deleted': name}
+        if method in {'list_skill_resources', 'read_skill_resource'} and (
+            getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network'
+        ):
+            content = self.content
+            async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+                await self._validate_context(context)
+                record = await self._record(context, args[0], kwargs.get('expected_revision'))
+                if record is None:
+                    raise ValueError(f'Skill "{args[0]}" not found')
+                await content._validate(context)
+                if method == 'list_skill_resources':
+                    content._validate_ref(record['content_ref'])
+                else:
+                    cache_key = (context.instance_uuid, context.workspace_uuid, record['content_ref'])
+                    cached = self._resource_archives.get(cache_key)
+                    row = await content._row(
+                        uow, context.workspace_uuid, record['content_ref'], metadata_only=cached is not None
+                    )
+                    if cached is not None and (cached['size'], cached['digest']) != (row['size'], row['digest']):
+                        self._discard_resource_archive(cache_key)
+                        cached = None
+                        row = await content._row(uow, context.workspace_uuid, record['content_ref'])
+            if method == 'list_skill_resources':
+                return await run_blocking_atomic(
+                    SkillStore.list_publication_manifest_resources,
+                    record['skill'],
+                    record['manifest'],
+                    *args[1:],
+                    **kwargs,
+                )
+            # Release the database connection before object-store IO and ZIP validation.
+            try:
+                archive = (
+                    cached['value'] if cached is not None else bytes(await content._read(row, MAX_PUBLICATION_BYTES))
+                )
+                read_resource = partial(
+                    SkillStore.read_publication_resource,
+                    record['skill'],
+                    record['manifest'],
+                    archive,
+                    *args[1:],
+                    **kwargs,
+                )
+                scope_limit = getattr(getattr(self.ap, 'blocking_executor', None), 'max_inflight_per_scope', 0)
+                if cached is not None and isinstance(scope_limit, int) and scope_limit >= 2:
+                    result = await self._read_resource_parallel(
+                        partial(content._validated_value, archive, row, MAX_PUBLICATION_BYTES), read_resource
+                    )
+                else:
+                    if cached is not None:
+                        content._validated_value(archive, row, MAX_PUBLICATION_BYTES)
+                    result = await run_blocking_atomic(read_resource)
+            except BaseException:
+                self._discard_resource_archive(cache_key)
+                raise
+            self._remember_resource_archive(cache_key, archive, row)
+            return result
         if method in {'list_skill_files', 'read_skill_file', 'list_skill_resources', 'read_skill_resource'}:
             record = await self._record(context, args[0], kwargs.get('expected_revision'))
             if record is None:
                 raise ValueError(f'Skill "{args[0]}" not found')
+            if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
+                archive = await self._archive(context, record)
+
+                def read_resource():
+                    with tempfile.TemporaryDirectory(prefix='langbot-skill-read-') as temporary:
+                        store = SkillStore(temporary)
+                        store.restore_skill_publication(record['skill'], record['manifest'], archive, make_current=True)
+                        return getattr(store, method)(*args, **kwargs)
+
+                return await run_blocking_atomic(read_resource)
             skill = await self._materialize(context, namespace, record)
             store = self.cache.scoped(namespace)
             if method == 'list_skill_files':

@@ -15,23 +15,22 @@ Box 由 LangBot 主进程配置，Box Runtime 负责实际执行。常规部署�
 box:
   enabled: true
   backend: 'local'        # 自动从 Docker / Nsjail 里选可用的
+  file_transfer_mode: 'network'
   local:
     profile: 'default'
-    host_root: './data/box'
-    skills_root: 'skills'
   docker:
     cpu_limit_enabled: true
 ```
 
-- `enabled`：沙箱总开关。设为 `false` 时，沙箱内置工具、Skill 添加/编辑、stdio MCP 托管等依赖 Box 的能力都不可用。
+- `enabled`：沙箱总开关。设为 `false` 时，沙箱内置工具、沙箱草稿发布、stdio MCP 托管等依赖 Box 的能力都不可用。
 - `backend`：见下文「后端选择」。
 - `local.profile`：安全预设，控制网络、挂载和资源限制。
-- `local.host_root`：主机上的沙箱工作目录，会映射为沙箱内的 `/workspace`。
-- `local.skills_root`：Skill 包目录；相对路径解析到 `host_root` 下，默认 `host_root/skills`。
+- `local.host_root`：`legacy` 模式下的共享工作目录；网络模式使用 Runtime 自己配置的目录，Core 不向其传递宿主路径。
+- `local.skills_root`：旧配置的兼容回退，仅在顶层 `skills.root` 缺失时生效；相对路径解析到 `host_root` 下。新配置使用顶层 `skills.root`。
 - `docker.cpu_limit_enabled`：是否为 Docker 沙箱容器启用 CPU 限制；设为 `false` 时不传 `docker run --cpus`，内存和 PID 限制仍然保留。
 
 <Note>
-Skills 只从 Box Runtime 管理的 skill store 加载。Box Runtime 或后端不可用时 Skill 列表为空，新增 / 编辑 / `register_skill` 都不可用；不会回退扫描 `data/skills/`。
+Skill 管理、激活和只读资源由 Core 提供，不要求 Box；执行脚本和沙箱草稿发布需要 Box。新安装默认 `file_transfer_mode: network`，Core 与 Box 不需要共享 Skill 或工作目录。旧显式 `legacy` 配置继续生效；升级与数据库存储见[Skills](../skills/readme)。
 </Note>
 
 ## 后端选择

@@ -164,15 +164,18 @@ class ContentStore:
             self._delete_after_transaction(provider, object_key, committed=True)
         return ref
 
-    async def _row(self, uow, workspace, ref):
+    @staticmethod
+    def _validate_ref(ref):
         if not isinstance(ref, str) or not re.fullmatch(r'ct1_[0-9a-f]{64}', ref):
             raise FileNotFoundError('Unknown content reference')
+
+    async def _row(self, uow, workspace, ref, *, metadata_only=False):
+        self._validate_ref(ref)
+        columns = (ContentObject.size, ContentObject.digest) if metadata_only else (ContentObject.__table__,)
         row = (
             (
                 await uow.execute(
-                    sa.select(ContentObject.__table__).where(
-                        ContentObject.workspace_uuid == workspace, ContentObject.ref == ref
-                    )
+                    sa.select(*columns).where(ContentObject.workspace_uuid == workspace, ContentObject.ref == ref)
                 )
             )
             .mappings()
@@ -191,7 +194,13 @@ class ContentStore:
         else:
             provider, _ = await self._s3(row['backend'], row['locator'])
             value = await provider.load_bounded(row['locator']['key'], max_bytes=limit)
-        if len(value) != row['size'] or hashlib.sha256(value).hexdigest() != row['digest']:
+        return self._validated_value(value, row, limit)
+
+    @staticmethod
+    def _validated_value(value, metadata, max_bytes):
+        if metadata['size'] > normalize_read_limit(max_bytes):
+            raise ValueError('Content exceeds the read size limit')
+        if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:
             raise ValueError('Persisted content failed digest verification')
         return value
 
@@ -201,10 +210,14 @@ class ContentStore:
             row = await self._row(uow, context.workspace_uuid, ref)
             return await self._read(row, max_bytes)
 
-    async def size(self, context, ref):
+    async def metadata(self, context, ref):
+        """Read immutable size and digest without loading the content body."""
         await self._validate(context)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
-            return (await self._row(uow, context.workspace_uuid, ref))['size']
+            return dict(await self._row(uow, context.workspace_uuid, ref, metadata_only=True))
+
+    async def size(self, context, ref):
+        return (await self.metadata(context, ref))['size']
 
     async def delete(self, context, ref):
         """Remove an unreferenced object; callers must release their business references first."""
