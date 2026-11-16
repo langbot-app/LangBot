@@ -16,6 +16,9 @@ REQUIRED_CONTRACTS = {
         'postgres_minio',
         'skill_content_rls',
         'two_core_cache_recovery',
+        'legacy_skill_import',
+        'legacy_asset_import',
+        'migration_fencing',
     },
     'session_summary': {
         'reader_dependencies',

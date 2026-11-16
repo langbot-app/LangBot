@@ -23,11 +23,11 @@ LangBot is a monorepo whose parts are released independently.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
 - `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
-- `LangBot/sdk/` is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`, no GitHub Release) and pinned exactly in `LangBot/pyproject.toml`; Core installs that PyPI version, never the tree. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`). Core artifacts exclude this tree. See `sdk/RELEASING.md`. It was imported from the archived `langbot-app/langbot-plugin-sdk` repository at v0.7.24 (`sdk/SOURCE.json`).
+- `LangBot/sdk/` is published independently to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`, no GitHub Release). Core's `uv` source maps its exact package requirement to editable `sdk/`; checkouts, Docker, release ZIPs and fnOS use this coordinated source. The standalone Core wheel excludes SDK code and retains the published PyPI dependency. The SDK contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`). See `sdk/RELEASING.md`. It was imported from the archived `langbot-app/langbot-plugin-sdk` repository at v0.7.24 (`sdk/SOURCE.json`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
 
-This split matters. If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, change `sdk/` and the Core bridge in one PR, run the SDK tests in `sdk/`, and test Core with the in-tree SDK overlaid (`uv pip install ./sdk`, then `uv run --no-sync ...`). Core can only rely on the change after the SDK is released and the pin is bumped.
+If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, change `sdk/` and the Core bridge in one PR, run the SDK tests in `sdk/`, and test Core through standard root `uv sync`. Source deployments can use the coordinated change immediately; publishing the standalone Core PyPI package still requires a matching SDK release and Core pin. Independently deployed Runtimes and plugins retain their own installation and compatibility requirements.
 
 ## Startup Path
 
@@ -46,7 +46,7 @@ The central runtime object is `pkg/core/app.py::Application`. It is a service lo
 ```text
 LangBot/
 ├── main.py                         # Entrypoint shim
-├── pyproject.toml                  # Python package, deps, pinned langbot-plugin
+├── pyproject.toml                  # Python package, deps, local SDK source
 ├── src/langbot/
 │   ├── __main__.py                 # CLI entrypoint and boot handoff
 │   ├── pkg/
@@ -220,7 +220,7 @@ In this repo:
   Skill loader supplies generic read-only mounts in legacy mode and pinned artifact
   references in network mode. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
-- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or explicit database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Legacy resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`. Network mode reads verified publication resources without restoring a tree and sends exact publications to Box without that cache. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
+- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Legacy resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`. Network mode reads verified publication resources without restoring a tree and sends exact publications to Box without that cache. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Legacy durable Box Workspace storage is shared across placement generations, but
@@ -269,13 +269,14 @@ Skill storage uses `skills.root`. Box execution config lives under `box:`:
 marked for removal in the next major version. Start LangBot with
 `--standalone-box` when connecting to an externally launched Box runtime.
 
-Explicit `box.file_transfer_mode: network` removes Core's shared workspace/root
+`box.file_transfer_mode: network` removes Core's shared workspace/root
 requirement. Runtime must acknowledge network workspace support during INIT and
 keeps its own independently configured local roots. Draft registration archives a
 bounded, link-free directory inside Box, downloads it through the authenticated
 file protocol, then validates and publishes once with the existing revision CAS.
 Run completion removes only that run's inbox, outbox and snapshots through Runtime;
-drafts and other runs remain. This does not switch defaults or migrate existing data.
+drafts and other runs remain. Fresh-install defaults and offline legacy import are
+selected during startup as described in the persistence contract.
 
 ## HTTP API, Web UI, and MCP Server
 
@@ -310,7 +311,7 @@ Persistence is centered on `pkg/persistence/mgr.py`.
 - Fresh schemas are created from current metadata, then Alembic migrations run to head. LangBot 4.x does not upgrade 3.x databases.
 - New schema changes use Alembic under `pkg/persistence/alembic/versions/`; there is no legacy migration chain in 4.x.
 
-Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Most long-lived managers read from `ap.instance_config.data`.
+Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Fresh files select database Skill/content persistence and network Box transfer; old explicit choices and missing-key legacy behavior remain compatible. Before producers start, scoped legacy publications and local assets import with database-owned progress and fencing, retaining old sources; see [Skill persistence](dev-docs/SKILL_PERSISTENCE.md). Most long-lived managers read from `ap.instance_config.data`.
 
 Storage maintenance applies `storage.media_cache.retention_days` to both CAS files and historical inline images. Inline image expiry uses the owning record's creation time and preserves text, URLs, and record identity. It does not backfill CAS. `pkg/storage/inline_media_cleanup.py` processes one payload row at a time, with a per-table limit of 100 indexed candidates or 8 MiB of JSON characters per maintenance pass (one oversized row may exceed the latter limit). Run events lack a Workspace column, so their candidate cursor also advances past foreign or missing records; payloads are loaded only after checking Workspace ownership. Durable Workspace metadata cursors and timestamp/identity indexes keep completed history out of subsequent scans; newly written history must retain its actual creation timestamp. Updates and cursor advancement commit together. Invalid historical JSON is preserved. SQLite pages become reusable after payload removal; the database file is not automatically vacuumed by this task.
 
@@ -361,7 +362,7 @@ When one of these changes, update the others if the behavior or contract changed
 - New pipeline behavior: add or extend a pipeline stage family under `pkg/pipeline/`; avoid putting pipeline rules in adapters.
 - New LLM provider/requester: work under `pkg/provider/modelmgr/` and related service/UI surfaces.
 - New LLM tool source: extend `pkg/provider/tools/loaders/` and `ToolManager` intentionally.
-- New plugin component/API/protocol: change `sdk/` in the same PR as the LangBot bridge code; release the SDK before the Core release that needs it.
+- New plugin component/API/protocol: change `sdk/` in the same PR as the LangBot bridge code; release the SDK before publishing the standalone Core PyPI package that needs it.
 - New Box capability: change both `pkg/box/` and `sdk/src/langbot_plugin/box/`, plus config and tests.
 - New database schema: add an Alembic migration.
 

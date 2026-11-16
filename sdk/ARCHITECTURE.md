@@ -4,7 +4,7 @@ This document maps the plugin SDK in `sdk/` of the LangBot monorepo (formerly th
 
 ## What This Package Is
 
-The plugin SDK is the infrastructure package behind LangBot's plugin and sandbox systems. It is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`) and pinned exactly by LangBot Core.
+The plugin SDK is the infrastructure package behind LangBot's plugin and sandbox systems. It is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`). Core source installs resolve their exact package requirement to this checkout's editable `sdk/`; the standalone Core PyPI package retains the published dependency.
 
 The package has four roles:
 
@@ -23,7 +23,7 @@ The SDK shares the LangBot repository but is versioned and released separately.
 - The SDK (`sdk/`) owns plugin author APIs, shared message/event/context entities, the action RPC protocol, the execution-independent filesystem Skill store, `lbp`, Plugin Runtime implementation, and Box Runtime implementation.
 - Plugins import this package directly; LangBot also imports it for shared entities and runtime protocols.
 
-If a change alters shared entities, component contracts, action names/payloads, runtime behavior, or Box models, change and test SDK and Core together in one PR, and release the SDK before the Core release that depends on it.
+If a change alters shared entities, component contracts, action names/payloads, runtime behavior, or Box models, change and test SDK and Core together in one PR. Source-based Core deployments use that checkout directly; publishing the standalone Core PyPI package requires a matching SDK release first.
 
 ## Top-Level Layout
 
@@ -482,6 +482,9 @@ and only then advances the registry pointer. Updates require the current
 active or recoverable runs. Former mutable package directories are only a
 one-time online-upgrade import source.
 
+`publication_inventory` strictly enumerates current registrations and all retained
+versions for offline Core import, including deleted registrations. All old writers
+must be stopped; corrupt or unsafe sources abort rather than disappearing.
 `export_skill_publication` and `restore_skill_publication` preserve an exact
 publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
@@ -585,21 +588,21 @@ LangBot sends Box config during initialization. Backend selection is controlled 
 
 A false “no backend” often means Docker exists but the user cannot access the Docker socket. nsjail inside containers requires host cgroup namespace for cgroup v2 limits if hard memory/pid/cpu enforcement is expected.
 
-## Cross-Repo Development Flow
+## Coordinated Core and SDK Development
 
 When changing shared contracts:
 
-1. Change this SDK repo first or in the same branch set.
-2. Install the local SDK into LangBot's virtualenv: `uv pip install .` from this repo while LangBot's `.venv` is active.
-3. Run LangBot with `uv run --no-sync ...` so `uv` does not replace the local SDK with the pinned PyPI package.
-4. Exercise the exact path changed: plugin stdio, plugin WebSocket, `lbp run`, `lbp rt`, `lbp box`, Box WebSocket, or Box stdio.
+1. Change `sdk/` and the Core bridge in the same branch.
+2. Run `uv sync --dev` from the repository root to install Core and its editable local SDK.
+3. Run Core and its Runtimes with `uv run main.py`, `uv run lbp rt` or `uv run lbp box`.
+4. Exercise the exact path changed: plugin stdio, plugin WebSocket, `lbp run`, Plugin Runtime, or Box Runtime.
 
-Workspace action-context support starts in SDK `0.4.15`. The instance-scoped
-Runtime handshake and complete `InstallationBinding` extend that protocol on
-the multi-tenant branch and require a coordinated LangBot Core change before
-release. Until a matching SDK version is published, Core must pin the exact
-pushed SDK commit; the already-published `0.4.14` artifact does not contain any
-of these contracts and must not be used as a compatibility alias.
+The instance-scoped Runtime handshake and complete `InstallationBinding`
+require coordinated Core and Runtime capabilities. A separately deployed
+Runtime must install the matching checkout or a compatible published SDK;
+Core's local source does not upgrade another process's environment. Independent
+plugin environments retain their declared SDK support. The standalone Core
+PyPI package remains subject to the release gate in `RELEASING.md`.
 
 The SDK `AGENTS.md` keeps the short command checklist; this file keeps the structural map.
 

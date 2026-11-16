@@ -262,6 +262,32 @@ async def test_box_service_without_explicit_client_initializes_internal_connecto
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('failure', ['offline', 'incompatible', 'wrapped-incompatible'])
+async def test_network_startup_distinguishes_offline_and_incompatible_runtime(failure):
+    from langbot_plugin.box import errors
+
+    compatibility = getattr(errors, 'BoxRuntimeCompatibilityError', None)
+    if compatibility is None:
+        pytest.skip('typed network compatibility requires the coordinated SDK')
+    app = make_app(Mock())
+    app.instance_config.data['box']['file_transfer_mode'] = 'network'
+    error = errors.BoxRuntimeUnavailableError('offline')
+    if failure == 'incompatible':
+        error = compatibility('unsupported protocol')
+    elif failure == 'wrapped-incompatible':
+        error.__cause__ = compatibility('unsupported protocol')
+    client = Mock(spec=BoxRuntimeClient)
+    client.initialize = AsyncMock(side_effect=error)
+    service = BoxService(app, client=client)
+    if failure == 'offline':
+        await service.initialize()
+        assert service.available is False
+    else:
+        with pytest.raises(errors.BoxRuntimeUnavailableError):
+            await service.initialize()
+
+
+@pytest.mark.asyncio
 async def test_cloud_initialize_validation_failure_closes_connector_and_cancels_reconnect(
     monkeypatch: pytest.MonkeyPatch,
 ):

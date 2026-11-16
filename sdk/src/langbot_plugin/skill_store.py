@@ -249,6 +249,74 @@ class SkillStore:
         skills.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
         return skills
 
+    def publication_inventory(self) -> dict:
+        """Enumerate current pointers and retained versions during offline import.
+
+        All legacy writers must be stopped. Unlike ordinary discovery, an
+        unreadable package or registry aborts the import rather than disappearing.
+        Archive export subsequently verifies every version's complete contents.
+        """
+        if not os.path.isdir(self.root) or os.path.islink(self.root):
+            raise ValueError("Legacy Skill source must be an accessible directory")
+        if os.path.lexists(self._store_root()):
+            self._require_path_under(self._store_root(), self.root, "Skill store")
+        legacy_names = self._ensure_legacy_packages_published(strict=True)
+        names = []
+        registry_root = self._registry_root()
+        if os.path.lexists(registry_root):
+            self._require_path_under(registry_root, self.root, "Skill registry")
+            for entry in sorted(os.scandir(registry_root), key=lambda item: item.name):
+                if not entry.is_file(follow_symlinks=False) or not entry.name.endswith(
+                    ".json"
+                ):
+                    raise ValueError("Legacy Skill registry contains an unsafe entry")
+                if len(names) >= _MAX_SKILL_LIST_ENTRIES:
+                    raise ValueError("Skill listing exceeds the configured entry limit")
+                names.append(self._validate_skill_name(entry.name[:-5]))
+        # Reuse the catalog's aggregate text budget instead of retaining up to
+        # a thousand individually valid, megabyte-sized instruction documents.
+        skills = self.list_skills()
+        if {skill["name"] for skill in skills} != set(names):
+            raise ValueError("Legacy Skill registry changed during inventory")
+        versions = []
+        revisions_root = self._revisions_root()
+        if os.path.lexists(revisions_root):
+            self._require_path_under(revisions_root, self.root, "Skill revisions")
+            for entry in sorted(os.scandir(revisions_root), key=lambda item: item.name):
+                revision = f"{_REVISION_PREFIX}{entry.name}"
+                self._validate_revision(revision)
+                if not entry.is_dir(follow_symlinks=False):
+                    raise ValueError("Legacy Skill revision must be a directory")
+                if len(versions) >= _MAX_SKILL_SCAN_ENTRIES:
+                    raise ValueError("Skill history exceeds the configured entry limit")
+                package_root = self._require_path_under(
+                    os.path.join(entry.path, "package"), self.root, "Skill revision"
+                )
+                self._require_safe_import_tree(package_root)
+                manifest_path = os.path.join(entry.path, "manifest.json")
+                if not stat.S_ISREG(os.lstat(manifest_path).st_mode):
+                    raise ValueError("Legacy Skill manifest must be a regular file")
+                skill = self._load_skill_package(package_root)
+                digest, _ = load_tree_manifest(
+                    manifest_path,
+                    max_files=_MAX_REVISION_FILES,
+                    max_total_bytes=_MAX_REVISION_BYTES,
+                    subject="Skill package",
+                )
+                if digest != revision:
+                    raise ValueError(
+                        "Legacy Skill manifest does not match its revision"
+                    )
+                versions.append({"name": skill["name"], "revision": revision})
+        retained = {(item["name"], item["revision"]) for item in versions}
+        if any((item["name"], item["revision"]) not in retained for item in skills):
+            raise ValueError("Legacy Skill registry refers to a missing revision")
+        if set(legacy_names) - {name for name, _ in retained}:
+            raise ValueError(
+                "Unregistered legacy Skill packages require review before migration"
+            )
+        return {"skills": skills, "versions": versions}
+
     def get_skill(
         self,
         skill_name: str,
@@ -273,7 +341,11 @@ class SkillStore:
         return self.get_skill(skill_name, revision=revision)
 
     def export_skill_publication(
-        self, skill_name: str, revision: str | None = None
+        self,
+        skill_name: str,
+        revision: str | None = None,
+        *,
+        max_bytes: int | None = None,
     ) -> dict:
         """Export exact published bytes and identity without rewriting SKILL.md."""
 
@@ -288,6 +360,17 @@ class SkillStore:
             skill["package_root"]
         ) != (digest, manifest):
             raise ValueError("Published Skill package does not match its revision")
+        # Stored ZIPs use fixed local/central headers and no archive comments.
+        # Bound allocation before building bytes for database import.
+        if max_bytes is not None:
+            archive_size = 22 + sum(
+                entry["size"] + 76 + 2 * len(entry["path"].encode("utf-8"))
+                for entry in manifest["files"]
+            )
+            if max_bytes <= 0 or archive_size > max_bytes:
+                raise ValueError(
+                    "Skill publication archive exceeds the configured byte limit"
+                )
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
             for entry in manifest["files"]:
@@ -1530,31 +1613,54 @@ class SkillStore:
         finally:
             os.close(descriptor)
 
-    def _ensure_legacy_packages_published(self) -> None:
+    def _ensure_legacy_packages_published(self, *, strict: bool = False) -> list[str]:
         """One-time online upgrade from the former mutable directory layout."""
 
         os.makedirs(self.root, exist_ok=True)
         marker = os.path.join(self._store_root(), "legacy-import-complete")
-        if os.path.isfile(marker):
-            return
+        if os.path.isfile(marker) and not strict:
+            return []
         with _exclusive_file_lock(os.path.join(self._locks_root(), "migration.lock")):
-            if os.path.isfile(marker):
-                return
+            completed = os.path.isfile(marker)
+            if completed and not strict:
+                return []
             discovered: list[tuple[str, str]] = []
             for entry in sorted(os.scandir(self.root), key=lambda item: item.name):
+                if strict and entry.is_symlink():
+                    raise ValueError(
+                        "Legacy Skill source cannot contain symbolic links"
+                    )
                 if entry.name == _STORE_DIRECTORY or not entry.is_dir(
                     follow_symlinks=False
                 ):
                     continue
                 discovered.extend(
-                    self._discover_skill_directories(entry.path, max_depth=5)
+                    self._discover_skill_directories(
+                        entry.path, max_depth=5, strict=strict
+                    )
                 )
+                if strict and len(discovered) > _MAX_SKILL_LIST_ENTRIES:
+                    raise ValueError(
+                        "Legacy Skill discovery exceeds the configured package limit"
+                    )
+            names: set[str] = set()
             for package_root, entry_file in discovered:
                 try:
+                    if strict:
+                        self._require_safe_import_tree(package_root)
                     legacy = self._load_skill_package(package_root, entry_file)
                 except Exception:
+                    if strict:
+                        raise
                     continue
                 skill_name = legacy["name"]
+                if strict and skill_name in names:
+                    raise ValueError(f'Duplicate legacy Skill name "{skill_name}"')
+                names.add(skill_name)
+                if completed:
+                    # A previous import may have deleted this registration;
+                    # validate the source without resurrecting its pointer.
+                    continue
                 with self._skill_lock(skill_name):
                     if self._read_registry(skill_name) is not None:
                         continue
@@ -1576,6 +1682,8 @@ class SkillStore:
                         "updated_at", registry["updated_at"]
                     )
                     self._write_registry_atomic(skill_name, registry)
+            if completed:
+                return sorted(names)
             os.makedirs(self._store_root(), exist_ok=True)
             temporary = f"{marker}.{uuid.uuid4().hex}.tmp"
             with open(temporary, "x", encoding="utf-8") as file:
@@ -1584,6 +1692,7 @@ class SkillStore:
                 os.fsync(file.fileno())
             os.replace(temporary, marker)
             self._fsync_directory(self._store_root())
+            return sorted(names)
 
     @staticmethod
     def _serialize_skill(skill: dict) -> dict:
@@ -2081,6 +2190,7 @@ class SkillStore:
         *,
         max_scan_entries: int = _MAX_SKILL_SCAN_ENTRIES,
         max_skills: int = _MAX_DISCOVERED_SKILLS,
+        strict: bool = False,
     ) -> list[tuple[str, str]]:
         discovered: list[tuple[str, str]] = []
         queue: collections.deque[tuple[str, int]] = collections.deque([(root_path, 0)])
@@ -2118,9 +2228,15 @@ class SkillStore:
                         entries.append(entry)
                 entries.sort(key=lambda entry: entry.name)
             except OSError:
+                if strict:
+                    raise
                 continue
 
             for entry in entries:
+                if strict and entry.is_symlink():
+                    raise ValueError(
+                        "Legacy Skill discovery cannot follow symbolic links"
+                    )
                 if entry.is_dir(follow_symlinks=False):
                     queue.append((entry.path, depth + 1))
 

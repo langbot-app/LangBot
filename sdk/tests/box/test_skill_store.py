@@ -411,6 +411,8 @@ def test_list_skills_counts_nested_metadata_toward_text_limit(tmp_path, monkeypa
 
     with pytest.raises(ValueError, match="listing exceeds"):
         store.list_skills()
+    with pytest.raises(ValueError, match="listing exceeds"):
+        store.publication_inventory()
 
 
 def test_skill_discovery_fails_fast_at_entry_limit(tmp_path):

@@ -17,14 +17,14 @@ LangBot has a comprehensive web frontend — almost every operation can be perfo
 
 - **Backend**: Python (`>=3.11,<4.0`), dependencies managed by `uv`; the web framework is Quart (the async flavour of Flask). Both the HTTP API and the pre-built frontend are served by the backend on `http://127.0.0.1:5300`.
 - **Frontend**: `web/` is a **Vite + React Router 7 + shadcn/ui + Tailwind CSS** SPA, managed by `pnpm` (note: this is **not** Next.js — the `dev` script is literally `vite`).
-- **Plugin system**: The Plugin SDK, CLI (`lbp`), Plugin Runtime, Box (sandbox) Runtime, and the entity/API definitions shared between LangBot and plugins all live in the [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) directory of the LangBot repository and are released separately as the PyPI package `langbot-plugin`. LangBot depends on it via the version-pinned `langbot-plugin` package in `pyproject.toml`, not on the `sdk/` directory directly.
+- **Plugin system**: The Plugin SDK, CLI (`lbp`), Plugin Runtime, Box (sandbox) Runtime, and the entity/API definitions shared between LangBot and plugins all live in the [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) directory of the LangBot repository and are released separately as the PyPI package `langbot-plugin`. Root `uv sync` uses the same checkout's `sdk/`. Source, Docker, ZIP and fnOS deployments can use coordinated changes before SDK publication; standalone Core PyPI installs retain the published SDK dependency.
 
 ## Repository Layout
 
 ```
 LangBot/
 ├── main.py                     # Entrypoint shim -> langbot.__main__.main()
-├── pyproject.toml              # Python project + deps (uv), pins langbot-plugin==<x.y.z>
+├── pyproject.toml              # Python project + deps (uv), local SDK source
 ├── src/langbot/
 │   ├── __main__.py             # Real entrypoint, CLI args (--standalone-runtime / --standalone-box / --debug)
 │   ├── pkg/                    # Core backend package

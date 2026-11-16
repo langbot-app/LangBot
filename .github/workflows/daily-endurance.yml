@@ -483,7 +483,6 @@ jobs:
       - name: Install Core with the in-tree SDK
         run: |
           uv sync --dev --frozen
-          uv pip install ./sdk
       - name: Prepare disposable PostgreSQL and MinIO
         env:
           GH_TOKEN: ${{ github.token }}
@@ -528,6 +527,7 @@ jobs:
       - name: Run Skill publications, media, RLS and two-Core recovery
         run: |
           uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
+            tests/integration/skill/test_legacy_skill_migration.py tests/integration/storage/test_legacy_storage_migration.py \
             tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
             --required-suite skill_persistence -q --tb=short -rs \
             --basetemp=.qa/persistence-runtime/processes \
