@@ -502,6 +502,9 @@ async def test_api_key_context_returns_bound_identity_without_workspace_permissi
     assert capabilities['schema_version'] == 1
     assert sorted(capabilities['operations']) == sorted(
         [
+            'operation.invoke',
+            'operation.stream',
+            'plugin.permissions.confirm_api_key',
             'bot.list',
             'bot.get',
             'bot.create',
