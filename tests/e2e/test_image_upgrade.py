@@ -1,5 +1,6 @@
 """Exercise immutable production images through authenticated HTTP across upgrades."""
 
+import io
 import os
 from pathlib import Path
 import shlex
@@ -7,16 +8,17 @@ import subprocess
 import time
 from types import SimpleNamespace
 import uuid
+import zipfile
 
 import httpx
 import pytest
 import yaml
 
-from tests.e2e.test_deployed_content import test_content_survives_deployment_replacement as _content
-from tests.e2e.test_runner_plugin_runtime import _free_port
+from tests.e2e.test_runner_plugin_runtime import _free_port, _init_and_auth
 from tests.e2e.test_skill_persistence_replicas import _data
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories
 from tests.integration.api.test_plugin_permission_lifecycle import package
+from tests.integration.skill.test_persistent_skill_replicas import _BINARY, _GUIDE, _NAME, _PNG, _SCRIPT, _zip_package
 
 
 pytestmark = [
@@ -137,16 +139,84 @@ def _plugin_call(client, headers):
     return response.json()['data']
 
 
+def _seed_content(client):
+    token = _init_and_auth(client)
+    headers = {'Authorization': 'Bearer ' + token}
+    first = _data(
+        client.post(
+            '/api/v1/skills/install/upload',
+            headers=headers,
+            files={'file': ('probe.zip', _zip_package(), 'application/zip')},
+        )
+    )['skills'][0]
+    second = _data(
+        client.put(
+            f'/api/v1/skills/{_NAME}',
+            headers=headers,
+            json={
+                'base_revision': first['revision'],
+                'instructions': 'Updated image instructions.',
+            },
+        )
+    )['skill']
+    assert second['revision'] != first['revision']
+    removed = _data(
+        client.post(
+            '/api/v1/skills',
+            headers=headers,
+            json={'name': 'image-removed', 'instructions': 'Retained deleted image history.'},
+        )
+    )['skill']
+    _data(client.delete('/api/v1/skills/image-removed', headers=headers))
+    uploaded = _data(
+        client.post('/api/v1/files/images', headers=headers, files={'file': ('pixel.png', _PNG, 'image/png')})
+    )
+    return dict(
+        token=token,
+        first=first,
+        second=second,
+        removed=removed,
+        image_url='/api/v1/files/image/' + uploaded['file_key'],
+    )
+
+
+def _verify_content(client, saved):
+    headers = {'Authorization': 'Bearer ' + saved['token']}
+    current = _data(client.get(f'/api/v1/skills/{_NAME}', headers=headers))['skill']
+    assert current['revision'] == saved['second']['revision']
+    assert current['created_at'] == saved['first']['created_at']
+    listed = _data(client.get('/api/v1/skills', headers=headers))['skills']
+    assert 'image-removed' not in {row['name'] for row in listed}
+    # The previous release has no package-download route; expected bytes come from the original input.
+    for skill in (saved['first'], saved['second'], saved['removed']):
+        downloaded = client.get(
+            f'/api/v1/skills/{skill["name"]}/package', headers=headers, params={'revision': skill['revision']}
+        )
+        assert downloaded.status_code == 200, downloaded.text
+        with zipfile.ZipFile(io.BytesIO(downloaded.content)) as archive:
+            if skill['name'] == _NAME:
+                assert archive.read('scripts/probe.py') == _SCRIPT
+                assert archive.read('references/payload.bin') == _BINARY
+                assert archive.read('references/guide.md').decode() == _GUIDE
+            if skill['revision'] == saved['second']['revision']:
+                assert 'Updated image instructions.' in archive.read('SKILL.md').decode()
+            if skill['revision'] == saved['first']['revision']:
+                assert 'Read references/guide.md.' in archive.read('SKILL.md').decode()
+            if skill['name'] == 'image-removed':
+                assert 'Retained deleted image history.' in archive.read('SKILL.md').decode()
+    downloaded = client.get(saved['image_url'], headers=headers)
+    assert downloaded.status_code == 200 and downloaded.content == _PNG
+    assert client.get(saved['image_url']).status_code == 401
+
+
 @pytest.mark.contract('legacy_image_upgrade')
 def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_path):
     image = image_instance
     previous = os.environ.get('LANGBOT_IMAGE_PREVIOUS')
     assert previous, 'The upgrade test requires an explicit previous image'
     config_path = _configuration(image.root)
-    state = SimpleNamespace(phase='seed', state={}, path=tmp_path / 'state.json')
     old = image.start(previous, 'previous')
-    state.client = old.client
-    _content(state)
+    saved = _seed_content(old.client)
     image.stop(old)
 
     config = yaml.safe_load(config_path.read_text())
@@ -156,9 +226,8 @@ def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_p
     config['plugin']['enable'] = True
     config_path.write_text(yaml.safe_dump(config))
     current = image.start(os.environ['LANGBOT_IMAGE_CANDIDATE'], 'candidate')
-    state.phase, state.client = 'verify', current.client
-    _content(state)
-    headers = {'Authorization': 'Bearer ' + state.state['content']['token']}
+    _verify_content(current.client, saved)
+    headers = {'Authorization': 'Bearer ' + saved['token']}
     archive = tmp_path / 'image-probe.zip'
     package(archive, 'image-probe', '0.1.0', ['stats.basic'])
     with archive.open('rb') as stream:
@@ -193,8 +262,7 @@ def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_p
     for name in ('storage', 'skills'):
         (image.root / 'data' / name).rename(image.root / 'data' / ('retained-' + name))
     replacement = image.start(os.environ['LANGBOT_IMAGE_CANDIDATE'], 'replacement')
-    state.client = replacement.client
-    _content(state)
+    _verify_content(replacement.client, saved)
     assert _data(replacement.client.get(permissions, headers=headers)) == granted
     assert _plugin_call(replacement.client, headers)['ok'] is True
     _data(
