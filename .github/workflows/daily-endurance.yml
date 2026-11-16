@@ -483,7 +483,6 @@ jobs:
       - name: Install Core with the in-tree SDK
         run: |
           uv sync --dev --frozen
-          uv pip install ./sdk
       - name: Prepare disposable PostgreSQL and MinIO
         env:
           GH_TOKEN: ${{ github.token }}

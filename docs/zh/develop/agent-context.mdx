@@ -17,14 +17,14 @@ LangBot 拥有完整的 Web 前端，几乎所有操作都可以通过前端完�
 
 - **后端**：Python（`>=3.11,<4.0`），使用 `uv` 管理依赖；Web 框架为 Quart（Flask 的异步版本）。HTTP API 与预编译好的前端都由后端在 `http://127.0.0.1:5300` 上提供服务。
 - **前端**：`web/` 是 **Vite + React Router 7 + shadcn/ui + Tailwind CSS** 的 SPA，使用 `pnpm` 管理依赖（注意：**不是** Next.js，`dev` 脚本就是 `vite`）。
-- **插件系统**：插件 SDK、CLI（`lbp`）、插件运行时、Box 沙箱运行时以及 LangBot 与插件共享的实体/API 定义，全部位于 LangBot 仓库的 [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) 目录，独立发版为 PyPI 包 `langbot-plugin`。LangBot 通过 `pyproject.toml` 中固定版本的 `langbot-plugin` 包依赖它，而不是直接使用 `sdk/` 目录。
+- **插件系统**：插件 SDK、CLI（`lbp`）、插件运行时、Box 沙箱运行时以及 LangBot 与插件共享的实体/API 定义，全部位于 LangBot 仓库的 [`sdk/`](https://github.com/langbot-app/LangBot/tree/master/sdk) 目录，独立发版为 PyPI 包 `langbot-plugin`。仓库根目录的 `uv sync` 自动使用同仓 `sdk/`，源码、Docker、ZIP 和 fnOS 部署无需等待 SDK 发包；单独的 Core PyPI 安装仍依赖已发布 SDK。
 
 ## 仓库目录结构
 
 ```
 LangBot/
 ├── main.py                     # 入口垫片 -> langbot.__main__.main()
-├── pyproject.toml              # Python 项目与依赖（uv），固定 langbot-plugin==<x.y.z>
+├── pyproject.toml              # Python 项目与依赖（uv），配置同仓 SDK 来源
 ├── src/langbot/
 │   ├── __main__.py             # 真正的入口，定义 CLI 参数（--standalone-runtime / --standalone-box / --debug）
 │   ├── pkg/                    # 核心后端包

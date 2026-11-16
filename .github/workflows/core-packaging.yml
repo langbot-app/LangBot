@@ -28,11 +28,12 @@ jobs:
       - name: Build Core sdist and wheel without installing Core dependencies
         run: |
           uv build
-          python scripts/check_core_artifacts.py dist/*.whl dist/*.tar.gz
+          python scripts/check_core_artifacts.py dist/*.whl
+          python scripts/check_core_artifacts.py --source dist/*.tar.gz
       - name: Verify Git export excludes plugin sources
         run: |
           git archive --format=tar --output="$RUNNER_TEMP/core-source.tar" HEAD
-          python scripts/check_core_artifacts.py "$RUNNER_TEMP/core-source.tar"
+          python scripts/check_core_artifacts.py --source "$RUNNER_TEMP/core-source.tar"
       - name: Verify the production Docker context exclusion
         run: |
           docker build --file - --tag langbot-packaging-boundary . <<'DOCKERFILE'
@@ -40,4 +41,4 @@ jobs:
           COPY . /app
           DOCKERFILE
           docker save langbot-packaging-boundary -o "$RUNNER_TEMP/core-context.tar"
-          python scripts/check_core_artifacts.py --docker-archive "$RUNNER_TEMP/core-context.tar"
+          python scripts/check_core_artifacts.py --source --docker-archive "$RUNNER_TEMP/core-context.tar"

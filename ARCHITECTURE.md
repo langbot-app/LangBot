@@ -23,11 +23,11 @@ LangBot is a monorepo whose parts are released independently.
 
 - `LangBot/` is the main product: backend, web UI, platform adapters, pipeline engine, HTTP API, MCP server, RAG, persistence, skills integration, and the bridge code that talks to runtimes.
 - `LangBot/plugins/` contains the official plugin catalog (`Runner/`, `KnowledgeEngine/`, `misc/`). Sources share this checkout; each plugin retains independent tests, dependencies, versioning, packaging and Marketplace publication. Core wheels, sdists, Docker contexts, release ZIPs and fnOS packages exclude this tree. See `plugins/RELEASING.md` and `plugins/MIGRATION.md`.
-- `LangBot/sdk/` is published to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`, no GitHub Release) and pinned exactly in `LangBot/pyproject.toml`; Core installs that PyPI version, never the tree. It contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`). Core artifacts exclude this tree. See `sdk/RELEASING.md`. It was imported from the archived `langbot-app/langbot-plugin-sdk` repository at v0.7.24 (`sdk/SOURCE.json`).
+- `LangBot/sdk/` is published independently to PyPI as `langbot-plugin` (tags `sdk/vX.Y.Z`, no GitHub Release). Core's `uv` source maps its exact package requirement to editable `sdk/`; checkouts, Docker, release ZIPs and fnOS use this coordinated source. The standalone Core wheel excludes SDK code and retains the published PyPI dependency. The SDK contains plugin developer APIs, shared entities, `lbp`, the Plugin Runtime (`lbp rt`), and the Box Runtime (`lbp box`). See `sdk/RELEASING.md`. It was imported from the archived `langbot-app/langbot-plugin-sdk` repository at v0.7.24 (`sdk/SOURCE.json`).
 - [`langbot-cli`](https://github.com/langbot-app/langbot-cli) is a separately released `lbctl` client for managing a running Workspace through the HTTP Service API; it is not part of the LangBot server or the SDK's `lbp` CLI.
 - Plugins import SDK APIs from `langbot_plugin.*`; the LangBot main process imports the same package for shared entities and runtime protocols.
 
-This split matters. If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, change `sdk/` and the Core bridge in one PR, run the SDK tests in `sdk/`, and test Core with the in-tree SDK overlaid (`uv pip install ./sdk`, then `uv run --no-sync ...`). Core can only rely on the change after the SDK is released and the pin is bumped.
+If a change modifies SDK entities, component APIs, action protocols, `lbp rt`, or `lbp box`, change `sdk/` and the Core bridge in one PR, run the SDK tests in `sdk/`, and test Core through standard root `uv sync`. Source deployments can use the coordinated change immediately; publishing the standalone Core PyPI package still requires a matching SDK release and Core pin. Independently deployed Runtimes and plugins retain their own installation and compatibility requirements.
 
 ## Startup Path
 
@@ -46,7 +46,7 @@ The central runtime object is `pkg/core/app.py::Application`. It is a service lo
 ```text
 LangBot/
 ├── main.py                         # Entrypoint shim
-├── pyproject.toml                  # Python package, deps, pinned langbot-plugin
+├── pyproject.toml                  # Python package, deps, local SDK source
 ├── src/langbot/
 │   ├── __main__.py                 # CLI entrypoint and boot handoff
 │   ├── pkg/
@@ -362,7 +362,7 @@ When one of these changes, update the others if the behavior or contract changed
 - New pipeline behavior: add or extend a pipeline stage family under `pkg/pipeline/`; avoid putting pipeline rules in adapters.
 - New LLM provider/requester: work under `pkg/provider/modelmgr/` and related service/UI surfaces.
 - New LLM tool source: extend `pkg/provider/tools/loaders/` and `ToolManager` intentionally.
-- New plugin component/API/protocol: change `sdk/` in the same PR as the LangBot bridge code; release the SDK before the Core release that needs it.
+- New plugin component/API/protocol: change `sdk/` in the same PR as the LangBot bridge code; release the SDK before publishing the standalone Core PyPI package that needs it.
 - New Box capability: change both `pkg/box/` and `sdk/src/langbot_plugin/box/`, plus config and tests.
 - New database schema: add an Alembic migration.
 

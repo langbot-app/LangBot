@@ -59,15 +59,14 @@ Plugin Runtime 接受以下参数：
 
 ### 使 LangBot 使用您本地修改过的 SDK
 
-`uv sync` 默认为 LangBot 安装 `pyproject.toml` 中固定的 PyPI 版本 `langbot-plugin`，而不是仓库里的 `sdk/` 目录。若您修改了诸如消息实体、插件数据定义等内容，需要将其安装到 LangBot 环境，以确保运行期间数据格式兼容。
-
-请在**确保已激活 LangBot 目录下的虚拟环境（.venv）的终端**中，于 LangBot 仓库根目录执行：
+在 LangBot 仓库根目录执行 `uv sync`，会自动从同仓 `sdk/` 以可编辑方式安装 SDK。修改消息实体或插件数据定义后，Core 会直接使用这些源码，无需另行安装或等待 SDK 发包。
 
 ```bash
-uv pip install ./sdk
+uv sync --dev
+uv run main.py --standalone-runtime
 ```
 
-这将把您修改后的 SDK 安装到 LangBot 的环境。
+独立部署的 Runtime 需使用配套的仓库源码或已发布 SDK；Core 的安装不会自动升级其他 Runtime。单独从 PyPI 安装 Core 时，仍使用其声明的已发布 SDK 版本。
 
 ### 使 LangBot 连接到此运行时
 
@@ -78,8 +77,7 @@ plugin:
   runtime_ws_url: ws://localhost:5400/control/ws
 ```
 
-并在已激活 LangBot 虚拟环境的终端中，直接使用 Python 启动主程序并携带参数`--standalone-runtime`（如：`python main.py --standalone-runtime`）。直接调用当前虚拟环境的 Python 不会再次同步依赖，因此不会把刚刚安装的本地 SDK 覆盖为 PyPI 版本。\
-重启 LangBot，将会使用 WebSocket 连接到此运行时。
+在 LangBot 仓库根目录运行 `uv run main.py --standalone-runtime`。重启 LangBot 后，将使用 WebSocket 连接到此运行时。
 
 默认情况下无需配置 `LANGBOT_PLUGIN_RUNTIME_CONTROL_TOKEN`：当 LangBot 与 Runtime 两端都未设置时，OSS 的本地控制连接直接建立。若部署环境需要为 5400 控制端口增加共享密钥，则应在两端配置同一个至少 32 位的高熵值。Runtime 端配置后，未携带相同密钥的 LangBot 会被拒绝；只在 LangBot 端配置并不会启用 Runtime 端的认证。
 

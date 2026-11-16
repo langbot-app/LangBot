@@ -128,10 +128,8 @@ jobs:
           echo "Test Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
   in-tree-sdk:
-    # Core normally installs the PyPI-pinned SDK. This job overlays the in-tree
-    # sdk/ so a pull request that changes SDK and Core together is tested as a
-    # unit. Releases still require the SDK to be published first (see
-    # scripts/check_sdk_release_pin.py).
+    # Standard Core installs use sdk/ through uv's local source. Keep the
+    # cross-component contracts separate from the Python-version matrix.
     name: Core with in-tree SDK
     timeout-minutes: 20
     runs-on: ubuntu-latest
@@ -146,7 +144,6 @@ jobs:
       - name: Install dependencies with the in-tree SDK
         run: |
           uv sync --dev --frozen
-          uv pip install ./sdk
           uv run --no-sync python -c "import langbot_plugin, pathlib; print(pathlib.Path(langbot_plugin.__file__).parent)"
       - name: Run unit + smoke tests
         run: uv run --no-sync pytest tests/unit_tests/ tests/smoke/ -q --tb=short

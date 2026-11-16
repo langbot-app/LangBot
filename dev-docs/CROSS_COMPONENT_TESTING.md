@@ -4,11 +4,10 @@ Run the paths affected by the change before recommending merge. A passing PR che
 
 ## Shared SDK, API and Runtime changes
 
-Keep the normal `uv sync --dev --frozen` tests against Core's published SDK pin. In a separate environment or after that run, install the candidate SDK and preserve it for every subsequent command:
+Standard Core `uv sync` installs the SDK from this checkout's `sdk/` through the root local source declaration. No overlay or SDK publication is needed to test coordinated changes:
 
 ```sh
 uv sync --dev --frozen
-uv pip install ./sdk
 uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core -q -rs
 ```
 
@@ -58,7 +57,7 @@ old Core HTTP writes, migration, source-volume removal, restart and a second
 Core. Box is disabled here; Runtime acceptance remains the separate network suite.
 The normal daily suite does not provision historical Core interpreters.
 
-The existing `daily-endurance.yml` runs both account-free suites on GitHub-hosted Linux, overlays the in-tree SDK, and creates temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope. It neither adds a PR required check nor runs the heavyweight recovery suite on every PR.
+The existing `daily-endurance.yml` runs both account-free suites on GitHub-hosted Linux, installs Core with its local SDK, and creates temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope. It neither adds a PR required check nor runs the heavyweight recovery suite on every PR.
 
 For nsjail, use an already prepared host and its delegated `LANGBOT_NSJAIL_CGROUP_V1_PARENT`. For E2B, use explicitly authorized `E2B_API_KEY`, `E2B_API_URL`, `E2B_SANDBOX_URL` and optional `E2B_TEMPLATE`. Set `LANGBOT_CORE_NETWORK_BACKEND=nsjail` or `e2b` for the same network suite. Do not add credentials, change machine configuration, or expose private development machines as runners for public PR code. These backend runs remain developer acceptance until suitable dedicated infrastructure exists.
 
