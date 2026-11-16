@@ -129,6 +129,7 @@ def build_plan():
         'selection': plan,
         'python_versions': versions,
         'full_unit': full_unit,
+        'runtime_contracts': full_unit or any(flags[name] for name in ('sdk', 'permissions', 'box', 'persistence')),
         'full_e2e': full_e2e,
         'unit_targets': targets,
         'integration_targets': [] if plan['integration'] else integration,

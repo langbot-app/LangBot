@@ -81,6 +81,37 @@ class CoverageWorkflowTests(unittest.TestCase):
             with self.subTest(paths=paths):
                 self.assertEqual(select_core_tests(paths, False, ROOT), FULL)
 
+    def test_runtime_contracts_only_run_for_the_affected_or_full_lane(self):
+        flags = ('CORE', 'CORE_FULL', 'SDK', 'COMPATIBILITY', 'PERSISTENCE', 'PERMISSIONS', 'BOX', 'FRONTEND')
+        routine = ['src/langbot/pkg/discover/discover.py']
+        cases = [
+            (routine, {'CORE'}, False),
+            *[(routine, {'CORE', flag}, True) for flag in ('SDK', 'PERSISTENCE', 'PERMISSIONS', 'BOX')],
+            (['.github/workflows/run-tests.yml'], set(flags), True),
+            ([], set(flags), True),
+        ]
+        for paths, selected, expected in cases:
+            with self.subTest(paths=paths, flags=selected), tempfile.NamedTemporaryFile() as output:
+                subprocess.run(
+                    [sys.executable, 'tools/ci_core_tests.py', 'plan'],
+                    cwd=ROOT,
+                    env={
+                        **os.environ,
+                        **{flag: json.dumps(flag in selected) for flag in flags},
+                        'CHANGED_PATHS': json.dumps(paths),
+                        'GITHUB_OUTPUT': output.name,
+                    },
+                    check=True,
+                    capture_output=True,
+                )
+                results = dict(line.split('=', 1) for line in Path(output.name).read_text().splitlines())
+                self.assertEqual(json.loads(results['runtime_contracts']), expected)
+        for name in ('Run required Core and SDK protocol contracts', 'Run Runtime artifact transport'):
+            with self.subTest(step=name):
+                guard = next(step['if'] for step in JOBS['test']['steps'] if step.get('name') == name)
+                self.assertIn("matrix.python-version == '3.12'", guard)
+                self.assertIn("needs.plan.outputs.runtime_contracts == 'true'", guard)
+
     def test_summary_gate_matches_selected_jobs_and_fails_closed(self):
         command = next(
             step['run'] for step in JOBS['coverage']['steps'] if step.get('name') == 'Verify required test jobs'

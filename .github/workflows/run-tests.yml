@@ -36,6 +36,7 @@ jobs:
       unit_targets: ${{ steps.plan.outputs.unit_targets }}
       integration_targets: ${{ steps.plan.outputs.integration_targets }}
       full_unit: ${{ steps.plan.outputs.full_unit }}
+      runtime_contracts: ${{ steps.plan.outputs.runtime_contracts }}
       full_e2e: ${{ steps.plan.outputs.full_e2e }}
     steps:
       - uses: actions/checkout@v4
@@ -127,13 +128,13 @@ jobs:
             -q --tb=short -rs --junitxml=cwe94-results.xml
 
       - name: Run required Core and SDK protocol contracts
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.12' && needs.plan.outputs.runtime_contracts == 'true'
         run: |
           uv run --no-sync pytest tests/integration/plugin --required-suite sdk_core \
             -q --tb=short -rs --junitxml=sdk-core-results.xml
 
       - name: Run Runtime artifact transport
-        if: matrix.python-version == '3.12'
+        if: matrix.python-version == '3.12' && needs.plan.outputs.runtime_contracts == 'true'
         run: |
           uv run --no-sync pytest tests/integration/skill/test_runtime_artifact_cache.py \
             -o xfail_strict=true -q --tb=short -rs --junitxml=runtime-artifact-results.xml
