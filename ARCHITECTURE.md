@@ -220,7 +220,7 @@ In this repo:
   Skill loader supplies generic read-only mounts in legacy mode and pinned artifact
   references in network mode. `mcp_stdio.py`
   and execution-backed tools depend on Box availability.
-- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or explicit database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Legacy resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`. Network mode reads verified publication resources without restoring a tree and sends exact publications to Box without that cache. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
+- `pkg/skill/repository.py` is the fenced Workspace boundary for filesystem or database persistence. Database catalogs and retained versions live in `skill_registry`/`skill_versions`; package bytes use the shared database/named-S3 `pkg/storage/content.py` store. Metadata reads do not touch local packages. Legacy resource reads and execution snapshots rebuild a verified cache under `skills.root/.database-cache`. Network mode reads verified publication resources without restoring a tree and sends exact publications to Box without that cache. Updates use a database `base_revision` CAS in the same tenant transaction as version/content writes. The filesystem backend retains the SDK `SkillStore` behavior. See [Skill persistence](dev-docs/SKILL_PERSISTENCE.md).
 - `pkg/skill/manager.py` caches the Core repository catalog for progressive disclosure. Activation and read-only resource tools do not require Box; script execution and Workspace mutation still do.
 
 Legacy durable Box Workspace storage is shared across placement generations, but
@@ -269,13 +269,14 @@ Skill storage uses `skills.root`. Box execution config lives under `box:`:
 marked for removal in the next major version. Start LangBot with
 `--standalone-box` when connecting to an externally launched Box runtime.
 
-Explicit `box.file_transfer_mode: network` removes Core's shared workspace/root
+`box.file_transfer_mode: network` removes Core's shared workspace/root
 requirement. Runtime must acknowledge network workspace support during INIT and
 keeps its own independently configured local roots. Draft registration archives a
 bounded, link-free directory inside Box, downloads it through the authenticated
 file protocol, then validates and publishes once with the existing revision CAS.
 Run completion removes only that run's inbox, outbox and snapshots through Runtime;
-drafts and other runs remain. This does not switch defaults or migrate existing data.
+drafts and other runs remain. Fresh-install defaults and offline legacy import are
+selected during startup as described in the persistence contract.
 
 ## HTTP API, Web UI, and MCP Server
 
@@ -310,7 +311,7 @@ Persistence is centered on `pkg/persistence/mgr.py`.
 - Fresh schemas are created from current metadata, then Alembic migrations run to head. LangBot 4.x does not upgrade 3.x databases.
 - New schema changes use Alembic under `pkg/persistence/alembic/versions/`; there is no legacy migration chain in 4.x.
 
-Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Most long-lived managers read from `ap.instance_config.data`.
+Configuration starts from `src/langbot/templates/config.yaml` and is generated into `data/config.yaml` on first run. Fresh files select database Skill/content persistence and network Box transfer; old explicit choices and missing-key legacy behavior remain compatible. Before producers start, scoped legacy publications and local assets import with database-owned progress and fencing, retaining old sources; see [Skill persistence](dev-docs/SKILL_PERSISTENCE.md). Most long-lived managers read from `ap.instance_config.data`.
 
 Storage maintenance applies `storage.media_cache.retention_days` to both CAS files and historical inline images. Inline image expiry uses the owning record's creation time and preserves text, URLs, and record identity. It does not backfill CAS. `pkg/storage/inline_media_cleanup.py` processes one payload row at a time, with a per-table limit of 100 indexed candidates or 8 MiB of JSON characters per maintenance pass (one oversized row may exceed the latter limit). Run events lack a Workspace column, so their candidate cursor also advances past foreign or missing records; payloads are loaded only after checking Workspace ownership. Durable Workspace metadata cursors and timestamp/identity indexes keep completed history out of subsequent scans; newly written history must retain its actual creation timestamp. Updates and cursor advancement commit together. Invalid historical JSON is preserved. SQLite pages become reusable after payload removal; the database file is not automatically vacuumed by this task.
 

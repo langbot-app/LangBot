@@ -21,6 +21,10 @@ class BoxRuntimeUnavailableError(BoxError):
     """Raised when the standalone Box Runtime service is unavailable."""
 
 
+class BoxRuntimeCompatibilityError(BoxRuntimeUnavailableError):
+    """A connected Runtime cannot acknowledge the configured protocol."""
+
+
 class BoxAdmissionError(BoxError):
     """Raised when a managed sandbox request has no valid admission grant."""
 

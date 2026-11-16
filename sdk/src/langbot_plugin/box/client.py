@@ -14,7 +14,7 @@ from langbot_plugin.entities.io.context import ActionContext
 from langbot_plugin.entities.io.errors import ActionCallError
 
 from .actions import LangBotToBoxAction
-from .errors import BoxError, BoxRuntimeUnavailableError
+from .errors import BoxError, BoxRuntimeCompatibilityError, BoxRuntimeUnavailableError
 from .models import (
     BoxArtifactDescriptor,
     BoxExecutionResult,
@@ -608,7 +608,7 @@ class ActionRPCBoxClient(BoxRuntimeClient):
             or result.get("directory_archive") is not True
             or result.get("artifact_cache_preflight") is not True
         ):
-            raise BoxRuntimeUnavailableError(
+            raise BoxRuntimeCompatibilityError(
                 "Network workspaces require an updated Box Runtime"
             )
 

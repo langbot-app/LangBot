@@ -1,15 +1,34 @@
 # Skill and persistent content storage
 
-`skills.persistence: database` stores the Skill catalog and retained immutable
-versions in the business database. `storage.use: persistent` also routes scoped
-uploads and public media through the same content store. These are explicit
-opt-ins; existing filesystem catalogs and local/S3 storage remain compatible.
-Configuration and deployment limits are in the public Skills guide.
-Existing Skill directories, uploads and media are not imported automatically.
-Keep their original backend and migrate a populated deployment before switching;
-persistent mode does not guess a legacy fallback for missing references.
-Database Skills and package downloads require the coordinated SDK publication
-helpers; the existing PyPI pin remains compatible with the filesystem default.
+Fresh configuration uses `skills.persistence: database`, `storage.use: persistent`
+and `box.file_transfer_mode: network`. Existing explicit choices remain intact;
+LoadConfig fills older missing keys with filesystem/local/legacy. The constructor
+fallbacks retain those compatibility semantics for embedding callers too.
+Use coordinated Core SDK and Runtime builds: the published package pin is a
+separate artifact from this source tree. Missing SDK capabilities and a connected
+Runtime's incompatible handshake stop startup. Ordinary Runtime unavailability
+retains OSS management access, but blocks an actual nonempty legacy import.
+Completed imports do not require Runtime readiness. Disabling Box still permits
+read-only Skills and management. See the public Skills guide for upgrade
+steps and rollback boundaries.
+
+Before HTTP, plugin, bot and tool producers start, database repositories import
+accessible scoped filesystem publications. `SkillStore.publication_inventory`
+strictly discovers current pointers and retained versions, including versions
+whose registration was deleted. Export checks the complete tree and manifest.
+A Workspace database lease fences concurrent importers; each version and its
+checkpoint commit together. Final current pointers and completion commit together,
+so retained history never becomes an accidental current version. Old writers must
+be stopped during this window; a new importer lease cannot fence an old release.
+
+The import keeps source files. `skills.migration.require_source` and
+`storage.migration.require_source` make an explicitly expected old volume mandatory.
+Without a recorded pending source or that expectation, a new replica cannot know
+whether an absent volume once held data. Completed database records bypass source
+IO entirely. Changing a pending source, corrupt bytes or conflicting existing
+publications aborts startup instead of silently losing data. Local scoped assets
+retain their keys; unscoped media can be claimed only by the OSS singleton.
+Explicit S3 storage is not automatically relocated.
 
 ## Authority and version identity
 
@@ -95,6 +114,5 @@ other databases share it, include their complete reference sets too. Delete only
 absent keys older than the operational grace period.
 Do not use an age-only S3 lifecycle rule on the publication prefix: retained
 versions can remain valid indefinitely. Keep every referenced content row and
-every published version. Automatic legacy import and default switching remain
-separate stages tracked by #3010. Runtime-owned cache
+every published version. Legacy import and default switching are tracked by #3010. Runtime-owned cache
 GC is described in the artifact-cache contract above.

@@ -302,6 +302,10 @@ spec:
         env:
         - name: LANGBOT_BOX_DATA_DIR
           value: /app/data/box/runtime
+        # Network INIT does not accept Core filesystem roots. Keep Docker
+        # artifact projections on Box's node-visible mount as well.
+        - name: LANGBOT_BOX_CONFIG
+          value: '{"local":{"host_root":"/app/data/box","allowed_mount_roots":["/app/data/box"]}}'
         - name: TZ
           valueFrom:
             configMapKeyRef:
@@ -327,8 +331,8 @@ spec:
             configMapKeyRef:
               name: langbot-config
               key: LANGBOT_BLOCKING_EXECUTOR_MAX_INFLIGHT_PER_SCOPE
-        # The Box runtime does NOT read box.local.* / BOX__* from its own env;
-        # it receives its functional configuration from LangBot via INIT.
+        # Runtime roots come from LANGBOT_BOX_CONFIG; other settings arrive
+        # through Core's INIT RPC. BOX__* variables here are not interpreted.
         volumeMounts:
         # Box workspace root — identical path on node, box, and sandbox
         # containers (see the IMPORTANT note above).

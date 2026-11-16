@@ -215,6 +215,15 @@ class BoxService:
             if not self._cloud_managed and self.file_transfer_mode != 'network':
                 await self._purge_attachment_dirs()
         except Exception as exc:
+            from langbot_plugin.box import errors as sdk_box_errors
+
+            compatibility_error = getattr(sdk_box_errors, 'BoxRuntimeCompatibilityError', None)
+            if compatibility_error is not None and (
+                isinstance(exc, compatibility_error) or isinstance(exc.__cause__, compatibility_error)
+            ):
+                if self._cloud_managed:
+                    await self._abort_failed_cloud_initialization()
+                raise
             self.ap.logger.warning(f'LangBot Box runtime unavailable, sandbox features disabled: {exc}')
             self._available = False
             self._connector_error = str(exc)

@@ -281,6 +281,94 @@ class DatabaseSkillRepository:
                     )
                 )
 
+    @staticmethod
+    def _migration_skill(skill):
+        return json.loads(
+            json.dumps(
+                {key: value for key, value in skill.items() if key not in _LOCAL_FIELDS},
+                ensure_ascii=False,
+                default=str,
+            )
+        )
+
+    async def import_retained_publication(self, context, publication, uow):
+        """Import verified legacy bytes without changing a current registry pointer."""
+        skill = self._migration_skill(publication['skill'])
+        name = SkillStore._validate_skill_name(skill['name'])
+        revision = skill['revision']
+        SkillStore._validate_revision(revision)
+        archive = publication['file_bytes']
+        if not isinstance(archive, bytes) or len(archive) > MAX_PUBLICATION_BYTES:
+            raise ValueError('Skill migration archive exceeds the database persistence limit')
+        existing = (
+            await uow.execute(
+                sqlalchemy.select(SkillVersion).where(
+                    *self._scope(SkillVersion, context), SkillVersion.name == name, SkillVersion.revision == revision
+                )
+            )
+        ).scalar_one_or_none()
+        if existing is not None:
+            if existing.manifest_json != publication['manifest'] or existing.skill_json != skill:
+                raise ValueError(f'Skill migration conflicts with retained version {name}@{revision}')
+            reference = existing.content_ref
+        else:
+            reference = await self.content.put(context, owner_type='skill', owner=name, key=revision, value=archive)
+            await uow.execute(
+                sqlalchemy.insert(SkillVersion).values(
+                    uuid=str(uuid.uuid4()),
+                    workspace_uuid=context.workspace_uuid,
+                    instance_uuid=context.instance_uuid,
+                    name=name,
+                    revision=revision,
+                    manifest_json=publication['manifest'],
+                    skill_json=skill,
+                    content_ref=reference,
+                )
+            )
+        # A checkpoint must not bless a missing/corrupt object-store write or an old target blob.
+        if await self.content.get(context, reference, max_bytes=MAX_PUBLICATION_BYTES) != archive:
+            raise ValueError(f'Skill migration content differs for {name}@{revision}')
+
+    async def publish_migrated_registry(self, context, skills, uow):
+        """Expose the original current pointers only with the final import marker."""
+        dialect = self.ap.persistence_mgr.get_db_engine().dialect.name
+        insert = sqlite_insert if dialect == 'sqlite' else pg_insert
+        for source in skills:
+            skill = self._migration_skill(source)
+            name, revision = skill['name'], skill['revision']
+            version = (
+                await uow.execute(
+                    sqlalchemy.select(SkillVersion).where(
+                        *self._scope(SkillVersion, context),
+                        SkillVersion.name == name,
+                        SkillVersion.revision == revision,
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is None or version.skill_json != skill:
+                raise ValueError(f'Skill migration has no verified current version for {name}')
+            await uow.execute(
+                insert(SkillRegistry)
+                .values(
+                    uuid=str(uuid.uuid4()),
+                    workspace_uuid=context.workspace_uuid,
+                    instance_uuid=context.instance_uuid,
+                    name=name,
+                    current_revision=revision,
+                    skill_json=skill,
+                )
+                .on_conflict_do_nothing(index_elements=['workspace_uuid', 'instance_uuid', 'name'])
+            )
+            registry = (
+                await uow.execute(
+                    sqlalchemy.select(SkillRegistry).where(
+                        *self._scope(SkillRegistry, context), SkillRegistry.name == name
+                    )
+                )
+            ).scalar_one()
+            if registry.current_revision != revision or registry.skill_json != skill:
+                raise ValueError(f'Skill migration conflicts with the current database registration for {name}')
+
     async def call(self, context, namespace: str, method: str, *args, **kwargs):
         if method == 'import_skill_zip':
             return await self._import_zip(context, *args, **kwargs)

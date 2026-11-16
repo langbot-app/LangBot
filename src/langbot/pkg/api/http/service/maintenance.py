@@ -332,6 +332,9 @@ class MaintenanceService:
         context: ExecutionContext,
         retention_days: int,
     ) -> int:
+        if getattr(self.ap.storage_mgr, 'persistent_content', False) is True:
+            # Persistent-content retention must not delete the old import source.
+            return 0
         provider = self.ap.storage_mgr.storage_provider
         provider_name = provider.__class__.__name__
         if provider_name == 'LocalStorageProvider':

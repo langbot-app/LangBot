@@ -286,6 +286,18 @@ class BuildAppStage(stage.BootingStage):
         ap.box_service = box_service_inst
         await box_service_inst.initialize()
 
+        # No HTTP, plugin or bot writer may observe a partially imported catalog.
+        from ...skill.migration import initialize_skill_migration
+        from ...storage.migration import initialize_storage_migration
+
+        config = ap.instance_config.data
+        await initialize_skill_migration(
+            ap, source_required=config.get('skills', {}).get('migration', {}).get('require_source', False)
+        )
+        await initialize_storage_migration(
+            ap, source_required=config.get('storage', {}).get('migration', {}).get('require_source', False)
+        )
+
         llm_tool_mgr_inst = llm_tool_mgr.ToolManager(ap)
         ap.tool_mgr = llm_tool_mgr_inst
         await llm_tool_mgr_inst.initialize()

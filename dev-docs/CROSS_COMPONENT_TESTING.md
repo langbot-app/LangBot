@@ -38,6 +38,7 @@ export LANGBOT_PERSISTENCE_MINIO_ENDPOINT='http://127.0.0.1:9000'
 # Supply ACCESS_KEY/SECRET_KEY through the environment for the disposable MinIO.
 export LANGBOT_PERSISTENCE_CORE_E2E=1
 uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.py \
+  tests/integration/skill/test_legacy_skill_migration.py tests/integration/storage/test_legacy_storage_migration.py \
   tests/integration/persistence/test_skill_content_postgres.py tests/e2e/test_skill_persistence_replicas.py \
   --required-suite skill_persistence -q -rs --junitxml=skill-persistence.xml
 
@@ -48,6 +49,14 @@ LANGBOT_SKILL_NETWORK_E2E=1 uv run --no-sync pytest tests/e2e/test_skill_network
 ```
 
 `tests/utils/required_suites.py` enforces the selected behavior obligations and rejects missing cases, skips, xfails and xpasses. Do not use `-k`, `-m` or `--deselect` to turn partial execution into acceptance. The explicit paths above keep collection narrow; the suite still fails if a required contract is missing.
+
+For an actual legacy-Core upgrade, also run `tests/e2e/test_skill_legacy_upgrade.py`
+with `LANGBOT_UPGRADE_OLD_SOURCE`, `LANGBOT_UPGRADE_OLD_PYTHON` (using its own old
+SDK), and `LANGBOT_UPGRADE_POSTGRES_URL`. Supply a second fresh database through
+`LANGBOT_FRESH_POSTGRES_URL` to check generated-template defaults. This path runs
+old Core HTTP writes, migration, source-volume removal, restart and a second
+Core. Box is disabled here; Runtime acceptance remains the separate network suite.
+The normal daily suite does not provision historical Core interpreters.
 
 The existing `daily-endurance.yml` runs both account-free suites on GitHub-hosted Linux, overlays the in-tree SDK, and creates temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope. It neither adds a PR required check nor runs the heavyweight recovery suite on every PR.
 

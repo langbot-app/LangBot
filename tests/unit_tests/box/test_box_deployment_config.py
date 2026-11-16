@@ -1,7 +1,29 @@
 from pathlib import Path
+import json
+
+import yaml
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def test_kubernetes_network_artifact_root_is_visible_to_docker_daemon():
+    documents = yaml.safe_load_all((_REPO_ROOT / 'docker/kubernetes.yaml').read_text())
+    deployment = next(
+        item
+        for item in documents
+        if item and item.get('kind') == 'Deployment' and item['metadata']['name'] == 'langbot-box'
+    )
+    spec = deployment['spec']['template']['spec']
+    container = next(item for item in spec['containers'] if item['name'] == 'langbot-box')
+    environment = {item['name']: item.get('value') for item in container['env']}
+    local = json.loads(environment['LANGBOT_BOX_CONFIG'])['local']
+    root = local['host_root']
+    mount = next(item for item in container['volumeMounts'] if item['mountPath'] == root)
+    volume = next(item for item in spec['volumes'] if item['name'] == mount['name'])
+    assert Path(root).is_absolute()
+    assert local['allowed_mount_roots'] == [root]
+    assert volume['hostPath']['path'] == root
 
 
 def test_compose_injects_the_same_box_control_token_into_host_and_runtime():

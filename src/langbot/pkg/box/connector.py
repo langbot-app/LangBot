@@ -273,7 +273,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             raise BoxRuntimeUnavailableError('box runtime subprocess did not connect in time')
 
         if connect_error:
-            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
+            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}') from connect_error[0]
 
         self._subprocess = ctrl.process
 
@@ -339,7 +339,7 @@ class BoxRuntimeConnector(ManagedRuntimeConnector):
             raise BoxRuntimeUnavailableError(f'box runtime ws connection timed out ({ws_url})')
 
         if connect_error:
-            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}')
+            raise BoxRuntimeUnavailableError(f'box runtime connection failed: {connect_error[0]}') from connect_error[0]
 
     def _ensure_control_token(self, *, allow_generate: bool) -> str:
         if not self._control_token and allow_generate:

@@ -14,7 +14,7 @@ from langbot_plugin.box.errors import (
     BoxArtifactNotPreparedError,
     BoxCapacityExceededError,
     BoxError,
-    BoxRuntimeUnavailableError,
+    BoxRuntimeCompatibilityError,
     BoxSessionNotFoundError,
     BoxValidationError,
 )
@@ -113,7 +113,7 @@ async def test_init_requires_explicit_network_ack(mode, ack, accepted):
     if accepted:
         await client.init({"file_transfer_mode": mode})
     else:
-        with pytest.raises(BoxRuntimeUnavailableError, match="updated Box Runtime"):
+        with pytest.raises(BoxRuntimeCompatibilityError, match="updated Box Runtime"):
             await client.init({"file_transfer_mode": mode})
 
 

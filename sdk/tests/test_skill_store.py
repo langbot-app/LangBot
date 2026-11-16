@@ -82,6 +82,73 @@ def test_skill_namespace_is_stable_and_workspace_scoped():
     assert first.startswith("ws-")
 
 
+def test_publication_inventory_preserves_history_and_deleted_registrations(tmp_path):
+    store = SkillStore(tmp_path / "skills")
+    first = store.create_skill({"name": "history", "instructions": "first"})
+    second = store.update_skill(
+        "history", {"instructions": "second"}, base_revision=first["revision"]
+    )
+    removed = store.create_skill({"name": "removed", "instructions": "retained"})
+    store.delete_skill("removed")
+
+    inventory = store.publication_inventory()
+
+    assert [(item["name"], item["revision"]) for item in inventory["skills"]] == [
+        ("history", second["revision"])
+    ]
+    assert {(item["name"], item["revision"]) for item in inventory["versions"]} == {
+        ("history", first["revision"]),
+        ("history", second["revision"]),
+        ("removed", removed["revision"]),
+    }
+    for item in inventory["versions"]:
+        archive = store.export_skill_publication(item["name"], item["revision"])
+        assert archive["skill"]["revision"] == item["revision"]
+        assert (
+            store.export_skill_publication(
+                item["name"], item["revision"], max_bytes=len(archive["file_bytes"])
+            )["file_bytes"]
+            == archive["file_bytes"]
+        )
+        with pytest.raises(ValueError, match="byte limit"):
+            store.export_skill_publication(
+                item["name"], item["revision"], max_bytes=len(archive["file_bytes"]) - 1
+            )
+
+
+def test_publication_inventory_does_not_silently_skip_invalid_legacy_package(tmp_path):
+    root = tmp_path / "skills"
+    package = root / "broken"
+    package.mkdir(parents=True)
+    (package / "SKILL.md").write_bytes(b"\xff")
+
+    with pytest.raises(ValueError, match="UTF-8"):
+        SkillStore(root).publication_inventory()
+
+    assert not (root / ".langbot-skill-store" / "legacy-import-complete").exists()
+
+    marker = root / ".langbot-skill-store" / "legacy-import-complete"
+    marker.parent.mkdir(exist_ok=True)
+    marker.write_text("1\n")
+    with pytest.raises(ValueError, match="UTF-8"):
+        SkillStore(root).publication_inventory()
+
+
+def test_publication_inventory_rejects_a_linked_retained_manifest(tmp_path):
+    store = SkillStore(tmp_path / "skills")
+    created = store.create_skill({"name": "safe", "instructions": "exact"})
+    manifest = created["manifest_path"]
+    target = tmp_path / "manifest.json"
+    with open(manifest, "rb") as source:
+        target.write_bytes(source.read())
+    os.chmod(os.path.dirname(manifest), 0o755)
+    os.unlink(manifest)
+    os.symlink(target, manifest)
+
+    with pytest.raises(ValueError, match="regular file"):
+        store.publication_inventory()
+
+
 def test_pinned_revision_remains_readable_after_publishing_v2(tmp_path):
     store = SkillStore(tmp_path / "skills")
     v1 = store.create_skill({"name": "safe", "instructions": "version one"})

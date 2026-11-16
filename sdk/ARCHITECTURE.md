@@ -482,6 +482,9 @@ and only then advances the registry pointer. Updates require the current
 active or recoverable runs. Former mutable package directories are only a
 one-time online-upgrade import source.
 
+`publication_inventory` strictly enumerates current registrations and all retained
+versions for offline Core import, including deleted registrations. All old writers
+must be stopped; corrupt or unsafe sources abort rather than disappearing.
 `export_skill_publication` and `restore_skill_publication` preserve an exact
 publication across disposable stores without changing its tree revision.
 Core's optional database repository uses these helpers for temporary CRUD and
