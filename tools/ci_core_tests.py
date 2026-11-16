@@ -63,6 +63,8 @@ def select_core_tests(paths, full, root):
                     return FULL
                 area = path.parts[3]
                 unit.update(f'tests/unit_tests/{item}' for item in UNIT_AREAS[area])
+                # Legacy root-level regressions also exercise these source areas.
+                unit.update(test.relative_to(root).as_posix() for test in (root / 'tests/unit_tests').glob('test_*.py'))
                 integration.update(f'tests/integration/{item}' for item in INTEGRATION_AREAS.get(area, ()))
         elif name.startswith('tests/'):
             test_root = next((prefix for prefix in TEST_ROOTS if name.startswith(prefix + '/')), None)

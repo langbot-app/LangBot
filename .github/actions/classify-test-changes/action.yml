@@ -37,6 +37,9 @@ outputs:
   packaging:
     description: Artifacts or deployment boundaries
     value: ${{ steps.classify.outputs.packaging }}
+  production_image:
+    description: Production image dependencies, deployment or build configuration
+    value: ${{ steps.classify.outputs.production_image }}
   workflows:
     description: Shared CI configuration
     value: ${{ steps.classify.outputs.workflows }}

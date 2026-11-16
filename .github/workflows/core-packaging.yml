@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       packaging: ${{ steps.select.outputs.packaging }}
+      production_image: ${{ steps.select.outputs.production_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,7 +65,7 @@ jobs:
 
   production-image:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.packaging == 'true'
+    if: github.event_name != 'pull_request' || needs.changes.outputs.production_image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:

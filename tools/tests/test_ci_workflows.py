@@ -71,7 +71,10 @@ class CoverageWorkflowTests(unittest.TestCase):
 
     def test_focused_routes_and_broad_fallback(self):
         targets, integration = select_core_tests(['src/langbot/pkg/command/callback.py'], False, ROOT)
-        self.assertEqual(targets, ['tests/smoke', 'tests/unit_tests/command', 'tests/unit_tests/pipeline'])
+        root_tests = {test.relative_to(ROOT).as_posix() for test in (ROOT / 'tests/unit_tests').glob('test_*.py')}
+        self.assertEqual(
+            set(targets), root_tests | {'tests/smoke', 'tests/unit_tests/command', 'tests/unit_tests/pipeline'}
+        )
         self.assertEqual(integration, ['tests/integration/pipeline'])
         self.assertEqual(
             select_core_tests(['tests/integration/persistence/test_migrations_postgres.py'], False, ROOT),
@@ -80,6 +83,29 @@ class CoverageWorkflowTests(unittest.TestCase):
         for paths in ([], ['src/langbot/new_boundary.py'], ['tests/integration/persistence/test_removed.py']):
             with self.subTest(paths=paths):
                 self.assertEqual(select_core_tests(paths, False, ROOT), FULL)
+
+    def test_source_changes_include_existing_root_level_regressions(self):
+        for source, regression in (
+            ('src/langbot/pkg/platform/sources/matrix.py', 'tests/unit_tests/test_matrix_relogin.py'),
+            (
+                'src/langbot/pkg/provider/modelmgr/requesters/litellmchat.py',
+                'tests/unit_tests/test_speech_models_api.py',
+            ),
+            ('src/langbot/pkg/pipeline/preproc/preproc.py', 'tests/unit_tests/test_preproc.py'),
+        ):
+            with self.subTest(source=source):
+                targets, _ = select_core_tests([source], False, ROOT)
+                self.assertIn(regression, targets)
+                self.assertNotEqual(targets, FULL[0])
+
+    def test_image_build_and_lightweight_packaging_have_separate_selection(self):
+        packaging = yaml.safe_load((ROOT / '.github/workflows/core-packaging.yml').read_text())['jobs']
+        self.assertIn("needs.changes.outputs.packaging == 'true'", packaging['artifacts']['if'])
+        self.assertIn("needs.changes.outputs.production_image == 'true'", packaging['production-image']['if'])
+        self.assertIn("github.event_name != 'pull_request'", packaging['production-image']['if'])
+        self.assertEqual(
+            packaging['changes']['outputs']['production_image'], '${{ steps.select.outputs.production_image }}'
+        )
 
     def test_runtime_contracts_only_run_for_the_affected_or_full_lane(self):
         flags = ('CORE', 'CORE_FULL', 'SDK', 'COMPATIBILITY', 'PERSISTENCE', 'PERMISSIONS', 'BOX', 'FRONTEND')

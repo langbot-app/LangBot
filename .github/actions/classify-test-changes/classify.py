@@ -18,6 +18,7 @@ LANES = (
     'docs',
     'plugins',
     'packaging',
+    'production_image',
     'workflows',
     'compiled_cli',
     'plugin_identity',
@@ -46,8 +47,22 @@ def under(path, *prefixes):
 def classify(paths):
     lanes = set()
     for path in paths:
+        if under(path, 'sdk/', 'docker/', 'packaging/') or path in {
+            'Dockerfile',
+            '.dockerignore',
+            'pyproject.toml',
+            'uv.lock',
+            'scripts/stamp_build_revision.py',
+            'scripts/check_core_artifacts.py',
+            '.github/workflows/core-packaging.yml',
+            '.github/actions/classify-test-changes/action.yml',
+            '.github/actions/classify-test-changes/classify.py',
+            'web/package.json',
+            'web/pnpm-lock.yaml',
+        }:
+            lanes.add('production_image')
         if under(path, '.github/workflows/', '.github/actions/', 'tools/'):
-            lanes |= ALL
+            lanes |= ALL - {'production_image'}
         elif path in {'pyproject.toml', 'uv.lock', 'pytest.ini', 'run_tests.sh', 'Makefile'}:
             lanes |= ALL - {'docs', 'workflows'}
         elif under(path, 'sdk/'):

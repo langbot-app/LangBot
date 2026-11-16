@@ -117,6 +117,33 @@ class ChangeSelectionTests(unittest.TestCase):
         self.assertIn('docs/en/renamed.md', changed)
         self.assertEqual(lanes, {'core', 'docs', 'permissions', 'persistence'})
 
+    def test_production_images_only_follow_image_inputs(self):
+        for path, expected in (
+            ('plugins/Runner/README.md', False),
+            ('plugins/Runner/LocalAgent/pkg/context_pipeline.py', False),
+            ('tools/README.md', False),
+            ('tools/entrypoints/regression_traffic.py', False),
+            ('.github/workflows/run-tests.yml', False),
+            ('src/langbot/pkg/platform/sources/matrix.py', False),
+            ('Dockerfile', True),
+            ('.dockerignore', True),
+            ('uv.lock', True),
+            ('sdk/src/langbot_plugin/box/client.py', True),
+            ('packaging/entrypoint.sh', True),
+            ('.github/workflows/core-packaging.yml', True),
+            ('.github/actions/classify-test-changes/classify.py', True),
+            ('web/pnpm-lock.yaml', True),
+        ):
+            with self.subTest(path=path):
+                self.git('reset', '--hard', self.base)
+                self.write(path)
+                self.commit()
+                lanes, changed = self.run_selector()
+                self.assertEqual(changed, [path])
+                self.assertEqual('production_image' in lanes, expected)
+                if path.startswith(('plugins/', 'tools/')):
+                    self.assertIn('packaging', lanes)
+
     def test_missing_base_fails_open_and_full_entries_do_not_use_event_diff(self):
         missing, paths = self.run_selector(base='f' * 40)
         self.assertEqual(paths, [])
