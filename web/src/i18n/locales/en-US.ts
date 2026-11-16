@@ -242,6 +242,14 @@ const enUS = {
     cancelled: 'Cancelled',
     ignored: 'Ignored',
   },
+  githubStarPrompt: {
+    title: 'LangBot has handled {{total}} events for you',
+    description:
+      'If LangBot has been helpful, a Star on GitHub helps more people discover it.',
+    later: 'Maybe later',
+    star: 'Star',
+    close: 'Close',
+  },
   assistant: {
     movePosition: 'Move assistant horizontally',
     resizeHeight: 'Resize assistant height',

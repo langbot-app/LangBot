@@ -242,6 +242,14 @@ const jaJP = {
     cancelled: 'キャンセル済み',
     ignored: '無視',
   },
+  githubStarPrompt: {
+    title: 'LangBot はこれまでに {{total}} 件のイベントを処理しました',
+    description:
+      'LangBot がお役に立っているなら、GitHub で Star を付けていただくと、より多くの人に届きます。',
+    later: '後で',
+    star: 'Star',
+    close: '閉じる',
+  },
   assistant: {
     movePosition: 'アシスタントを左右に移動',
     resizeHeight: 'アシスタントの高さを調整',

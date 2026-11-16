@@ -239,6 +239,14 @@ const esES = {
     cancelled: 'Cancelado',
     ignored: 'Ignorado',
   },
+  githubStarPrompt: {
+    title: 'LangBot ya ha procesado {{total}} eventos por ti',
+    description:
+      'Si LangBot te resulta útil, una estrella en GitHub ayuda a que más personas lo descubran.',
+    later: 'Más tarde',
+    star: 'Star',
+    close: 'Cerrar',
+  },
   assistant: {
     movePosition: 'Mover el asistente horizontalmente',
     resizeHeight: 'Ajustar la altura del asistente',
