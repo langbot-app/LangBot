@@ -69,7 +69,7 @@ uv run lbp rt                                  # or: lbp box, for standalone deb
 cd sdk && uv run pytest -q                     # SDK's own environment (Python >=3.10)
 ```
 
-CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and `Core with in-tree SDK` retains the cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
+CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and the main Core job proves in-tree SDK provenance and retains the affected cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
 
 Config keys in `data/config.yaml` / `src/langbot/templates/config.yaml`: `plugin.runtime_ws_url` (Docker default `langbot_plugin_runtime:5400/control/ws`), `box.enabled` / `box.backend` / `box.runtime.endpoint` (Docker default `langbot_box:5410`), `api.global_api_key`.
 

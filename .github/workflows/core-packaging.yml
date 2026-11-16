@@ -1,17 +1,36 @@
 name: Core packaging boundary
 
 on:
-  push:
-    paths: ['plugins/**', 'sdk/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
   pull_request:
-    paths: ['plugins/**', 'sdk/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: core-packaging-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  changes:
+    name: Select core packaging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      packaging: ${{ steps.select.outputs.packaging }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/classify-test-changes
+        id: select
+
   artifacts:
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -44,7 +63,8 @@ jobs:
           python scripts/check_core_artifacts.py --source --docker-archive "$RUNNER_TEMP/core-context.tar"
 
   production-image:
-    if: github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.packaging == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
