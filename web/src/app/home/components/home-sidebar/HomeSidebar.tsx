@@ -80,6 +80,10 @@ import SettingsDialog, {
   SETTINGS_SECTION_BY_ACTION,
 } from '@/app/home/components/settings-dialog/SettingsDialog';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
+import {
+  type ChangelogRelease,
+  fetchLangBotChangelog,
+} from '@/app/infra/http/LangBotChangelog';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { toast } from 'sonner';
 import {
@@ -1899,6 +1903,9 @@ export default function HomeSidebar({
   const [latestRelease, setLatestRelease] = useState<GitHubRelease | null>(
     null,
   );
+  const [changelogReleases, setChangelogReleases] = useState<
+    ChangelogRelease[]
+  >([]);
   const [hasNewVersion, setHasNewVersion] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -1991,22 +1998,41 @@ export default function HomeSidebar({
     // not see a "new version available" prompt in the sidebar. Skip the GitHub
     // release check entirely for edition=cloud.
     if (systemInfo?.edition !== 'cloud') {
-      getCloudServiceClientSync()
-        .getLangBotReleases()
+      const currentVersion = systemInfo?.version;
+      // Release notes come from the curated changelog on langbot.app. The
+      // Space-cached GitHub releases are only a fallback when that feed is
+      // unreachable, so the update prompt keeps working.
+      fetchLangBotChangelog()
         .then((releases) => {
-          if (releases && releases.length > 0) {
-            const latestStable = releases.find(
-              (r) => !r.prerelease && !r.draft,
+          if (releases.length === 0) throw new Error('empty changelog feed');
+          setChangelogReleases(releases);
+          if (currentVersion) {
+            setHasNewVersion(
+              compareVersions(releases[0].version, currentVersion),
             );
-            const latest = latestStable || releases[0];
-            setLatestRelease(latest);
-
-            const currentVersion = systemInfo?.version;
-            if (currentVersion && latest.tag_name) {
-              const isNewer = compareVersions(latest.tag_name, currentVersion);
-              setHasNewVersion(isNewer);
-            }
           }
+        })
+        .catch((changelogError) => {
+          console.warn(
+            'Failed to fetch langbot.app changelog, falling back to GitHub releases:',
+            changelogError,
+          );
+          return getCloudServiceClientSync()
+            .getLangBotReleases()
+            .then((releases) => {
+              if (releases && releases.length > 0) {
+                const latestStable = releases.find(
+                  (r) => !r.prerelease && !r.draft,
+                );
+                const latest = latestStable || releases[0];
+                setLatestRelease(latest);
+                if (currentVersion && latest.tag_name) {
+                  setHasNewVersion(
+                    compareVersions(latest.tag_name, currentVersion),
+                  );
+                }
+              }
+            });
         })
         .catch((error) => {
           console.error('Failed to fetch releases:', error);
@@ -2154,9 +2180,32 @@ export default function HomeSidebar({
                     </Badge>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="truncate text-xs text-muted-foreground">
-                      {systemInfo?.version}
-                    </span>
+                    {systemInfo?.edition !== 'cloud' &&
+                    changelogReleases.length > 0 ? (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title={t('version.whatsNewInCurrent')}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVersionDialogOpen(true);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setVersionDialogOpen(true);
+                          }
+                        }}
+                        className="truncate text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline cursor-pointer"
+                      >
+                        {systemInfo?.version}
+                      </span>
+                    ) : (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {systemInfo?.version}
+                      </span>
+                    )}
                     {hasNewVersion && (
                       <Badge
                         onClick={() => setVersionDialogOpen(true)}
@@ -2520,7 +2569,9 @@ export default function HomeSidebar({
       <NewVersionDialog
         open={versionDialogOpen}
         onOpenChange={setVersionDialogOpen}
-        release={latestRelease}
+        currentVersion={systemInfo?.version}
+        releases={changelogReleases}
+        fallbackRelease={latestRelease}
       />
       <SidebarGuide />
     </>
