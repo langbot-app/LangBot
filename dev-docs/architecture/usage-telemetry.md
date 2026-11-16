@@ -49,6 +49,16 @@
 | `ugc.library.browse` | kind | messaging/agent/other |
 | `ugc.prompt.apply` | kind | 同上 |
 | `ugc.install` | type, source, outcome, unfilled | type = plugin/mcp/skill；source = market/community/local/github/other；outcome = ok/failed；unfilled = yes/no（仅 MCP 有意义，其他填 no） |
+| `alert.state` | enabled, channel | enabled = yes/no；channel = auto/instance/space/off |
+| `alert.settings.update` | enabled, channel | 同上 |
+| `alert.incident` | rule, event | rule = pipeline_failures/model_failures/bot_offline/other；event = opened/resolved |
+| `alert.delivery` | notice, via, outcome | notice = fired/reminder/resolved/test；via = email/space/webhook；outcome = ok/failed/rate_limited |
+
+告警扩展（LANG-508）：`alert.state` 在每个 Workspace 的 heartbeat 构建时、取 usage 批次前计一次；只有实例和工作区同时启用时 enabled=yes，无设置行时采用 `default_enabled()`（默认关闭），channel 为保存的 email_channel。设置读取使用缓存，最多等待一秒；不可用时跳过，不影响心跳。`alert.settings.update` 在成功保存后使用工作区保存值计一次。
+
+`alert.incident` 只计成功 INSERT 的 opened，以及 UPDATE 实际从 firing 转为 resolved 的行数（包括静默自动恢复）；重复触达、唯一约束冲突、0 行更新不计。多副本各自只计本副本成功的数据库变更。`alert.delivery` 按 dispatch（含测试发送）保存的每条投递记录计一次，sent 映射为 ok，失败和限流保留对应值。
+
+告警维度非法值仅 rule 归一化为 other，其余丢弃整个计数；rate_limited 只允许用于 alert.delivery。批量增量必须是正整数，单次最多 1000000，仍遵守 256 个 key 上限和原有确认语义。关闭遥测时不记录任何告警计数，也不为心跳读取告警设置。仅上报上述枚举，不包含收件人、目标、错误文本或事件详情。
 
 ### 3. Core → Space 的确认语义
 

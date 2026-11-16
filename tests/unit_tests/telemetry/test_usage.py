@@ -100,6 +100,58 @@ def test_disabled_and_bad_config_are_noop(ap):
     assert usage.take_batch('ws') is None
 
 
+@pytest.mark.parametrize('metric', ['alert.state', 'alert.settings.update', 'alert.incident', 'alert.delivery'])
+def test_alert_schema_and_values(ap, metric):
+    dims = {name: usage.ALERT_ENUMS[name][0] for name in usage.SCHEMA[metric]}
+    for name in dims:
+        for value in usage.ALERT_ENUMS[name]:
+            valid = {**dims, name: value}
+            assert usage.normalize(metric, valid) == tuple(valid.values())
+            usage.inc(ap, 'ws', metric, **valid)
+        for invalid in ('private@example.com', '', None, 1):
+            bad = {**dims, name: invalid}
+            if name == 'rule':
+                assert usage.normalize(metric, bad)[0] == 'other'
+            else:
+                with pytest.raises(ValueError):
+                    usage.normalize(metric, bad)
+                usage.inc(ap, 'invalid', metric, **bad)
+                assert usage.take_batch('invalid') is None
+    entries = usage.take_batch('ws')['c']
+    assert all(list(entry[1]) == list(usage.SCHEMA[metric]) for entry in entries)
+
+
+def test_alert_outcome_is_metric_specific(ap):
+    assert usage.ALERT_ENUMS == {
+        'enabled': ('yes', 'no'),
+        'channel': ('auto', 'instance', 'space', 'off'),
+        'rule': ('pipeline_failures', 'model_failures', 'bot_offline', 'other'),
+        'event': ('opened', 'resolved'),
+        'notice': ('fired', 'reminder', 'resolved', 'test'),
+        'via': ('email', 'space', 'webhook'),
+        'outcome': ('ok', 'failed', 'rate_limited'),
+    }
+    assert usage.normalize('kb.migration.run', {'outcome': 'rate_limited'}) == ('other',)
+    usage.inc(ap, 'ws', 'alert.delivery', notice='test', via='space', outcome='cancelled')
+    assert usage.take_batch('ws') is None
+
+
+@pytest.mark.parametrize('amount', [0, -1, None, 1.5, True, '3'])
+def test_invalid_usage_amount_is_ignored(ap, amount):
+    usage.inc(ap, 'ws', 'alert.incident', rule='bot_offline', event='resolved', amount=amount)
+    assert usage.take_batch('ws') is None
+
+
+def test_usage_amount_clamp_and_ack(ap):
+    dims = {'rule': 'bot_offline', 'event': 'resolved'}
+    usage.inc(ap, 'ws', 'alert.incident', amount=usage.MAX_COUNT + 1, **dims)
+    batch = usage.take_batch('ws')
+    assert batch['c'][0][2] == usage.MAX_COUNT
+    usage.inc(ap, 'ws', 'alert.incident', amount=3, **dims)
+    usage.ack('ws', batch)
+    assert usage.take_batch('ws')['c'][0][2] == 3
+
+
 @pytest.mark.parametrize(
     'principal,headers,client',
     [

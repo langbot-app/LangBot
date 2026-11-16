@@ -317,6 +317,20 @@ async def build_heartbeat_payload(
         value = os.environ.get(f'LANGBOT_{field.upper()}', '')
         if re.fullmatch(pattern, value):
             features[field] = value
+    if usage.enabled(ap):
+        try:
+            alert_service = getattr(ap, 'alert_service', None)
+            if alert_service is not None:
+                settings = await asyncio.wait_for(alert_service._settings(workspace_uuid), timeout=1.0)
+                usage.inc(
+                    ap,
+                    workspace_uuid,
+                    'alert.state',
+                    enabled='yes' if alert_service.enabled() and settings['enabled'] else 'no',
+                    channel=settings['email_channel'],
+                )
+        except Exception:
+            pass
     batch = usage.take_batch(workspace_uuid) if usage.enabled(ap) else None
     features['lbctl_versions'] = (
         sorted({dims['version'] for metric, dims, _count in batch['c'] if metric == 'lbctl.client'})[:5]

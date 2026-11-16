@@ -31,6 +31,7 @@ from ..entity.persistence.user import AccountStatus, User
 from ..entity.persistence.webhook import Webhook
 from ..entity.persistence.workspace import MembershipStatus, WorkspaceMembership
 from ..notification.email import EmailService
+from ..telemetry import usage
 from ..telemetry.execution import redact_text
 from . import render, rules
 
@@ -327,22 +328,42 @@ class AlertService:
         except sqlalchemy.exc.IntegrityError:
             # Another replica opened it first; adopt that incident next time.
             return
+        usage.inc(self.ap, workspace_uuid, 'alert.incident', rule=signal.rule, event='opened')
         self._firing[firing_key] = (incident_id, signal.at)
         self._windows.pop((workspace_uuid, signal.rule, signal.subject_id), None)
         self._active_workspaces.add(workspace_uuid)
 
     async def _resolve(self, workspace_uuid: str, fingerprint: str) -> None:
         Incident = alert_entity.AlertIncident
-        await self._execute(
-            workspace_uuid,
-            sqlalchemy.update(Incident)
-            .where(
-                Incident.workspace_uuid == workspace_uuid,
-                Incident.fingerprint == fingerprint,
-                Incident.state == alert_entity.INCIDENT_FIRING,
+        incidents = (
+            await self._execute(
+                workspace_uuid,
+                sqlalchemy.select(Incident.id, Incident.rule).where(
+                    Incident.workspace_uuid == workspace_uuid,
+                    Incident.fingerprint == fingerprint,
+                    Incident.state == alert_entity.INCIDENT_FIRING,
+                ),
             )
-            .values(state=alert_entity.INCIDENT_RESOLVED, resolved_at=utcnow()),
-        )
+        ).all()
+        for incident in incidents:
+            result = await self._execute(
+                workspace_uuid,
+                sqlalchemy.update(Incident)
+                .where(
+                    Incident.workspace_uuid == workspace_uuid,
+                    Incident.id == incident.id,
+                    Incident.state == alert_entity.INCIDENT_FIRING,
+                )
+                .values(state=alert_entity.INCIDENT_RESOLVED, resolved_at=utcnow()),
+            )
+            usage.inc(
+                self.ap,
+                workspace_uuid,
+                'alert.incident',
+                amount=result.rowcount or 0,
+                rule=incident.rule,
+                event='resolved',
+            )
         self._firing.pop((workspace_uuid, fingerprint), None)
 
     # ------------------------------------------------------------ periodic pass
@@ -367,7 +388,7 @@ class AlertService:
         for name, spec in rules.RULES.items():
             if spec.quiet_minutes is None:
                 continue
-            await self._execute(
+            result = await self._execute(
                 workspace_uuid,
                 sqlalchemy.update(Incident)
                 .where(
@@ -377,6 +398,14 @@ class AlertService:
                     Incident.last_seen_at < now - datetime.timedelta(minutes=spec.quiet_minutes),
                 )
                 .values(state=alert_entity.INCIDENT_RESOLVED, resolved_at=now),
+            )
+            usage.inc(
+                self.ap,
+                workspace_uuid,
+                'alert.incident',
+                amount=result.rowcount or 0,
+                rule=name,
+                event='resolved',
             )
 
         rows = (
@@ -570,7 +599,15 @@ class AlertService:
                 await self.ap.persistence_mgr.execute_async(
                     sqlalchemy.update(Setting).where(Setting.workspace_uuid == workspace_uuid).values(**values)
                 )
-        return await self._settings(workspace_uuid, refresh=True)
+        settings = await self._settings(workspace_uuid, refresh=True)
+        usage.inc(
+            self.ap,
+            workspace_uuid,
+            'alert.settings.update',
+            enabled='yes' if settings['enabled'] else 'no',
+            channel=settings['email_channel'],
+        )
+        return settings
 
     async def recipients(self, workspace_uuid: str) -> list[dict[str, typing.Any]]:
         rows = (
@@ -697,6 +734,15 @@ class AlertService:
 
         if deliveries:
             await self._record_deliveries(workspace_uuid, deliveries, len(incidents))
+            for delivery in deliveries:
+                usage.inc(
+                    self.ap,
+                    workspace_uuid,
+                    'alert.delivery',
+                    notice=delivery['kind'],
+                    via=delivery['channel'],
+                    outcome='ok' if delivery['status'] == 'sent' else delivery['status'],
+                )
         return deliveries
 
     @staticmethod
