@@ -1,7 +1,7 @@
 {
   "schema": "langbot.public-eval.artifacts.v1",
   "hash_encoding": "UTF-8 without BOM, LF line endings",
-  "evaluation_code_sha": "f13342368",
+  "evaluation_code_sha": "ca6d913e5",
   "core_candidate_sha": "476b78a23",
   "parser_fix_sha": "732a1637c",
   "data_license": "CC-BY-NC-4.0 for embedded LoCoMo excerpts",
@@ -107,8 +107,8 @@
       "utf8_lf_bytes": 2417
     },
     "README.md": {
-      "sha256": "96fd4a18328cacb04b4515b92b67f99e777065f1c14f7e14da73bd49782b9b98",
-      "utf8_lf_bytes": 12121
+      "sha256": "3fc4a3c2e465c3baacf0fda70f7b1e23dab6879c3c54a96a492758d70c9ad5ad",
+      "utf8_lf_bytes": 12316
     },
     "review-findings.json": {
       "sha256": "ba066eb97d803a0a21b364c68a77463fba3ad587e7d66aa71f72393f4bfc04e2",

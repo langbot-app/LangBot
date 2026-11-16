@@ -157,6 +157,9 @@ Run from the repository root on the development host with Core's in-tree SDK.
   --required-suite sdk_core -q -rs
 
 python3 -m unittest discover -s tools/tests -p 'test_public*.py' -v
+
+PATH="$PWD/.venv/bin:$PATH" .venv/bin/python -m unittest \
+  discover -s tools/tests -p 'test_*.py' -q
 ```
 
 The focused Core run passed 186 tests. The required SDK/Core suite passed all
@@ -164,8 +167,9 @@ The focused Core run passed 186 tests. The required SDK/Core suite passed all
 LangRAG's isolated suite passed 23 tests, including four new decoder regressions.
 LocalAgent's 12 affected consumer tests passed against released SDK 0.7.23 and
 in-tree SDK 0.7.25. LongTermMemory's eight injection tests passed.
-The public evaluation suite passed 50 tests. Ruff 0.14.14 passed the full
-Core/tests/tools lint check and the 770-file source/tools format check. The
+The public evaluation suite passed 50 tests. The complete tools suite passed
+251 tests with Core's virtualenv on PATH for subprocesses. Ruff 0.14.14 passed
+the full Core/tests/tools lint check and the 826-file source/tools format check. The
 plugin catalog check validated all 44 plugins.
 
 ## Reproduce artifact analysis
