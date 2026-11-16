@@ -369,18 +369,20 @@ async def test_alerts_are_off_until_a_workspace_opts_in(env):
     assert state['space']['supported'] is True
 
 
-async def test_cloud_workspaces_default_to_alerts_on(env):
+async def test_cloud_workspaces_are_opt_in_too(env):
     service = env.service
     async with env.engine.begin() as connection:
         await connection.execute(sqlalchemy.delete(alert_entity.AlertSetting))
     service._settings_cache.clear()
     service.ap.deployment = SimpleNamespace(mode='cloud')
 
-    assert (await service.summary(WS))['enabled'] is True
+    assert (await service.summary(WS))['enabled'] is False
+    service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
+    await _drain(service)
+    assert (await service.summary(WS))['firing'] == 0
+
+    # An admin can still turn them on explicitly.
+    await service.update_settings(WS, {'enabled': True})
     service.observe_failure(WS, 'bot_offline', 'bot-1', 'Bot')
     await _drain(service)
     assert (await service.summary(WS))['firing'] == 1
-
-    # An explicit choice still wins over the Cloud default.
-    await service.update_settings(WS, {'enabled': False})
-    assert (await service.summary(WS))['enabled'] is False
