@@ -22,6 +22,8 @@ Different Knowledge Engines have different configuration parameters, depending o
 
 If the selected Knowledge Engine supports document upload (declares `DOC_INGESTION` capability), after creation go to the "Documents" tab of your knowledge base and upload documents. LangBot will automatically parse and index these in the background.
 
+LangRAG's internal text parser recognizes UTF-8 and Unicode byte-order marks before using legacy encoding detection. This preserves punctuation and accented characters in UTF-8 files. Corrected decoding applies during ingestion, so affected documents already in an index require re-ingestion.
+
 ## Using the Knowledge Base
 
 Go to your pipeline configuration, under the "AI" tab, choose `Local Agent` as the runner, then select the knowledge base you just created.
