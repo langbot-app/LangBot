@@ -19,7 +19,7 @@ is merged.
   checks independent database readback across Workspaces.
 - `p0_image` uses the production Dockerfile's candidate image and the published
   `rockchin/langbot:v4.11.7` baseline. It seeds old Skill versions and images,
-  upgrades, removes legacy source paths, replaces the Core container and checks
+  upgrades, removes legacy source paths, replaces the Core and Runtime containers and checks
   retained content and newly installed plugin grants. A separate empty volume
   checks generated persistence/network defaults. Containers publish loopback-only
   HTTP ports. Verification does not recreate missing data.
@@ -35,8 +35,9 @@ LANGBOT_PERMISSION_E2E=1 uv run --no-sync pytest \
 ```
 
 Image tests accept `LANGBOT_TEST_DOCKER_COMMAND` for the approved Docker CLI
-invocation (default `docker`). Their logs are retained under pytest's base
-directory; CI uses `.qa/image-upgrade`. Permission process evidence is retained
+invocation (default `docker`). Core and Runtime run on a task-owned Docker network,
+following the production Compose topology. Their logs are retained under
+`.qa/image-upgrade`. Permission process evidence is retained
 under `.qa/permissions`. Private seed state and authentication material are not
 uploaded as CI evidence. These paths do not establish real-model understanding,
 non-host Box backend behavior or compatibility with every historical release.
@@ -96,7 +97,7 @@ old Core HTTP writes, migration, source-volume removal, restart and a second
 Core. Box is disabled here; Runtime acceptance remains the separate network suite.
 The normal daily suite does not provision historical Core interpreters.
 
-The existing `daily-endurance.yml` runs both account-free suites on GitHub-hosted Linux, installs Core with its local SDK, and creates temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope. It neither adds a PR required check nor runs the heavyweight recovery suite on every PR.
+`daily-endurance.yml` calls the same reusable persistence acceptance on GitHub-hosted Linux, with the local SDK and temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope.
 
 For nsjail, use an already prepared host and its delegated `LANGBOT_NSJAIL_CGROUP_V1_PARENT`. For E2B, use explicitly authorized `E2B_API_KEY`, `E2B_API_URL`, `E2B_SANDBOX_URL` and optional `E2B_TEMPLATE`. Set `LANGBOT_CORE_NETWORK_BACKEND=nsjail` or `e2b` for the same network suite. Do not add credentials, change machine configuration, or expose private development machines as runners for public PR code. These backend runs remain developer acceptance until suitable dedicated infrastructure exists.
 

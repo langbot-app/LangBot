@@ -49,7 +49,7 @@ def _configuration(root):
     config['vdb']['chroma']['path'] = '/app/data/chroma'
     config['storage']['local']['path'] = '/app/data/storage'
     config['skills'] = {'root': '/app/data/skills', 'persistence': 'filesystem'}
-    config['plugin']['enable'] = False
+    config['plugin'].update(enable=False, runtime_ws_url='ws://langbot_plugin_runtime:5400/control/ws')
     config['box']['enabled'] = False
     source = Path(__file__).resolve().parents[2] / 'src/langbot/pkg/platform/sources'
     config['system']['disabled_adapters'] = [
@@ -67,15 +67,45 @@ def image_instance(tmp_path):
     clients = []
     root = tmp_path / 'instance'
     root.mkdir()
+    evidence = Path(__file__).resolve().parents[2] / '.qa/image-upgrade' / uuid.uuid4().hex
+    evidence.mkdir(parents=True)
+    network = 'langbot-p0-' + uuid.uuid4().hex
+    _docker('network', 'create', network)
 
     def start(image, phase):
         name = 'langbot-p0-' + uuid.uuid4().hex
+        runtime = name + '-runtime'
         port = _free_port()
+        runtime_mounts = []
+        for directory in ('plugins', 'plugin-runtime'):
+            source = root / 'data' / directory
+            source.mkdir(parents=True, exist_ok=True)
+            runtime_mounts.extend(['--mount', f'type=bind,source={source},target=/app/data/{directory}'])
+        _docker(
+            'run',
+            '-d',
+            '--name',
+            runtime,
+            '--network',
+            network,
+            '--network-alias',
+            'langbot_plugin_runtime',
+            *runtime_mounts,
+            '--entrypoint',
+            '/app/.venv/bin/python',
+            image,
+            '-m',
+            'langbot_plugin.cli.__init__',
+            'rt',
+        )
+        containers.append((runtime, phase + '-runtime'))
         _docker(
             'run',
             '-d',
             '--name',
             name,
+            '--network',
+            network,
             '-p',
             f'127.0.0.1:{port}:5300',
             '--mount',
@@ -99,7 +129,7 @@ def image_instance(tmp_path):
         while time.monotonic() < deadline:
             try:
                 if client.get('/api/v1/system/info', timeout=2).status_code == 200:
-                    return SimpleNamespace(name=name, client=client)
+                    return SimpleNamespace(name=name, runtime=runtime, client=client)
             except httpx.TransportError:
                 pass
             if _docker('inspect', name, '--format', '{{.State.Running}}').strip() != 'true':
@@ -110,6 +140,7 @@ def image_instance(tmp_path):
     def stop(instance):
         instance.client.close()
         _docker('stop', '-t', '15', instance.name)
+        _docker('stop', '-t', '15', instance.runtime)
 
     try:
         yield SimpleNamespace(root=root, start=start, stop=stop)
@@ -124,17 +155,26 @@ def image_instance(tmp_path):
                     text=True,
                     timeout=30,
                 )
-                (tmp_path / f'container-{phase}.log').write_text(logs.stdout + logs.stderr)
+                (evidence / f'container-{phase}.log').write_text(logs.stdout + logs.stderr)
             finally:
                 _docker('rm', '-f', name)
+        _docker('network', 'rm', network)
 
 
-def _plugin_call(client, headers):
-    response = client.post(
-        '/api/v1/plugins/permissionse2e/image-probe/page-api',
-        headers=headers,
-        json={'page_id': 'probe', 'endpoint': '/probe', 'method': 'POST', 'body': {'operation': 'stats.basic'}},
-    )
+def _plugin_call(client, headers, *, wait_ready=False):
+    deadline = time.monotonic() + (45 if wait_ready else 0)
+    while True:
+        response = client.post(
+            '/api/v1/plugins/permissionse2e/image-probe/page-api',
+            headers=headers,
+            json={'page_id': 'probe', 'endpoint': '/probe', 'method': 'POST', 'body': {'operation': 'stats.basic'}},
+        )
+        # Permission confirmation starts the worker asynchronously, as in the lifecycle suite.
+        if response.status_code != 400 or response.json().get('msg') != 'Plugin not found':
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.5)
     assert response.status_code == 200, response.text
     return response.json()['data']
 
@@ -255,7 +295,7 @@ def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_p
         )
     )
     assert granted['enabled']
-    assert _plugin_call(current.client, headers)['ok'] is True
+    assert _plugin_call(current.client, headers, wait_ready=True)['ok'] is True
     image.stop(current)
 
     # Remove the legacy source paths: reads must come from the migrated database.
@@ -264,7 +304,7 @@ def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_p
     replacement = image.start(os.environ['LANGBOT_IMAGE_CANDIDATE'], 'replacement')
     _verify_content(replacement.client, saved)
     assert _data(replacement.client.get(permissions, headers=headers)) == granted
-    assert _plugin_call(replacement.client, headers)['ok'] is True
+    assert _plugin_call(replacement.client, headers, wait_ready=True)['ok'] is True
     _data(
         replacement.client.put(
             permissions, headers=headers, json={'workspace_operations': [], 'capabilities': [], 'confirm': False}

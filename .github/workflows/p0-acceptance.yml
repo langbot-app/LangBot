@@ -53,6 +53,7 @@ jobs:
         if: always()
         with:
           name: p0-permission-evidence
+          include-hidden-files: true
           path: |
             permission-lifecycle.xml
             .qa/permissions/permissions-e2e-*/*.log

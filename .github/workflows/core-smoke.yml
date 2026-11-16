@@ -35,11 +35,16 @@ jobs:
 
   smoke:
     needs: p0
+    if: always()
     # Preserve the status context required by the master branch rules.
     name: Core smoke (60s)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Require successful P0 acceptance
+        env:
+          P0_RESULT: ${{ needs.p0.result }}
+        run: test "$P0_RESULT" = success
       - uses: actions/checkout@v4
         with:
           persist-credentials: false

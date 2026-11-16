@@ -171,6 +171,7 @@ jobs:
         if: always()
         with:
           name: p0-image-upgrade-evidence
+          include-hidden-files: true
           path: |
             image-upgrade.xml
             .qa/image-upgrade/**/container*.log

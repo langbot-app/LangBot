@@ -1,9 +1,27 @@
 import unittest
+from pathlib import Path
+import subprocess
+
+import yaml
 
 from scripts.p0_acceptance_scope import select
 
 
 class TestP0Scope(unittest.TestCase):
+    def test_required_smoke_reports_a_failure_instead_of_skipping(self):
+        workflow = yaml.safe_load(
+            (Path(__file__).resolve().parents[2] / '.github/workflows/core-smoke.yml').read_text()
+        )
+        smoke = workflow['jobs']['smoke']
+        self.assertEqual(smoke['needs'], 'p0')
+        self.assertEqual(smoke['if'], 'always()')
+        gate = smoke['steps'][0]
+        self.assertEqual(gate['env']['P0_RESULT'], '${{ needs.p0.result }}')
+        for state in ('success', 'failure', 'cancelled', 'skipped', ''):
+            with self.subTest(state=state):
+                result = subprocess.run(['bash', '-c', gate['run']], env={'P0_RESULT': state})
+                self.assertEqual(result.returncode == 0, state == 'success')
+
     def test_backend_changes_never_escape_acceptance(self):
         for path in (
             'src/langbot/pkg/unknown/new.py',
