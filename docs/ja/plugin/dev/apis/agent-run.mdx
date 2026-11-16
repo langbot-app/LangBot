@@ -190,15 +190,15 @@ event_type = ctx.event.event_type
 
 ### 入力添付ファイル
 
-`ctx.input.attachments` は、現在のメッセージに含まれる画像・音声・ファイルを出現順に 1 件ずつメタデータとして表します：`ref`（例：`att-1`）、`type`、`source`（現在のメッセージは `message`、引用されたメッセージは `quote`）、`name`、`mime_type`、`size`、プラットフォームの `id`、直接ダウンロードできる `url`。添付ファイルは内容を含みません。`content` フィールドは非推奨で、現行バージョンでは常に空です。
+`ctx.input.attachments` は、現在のメッセージに含まれる画像・音声・ファイルを出現順に 1 件ずつメタデータとして表します：`ref`（例：`att-1`）、`type`、`source`（現在のメッセージは `message`、引用されたメッセージは `quote`）、`name`、`mime_type`、`size`、プラットフォームの `id`。元URLはHostだけが保持します。添付ファイルは内容を含みません。`content` フィールドは非推奨で、現行バージョンでは常に空です。
 
-`ctx.input.text` と `ctx.input.contents` には、各メディアの位置に `[attachment att-1: image photo.jpg]` のようなマーカーが入ります。引用されたメッセージは `[quoted message from <送信者>]` と `[/quoted message]` で囲まれます。画像は引き続きマーカーの直後に `image_base64` または `image_url` として置かれ、モデルが直接参照できます。
+`ctx.input.text` と `ctx.input.contents` には、各メディアの位置に `[attachment att-1: image photo.jpg]` のようなマーカーが入ります。引用されたメッセージは `[quoted message from <送信者>]` と `[/quoted message]` で囲まれます。画像やファイルは初期モデル入力には含まれず、必要なときに明示的に読み取ります。
 
 | メソッド | 戻り値 | 説明 |
 | --- | --- | --- |
 | `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | `ref` で添付ファイルのバイト列を読み取り、`data`、`name`、`mime_type`、`size` を返します。引数には `ref` 文字列も指定できます。LangBot がこの API を提供しない場合は `None` を返します |
 
-添付ファイル 1 件あたりの上限は 10 MiB、1 回の実行で読み取れる合計は 50 MiB です。LangBot は読み取った内容をキャッシュせず、ログにも書き込みません。この API が使えるかどうかは `ctx.context.available_apis.input_attachments` で確認できます。steering で現在の実行に取り込まれた後続メッセージの添付ファイルはメタデータのみで、`ref` を持ちません。
+添付ファイル 1 件あたりの上限は 10 MiB、1 回の実行で読み取れる合計は 50 MiB です。内容読み取りAPIは初回に元データをrun専用の一時Artifactとして保存します。バイナリは会話履歴やツールイベントに保存しません。この API が使えるかどうかは `ctx.context.available_apis.input_attachments` で確認できます。steering で現在の実行に取り込まれた後続メッセージの添付ファイルはメタデータのみで、`ref` を持ちません。
 
 このメソッドには `langbot-plugin` 0.7.23 以降が必要です。古い LangBot や SDK にも対応する場合は、メソッドの有無を確認してから従来の処理にフォールバックします：
 
@@ -209,6 +209,8 @@ if hasattr(ctx, "read_input_attachment"):
 if data is None:
     ...  # 古い LangBot：attachment.content、attachment.url、ctx.input.contents を使用
 ```
+
+`await ctx.read_input_attachment_content(ref, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` は同じrun権限で、制限付きテキストまたは構造化メディアを返します。モードと制限は [Artifactの読み取り](/ja/develop/artifacts) を参照してください。新メソッドには対応するCore、SDK、Runtimeが必要です。LocalAgentと一緒に更新してください。
 
 ### Box と添付ファイル
 

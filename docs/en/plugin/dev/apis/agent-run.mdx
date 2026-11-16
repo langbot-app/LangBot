@@ -190,15 +190,15 @@ Each item returned by `get_available_tools()` contains `name`, `description`, `p
 
 ### Input attachments
 
-`ctx.input.attachments` describes each image, voice and file of the current message in order of appearance, as metadata only: `ref` (such as `att-1`), `type`, `source` (`message` for the current message, `quote` for a quoted message), `name`, `mime_type`, `size`, the platform `id`, and a directly downloadable `url`. Attachments do not carry file content; the `content` field is deprecated and always empty in current versions.
+`ctx.input.attachments` describes each image, voice and file of the current message in order of appearance, as metadata only: `ref` (such as `att-1`), `type`, `source` (`message` for the current message, `quote` for a quoted message), `name`, `mime_type`, `size`, and the platform `id`. The Host keeps source URLs private. Attachments do not carry file content; the `content` field is deprecated and always empty in current versions.
 
-`ctx.input.text` and `ctx.input.contents` place a marker at the position of each media, such as `[attachment att-1: image photo.jpg]`. A quoted message is wrapped in `[quoted message from <sender>]` and `[/quoted message]`. Images still follow their marker as `image_base64` or `image_url` so models can see them.
+`ctx.input.text` and `ctx.input.contents` place a marker at the position of each media, such as `[attachment att-1: image photo.jpg]`. A quoted message is wrapped in `[quoted message from <sender>]` and `[/quoted message]`. Images and files are not inlined into the initial model input. Read them explicitly when needed.
 
 | Method | Returns | Description |
 | --- | --- | --- |
 | `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | Reads attachment bytes by `ref` and returns `data`, `name`, `mime_type` and `size`. The argument may also be a `ref` string. Returns `None` when LangBot does not offer this API |
 
-Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. LangBot neither caches the bytes nor writes them to logs. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
+Each attachment is limited to 10 MiB and each run may read up to 50 MiB in total. The content-reading API materializes the source as a temporary run-owned Artifact on first use; inline bytes are not written to conversation history or tool events. `ctx.context.available_apis.input_attachments` reports whether the API is available. Follow-up messages steered into the current run carry attachment metadata without a `ref`.
 
 The method requires `langbot-plugin` 0.7.23 or later. To support older LangBot or SDK versions, check that the method exists and fall back to the previous logic:
 
@@ -209,6 +209,8 @@ if hasattr(ctx, "read_input_attachment"):
 if data is None:
     ...  # Older LangBot: use attachment.content, attachment.url or ctx.input.contents
 ```
+
+`await ctx.read_input_attachment_content(ref, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` returns bounded text or structured media with the same frozen run grant. See [Artifact reading](/en/develop/artifacts) for modes and limits. This new method requires coordinated Core, SDK and Runtime versions; upgrade them and the LocalAgent plugin together.
 
 ### Box and attachments
 

@@ -22,6 +22,7 @@ import base64
 import binascii
 import typing
 import functools
+from mcp import types as mcp_types
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
@@ -150,6 +151,53 @@ class LangBotMCPServer:
                     'content': base64.b64encode(result['content']).decode('ascii'),
                 }
             )
+
+        @mcp.tool(
+            description='Read bounded text, a structured image or native PDF from an owned Artifact. PDF auto/text excludes visual content; native needs model file support. Page rendering is unavailable.'
+        )
+        async def read_artifact_content(
+            artifact_id: str,
+            mode: str = 'auto',
+            offset: int = 0,
+            max_chars: int = 8192,
+            page_start: int = 1,
+            page_end: int | None = None,
+        ) -> mcp_types.CallToolResult:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            elements = await artifact_operation(
+                'artifact.read_content',
+                context,
+                {
+                    'artifact_id': artifact_id,
+                    'mode': mode,
+                    'offset': offset,
+                    'max_chars': max_chars,
+                    'page_start': page_start,
+                    'page_end': page_end,
+                },
+            )
+            blocks = []
+            for element in elements:
+                if element['type'] == 'text':
+                    blocks.append(mcp_types.TextContent(type='text', text=element['text']))
+                else:
+                    data_url = element.get('image_base64') or element['file_base64']
+                    header, blob = data_url.split(';base64,', 1)
+                    mime = header[5:]
+                    if element['type'] == 'image_base64':
+                        blocks.append(mcp_types.ImageContent(type='image', data=blob, mimeType=mime))
+                    else:
+                        blocks.append(
+                            mcp_types.EmbeddedResource(
+                                type='resource',
+                                resource=mcp_types.BlobResourceContents(
+                                    uri=f'artifact://{artifact_id}',
+                                    blob=blob,
+                                    mimeType=mime,
+                                ),
+                            )
+                        )
+            return mcp_types.CallToolResult(content=blocks)
 
         @mcp.tool(
             description='Add a persistent pin to a caller-owned Artifact without widening its access permissions.'

@@ -349,15 +349,22 @@ controlled request-layer measurements and their scope.
 
 `create_artifact(filename, content_base64, mime_type, ttl_seconds)` uploads at most
 10 MiB and returns an opaque ID and metadata. Use `get_artifact(artifact_id)` to
-inspect it, and `read_artifact(artifact_id, max_bytes)` only when bytes are needed.
-The read result is base64 for file transfer; it does not extract text, render PDF
-pages or prove model understanding. Prefer the authenticated HTTP download route
-for user downloads. See [Artifact API](../../../docs/en/develop/artifacts.mdx).
+inspect it. Prefer `read_artifact_content(artifact_id, mode, offset, max_chars,
+page_start, page_end)` for model consumption: it returns bounded text or native
+MCP image/PDF content. Continue using the returned text/page offsets when a result
+is truncated. PDF text excludes visual content; `native` needs a supporting model,
+and `pages` currently reports unsupported. `read_artifact(artifact_id, max_bytes)`
+returns base64 for raw file transfer. Use authenticated HTTP downloads for users.
+See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
 
 Reads require `resource.view`; writes require `resource.manage`. The authenticated
 account or API key must own the asset in the current Workspace. An ID is not an
 access grant. Plugin/run references are not accepted by this initial API, and
-Artifact operations are not added to default model tool sets or plugin grants.
+Account-owned Artifact operations are not added to default model tool sets or
+plugin grants. Runner attachment tools use their existing run-scoped grant and
+Host-only input references; an account upload can be passed to Agent debug with
+`artifact_ids` after ownership validation. The management assistant does not
+accept attachments in this phase.
 
 Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
 `retain_artifact` adds a persistent pin without broadening access.

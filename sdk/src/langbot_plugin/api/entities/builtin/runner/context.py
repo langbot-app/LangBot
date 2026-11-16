@@ -190,6 +190,10 @@ class RunnerContext(pydantic.BaseModel):
             return None
         return await self.api.read_input_attachment(ref)
 
+    async def read_input_attachment_content(self, ref: str, **options) -> list[dict]:
+        """Read bounded text or structured media using this run's input grant."""
+        return await self.api.read_input_attachment_content(ref, **options)
+
     async def import_box_attachments(
         self, attachment_ids: list[str] | None = None
     ) -> list["BoxFile"]:

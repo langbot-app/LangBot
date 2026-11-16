@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -167,6 +168,37 @@ def _handler(debug_plugin=False, action_context=None, *, runtime_profile=None):
         "key" if debug_plugin and action_context is not None else None
     )
     return handler, manager, control_handler
+
+
+async def test_input_content_forwarding_uses_trusted_identity_scope_and_cancellation():
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    contents = [{"type": "text", "text": "bounded content"}]
+    control.call_action = AsyncMock(return_value={"contents": contents})
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT.value,
+            {
+                "run_id": "run-1",
+                "ref": "att-1",
+                "mode": "text",
+                "caller_plugin_identity": "forged/identity",
+                "workspace_uuid": "forged-workspace",
+            },
+            action_context=None,
+        )
+    assert result["code"] == 0 and result["data"] == {"contents": contents}
+    action, data = control.call_action.call_args.args
+    assert action == PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT
+    assert data == {
+        "run_id": "run-1",
+        "ref": "att-1",
+        "mode": "text",
+        "caller_plugin_identity": "tester/demo",
+    }
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
 
 
 def test_reserved_decode_capacity_is_consumed_by_first_message_only():

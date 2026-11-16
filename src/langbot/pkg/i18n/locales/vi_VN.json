@@ -128,5 +128,12 @@
   "Artifact is still in use": "Tài nguyên vẫn đang được sử dụng",
   "Artifact exceeds the read size limit": "Tài nguyên vượt quá giới hạn kích thước đọc",
   "Artifact content failed integrity verification": "Xác minh tính toàn vẹn nội dung tài nguyên không thành công",
-  "Artifact exceeds the size limit.": "Tài nguyên vượt quá giới hạn kích thước."
+  "Artifact exceeds the size limit.": "Tài nguyên vượt quá giới hạn kích thước.",
+  "This file type cannot be read by the model. Download the original file instead.": "Mô hình không đọc được loại tệp này. Hãy tải tệp gốc xuống.",
+  "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.": "Chưa hỗ trợ kết xuất trang PDF. Hãy trích xuất văn bản hoặc dùng mô hình hỗ trợ PDF gốc.",
+  "The PDF could not be read. It may be malformed or password-protected.": "Không đọc được PDF. Tệp có thể bị hỏng hoặc được bảo vệ bằng mật khẩu.",
+  "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "Trích xuất văn bản PDF không bao gồm hình ảnh và bố cục. Hãy dùng chế độ native với mô hình phù hợp cho nội dung trực quan.",
+  "PDF text extraction exceeds the size limit.": "Trích xuất văn bản PDF vượt giới hạn kích thước.",
+  "The selected model does not support native PDF input; read the PDF as text instead.": "Mô hình đã chọn không hỗ trợ PDF gốc; hãy đọc PDF dưới dạng văn bản.",
+  "Input attachment content budget for this run is exhausted": "Đã hết hạn mức đọc nội dung đính kèm của lần chạy này"
 }

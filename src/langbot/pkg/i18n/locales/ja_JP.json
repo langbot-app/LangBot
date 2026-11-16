@@ -128,5 +128,12 @@
   "Artifact is still in use": "アーティファクトは使用中です",
   "Artifact exceeds the read size limit": "アーティファクトが読み取りサイズの上限を超えています",
   "Artifact content failed integrity verification": "アーティファクトの内容の整合性検証に失敗しました",
-  "Artifact exceeds the size limit.": "アーティファクトがサイズの上限を超えています。"
+  "Artifact exceeds the size limit.": "アーティファクトがサイズの上限を超えています。",
+  "This file type cannot be read by the model. Download the original file instead.": "モデルはこの形式を読み取れません。元のファイルをダウンロードしてください。",
+  "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.": "PDFページ描画は利用できません。テキスト抽出またはPDF対応モデルを使用してください。",
+  "The PDF could not be read. It may be malformed or password-protected.": "PDFを読み取れません。破損またはパスワード保護の可能性があります。",
+  "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDFテキスト抽出には画像やレイアウトは含まれません。視覚情報には対応モデルのnativeモードを使用してください。",
+  "PDF text extraction exceeds the size limit.": "PDFテキスト抽出がサイズ制限を超えました。",
+  "The selected model does not support native PDF input; read the PDF as text instead.": "選択したモデルはPDF入力に対応していません。PDFをテキストとして読み取ってください。",
+  "Input attachment content budget for this run is exhausted": "この実行の添付内容読み取り上限に達しました"
 }

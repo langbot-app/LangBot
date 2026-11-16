@@ -343,6 +343,7 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
     await try_call(runner.history_page())
     await try_call(runner.history_search('query'))
     await try_call(runner.read_input_attachment('att-1'))
+    await try_call(runner.read_input_attachment_content('att-1'))
     await try_call(runner.event_get('evt-1'))
     await try_call(runner.event_page())
     await try_call(runner.steering_pull())
@@ -394,8 +395,8 @@ async def _capture_sdk_payloads() -> dict[str, dict[str, typing.Any]]:
 def test_action_audit_and_catalog_completeness(test_host):
     """Audit that all business actions map to ExecutionAPI and transport controls stay internal."""
     operations = test_host.api.operations()
-    assert len(operations) == 80
-    assert len(test_host.api.catalog()) == 80
+    assert len(operations) == 81
+    assert len(test_host.api.catalog()) == 81
 
     execution_action_names = {op.action for op in operations}
     handler_actions = set(test_host.handler.actions.keys())

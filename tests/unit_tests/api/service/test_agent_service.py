@@ -159,6 +159,75 @@ class TestAgentServiceMetadata:
 
 
 class TestAgentServiceDebug:
+    async def test_debug_artifacts_are_authorized_without_reading_bytes(self):
+        app = _make_app()
+        artifact_id = 'art_' + 'a' * 32
+        app.artifact_service = SimpleNamespace(
+            get=AsyncMock(
+                return_value={
+                    'id': artifact_id,
+                    'name': 'report.pdf',
+                    'mime_type': 'application/pdf',
+                    'size': 50,
+                }
+            ),
+            read=AsyncMock(),
+        )
+        context = SimpleNamespace(
+            instance_uuid='instance-test',
+            workspace_uuid=WORKSPACE_UUID,
+            placement_generation=1,
+            principal=SimpleNamespace(account_uuid='account-test'),
+            entitlement_revision=0,
+        )
+
+        async def run_runner(event, binding, adapter_context):
+            query = adapter_context['_query']
+            assert query._input_artifact_context is context
+            assert query._input_artifact_ids == frozenset({artifact_id})
+            assert event.input.attachments[0].ref == artifact_id
+            assert event.input.attachments[0].content is None
+            assert event.input.attachments[0].url is None
+            assert all(item.type == 'text' for item in event.input.contents)
+            yield SimpleNamespace(role='assistant', content='read later', all_content=None)
+
+        app.agent_run_orchestrator = SimpleNamespace(run=Mock(side_effect=run_runner))
+        service = AgentService(app)
+        service.get_agent = AsyncMock(
+            return_value={
+                'uuid': 'agent-1',
+                'kind': AGENT_KIND_AGENT,
+                'supported_event_patterns': ['*'],
+                'config': _agent_row().config,
+            }
+        )
+        await service.debug_agent(
+            context,
+            'agent-1',
+            {
+                'text': 'read report',
+                'artifact_ids': [artifact_id],
+                'actor': {'actor_type': 'user', 'actor_id': 'spoofed-owner'},
+            },
+        )
+        app.artifact_service.get.assert_awaited_once_with(context, artifact_id)
+        app.artifact_service.read.assert_not_awaited()
+
+    @pytest.mark.parametrize('artifact_ids', ['art_bad', ['same', 'same'], [None], ['x'] * 21])
+    async def test_debug_rejects_invalid_artifact_ids(self, artifact_ids):
+        app = _make_app()
+        service = AgentService(app)
+        service.get_agent = AsyncMock(
+            return_value={
+                'uuid': 'agent-1',
+                'kind': AGENT_KIND_AGENT,
+                'supported_event_patterns': ['*'],
+                'config': _agent_row().config,
+            }
+        )
+        with pytest.raises(ValueError, match='artifact_ids'):
+            await service.debug_agent(SimpleNamespace(), 'agent-1', {'artifact_ids': artifact_ids})
+
     @pytest.mark.parametrize('streaming', [False, True])
     @pytest.mark.parametrize(
         'result_type',

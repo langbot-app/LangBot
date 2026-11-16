@@ -12,6 +12,7 @@ Artifact はファイルの不透明な参照とメタデータを提供しま�
 | アップロード | `POST /api/v1/artifacts`、multipart `file`、任意の `ttl_seconds` |
 | メタデータ | `GET /api/v1/artifacts/{id}` |
 | ダウンロード | `GET /api/v1/artifacts/{id}/content`、任意の `max_bytes` |
+| 構造化読み取り | `GET /api/v1/artifacts/{id}/read`、任意の `mode`、`offset`、`max_chars`、`page_start`、`page_end` |
 | 永続保持 | `POST /api/v1/artifacts/{id}/retain` |
 | 保持の解放 | `POST /api/v1/artifacts/{id}/release` |
 | 削除 | `DELETE /api/v1/artifacts/{id}` |
@@ -26,6 +27,27 @@ Artifact はファイルの不透明な参照とメタデータを提供しま�
 
 ## MCP
 
+ネイティブPDF入力には信頼できるモデル能力情報が必要です。提供元がPDF対応を確認済みでも能力カタログにない別名の場合、管理者はモデルの既存の `abilities` に `pdf_input` を指定できます。宣言がなく能力が不明な場合、ネイティブPDFは明示的に拒否されますが、テキストモードは利用できます。
+
 組み込み `/mcp` サーバーは、同じ所有者と権限のチェックを適用する `create_artifact`、`get_artifact`、`read_artifact`、`retain_artifact`、`release_artifact`、`delete_artifact` を提供します。作成には `filename`、`content_base64`、任意の `mime_type` と `ttl_seconds` を渡します。読み取りには `artifact_id` と任意の `max_bytes` を渡し、base64 とメタデータを受け取ります。
 
-これらはファイル転送ツールです。テキスト抽出、PDF ページ描画、画像のモデル理解は行いません。初版ではプラグインの Workspace 権限、型付きメソッド、既定のモデルツール、`lbctl` からは利用できません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。
+`read_artifact` は元のバイト列を転送します。アカウント所有の管理操作は、引き続きプラグインの Workspace 権限、型付きメソッド、既定のモデルツール、`lbctl` からは利用できません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。
+
+`read_artifact_content` は HTTP `/read` と同じパラメーターを受け付け、通常のテキストに base64 を入れず、MCP のテキスト、画像、埋め込み PDF を返します。Workspace 操作は `artifact.read_content` です。
+
+## Agent による必要時の読み取り
+
+Runner の初期入力には添付参照、名前、MIME 型、サイズのみが含まれます。画像やファイルのバイト列と取得元 URL は Host の実行内レジストリに保持され、最初のモデルメッセージには入りません。現在のメッセージと引用メッセージの添付は別々の参照を持ちます。必要な内容だけを取得し、Host は現在の run に固定された添付権限を確認します。他の run の参照はアクセスを許可しません。
+
+`read_input_attachment_content` は構造化された内容を返します。
+
+| モード | 動作 |
+| --- | --- |
+| `auto` | UTF-8 テキスト、構造化画像、または PDF 抽出テキストを返します。 |
+| `text` | 文字範囲を制限して読み取ります。PDF は対象ページを示し、画像やレイアウトを含みません。 |
+| `native` | 対応モデルへ画像や PDF を渡します。非対応モデルでは明示的に失敗します。 |
+| `pages` | ページ描画は現在未対応で、明示的なエラーになります。 |
+
+テキストは 0 始まりの `offset` と `max_chars`（既定 8192、最大 16384）を使用します。結果の `truncated` と `next_offset` を確認して続きを読み取ってください。PDF テキストは 1 始まりの `page_start` と任意の `page_end` を使用し、1 回最大 10 ページで、次のページ位置も返します。OCR、画像、ページレイアウトは対象外です。他のバイナリ形式は明示的に拒否され、元のファイルはダウンロードできます。
+
+Agent デバッグ API は、自分がアップロードした異なる ID を最大 20 件まで `artifact_ids` に指定できます。Host が認証済み主体の所有権を確認し、その run に参照だけを渡します。イベントの `actor` で所有者を変更することはできません。独立した Workspace 管理アシスタントの添付入力はこの段階では未対応です。既存の生バイト API `read_input_attachment` は権限のある Runner コード向けに維持されます。

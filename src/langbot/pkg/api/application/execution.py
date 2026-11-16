@@ -530,6 +530,20 @@ EXECUTION_OPERATIONS = (
         'run',
     ),
     ExecutionOperation(
+        'read_input_attachment_content',
+        _input(
+            'ExecutionReadInputContentInput',
+            ref=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionInputContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
         'export_box_files', _input('ExecutionExportBoxInput', paths=(list[str] | None, None)), ItemsOutput, 'run', True
     ),
     ExecutionOperation('run_get', TargetRun, RunOutput, 'runner_admin'),

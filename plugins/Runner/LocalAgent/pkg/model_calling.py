@@ -13,7 +13,7 @@ import uuid
 from contextlib import aclosing
 from dataclasses import dataclass
 
-from langbot_plugin.api.entities.builtin.provider.message import Message, MessageChunk
+from langbot_plugin.api.entities.builtin.provider.message import ContentElement, Message, MessageChunk
 from langbot_plugin.api.entities.builtin.resource.tool import LLMTool
 from langbot_plugin.api.proxies.runner import RunnerAPIProxy
 
@@ -864,6 +864,33 @@ def serialize_tool_result_content(result: typing.Any, *, is_error: bool = False)
     if text_content is not None:
         return text_content
     return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def split_tool_content(result: typing.Any) -> tuple[list[ContentElement], list[ContentElement]] | None:
+    """Keep explicit multimodal tool output out of ordinary tool text and events."""
+    if not isinstance(result, (list, tuple)) or not result:
+        return None
+    media_types = {"image_url", "image_base64", "file_url", "file_base64"}
+    if not any(_model_or_mapping_get(item, "type") in media_types for item in result):
+        return None
+    text, media = [], []
+    for raw in result:
+        element = raw.model_copy(deep=True) if isinstance(raw, ContentElement) else ContentElement.model_validate(raw)
+        if element.type == "text":
+            text.append(element)
+        elif element.type in media_types:
+            payload = getattr(element, element.type)
+            if not payload or (element.type == "image_url" and not payload.url):
+                raise ValueError("Tool content is missing its media payload")
+            media.append(element)
+            text.append(
+                ContentElement.from_text(
+                    f"[{element.type}: {element.file_name or 'content'} attached for model inspection]"
+                )
+            )
+        else:
+            raise ValueError(f"Unsupported tool content type: {element.type}")
+    return text, media
 
 
 def _serialize_text_content_elements(result: typing.Any) -> str | None:

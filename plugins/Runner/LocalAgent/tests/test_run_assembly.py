@@ -1,15 +1,67 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
 from langbot_plugin.api.entities.builtin.runner.resources import AgentResources, ModelResource, ToolResource
 
-from pkg.agent_core import LangBotContextHooks, LangBotToolExecutor
+from pkg.agent_core import LangBotContextHooks, LangBotToolExecutor, ToolCallRequest
 from pkg.messages import build_platform_tools_system_message
 from pkg.run_assembly import AgentRunAssembler, NoAuthorizedModelError
 from tests.test_runner import FakeRunnerAPIProxy, make_context
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("granted,has_attachment", [(False, True), (True, False), (True, True)])
+async def test_input_reader_is_discovered_from_the_run_grant_and_traces_no_binary(granted, has_attachment):
+    api = FakeRunnerAPIProxy(models=[ModelResource(model_id="model-primary")])
+    ctx = make_context(
+        config={"model": {"primary": "model-primary"}, "box-enabled": False},
+        resources=AgentResources(models=[ModelResource(model_id="model-primary")]),
+    )
+    ctx.context.available_apis.input_attachments = granted
+    ctx.input.attachments = [InputAttachment(ref="att-1", type="image")] if has_attachment else []
+    payload = "data:image/png;base64,cHJpdmF0ZQ=="
+    api.read_input_attachment_content = AsyncMock(
+        return_value=[
+            {"type": "text", "text": '{"ref":"att-1"}'},
+            {"type": "image_base64", "image_base64": payload},
+        ]
+    )
+    api._results = asyncio.Queue()
+    api._run_id = "input-run"
+    assembly = await AgentRunAssembler(api, ctx).assemble()
+    names = {tool.name for tool in assembly.tools}
+    assert ("langbot_read_input_attachment" in names) is (granted and has_attachment)
+    if not (granted and has_attachment):
+        api.read_input_attachment_content.assert_not_awaited()
+        return
+    prepared = assembly.tool_executor.prepare(
+        ToolCallRequest.from_raw(
+            {
+                "id": "call-read",
+                "function": {"name": "langbot_read_input_attachment", "arguments": '{"ref":"att-1"}'},
+            }
+        )
+    )
+    outcome = await assembly.tool_executor.execute(prepared)
+    assert outcome.error is None and outcome.model_only_messages[0].content[0].image_base64 == payload
+    api.read_input_attachment_content.assert_awaited_once_with(
+        ref="att-1",
+        mode="auto",
+        offset=0,
+        max_chars=8192,
+        page_start=1,
+        page_end=None,
+    )
+    assert payload not in outcome.message.content
+    started, completed = api._results.get_nowait(), api._results.get_nowait()
+    assert started.type.value == "tool.call.started" and completed.type.value == "tool.call.completed"
+    assert payload not in json.dumps(completed.data)
 
 
 @pytest.mark.asyncio
