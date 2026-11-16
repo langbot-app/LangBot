@@ -12,7 +12,7 @@ delivery path. A green selector or coverage summary is not a substitute.
 
 | Previous check | PR lane after #3055 | Full daily / manual lane |
 | --- | --- | --- |
-| Core 3.11 / 3.12 / 3.13 unit and smoke | Affected 3.12 suites; full 3.12 with coverage for Core-wide or unmapped changes; all versions for affected SDK/compatibility inputs | All three versions, real 3.12 line-coverage gate |
+| Core 3.11 / 3.12 / 3.13 unit and smoke | Affected 3.12 suites plus existing root-level unit regressions for source changes; full 3.12 with coverage for Core-wide or unmapped changes; all versions for affected SDK/compatibility inputs | All three versions, real 3.12 line-coverage gate |
 | Core with in-tree SDK | Retire the duplicate unit and smoke pass; assert the local SDK import in the main Core job; run SDK protocol and Runtime Artifact contracts on affected changes | Same explicit SDK provenance and both contracts |
 | Fast integration, SQLAlchemy, Core Browser and Box | Scoped integration in the main Python job; keep independent broad integration, DB, browser, security, Runner and Box lanes when selected | Full integration, SQLAlchemy variants, PostgreSQL, browser startup and LocalAgent/Box |
 | Dependency Contracts | Route compiled CLI/HTTP, released plugin identity and SeekDB independently by affected boundary | All three; separate environments and mandatory results |
@@ -20,7 +20,7 @@ delivery path. A green selector or coverage summary is not a substitute.
 | SDK matrix and independent checks | Select SDK and shared compatibility inputs; combine lint/format/type/protocol/package preparation without dropping diagnostics | SDK 3.10 / 3.11 / 3.12, package and Docker Box acceptance |
 | Frontend lint, i18n and browser | One install for lint, key parity, type checks, units and dev-browser scenarios; actual Core/Chromium wiring is a separate Core boundary test | Adds the production bundle; raw dev-only test fixtures cannot use that bundle |
 | Official plugins | Route by consumer; Runner and KnowledgeEngine preserve separate released/candidate environments, including LocalAgent/LangRAG; keep standalone repro entries | Released/candidate checks for both groups plus misc and catalog |
-| Core packaging | Tar/wheel/source/Docker exclusions and non-publishing production-image build for affected packaging/dependencies/SDK/CI | Same, plus SHA, image, checksum and installed SDK metadata |
+| Core packaging | Tar/wheel/source/Docker exclusions on packaging changes; production-image builds on image dependency, SDK, deployment and build-configuration changes. Plugin/tool changes keep lightweight exclusions | Full production-image build, SHA, image, checksum and installed SDK metadata |
 | Daily workload/recovery | Not a replacement for PR smoke | Preserve mixed load / weekly recovery, API cycles, real managed n8n and persistence/Runtime; scheduled Dify is required; explicitly opt in on manual runs |
 
 Optional PR jobs may be deliberately unselected; selected jobs must succeed.
