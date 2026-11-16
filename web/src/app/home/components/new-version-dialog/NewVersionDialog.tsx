@@ -17,10 +17,12 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { cn } from '@/lib/utils';
 import '@/styles/github-markdown.css';
 import { GitHubRelease } from '@/app/infra/http/CloudServiceClient';
 import {
   CHANGELOG_TYPE_ORDER,
+  type ChangelogChangeType,
   type ChangelogLocale,
   type ChangelogRelease,
   changelogLocaleFor,
@@ -30,6 +32,19 @@ import {
 import { isNewerVersion } from '@/app/utils/versionCompare';
 
 const COLLAPSED_RELEASE_COUNT = 3;
+
+// Same palette as the changelog on langbot.app.
+const TYPE_STYLES: Record<ChangelogChangeType, string> = {
+  new: 'bg-blue-50 text-blue-600 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-900/50',
+  improved:
+    'bg-emerald-50 text-emerald-600 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-900/50',
+  changed:
+    'bg-amber-50 text-amber-700 ring-amber-100 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-900/50',
+  fixed:
+    'bg-slate-100 text-slate-600 ring-slate-200 dark:bg-neutral-800 dark:text-slate-300 dark:ring-neutral-700',
+  security:
+    'bg-rose-50 text-rose-600 ring-rose-100 dark:bg-rose-900/30 dark:text-rose-400 dark:ring-rose-900/50',
+};
 
 function stripV(version: string | undefined) {
   return (version ?? '').replace(/^v/, '');
@@ -69,10 +84,11 @@ function ReleaseSection({
 }) {
   const { t } = useTranslation();
   const summary = pickChangelogText(release.summary, locale);
-  const groups = CHANGELOG_TYPE_ORDER.map((type) => ({
-    type,
-    items: release.items.filter((item) => item.type === type),
-  })).filter((group) => group.items.length > 0);
+  const items = [...release.items].sort(
+    (a, b) =>
+      CHANGELOG_TYPE_ORDER.indexOf(a.type) -
+      CHANGELOG_TYPE_ORDER.indexOf(b.type),
+  );
 
   return (
     <section className="space-y-4">
@@ -108,26 +124,23 @@ function ReleaseSection({
           </p>
         )}
       </div>
-      {groups.map(({ type, items }) => (
-        <div key={type} className="space-y-1.5">
-          <div className="text-xs font-medium text-muted-foreground">
-            {t(`version.changeTypes.${type}`)}
-          </div>
-          <ul className="space-y-1.5">
-            {items.map((item, i) => (
-              <li key={i} className="flex gap-2.5 text-sm leading-relaxed">
-                <span
-                  aria-hidden
-                  className="mt-[0.6rem] size-1 shrink-0 rounded-full bg-muted-foreground/60"
-                />
-                <span>
-                  <InlineText text={pickChangelogText(item.text, locale)} />
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      <ul className="space-y-2.5">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-3 text-sm leading-6">
+            <span
+              className={cn(
+                'mt-0.5 inline-flex min-w-[4.5rem] shrink-0 justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] leading-5 font-semibold ring-1 ring-inset',
+                TYPE_STYLES[item.type],
+              )}
+            >
+              {t(`version.changeTypes.${item.type}`)}
+            </span>
+            <span className="text-foreground/80">
+              <InlineText text={pickChangelogText(item.text, locale)} />
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
