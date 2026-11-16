@@ -26,6 +26,9 @@ Download `data/locomo10.json` from the source commit in
 This input profile uses text-only dialogue, Source dates and turn IDs. Images
 and dataset summaries are outside the profile.
 
+LoCoMo data is supplied under CC BY-NC 4.0. Retain its attribution and license
+when sharing dataset excerpts or model inputs containing those excerpts.
+
 ```sh
 python3 -m tools.evaluation.locomo \
   --dataset /path/locomo10.json --output /path/calibration-plan \
@@ -130,6 +133,13 @@ verified model traces. Explicit failures remain zero-scored. Unknown executions
 require reconciliation. Reports include paired wins/losses and a seeded
 conversation-cluster bootstrap interval. LoCoMo's ten conversations limit interval
 precision and generalization. A small calibration score cannot establish ranking.
+
+The comparator recomputes validation from raw request/response records, question
+plan contents and the judge source hash. Both arms must carry the same frozen
+judge identity. The canonical plan fields are `id`, `sample_id`, `question`,
+`category`, `category_name`, `reference_answer` and `gold_evidence`. Dataset
+adapters populate those fields before hashing. A one-conversation run reports
+an unavailable confidence interval.
 
 Blindly human-review sampled disagreements and judge decisions. Report latency,
 errors and delivered bytes alongside accuracy. Account for ingestion, extraction,

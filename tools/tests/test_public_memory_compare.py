@@ -4,15 +4,62 @@ import copy
 import unittest
 
 from tools.evaluation.compare import compare_payloads
+from tools.evaluation.locomo import digest
+from tools.evaluation.traces import attach
+
+
+def refresh_judge_source(payload: dict) -> None:
+    untraced = {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            'model_trace_coverage',
+            'untraced_result_sha256',
+            'judge_source_sha256',
+            'judge_instruction',
+            'judge_identity',
+        }
+    }
+    untraced['results'] = [
+        {
+            key: value
+            for key, value in row.items()
+            if key not in {'model_trace_status', 'model_traces', 'retrieval_trace_available', 'judge', 'judge_usage'}
+        }
+        for row in payload['results']
+    ]
+    payload['untraced_result_sha256'] = digest(untraced)
+    original = {
+        key: value
+        for key, value in payload.items()
+        if key not in {'judge_source_sha256', 'judge_instruction', 'judge_identity'}
+    }
+    original['results'] = [
+        {key: value for key, value in row.items() if key not in {'judge', 'judge_usage'}} for row in payload['results']
+    ]
+    payload['judge_source_sha256'] = digest(original)
 
 
 def run_payload(labels: list[bool]) -> dict:
     ids = [f'conv-{index // 2}/q{index}' for index in range(len(labels))]
-    return {
+    questions = [
+        {
+            'id': ids[index],
+            'sample_id': f'conv-{index // 2}',
+            'question': f'question {index}',
+            'reference_answer': 'yes',
+            'category': 4,
+            'category_name': 'single_hop',
+            'gold_evidence': ['D1:1'],
+        }
+        for index in range(len(labels))
+    ]
+    payload = {
         'protocol': {
             'protocol_id': 'public-memory-v2',
             'dataset_sha256': 'a' * 64,
-            'question_set_sha256': 'b' * 64,
+            'question_set_sha256': digest(questions),
             'embedding_model': 'minilm384',
             'answer_model': 'flash',
             'answer_policy': 'source-only-v1',
@@ -24,31 +71,76 @@ def run_payload(labels: list[bool]) -> dict:
             'execution_layer': 'langbot.pipeline',
         },
         'planned_question_ids': ids,
+        'complete': True,
         'results': [
             {
-                'id': ids[index],
-                'sample_id': f'conv-{index // 2}',
-                'question': f'question {index}',
-                'reference_answer': 'yes',
+                **questions[index],
                 'answer': 'yes' if label else 'no',
-                'judge': {'correct': label},
-                'model_trace_status': 'verified',
+                'status': 'completed',
+                'started_at': f'2026-01-01T00:{index:02d}:00+00:00',
+                'finished_at': f'2026-01-01T00:{index:02d}:30+00:00',
             }
             for index, label in enumerate(labels)
         ],
     }
+    records = []
+    for index, row in enumerate(payload['results']):
+        request_id = f'request-{index}'
+        records.extend(
+            [
+                {
+                    'event': 'request_start',
+                    'request_id': request_id,
+                    'timestamp': f'2026-01-01T00:{index:02d}:05+00:00',
+                    'request_body': {
+                        'model': 'flash',
+                        'temperature': 0,
+                        'max_tokens': 256,
+                        'messages': [{'role': 'user', 'content': row['question']}],
+                    },
+                },
+                {
+                    'event': 'request_complete',
+                    'request_id': request_id,
+                    'timestamp': f'2026-01-01T00:{index:02d}:10+00:00',
+                    'outcome': 'ok',
+                    'upstream_status': 200,
+                },
+            ]
+        )
+    payload = attach(payload, records)
+    payload['judge_instruction'] = 'Frozen fixture correctness instruction'
+    payload['judge_identity'] = {
+        'instruction': payload['judge_instruction'],
+        'base_url': 'https://example.org/v1',
+        'model': 'flash',
+        'temperature': 0,
+        'max_tokens': 256,
+        'extra': {},
+    }
+    for row, label in zip(payload['results'], labels):
+        row['judge'] = {'correct': label}
+    refresh_judge_source(payload)
+    return payload
 
 
 class PublicMemoryCompareTests(unittest.TestCase):
-    def test_pipeline_without_observed_protocol_trace_is_rejected(self) -> None:
+    def test_one_conversation_does_not_produce_a_degenerate_confidence_interval(self) -> None:
+        result = compare_payloads(run_payload([True]), run_payload([False]), bootstrap_samples=10)
+        self.assertIsNone(result['confidence_interval']['lower'])
+        self.assertIsNone(result['confidence_interval']['upper'])
+
+    def test_raw_receipts_override_stale_cached_flags_and_unknown_is_rejected(self) -> None:
         left = run_payload([True])
         right = copy.deepcopy(left)
         right['results'][0]['model_trace_status'] = 'budget_exceeded'
-        with self.assertRaises(ValueError):
-            compare_payloads(left, right)
+        refresh_judge_source(right)
+        result = compare_payloads(left, right, bootstrap_samples=10)
+        self.assertEqual(result['right_correct'], 1)
         right['results'][0]['model_trace_status'] = 'verified'
         right['results'][0]['status'] = 'unknown'
-        with self.assertRaises(ValueError):
+        refresh_judge_source(right)
+        with self.assertRaisesRegex(ValueError, 'unknown executions'):
             compare_payloads(left, right)
 
     def test_paired_outcomes_and_seeded_cluster_interval(self) -> None:
@@ -108,6 +200,7 @@ class PublicMemoryCompareTests(unittest.TestCase):
         right = copy.deepcopy(left)
         right['results'][0].update(status='error', answer='', error='transport failure')
         right['results'][0].pop('judge')
+        refresh_judge_source(right)
         result = compare_payloads(left, right, bootstrap_samples=10)
         self.assertEqual(result['question_count'], 2)
         self.assertEqual(result['right_accuracy'], 0.5)
@@ -124,8 +217,87 @@ class PublicMemoryCompareTests(unittest.TestCase):
         left = run_payload([True])
         right = copy.deepcopy(left)
         right['results'][0].pop('answer')
+        refresh_judge_source(right)
         result = compare_payloads(left, right, bootstrap_samples=10)
         self.assertEqual(result['right_correct'], 0)
+
+    def test_cached_verified_flag_cannot_replace_raw_delivery_receipts(self) -> None:
+        left = run_payload([True])
+        right = copy.deepcopy(left)
+        right['results'][0].pop('model_traces')
+        refresh_judge_source(right)
+        with self.assertRaisesRegex(ValueError, 'raw model/context-budget traces: missing'):
+            compare_payloads(left, right)
+
+    def test_raw_trace_settings_and_outcome_are_revalidated(self) -> None:
+        left = run_payload([True])
+        for field, value in [('model', 'wrong'), ('temperature', 1), ('max_tokens', 1024)]:
+            right = copy.deepcopy(left)
+            right['results'][0]['model_traces'][0]['request']['request_body'][field] = value
+            refresh_judge_source(right)
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'raw model/context-budget traces'):
+                compare_payloads(left, right)
+        right = copy.deepcopy(left)
+        right['results'][0]['model_traces'][0]['response']['upstream_status'] = 500
+        refresh_judge_source(right)
+        with self.assertRaisesRegex(ValueError, 'raw model/context-budget traces: incomplete'):
+            compare_payloads(left, right)
+
+    def test_declared_budget_is_checked_against_actual_serialized_messages(self) -> None:
+        left = run_payload([True])
+        right = copy.deepcopy(left)
+        left['protocol']['context_budget_bytes'] = right['protocol']['context_budget_bytes'] = 1
+        for payload in (left, right):
+            payload['results'][0]['model_traces'][0]['request']['serialized_messages_bytes'] = 0
+            refresh_judge_source(payload)
+        with self.assertRaisesRegex(ValueError, 'budget_exceeded'):
+            compare_payloads(left, right)
+
+    def test_judge_source_hash_rejects_changed_answer(self) -> None:
+        left = run_payload([True])
+        right = copy.deepcopy(left)
+        right['results'][0]['answer'] = 'changed after judging'
+        with self.assertRaisesRegex(ValueError, 'Judge source hash'):
+            compare_payloads(left, right)
+
+    def test_model_trace_source_hash_is_revalidated(self) -> None:
+        left = run_payload([True])
+        right = copy.deepcopy(left)
+        right['untraced_result_sha256'] = 'wrong'
+        original = {
+            key: value
+            for key, value in right.items()
+            if key not in {'judge_source_sha256', 'judge_instruction', 'judge_identity'}
+        }
+        original['results'] = [
+            {key: value for key, value in row.items() if key not in {'judge', 'judge_usage'}}
+            for row in right['results']
+        ]
+        right['judge_source_sha256'] = digest(original)
+        with self.assertRaisesRegex(ValueError, 'Model-trace source hash'):
+            compare_payloads(left, right)
+
+    def test_actual_judge_instructions_endpoints_and_decoding_must_match(self) -> None:
+        left = run_payload([True])
+        for field, value in [('instruction', 'another prompt'), ('base_url', 'https://other.org/v1')]:
+            right = copy.deepcopy(left)
+            right['judge_identity'][field] = value
+            if field == 'instruction':
+                right['judge_instruction'] = value
+            with self.subTest(field=field), self.assertRaisesRegex(ValueError, 'different frozen judge'):
+                compare_payloads(left, right)
+        right = copy.deepcopy(left)
+        right['judge_identity']['model'] = 'other'
+        with self.assertRaisesRegex(ValueError, 'Frozen judge identity differs'):
+            compare_payloads(left, right)
+
+    def test_plan_hash_binds_actual_evidence_and_categories(self) -> None:
+        left = run_payload([True])
+        right = copy.deepcopy(left)
+        right['results'][0]['gold_evidence'] = ['D2:1']
+        refresh_judge_source(right)
+        with self.assertRaisesRegex(ValueError, 'Question plan hash differs'):
+            compare_payloads(left, right)
 
 
 if __name__ == '__main__':

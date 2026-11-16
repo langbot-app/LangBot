@@ -9,8 +9,11 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
+from .locomo import digest
 from .public_memory_metrics import answer_metrics, evaluate_payload
+from .traces import validate_model_traces
 
 
 SCHEMA = 'langbot.public-memory-comparison.v1'
@@ -29,6 +32,58 @@ PROTOCOL_FIELDS = (
     'execution_layer',
 )
 FAILED_STATUSES = {'error', 'failed', 'timeout', 'cancelled', 'canceled'}
+# Dataset adapters use these exact fields when hashing their fixed question plan.
+QUESTION_PLAN_FIELDS = ('id', 'sample_id', 'question', 'category', 'category_name', 'reference_answer', 'gold_evidence')
+JUDGE_OUTPUT_FIELDS = {'judge_source_sha256', 'judge_instruction', 'judge_identity'}
+
+
+def _validate_judge_provenance(payload: Mapping[str, Any], protocol: Mapping[str, Any]) -> None:
+    identity = payload.get('judge_identity')
+    if not isinstance(identity, Mapping):
+        raise ValueError('Run lacks frozen judge_identity. Apply the current judge command before comparison')
+    if (
+        identity.get('model') != protocol['judge_model']
+        or not isinstance(identity.get('instruction'), str)
+        or not identity['instruction']
+        or payload.get('judge_instruction') != identity['instruction']
+        or identity.get('temperature') != 0
+        or identity.get('max_tokens') != 256
+        or identity.get('extra') != protocol.get('judge_request_settings', {})
+    ):
+        raise ValueError('Frozen judge identity differs from the declared protocol or recorded instruction')
+    endpoint = urlsplit(identity.get('base_url', ''))
+    if (
+        endpoint.scheme not in {'http', 'https'}
+        or not endpoint.hostname
+        or endpoint.username
+        or endpoint.password
+        or endpoint.query
+        or endpoint.fragment
+    ):
+        raise ValueError('Frozen judge identity has an invalid endpoint')
+    original = {key: value for key, value in payload.items() if key not in JUDGE_OUTPUT_FIELDS}
+    row_key = 'results' if 'results' in payload else 'rows'
+    original[row_key] = [
+        {key: value for key, value in row.items() if key not in {'judge', 'judge_usage'}} for row in payload[row_key]
+    ]
+    if payload.get('judge_source_sha256') != digest(original):
+        raise ValueError('Judge source hash differs from the recorded raw answers or traces')
+    if protocol['execution_layer'] == 'langbot.pipeline':
+        untraced = {
+            key: value
+            for key, value in original.items()
+            if key not in {'model_trace_coverage', 'untraced_result_sha256'}
+        }
+        untraced[row_key] = [
+            {
+                key: value
+                for key, value in row.items()
+                if key not in {'model_trace_status', 'model_traces', 'retrieval_trace_available'}
+            }
+            for row in original[row_key]
+        ]
+        if original.get('untraced_result_sha256') != digest(untraced):
+            raise ValueError('Model-trace source hash differs from the original Pipeline answers')
 
 
 def _references(row: Mapping[str, Any]) -> list[Any]:
@@ -66,6 +121,7 @@ def _validate(payload: Mapping[str, Any]) -> tuple[dict[str, Any], list[str], di
     if not isinstance(raw_rows, list):
         raise ValueError('run requires a results array')
     rows: dict[str, Mapping[str, Any]] = {}
+    request_ids = set()
     for row in raw_rows:
         if not isinstance(row, Mapping) or not row.get('sample_id'):
             raise ValueError('every result requires an object with sample_id')
@@ -79,14 +135,29 @@ def _validate(payload: Mapping[str, Any]) -> tuple[dict[str, Any], list[str], di
             protocol['execution_layer'] == 'langbot.pipeline'
             and row.get('status') not in FAILED_STATUSES
             and not row.get('error')
-            and row.get('model_trace_status') != 'verified'
         ):
-            raise ValueError('Pipeline comparisons require verified model and context-budget traces')
+            trace_status = validate_model_traces(row, protocol)
+            if trace_status != 'verified':
+                raise ValueError(f'Question {key} lacks valid raw model/context-budget traces: {trace_status}')
+            for trace in row['model_traces']:
+                request_id = trace['request']['request_id']
+                if request_id in request_ids:
+                    raise ValueError('One model request was attributed to multiple questions')
+                request_ids.add(request_id)
         rows[key] = row
     if set(rows) != set(planned):
         missing_count = len(set(planned) - set(rows))
         extra_count = len(set(rows) - set(planned))
         raise ValueError(f'run does not cover the complete question plan: missing={missing_count}, extra={extra_count}')
+    try:
+        questions = [{field: rows[key][field] for field in QUESTION_PLAN_FIELDS} for key in planned]
+    except KeyError as exc:
+        raise ValueError(
+            f'Result lacks canonical question-plan field {exc.args[0]}. Use current fixed-plan outputs'
+        ) from None
+    if digest(questions) != protocol['question_set_sha256']:
+        raise ValueError('Question plan hash differs from the actual questions, references, categories or evidence')
+    _validate_judge_provenance(payload, protocol)
     return dict(protocol), planned, rows
 
 
@@ -140,6 +211,8 @@ def compare_payloads(
     ]
     if changed:
         raise ValueError(f'incompatible declared protocols: {", ".join(changed)}')
+    if left['judge_identity'] != right['judge_identity']:
+        raise ValueError('Runs used different frozen judge instructions, endpoints or decoding settings')
     if left_plan != right_plan:
         raise ValueError('runs declare different question plans or order')
     outcomes = {'both_correct': 0, 'left_only_correct': 0, 'right_only_correct': 0, 'both_wrong': 0}
@@ -192,9 +265,13 @@ def compare_payloads(
             'confidence': 0.95,
             'seed': seed,
             'bootstrap_samples': bootstrap_samples,
-            'lower': _percentile(samples, 0.025),
-            'upper': _percentile(samples, 0.975),
-            'limitations': 'Few conversation clusters limit interval precision and generalization.',
+            'lower': _percentile(samples, 0.025) if len(clusters) > 1 else None,
+            'upper': _percentile(samples, 0.975) if len(clusters) > 1 else None,
+            'limitations': (
+                'At least two independent conversation clusters are needed for an interval.'
+                if len(clusters) < 2
+                else 'Few conversation clusters limit interval precision and generalization.'
+            ),
         },
         'left_metrics': evaluate_payload(left),
         'right_metrics': evaluate_payload(right),
