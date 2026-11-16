@@ -491,13 +491,12 @@ class AlertService:
     def default_enabled(self) -> bool:
         """Whether a Workspace without saved settings has alerts on.
 
-        Multi-tenant Cloud turns alerts on for every Workspace (existing and
-        new) and mails through the platform-configured service. Self-hosted and
-        dedicated instances are opt-in: nothing is evaluated or sent until an
-        admin turns alerts on. A saved choice always wins.
+        Alerts are opt-in everywhere, LangBot Cloud included: nothing is
+        evaluated or sent until an admin turns them on. A saved choice always
+        wins.
         """
 
-        return getattr(getattr(self.ap, 'deployment', None), 'mode', 'oss') == 'cloud'
+        return False
 
     def _normalize_settings(self, setting) -> dict:
         if setting is None:
