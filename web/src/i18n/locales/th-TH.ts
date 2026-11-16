@@ -230,6 +230,14 @@ const thTH = {
     cancelled: 'ยกเลิกแล้ว',
     ignored: 'ละเว้นแล้ว',
   },
+  githubStarPrompt: {
+    title: 'LangBot ประมวลผลให้คุณไปแล้ว {{total}} เหตุการณ์',
+    description:
+      'หาก LangBot มีประโยชน์กับคุณ กด Star บน GitHub เพื่อช่วยให้คนอื่นได้รู้จักมากขึ้น',
+    later: 'ไว้ทีหลัง',
+    star: 'Star',
+    close: 'ปิด',
+  },
   assistant: {
     movePosition: 'เลื่อนผู้ช่วยในแนวนอน',
     resizeHeight: 'ปรับความสูงของผู้ช่วย',

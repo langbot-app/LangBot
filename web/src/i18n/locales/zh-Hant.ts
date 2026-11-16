@@ -222,6 +222,14 @@ const zhHant = {
     cancelled: '已取消',
     ignored: '已忽略',
   },
+  githubStarPrompt: {
+    title: 'LangBot 已為你處理了 {{total}} 個事件',
+    description:
+      '如果 LangBot 幫上了忙，在 GitHub 上點個 Star，能讓更多人發現它。',
+    later: '以後再說',
+    star: 'Star',
+    close: '關閉',
+  },
   assistant: {
     movePosition: '左右移動助手',
     resizeHeight: '調整助手高度',

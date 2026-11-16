@@ -234,6 +234,14 @@ const viVN = {
     cancelled: 'Đã hủy',
     ignored: 'Đã bỏ qua',
   },
+  githubStarPrompt: {
+    title: 'LangBot đã xử lý {{total}} sự kiện cho bạn',
+    description:
+      'Nếu LangBot hữu ích với bạn, hãy tặng một Star trên GitHub để nhiều người biết đến hơn.',
+    later: 'Để sau',
+    star: 'Star',
+    close: 'Đóng',
+  },
   assistant: {
     movePosition: 'Di chuyển trợ lý theo chiều ngang',
     resizeHeight: 'Điều chỉnh chiều cao trợ lý',

@@ -237,6 +237,14 @@ const ruRU = {
     cancelled: 'Отменено',
     ignored: 'Пропущено',
   },
+  githubStarPrompt: {
+    title: 'LangBot уже обработал для вас событий: {{total}}',
+    description:
+      'Если LangBot вам полезен, поставьте ему звезду на GitHub — так о нём узнает больше людей.',
+    later: 'Позже',
+    star: 'Star',
+    close: 'Закрыть',
+  },
   assistant: {
     movePosition: 'Переместить помощника по горизонтали',
     resizeHeight: 'Изменить высоту помощника',
