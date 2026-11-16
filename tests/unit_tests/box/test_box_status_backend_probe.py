@@ -3,7 +3,9 @@
 from unittest.mock import AsyncMock, Mock
 
 import pytest
+from langbot_plugin.box import errors as sdk_box_errors
 from langbot_plugin.box.errors import BoxValidationError
+from langbot_plugin.skill_store import SkillStore
 
 from langbot.pkg.box import settings
 from langbot.pkg.box.service import BoxService
@@ -11,6 +13,11 @@ from tests.unit_tests.box.test_box_service import _CONTEXT, make_app
 
 
 def status_service(monkeypatch, selected, backend, mode='network'):
+    if mode == 'network' and (
+        not hasattr(sdk_box_errors, 'BoxArtifactNotPreparedError')
+        or not callable(getattr(SkillStore, 'list_publication_manifest_resources', None))
+    ):
+        pytest.skip('requires network Skill execution capabilities from the in-tree SDK')
     monkeypatch.setattr(settings, 'get_backend', AsyncMock(return_value=selected))
     monkeypatch.setattr(settings, 'get_settings', AsyncMock(return_value={'limits': {'config': {'max_sessions': 2}}}))
     client = Mock()
