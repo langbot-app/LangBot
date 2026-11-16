@@ -7,10 +7,11 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
-from tools.entrypoints.regression_ci import SUITE_BUDGETS, suite_profile
+from tools.entrypoints.regression_ci import SUITE_BUDGETS, main, suite_profile
 from tools.entrypoints.regression_suite import validate
 
 
@@ -26,6 +27,74 @@ class PipelinePermissionProfileTests(unittest.TestCase):
 
 
 class CIProfileTest(unittest.TestCase):
+    def test_endurance_load_settings_preserve_business_resources_and_oracles(self):
+        original, _ = suite_profile('endurance', 'original')
+        settings = {
+            'phases': [{**original['phases'][0], 'name': 'soak', 'duration_seconds': 1200, 'rps': 3}],
+            'thresholds': {'min_rps_ratio': 0.8, 'max_p95_seconds': {'chat': 8}},
+            'performance_mode': 'gate',
+        }
+        profile, _ = suite_profile('endurance', 'custom', load_settings=settings)
+        self.assertEqual(profile['phases'], settings['phases'])
+        self.assertEqual(profile['thresholds'], settings['thresholds'])
+        self.assertEqual(profile['performance_mode'], 'gate')
+        for field in ('resources', 'cases', 'plugins', 'verification', 'coverage_suite', 'resource_limits'):
+            self.assertEqual(profile[field], original[field])
+        self.assertEqual(profile['cleanup'], 'always')
+        with self.assertRaisesRegex(ValueError, 'requires --suite endurance'):
+            suite_profile('smoke', 'invalid', load_settings=settings)
+
+    def test_load_settings_reuse_validation_and_reject_unrelated_overrides(self):
+        for settings, message in [
+            ([], 'non-empty object'),
+            ({}, 'non-empty object'),
+            ({'vars': {'api_key': 'replacement'}}, 'Unsupported load profile fields'),
+            ({'cases': []}, 'Unsupported load profile fields'),
+            ({'phases': []}, 'phases must be a non-empty array'),
+            ({'thresholds': {'min_rps_ratio': 2}}, 'min_rps_ratio must be <= 1'),
+            ({'performance_mode': 'ignored'}, 'performance_mode must be gate or observe'),
+        ]:
+            with self.subTest(settings=settings), self.assertRaisesRegex(ValueError, message):
+                suite_profile('endurance', 'invalid', load_settings=settings)
+
+    def test_cli_load_settings_and_budget_are_validated_before_environment_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings_path = root / 'load.json'
+            settings = {'performance_mode': 'gate'}
+            settings_path.write_text(json.dumps(settings))
+            base = ['regression_ci', '--lbctl', 'unused', '--output', str(root / 'run')]
+            with (
+                patch(
+                    'sys.argv',
+                    [*base, '--suite', 'endurance', '--load-profile', str(settings_path), '--budget-seconds', '1800'],
+                ),
+                patch('tools.entrypoints.regression_ci.run', return_value={'passed': True}) as run,
+                patch('builtins.print'),
+                self.assertRaises(SystemExit) as result,
+            ):
+                main()
+            self.assertEqual(result.exception.code, 0)
+            self.assertEqual(run.call_args.args[0].load_settings, settings)
+            self.assertEqual(run.call_args.args[0].budget_seconds, 1800)
+            for extra in (
+                ['--suite', 'smoke', '--load-profile', str(settings_path)],
+                ['--suite', 'smoke', '--budget-seconds', '1800'],
+                ['--suite', 'endurance', '--budget-seconds', '0'],
+                ['--suite', 'endurance', '--load-profile', str(root / 'missing.json')],
+            ):
+                with (
+                    self.subTest(extra=extra),
+                    patch('sys.argv', [*base, *extra]),
+                    patch('tools.entrypoints.regression_ci.run') as run,
+                    patch('sys.stderr'),
+                    self.assertRaises(SystemExit) as result,
+                ):
+                    main()
+                self.assertEqual(result.exception.code, 2)
+                run.assert_not_called()
+            self.assertFalse((root / 'run').exists())
+
     def test_local_groups_are_explicit_and_smoke_rejects_them(self):
         profile, _ = suite_profile('daily', 'test-run', ['resources'])
         self.assertEqual(profile['scenario_groups'], ['resources'])

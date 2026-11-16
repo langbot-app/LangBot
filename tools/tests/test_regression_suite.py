@@ -172,6 +172,63 @@ class ProfileTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'uuid is forbidden'):
             validate(current)
 
+    def test_open_loop_phase_configuration_and_arrival_thresholds(self):
+        current = profile()
+        current['phases'][0].update(arrival_mode='open-loop', queue_capacity=8)
+        current['thresholds'] = {'max_arrival_p95_seconds': {'chat': 2}}
+        validate(current)
+        for patch_value in (
+            {'arrival_mode': 'unknown'},
+            {'queue_capacity': 0},
+            {'queue_capacity': True},
+            {'queue_capacity': 1.5},
+            {'max_requests': 5},
+            {'arrival_mode': 'paced'},
+        ):
+            with self.subTest(patch_value=patch_value):
+                invalid = copy.deepcopy(current)
+                invalid['phases'][0].update(patch_value)
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+        for value in ({'unknown': 2}, {'chat': float('nan')}, {'chat': 0}, []):
+            with self.subTest(value=value):
+                invalid = copy.deepcopy(current)
+                invalid['thresholds']['max_arrival_p95_seconds'] = value
+                with self.assertRaises(ValueError):
+                    validate(invalid)
+
+    def test_open_loop_arguments_and_arrival_latency_gate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            current = profile()
+            current['phases'][0].update(arrival_mode='open-loop', queue_capacity=7)
+            current['thresholds'] = {'max_arrival_p95_seconds': {'chat': 1}}
+            for latency, mode, expected_failure in ((0.5, 'gate', False), (2, 'gate', True), (2, 'observe', False)):
+                current['performance_mode'] = mode
+                suite = Suite(current, root / 'profile.json', root)
+
+                def traffic(command, **kwargs):
+                    self.assertEqual(command[command.index('--arrival-mode') + 1], 'open-loop')
+                    self.assertEqual(command[command.index('--queue-capacity') + 1], '7')
+                    target = Path(command[command.index('--output') + 1])
+                    target.mkdir(exist_ok=True)
+                    (target / 'summary.json').write_text(
+                        json.dumps(
+                            {
+                                'successful_requests': 2,
+                                'load_elapsed_seconds': 1,
+                                'cases': {'chat': {'arrival_p95_seconds': latency}},
+                            }
+                        )
+                    )
+                    return subprocess.CompletedProcess(command, 0)
+
+                with patch('tools.entrypoints.regression_suite.subprocess.run', side_effect=traffic):
+                    result = suite.run()
+                self.assertEqual(bool(result['errors']), expected_failure)
+                if expected_failure:
+                    self.assertIn('arrival P95', result['errors'][0])
+
     def test_merge_keeps_defaults_but_replaces_lists(self):
         base = {'ai': {'enabled': True, 'models': ['old']}, 'output': {'x': 1}}
         actual = merge(base, {'ai': {'models': ['new']}})

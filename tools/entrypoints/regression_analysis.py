@@ -161,6 +161,7 @@ def workload_contract(profile, profile_path):
         'regression_traffic.py': Path(__file__).resolve().parent / 'regression_traffic.py',
         'regression_smoke.py': Path(__file__).resolve().parents[1] / 'regression' / 'regression_smoke.py',
         'regression_analysis.py': Path(__file__).resolve(),
+        'arrival_schedule.py': Path(__file__).resolve().parents[1] / 'regression' / 'arrival_schedule.py',
     }
     contract['oracle_sha256'] = {
         name: hashlib.sha256(path.read_bytes()).hexdigest() for name, path in oracle_paths.items()

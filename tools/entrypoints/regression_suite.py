@@ -387,6 +387,8 @@ def validate(profile):
             'groups',
             'members_per_group',
             'max_requests',
+            'arrival_mode',
+            'queue_capacity',
         }:
             raise ValueError(f'{name}: unknown phase field')
         number(phase.get('duration_seconds'), 'duration_seconds', minimum=0.001)
@@ -395,6 +397,14 @@ def validate(profile):
         number(phase.get('cooldown_seconds', 0), 'cooldown_seconds')
         if 'max_requests' in phase:
             number(phase['max_requests'], 'max_requests', minimum=1, integer=True)
+        if phase.get('arrival_mode', 'paced') not in {'paced', 'open-loop'}:
+            raise ValueError('arrival_mode must be paced or open-loop')
+        if 'queue_capacity' in phase:
+            number(phase['queue_capacity'], 'queue_capacity', minimum=1, integer=True)
+            if phase.get('arrival_mode') != 'open-loop':
+                raise ValueError('queue_capacity requires open-loop arrival_mode')
+        if phase.get('arrival_mode') == 'open-loop' and 'max_requests' in phase:
+            raise ValueError('open-loop arrival_mode cannot use max_requests')
         if phase['workers'] > 32:
             raise ValueError('workers must be <= 32')
         number(phase.get('groups', 0), 'groups', integer=True)
@@ -411,17 +421,20 @@ def validate(profile):
     if profile.get('cleanup', 'on-success') not in {'always', 'on-success', 'never'}:
         raise ValueError('cleanup must be always/on-success/never')
     thresholds = profile.get('thresholds', {})
-    if extra := thresholds.keys() - {'min_rps_ratio', 'max_p95_seconds'}:
+    if extra := thresholds.keys() - {'min_rps_ratio', 'max_p95_seconds', 'max_arrival_p95_seconds'}:
         raise ValueError(f'unknown thresholds: {sorted(extra)}')
     number(thresholds.get('min_rps_ratio', 0), 'min_rps_ratio')
     if thresholds.get('min_rps_ratio', 0) > 1:
         raise ValueError('min_rps_ratio must be <= 1')
-    if not isinstance(thresholds.get('max_p95_seconds', {}), dict):
-        raise ValueError('max_p95_seconds must map case names to seconds')
-    for name, value in thresholds.get('max_p95_seconds', {}).items():
-        if name not in {case['name'] for case in cases}:
-            raise ValueError(f'unknown case in max_p95_seconds: {name}')
-        number(value, 'max_p95_seconds', minimum=0.001)
+    for metric in ('max_p95_seconds', 'max_arrival_p95_seconds'):
+        if not isinstance(thresholds.get(metric, {}), dict):
+            raise ValueError(f'{metric} must map case names to seconds')
+        for name, value in thresholds.get(metric, {}).items():
+            if name not in {case['name'] for case in cases}:
+                raise ValueError(f'unknown case in {metric}: {name}')
+            number(value, metric, minimum=0.001)
+    if thresholds.get('max_arrival_p95_seconds') and any(phase.get('arrival_mode') != 'open-loop' for phase in phases):
+        raise ValueError('max_arrival_p95_seconds requires open-loop phases')
     if 'resource_limits' in profile:
         if 'smoke' in profile and execution is None:
             raise ValueError('resource_limits requires measured load and cooldown phases')
@@ -820,6 +833,10 @@ class Suite:
             ]
             if 'max_requests' in phase:
                 command += ['--max-requests', str(phase['max_requests'])]
+            if 'arrival_mode' in phase:
+                command += ['--arrival-mode', phase['arrival_mode']]
+            if 'queue_capacity' in phase:
+                command += ['--queue-capacity', str(phase['queue_capacity'])]
             with (self.output / f'{phase["name"]}.log').open('w') as log:
                 result = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, env=self.env)
             summary = json.loads((destination / 'summary.json').read_text())
@@ -848,6 +865,10 @@ class Suite:
                 p95 = summary['cases'][name]['p95_seconds']
                 if p95 is None or p95 > maximum:
                     errors.append(f'{phase["name"]}/{name}: P95 missing or above configured threshold')
+            for name, maximum in thresholds.get('max_arrival_p95_seconds', {}).items():
+                p95 = summary['cases'][name].get('arrival_p95_seconds')
+                if p95 is None or p95 > maximum:
+                    errors.append(f'{phase["name"]}/{name}: arrival P95 missing or above configured threshold')
         return {'phases': results, 'errors': errors}
 
 

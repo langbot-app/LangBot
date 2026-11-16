@@ -25,7 +25,7 @@ from tools.regression.regression_plugins import (
     prepare_source_plugins,
 )
 from tools.regression.regression_local_cases import DEFAULT_GROUPS, api, require
-from tools.entrypoints.regression_suite import Suite
+from tools.entrypoints.regression_suite import Suite, validate
 from tools.entrypoints.regression_traffic import owned_box_containers, read_endpoint_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,7 +44,7 @@ sys.path.insert(0, str(ROOT))
 from tests.e2e.utils.config_factory import create_minimal_config, create_test_directories  # noqa: E402
 
 
-def suite_profile(name, run_id, groups=(), api_seed=1):
+def suite_profile(name, run_id, groups=(), api_seed=1, load_settings=None):
     profile_path = ROOT / 'tools/profiles' / ('endurance.json' if name == 'endurance' else 'smoke.json')
     if name in ('scenarios', 'daily'):
         from tools.regression.regression_scenarios import expanded_profile
@@ -102,6 +102,16 @@ def suite_profile(name, run_id, groups=(), api_seed=1):
                     # This workload measures repeated tool use; each pipeline owns one sandbox per CI run.
                     config['box-session-id-template'] = f'qa-{run_id}-{resource["id"]}'
     profile.update(cleanup='always', performance_mode='observe')
+    if load_settings is not None:
+        if name != 'endurance':
+            raise ValueError('A load profile requires --suite endurance')
+        if not isinstance(load_settings, dict) or not load_settings:
+            raise ValueError('A load profile must be a non-empty object')
+        allowed = {'phases', 'thresholds', 'resource_limits', 'performance_mode'}
+        if extra := load_settings.keys() - allowed:
+            raise ValueError(f'Unsupported load profile fields: {sorted(extra)}')
+        profile.update(load_settings)
+        validate(profile)
     return profile, profile_path
 
 
@@ -239,7 +249,9 @@ def run(args):
                 groups = [args.suite]
             if 'plugins' in groups and not {'misc/EssentialCommands', 'misc/FAQManager'} <= set(args.extra_plugins):
                 groups.remove('plugins')
-        profile, profile_path = suite_profile(args.suite, secrets.token_hex(8), groups, args.api_seed)
+        profile, profile_path = suite_profile(
+            args.suite, secrets.token_hex(8), groups, args.api_seed, args.load_settings
+        )
         cli_config = private / 'lbctl.yaml'
         cli_config.write_text(
             yaml.safe_dump(
@@ -443,7 +455,7 @@ def run(args):
                     str(root / 'gate/suite'),
                 ],
                 root / 'gate',
-                SUITE_BUDGETS[args.suite] - restart_elapsed,
+                (args.budget_seconds or SUITE_BUDGETS[args.suite]) - restart_elapsed,
                 pids,
                 env,
             )
@@ -505,6 +517,12 @@ def main():
     )
     parser.add_argument('--suite', choices=tuple(SUITE_BUDGETS), default='smoke')
     parser.add_argument(
+        '--load-profile',
+        type=Path,
+        help='Endurance JSON overrides for phases, thresholds, resource limits and performance mode',
+    )
+    parser.add_argument('--budget-seconds', type=int, help='Endurance execution guard, excluding service preparation')
+    parser.add_argument(
         '--scenario-groups',
         nargs='*',
         choices=DEFAULT_GROUPS,
@@ -517,6 +535,17 @@ def main():
         parser.error('--extra-plugins requires --plugins')
     if args.suite not in ('scenarios', 'daily') and (args.scenario_groups is not None or args.restart_services):
         parser.error('Optional scenarios and restarts require --suite scenarios or --suite daily')
+    if args.suite != 'endurance' and (args.load_profile is not None or args.budget_seconds is not None):
+        parser.error('--load-profile and --budget-seconds require --suite endurance')
+    if args.budget_seconds is not None and args.budget_seconds <= 0:
+        parser.error('--budget-seconds must be positive')
+    args.load_settings = None
+    if args.load_profile is not None:
+        try:
+            args.load_settings = json.loads(args.load_profile.read_text())
+            suite_profile('endurance', 'validation', load_settings=args.load_settings)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
     if args.output.exists():
         parser.error('--output must be a new directory')
     try:
