@@ -1,5 +1,9 @@
 # LangBot regression tools
 
+Public-dataset quality evaluation uses the [evaluation workflow](evaluation/README.md).
+It prepares pinned question plans, executes installed Pipeline arms, records real
+model inputs, and reports paired answer and evidence metrics.
+
 ## Layout and entrypoints
 
 Run module entrypoints from the repository root:
