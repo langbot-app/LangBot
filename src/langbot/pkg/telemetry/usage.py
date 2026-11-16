@@ -18,6 +18,10 @@ COMMAND = re.compile(r'[a-z0-9-]+(?:\.[a-z0-9-]+){0,5}')
 ERROR = re.compile(r'[A-Za-z0-9_.]{0,64}')
 GROUPS: set[str] = set()
 SCHEMA = {
+    'alert.state': ('enabled', 'channel'),
+    'alert.settings.update': ('enabled', 'channel'),
+    'alert.incident': ('rule', 'event'),
+    'alert.delivery': ('notice', 'via', 'outcome'),
     'api.call': ('group', 'method', 'client', 'status'),
     'lbctl.cmd': ('cmd', 'status'),
     'lbctl.client': ('version', 'os'),
@@ -34,6 +38,15 @@ SCHEMA = {
     'ugc.library.browse': ('kind',),
     'ugc.prompt.apply': ('kind',),
     'ugc.install': ('type', 'source', 'outcome', 'unfilled'),
+}
+ALERT_ENUMS = {
+    'enabled': ('yes', 'no'),
+    'channel': ('auto', 'instance', 'space', 'off'),
+    'rule': ('pipeline_failures', 'model_failures', 'bot_offline', 'other'),
+    'event': ('opened', 'resolved'),
+    'notice': ('fired', 'reminder', 'resolved', 'test'),
+    'via': ('email', 'space', 'webhook'),
+    'outcome': ('ok', 'failed', 'rate_limited'),
 }
 ENUMS = {
     'method': ('GET', 'POST', 'PUT', 'PATCH', 'DELETE'),
@@ -96,7 +109,13 @@ def normalize(metric: str, dims: dict) -> tuple:
     for name in SCHEMA[metric]:
         value = dims.get(name, '')
         value = value if isinstance(value, str) else ''
-        if name == 'engine':
+        if metric.startswith('alert.'):
+            allowed = ALERT_ENUMS[name]
+            if value not in allowed:
+                if 'other' not in allowed:
+                    raise ValueError('Invalid alert dimension')
+                value = 'other'
+        elif name == 'engine':
             value = value[:64]
         elif name == 'group':
             value = value if len(value) <= 64 and (value in GROUPS or value in MCP_GROUPS) else 'other'
@@ -122,19 +141,21 @@ def normalize(metric: str, dims: dict) -> tuple:
     return tuple(values)
 
 
-def inc(ap, workspace_uuid, metric, **dims) -> None:
+def inc(ap, workspace_uuid, metric, amount: int = 1, **dims) -> None:
     try:
         if not enabled(ap) or metric not in SCHEMA or not isinstance(workspace_uuid, str) or not workspace_uuid:
             return
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0:
+            return
+        key = (metric, normalize(metric, dims))
         state = _workspaces.get(workspace_uuid)
         if state is None:
             if len(_workspaces) >= MAX_WORKSPACES:
                 return
             state = _workspaces[workspace_uuid] = Counters()
-        key = (metric, normalize(metric, dims))
         if key not in state.counts and len(state.counts) >= MAX_KEYS:
             return
-        state.counts[key] = state.counts.get(key, 0) + 1
+        state.counts[key] = state.counts.get(key, 0) + min(amount, MAX_COUNT)
     except Exception:
         pass
 
