@@ -9,11 +9,15 @@ import subprocess
 def select(paths):
     paths = set(paths)
     shared = any(
-        p.startswith(('sdk/', 'src/', '.github/workflows/'))
+        p.startswith(('sdk/', 'src/', 'res/', '.github/workflows/'))
         or p
         in {
             'pyproject.toml',
             'uv.lock',
+            'main.py',
+            'pytest.ini',
+            'tests/conftest.py',
+            'tests/e2e/conftest.py',
             'scripts/p0_acceptance_scope.py',
             'tests/utils/required_suites.py',
             'tests/e2e/test_image_upgrade.py',

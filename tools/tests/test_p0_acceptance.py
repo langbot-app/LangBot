@@ -28,6 +28,9 @@ class TestP0Scope(unittest.TestCase):
             'sdk/src/langbot_plugin/box/runtime.py',
             '.github/workflows/persistence-acceptance.yml',
             'uv.lock',
+            'main.py',
+            'pytest.ini',
+            'tests/conftest.py',
         ):
             with self.subTest(path=path):
                 self.assertEqual(select([path]), dict(persistence=True, permissions=True, image=True))

@@ -116,11 +116,7 @@ def image_instance(tmp_path):
             'SPACE__DISABLE_MODELS_SERVICE=true',
             '-e',
             'LANGBOT_PLUGIN_FILE_STORAGE_DIR=/app/data/plugin-runtime',
-            '--entrypoint',
-            '/app/.venv/bin/python',
             image,
-            '-m',
-            'langbot',
         )
         containers.append((name, phase))
         client = httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=120, trust_env=False)
