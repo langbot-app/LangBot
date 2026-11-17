@@ -94,3 +94,13 @@ Follow-up local checks: storage unit suite 188 passed; KB/API/historical-schema
 regression 67 passed/1 unavailable-PG skip; telemetry42 passed; tool-grant tests30
 passed; processor sweep4 passed. The exact remote PostgreSQL and full CI results
 must be rechecked on the updated head; these local checks are not a substitute.
+
+## Legacy upload compatibility follow-up
+
+The persistent legacy image/document adapter now checks the effective legacy read bound before any Artifact, content, alias or holder writes, capped by the existing Artifact hard limit. Both HTTP routes map the structured size error to HTTP 413. This does not raise read limits or relax authorization. Long otherwise-valid names use the existing UUID logical key as bounded Artifact metadata; exceptionally long document extensions use a digest display name with MIME preserved. Direct Artifact filename validation remains unchanged.
+
+Added real authenticated HTTP coverage for both routes at N/N+1 configured bounds, unchanged four-table row counts after rejection, cross-replica legacy readback, filename lengths 255/256/1024, exceptionally long document extensions, MIME and unauthenticated Artifact download denial. Service coverage also tests the hard Artifact cap and rejects path/control characters hidden in long names. The initial HTTP tests reproduced six failures before the fix.
+
+Final targeted command: `.venv/bin/pytest tests/integration/storage/test_legacy_upload_compatibility.py tests/integration/storage/test_legacy_artifact_bounds.py -q --tb=short`: **13 passed, 26 skipped** (optional PostgreSQL/MinIO environments unavailable locally). `ruff check src/langbot tests tools`, `ruff format src tools --check`, and `git diff --check` passed. No real Runtime, model or long-soak rerun is claimed for this adapter-only follow-up; previous phase results remain documented above.
+
+Broader regression: `.venv/bin/pytest tests/integration/storage tests/unit_tests/storage/test_content_store.py -q --tb=short`: **114 passed, 208 skipped** (136.46 s). This run started before the final exceptionally-long-extension case was added; that final case and final implementation are covered by the 13-pass targeted run above. Skips remain optional PostgreSQL/MinIO coverage, not passes.

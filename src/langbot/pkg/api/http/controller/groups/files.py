@@ -7,6 +7,7 @@ import asyncio
 
 import quart.datastructures
 
+from .....storage.artifacts import ArtifactError
 from ...authz import Permission
 from ...context import RequestContext
 from .. import group
@@ -108,15 +109,18 @@ class FilesRouterGroup(group.RouterGroup):
             logical_key = f'{uuid.uuid4()}.{extension}'
 
             # save file to storage
-            uploaded = await self.ap.artifact_service.create_legacy_upload(
-                request_context,
-                owner_type='upload_image',
-                owner=_storage_owner(request_context),
-                key=logical_key,
-                value=file_bytes,
-                filename=file.filename,
-                mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
-            )
+            try:
+                uploaded = await self.ap.artifact_service.create_legacy_upload(
+                    request_context,
+                    owner_type='upload_image',
+                    owner=_storage_owner(request_context),
+                    key=logical_key,
+                    value=file_bytes,
+                    filename=file.filename,
+                    mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
+                )
+            except ArtifactError as exc:
+                return self.http_status(exc.status_code, exc.error_code, str(exc))
             return self.success(
                 data={
                     'file_key': uploaded['file_key'],
@@ -168,15 +172,18 @@ class FilesRouterGroup(group.RouterGroup):
                 logical_key += '.' + extension
 
             # save file to storage
-            uploaded = await self.ap.artifact_service.create_legacy_upload(
-                request_context,
-                owner_type='upload_document',
-                owner=_storage_owner(request_context),
-                key=logical_key,
-                value=file_bytes,
-                filename=file.filename,
-                mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
-            )
+            try:
+                uploaded = await self.ap.artifact_service.create_legacy_upload(
+                    request_context,
+                    owner_type='upload_document',
+                    owner=_storage_owner(request_context),
+                    key=logical_key,
+                    value=file_bytes,
+                    filename=file.filename,
+                    mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
+                )
+            except ArtifactError as exc:
+                return self.http_status(exc.status_code, exc.error_code, str(exc))
             return self.success(
                 data={
                     'file_id': uploaded['file_key'],

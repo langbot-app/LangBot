@@ -329,6 +329,21 @@ class ArtifactService:
                 value=value,
             )
             return {'artifact': None, 'file_key': file_key}
+        # Legacy aliases are still read through StorageMgr's configured bound. Never persist
+        # a successful upload that its compatibility handle cannot subsequently read.
+        if isinstance(value, bytes) and len(value) > min(storage._object_read_limit(), MAX_ARTIFACT_BYTES):
+            raise ArtifactError('artifact_too_large', 'Artifact exceeds the size limit.', 413)
+        metadata_name = filename or key
+        if isinstance(metadata_name, str) and len(metadata_name) > 255:
+            # Legacy routes stored UUID keys and did not constrain display-name length.
+            # Preserve valid extensions/MIME without weakening ordinary Artifact validation.
+            if any(c in metadata_name for c in '/\\') or any(ord(c) < 32 or ord(c) == 127 for c in metadata_name):
+                raise ValueError('Invalid artifact filename')
+            # Routes already supply an opaque UUID key with the original extension.
+            metadata_name = key
+            if isinstance(metadata_name, str) and len(metadata_name) > 255:
+                # Legacy document extensions were unbounded too; MIME is stored separately.
+                metadata_name = 'upload-' + hashlib.sha256(metadata_name.encode('utf-8')).hexdigest()
         file_key = storage.scoped_object_key(context, owner_type=owner_type, owner=owner, key=key)
         if len(file_key) > 255:
             raise ValueError('Invalid artifact reference')
@@ -336,7 +351,7 @@ class ArtifactService:
             metadata = await self._create_owned(
                 context,
                 principal,
-                filename or key,
+                metadata_name,
                 value,
                 mime_type,
                 DEFAULT_TTL_SECONDS,
