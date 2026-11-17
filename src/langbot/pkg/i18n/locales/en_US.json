@@ -142,5 +142,8 @@
   "Artifact read timed out": "Artifact read timed out",
   "Artifact has a different manager": "Artifact has a different manager",
   "Legacy output requires explicit manager assignment": "Legacy output requires explicit manager assignment",
-  "Artifact access requires an active run lease": "Artifact access requires an active run lease"
+  "Artifact access requires an active run lease": "Artifact access requires an active run lease",
+  "Artifact knowledge ingestion requires an account or API key": "Artifact knowledge ingestion requires an account or API key",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "Knowledge base deletion is pending; retry deletion before admitting new files"
 }

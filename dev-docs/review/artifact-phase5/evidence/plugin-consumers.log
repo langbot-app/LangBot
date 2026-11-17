@@ -1,0 +1,47 @@
+........................................................................ [ 33%]
+........................................................................ [ 66%]
+........................................................................ [ 99%]
+.                                                                        [100%]
+=============================== warnings summary ===============================
+sdk/src/langbot_plugin/api/entities/builtin/resource/tool.py:8
+  <checkout>/sdk/src/langbot_plugin/api/entities/builtin/resource/tool.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class LLMTool(pydantic.BaseModel):
+
+sdk/src/langbot_plugin/api/entities/builtin/provider/session.py:25
+  <checkout>/sdk/src/langbot_plugin/api/entities/builtin/provider/session.py:25: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Conversation(pydantic.BaseModel):
+
+sdk/src/langbot_plugin/api/entities/builtin/provider/session.py:71
+  <checkout>/sdk/src/langbot_plugin/api/entities/builtin/provider/session.py:71: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Session(WorkspaceExecutionScope):
+
+sdk/src/langbot_plugin/api/entities/builtin/command/context.py:13
+  <checkout>/sdk/src/langbot_plugin/api/entities/builtin/command/context.py:13: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class CommandReturn(pydantic.BaseModel):
+
+sdk/src/langbot_plugin/api/definition/abstract/platform/adapter.py:21
+  <checkout>/sdk/src/langbot_plugin/api/definition/abstract/platform/adapter.py:21: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class AbstractMessagePlatformAdapter(pydantic.BaseModel, metaclass=abc.ABCMeta):
+
+sdk/src/langbot_plugin/api/entities/builtin/pipeline/query.py:17
+  <checkout>/sdk/src/langbot_plugin/api/entities/builtin/pipeline/query.py:17: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class Query(WorkspaceExecutionScope):
+
+sdk/src/langbot_plugin/api/entities/events.py:16
+  <checkout>/sdk/src/langbot_plugin/api/entities/events.py:16: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class BaseEventModel(WorkspaceExecutionScope):
+
+sdk/src/langbot_plugin/runtime/plugin/container.py:29
+  <checkout>/sdk/src/langbot_plugin/runtime/plugin/container.py:29: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class PluginContainer(pydantic.BaseModel):
+
+sdk/src/langbot_plugin/runtime/plugin/container.py:100
+  <checkout>/sdk/src/langbot_plugin/runtime/plugin/container.py:100: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class ComponentContainer(pydantic.BaseModel):
+
+sdk/src/langbot_plugin/api/proxies/query_based_api.py:11
+  <checkout>/sdk/src/langbot_plugin/api/proxies/query_based_api.py:11: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.12/migration/
+    class QueryBasedAPIProxy(pydantic.BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+217 passed, 10 warnings in 4.93s

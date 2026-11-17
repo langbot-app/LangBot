@@ -309,3 +309,7 @@ Pipeline 重试和恢复会应用当前的输出过滤、回复包装和发送�
 ACP daemon 复用 LangBot 现有的 run-scoped MCP 桥。Box 可用且已授权 `event_reply` 时，先绑定 Box，在其中生成文件，通过 `langbot_export_box_files` 导出选定的绝对路径，再调用 `langbot_reply_files` 发送返回的文件 ID。媒体上传与投递由平台适配器负责，ACP Agent 无需获取平台凭据。
 
 文件 ID 只在导出它的 run 内有效。即使 Pipeline 过滤器改写了处理中的文本，回复目标仍是原始入站消息。
+
+## run 中的安装私有 Artifact
+
+`ctx.api.artifacts` 提供[类型化 Artifact 辅助接口](/zh/plugin/dev/apis/common#类型化-artifact-辅助接口)。它们是安装私有的 Workspace 资产，不替代 run 本地附件或 Box 文件句柄。调用还受存活 run 和冻结 Workspace 授权约束。辅助接口不能把账户、Skill 或其他 run 的引用转换为访问权。既有导出、读取、提交和回复的 `file_id` 行为不变。

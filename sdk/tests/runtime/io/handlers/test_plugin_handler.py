@@ -1570,3 +1570,34 @@ async def test_plugin_handler_forwards_send_message_with_plugin_timeout(
             expected_timeout,
         )
     ]
+
+
+@pytest.mark.parametrize("run_id", [None, "run-a"])
+async def test_artifact_workspace_forwarding_preserves_scoped_cancellation(run_id):
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    control.call_action = AsyncMock(
+        return_value={"ok": True, "result": {"id": "art_test"}}
+    )
+    payload = {
+        "operation_id": "artifact.get",
+        "arguments": {"artifact_id": "art_test"},
+        "workspace_uuid": "forged",
+        "caller_plugin_identity": "forged/identity",
+    }
+    if run_id:
+        payload["run_id"] = run_id
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            PluginToRuntimeAction.CALL_APPLICATION_OPERATION.value,
+            payload,
+            action_context=None,
+        )
+    assert result["code"] == 0
+    forwarded = control.call_action.call_args.args[1]
+    assert forwarded["caller_plugin_identity"] == "tester/demo"
+    assert "workspace_uuid" not in forwarded
+    assert forwarded.get("run_id") == run_id
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True

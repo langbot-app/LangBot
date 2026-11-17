@@ -142,5 +142,8 @@
   "Artifact read timed out": "Время чтения артефакта истекло",
   "Artifact has a different manager": "У артефакта другой управляющий субъект",
   "Legacy output requires explicit manager assignment": "Для устаревшего результата нужно явно назначить управляющего субъекта",
-  "Artifact access requires an active run lease": "Для доступа к артефакту нужна действующая аренда выполнения"
+  "Artifact access requires an active run lease": "Для доступа к артефакту нужна действующая аренда выполнения",
+  "Artifact knowledge ingestion requires an account or API key": "Для загрузки Artifact в базу знаний требуется учётная запись или API-ключ",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Загрузка ZIP из Artifact не поддерживается; используйте существующую загрузку документов",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "Удаление базы знаний не завершено; повторите удаление перед добавлением новых файлов"
 }

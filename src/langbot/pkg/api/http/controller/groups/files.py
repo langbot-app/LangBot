@@ -108,16 +108,19 @@ class FilesRouterGroup(group.RouterGroup):
             logical_key = f'{uuid.uuid4()}.{extension}'
 
             # save file to storage
-            file_key = await self.ap.storage_mgr.save_scoped(
+            uploaded = await self.ap.artifact_service.create_legacy_upload(
                 request_context,
                 owner_type='upload_image',
                 owner=_storage_owner(request_context),
                 key=logical_key,
                 value=file_bytes,
+                filename=file.filename,
+                mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
             )
             return self.success(
                 data={
-                    'file_key': file_key,
+                    'file_key': uploaded['file_key'],
+                    **({'artifact_id': uploaded['artifact']['id']} if uploaded['artifact'] is not None else {}),
                 }
             )
 
@@ -165,15 +168,18 @@ class FilesRouterGroup(group.RouterGroup):
                 logical_key += '.' + extension
 
             # save file to storage
-            file_key = await self.ap.storage_mgr.save_scoped(
+            uploaded = await self.ap.artifact_service.create_legacy_upload(
                 request_context,
                 owner_type='upload_document',
                 owner=_storage_owner(request_context),
                 key=logical_key,
                 value=file_bytes,
+                filename=file.filename,
+                mime_type=mimetypes.guess_type(file.filename)[0] or 'application/octet-stream',
             )
             return self.success(
                 data={
-                    'file_id': file_key,
+                    'file_id': uploaded['file_key'],
+                    **({'artifact_id': uploaded['artifact']['id']} if uploaded['artifact'] is not None else {}),
                 }
             )

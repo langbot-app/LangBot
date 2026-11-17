@@ -14,6 +14,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.api.http.context import ExecutionContext
 from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
+from langbot.pkg.entity.persistence.artifact import Artifact, ArtifactReference
+from langbot.pkg.entity.persistence.skill import SkillVersion
 from langbot.pkg.persistence.mgr import PersistenceManager, PersistenceMode
 from langbot.pkg.persistence.tenant_uow import TenantScopeRequiredError
 from langbot.pkg.storage.mgr import StorageMgr
@@ -55,6 +57,9 @@ async def storage(tmp_path):
         await connection.execute(sa.insert(workspaces).values([{'uuid': WORKSPACE}, {'uuid': OTHER}]))
         await connection.run_sync(lambda sync: ContentObject.__table__.create(sync))
         await connection.run_sync(lambda sync: ContentAlias.__table__.create(sync))
+        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync, checkfirst=True))
+        await connection.run_sync(lambda sync: Artifact.__table__.create(sync))
+        await connection.run_sync(lambda sync: ArtifactReference.__table__.create(sync))
     manager = StorageMgr(ap)
     try:
         yield manager
@@ -136,7 +141,7 @@ async def test_database_package_metadata_retains_revision_scope_without_archive_
     storage.ap.storage_mgr = storage
     engine = storage.ap.persistence_mgr.get_db_engine()
     async with engine.begin() as connection:
-        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync))
+        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync, checkfirst=True))
     body = b'x' * (2 * 1024 * 1024)
     manifest = {'algorithm': 'sha256-tree-v1', 'files': [], 'total_bytes': 0}
     revision = (
@@ -245,7 +250,7 @@ async def test_network_resource_reads_share_short_transactions_and_keep_validati
     manager = storage.ap.persistence_mgr
     engine = manager.get_db_engine()
     async with engine.begin() as connection:
-        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync))
+        await connection.run_sync(lambda sync: SkillVersion.__table__.create(sync, checkfirst=True))
     objects = {}
     loads = []
 

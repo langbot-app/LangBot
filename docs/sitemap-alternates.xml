@@ -1828,6 +1828,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/agent-context" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/develop/comp-arch</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/comp-arch" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/comp-arch" />

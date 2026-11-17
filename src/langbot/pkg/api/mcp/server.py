@@ -900,6 +900,25 @@ class LangBotMCPServer:
             context = _authorized(Permission.RESOURCE_VIEW)
             return _dump(await ap.knowledge_service.retrieve_knowledge_base(context, kb_uuid, query))
 
+        @mcp.tool(
+            description=(
+                'Add an authorized Artifact to a knowledge base without uploading its bytes again. '
+                'Returns the ingestion task ID. The knowledge-base file retains its own reference; '
+                "removing it does not delete other consumers' references."
+            )
+        )
+        async def add_knowledge_file_artifact(
+            kb_uuid: str, artifact_id: str, parser_plugin_id: str | None = None
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await artifact_operation(
+                    'knowledge.file.store_artifact',
+                    context,
+                    {'kb_uuid': kb_uuid, 'artifact_id': artifact_id, 'parser_plugin_id': parser_plugin_id},
+                )
+            )
+
         # ----- MCP servers (LangBot as MCP client) --------------------- #
         @mcp.tool(
             description=(

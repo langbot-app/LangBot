@@ -142,5 +142,8 @@
   "Artifact read timed out": "Đọc tài nguyên đã hết thời gian chờ",
   "Artifact has a different manager": "Tài nguyên có chủ thể quản lý khác",
   "Legacy output requires explicit manager assignment": "Đầu ra cũ cần được chỉ định rõ chủ thể quản lý",
-  "Artifact access requires an active run lease": "Truy cập tài nguyên cần có thời hạn thuê thực thi còn hiệu lực"
+  "Artifact access requires an active run lease": "Truy cập tài nguyên cần có thời hạn thuê thực thi còn hiệu lực",
+  "Artifact knowledge ingestion requires an account or API key": "Nhập Artifact vào cơ sở tri thức yêu cầu tài khoản hoặc khóa API",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "Không hỗ trợ nhập ZIP qua Artifact; hãy sử dụng chức năng tải tài liệu lên hiện có",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "Việc xóa cơ sở tri thức chưa hoàn tất; hãy thử xóa lại trước khi thêm tệp mới"
 }

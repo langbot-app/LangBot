@@ -142,5 +142,8 @@
   "Artifact read timed out": "การอ่านอาร์ติแฟกต์หมดเวลา",
   "Artifact has a different manager": "อาร์ติแฟกต์มีผู้จัดการรายอื่น",
   "Legacy output requires explicit manager assignment": "ผลลัพธ์รุ่นเก่าต้องระบุผู้จัดการอย่างชัดเจน",
-  "Artifact access requires an active run lease": "การเข้าถึงอาร์ติแฟกต์ต้องมีสัญญาเช่าการทำงานที่ยังมีผล"
+  "Artifact access requires an active run lease": "การเข้าถึงอาร์ติแฟกต์ต้องมีสัญญาเช่าการทำงานที่ยังมีผล",
+  "Artifact knowledge ingestion requires an account or API key": "การนำเข้า Artifact ลงฐานความรู้ต้องใช้บัญชีหรือคีย์ API",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "ไม่รองรับการนำเข้า ZIP ผ่าน Artifact โปรดใช้ช่องทางอัปโหลดเอกสารที่มีอยู่",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "การลบฐานความรู้ยังไม่เสร็จสิ้น โปรดลองลบอีกครั้งก่อนเพิ่มไฟล์ใหม่"
 }

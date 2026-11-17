@@ -142,5 +142,8 @@
   "Artifact read timed out": "資產讀取逾時",
   "Artifact has a different manager": "資產已有其他管理主體",
   "Legacy output requires explicit manager assignment": "舊版產物需要明確指定管理主體",
-  "Artifact access requires an active run lease": "資產存取需要有效的執行租約"
+  "Artifact access requires an active run lease": "資產存取需要有效的執行租約",
+  "Artifact knowledge ingestion requires an account or API key": "Artifact 知識庫匯入需要帳戶或 API 金鑰",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "不支援透過 Artifact 匯入 ZIP；請使用現有的文件上傳入口",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "知識庫刪除尚未完成；請重試刪除後再新增檔案"
 }

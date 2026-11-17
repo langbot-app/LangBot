@@ -70,8 +70,8 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 181
-    assert len(OPERATION_DOCS) == 181
+    assert len(in_scope_operation_ids) == 182
+    assert len(OPERATION_DOCS) == 182
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -138,7 +138,8 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
             or op_id.startswith('workspace.member.')
             or op_id.startswith('workspace.invitation.')
             or op_id.startswith('provider.codex.')
-            or op_id.startswith('artifact.')
+            or op_id.startswith('artifact.publication.')
+            or op_id == 'artifact.skill_resource.create'
         ):
             assert doc.exposure == 'none', f"Operation {op_id} must have exposure='none'"
 
@@ -148,6 +149,16 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if op_id in {'mcp.server.create', 'mcp.server.update'}:
             assert doc.exposure == 'assistant', f"Operation {op_id} must have exposure='assistant'"
             assert doc.risk == 'dangerous', f"Operation {op_id} must have risk='dangerous'"
+
+
+def test_artifact_plugin_exposure_is_explicit(operations_by_id):
+    from langbot.pkg.api.context import PrincipalType
+
+    allowed = {'artifact.' + name for name in ('create', 'get', 'read', 'read_content', 'retain', 'release', 'delete')}
+    for op_id, op in operations_by_id.items():
+        if op_id.startswith('artifact.'):
+            assert (PrincipalType.PLUGIN in op.principals) == (op_id in allowed)
+            assert (get_operation_doc(op_id, side_effect=op.side_effect).exposure == 'all') == (op_id in allowed)
 
 
 def test_principals_exposure_consistency(all_application_operations: list[Operation]):
@@ -241,7 +252,7 @@ def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 253
+    assert len(catalog_op_ids) == 254
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []

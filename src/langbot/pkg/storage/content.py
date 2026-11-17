@@ -268,6 +268,63 @@ class ContentStore:
     async def delete_alias(self, context, object_key):
         await self._validate(context)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            # Legacy upload aliases are independent retention holders. Removing an
+            # alias must not delete bytes still held by a principal or knowledge file.
+            from ..entity.persistence.artifact import Artifact, ArtifactReference
+            from .artifacts import DEFAULT_TTL_SECONDS, _now
+            import datetime as dt
+
+            if self.ap.persistence_mgr.get_db_engine().dialect.name == 'sqlite':
+                # Reserve SQLite's writer before discovering pins, avoiding a
+                # read-snapshot upgrade race with another Core retaining the asset.
+                await uow.execute(
+                    sa.update(Artifact)
+                    .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id == '')
+                    .values(id=Artifact.id)
+                )
+            pins = (
+                (
+                    await uow.execute(
+                        sa.select(ArtifactReference.artifact_id).where(
+                            ArtifactReference.workspace_uuid == context.workspace_uuid,
+                            ArtifactReference.holder_type == 'legacy_alias',
+                            ArtifactReference.holder_id == object_key,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            for artifact_id in sorted(pins):
+                await uow.execute(
+                    sa.update(Artifact)
+                    .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id == artifact_id)
+                    .values(id=Artifact.id)
+                )
+                await uow.execute(
+                    sa.delete(ArtifactReference).where(
+                        ArtifactReference.workspace_uuid == context.workspace_uuid,
+                        ArtifactReference.artifact_id == artifact_id,
+                        ArtifactReference.holder_type == 'legacy_alias',
+                        ArtifactReference.holder_id == object_key,
+                    )
+                )
+                durable = sa.exists(
+                    sa.select(ArtifactReference.artifact_id).where(
+                        ArtifactReference.workspace_uuid == context.workspace_uuid,
+                        ArtifactReference.artifact_id == artifact_id,
+                        ArtifactReference.holder_type.not_in(['read_lease', 'run_input']),
+                    )
+                )
+                await uow.execute(
+                    sa.update(Artifact)
+                    .where(
+                        Artifact.workspace_uuid == context.workspace_uuid,
+                        Artifact.id == artifact_id,
+                        sa.not_(durable),
+                    )
+                    .values(expires_at=_now() + dt.timedelta(seconds=DEFAULT_TTL_SECONDS))
+                )
             await uow.execute(
                 sa.delete(ContentAlias).where(
                     ContentAlias.workspace_uuid == context.workspace_uuid, ContentAlias.key == object_key

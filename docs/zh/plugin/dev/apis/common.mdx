@@ -774,3 +774,22 @@ commands = await self.plugin.list_commands()
 数量未知时对应字段为 `None`。`remaining=0` 仍可以复用已有 Box；创建时由 Runtime 原子检查额度。运行器自行计算复用键，Host 不解释聊天模板；托管环境给出 `required_reuse_key` 时须使用该值。不同工作区的相同键不会共用 Box。
 
 获取 Box 后，通过[运行器上下文](/zh/plugin/dev/apis/agent-run#runner)绑定到本次运行，再导入附件和执行工具。
+
+## 类型化 Artifact 辅助接口
+
+插件使用 `self.plugin.artifacts`，Runner 使用 `ctx.api.artifacts`。这些辅助接口复用七项显式授权的 Workspace 操作，不新增传输 action 或 capability。run 调用还要求 run 存活且操作属于冻结的 `workspace_operations`，仅安装授权不能扩大 run 权限。
+
+```python
+asset = await self.plugin.artifacts.create("notes.txt", b"bounded content", mime_type="text/plain")
+body = await self.plugin.artifacts.read(asset.id, max_bytes=262144)
+assert body.content == b"bounded content"
+await self.plugin.artifacts.delete(asset.id)
+```
+
+`create(filename, content: bytes, mime_type=..., ttl_seconds=...)`、`get`、`retain` 和 `release` 返回 `ArtifactMetadata`。`read` 返回 `ArtifactData(metadata, content: bytes)`；`read_content` 返回公共结构化内容列表，接受 `mode`、`offset`、`max_chars`、`page_start` 和 `page_end`。`delete` 返回结果字典。SDK 负责 256 KiB JSON RPC 封装的编解码，不要把其中的 base64 放入普通模型文本。
+
+操作失败抛出 `ArtifactOperationError`，保留 Host 的 `code` 和 `details`。通过现有 Workspace 目录发现能力（`workspace.list`，包括 create schema 中的 `content_base64`），不新增 feature flag。旧 Host 或缺少授权会返回 `not_found`、`permission_denied` 等操作错误，不得回退到内部存储路径。
+
+既有 Workspace action 可由独立部署的旧 Runtime 转发，但 Artifact 取消传播应使用配套升级的 Core/SDK/Runtime。经过旧链路的取消只是尽力而为，不证明 Host 修改已经停止。这不改变旧 run `file_id`、上传或投递契约。使用新辅助接口前，应验证实际部署组合。
+
+便捷辅助接口与生成的 `workspace.artifact` 方法不同：后者返回普通 `ok/result/error` 信封并使用 `content_base64` 传输字段，不要混用两种返回结构。共享插件辅助接口会继承当前 run 调用上下文；捕获的调用上下文结束后再使用会被拒绝。
