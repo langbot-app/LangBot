@@ -70,13 +70,21 @@ LangBot — это **платформа с открытым исходным к�
 
 Без развёртывания, готово к использованию.
 
-### Запуск одной командой
+### Установка одной командой (рекомендуется для self-hosting)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Требуется [uv](https://docs.astral.sh/uv/getting-started/installation/). Откройте http://localhost:5300 — готово.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Устанавливает [lbctl](https://github.com/langbot-app/langbot-cli) (CLI LangBot) и разворачивает LangBot: по умолчанию нативно, с автоматической настройкой Python, или через Docker. Права администратора не нужны. После завершения откройте http://localhost:5300. Обновление — `lbctl upgrade`.
 
 ### Docker Compose
 

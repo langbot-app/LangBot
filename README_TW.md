@@ -72,13 +72,21 @@ LangBot 是一個**開源的生產級平台**，用於建構 AI 驅動的即時�
 
 免部署，開箱即用。
 
-### 一鍵啟動
+### 一行指令安裝（自架推薦）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> 需要安裝 [uv](https://docs.astral.sh/uv/getting-started/installation/)。訪問 http://localhost:5300 即可使用。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> 自動安裝 [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot 命令列工具）並啟動 LangBot：預設原生部署，自動準備 Python，也可選 Docker；無需管理員權限。完成後訪問 http://localhost:5300，之後用 `lbctl upgrade` 一鍵升級。
 
 ### Docker Compose
 
