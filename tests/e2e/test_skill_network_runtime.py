@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import hashlib
 import io
 import json
 import os
@@ -365,6 +366,10 @@ def _assert_probe(report, revision, output, guide='# Replica guide\nOriginal ref
     assert report['activation']['revision'] == report['again']['revision'] == revision, report
     assert report['execution']['stdout'].strip() == output, report
     assert report['resource']['content'] == guide, report
+    artifact = report['resource']['artifact']
+    assert artifact['source'] == 'skill_resource' and artifact['id'].startswith('art_'), report
+    assert artifact['digest'] == hashlib.sha256(guide.encode()).hexdigest(), report
+    assert report['resource']['revision'] == revision, report
 
 
 def _assert_no_core_cache(pair):

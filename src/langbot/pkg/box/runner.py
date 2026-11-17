@@ -6,6 +6,8 @@ import asyncio
 import copy
 import base64
 import hashlib
+import json
+import mimetypes
 import uuid
 from dataclasses import dataclass, field, replace
 
@@ -13,6 +15,7 @@ from langbot_plugin.api.entities.builtin.platform import message as pm
 from langbot_plugin.api.entities.builtin.runner.box import BoxAcquireRequest
 from langbot_plugin.box.errors import BoxValidationError
 from .export_errors import export_error
+from ..i18n import t
 
 
 @dataclass
@@ -28,6 +31,8 @@ class RunBoxBinding:
     read_only_mounts: list[dict] = field(default_factory=list)
     exported_fingerprints: dict = field(default_factory=dict)
     import_scopes: set[str] = field(default_factory=set)
+    read_content_bytes: int = 0
+    closing: bool = False
 
 
 def prepare_input_files(query, agent_input):
@@ -40,11 +45,9 @@ def prepare_input_files(query, agent_input):
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
     from ..agent.runner import input_media
 
-    # Pipeline queries pin the media they rendered; only bare event envelopes
-    # may describe media in contents alone.
-    envelope_only = input_media.remembered_media(query) is None
     media = input_media.media_by_ref(query)
     components = {ref: item.component for ref, item in media.items()}
     # Envelope attachments registered by an earlier preparation of this query.
@@ -52,13 +55,29 @@ def prepare_input_files(query, agent_input):
     components.update(previous if isinstance(previous, dict) else {})
     if not agent_input.attachments:
         agent_input.attachments = [InputAttachment.model_validate(item.to_attachment()) for item in media.values()]
-        if not agent_input.attachments and envelope_only:
-            agent_input.attachments = _attachments_from_contents(agent_input.contents)
+
+    def source_key(item):
+        return item.type, item.url, item.content, item.name
+
+    by_source = {source_key(item): item for item in agent_input.attachments}
+    content_attachments = {}
+    for index, content in enumerate(agent_input.contents):
+        described = _attachments_from_contents([content])
+        if not described:
+            continue
+        candidate = described[0]
+        key = source_key(candidate)
+        attachment = by_source.get(key)
+        if attachment is None:
+            attachment = by_source[key] = candidate
+            agent_input.attachments.append(attachment)
+        content_attachments[index] = attachment
 
     for attachment in agent_input.attachments:
         attachment.path = None
         if attachment.ref and attachment.ref in components:
             attachment.content = None
+            attachment.url = None
             continue
         kind = (attachment.type or 'file').lower()
         cls = {'image': pm.Image, 'voice': pm.Voice}.get(kind, pm.File)
@@ -76,8 +95,21 @@ def prepare_input_files(query, agent_input):
                 index += 1
             ref = f'att-{index}'
         components[ref] = cls(**fields)
-        attachment.ref, attachment.content = ref, None
+        attachment.ref, attachment.content, attachment.url = ref, None, None
     object.__setattr__(query, '_input_components', components)
+
+    normalized = []
+    for index, content in enumerate(agent_input.contents):
+        if content.type not in {'image_url', 'image_base64', 'file_url', 'file_base64'}:
+            normalized.append(content)
+            continue
+        attachment = content_attachments.get(index)
+        if attachment is not None:
+            label = f'{attachment.type} {attachment.name}' if attachment.name else attachment.type
+            normalized.append(ContentElement.from_text(f'[attachment {attachment.ref}: {label}]'))
+        else:
+            normalized.append(ContentElement.from_text('[attachment unavailable]'))
+    agent_input.contents = normalized
 
 
 def _attachments_from_contents(contents):
@@ -107,32 +139,59 @@ def input_files(query) -> dict:
     return {ref: item.component for ref, item in input_media.media_by_ref(query).items()}
 
 
-def binding_for(query) -> RunBoxBinding:
+def binding_for(query, *, allow_closed=False) -> RunBoxBinding:
     binding = getattr(query, '_box_binding', None)
     if not isinstance(binding, RunBoxBinding):
         raise BoxValidationError('Runner must bind a Box before using sandbox tools or files')
+    if (binding.closing or getattr(query, '_run_files_closing', False)) and not allow_closed:
+        raise BoxValidationError(t('Run file access has ended.'))
     return binding
 
 
-def exported_message(query, file_ids: list[str], *, consume: bool = False) -> pm.MessageChain:
-    binding = binding_for(query)
+def run_artifact_context(query, *, allow_closed=False):
+    """Build the run owner only from the Host's trusted query and Box binding."""
+    from ..api.context import ExecutionContext, PrincipalContext, PrincipalType
+
+    binding = binding_for(query, allow_closed=allow_closed)
+    context = getattr(query, '_execution_context', None)
+    if not isinstance(context, ExecutionContext):
+        raise BoxValidationError('Output files require a trusted execution context')
+    return replace(context, trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=binding.run_id))
+
+
+def validate_exported_files(query, file_ids: list[str], *, allow_submitted=False, allow_closed=False):
+    binding = binding_for(query, allow_closed=allow_closed)
     if not isinstance(file_ids, list) or len(file_ids) > 100 or any(type(x) is not str for x in file_ids):
         raise BoxValidationError('file_ids must contain at most 100 exported file IDs')
     if len(set(file_ids)) != len(file_ids):
         raise BoxValidationError('Duplicate exported file ID')
-    if any(key not in binding.exported or key in binding.submitted for key in file_ids):
+    if any(key not in binding.exported or (not allow_submitted and key in binding.submitted) for key in file_ids):
         raise BoxValidationError('Output file does not belong to this run or has already been submitted')
+    return [binding.exported[key] for key in file_ids]
+
+
+def mark_exported_files(query, file_ids: list[str]):
+    validate_exported_files(query, file_ids, allow_closed=True)
+    binding_for(query, allow_closed=True).submitted.update(file_ids)
+
+
+async def exported_message(ap, query, file_ids: list[str], *, consume: bool = False) -> pm.MessageChain:
+    items = validate_exported_files(query, file_ids)
+    context = run_artifact_context(query)
     components = []
-    for key in file_ids:
-        item = binding.exported[key]
+    for item in items:
+        result = await ap.artifact_service.read_run_output(context, item['artifact_id'])
+        encoded = base64.b64encode(result['content']).decode('ascii')
+        if item['type'] in {'Image', 'Voice'}:
+            encoded = f'data:{item["mime_type"]};base64,{encoded}'
         if item['type'] == 'Image':
-            components.append(pm.Image(base64=item['base64']))
+            components.append(pm.Image(base64=encoded))
         elif item['type'] == 'Voice':
-            components.append(pm.Voice(base64=item['base64']))
+            components.append(pm.Voice(base64=encoded))
         else:
-            components.append(pm.File(name=item['name'], base64=item['base64']))
+            components.append(pm.File(name=item['name'], base64=encoded))
     if consume:
-        binding.submitted.update(file_ids)
+        mark_exported_files(query, file_ids)
     return pm.MessageChain(components)
 
 
@@ -200,13 +259,18 @@ class RunnerBoxService:
         return self.public_session(result)
 
     async def bind(self, context, query, run_id, box_id):
+        if getattr(query, '_run_files_closing', False):
+            raise BoxValidationError(t('Run file access has ended.'))
         await self._pin_selection(context, query)
         current = getattr(query, '_box_binding', None)
         if current is not None:
+            binding_for(query)
             if current.run_id != run_id or current.session_id != box_id:
                 raise BoxValidationError('A run cannot change its Box after binding')
             return self.binding_info(current)
         sessions = await self.sessions(context)
+        if getattr(query, '_run_files_closing', False):
+            raise BoxValidationError(t('Run file access has ended.'))
         item = next((item for item in sessions if item['session_id'] == box_id), None)
         if item is None:
             raise BoxValidationError('Box not found in the current Workspace')
@@ -215,6 +279,7 @@ class RunnerBoxService:
             raise BoxValidationError('Box does not match the task sandbox backend')
         current = getattr(query, '_box_binding', None)
         if current is not None:
+            binding_for(query)
             if current.run_id != run_id or current.session_id != box_id:
                 raise BoxValidationError('A run cannot change its Box after binding')
             return self.binding_info(current)
@@ -258,6 +323,7 @@ class RunnerBoxService:
         if len(ids) != len(set(ids)):
             raise BoxValidationError('Duplicate input attachment reference')
         async with binding.lock:
+            binding_for(query)
             for key in ids:
                 if key in binding.imported:
                     continue
@@ -266,7 +332,21 @@ class RunnerBoxService:
                 scope = f'{binding.io_scope}-{hashlib.sha256(key.encode()).hexdigest()}'
                 binding.import_scopes.add(scope)
                 object.__setattr__(transfer, '_box_binding', replace(binding, io_scope=scope))
-                transfer.message_chain = pm.MessageChain([available[key]])
+                component = available[key]
+                if key in getattr(query, '_input_artifact_ids', frozenset()):
+                    authorized = await self.box.ap.artifact_service.read_bound_run_input(
+                        run_artifact_context(query),
+                        key,
+                        max_bytes=self.box._ATTACHMENT_MAX_BYTES,
+                    )
+                    component = component.model_copy(
+                        update={
+                            'base64': base64.b64encode(authorized['content']).decode('ascii'),
+                            'url': '',
+                            'path': '',
+                        }
+                    )
+                transfer.message_chain = pm.MessageChain([component])
                 items = await self.box.materialize_inbound_attachments(transfer)
                 if not items:
                     raise BoxValidationError(f'Failed to import input attachment {key}')
@@ -289,6 +369,7 @@ class RunnerBoxService:
         if len(set(paths)) != len(paths):
             raise BoxValidationError('Duplicate export file paths')
         async with binding.lock:
+            binding_for(query)
             items = await self.box.collect_selected_files(query, paths)
             unseen = {}
             for item in items:
@@ -320,25 +401,98 @@ class RunnerBoxService:
                 )
             pending = {}
             fingerprints = {}
-            for fingerprint, (item, size) in unseen.items():
-                key = str(uuid.uuid4())
-                pending[key] = {
-                    **item,
-                    'id': key,
-                    'size': size,
-                }
-                fingerprints[fingerprint] = key
+            context = run_artifact_context(query)
+            # Register the complete batch before accepting handles or removing any source file.
+            async with self.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
+                for fingerprint, (item, size) in unseen.items():
+                    encoded = item['base64']
+                    prefix, separator, payload = encoded.partition(';base64,')
+                    mime_type = (
+                        prefix.removeprefix('data:')
+                        if separator
+                        else (mimetypes.guess_type(item['name'])[0] or 'application/octet-stream')
+                    )
+                    value = base64.b64decode(payload if separator else encoded, validate=True)
+                    metadata = await self.box.ap.artifact_service.create_run_output(
+                        context,
+                        item['name'],
+                        value,
+                        mime_type,
+                    )
+                    key = str(uuid.uuid4())
+                    pending[key] = {
+                        **metadata,
+                        'id': key,
+                        'artifact_id': metadata['id'],
+                        'name': item['name'],
+                        'type': item['type'],
+                        'size': size,
+                        'mime_type': metadata['mime_type'],
+                        'digest': metadata['digest'],
+                    }
+                    fingerprints[fingerprint] = key
+                if binding.closing or getattr(query, '_run_files_closing', False):
+                    raise BoxValidationError(t('Run file access has ended.'))
+            # Commit may have awaited across finalization after the last transaction check.
+            await self._reject_closed_export(query, binding, context)
             binding.exported.update(pending)
             binding.exported_fingerprints.update(fingerprints)
             try:
                 warning = await self.box.clear_selected_files(query, items)
             except Exception:
                 warning = 'Files accepted, but cleanup failed; do not repeat delivery.'
+            await self._reject_closed_export(query, binding, context)
             return {
                 'warning': warning,
-                'items': [
-                    {k: v for k, v in item.items() if k not in {'base64', '_outbox_path'}}
-                    for key, item in binding.exported.items()
-                    if key not in binding.submitted
-                ],
+                'items': [dict(item) for key, item in binding.exported.items() if key not in binding.submitted],
             }
+
+    async def _reject_closed_export(self, query, binding, context):
+        if binding.closing or getattr(query, '_run_files_closing', False):
+            try:
+                await self.box.ap.artifact_service.expire_run_outputs(context)
+            except Exception as exc:
+                self.box.ap.logger.warning(f'Failed to expire outputs from a closed run: {exc}')
+            raise BoxValidationError(t('Run file access has ended.'))
+
+    async def read_file(self, query, file_id, **options):
+        from ..storage.artifact_reader import read_artifact_content
+
+        binding = binding_for(query)
+        async with binding.lock:
+            binding_for(query)
+            if binding.read_content_bytes >= self.box._ATTACHMENT_MAX_TOTAL_BYTES:
+                raise BoxValidationError(t('Run file content budget is exhausted.'))
+            item = validate_exported_files(query, [file_id], allow_submitted=True)[0]
+            result = await self.box.ap.artifact_service.read_run_output(
+                run_artifact_context(query),
+                item['artifact_id'],
+            )
+            contents = await read_artifact_content(result['content'], result['metadata'], **options)
+            returned_bytes = len(json.dumps(contents, ensure_ascii=False).encode('utf-8'))
+            if binding.read_content_bytes + returned_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
+                raise BoxValidationError(t('Run file content budget is exhausted.'))
+            binding.read_content_bytes += returned_bytes
+            return {'contents': contents}
+
+    async def commit_files(self, query, file_ids):
+        binding = binding_for(query)
+        async with binding.lock:
+            items = validate_exported_files(query, file_ids, allow_submitted=True)
+            if not items:
+                raise BoxValidationError('file_ids must contain at least one exported file ID')
+            context = run_artifact_context(query)
+            # Keep revocation and publication in one transaction under the frozen Host policy.
+            async with self.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
+                manager = await self.box.ap.artifact_publication_service.manager_for_commit(
+                    context,
+                    getattr(query, '_output_publication', None),
+                )
+                result = await self.box.ap.artifact_service.commit_run_outputs(
+                    context,
+                    [item['artifact_id'] for item in items],
+                    manager_context=manager,
+                )
+            for item, metadata in zip(items, result, strict=True):
+                item.update({**metadata, 'id': item['id'], 'artifact_id': metadata['id']})
+            return {'items': [dict(item) for item in items]}

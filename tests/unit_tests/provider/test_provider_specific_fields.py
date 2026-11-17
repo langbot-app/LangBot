@@ -57,6 +57,7 @@ def _make_runtime_model() -> model_requester.RuntimeLLMModel:
         model_entity=SimpleNamespace(
             name='gpt-4.1',
             extra_args={'temperature': 0.2},
+            abilities=[],
         ),
         provider=provider,
     )

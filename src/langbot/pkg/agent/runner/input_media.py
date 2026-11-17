@@ -132,7 +132,6 @@ def render_input(
     chain: typing.Iterable[platform_message.MessageComponent] | None,
     *,
     include_quotes: bool,
-    keep_images: bool = True,
     include_other_text: bool = False,
 ) -> RenderedInput:
     """Render a message chain into model contents and ordered media.
@@ -140,8 +139,6 @@ def render_input(
     Args:
         chain: Platform message chain of the current message.
         include_quotes: Render quoted messages and expose their media.
-        keep_images: Forward image payloads to the model; otherwise only the
-            marker describes the image.
         include_other_text: Render non-media components without a dedicated
             projection (such as mentions) with their string form.
     """
@@ -160,24 +157,9 @@ def render_input(
         item = InputMedia(ref=f'att-{len(media) + 1}', component=component, origin=origin)
         media.append(item)
         add_text(item.marker(), plain=False)
-        payload = component.base64 or None
-        url = getattr(component, 'url', None) or None
         if isinstance(component, platform_message.Image):
-            if not keep_images:
+            if origin == ORIGIN_MESSAGE:
                 plain_parts.append('[Image]')
-            elif payload:
-                contents.append(provider_message.ContentElement.from_image_base64(payload))
-            elif url:
-                contents.append(provider_message.ContentElement.from_image_url(url))
-            return
-        if isinstance(component, platform_message.Voice):
-            name = 'voice.silk' if payload else 'voice'
-        else:
-            name = component.name
-        if payload:
-            contents.append(provider_message.ContentElement.from_file_base64(payload, name))
-        elif url:
-            contents.append(provider_message.ContentElement.from_file_url(url, name))
 
     def render(components: typing.Iterable[platform_message.MessageComponent], origin: str) -> None:
         for component in components:

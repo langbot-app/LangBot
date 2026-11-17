@@ -2271,7 +2271,7 @@ requires-dist = [
     { name = "pylibseekdb", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin' and extra == 'seekdb') or (sys_platform == 'linux' and extra == 'seekdb')", specifier = "==1.4.0" },
     { name = "pymilvus", marker = "extra == 'milvus'", specifier = ">=2.6.4" },
     { name = "pynacl", specifier = ">=1.5.0" },
-    { name = "pypdf", specifier = ">=6.0.0" },
+    { name = "pypdf", specifier = ">=6.21.2" },
     { name = "pyseekdb", marker = "extra == 'seekdb'", specifier = "==1.4.0.post1" },
     { name = "python-docx", specifier = ">=1.1.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },

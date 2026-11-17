@@ -22,7 +22,7 @@ green selector or coverage summary is not a substitute.
 | Frontend lint, i18n and browser | One install for lint, key parity, type checks, units and dev-browser scenarios; actual Core/Chromium wiring is a separate Core boundary test | Adds the production bundle; raw dev-only test fixtures cannot use that bundle |
 | Official plugins | Route by consumer; Runner and KnowledgeEngine preserve separate released/candidate environments, including LocalAgent/LangRAG; keep standalone repro entries | Released/candidate checks for both groups plus misc and catalog |
 | Core packaging | Tar/wheel/source/Docker exclusions on packaging changes; production-image builds on image dependency, SDK, deployment and build-configuration changes. Plugin/tool changes keep lightweight exclusions | Full production-image build, SHA, image, checksum and installed SDK metadata |
-| Daily workload/recovery | Not a replacement for PR smoke | Preserve mixed load / weekly recovery, API cycles, real managed n8n and persistence/Runtime; scheduled Dify is required; explicitly opt in on manual runs |
+| Daily workload/recovery | Not a replacement for PR smoke | Preserve mixed load / weekly recovery, API cycles, real managed n8n and persistence/Runtime; full daily adds uploaded Artifact recovery across two Core processes; scheduled Dify is required; explicitly opt in on manual runs |
 
 Optional PR jobs may be deliberately unselected; selected jobs must succeed.
 The Git-based selector checks the full base-to-tested-merge diff and both ends
@@ -115,6 +115,8 @@ Runner and KnowledgeEngine workflows trigger on affected Core and SDK changes; L
 | Changed behavior | Required developer acceptance | Environment |
 | --- | --- | --- |
 | File import/export, Runtime envelopes, persistent grants, reply delivery | `network_plugin` below | Full Core + Plugin Runtime + installed test Runner + Box on loopback; host is the account-free baseline |
+| Artifact service, attachment reads, Runner outputs or retained history | [Artifact QA](ARTIFACT_QA.md) | Deterministic media, real TCP/Runner, LocalAgent compaction and separate opt-in accelerated soak |
+| Uploaded Artifact retention, download, migration across processes or cleanup | `artifact_persistence` below | Disposable PostgreSQL + MinIO, two Core processes with separate file roots; full Daily only in CI |
 | Skill publication, content aliases, media, cache or database schema | `skill_persistence` below | Disposable PostgreSQL + MinIO and two real Core processes; includes SQLite, PostgreSQL and named-S3 replicas, CAS, retained versions, migration/RLS, restart and deleted-cache recovery |
 | Network Skill execution, resource reads or draft registration | `skill_network` below | Two real Core processes with independent Plugin/Box Runtimes and no shared Skill/workspace roots; run pins across publication, registration, grants, restart and cancellation |
 | Box backend execution, mounts, sessions or file transfer | Relevant `sdk/tests/box` and Core Box tests; repeat network delivery on the changed supported backend | Docker/Podman, nsjail or E2B as applicable; host success does not establish another backend's behavior |
@@ -140,6 +142,11 @@ uv run --no-sync pytest tests/integration/skill/test_persistent_skill_replicas.p
 export LANGBOT_PERSISTENCE_CORE_POSTGRES_URL='postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_skill_network'
 LANGBOT_SKILL_NETWORK_E2E=1 uv run --no-sync pytest tests/e2e/test_skill_network_runtime.py \
   --required-suite skill_network -q -rs --junitxml=skill-network.xml
+
+# Use a third fresh task-owned database and the disposable MinIO configured above.
+export LANGBOT_PERSISTENCE_CORE_POSTGRES_URL='postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_artifact_upload'
+LANGBOT_ARTIFACT_CORE_S3=1 uv run --no-sync pytest tests/e2e/test_artifact_persistence.py \
+  --required-suite artifact_persistence -q -rs --junitxml=artifact-persistence.xml
 ```
 
 `tests/utils/required_suites.py` enforces the selected behavior obligations and rejects missing cases, skips, xfails and xpasses. Do not use `-k`, `-m` or `--deselect` to turn partial execution into acceptance. The explicit paths above keep collection narrow; the suite still fails if a required contract is missing.
@@ -152,7 +159,7 @@ old Core HTTP writes, migration, source-volume removal, restart and a second
 Core. Box is disabled here; Runtime acceptance remains the separate network suite.
 The normal daily suite does not provision historical Core interpreters.
 
-`daily-endurance.yml` calls the same reusable persistence acceptance on GitHub-hosted Linux, with the local SDK and temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope.
+`daily-endurance.yml` calls the same reusable persistence acceptance on GitHub-hosted Linux, with the local SDK and temporary loopback PostgreSQL/MinIO services. Only scheduled and full manual Daily runs opt in to the uploaded Artifact lane; the existing P0 persistence checks and workload-only runs keep their previous scope. The mixed media and soak lanes stay in their dedicated workflows; generic strict startup tests do not pick up their opt-in cases. The other endurance/API/provider jobs retain their existing scope.
 
 For nsjail, use an already prepared host and its delegated `LANGBOT_NSJAIL_CGROUP_V1_PARENT`. For E2B, use explicitly authorized `E2B_API_KEY`, `E2B_API_URL`, `E2B_SANDBOX_URL` and optional `E2B_TEMPLATE`. Set `LANGBOT_CORE_NETWORK_BACKEND=nsjail` or `e2b` for the same network suite. Do not add credentials, change machine configuration, or expose private development machines as runners for public PR code. These backend runs remain developer acceptance until suitable dedicated infrastructure exists.
 

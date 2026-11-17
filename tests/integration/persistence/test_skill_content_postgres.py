@@ -13,6 +13,8 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.artifact import Artifact, ArtifactReference
+from langbot.pkg.entity.persistence.artifact_publication import ArtifactPublication
 from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
 from langbot.pkg.entity.persistence.skill import SkillRegistry, SkillVersion
 from langbot.pkg.entity.persistence.workspace import Workspace
@@ -32,7 +34,15 @@ pytestmark = [
     pytest.mark.skill_persistence,
     pytest.mark.contract('skill_content_rls'),
 ]
-_TABLES = ('content_objects', 'content_aliases', 'skill_registry', 'skill_versions')
+_TABLES = (
+    'content_objects',
+    'content_aliases',
+    'skill_registry',
+    'skill_versions',
+    'artifacts',
+    'artifact_references',
+    'artifact_publications',
+)
 _A = '00000000-0000-0000-0000-000000000001'
 _B = '00000000-0000-0000-0000-000000000002'
 _PUBLIC = 'media_cache/' + 'a' * 64 + '.png'
@@ -84,7 +94,7 @@ async def migrated_store():
         scoped_admin = create_async_engine(url, connect_args=settings)
         async with scoped_admin.begin() as conn:
             assert await conn.scalar(sa.text('SELECT current_schema()')) == schema
-            # Create the preceding release's ORM tables only. The four new tables
+            # Create the preceding release's ORM tables only. The new tables
             # must be introduced by Alembic, never by metadata.create_all.
             old_tables = [table for table in Base.metadata.sorted_tables if table.name not in _TABLES]
             await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=old_tables))
@@ -115,7 +125,7 @@ async def migrated_store():
                     {'schema': schema, 'tables': list(_TABLES)},
                 )
             ).all()
-            assert len(flags) == 4 and all(enabled and forced for _, enabled, forced in flags)
+            assert len(flags) == len(_TABLES) and all(enabled and forced for _, enabled, forced in flags)
             rows = (
                 (
                     await conn.execute(
@@ -196,6 +206,38 @@ async def migrated_store():
                         content_ref=prefix + '-private',
                     )
                 )
+                await uow.execute(
+                    sa.insert(Artifact).values(
+                        id=prefix + '-artifact',
+                        workspace_uuid=workspace,
+                        owner_type='account',
+                        owner_id='owner',
+                        name='private.txt',
+                        mime_type='text/plain',
+                        size=len(prefix + '-private'),
+                        digest=hashlib.sha256((prefix + '-private').encode()).hexdigest(),
+                        content_ref=prefix + '-private',
+                    )
+                )
+                await uow.execute(
+                    sa.insert(ArtifactReference).values(
+                        workspace_uuid=workspace,
+                        artifact_id=prefix + '-artifact',
+                        holder_type='principal',
+                        holder_id='account:owner',
+                    )
+                )
+                await uow.execute(
+                    sa.insert(ArtifactPublication).values(
+                        workspace_uuid=workspace,
+                        producer_type='agent',
+                        producer_id=prefix + '-producer',
+                        manager_type='account',
+                        manager_id=workspace,
+                        revision=str(uuid.uuid4()),
+                        enabled=True,
+                    )
+                )
         # Same media-shaped public_key without publication must remain private.
         async with manager.tenant_uow(_B) as uow:
             await uow.execute(sa.insert(ContentObject).values(_content(_B, 'private-media-shape', key=_PUBLIC)))
@@ -219,7 +261,15 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
     manager = migrated_store
     for workspace, other in ((_A, _B), (_B, _A)):
         async with manager.tenant_uow(workspace) as uow:
-            for model in (ContentObject, ContentAlias, SkillRegistry, SkillVersion):
+            for model in (
+                ContentObject,
+                ContentAlias,
+                SkillRegistry,
+                SkillVersion,
+                Artifact,
+                ArtifactReference,
+                ArtifactPublication,
+            ):
                 rows = (await uow.execute(sa.select(model.workspace_uuid))).scalars().all()
                 assert rows and set(rows) == {workspace}
                 assert (await uow.execute(sa.delete(model).where(model.workspace_uuid == other))).rowcount == 0
@@ -233,14 +283,89 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
                     sa.update(ContentObject).where(ContentObject.workspace_uuid == other).values(value=b'forbidden')
                 )
             ).rowcount == 0
+            assert (
+                await uow.execute(sa.update(Artifact).where(Artifact.workspace_uuid == other).values(name='forbidden'))
+            ).rowcount == 0
+            assert (
+                await uow.execute(
+                    sa.update(ArtifactReference)
+                    .where(ArtifactReference.workspace_uuid == other)
+                    .values(holder_id='forbidden')
+                )
+            ).rowcount == 0
+            assert (
+                await uow.execute(
+                    sa.update(ArtifactPublication)
+                    .where(
+                        ArtifactPublication.workspace_uuid == other,
+                    )
+                    .values(enabled=False)
+                )
+            ).rowcount == 0
+        with pytest.raises(sa.exc.DBAPIError):
+            async with manager.tenant_uow(workspace) as uow:
+                await uow.execute(
+                    sa.insert(ArtifactPublication).values(
+                        workspace_uuid=other,
+                        producer_type='agent',
+                        producer_id='forbidden',
+                        manager_type='account',
+                        manager_id=other,
+                        revision=str(uuid.uuid4()),
+                        enabled=True,
+                    )
+                )
         with pytest.raises(sa.exc.DBAPIError):
             async with manager.tenant_uow(workspace) as uow:
                 await uow.execute(sa.insert(ContentObject).values(_content(other, 'forbidden-insert')))
+        with pytest.raises(sa.exc.DBAPIError):
+            async with manager.tenant_uow(workspace) as uow:
+                await uow.execute(
+                    sa.insert(Artifact).values(
+                        id='forbidden-artifact',
+                        workspace_uuid=other,
+                        owner_type='account',
+                        owner_id='owner',
+                        name='forbidden.txt',
+                        mime_type='text/plain',
+                        size=0,
+                        digest='0' * 64,
+                        content_ref=('b' if other == _B else 'a') + '-private',
+                    )
+                )
+        with pytest.raises(sa.exc.DBAPIError):
+            async with manager.tenant_uow(workspace) as uow:
+                await uow.execute(
+                    sa.insert(ArtifactReference).values(
+                        workspace_uuid=other,
+                        artifact_id=('b' if other == _B else 'a') + '-artifact',
+                        holder_type='principal',
+                        holder_id='forbidden',
+                    )
+                )
 
     # The workspace/ref composite FK blocks even an authorized row in Workspace A
     # from pointing at Workspace B's known content identifier.
     for model, values in (
         (ContentAlias, dict(workspace_uuid=_A, key='cross-reference', content_ref='b-private')),
+        (
+            Artifact,
+            dict(
+                id='cross-artifact',
+                workspace_uuid=_A,
+                owner_type='account',
+                owner_id='owner',
+                name='x',
+                mime_type='text/plain',
+                size=0,
+                digest='0' * 64,
+                content_ref='b-private',
+            ),
+        ),
+        (
+            ArtifactReference,
+            dict(workspace_uuid=_A, artifact_id='b-artifact', holder_type='principal', holder_id='cross'),
+        ),
         (
             SkillVersion,
             dict(
@@ -269,7 +394,7 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
     async with manager.public_media_uow(_PUBLIC) as uow:
         rows = (await uow.execute(sa.select(ContentObject.ref, ContentObject.value))).all()
         assert rows == [('a-public', b'a-public')]
-        for model in (ContentAlias, SkillRegistry, SkillVersion):
+        for model in (ContentAlias, SkillRegistry, SkillVersion, Artifact, ArtifactReference):
             assert (await uow.execute(sa.select(model.__table__))).all() == []
         assert (await uow.execute(sa.update(ContentObject).values(value=b'forbidden'))).rowcount == 0
         assert (await uow.execute(sa.delete(ContentObject))).rowcount == 0

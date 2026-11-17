@@ -134,6 +134,32 @@ class LangBotAPIProxy:
         return [BoxFile.model_validate(item) for item in result.get("items", [])]
 
     @run_scoped
+    async def read_input_attachment_content(
+        self,
+        ref: str,
+        *,
+        mode: str = "auto",
+        offset: int = 0,
+        max_chars: int = 8192,
+        page_start: int = 1,
+        page_end: int | None = None,
+    ):
+        """Read bounded model content from this run's input attachment."""
+        result = await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
+            {
+                "ref": ref,
+                "mode": mode,
+                "offset": offset,
+                "max_chars": max_chars,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+            180,
+        )
+        return result["contents"]
+
+    @run_scoped
     async def read_input_attachment(self, ref: str):
         """Read the bytes of one current-event attachment by ref."""
         from langbot_plugin.api.entities.builtin.runner.input import (
@@ -166,6 +192,46 @@ class LangBotAPIProxy:
             BoxFile.model_validate({**item, "warning": warning})
             for item in result.get("items", [])
         ]
+
+    @run_scoped
+    async def read_run_file(
+        self,
+        file_id: str,
+        *,
+        mode: str = "auto",
+        offset: int = 0,
+        max_chars: int = 8192,
+        page_start: int = 1,
+        page_end: int | None = None,
+    ) -> list[dict]:
+        """Read bounded model content from an exported file in the active run."""
+        result = await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.READ_RUN_FILE,
+            {
+                "file_id": file_id,
+                "mode": mode,
+                "offset": offset,
+                "max_chars": max_chars,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+            180,
+            cancel_peer_on_cancel=True,
+        )
+        return result["contents"]
+
+    @run_scoped
+    async def commit_run_files(self, file_ids: list[str]):
+        """Publish selected files under the producer's frozen Host policy."""
+        from langbot_plugin.api.entities.builtin.runner.box import BoxFile
+
+        result = await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.COMMIT_RUN_FILES,
+            {"file_ids": file_ids},
+            180,
+            cancel_peer_on_cancel=True,
+        )
+        return [BoxFile.model_validate(item) for item in result["items"]]
 
     @run_scoped
     async def get_langbot_version(self) -> str:

@@ -525,6 +525,8 @@ jobs:
 
   persistence-runtime:
     uses: ./.github/workflows/persistence-acceptance.yml
+    with:
+      uploaded_artifacts: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
 
   verdict:
     name: Daily regression verdict

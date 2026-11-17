@@ -139,10 +139,18 @@ class CoverageWorkflowTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertEqual(select([path]), {'image': False, 'permissions': False, 'persistence': False})
 
-    def test_generic_startup_e2e_leaves_image_upgrade_to_p0(self):
+    def test_generic_startup_e2e_leaves_opt_in_cases_to_separate_lanes(self):
         startup = next(step['run'] for step in JOBS['e2e']['steps'] if step.get('name') == 'Run E2E startup tests')
         command = shlex.split(startup)
         self.assertEqual(command[command.index('-m') + 1], 'not local_agent and not p0_image')
+
+        for module in (
+            'test_artifact_mixed_acceptance.py',
+            'test_artifact_lifecycle_soak.py',
+            'test_artifact_persistence.py',
+        ):
+            with self.subTest(module=module):
+                self.assertIn(f'--ignore=tests/e2e/{module}', command)
         self.assertIn('python tools/verify_junit.py e2e-results.xml', startup)
 
     def test_runtime_contracts_only_run_for_the_affected_or_full_lane(self):

@@ -913,6 +913,7 @@
                 "pages": [
                   "en/develop/agent-context",
                   "en/develop/dev-config",
+                  "en/develop/artifacts",
                   "en/develop/plugin-runtime",
                   "en/develop/comp-arch",
                   "en/workshop/impl-platform-adapter"
@@ -1418,6 +1419,7 @@
                 "pages": [
                   "zh/develop/agent-context",
                   "zh/develop/dev-config",
+                  "zh/develop/artifacts",
                   "zh/develop/plugin-runtime",
                   "zh/develop/comp-arch",
                   "zh/workshop/impl-platform-adapter",
@@ -1921,6 +1923,7 @@
                 "pages": [
                   "ja/develop/agent-context",
                   "ja/develop/dev-config",
+                  "ja/develop/artifacts",
                   "ja/develop/plugin-runtime",
                   "ja/develop/comp-arch",
                   "ja/workshop/impl-platform-adapter"
