@@ -1190,6 +1190,32 @@ def _mixed_store(observer, test_root):
     return snapshot
 
 
+def _native_final_inputs(observer, *, now):
+    """Check the end of an unsynchronized native run in one database snapshot.
+
+    A newly expired run input may be waiting for the next hourly sweep.
+    Use the existing two-sweep grace, not an exact zero-backlog instant.
+    """
+    result = observer.query(
+        """SELECT COUNT(*) AS remaining,
+            COUNT(CASE WHEN expires_at <= :now THEN 1 END) AS due,
+            COUNT(CASE WHEN owner_type <> 'run' OR expires_at IS NULL
+                OR expires_at < :deadline
+                OR (deleted_at IS NOT NULL AND expires_at > :now)
+                THEN 1 END) AS invalid,
+            (SELECT COUNT(*) FROM artifact_references) AS refs,
+            (SELECT COUNT(*) FROM agent_run WHERE status='running') AS live_runs,
+            (SELECT COUNT(*) FROM content_objects c WHERE c.owner_type='artifact' AND NOT EXISTS
+                (SELECT 1 FROM artifacts a WHERE a.workspace_uuid=c.workspace_uuid AND a.content_ref=c.ref)
+            ) AS orphans
+        FROM artifacts""",
+        {'now': now, 'deadline': now - dt.timedelta(seconds=_NATIVE_DRAIN)},
+    )[0]
+    for key in ('invalid', 'refs', 'live_runs', 'orphans'):
+        assert result[key] == 0, f'Native finish {key}={result[key]}: {result}'
+    return result
+
+
 def _mixed_turn(client, bot, session, group, member, files, box_slot):
     from langbot.pkg.platform.sources import http_bot_signing as signing
 
@@ -1762,23 +1788,22 @@ def test_artifact_mixed_soak(
                 staircase_windows.append(measurement)
                 record('phase', **measurement)
         store = sample('final')
-        future_inputs = observer.query("SELECT COUNT(*) AS n FROM artifacts WHERE owner_type='run'")[0]['n']
+        remaining_inputs = 0
         if native:
-            # The continuously offered native workload ends only 2h before
-            # completion; its newest input rows are intentionally still in TTL.
-            assert store['gc_backlog'] == store['artifact_references'] == store['live_runs'] == 0, store
-            assert future_inputs == store['artifacts'], store
-            orphan = observer.query(
-                "SELECT COUNT(*) AS n FROM content_objects c WHERE c.owner_type='artifact' AND NOT EXISTS "
-                '(SELECT 1 FROM artifacts a WHERE a.workspace_uuid=c.workspace_uuid AND a.content_ref=c.ref)'
-            )[0]['n']
-            assert orphan == 0, store
+            final_inputs = _native_final_inputs(observer, now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
+            remaining_inputs = final_inputs['remaining']
+            record(
+                'native_final_inputs',
+                remaining=remaining_inputs,
+                due_within_grace=final_inputs['due'],
+                grace_seconds=_NATIVE_DRAIN,
+            )
             if 'object_count' in store:
                 assert store['object_count'] == store['content_objects'], store
         else:
             assert store['artifacts'] == store['artifact_references'] == store['content_objects'] == 0, store
             assert store.get('object_count', 0) == 0, store
-        totals['materialized_inputs_reclaimed'] = totals['materialized_inputs_created'] - future_inputs
+        totals['materialized_inputs_reclaimed'] = totals['materialized_inputs_created'] - remaining_inputs
         assert totals['materialized_inputs_created'] == totals['files'] > 0, totals
         assert totals['materialized_inputs_reclaimed'] > 0
         assert all(totals[f'structured_{mode}_reads'] > 0 for mode in ('text', 'image', 'native')), totals
