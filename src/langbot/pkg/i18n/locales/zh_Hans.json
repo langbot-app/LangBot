@@ -128,5 +128,12 @@
   "Artifact is still in use": "资产仍在使用中",
   "Artifact exceeds the read size limit": "资产超过读取大小限制",
   "Artifact content failed integrity verification": "资产内容完整性校验失败",
-  "Artifact exceeds the size limit.": "资产超过大小限制。"
+  "Artifact exceeds the size limit.": "资产超过大小限制。",
+  "This file type cannot be read by the model. Download the original file instead.": "模型无法读取此文件类型，请下载原文件。",
+  "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.": "暂不支持 PDF 页面渲染，请提取文本或使用支持原生 PDF 输入的模型。",
+  "The PDF could not be read. It may be malformed or password-protected.": "无法读取 PDF，文件可能损坏或受密码保护。",
+  "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDF 文本提取不包含图片和页面布局。需要视觉内容时，请使用受支持模型的原生模式。",
+  "PDF text extraction exceeds the size limit.": "PDF 文本提取超过大小限制。",
+  "The selected model does not support native PDF input; read the PDF as text instead.": "所选模型不支持原生 PDF 输入，请改为读取 PDF 文本。",
+  "Input attachment content budget for this run is exhausted": "本次运行的附件内容读取预算已用尽"
 }

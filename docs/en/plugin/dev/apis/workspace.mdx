@@ -10,6 +10,8 @@ Every operation has a stable ID, such as `pipeline.list` or `knowledge.base.retr
 
 Artifact operations are currently reserved for authenticated accounts and API keys. They are excluded from plugin grants, wildcard permissions and typed Workspace methods. See the [Artifact file API](/en/develop/artifacts).
 
+This includes `artifact.read_content`, which provides bounded text and structured image/PDF reads. Runner code instead uses the run-bound `read_input_attachment_content` execution API under its existing attachment grant.
+
 ## Calling an operation
 
 From any component, use `self.plugin.workspace`. Each operation has a typed method named after its ID:

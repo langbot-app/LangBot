@@ -88,7 +88,7 @@ class ArtifactService:
             'mime_type': row['mime_type'],
             'size': row['size'],
             'digest': row['digest'],
-            'source': 'upload',
+            'source': 'input_attachment' if row['owner_type'] == 'run' else 'upload',
             'lifecycle': 'persistent' if row['expires_at'] is None else 'temporary',
             'created_at': timestamp(row['created_at']),
             'expires_at': timestamp(row['expires_at']),
@@ -103,6 +103,26 @@ class ArtifactService:
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
     ) -> dict:
         owner = await self._authorize(context, write=True)
+        return await self._create_owned(context, owner, filename, content, mime_type, ttl_seconds)
+
+    @staticmethod
+    def _run_owner(context):
+        principal = context.trigger_principal if isinstance(context, ExecutionContext) else None
+        if principal is None or principal.principal_type != PrincipalType.PROCESSOR or not principal.run_id:
+            raise PermissionError('Input assets require a trusted active run context')
+        return 'run', principal.run_id
+
+    async def create_run_input(self, context, filename, content, mime_type):
+        owner = self._run_owner(context)
+        await self.content._validate(context)
+        return await self._create_owned(context, owner, filename, content, mime_type, DEFAULT_TTL_SECONDS)
+
+    async def read_run_input(self, context, artifact_id, *, max_bytes=MAX_ARTIFACT_BYTES):
+        owner = self._run_owner(context)
+        await self.content._validate(context)
+        return await self._read_owned(context, owner, artifact_id, max_bytes)
+
+    async def _create_owned(self, context, owner, filename, content, mime_type, ttl_seconds):
         if (
             not isinstance(filename, str)
             or not filename
@@ -151,9 +171,12 @@ class ArtifactService:
             return self._public(await self._row(uow, context, artifact_id, owner))
 
     async def read(self, context, artifact_id: str, max_bytes: int = MAX_ARTIFACT_BYTES) -> dict:
+        owner = await self._authorize(context)
+        return await self._read_owned(context, owner, artifact_id, max_bytes)
+
+    async def _read_owned(self, context, owner, artifact_id, max_bytes):
         from .content import ContentIntegrityError
 
-        owner = await self._authorize(context)
         if type(max_bytes) is not int or not 1 <= max_bytes <= MAX_ARTIFACT_BYTES:
             raise ValueError('Artifact read limit must be between 1 and 10485760 bytes')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
@@ -171,6 +194,12 @@ class ArtifactService:
         if len(value) != row['size'] or hashlib.sha256(value).hexdigest() != row['digest']:
             raise ArtifactError('artifact_integrity_failed', 'Artifact content failed integrity verification', 422)
         return {'metadata': self._public(row), 'content': value}
+
+    async def read_content(self, context, artifact_id, **options):
+        from .artifact_reader import read_artifact_content
+
+        result = await self.read(context, artifact_id)
+        return await read_artifact_content(result['content'], result['metadata'], **options)
 
     async def _has_references(self, uow, context, artifact_id):
         return (

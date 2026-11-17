@@ -154,8 +154,11 @@ def test_event_attachments_preserved_without_eager_io_or_host_path_access():
     assert input_files(q)['att-1'].base64 == 'YQ=='
     assert not input_files(q)['att-1'].path
     image = AgentInput(contents=[ContentElement.from_image_url('https://example.invalid/image.png')])
-    prepare_input_files(SimpleNamespace(message_chain=MessageChain([])), image)
-    assert image.attachments[0].url == 'https://example.invalid/image.png'
+    image_query = SimpleNamespace(message_chain=MessageChain([]))
+    prepare_input_files(image_query, image)
+    assert image.attachments[0].url is None
+    assert image.contents[0].text == '[attachment att-1: image]'
+    assert input_files(image_query)['att-1'].url == 'https://example.invalid/image.png'
 
 
 def test_platform_media_keep_rendered_refs_and_never_carry_bytes():
@@ -178,6 +181,8 @@ def test_platform_media_keep_rendered_refs_and_never_carry_bytes():
         ('att-2', 'file', None),
     ]
     assert input_files(query) == {'att-1': image, 'att-2': report}
+    assert all(item.type == 'text' for item in value.contents)
+    assert all(item.url is None and item.path is None for item in value.attachments)
 
 
 def test_repeated_prepare_keeps_envelope_registrations():
@@ -198,6 +203,31 @@ def test_repeated_prepare_keeps_envelope_registrations():
     other_query = SimpleNamespace(message_chain=MessageChain([]))
     prepare_input_files(other_query, value)
     assert all(not item.base64 for item in input_files(other_query).values())
+
+
+def test_contents_only_files_keep_distinct_sources_behind_markers():
+    from langbot_plugin.api.entities.builtin.runner.input import AgentInput
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
+    from langbot.pkg.box.runner import input_files, prepare_input_files
+
+    query = SimpleNamespace(message_chain=MessageChain([]))
+    value = AgentInput(
+        contents=[
+            ContentElement.from_file_url('https://files.example/one', 'report.pdf'),
+            ContentElement.from_file_url('https://files.example/two', 'report.pdf'),
+        ]
+    )
+    prepare_input_files(query, value)
+    assert [item.ref for item in value.attachments] == ['att-1', 'att-2']
+    assert [item.text for item in value.contents] == [
+        '[attachment att-1: file report.pdf]',
+        '[attachment att-2: file report.pdf]',
+    ]
+    assert [item.url for item in input_files(query).values()] == [
+        'https://files.example/one',
+        'https://files.example/two',
+    ]
+    assert all(item.url is None and item.content is None for item in value.attachments)
 
 
 @pytest.mark.asyncio

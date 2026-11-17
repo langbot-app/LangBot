@@ -169,6 +169,7 @@ class PluginConnectionHandler(handler.Handler):
                 in {
                     PluginToRuntimeAction.CALL_TOOL,
                     PluginToRuntimeAction.REQUEST_INTERACTION,
+                    PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
                 }
                 and payload.get("run_id") is not None
             )
@@ -918,6 +919,16 @@ class PluginConnectionHandler(handler.Handler):
         ) -> handler.ActionResponse:
             return await forward_agent_action(
                 PluginToRuntimeAction.READ_INPUT_ATTACHMENT,
+                data,
+                LONG_RUNNING_OPERATION_TIMEOUT,
+            )
+
+        @self.action(PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT)
+        async def read_input_attachment_content(
+            data: dict[str, Any],
+        ) -> handler.ActionResponse:
+            return await forward_agent_action(
+                PluginToRuntimeAction.READ_INPUT_ATTACHMENT_CONTENT,
                 data,
                 LONG_RUNNING_OPERATION_TIMEOUT,
             )

@@ -309,15 +309,9 @@ class TestPreProcessorImageSegment:
         from langbot.pkg.agent.runner.query_entry_adapter import QueryEntryAdapter
         from langbot_plugin.api.entities.builtin.provider.message import ContentElement
 
-        expected_image = (
-            ContentElement.from_image_base64('data:image/png;base64,abc123')
-            if image_source == 'base64'
-            else ContentElement.from_image_url('https://cdn.example/image.png')
-        )
         assert result.new_query.user_message.content == [
             ContentElement.from_text('look at this'),
             ContentElement.from_text('[attachment att-1: image]'),
-            expected_image,
         ]
         attachments = QueryEntryAdapter._build_input(result.new_query).attachments
         assert len(attachments) == 1

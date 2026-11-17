@@ -23,7 +23,9 @@ class ArtifactsRouterGroup(group.RouterGroup):
             except ApplicationAPIException as exc:
                 return self.http_status(exc.error.status_code, exc.error.code, exc.error.message)
             if not download:
-                return self.success(data=result)
+                response = self.success(data=result)
+                response.headers['Cache-Control'] = 'private, no-store'
+                return response
             metadata = result['metadata']
             return quart.Response(
                 result['content'],
@@ -92,6 +94,22 @@ class ArtifactsRouterGroup(group.RouterGroup):
                 },
                 download=True,
             )
+
+        @self.route(
+            '/<artifact_id>/read',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def read_content(artifact_id: str, request_context: RequestContext):
+            payload = {'artifact_id': artifact_id, 'mode': quart.request.args.get('mode', 'auto')}
+            for key in ('offset', 'max_chars', 'page_start', 'page_end'):
+                if key in quart.request.args:
+                    try:
+                        payload[key] = int(quart.request.args[key])
+                    except ValueError:
+                        return self.http_status(400, 'invalid_input', f'Invalid {key}')
+            return await invoke('artifact.read_content', request_context, payload)
 
         @self.route(
             '/<artifact_id>/retain',

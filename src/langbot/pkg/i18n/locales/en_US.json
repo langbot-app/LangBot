@@ -128,5 +128,12 @@
   "Artifact is still in use": "Artifact is still in use",
   "Artifact exceeds the read size limit": "Artifact exceeds the read size limit",
   "Artifact content failed integrity verification": "Artifact content failed integrity verification",
-  "Artifact exceeds the size limit.": "Artifact exceeds the size limit."
+  "Artifact exceeds the size limit.": "Artifact exceeds the size limit.",
+  "This file type cannot be read by the model. Download the original file instead.": "This file type cannot be read by the model. Download the original file instead.",
+  "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.": "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.",
+  "The PDF could not be read. It may be malformed or password-protected.": "The PDF could not be read. It may be malformed or password-protected.",
+  "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.",
+  "PDF text extraction exceeds the size limit.": "PDF text extraction exceeds the size limit.",
+  "The selected model does not support native PDF input; read the PDF as text instead.": "The selected model does not support native PDF input; read the PDF as text instead.",
+  "Input attachment content budget for this run is exhausted": "Input attachment content budget for this run is exhausted"
 }

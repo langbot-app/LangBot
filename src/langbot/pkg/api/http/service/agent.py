@@ -186,6 +186,29 @@ class AgentService:
         if not runner_id:
             raise ValueError('Agent has no configured runner')
 
+        artifact_ids = payload.get('artifact_ids', [])
+        if (
+            not isinstance(artifact_ids, list)
+            or len(artifact_ids) > 20
+            or any(not isinstance(value, str) or not value for value in artifact_ids)
+            or len(set(artifact_ids)) != len(artifact_ids)
+        ):
+            raise ValueError('artifact_ids must contain at most 20 distinct Artifact IDs')
+        artifacts = []
+        for artifact_id in artifact_ids:
+            # Check the authenticated caller, never the synthetic event actor.
+            metadata = await self.ap.artifact_service.get(context, artifact_id)
+            artifacts.append(
+                {
+                    'ref': artifact_id,
+                    'type': 'image' if metadata['mime_type'].startswith('image/') else 'file',
+                    'source': 'artifact',
+                    'name': metadata['name'],
+                    'mime_type': metadata['mime_type'],
+                    'size': metadata['size'],
+                }
+            )
+
         conversation_id = str(payload.get('conversation_id') or f'debug:{agent_uuid}').strip()
         if not conversation_id or len(conversation_id) > 256:
             raise ValueError('Invalid debug conversation_id')
@@ -238,8 +261,12 @@ class AgentService:
                     'text': text or event_type,
                     'contents': [
                         {'type': 'text', 'text': text or event_type},
+                        *(
+                            {'type': 'text', 'text': f'[attachment {item["ref"]}: {item["type"]} {item["name"]}]'}
+                            for item in artifacts
+                        ),
                     ],
-                    'attachments': [],
+                    'attachments': artifacts,
                 }
             ),
             delivery=DeliveryContext(
@@ -324,6 +351,9 @@ class AgentService:
         descriptor = await self.ap.runner_registry.get(execution_context, runner_id)
         prompt_config = extract_prompt_config(descriptor, runner_config, [])
         execution_query = build_execution_query(event, [], execution_context)
+        if artifact_ids:
+            object.__setattr__(execution_query, '_input_artifact_context', context)
+            object.__setattr__(execution_query, '_input_artifact_ids', frozenset(artifact_ids))
         execution_query.prompt = provider_prompt.Prompt(
             name='default',
             messages=[provider_message.Message(**message) for message in copy.deepcopy(prompt_config)],

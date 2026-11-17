@@ -314,7 +314,7 @@ def test_context_builder_renders_message_chain_without_preprocessing():
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [content.type for content in input_data.contents] == ['text', 'image_base64']
+    assert [content.type for content in input_data.contents] == ['text']
     assert input_data.text == '[attachment att-1: image]'
     assert len(input_data.attachments) == 1
     assert input_data.attachments[0].type == 'image'
@@ -802,7 +802,9 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
         ('run.cancelled', {'reason': 'stopped', 'cleanup_confirmed': True}, 'cancelled'),
     ],
 )
-async def test_terminal_is_persisted_before_runner_stream_cleanup(clean_agent_state, monkeypatch, result_type, data, status):
+async def test_terminal_is_persisted_before_runner_stream_cleanup(
+    clean_agent_state, monkeypatch, result_type, data, status
+):
     """Transport cleanup must not hold a validated terminal run open."""
     cleanup_started = asyncio.Event()
     release_cleanup = asyncio.Event()
@@ -2115,8 +2117,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert len(event_logs) >= 1
         # First event should be the incoming message.received
         assert event_logs[0]['event_type'] == 'message.received'
-        assert event_logs[0]['input_json']['contents'][1]['image_base64'] is None
-        assert event_logs[0]['input_json']['contents'][1]['content_redacted'] is True
+        assert event_logs[0]['input_json']['contents'][1]['type'] == 'text'
+        assert event_logs[0]['input_json']['contents'][1]['text'] == '[attachment att-2: image]'
         assert 'aGVsbG8=' not in str(event_logs[0]['input_json'])
         assert 'Pinned documentation' not in str(event_logs[0]['input_json'])
 
@@ -2133,7 +2135,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert 'user' in roles
         assert 'assistant' in roles
         user_item = next(t for t in transcripts if t['role'] == 'user')
-        assert user_item['content_json']['content'][1]['image_base64'] is None
+        assert user_item['content_json']['content'][1]['type'] == 'text'
+        assert user_item['content_json']['content'][1]['text'] == '[attachment att-2: image]'
         assert user_item['attachment_refs'][0]['content'] is None
         assert 'aGVsbG8=' not in str(user_item)
         assert 'Pinned documentation' not in str(user_item)

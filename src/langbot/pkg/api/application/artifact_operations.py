@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import Field
+from typing import Literal
 
 from ..authz import Permission
 from ..context import PrincipalType
@@ -25,6 +26,14 @@ class ArtifactRead(ArtifactID):
     max_bytes: int = Field(default=MAX_ARTIFACT_BYTES, ge=1, le=MAX_ARTIFACT_BYTES)
 
 
+class ArtifactContent(ArtifactID):
+    mode: Literal['auto', 'text', 'native', 'pages'] = 'auto'
+    offset: int = Field(default=0, ge=0)
+    max_chars: int = Field(default=8192, ge=1, le=16384)
+    page_start: int = Field(default=1, ge=1)
+    page_end: int | None = Field(default=None, ge=1)
+
+
 async def create(ap, context, payload):
     return await ap.artifact_service.create(context, **payload.model_dump())
 
@@ -35,6 +44,10 @@ async def get(ap, context, payload):
 
 async def read(ap, context, payload):
     return await ap.artifact_service.read(context, payload.artifact_id, max_bytes=payload.max_bytes)
+
+
+async def read_content(ap, context, payload):
+    return await ap.artifact_service.read_content(context, **payload.model_dump())
 
 
 async def retain(ap, context, payload):
@@ -56,6 +69,7 @@ def operations():
         Operation('artifact.create', manage, create, ArtifactCreate, dict, True, principals=principals),
         Operation('artifact.get', view, get, ArtifactID, dict, principals=principals),
         Operation('artifact.read', view, read, ArtifactRead, dict, principals=principals),
+        Operation('artifact.read_content', view, read_content, ArtifactContent, list[dict], principals=principals),
         Operation('artifact.retain', manage, retain, ArtifactID, dict, True, principals=principals),
         Operation('artifact.release', manage, release, ArtifactID, dict, True, principals=principals),
         Operation('artifact.delete', manage, delete, ArtifactID, dict, True, principals=principals),

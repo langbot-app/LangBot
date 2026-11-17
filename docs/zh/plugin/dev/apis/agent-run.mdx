@@ -192,15 +192,15 @@ event_type = ctx.event.event_type
 
 ### 输入附件
 
-`ctx.input.attachments` 按出现顺序逐一描述当前消息中的图片、语音和文件，只包含元数据：`ref`（如 `att-1`）、`type`、`source`（`message` 为当前消息，`quote` 为被引用的消息）、`name`、`mime_type`、`size`、平台 `id` 和可直接下载的 `url`。附件不携带文件内容，`content` 字段已弃用，当前版本始终为空。
+`ctx.input.attachments` 按出现顺序逐一描述当前消息中的图片、语音和文件，只包含元数据：`ref`（如 `att-1`）、`type`、`source`（`message` 为当前消息，`quote` 为被引用的消息）、`name`、`mime_type`、`size`、平台 `id`。来源 URL 由 Host 私有保存。附件不携带文件内容，`content` 字段已弃用，当前版本始终为空。
 
-`ctx.input.text` 和 `ctx.input.contents` 会在每个媒体的原位置插入标记，例如 `[attachment att-1: image photo.jpg]`；被引用的消息包裹在 `[quoted message from <发送者>]` 与 `[/quoted message]` 之间。图片仍以 `image_base64` 或 `image_url` 紧跟在标记之后，供模型直接查看。
+`ctx.input.text` 和 `ctx.input.contents` 会在每个媒体的原位置插入标记，例如 `[attachment att-1: image photo.jpg]`；被引用的消息包裹在 `[quoted message from <发送者>]` 与 `[/quoted message]` 之间。图片和文件不会直接进入初始模型输入，需要时再显式读取。
 
 | 方法 | 返回值 | 说明 |
 | --- | --- | --- |
 | `await ctx.read_input_attachment(attachment)` | `InputAttachmentData \| None` | 按 `ref` 读取附件内容，返回 `data`、`name`、`mime_type` 和 `size`；参数也可以是 `ref` 字符串。LangBot 不提供该接口时返回 `None` |
 
-单个附件最大 10 MiB，每次运行累计最多读取 50 MiB；LangBot 不缓存读取结果，也不把内容写入日志。`ctx.context.available_apis.input_attachments` 表示该接口是否可用。通过 steering 转入当前运行的后续消息，其附件只有元数据，没有 `ref`。
+单个附件最大 10 MiB，每次运行累计最多读取 50 MiB；内容读取 API 在首次使用时将原件存为当前 run 的临时 Artifact；二进制不写入对话历史或工具事件。`ctx.context.available_apis.input_attachments` 表示该接口是否可用。通过 steering 转入当前运行的后续消息，其附件只有元数据，没有 `ref`。
 
 该方法需要 `langbot-plugin` 0.7.23 或更高版本。需要兼容旧版 LangBot 或旧版 SDK 时，先判断方法是否存在，再回退到原有逻辑：
 
@@ -211,6 +211,8 @@ if hasattr(ctx, "read_input_attachment"):
 if data is None:
     ...  # 旧版 LangBot：使用 attachment.content、attachment.url 或 ctx.input.contents
 ```
+
+`await ctx.read_input_attachment_content(ref, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用同一冻结 run 权限，返回有界文本或结构化媒体。模式和限额见 [Artifact 读取](/zh/develop/artifacts)。该新方法要求匹配的 Core、SDK 和 Runtime，应与 LocalAgent 插件一同升级。
 
 ### Box 与附件
 

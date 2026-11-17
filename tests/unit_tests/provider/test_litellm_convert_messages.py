@@ -1,20 +1,74 @@
 """Unit tests for LiteLLMRequester._convert_messages.
 
-Focus: the content-part normalization that (a) converts image_base64 parts to
-the OpenAI image_url shape and (b) drops non-image file parts (file_base64 /
-file_url) which OpenAI-compatible chat models reject. The latter is essential
-for Voice/File attachments — including ones replayed from conversation history —
-since the agent consumes their bytes via the sandbox, not the model payload.
+Image parts use OpenAI's image_url shape. Explicit PDF input checks native
+model support and uses the file shape; unsupported legacy file parts retain
+their existing handling.
 """
 
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
+import pytest
 
+from langbot.pkg.provider.modelmgr import errors
 from langbot.pkg.provider.modelmgr.requesters.litellmchat import LiteLLMRequester
 
 
 def _make_requester() -> LiteLLMRequester:
     # _convert_messages does not touch instance config, so bypass __init__.
     return LiteLLMRequester.__new__(LiteLLMRequester)
+
+
+def test_explicit_pdf_input_uses_supported_file_payload(monkeypatch):
+    req = _make_requester()
+    probes = []
+
+    def capability(helper, model):
+        probes.append((helper, model))
+        return True
+
+    monkeypatch.setattr(req, '_safe_litellm_bool_helper', capability)
+    pdf = 'data:application/pdf;base64,JVBERi0xLjc='
+    message = provider_message.Message(
+        role='user',
+        content=[
+            provider_message.ContentElement.from_file_base64(pdf, 'report.pdf'),
+        ],
+    )
+    result = req._convert_messages([message], model_name='pdf-model')
+    assert result[0]['content'] == [{'type': 'file', 'file': {'file_data': pdf, 'filename': 'report.pdf'}}]
+    assert probes == [('supports_pdf_input', 'pdf-model')]
+    assert message.content[0].type == 'file_base64'
+
+
+def test_explicit_pdf_input_fails_instead_of_being_discarded(monkeypatch):
+    req = _make_requester()
+    monkeypatch.setattr(req, '_safe_litellm_bool_helper', lambda *_args: False)
+    message = provider_message.Message(
+        role='user',
+        content=[
+            provider_message.ContentElement.from_file_base64('data:application/pdf;base64,JVBERg==', 'report.pdf'),
+        ],
+    )
+    with pytest.raises(errors.RequesterError) as failure:
+        req._convert_messages([message], model_name='text-model')
+    assert failure.value.code == 'unsupported_pdf_input'
+
+
+def test_explicit_pdf_ability_supports_verified_gateway_alias_without_guessing_metadata(monkeypatch):
+    req = _make_requester()
+
+    def unexpected_metadata_probe(*_args):
+        raise AssertionError('An explicit PDF declaration must not depend on alias metadata')
+
+    monkeypatch.setattr(req, '_safe_litellm_bool_helper', unexpected_metadata_probe)
+    pdf = 'data:application/pdf;base64,JVBERi0xLjc='
+    message = provider_message.Message(
+        role='user',
+        content=[
+            provider_message.ContentElement.from_file_base64(pdf, 'report.pdf'),
+        ],
+    )
+    converted = req._convert_messages([message], model_name='verified-gateway-alias', pdf_input_declared=True)
+    assert converted[0]['content'] == [{'type': 'file', 'file': {'file_data': pdf, 'filename': 'report.pdf'}}]
 
 
 def test_convert_messages_drops_file_base64_part():

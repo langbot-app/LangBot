@@ -128,5 +128,12 @@
   "Artifact is still in use": "El artefacto sigue en uso",
   "Artifact exceeds the read size limit": "El artefacto supera el límite de tamaño de lectura",
   "Artifact content failed integrity verification": "Falló la verificación de integridad del contenido del artefacto",
-  "Artifact exceeds the size limit.": "El artefacto supera el límite de tamaño."
+  "Artifact exceeds the size limit.": "El artefacto supera el límite de tamaño.",
+  "This file type cannot be read by the model. Download the original file instead.": "El modelo no puede leer este tipo de archivo. Descargue el original.",
+  "PDF page rendering is unavailable. Use text extraction or a model with native PDF support.": "La representación de páginas PDF no está disponible. Extraiga texto o use un modelo compatible con PDF nativo.",
+  "The PDF could not be read. It may be malformed or password-protected.": "No se pudo leer el PDF. Puede estar dañado o protegido por contraseña.",
+  "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "La extracción de texto PDF no incluye imágenes ni diseño. Use el modo nativo con un modelo compatible para el contenido visual.",
+  "PDF text extraction exceeds the size limit.": "La extracción de texto PDF supera el límite de tamaño.",
+  "The selected model does not support native PDF input; read the PDF as text instead.": "El modelo seleccionado no admite PDF nativo; lea el PDF como texto.",
+  "Input attachment content budget for this run is exhausted": "Se agotó el límite de lectura de contenido adjunto de esta ejecución"
 }

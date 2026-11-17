@@ -149,6 +149,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='none',
     ),
+    'artifact.read_content': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact content', 'zh_Hans': '读取资产内容'},
+        summary='Read bounded text or structured media from an owned asset.',
+        description='Returns text slices, images or native PDF input. PDF page rendering is unavailable.',
+        risk='read',
+        exposure='none',
+    ),
     'artifact.retain': OperationDoc(
         domain='artifact',
         label={'en_US': 'Retain Artifact', 'zh_Hans': '保留资产'},

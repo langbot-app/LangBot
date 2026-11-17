@@ -218,19 +218,13 @@ async def test_external_box_tools_use_authorized_run_api(
 
 @pytest.mark.asyncio
 async def test_external_input_attachment_tool_reads_by_ref():
-    from langbot_plugin.api.entities.builtin.runner.input import (
-        InputAttachment,
-        InputAttachmentData,
-    )
+    from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
 
     ctx = _authorized_ctx()
     ctx.input.attachments = [InputAttachment(ref="att-1", type="file")]
     api = MagicMock()
-    api.read_input_attachment = AsyncMock(
-        return_value=InputAttachmentData(
-            ref="att-1", name="a.txt", mime_type="text/plain", data=b"hi"
-        )
-    )
+    contents = [{"type": "text", "text": '{"ref":"att-1","text":"hi"}'}]
+    api.read_input_attachment_content = AsyncMock(return_value=contents)
     tools = AgentRunExternalTools(api, ctx)
     assert "langbot_read_input_attachment" not in {
         tool["name"] for tool in tools.mcp_tools()
@@ -239,14 +233,57 @@ async def test_external_input_attachment_tool_reads_by_ref():
     assert "langbot_read_input_attachment" in {
         tool["name"] for tool in tools.mcp_tools()
     }
-    assert await tools.call_tool("langbot_read_input_attachment", {"ref": "att-1"}) == {
-        "ref": "att-1",
-        "name": "a.txt",
-        "mime_type": "text/plain",
-        "size": 2,
-        "content_base64": "aGk=",
+    assert (
+        await tools.call_tool("langbot_read_input_attachment", {"ref": "att-1"})
+        == contents
+    )
+    api.read_input_attachment_content.assert_awaited_once_with(
+        ref="att-1",
+        mode="auto",
+        offset=0,
+        max_chars=8192,
+        page_start=1,
+        page_end=None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_external_input_content_uses_native_mcp_image_and_pdf_blocks():
+    from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+
+    ctx = _authorized_ctx()
+    ctx.context.available_apis.input_attachments = True
+    ctx.input.attachments = [InputAttachment(ref="att-1", type="file")]
+    api = MagicMock()
+    api.read_input_attachment_content = AsyncMock(
+        return_value=[
+            {"type": "text", "text": '{"ref":"att-1"}'},
+            {"type": "image_base64", "image_base64": "data:image/png;base64,aW1hZ2U="},
+            {
+                "type": "file_base64",
+                "file_base64": "data:application/pdf;base64,cGRm",
+                "file_name": "report.pdf",
+            },
+        ]
+    )
+    result = await AgentRunExternalTools(api, ctx).call_mcp_tool(
+        "langbot_read_input_attachment", {"ref": "att-1"}
+    )
+    assert result == {
+        "content": [
+            {"type": "text", "text": '{"ref":"att-1"}'},
+            {"type": "image", "data": "aW1hZ2U=", "mimeType": "image/png"},
+            {
+                "type": "resource",
+                "resource": {
+                    "uri": "langbot-artifact:///report.pdf",
+                    "mimeType": "application/pdf",
+                    "blob": "cGRm",
+                },
+            },
+        ]
     }
-    api.read_input_attachment.assert_awaited_once_with("att-1")
+    assert all("base64" not in block.get("text", "") for block in result["content"])
 
 
 def test_external_box_file_reply_requires_reply_permission():

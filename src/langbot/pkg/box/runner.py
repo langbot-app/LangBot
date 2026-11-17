@@ -40,11 +40,9 @@ def prepare_input_files(query, agent_input):
     event envelope is metadata, never permission to read the Host filesystem.
     """
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
+    from langbot_plugin.api.entities.builtin.provider.message import ContentElement
     from ..agent.runner import input_media
 
-    # Pipeline queries pin the media they rendered; only bare event envelopes
-    # may describe media in contents alone.
-    envelope_only = input_media.remembered_media(query) is None
     media = input_media.media_by_ref(query)
     components = {ref: item.component for ref, item in media.items()}
     # Envelope attachments registered by an earlier preparation of this query.
@@ -52,13 +50,29 @@ def prepare_input_files(query, agent_input):
     components.update(previous if isinstance(previous, dict) else {})
     if not agent_input.attachments:
         agent_input.attachments = [InputAttachment.model_validate(item.to_attachment()) for item in media.values()]
-        if not agent_input.attachments and envelope_only:
-            agent_input.attachments = _attachments_from_contents(agent_input.contents)
+
+    def source_key(item):
+        return item.type, item.url, item.content, item.name
+
+    by_source = {source_key(item): item for item in agent_input.attachments}
+    content_attachments = {}
+    for index, content in enumerate(agent_input.contents):
+        described = _attachments_from_contents([content])
+        if not described:
+            continue
+        candidate = described[0]
+        key = source_key(candidate)
+        attachment = by_source.get(key)
+        if attachment is None:
+            attachment = by_source[key] = candidate
+            agent_input.attachments.append(attachment)
+        content_attachments[index] = attachment
 
     for attachment in agent_input.attachments:
         attachment.path = None
         if attachment.ref and attachment.ref in components:
             attachment.content = None
+            attachment.url = None
             continue
         kind = (attachment.type or 'file').lower()
         cls = {'image': pm.Image, 'voice': pm.Voice}.get(kind, pm.File)
@@ -76,8 +90,21 @@ def prepare_input_files(query, agent_input):
                 index += 1
             ref = f'att-{index}'
         components[ref] = cls(**fields)
-        attachment.ref, attachment.content = ref, None
+        attachment.ref, attachment.content, attachment.url = ref, None, None
     object.__setattr__(query, '_input_components', components)
+
+    normalized = []
+    for index, content in enumerate(agent_input.contents):
+        if content.type not in {'image_url', 'image_base64', 'file_url', 'file_base64'}:
+            normalized.append(content)
+            continue
+        attachment = content_attachments.get(index)
+        if attachment is not None:
+            label = f'{attachment.type} {attachment.name}' if attachment.name else attachment.type
+            normalized.append(ContentElement.from_text(f'[attachment {attachment.ref}: {label}]'))
+        else:
+            normalized.append(ContentElement.from_text('[attachment unavailable]'))
+    agent_input.contents = normalized
 
 
 def _attachments_from_contents(contents):

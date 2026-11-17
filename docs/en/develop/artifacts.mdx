@@ -12,6 +12,7 @@ Use the normal Workspace HTTP authentication. Reads require `resource.view`; cre
 | Upload | `POST /api/v1/artifacts`, multipart `file`, optional `ttl_seconds` |
 | Metadata | `GET /api/v1/artifacts/{id}` |
 | Download | `GET /api/v1/artifacts/{id}/content`, optional `max_bytes` |
+| Read structured content | `GET /api/v1/artifacts/{id}/read`, optional `mode`, `offset`, `max_chars`, `page_start`, `page_end` |
 | Retain | `POST /api/v1/artifacts/{id}/retain` |
 | Release | `POST /api/v1/artifacts/{id}/release` |
 | Delete | `DELETE /api/v1/artifacts/{id}` |
@@ -26,6 +27,25 @@ Deletion blocks subsequent access; maintenance reclaims the underlying bytes. An
 
 ## MCP
 
-The built-in `/mcp` server exposes `create_artifact`, `get_artifact`, `read_artifact`, `retain_artifact`, `release_artifact` and `delete_artifact` with the same ownership and permission checks. Creation takes `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. Reading takes `artifact_id` and optional `max_bytes`, returning base64 plus metadata.
+Native PDF input requires trusted model capability information. For an alias whose provider has confirmed PDF support but which the capability catalog does not recognize, an administrator can declare `pdf_input` in the model's existing `abilities` field. Undeclared, unknown capability rejects native PDF input; text mode remains available.
 
-These tools transfer files. They do not extract text, render PDF pages or establish that a model understands an image. The initial API is not available through plugin Workspace grants, plugin typed methods, default model tools or `lbctl`. Existing upload and run `file_id` interfaces continue to use their existing contracts.
+The built-in `/mcp` server exposes `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact` with the same ownership and permission checks. Creation takes `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. Raw reading takes `artifact_id` and optional `max_bytes`, returning base64 plus metadata. `read_artifact_content` takes the structured-read parameters from the HTTP `/read` endpoint and returns native MCP text, image or embedded-PDF content rather than base64 inside ordinary text. The Workspace operation is `artifact.read_content`.
+
+`read_artifact` transfers the original bytes. Account-owned management operations remain unavailable through plugin Workspace grants, plugin typed methods, default model tools or `lbctl`. Existing upload and run `file_id` interfaces continue to use their existing contracts.
+
+## Agent reads
+
+Runner inputs initially contain attachment references, names, MIME types and sizes. Image/file bytes and source URLs stay in the Host registry; they are not inserted into the initial model message. Current-message and quoted-message attachments retain separate references. The Agent requests content only when needed, under the current run's frozen attachment grant. References from another run do not grant access.
+
+`read_input_attachment_content` returns structured content and supports these modes:
+
+| Mode | Behavior |
+| --- | --- |
+| `auto` | Read UTF-8 text, return a structured image, or extract PDF text. |
+| `text` | Read a bounded character range; PDF results identify the selected pages and exclude visual content. |
+| `native` | Return image/PDF content for a model that supports that input; unsupported models report a visible error. |
+| `pages` | Page rendering is currently unsupported and returns an explicit error. |
+
+Text uses zero-based `offset` and `max_chars` (default 8192, maximum 16384). Results include `truncated` and `next_offset`; continue from that position rather than treating a partial result as the full file. PDF text uses one-based `page_start` and optional `page_end`, at most ten pages per read, and reports the next page. It does not perform OCR or preserve images/layout. Other binary formats fail explicitly; the original remains downloadable.
+
+Agent debug API requests may include `artifact_ids`, up to 20 distinct IDs from the caller's uploads. The Host checks the authenticated caller's ownership before starting the run and gives that run references only. Supplying an event `actor` does not change ownership. The separate Workspace management assistant does not accept attachment inputs in this phase. The existing raw-byte `read_input_attachment` API remains available to authorized Runner code.

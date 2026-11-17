@@ -8,6 +8,30 @@ from langbot_plugin.api.entities.builtin.runner.result import RunnerResult
 from langbot_plugin.api.proxies.runner.api import RunnerAPIProxy
 
 
+def _tool_trace_result(value):
+    """Keep structured media out of retained tool events without changing the tool result."""
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="json")
+    if isinstance(value, list):
+        return [_tool_trace_result(item) for item in value]
+    if not isinstance(value, dict):
+        return (
+            "[binary content redacted]"
+            if isinstance(value, str)
+            and value.startswith("data:")
+            and ";base64," in value
+            else value
+        )
+    output = {}
+    for key, item in value.items():
+        if key in {"base64", "image_base64", "file_base64"} and item:
+            output[key] = None
+            output["content_redacted"] = True
+        else:
+            output[key] = _tool_trace_result(item)
+    return output
+
+
 class _TracedRunAPI:
     """Delegate authorized APIs and stream tool delivery attempts and outcomes."""
 
@@ -48,7 +72,9 @@ class _TracedRunAPI:
                 self._run_id,
                 call_id,
                 tool_name,
-                result=result,
+                result=_tool_trace_result(result)
+                if isinstance(result, dict)
+                else {"value": _tool_trace_result(result)},
             )
         )
         return result
