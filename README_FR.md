@@ -70,13 +70,21 @@ Cliquez sur les boutons Star et Watch dans le coin supérieur droit du dépôt p
 
 Sans déploiement, prêt à utiliser.
 
-### Lancement en une ligne
+### Installation en une ligne (recommandée pour l'auto-hébergement)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Nécessite [uv](https://docs.astral.sh/uv/getting-started/installation/). Visitez http://localhost:5300 — c'est prêt.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Installe [lbctl](https://github.com/langbot-app/langbot-cli) (la CLI de LangBot) puis déploie LangBot : en natif par défaut, avec Python configuré automatiquement, ou avec Docker. Aucun droit administrateur requis. Une fois terminé, visitez http://localhost:5300. Mettez à jour ensuite avec `lbctl upgrade`.
 
 ### Docker Compose
 

@@ -70,13 +70,21 @@ LangBot は、AI搭載のインスタントメッセージングボットを構�
 
 デプロイ不要、すぐに使えます。
 
-### ワンライン起動
+### ワンラインインストール（セルフホスト推奨）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> [uv](https://docs.astral.sh/uv/getting-started/installation/) が必要です。http://localhost:5300 にアクセスして完了。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot CLI）をインストールし、LangBot をデプロイします。デフォルトはネイティブ実行（Python は自動セットアップ）、Docker も選択可能で、管理者権限は不要です。完了後 http://localhost:5300 にアクセスしてください。アップグレードは `lbctl upgrade` で。
 
 ### Docker Compose
 
