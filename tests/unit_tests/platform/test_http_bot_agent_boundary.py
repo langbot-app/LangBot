@@ -365,6 +365,7 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(
             assert not request_task.done(), 'Final text must not close the active Agent collector'
             assert not export_started.is_set()
             assert session_id in adapter.sync_waiters
+            assert adapter.sync_waiters[session_id].done.is_set()
             listener_tasks = tuple(adapter.inbound_tasks)
             assert listener_tasks and all(not task.done() for task in listener_tasks)
 

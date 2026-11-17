@@ -80,8 +80,8 @@ class TestHistoryPageMethod:
         prompt = await proxy.get_prompt()
 
         assert prompt == [{"role": "system", "content": "effective prompt"}]
-        mock_handler.call_action.assert_called_once()
-        call_args = mock_handler.call_action.call_args
+        mock_handler.call_action.assert_awaited_once()
+        call_args = mock_handler.call_action.await_args
         assert call_args[0][0] == PluginToRuntimeAction.GET_PROMPT
         assert call_args[0][1]["run_id"] == "run_prompt"
 
@@ -101,43 +101,72 @@ class TestHistoryPageMethod:
         ctx = create_mock_context(run_id="run_123")
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.history_page()
+        page = await proxy.history_page()
+        assert page.items == []
+        assert (page.next_cursor, page.prev_cursor, page.has_more) == (
+            None,
+            None,
+            False,
+        )
 
-        mock_handler.call_action.assert_called_once()
-        call_args = mock_handler.call_action.call_args
+        mock_handler.call_action.assert_awaited_once()
+        call_args = mock_handler.call_action.await_args
         assert call_args[0][0] == PluginToRuntimeAction.HISTORY_PAGE
         assert call_args[0][1]["run_id"] == "run_123"
 
     @pytest.mark.anyio
-    async def test_history_page_with_parameters(self):
+    @pytest.mark.parametrize(
+        ("direction", "before_cursor", "after_cursor"),
+        [("backward", "10", None), ("forward", None, "10")],
+    )
+    async def test_history_page_with_parameters(
+        self, direction, before_cursor, after_cursor
+    ):
         """Test history_page passes all parameters."""
         mock_handler = MagicMock()
         mock_handler.call_action = AsyncMock(
             return_value={
-                "items": [],
-                "next_cursor": None,
-                "prev_cursor": None,
-                "has_more": False,
+                "items": [
+                    {
+                        "transcript_id": "turn-11",
+                        "event_id": "event-11",
+                        "role": "assistant",
+                        "content": "follow-up",
+                    }
+                ],
+                "next_cursor": "11",
+                "prev_cursor": "10",
+                "has_more": True,
             }
         )
 
         ctx = create_mock_context()
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.history_page(
+        page = await proxy.history_page(
             conversation_id="conv_1",
-            before_cursor="10",
+            before_cursor=before_cursor,
+            after_cursor=after_cursor,
             limit=20,
-            direction="forward",
+            direction=direction,
             include_attachments=True,
         )
 
-        call_args = mock_handler.call_action.call_args
+        assert [
+            (item.transcript_id, item.event_id, item.role, item.content)
+            for item in page.items
+        ] == [
+            ("turn-11", "event-11", "assistant", "follow-up"),
+        ]
+        assert (page.next_cursor, page.prev_cursor, page.has_more) == ("11", "10", True)
+        mock_handler.call_action.assert_awaited_once()
+        call_args = mock_handler.call_action.await_args
         data = call_args[0][1]
         assert data["conversation_id"] == "conv_1"
-        assert data["before_cursor"] == "10"
+        assert data["before_cursor"] == before_cursor
+        assert data["after_cursor"] == after_cursor
         assert data["limit"] == 20
-        assert data["direction"] == "forward"
+        assert data["direction"] == direction
         assert data["include_attachments"] is True
 
 
@@ -160,8 +189,9 @@ class TestHistorySearchMethod:
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
         await proxy.history_search(query="test query")
+        mock_handler.call_action.assert_awaited_once()
 
-        call_args = mock_handler.call_action.call_args
+        call_args = mock_handler.call_action.await_args
         assert call_args[0][0] == PluginToRuntimeAction.HISTORY_SEARCH
         assert call_args[0][1]["run_id"] == "run_456"
         assert call_args[0][1]["query"] == "test query"
@@ -172,22 +202,37 @@ class TestHistorySearchMethod:
         mock_handler = MagicMock()
         mock_handler.call_action = AsyncMock(
             return_value={
-                "items": [],
-                "total_count": 0,
-                "query": "test",
+                "items": [
+                    {
+                        "transcript_id": "turn-11",
+                        "event_id": "event-11",
+                        "role": "user",
+                        "content": "search term in context",
+                    },
+                ],
+                "total_count": 6,
+                "query": "search term",
             }
         )
 
         ctx = create_mock_context()
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.history_search(
+        result = await proxy.history_search(
             query="search term",
             filters={"roles": ["user"]},
             top_k=5,
         )
 
-        call_args = mock_handler.call_action.call_args
+        assert result.query == "search term"
+        assert result.total_count == 6
+        assert [
+            (item.transcript_id, item.role, item.content) for item in result.items
+        ] == [
+            ("turn-11", "user", "search term in context"),
+        ]
+        mock_handler.call_action.assert_awaited_once()
+        call_args = mock_handler.call_action.await_args
         data = call_args[0][1]
         assert data["filters"] == {"roles": ["user"]}
         assert data["top_k"] == 5
@@ -211,9 +256,15 @@ class TestEventGetMethod:
         ctx = create_mock_context(run_id="run_789")
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.event_get(event_id="event_1")
+        record = await proxy.event_get(event_id="event_1")
+        assert (record.event_id, record.event_type, record.source) == (
+            "event_1",
+            "message.received",
+            "platform",
+        )
+        mock_handler.call_action.assert_awaited_once()
 
-        call_args = mock_handler.call_action.call_args
+        call_args = mock_handler.call_action.await_args
         assert call_args[0][0] == PluginToRuntimeAction.EVENT_GET
         assert call_args[0][1]["run_id"] == "run_789"
         assert call_args[0][1]["event_id"] == "event_1"
@@ -237,9 +288,13 @@ class TestEventPageMethod:
         ctx = create_mock_context(run_id="run_abc")
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.event_page()
+        page = await proxy.event_page()
+        assert page.items == []
+        assert page.next_cursor is None
+        assert not page.has_more
+        mock_handler.call_action.assert_awaited_once()
 
-        call_args = mock_handler.call_action.call_args
+        call_args = mock_handler.call_action.await_args
         assert call_args[0][0] == PluginToRuntimeAction.EVENT_PAGE
         assert call_args[0][1]["run_id"] == "run_abc"
 
@@ -249,23 +304,41 @@ class TestEventPageMethod:
         mock_handler = MagicMock()
         mock_handler.call_action = AsyncMock(
             return_value={
-                "items": [],
-                "next_cursor": None,
-                "has_more": False,
+                "items": [
+                    {
+                        "event_id": "e49",
+                        "event_type": "message.completed",
+                        "source": "platform",
+                    },
+                    {
+                        "event_id": "e48",
+                        "event_type": "message.received",
+                        "source": "platform",
+                    },
+                ],
+                "next_cursor": "48",
+                "prev_cursor": "49",
+                "has_more": True,
             }
         )
 
         ctx = create_mock_context()
         proxy = RunnerAPIProxy(ctx=ctx, plugin_runtime_handler=mock_handler)
 
-        await proxy.event_page(
+        page = await proxy.event_page(
             conversation_id="conv_1",
             event_types=["message.received", "message.completed"],
             before_cursor="50",
             limit=30,
         )
 
-        call_args = mock_handler.call_action.call_args
+        assert [(item.event_id, item.event_type) for item in page.items] == [
+            ("e49", "message.completed"),
+            ("e48", "message.received"),
+        ]
+        assert (page.next_cursor, page.prev_cursor, page.has_more) == ("48", "49", True)
+        mock_handler.call_action.assert_awaited_once()
+        call_args = mock_handler.call_action.await_args
         data = call_args[0][1]
         assert data["conversation_id"] == "conv_1"
         assert data["event_types"] == ["message.received", "message.completed"]

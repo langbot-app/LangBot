@@ -6,6 +6,15 @@ on:
     - cron: '23 19 * * *'
   workflow_dispatch:
     inputs:
+      validation_scope:
+        description: 'Full compatibility/regression matrix or just the existing Daily workloads'
+        type: choice
+        options: [full, workload_only]
+        default: full
+      require_live_dify:
+        description: 'Also require the credentialed Dify Cloud check for a manual run'
+        type: boolean
+        default: false
       workload:
         description: 'Mixed business load or the finite fault/lifecycle contract pass'
         type: choice
@@ -32,6 +41,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  core-matrix:
+    name: Full Core compatibility and regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/run-tests.yml
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  sdk-matrix:
+    name: Full SDK compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-tests.yml
+
+  sdk-box:
+    name: Real SDK Docker Box acceptance
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/sdk-box-docker.yml
+
+  lint:
+    name: Core static checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/lint.yml
+
+  dependency-contracts:
+    name: Dependency contracts
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/optional-contracts.yml
+
+  migrations:
+    name: SQLite and PostgreSQL migrations
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/test-migrations.yml
+
+  frontend:
+    name: Full WebUI and browser regression
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/frontend-tests.yml
+
+  packaging:
+    name: Core packaging boundary and production image
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/core-packaging.yml
+
+  plugin-runner:
+    name: Official Runner compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-runner-tests.yml
+
+  plugin-knowledgeengine:
+    name: Official KnowledgeEngine compatibility
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-knowledgeengine-shared-tests.yml
+
+  plugin-misc:
+    name: Official misc plugin checks
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-misc-tests.yml
+
+  plugin-catalog:
+    name: Official plugin catalog contract
+    if: github.event_name == 'schedule' || inputs.validation_scope == 'full'
+    uses: ./.github/workflows/plugins-plugin-catalog.yml
+
   endurance:
     name: Daily mixed load / weekly contracts
     runs-on: ubuntu-latest
@@ -166,6 +237,8 @@ jobs:
                   errors.append('Missing verdict; inspect preparation and service logs.')
               for error in errors:
                   out.write(f"\n- {error}\n")
+          if not passed:
+              raise SystemExit('Daily regression failed or its required verdict is missing')
           PY_SUMMARY
       - name: Preserve verdicts and observations
         if: always()
@@ -273,6 +346,8 @@ jobs:
                   errors.append('Missing verdict; inspect preparation and service logs.')
               for error in errors:
                   out.write(f"- {error}\n")
+          if not passed:
+              raise SystemExit('Daily API regression failed or its required verdict is missing')
           PY_SUMMARY
       - name: Preserve API verdicts and evidence
         if: always()
@@ -299,6 +374,7 @@ jobs:
 
   dify-cloud:
     name: Daily Dify Cloud Agent regression
+    if: github.event_name == 'schedule' || inputs.require_live_dify
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -322,20 +398,20 @@ jobs:
           DIFY_LIVE_OUTPUT: ${{ github.workspace }}/.qa/dify-live/summary.json
         run: |
           if [[ -z "$DIFY_AGENT_API_KEY" ]]; then
-            if [[ "$GITHUB_EVENT_NAME" == "schedule" ]]; then
-              echo "DIFY_AGENT_API_KEY is required for the scheduled live Dify regression." >&2
-              exit 1
-            fi
-            echo "DIFY_AGENT_API_KEY is not configured; skipping manual live Dify regression."
-            exit 0
+            echo "DIFY_AGENT_API_KEY is required for the selected live Dify regression." >&2
+            exit 1
           fi
           uv run --no-sync python http-certification-tests/live_dify_agent.py
       - name: Publish Dify regression summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/dify-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/dify-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No Dify verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve Dify regression evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -431,9 +507,13 @@ jobs:
       - name: Publish latest n8n summary
         if: always()
         run: |
-          if [[ -f "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" ]]; then
-            cat "$GITHUB_WORKSPACE/.qa/n8n-live/summary.json" >> "$GITHUB_STEP_SUMMARY"
+          summary="$GITHUB_WORKSPACE/.qa/n8n-live/summary.json"
+          if [[ ! -f "$summary" ]]; then
+            echo "No n8n verdict was produced." >&2
+            exit 1
           fi
+          cat "$summary" >> "$GITHUB_STEP_SUMMARY"
+          python -c 'import json, sys; sys.exit(json.load(open(sys.argv[1])).get("passed") is not True)' "$summary"
       - name: Preserve latest n8n evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -445,3 +525,68 @@ jobs:
 
   persistence-runtime:
     uses: ./.github/workflows/persistence-acceptance.yml
+    with:
+      uploaded_artifacts: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+
+  verdict:
+    name: Daily regression verdict
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - core-matrix
+      - sdk-matrix
+      - sdk-box
+      - lint
+      - dependency-contracts
+      - migrations
+      - frontend
+      - packaging
+      - plugin-runner
+      - plugin-knowledgeengine
+      - plugin-misc
+      - plugin-catalog
+      - endurance
+      - api-contracts
+      - dify-cloud
+      - n8n-latest
+      - persistence-runtime
+    steps:
+      - name: Confirm selected jobs succeeded
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+          FULL_MATRIX: ${{ github.event_name == 'schedule' || inputs.validation_scope == 'full' }}
+          LIVE_DIFY: ${{ github.event_name == 'schedule' || inputs.require_live_dify }}
+        run: |
+          python3 - <<'PY_VERDICT'
+          import json, os
+
+          jobs = json.loads(os.environ['JOB_RESULTS'])
+          full_matrix = os.environ['FULL_MATRIX'] == 'true'
+          live_dify = os.environ['LIVE_DIFY'] == 'true'
+          matrix = {'core-matrix', 'sdk-matrix', 'sdk-box', 'lint', 'dependency-contracts',
+                    'migrations', 'frontend', 'packaging', 'plugin-runner',
+                    'plugin-knowledgeengine', 'plugin-misc', 'plugin-catalog'}
+          required = {'endurance', 'api-contracts', 'persistence-runtime', 'n8n-latest'}
+          if full_matrix:
+              required |= matrix
+          if live_dify:
+              required.add('dify-cloud')
+          expected = required | matrix | {'dify-cloud'}
+          failures = []
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"## Daily regression\n\nCandidate: `{os.environ['GITHUB_SHA']}`\n\n")
+              summary.write('| Suite | Selected | Result |\n| --- | --- | --- |\n')
+              for job in sorted(expected | jobs.keys()):
+                  result = jobs.get(job, {}).get('result', 'missing')
+                  selected = job in required
+                  summary.write(f"| {job} | {'yes' if selected else 'no'} | {result} |\n")
+                  if job not in expected or result != ('success' if selected else 'skipped'):
+                      failures.append(f'{job}: {result}')
+              if not full_matrix:
+                  summary.write('\nWorkload-only run: no matrix or migration acceptance.\n')
+              if not live_dify:
+                  summary.write('\nManual run did not select credentialed Dify acceptance.\n')
+          if failures:
+              raise SystemExit('Selected validation failed or is incomplete: ' + ', '.join(failures))
+          PY_VERDICT

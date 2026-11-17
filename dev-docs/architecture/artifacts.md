@@ -158,9 +158,6 @@ is not a filesystem path or independent permission. Deleting a file/base release
 only its holder. Existing uploads and file IDs remain compatible; denied Artifact
 reads must not fall back to unscoped legacy storage access.
 
-See [phase-five review boundaries](../review/artifact-phase5/README.md) for
-independent Runtime/SDK compatibility and remaining verification requirements.
-
 SDK convenience proxies `self.plugin.artifacts` and `ctx.api.artifacts` use the
 existing Workspace action, with no new protocol action or capability flag. They
 return typed metadata and decoded bytes, while preserving Host business errors

@@ -532,6 +532,8 @@
               {
                 "group": "Installation",
                 "pages": [
+                  "en/deploy/langbot/one-line",
+                  "en/deploy/lbctl",
                   "en/deploy/langbot/package",
                   "en/deploy/langbot/docker",
                   "en/deploy/langbot/kubernetes",
@@ -1023,6 +1025,8 @@
               {
                 "group": "安装部署",
                 "pages": [
+                  "zh/deploy/langbot/one-line",
+                  "zh/deploy/lbctl",
                   "zh/deploy/langbot/package",
                   "zh/deploy/langbot/docker",
                   "zh/deploy/langbot/kubernetes",
@@ -1542,6 +1546,8 @@
               {
                 "group": "インストール",
                 "pages": [
+                  "ja/deploy/langbot/one-line",
+                  "ja/deploy/lbctl",
                   "ja/deploy/langbot/package",
                   "ja/deploy/langbot/docker",
                   "ja/deploy/langbot/kubernetes",

@@ -23,6 +23,7 @@ REQUIRED_CONTRACTS = {
         'artifact_workspace_live',
     },
     'network_plugin': {'registered_runner_file_delivery'},
+    'artifact_persistence': {'uploaded_artifact_postgres_minio'},
     'artifact_mixed': {'mixed_media_runner_lifecycle'},
     'skill_network': {'two_core_skill_network'},
     'skill_persistence': {

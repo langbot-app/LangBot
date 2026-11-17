@@ -248,12 +248,33 @@ test('workspace limits persist, reject out-of-range values and disable unsupport
     exact: true,
   });
   await expect(save).toBeDisabled();
+  expect(state.writes).toHaveLength(0);
+
+  const saveLimits = async () => {
+    await expect(save).toBeEnabled();
+    // The button disables during preflight, before the PUT has been sent.
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === 'PUT' &&
+          new URL(response.url()).pathname ===
+            '/api/v1/workspaces/current/sandbox',
+      ),
+      save.click(),
+    ]);
+    expect(response.ok()).toBe(true);
+    await expect(
+      page.getByText('Saved; applies to new tasks', { exact: true }),
+    ).toBeVisible();
+    await expect(save).toBeDisabled();
+  };
+
   await cpu.fill('0.5');
   await page.getByLabel('Command timeout (seconds)', { exact: true }).fill('2');
   await page.getByLabel('Idle cleanup (seconds)', { exact: true }).fill('60');
   await page.getByLabel('Maximum sandboxes', { exact: true }).fill('2');
-  await save.click();
-  await expect(save).toBeDisabled();
+  await saveLimits();
+  expect(state.writes).toHaveLength(1);
   expect(state.writes[0]).toMatchObject({
     limits: { cpus: 0.5, timeout_sec: 2, idle_ttl_sec: 60, max_sessions: 2 },
   });
@@ -273,8 +294,8 @@ test('workspace limits persist, reject out-of-range values and disable unsupport
   await expect(
     page.getByLabel('Command timeout (seconds)', { exact: true }),
   ).toBeEnabled();
-  await save.click();
-  await expect(save).toBeDisabled();
+  await saveLimits();
+  expect(state.writes).toHaveLength(2);
   expect(state.writes[1]).toMatchObject({
     limits: { timeout_sec: 2, idle_ttl_sec: 60, max_sessions: 2 },
   });

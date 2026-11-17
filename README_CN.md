@@ -63,8 +63,6 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 ## 快速开始
 
-官方插件源码索引：[plugins/README.md](plugins/README.md) · [机器可读目录](plugins/catalog.json) · [插件独立上架流程](plugins/RELEASING.md)。插件保持独立安装，不随 Core 发版打包。
-
 ### ☁️ LangBot Cloud（推荐）
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://cloud.langbot.app)
@@ -73,13 +71,21 @@ LangBot 是一个**开源的生产级平台**，用于构建 AI 驱动的即时�
 
 免部署，开箱即用。
 
-### 一键启动
+### 一行命令安装（自部署推荐）
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> 需要安装 [uv](https://docs.astral.sh/uv/getting-started/installation/)。访问 http://localhost:5300 即可使用。
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> 自动安装 [lbctl](https://github.com/langbot-app/langbot-cli)（LangBot 命令行工具）并拉起 LangBot：默认原生部署，自动准备 Python，也可选 Docker；无需管理员权限。完成后访问 http://localhost:5300，之后用 `lbctl upgrade` 一键升级。
 
 ### Docker Compose
 

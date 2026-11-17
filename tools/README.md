@@ -867,3 +867,7 @@ Finite scenarios record successful request rate and full-step P95 as observation
 only configured RPS/P95 thresholds. Business assertions, unresolved results,
 health failures, and process/container resource limits still determine success.
 The default load mode remains `gate` for existing benchmark users.
+
+## CI selection and regression tiers
+
+See the [CI tiers and evidence guide](../dev-docs/CROSS_COMPONENT_TESTING.md#ci-tiers-and-evidence) for PR selection, required smoke, and full daily/manual verification. The CI tooling tests can be run locally with `python -m unittest discover -s tools/tests -p "test_*.py"` in a Python environment with PyYAML.

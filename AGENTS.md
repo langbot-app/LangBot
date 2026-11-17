@@ -50,7 +50,7 @@ uv run pytest tests/manual/mcp_smoke.py
 
 ## Before-Merge Acceptance
 
-Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. PR unit/smoke checks alone do not establish cross-component behavior. Use the [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) for commands and environment requirements:
+Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. Start with the [test asset map and evidence checklist](dev-docs/CROSS_COMPONENT_TESTING.md#test-assets-for-developers-and-agents). PR unit/smoke checks alone do not establish cross-component behavior. The [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) lists the commands and environment requirements:
 
 - Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.
 - File transfer, installation grants or Box routing: full HTTP → installed Plugin Runtime Runner → Box → HTTP file delivery, plus the affected real Box backend.
@@ -69,7 +69,7 @@ uv run lbp rt                                  # or: lbp box, for standalone deb
 cd sdk && uv run pytest -q                     # SDK's own environment (Python >=3.10)
 ```
 
-CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and `Core with in-tree SDK` retains the cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
+CI mirrors this: Core jobs use the same local source, `sdk-tests.yml` tests the SDK alone, and the main Core job proves in-tree SDK provenance and retains the affected cross-component contracts. Official plugin checks preserve their independent released-SDK and candidate-SDK paths. Before publishing the standalone Core PyPI package, release the SDK (`sdk/vX.Y.Z` tag → PyPI), update the Core pin and pass `scripts/check_sdk_release_pin.py`. Docker/source deployments do not require that SDK publication. Never create a GitHub Release for the SDK. Details: `sdk/RELEASING.md`.
 
 Config keys in `data/config.yaml` / `src/langbot/templates/config.yaml`: `plugin.runtime_ws_url` (Docker default `langbot_plugin_runtime:5400/control/ws`), `box.enabled` / `box.backend` / `box.runtime.endpoint` (Docker default `langbot_box:5410`), `api.global_api_key`.
 

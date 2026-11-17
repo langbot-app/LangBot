@@ -1,6 +1,10 @@
-import unittest
+import json
+import os
 from pathlib import Path
 import subprocess
+import sys
+import tempfile
+import unittest
 
 import yaml
 
@@ -50,3 +54,86 @@ class TestP0Scope(unittest.TestCase):
             select(['docs/en/develop/dev-config.mdx', 'web/app/root.tsx']),
             dict(persistence=False, permissions=False, image=False),
         )
+
+    def test_rename_to_docs_keeps_the_backend_source(self):
+        root = Path(__file__).resolve().parents[2]
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory)
+
+            def git(*args):
+                return subprocess.check_output(
+                    [
+                        'git',
+                        '-c',
+                        'user.name=P0 Test',
+                        '-c',
+                        'user.email=p0@example.invalid',
+                        '-c',
+                        'diff.renames=true',
+                        *args,
+                    ],
+                    cwd=repo,
+                    text=True,
+                ).strip()
+
+            git('init', '-q')
+            source = repo / 'src/langbot/pkg/discover/module.py'
+            source.parent.mkdir(parents=True)
+            source.write_text('def discover():\n    return 1\n')
+            git('add', '.')
+            git('commit', '-qm', 'base')
+            base = git('rev-parse', 'HEAD')
+
+            target = repo / 'docs/en/module.mdx'
+            target.parent.mkdir(parents=True)
+            git('mv', str(source), str(target))
+            git('commit', '-qm', 'move backend out of src')
+            output = repo / 'changes'
+            subprocess.run(
+                [sys.executable, str(root / 'scripts/p0_acceptance_scope.py')],
+                cwd=repo,
+                env={
+                    **os.environ,
+                    'BASE_SHA': base,
+                    'HEAD_SHA': git('rev-parse', 'HEAD'),
+                    'GITHUB_OUTPUT': str(output),
+                },
+                capture_output=True,
+                check=True,
+            )
+            self.assertEqual(
+                set(output.read_text().splitlines()),
+                {'persistence=true', 'permissions=true', 'image=true'},
+            )
+
+    def test_p0_verdict_requires_explicit_booleans_and_expected_results(self):
+        path = Path(__file__).resolve().parents[2] / '.github/workflows/p0-acceptance.yml'
+        verdict = yaml.safe_load(path.read_text())['jobs']['verdict']['steps'][0]['run']
+        lanes = ('persistence', 'permissions', 'image')
+        cases = [
+            ({}, {}, True),
+            ({'image': 'true'}, {'image': 'success'}, True),
+            ({'image': 'true'}, {'image': 'failure'}, False),
+            ({'image': 'true'}, {'image': 'cancelled'}, False),
+            ({'image': 'true'}, {}, False),
+            ({'image': ''}, {}, False),
+            ({'image': 'FALSE'}, {}, False),
+            ({'image': False}, {}, False),
+            ({'image': None}, {}, False),
+        ]
+        for overrides, statuses, expected in cases:
+            with self.subTest(outputs=overrides, statuses=statuses):
+                outputs = dict.fromkeys(lanes, 'false') | overrides
+                state = {
+                    'changes': {'result': 'success', 'outputs': outputs},
+                    **{name: {'result': statuses.get(name, 'skipped')} for name in lanes},
+                }
+                if outputs['image'] is None:
+                    del outputs['image']
+                result = subprocess.run(
+                    ['bash', '-e', '-c', verdict],
+                    env={**os.environ, 'NEEDS': json.dumps(state)},
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode == 0, expected, result.stderr)

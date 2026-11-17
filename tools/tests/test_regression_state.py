@@ -1,6 +1,5 @@
 """Challenge lifecycle retrieval oracles and keep the optional suite isolated."""
 
-import copy
 import unittest
 
 from tools.entrypoints.regression_ci import SUITE_BUDGETS, suite_profile
@@ -25,18 +24,20 @@ class StateLifecycleTest(unittest.TestCase):
         self.assertTrue(document_absent([], document, 'original-marker'))
 
     def test_state_profile_does_not_change_smoke_or_daily_cases(self):
-        smoke, _ = suite_profile('smoke', 'before')
-        daily, _ = suite_profile('daily', 'before')
-        expected = copy.deepcopy((smoke, daily))
+        normal_profiles = ('smoke', 'daily')
+        before = {name: suite_profile(name, 'test')[0] for name in normal_profiles}
         state, _ = suite_profile('state', 'state')
         validate(state)
-        self.assertEqual((smoke, daily), expected)
+        after = {name: suite_profile(name, 'test')[0] for name in normal_profiles}
+        self.assertEqual(after, before)
+        self.assertEqual([case['name'] for case in state['cases']], ['durable_state_lifecycle'])
         self.assertEqual(state['coverage_suite'], 'state')
         self.assertNotIn('execution', state)
         self.assertNotIn('scenario_groups', state)
         self.assertEqual(SUITE_BUDGETS['state'], 300)
         self.assertTrue(all(not resource.get('documents') for resource in state['resources']))
-        self.assertTrue(all('state' not in case['name'] for case in smoke['cases'] + daily['cases']))
+        for profile in after.values():
+            self.assertNotIn('durable_state_lifecycle', {case['name'] for case in profile['cases']})
 
 
 if __name__ == '__main__':

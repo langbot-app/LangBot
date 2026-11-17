@@ -150,25 +150,45 @@ class RepositoryTests(unittest.TestCase):
             self.assertNotIn('release', events)
             self.assertNotIn('langbot-app/langbot-plugins', text)
             self.assertNotIn('secrets.', text)
-            consumer_paths = (
-                {'sdk/**', 'src/langbot/**'}
-                if path.name
-                in {
-                    'plugins-runner-tests.yml',
-                    'plugins-local-agent-tests.yml',
-                    'plugins-knowledgeengine-shared-tests.yml',
+            # Released and candidate SDK plugin consumers need their actual
+            # Core-side integration surface, not all unrelated Core modules.
+            consumer_paths = {
+                'plugins-runner-tests.yml': {
+                    'src/langbot/pkg/agent/**',
+                    'src/langbot/pkg/box/**',
+                    'src/langbot/pkg/pipeline/**',
+                    'src/langbot/pkg/storage/**',
+                },
+                'plugins-knowledgeengine-shared-tests.yml': {
+                    'src/langbot/pkg/rag/**',
+                    'src/langbot/pkg/vector/**',
+                },
+            }.get(path.name, set())
+            if consumer_paths:
+                consumer_paths |= {
+                    'sdk/**',
+                    'src/langbot/pkg/api/application/**',
+                    'src/langbot/pkg/core/stages/**',
+                    'src/langbot/pkg/entity/**',
+                    'src/langbot/pkg/plugin/**',
+                    'src/langbot/pkg/workspace/**',
+                    'scripts/generate_plugin_workspace_api.py',
+                    'pyproject.toml',
+                    'uv.lock',
                 }
-                else set()
-            )
+                self.assertIn('pull_request', events, path.name)
             for event in ('push', 'pull_request'):
                 if event in events:
+                    paths = set(events[event]['paths'])
+                    self.assertNotIn('src/langbot/**', paths, path.name)
                     self.assertTrue(
                         all(
                             pattern.startswith(('plugins/', '.github/workflows/plugins-')) or pattern in consumer_paths
-                            for pattern in events[event]['paths']
-                        )
+                            for pattern in paths
+                        ),
+                        path.name,
                     )
-                    self.assertTrue(consumer_paths <= set(events[event]['paths']), path.name)
+                    self.assertTrue(consumer_paths <= paths, path.name)
             for job in data['jobs'].values():
                 default = job.get('defaults', {}).get('run', {}).get('working-directory', '.')
                 self.assertTrue((CORE / default).is_dir())

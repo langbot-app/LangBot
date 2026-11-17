@@ -63,8 +63,6 @@ Click the Star and Watch buttons in the top-right corner of the repository to ge
 
 ## Quick Start
 
-Official plugin source index: [plugins/README.md](plugins/README.md) · [machine-readable catalog](plugins/catalog.json) · [independent plugin releases](plugins/RELEASING.md). Plugins are installed separately and are not bundled in Core releases.
-
 ### ☁️ LangBot Cloud (Recommended)
 
 [![Deploy on LangBot Cloud](res/langbot-cloud.svg)](https://space.langbot.app/cloud)
@@ -73,13 +71,21 @@ Official plugin source index: [plugins/README.md](plugins/README.md) · [machine
 
 Zero deployment, ready to use.
 
-### One-Line Launch
+### One-Line Install (Recommended for Self-Hosting)
+
+macOS / Linux:
 
 ```bash
-uvx langbot
+curl -fsSL https://langbot.app/install.sh | bash
 ```
 
-> Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Visit http://localhost:5300 — done.
+Windows (PowerShell):
+
+```powershell
+irm https://langbot.app/install.ps1 | iex
+```
+
+> Installs [lbctl](https://github.com/langbot-app/langbot-cli) (the LangBot CLI), then deploys LangBot — natively by default, with Python set up automatically, or with Docker. No admin rights needed. When it finishes, open http://localhost:5300. Upgrade later with `lbctl upgrade`.
 
 ### Docker Compose
 
