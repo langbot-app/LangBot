@@ -4,17 +4,18 @@ import base64
 import io
 import json
 
+from PIL import Image, ImageChops
 import pytest
-from pypdf import PdfWriter, get_configuration
+from pypdf import PdfReader, PdfWriter, get_configuration
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
-from langbot.pkg.storage.artifact_reader import MAX_PDF_STREAM_BYTES, read_artifact_content
-from langbot.pkg.storage.artifacts import ArtifactError
+from langbot.pkg.storage.artifact_reader import MAX_PDF_PAGES, MAX_PDF_STREAM_BYTES, read_artifact_content
+from langbot.pkg.storage.artifacts import ArtifactError, MAX_ARTIFACT_BYTES
+from tests.utils.artifact_media import make_artifact_media, text_pdf
 
 
 pytestmark = pytest.mark.asyncio
 _META = {'id': 'art_test', 'name': 'reference.txt', 'mime_type': 'text/plain', 'content_ref': 'private-key'}
-_PNG = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jWZkAAAAASUVORK5CYII=')
 
 
 def _pdf(*texts, encrypted=False, compressed_payload=None):
@@ -65,17 +66,102 @@ async def test_text_ranges_use_characters_and_preserve_exact_resume_position():
     assert remainder['truncated'] is False
 
 
+async def test_media_fixtures_have_stable_bytes_without_markers_in_metadata():
+    first = make_artifact_media('chat-one')
+    second = make_artifact_media('chat-two')
+    assert first == make_artifact_media('chat-one')
+    assert [sample.filename for sample in first] == [sample.filename for sample in second]
+    assert len({sample.marker for sample in (*first, *second)}) == 8
+    for a, b in zip(first, second, strict=True):
+        assert a.sha256 != b.sha256 and 0 < a.size < MAX_ARTIFACT_BYTES
+        assert a.marker not in (a.filename + a.mime_type)
+        assert a.marker.encode() not in a.data
+        if a.kind in {'png', 'jpeg'}:
+            with Image.open(io.BytesIO(a.data)) as image_a, Image.open(io.BytesIO(b.data)) as image_b:
+                assert image_a.format == image_b.format == a.kind.upper()
+                assert image_a.size == image_b.size == (480, 160)
+                assert a.marker not in repr(image_a.info)
+                assert ImageChops.difference(image_a, image_b).getbbox() is not None
+        else:
+            reader = PdfReader(io.BytesIO(a.data), strict=True)
+            assert a.marker not in repr(reader.metadata)
+            assert len(reader.pages) == 1
+            page = reader.pages[0]
+            if a.kind == 'text_pdf':
+                assert page.extract_text().strip() == a.marker
+                assert not page.images
+            else:
+                assert not page.extract_text().strip()
+                assert len(page.images) == 1
+                other_page = PdfReader(io.BytesIO(b.data), strict=True).pages[0]
+                assert ImageChops.difference(page.images[0].image, other_page.images[0].image).getbbox() is not None
+
+
 async def test_images_and_native_pdf_remain_structured_instead_of_textual_base64():
-    image = await read_artifact_content(_PNG, {'name': 'pixel.png', 'mime_type': 'image/png'})
-    assert _text(image)['mode'] == 'image'
-    assert len(image) == 2 and image[1]['type'] == 'image_base64'
-    assert base64.b64decode(image[1]['image_base64'].split(',', 1)[1], validate=True) == _PNG
-    assert 'base64' not in image[0]['text']
-    pdf = _pdf('Native file payload')
-    native = await read_artifact_content(pdf, {'name': None}, mode='native')
-    assert _text(native)['mode'] == 'native'
-    assert native[1]['type'] == 'file_base64' and native[1]['file_name'] == 'document.pdf'
-    assert base64.b64decode(native[1]['file_base64'].split(',', 1)[1], validate=True) == pdf
+    for media in make_artifact_media('structured-inputs'):
+        is_pdf = media.mime_type == 'application/pdf'
+        result = await read_artifact_content(
+            media.data, {'name': media.filename, 'mime_type': media.mime_type}, mode='native'
+        )
+        assert len(result) == 2
+        assert _text(result)['mode'] == ('native' if is_pdf else 'image')
+        kind = 'file_base64' if is_pdf else 'image_base64'
+        assert result[1]['type'] == kind
+        if is_pdf:
+            assert result[1]['file_name'] == media.filename
+        mime, b64 = result[1][kind].split(',', 1)
+        assert mime == f'data:{media.mime_type};base64'
+        assert base64.b64decode(b64, validate=True) == media.data
+        assert b64 not in result[0]['text']
+        assert media.marker not in result[0]['text']
+
+
+async def test_image_read_mode_reports_detected_mime_and_disallows_text_mode():
+    png = make_artifact_media('mismatched-image')[0]
+    declared = {'name': 'claimed.jpg', 'mime_type': 'image/jpeg'}
+    image = await read_artifact_content(png.data, declared)
+    assert _text(image)['artifact']['mime_type'] == 'image/jpeg'
+    assert image[1]['image_base64'].startswith('data:image/png;base64,')
+    with pytest.raises(ArtifactError) as failure:
+        await read_artifact_content(png.data, declared, mode='text')
+    assert failure.value.error_code == 'artifact_read_unsupported' and failure.value.status_code == 415
+
+
+async def test_text_mode_exposes_selectable_text_but_never_claims_ocr():
+    _, _, selectable, scanned = make_artifact_media('extract-text')
+    for media in (selectable, scanned):
+        result = await read_artifact_content(media.data, {'mime_type': media.mime_type}, mode='text')
+        assert len(result) == 1
+        payload = _text(result)
+        assert payload['text_only'] is True
+        assert 'excludes images' in payload['notice'] and 'native mode' in payload['notice']
+        if media.kind == 'scanned_pdf':
+            assert payload['text'] == '[Page 1]\n'
+            assert media.marker not in payload['text']
+        else:
+            assert payload['text'].strip() == f'[Page 1]\n{media.marker}'
+
+
+async def test_pdf_and_byte_boundaries_preserve_bounded_continuation():
+    last_page = MAX_PDF_PAGES + 1
+    pages = text_pdf(*(f'Document page {number}' for number in range(1, last_page + 1)))
+    first = _text(await read_artifact_content(pages, {}))
+    assert first['page_end'] == MAX_PDF_PAGES and first['next_page'] == last_page
+    assert f'[Page {last_page}]' not in first['text']
+    last = _text(await read_artifact_content(pages, {}, page_start=last_page))
+    assert last['text'].strip() == f'[Page {last_page}]\nDocument page {last_page}'
+    assert last['next_page'] is None
+    with pytest.raises(ValueError, match='page range'):
+        await read_artifact_content(pages, {}, page_end=last_page)
+    with pytest.raises(ArtifactError) as failure:
+        await read_artifact_content(pages, {}, page_start=last_page + 1)
+    assert failure.value.error_code == 'invalid_input' and failure.value.status_code == 400
+    data = b'a' * MAX_ARTIFACT_BYTES
+    limited = _text(await read_artifact_content(data, _META, max_chars=10))
+    assert limited['total_chars'] == MAX_ARTIFACT_BYTES and limited['next_offset'] == 10
+    assert limited['text'] == 'a' * 10
+    with pytest.raises(ValueError, match='10 MiB'):
+        await read_artifact_content(data + b'a', _META)
 
 
 async def test_pdf_selected_pages_and_text_limits_report_continuation_and_visual_boundary():
@@ -101,10 +187,18 @@ async def test_compressed_pdf_is_rejected_before_unbounded_expansion_and_configu
 
 
 async def test_unreadable_pdf_and_unsupported_formats_fail_explicitly():
-    for content in (b'%PDF-broken', _pdf('Protected', encrypted=True)):
-        with pytest.raises(ArtifactError) as failure:
-            await read_artifact_content(content, {'mime_type': 'application/pdf'})
-        assert failure.value.error_code == 'artifact_pdf_unreadable' and failure.value.status_code == 422
+    valid_pdf = text_pdf('Authenticated content')
+    for content in (
+        b'non-PDF bytes declared as PDF',
+        b'%PDF-broken',
+        valid_pdf[:-45],
+        _pdf('Protected', encrypted=True),
+        _pdf(),
+    ):
+        for mode in ('auto', 'native', 'text'):
+            with pytest.raises(ArtifactError) as failure:
+                await read_artifact_content(content, {'mime_type': 'application/pdf'}, mode=mode)
+            assert failure.value.error_code == 'artifact_pdf_unreadable' and failure.value.status_code == 422
     for content, options in ((b'\x00binary', {}), (_pdf('Text'), {'mode': 'pages'})):
         with pytest.raises(ArtifactError) as failure:
             await read_artifact_content(content, {}, **options)

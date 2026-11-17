@@ -27,6 +27,8 @@ Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能
 
 删除 Artifact 不会撤回已投递的平台文件，也不会删除按独立规则保留的消息历史。
 
+PDF 结构化读取（包括原生模式）会拒绝损坏或受密码保护的文件，返回 `artifact_pdf_unreadable`（422）。有权访问的用户仍可下载原始字节。
+
 ## 固定版本 Skill 资源
 
 `POST /api/v1/artifacts/skill-resources` 为数据库持久化 Skill 包中的单个文件创建调用方拥有的引用。JSON 请求包含 `skill_name`、明确的 `revision`、包内相对 `path`，以及可选的 `ttl_seconds`。需要同时具备 `resource.view` 和 `resource.manage`。对应的 ApplicationAPI 操作是 `artifact.skill_resource.create`；MCP 工具 `create_skill_resource_artifact` 使用相同参数。
@@ -41,7 +43,6 @@ Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能
 
 
 在已授权的存活 run 中，`read_skill_resource` 使用已激活 Skill 的冻结版本和同一有界 reader。文本保留文本契约，截断时给出继续读取位置；图片和原生 PDF 使用结构化模型内容，而不是普通文本中的 base64。登记时验证有界来源字节。来源字节读取在每个 run 中对每个不可变 Artifact 只计入预算一次，限额为每文件 256 KiB、每 run 1 MiB。另设独立的每 run 1 MiB 返回预算，累计计算返回 JSON 的 UTF-8 字节和媒体载荷字节。每次继续读取仍会重新检查权限，即使来源已计入预算。旧文本路径不变。原生 PDF 仍要求模型支持。没有该存活 run 授权时只保留旧文本读取路径，不隐式授予二进制来源访问权。
-
 
 ## MCP
 

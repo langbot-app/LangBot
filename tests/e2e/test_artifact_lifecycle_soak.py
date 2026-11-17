@@ -9,14 +9,19 @@ from __future__ import annotations
 
 import asyncio
 import base64
+from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 import datetime as dt
+import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import logging
+import math
 import os
 from pathlib import Path
+import random
+import shutil
 import signal
 import statistics
 import subprocess
@@ -57,6 +62,8 @@ _data = network._data
 # replaced. Read-only directories are a real sandbox cleanup failure stimulus.
 _RUNNER = """\
 import asyncio
+import base64
+import hashlib
 import json
 import shlex
 from langbot_plugin.api.definition.components.runner.runner import Runner
@@ -69,10 +76,57 @@ class DefaultRunner(Runner):
         report = {'run_id': ctx.run_id, 'operation': request['operation']}
         try:
             status = await ctx.api.get_box_status()
-            box = await ctx.api.acquire_box(status.required_reuse_key or ctx.config['reuse_key'])
+            box = await ctx.api.acquire_box(status.required_reuse_key or str(request.get('box_slot', ctx.config['reuse_key'])))
             await ctx.bind_box(box.id)
             report['box_id'] = box.id
-            if request['operation'] == 'foreign-file':
+            if request['operation'] == 'mixed':
+                report['inputs'] = []
+                for attachment in ctx.input.attachments:
+                    ref = attachment.ref
+                    # Platform attachments materialize only on a structured read.
+                    # Verify bounded extraction before the additional cached raw read.
+                    is_text_pdf = attachment.name == 'reference.pdf'
+                    options = {'mode': 'text', 'max_chars': 11} if is_text_pdf else {'mode': 'native'}
+                    items = await ctx.read_input_attachment_content(ref, **options)
+                    metadata = json.loads(items[0]['text'])
+                    asset = metadata['artifact']
+                    assert asset['ref'] == ref and asset['id'] != ref, asset
+                    entry = {'ref': ref, 'id': asset['id'], 'name': asset['name'],
+                             'mode': metadata['mode'], 'mime': asset['mime_type']}
+                    if is_text_pdf:
+                        assert metadata['truncated'] and metadata['offset'] == 0 and len(metadata['text']) == 11
+                        assert metadata['next_offset'] == 11, metadata
+                        tail = json.loads((await ctx.read_input_attachment_content(
+                            ref, mode='text', offset=metadata['next_offset']
+                        ))[0]['text'])
+                        assert tail['offset'] == 11 and tail['next_offset'] is None and not tail['truncated'], tail
+                        assert tail['artifact']['id'] == asset['id'] and tail['page_count'] == metadata['page_count'] == 1
+                        entry['text'] = metadata['text'] + tail['text']
+                        entry['continuation'] = True
+                        raw = await ctx.read_input_attachment(attachment)
+                        assert raw is not None and raw.ref == ref
+                        body = raw.data
+                    else:
+                        field = 'file_base64' if asset['mime_type'] == 'application/pdf' else 'image_base64'
+                        assert len(items) == 2 and items[1]['type'] == field, items[0]
+                        header, encoded = items[1][field].split(',', 1)
+                        assert header == 'data:' + asset['mime_type'] + ';base64', header
+                        body = base64.b64decode(encoded, validate=True)
+                    entry.update(sha256=hashlib.sha256(body).hexdigest(), size=len(body))
+                    assert entry['sha256'] == asset['digest'] and entry['size'] == asset['size']
+                    report['inputs'].append(entry)
+                if report['inputs']:
+                    first = (await ctx.import_box_attachments([report['inputs'][0]['ref']]))[0]
+                    output = '/workspace/mixed-' + ctx.run_id + '.bin'
+                    made = await ctx.call_tool('exec', {'command': 'cp ' + shlex.quote(first.path) + ' ' +
+                                                                  shlex.quote(output), 'timeout_sec': 15})
+                    assert made['ok'], made
+                    binary, = await ctx.export_box_files([output])
+                    saved, = await ctx.commit_run_files([binary.id])
+                    assert saved.lifecycle == 'persistent', saved
+                    report['artifact_id'] = binary.artifact_id
+                    await ctx.reply_files([binary.id])
+            elif request['operation'] == 'foreign-file':
                 for method in ('read_run_file', 'commit_run_files', 'reply_files'):
                     try:
                         argument = request['file_id'] if method == 'read_run_file' else [request['file_id']]
@@ -145,15 +199,21 @@ def _run(coroutine):
 
 @pytest.fixture
 def file_source():
-    state = SimpleNamespace(body=os.urandom(2 * 1024 * 1024), requests=[])
+    state = SimpleNamespace(body=os.urandom(2 * 1024 * 1024), requests=[], mixed={}, mixed_requests=0)
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            assert self.path == '/input.bin', self.path
-            content = state.body
-            state.requests.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'bytes': len(content)})
+            if self.path == '/input.bin':
+                content, mime = state.body, 'application/octet-stream'
+                state.requests.append({'utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'bytes': len(content)})
+            elif (fixture := state.mixed.get(self.path)) is not None:
+                content, mime = fixture.data, fixture.mime_type
+                state.mixed_requests += 1
+            else:
+                self.send_error(404)
+                return
             self.send_response(200)
-            self.send_header('Content-Type', 'application/octet-stream')
+            self.send_header('Content-Type', mime)
             self.send_header('Content-Length', str(len(content)))
             self.end_headers()
             self.wfile.write(content)
@@ -285,10 +345,10 @@ class StoreObserver:
                     region_name=backend['region'],
                 )
             ) as client:
-                listing = client.list_objects_v2(Bucket=backend['bucket'])
-            assert not listing.get('IsTruncated'), 'Owned soak bucket exceeded the bounded object inventory'
-            values['object_count'] = len(listing.get('Contents', []))
-            values['object_bytes'] = sum(item['Size'] for item in listing.get('Contents', []))
+                pages = client.get_paginator('list_objects_v2').paginate(Bucket=backend['bucket'])
+                objects = [item for page in pages for item in page.get('Contents', [])]
+            values['object_count'] = len(objects)
+            values['object_bytes'] = sum(item['Size'] for item in objects)
         return values
 
     def seed_foreign_workspace(self, account_uuid):
@@ -384,12 +444,29 @@ def runner_runtime_process(runner_e2e_tmpdir, runner_runtime_ports):
         runtime_process.stop()
 
 
+def _artifact_soak_profile():
+    root = Path(__file__).resolve().parents[2]
+    path = Path(os.environ.get('LANGBOT_SOAK_PROFILE', root / 'tools/profiles/artifact-soak.json'))
+    return path.read_bytes()
+
+
 @pytest.fixture(scope='session')
 def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
     lane = os.environ.get('LANGBOT_SOAK_LANE', 'sqlite-database')
     assert lane in {'sqlite-database', 'postgres-database', 'postgres-minio'}
     config = yaml.safe_load(base_network_config.read_text())
     config['storage'].update(use='persistent', content={'backend': 'database'})
+    if os.environ.get('LANGBOT_SOAK_MIXED_MODE') == 'native':
+        # The shared fixture disables maintenance otherwise. Restore product defaults.
+        config['storage'].pop('cleanup', None)
+        config['box']['limits']['max_sessions'] = 4
+    elif os.environ.get('LANGBOT_SOAK_MIXED_MODE') in {'short', 'staircase', 'accelerated'}:
+        config['box']['limits']['max_sessions'] = 4
+        if os.environ['LANGBOT_SOAK_MIXED_MODE'] == 'accelerated':
+            nominal = json.loads(_artifact_soak_profile())['accelerated']
+            config['storage']['cleanup'].update(
+                enabled=True, check_interval_hours=nominal['gc_interval_seconds'] / 3600
+            )
     admin_url = None
     database = None
     s3 = None
@@ -446,8 +523,24 @@ def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
     finally:
         if request.session.testsfailed == 0:
             if s3 is not None:
-                objects = s3.list_objects_v2(Bucket=bucket)
-                assert not objects.get('Contents'), 'Owned soak bucket retained content after successful GC'
+                pages = s3.get_paginator('list_objects_v2').paginate(Bucket=bucket)
+                keys = {item['Key'] for page in pages for item in page.get('Contents', [])}
+                if os.environ.get('LANGBOT_SOAK_MIXED_MODE') == 'native':
+                    # Final SQLite/PostgreSQL report distinguishes future-due
+                    # run inputs from leaks. After verdict, tear down only this
+                    # ephemeral fixture bucket and only known input locators.
+                    rows = StoreObserver(config).query(
+                        "SELECT locator FROM content_objects WHERE owner_type='artifact'"
+                    )
+                    locators = {
+                        (json.loads(row['locator']) if isinstance(row['locator'], str) else row['locator'])['key']
+                        for row in rows
+                    }
+                    assert keys == locators, 'Owned bucket contains independently leaked or missing bytes'
+                    for key in keys:
+                        s3.delete_object(Bucket=bucket, Key=key)
+                else:
+                    assert not keys, 'Owned soak bucket retained content after successful GC'
                 s3.delete_bucket(Bucket=bucket)
             if database:
 
@@ -547,6 +640,7 @@ def _assert_plateau(samples):
     return checked
 
 
+@pytest.mark.skipif(os.environ.get('LANGBOT_SOAK_MIXED_MODE'), reason='dedicated accelerated lifecycle mode')
 def test_artifact_lifecycle_soak(
     runner_client,
     runner_langbot_process,
@@ -1027,4 +1121,756 @@ def test_artifact_lifecycle_soak(
             store=failed_store,
             root=str(runner_e2e_tmpdir),
         )
+        raise
+
+
+_MIXED_KINDS = ('png', 'text', 'jpeg', 'text_pdf', 'scanned_pdf', 'mixed')
+_HOUR = 3600
+_NATIVE_DRAIN = 2 * _HOUR
+
+
+def _percentiles(sizes):
+    ordered = sorted(sizes)
+    return (
+        {f'p{value}': round(ordered[math.ceil(len(ordered) * value / 100) - 1], 4) for value in (50, 95, 99)}
+        if ordered
+        else {}
+    )
+
+
+def _mixed_process_tree(process):
+    result = dict(cpu_seconds=0.0, rss=0, fds=0, threads=0, processes=0)
+    try:
+        root = psutil.Process(process.pid)
+        children = root.children(recursive=True)
+    except psutil.NoSuchProcess:
+        return result
+    for item in (root, *children):
+        try:
+            rss, fds, threads, cpu = item.memory_info().rss, item.num_fds(), item.num_threads(), item.cpu_times()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+        result['rss'] += rss
+        result['fds'] += fds
+        result['threads'] += threads
+        result['processes'] += 1
+        result['cpu_seconds'] += cpu.user + cpu.system
+    return result
+
+
+def _mixed_store(observer, test_root):
+    snapshot = observer.snapshot()
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+    snapshot.update(
+        observer.query(
+            "SELECT COALESCE(SUM(size), 0) AS content_bytes FROM content_objects WHERE owner_type = 'artifact'"
+        )[0]
+    )
+    backlog = observer.query(
+        'SELECT COUNT(*) AS gc_backlog, MIN(COALESCE(deleted_at, expires_at)) AS oldest '
+        'FROM artifacts WHERE deleted_at IS NOT NULL OR expires_at <= :now',
+        {'now': now},
+    )[0]
+    snapshot['gc_backlog'] = backlog['gc_backlog']
+    snapshot['gc_oldest_age_seconds'] = (
+        max(0, (now - dt.datetime.fromisoformat(str(backlog['oldest']))).total_seconds()) if backlog['oldest'] else 0
+    )
+    if observer.url.startswith('postgresql'):
+        snapshot.update(
+            observer.query(
+                'SELECT pg_database_size(current_database()) AS db_bytes, '
+                "COUNT(*) FILTER (WHERE wait_event_type='Lock') AS db_lock_waiters FROM pg_stat_activity "
+                'WHERE datname=current_database()'
+            )[0]
+        )
+    else:
+        snapshot['sqlite_free_pages'] = observer.query('PRAGMA freelist_count')[0]['freelist_count']
+        snapshot['sqlite_page_bytes'] = observer.query('PRAGMA page_size')[0]['page_size']
+    snapshot['free_bytes'] = shutil.disk_usage(test_root).free
+    return snapshot
+
+
+def _native_final_inputs(observer, *, now):
+    """Check the end of an unsynchronized native run in one database snapshot.
+
+    A newly expired run input may be waiting for the next hourly sweep.
+    Use the existing two-sweep grace, not an exact zero-backlog instant.
+    """
+    result = observer.query(
+        """SELECT COUNT(*) AS remaining,
+            COUNT(CASE WHEN expires_at <= :now THEN 1 END) AS due,
+            COUNT(CASE WHEN owner_type <> 'run' OR expires_at IS NULL
+                OR expires_at < :deadline
+                OR (deleted_at IS NOT NULL AND expires_at > :now)
+                THEN 1 END) AS invalid,
+            (SELECT COUNT(*) FROM artifact_references) AS refs,
+            (SELECT COUNT(*) FROM agent_run WHERE status='running') AS live_runs,
+            (SELECT COUNT(*) FROM content_objects c WHERE c.owner_type='artifact' AND NOT EXISTS
+                (SELECT 1 FROM artifacts a WHERE a.workspace_uuid=c.workspace_uuid AND a.content_ref=c.ref)
+            ) AS orphans
+        FROM artifacts""",
+        {'now': now, 'deadline': now - dt.timedelta(seconds=_NATIVE_DRAIN)},
+    )[0]
+    for key in ('invalid', 'refs', 'live_runs', 'orphans'):
+        assert result[key] == 0, f'Native finish {key}={result[key]}: {result}'
+    return result
+
+
+def _mixed_turn(client, bot, session, group, member, files, box_slot):
+    from langbot.pkg.platform.sources import http_bot_signing as signing
+
+    message = [{'type': 'Plain', 'text': json.dumps({'operation': 'mixed', 'box_slot': box_slot})}]
+    message.extend({'type': 'File', 'name': fixture.filename, 'url': url} for fixture, url in files)
+    body = json.dumps(
+        {
+            'session_id': session,
+            'session_type': 'group' if group else 'person',
+            'sender': {'id': f'qa-member-{member}'},
+            'message': message,
+        }
+    ).encode()
+    timestamp, signature = signing.sign(network._SECRET, body)
+    result = _data(
+        client.post(
+            f'/bots/{bot}/sync',
+            content=body,
+            headers={
+                'Content-Type': 'application/json',
+                signing.HEADER_TIMESTAMP: timestamp,
+                signing.HEADER_SIGNATURE: signature,
+            },
+            timeout=100,
+        )
+    )
+    reports = [
+        json.loads(part['text'].removeprefix('NETWORK_E2E '))
+        for part in result['message']
+        if part['type'] == 'Plain' and part.get('text', '').startswith('NETWORK_E2E ')
+    ]
+    assert len(reports) == 1, result
+    return reports[0], [part for part in result['message'] if part['type'] == 'File']
+
+
+@pytest.mark.skipif(not os.environ.get('LANGBOT_SOAK_MIXED_MODE'), reason='mixed soak mode not requested')
+def test_artifact_mixed_soak(
+    runner_client,
+    runner_langbot_process,
+    runner_runtime_process,
+    runner_e2e_tmpdir,
+    runner_e2e_config_path,
+    file_source,
+):
+    """Fixed-seed mixed ingress and production lifecycle; native mode never calls observer GC."""
+    from langbot.pkg.storage.artifacts import DEFAULT_TTL_SECONDS
+    from tests.utils.artifact_media import make_artifact_media
+
+    mode = os.environ['LANGBOT_SOAK_MIXED_MODE']
+    assert mode in {'short', 'staircase', 'native', 'accelerated'}, mode
+    native = mode == 'native'
+    accelerated = mode == 'accelerated'
+    scheduled = native or accelerated
+    lane = os.environ.get('LANGBOT_SOAK_LANE', 'sqlite-database')
+    root = Path(__file__).resolve().parents[2]
+    profile_bytes = _artifact_soak_profile()
+    profile = json.loads(profile_bytes)
+    identity = {
+        'lane': lane,
+        'profile_sha256': hashlib.sha256(profile_bytes).hexdigest(),
+        'harness_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        'media_sha256': hashlib.sha256((root / 'tests/utils/artifact_media.py').read_bytes()).hexdigest(),
+        'git_sha': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip(),
+    }
+    weights = profile['weights']
+    assert set(weights) == set(_MIXED_KINDS)
+    assert all(type(value) is int and value > 0 for value in weights.values())
+    assert 1 <= profile['group_slots'] <= 12 and 1 <= profile['member_slots'] <= 20
+    assert 1 <= profile['long_sessions'] <= 4 and profile['long_every'] >= 2
+    staircase = profile['staircase']
+    assert all(1 <= step['parallel'] <= 4 and step['waves'] >= 1 and step['period_seconds'] > 0 for step in staircase)
+    parallel = staircase[-1]['parallel']
+    native_period = profile['native']['period_seconds']
+    # One mixed turn can create 4 run-owned inputs and 1 output. The real
+    # maintenance service processes at most 100 Artifacts per tick/Workspace.
+    rows_per_wave = parallel * 5
+    native_limit = profile['native']['max_expiring_rows_per_hour']
+    assert math.ceil(_HOUR / native_period) * rows_per_wave + 2 <= native_limit <= 90, (
+        'Native offered rate exceeds the fixed production maintenance budget'
+    )
+    duration = profile['native']['duration_seconds']
+    assert duration >= max(30 * _HOUR, DEFAULT_TTL_SECONDS + 4 * _HOUR)
+    if accelerated:
+        fast = profile['accelerated']
+        fast_period = fast['period_seconds']
+        fast_load = fast['load_seconds']
+        fast_ttl = fast['ttl_seconds']
+        fast_gc = fast['gc_interval_seconds']
+        fast_drain = fast['drain_seconds']
+        assert 0 < fast_gc <= fast_ttl < fast_load and fast_drain >= fast_ttl + 2 * fast_gc
+        assert fast_load >= 9 * fast_period
+        assert math.ceil(fast_gc / fast_period) * rows_per_wave <= 80, 'Offered rows exceed the scheduled GC budget'
+        assert (
+            math.ceil((fast_ttl + 2 * fast_gc) / fast_period) * rows_per_wave + 2 <= profile['budgets']['artifact_rows']
+        ), 'Worst-case accelerated backlog exceeds the live row budget'
+    evidence = Path(os.environ.get('LANGBOT_SOAK_EVIDENCE', str(runner_e2e_tmpdir)))
+    evidence.mkdir(parents=True, exist_ok=True)
+    prefix = f'{lane}.mixed-{mode}'
+    journal = evidence / (prefix + '.ndjson')
+    assert not journal.exists(), f'Refusing to append to previous run evidence: {journal}'
+    baseline = None
+    if native:
+        baseline = json.loads(Path(os.environ['LANGBOT_SOAK_BASELINE']).read_bytes())
+        assert baseline['identity'] == identity and baseline['result'] == 'PASS', (
+            'Need matching frozen staircase baseline'
+        )
+        assert set(baseline['latency_p95_limits_seconds']) == set(_MIXED_KINDS)
+        assert set(baseline['resources_growth_limits']) == {'rss', 'fds', 'threads', 'processes'}
+    rng = random.Random(profile['seed'])
+    config = yaml.safe_load(runner_e2e_config_path.read_text())
+    if native:
+        # Core materializes the default cleanup batch size in the fixture's
+        # saved configuration on startup. Check scheduling semantics instead
+        # of requiring the entire section to be absent after that migration.
+        cleanup = config['storage'].get('cleanup', {})
+        assert cleanup.get('enabled', True) is True, 'Native must keep Core storage maintenance enabled'
+        assert cleanup.get('check_interval_hours', 1) == 1, 'Native must use the hourly maintenance default'
+        assert cleanup.get('max_files_per_run', 1000) == 1000, 'Native must keep the default cleanup batch size'
+    if accelerated:
+        cleanup = config['storage']['cleanup']
+        assert cleanup['enabled'] is True and abs(cleanup['check_interval_hours'] * _HOUR - fast_gc) < 0.01
+    observer = StoreObserver(config)
+    client, core, plugin_runtime = runner_client, runner_langbot_process, runner_runtime_process
+    token = runtime._init_and_auth(client)
+    owner = _headers(token)
+    core.token = token
+    runtime._ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    agent = _agent(client, owner)
+    _policy(client, owner, agent)
+    bot = _data(
+        client.post(
+            '/api/v1/platform/bots',
+            headers=owner,
+            json={
+                'name': 'Deterministic mixed Artifact soak',
+                'adapter': 'http_bot',
+                'enable': True,
+                'adapter_config': {
+                    'inbound_secret': network._SECRET,
+                    'callback_url': file_source.url + '/no-callback',
+                    'signature_required': True,
+                    'callback_timeout': 90,
+                    'callback_max_retries': 0,
+                },
+                'event_bindings': [
+                    {
+                        'event_pattern': 'message.received',
+                        'target_type': 'agent',
+                        'target_uuid': agent,
+                        'filters': [],
+                        'priority': 0,
+                        'enabled': True,
+                    }
+                ],
+            },
+        )
+    )['uuid']
+    started = time.monotonic()
+    durations, counts, errors = defaultdict(list), Counter(), Counter()
+    totals = Counter()
+    sessions = set()
+    previous_media = {}
+    windows = []
+    steady_windows = []
+    staircase_windows = []
+    milestone = {}
+    guards = []
+    cohorts = {}
+    load_seconds = None
+    gc_ticks = []
+    startup_log = runner_e2e_tmpdir / 'langbot.stdout.log'
+
+    def elapsed():
+        return time.monotonic() - started
+
+    def record(event, **extra):
+        row = {
+            'event': event,
+            'elapsed_seconds': round(elapsed(), 3),
+            'utc': dt.datetime.now(dt.timezone.utc).isoformat(),
+            **extra,
+        }
+        with journal.open('a', encoding='utf-8') as stream:
+            stream.write(json.dumps(row, ensure_ascii=False) + '\n')
+        if event != 'turn':
+            print(json.dumps(row, ensure_ascii=False), flush=True)
+
+    def asset_path(artifact_id):
+        return '/api/v1/artifacts/' + artifact_id
+
+    def read_exact(artifact_id, fixture):
+        response = client.get(asset_path(artifact_id) + '/content', headers=owner)
+        assert response.status_code == 200 and response.content == fixture.data, (artifact_id, response.status_code)
+
+    def assert_full_ttl(expires_at):
+        observed = dt.datetime.fromisoformat(expires_at)
+        if observed.tzinfo is None:
+            observed = observed.replace(tzinfo=dt.timezone.utc)
+        remaining = (observed - dt.datetime.now(dt.timezone.utc)).total_seconds()
+        assert abs(remaining - DEFAULT_TTL_SECONDS) <= 5, (expires_at, remaining)
+
+    def release_asset(artifact_id):
+        expires_at = _data(client.post(asset_path(artifact_id) + '/release', headers=owner))['expires_at']
+        assert_full_ttl(expires_at)
+        return expires_at
+
+    def discard(artifact_id):
+        release_asset(artifact_id)
+        assert _data(client.delete(asset_path(artifact_id), headers=owner))['deleted'] is True
+        assert client.get(asset_path(artifact_id) + '/content', headers=owner).status_code == 404
+
+    def upload_probe(label, *, retain):
+        fixture = make_artifact_media(label, seed=profile['seed'])[0]
+        row = _data(
+            client.post(
+                '/api/v1/artifacts', headers=owner, files={'file': (fixture.filename, fixture.data, fixture.mime_type)}
+            )
+        )
+        assert row['digest'] == fixture.sha256 and row['size'] == fixture.size
+        if retain:
+            assert _data(client.post(asset_path(row['id']) + '/retain', headers=owner))['expires_at'] is None
+        else:
+            assert_full_ttl(row['expires_at'])
+        record('native_probe', label=label, artifact=row['id'], ttl_expires=row['expires_at'], retained=retain)
+        totals['probe_bytes'] += fixture.size
+        return row['id'], fixture
+
+    def plan(wave, slot, phase):
+        number = totals['planned']
+        totals['planned'] += 1
+        is_long = slot == 0 and wave % profile['long_every'] == 0
+        member = (wave + slot) % profile['member_slots']
+        if is_long:
+            session = f'qa-long-{(wave // profile["long_every"]) % profile["long_sessions"]}'
+            group = True
+        elif slot % 2:
+            session = f'qa-group-{wave % profile["group_slots"]}-short-{number}'
+            group = True
+        else:
+            session = f'qa-person-short-{number}'
+            group = False
+        kind = (
+            _MIXED_KINDS[number]
+            if number < len(_MIXED_KINDS)
+            else rng.choices(
+                _MIXED_KINDS,
+                weights=[weights[name] for name in _MIXED_KINDS],
+                k=1,
+            )[0]
+        )
+        fixtures = {item.kind: item for item in make_artifact_media(session + f':{number}', seed=profile['seed'])}
+        history = previous_media.get(session)
+        if kind == 'text' and is_long and history and wave % 2 == 0:
+            kind = 'png'
+        if kind == 'text':
+            media = ()
+        elif kind == 'mixed':
+            media = tuple(fixtures.values())
+        else:
+            media = (fixtures[kind],)
+        # Repeat an older body behind a fresh URL in an alternating turn in the
+        # same long-lived session. The bounded test covers actual old-ref access.
+        if history and media and wave % 2 == 0:
+            media = (*media[:3], history)
+            totals['old_body_reuploads'] += 1
+        if media and is_long:
+            previous_media[session] = media[0]
+        totals['group_turns' if group else 'person_turns'] += 1
+        if is_long:
+            totals['long_turns'] += 1
+        sessions.add(session)
+        files = []
+        for index, fixture in enumerate(media):
+            path = f'/mixed/{number}/{index}/{fixture.filename}'
+            file_source.mixed[path] = fixture
+            files.append((fixture, file_source.url + path, path))
+        return number, session, group, member, kind, files, phase, slot
+
+    def execute(spec):
+        number, session, group, member, kind, files, phase, slot = spec
+        begin = time.monotonic()
+        report, output = _mixed_turn(client, bot, session, group, member, [(file, url) for file, url, _ in files], slot)
+        assert 'error' not in report, report
+        entries = report['inputs']
+        refs = [item['ref'] for item in entries]
+        assert all(refs) and len(set(refs)) == len(refs), refs
+        actual = Counter((item['sha256'], item['size']) for item in entries)
+        assert actual == Counter((file.sha256, file.size) for file, _, _ in files), (actual, kind)
+        expected = {file.sha256: file for file, _, _ in files}
+        run_id = report['run_id']
+        rows = observer.query(
+            "SELECT id, digest, size, name, mime_type FROM artifacts WHERE owner_type='run' AND owner_id=:run",
+            {'run': run_id},
+        )
+        assert {row['id'] for row in rows} == {item['id'] for item in entries}, (run_id, rows, entries)
+        assert len(rows) == len(entries), (run_id, rows, entries)
+        by_id = {row['id']: row for row in rows}
+        for item in entries:
+            fixture = expected[item['sha256']]
+            row = by_id[item['id']]
+            assert (row['digest'], row['size'], row['name'], row['mime_type']) == (
+                fixture.sha256,
+                fixture.size,
+                fixture.filename,
+                fixture.mime_type,
+            ), row
+            assert (item['name'], item['mime']) == (fixture.filename, fixture.mime_type), item
+            if fixture.kind == 'text_pdf':
+                assert item['mode'] == 'text' and item['continuation'] is True and fixture.marker in item['text']
+            else:
+                assert item['mode'] == ('native' if fixture.kind == 'scanned_pdf' else 'image'), item
+        lifecycle = None
+        inputs = report['inputs']
+        if files:
+            assert len(output) == 1, output
+            exported = base64.b64decode(output[0]['base64'].split(';base64,')[-1], validate=True)
+            first = expected[entries[0]['sha256']]
+            assert first.data == exported, (number, session, kind, hashlib.sha256(exported).hexdigest())
+            artifact = report['artifact_id']
+            read_exact(artifact, first)
+            # Sync reply can arrive just before the ledger commits its terminal state.
+            until = time.monotonic() + 15
+            while time.monotonic() < until:
+                state = observer.query('SELECT status FROM agent_run WHERE run_id=:run', {'run': report['run_id']})
+                if state and state[0]['status'] == 'completed':
+                    break
+                time.sleep(0.05)
+            else:
+                raise AssertionError((report['run_id'], 'completion not persisted'))
+            # Include normal released Runner assets in the native expiry cohort
+            # only while a full TTL plus two hourly sweeps fit within the run.
+            if accelerated or (
+                native and number % 2 == 0 and elapsed() < duration - DEFAULT_TTL_SECONDS - _NATIVE_DRAIN
+            ):
+                lifecycle = {'artifact': artifact, 'expires_at': release_asset(artifact)}
+                read_exact(artifact, first)
+            else:
+                discard(artifact)
+                lifecycle = {'artifact': artifact, 'tombstoned': True}
+        else:
+            assert not output and 'artifact_id' not in report, report
+        if not native and entries:
+            # Change expiry only on IDs verified to belong to this owned run.
+            # Do not call observer GC in scheduler modes.
+            due = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) + dt.timedelta(
+                seconds=fast_ttl if accelerated else -1
+            )
+            for item in entries:
+                observer.query(
+                    "UPDATE artifacts SET expires_at=:due WHERE id=:id AND owner_type='run' AND owner_id=:run",
+                    {'due': due, 'id': item['id'], 'run': run_id},
+                )
+            if accelerated:
+                observer.query(
+                    "UPDATE artifacts SET expires_at=:due WHERE id=:id AND owner_type='run_output' AND owner_id=:run AND expires_at IS NOT NULL",
+                    {'due': due, 'id': lifecycle['artifact'], 'run': run_id},
+                )
+                found = observer.query('SELECT expires_at FROM artifacts WHERE id=:id', {'id': lifecycle['artifact']})[
+                    0
+                ]['expires_at']
+                assert abs((dt.datetime.fromisoformat(str(found)) - due).total_seconds()) < 0.01, found
+        return time.monotonic() - begin, lifecycle, inputs
+
+    def wave(number, count, phase):
+        cases = [plan(number, slot, phase) for slot in range(count)]
+        offered = sum(file.size for case in cases for file, _, _ in case[5])
+        totals['offered_bytes'] += offered
+        totals['files'] += sum(len(case[5]) for case in cases)
+        assert totals['offered_bytes'] + totals['probe_bytes'] <= profile['budgets']['offered_bytes']
+        with ThreadPoolExecutor(max_workers=count) as pool:
+            for spec, future in zip(cases, [pool.submit(execute, spec) for spec in cases], strict=True):
+                turn_id, session, _group, member, kind, files, phase, _slot = spec
+                try:
+                    latency, lifecycle, inputs = future.result()
+                except Exception as error:
+                    from httpx import TimeoutException
+
+                    errors[kind] += 1
+                    totals['timed_out_turns'] += isinstance(error, TimeoutException)
+                    record('turn_failed', kind=kind, turn=turn_id, session=session, error=repr(error))
+                    raise
+                finally:
+                    for _, _, path in files:
+                        file_source.mixed.pop(path, None)
+                counts[kind] += 1
+                durations[kind].append(latency)
+                if lifecycle:
+                    totals['scheduled_ttl_outputs' if lifecycle.get('expires_at') else 'tombstoned_outputs'] += 1
+                totals['materialized_inputs_created'] += len(inputs)
+                for item in inputs:
+                    totals[f'structured_{item["mode"]}_reads'] += 1
+                record(
+                    'turn',
+                    kind=kind,
+                    turn=turn_id,
+                    session=session,
+                    member=member,
+                    phase=phase,
+                    latency_seconds=round(latency, 4),
+                    bytes=sum(file.size for file, _, _ in files),
+                    digests=[file.sha256 for file, _, _ in files],
+                    lifecycle=lifecycle,
+                    materialized_inputs=[
+                        {'id': item['id'], 'mode': item['mode'], 'size': item['size']} for item in inputs
+                    ],
+                )
+        if not scheduled:
+            totals['manual_gc_calls'] += 1
+            totals['observer_collected'] += observer.gc()
+
+    def sample(phase):
+        topology = {
+            'Core': _mixed_process_tree(core.process),
+            'Runtime': _mixed_process_tree(plugin_runtime.process),
+            'Box': 'embedded in Core process tree for host backend',
+        }
+        snapshot = _mixed_store(observer, runner_e2e_tmpdir)
+        budgets = profile['budgets']
+        assert snapshot['artifacts'] <= budgets['artifact_rows'], snapshot
+        assert snapshot['content_bytes'] <= budgets['content_bytes'], snapshot
+        assert snapshot['free_bytes'] >= budgets['free_bytes'], snapshot
+        if native:
+            assert snapshot['gc_oldest_age_seconds'] <= _NATIVE_DRAIN, snapshot
+        resource = {
+            key: sum(topology[name][key] for name in ('Core', 'Runtime'))
+            for key in ('rss', 'fds', 'threads', 'processes')
+        }
+        windows.append(resource)
+        if phase == 'accelerated-steady':
+            steady_windows.append(resource)
+        for label, (artifact, _) in cohorts.items():
+            if label in milestone:
+                continue
+            row = observer.query('SELECT id FROM artifacts WHERE id=:id', {'id': artifact})
+            if not row:
+                milestone[label] = elapsed()
+                record('native_gc_cohort_reclaimed', label=label, artifact=artifact)
+        record(
+            'sample',
+            phase=phase,
+            resources=topology,
+            store=snapshot,
+            source_file_gets=file_source.mixed_requests,
+            ttl_outputs=totals['scheduled_ttl_outputs'],
+            materialized_inputs_created=totals['materialized_inputs_created'],
+            tombstoned_outputs=totals['tombstoned_outputs'],
+        )
+        return snapshot
+
+    def wait_until(target, phase):
+        while elapsed() < target:
+            time.sleep(min(fast_gc if accelerated else 60, target - elapsed()))
+            if scheduled and elapsed() < target:
+                sample(phase)
+
+    def native_probe_cadence():
+        # Distinct expiry cohorts must survive at least a full TTL and be
+        # collected by two scheduled maintenance ticks, not one manual sweep.
+        if 'A' not in cohorts:
+            cohorts['A'] = upload_probe('native-cohort-a', retain=False)
+            guards.append(upload_probe('native-guard-a', retain=True))
+        if elapsed() >= _HOUR + 60 and 'B' not in cohorts:
+            cohorts['B'] = upload_probe('native-cohort-b', retain=False)
+            guards.append(upload_probe('native-guard-b', retain=True))
+
+    def observed_native_gc_ticks():
+        import re
+
+        lines = startup_log.read_text(errors='replace').splitlines() if startup_log.exists() else []
+        return [
+            line
+            for line in lines
+            if 'cleaned expired storage data' in line and re.search(r"'artifacts': [1-9]\d*", line)
+        ]
+
+    import langbot_plugin
+    from importlib.metadata import version
+
+    record(
+        'started',
+        mode=mode,
+        identity=identity,
+        profile=profile,
+        baseline=baseline,
+        ttl_seconds=fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
+        gc_interval_seconds=fast_gc if accelerated else _HOUR if native else None,
+        storage_gc_mode='scheduler' if scheduled else 'explicit iteration',
+        sdk_path=str(Path(langbot_plugin.__file__).resolve()),
+        sdk_version=version('langbot-plugin'),
+        box_backend=config['box']['backend'],
+    )
+    try:
+        if native:
+            index = 0
+            while elapsed() < duration - _NATIVE_DRAIN:
+                begin = elapsed()
+                native_probe_cadence()
+                wave(index, parallel, 'native-steady')
+                sample('native-steady')
+                assert elapsed() - begin < native_period, 'Native throughput did not sustain its offered pace'
+                index += 1
+                wait_until(min(index * native_period, duration - _NATIVE_DRAIN), 'native-steady')
+            assert len(guards) == 2
+            wait_until(duration - _HOUR, 'native-drain-retained')
+            for artifact, fixture in guards:
+                read_exact(artifact, fixture)
+                discard(artifact)
+            wait_until(duration, 'native-drain-released')
+            sample('native-drain-released')
+            gc_ticks = observed_native_gc_ticks()
+            assert len(gc_ticks) >= 2 and set(milestone) == {'A', 'B'}, (gc_ticks, milestone)
+            assert milestone['B'] - milestone['A'] >= _HOUR / 2, milestone
+            assert totals['scheduled_ttl_outputs'] > 0
+            record('native_gc_observed', ticks=gc_ticks, reclaimed=milestone, retained_survived_drain=True)
+        elif accelerated:
+            guards.append(upload_probe('accelerated-retained', retain=True))
+            index = 0
+            while elapsed() < fast_load:
+                begin = elapsed()
+                wave(index, parallel, 'accelerated-steady')
+                sample('accelerated-steady')
+                assert elapsed() - begin < fast_period, 'Accelerated offered pace exceeded'
+                index += 1
+                wait_until(min(index * fast_period, fast_load), 'accelerated-steady')
+            load_seconds = elapsed()
+            record('offered_load_complete', seconds=load_seconds, turns=sum(counts.values()))
+            artifact, fixture = guards[0]
+            read_exact(artifact, fixture)
+            discard(artifact)
+            drain_until = elapsed() + fast_drain
+            while True:
+                store = sample('accelerated-drain')
+                if not store['artifacts'] and not store['content_objects']:
+                    break
+                assert elapsed() < drain_until, ('Scheduled GC did not drain within budget', store)
+                wait_until(min(drain_until, elapsed() + fast_gc), 'accelerated-drain')
+            gc_ticks = observed_native_gc_ticks()
+            assert len(gc_ticks) >= 2 and totals['scheduled_ttl_outputs'] > 0, gc_ticks
+            record(
+                'accelerated_gc_observed',
+                ticks=gc_ticks,
+                retained_survived_load=True,
+                drain_seconds=elapsed() - load_seconds,
+            )
+        else:
+            phases = staircase if mode == 'staircase' else [{'waves': 9, 'parallel': 2, 'period_seconds': 0}]
+            index = 0
+            for step in phases:
+                phase_start = elapsed()
+                phase = f'{step["parallel"]}@{step["period_seconds"]}s'
+                prior = sum(counts.values())
+                wave_times = []
+                for count in range(step['waves']):
+                    begin = elapsed()
+                    wave(index, step['parallel'], phase)
+                    sample(phase)
+                    wave_times.append(elapsed() - begin)
+                    index += 1
+                    wait_until(phase_start + (count + 1) * step['period_seconds'], phase)
+                wall = elapsed() - phase_start
+                completed = sum(counts.values()) - prior
+                measurement = {
+                    'name': phase,
+                    'completed': completed,
+                    'seconds': round(wall, 4),
+                    'turns_per_second': round(completed / wall, 4),
+                    'slowest_wave_seconds': round(max(wave_times), 4),
+                    'within_offered_pace': max(wave_times) <= step['period_seconds'],
+                }
+                staircase_windows.append(measurement)
+                record('phase', **measurement)
+        store = sample('final')
+        remaining_inputs = 0
+        if native:
+            final_inputs = _native_final_inputs(observer, now=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None))
+            remaining_inputs = final_inputs['remaining']
+            record(
+                'native_final_inputs',
+                remaining=remaining_inputs,
+                due_within_grace=final_inputs['due'],
+                grace_seconds=_NATIVE_DRAIN,
+            )
+            if 'object_count' in store:
+                assert store['object_count'] == store['content_objects'], store
+        else:
+            assert store['artifacts'] == store['artifact_references'] == store['content_objects'] == 0, store
+            assert store.get('object_count', 0) == 0, store
+        totals['materialized_inputs_reclaimed'] = totals['materialized_inputs_created'] - remaining_inputs
+        assert totals['materialized_inputs_created'] == totals['files'] > 0, totals
+        assert totals['materialized_inputs_reclaimed'] > 0
+        assert all(totals[f'structured_{mode}_reads'] > 0 for mode in ('text', 'image', 'native')), totals
+        assert all(counts[kind] for kind in _MIXED_KINDS)
+        assert totals['old_body_reuploads'] >= 1 and totals['group_turns'] and totals['person_turns'], totals
+        latency = {kind: _percentiles(durations[kind]) for kind in _MIXED_KINDS}
+        if native:
+            assert elapsed() >= duration
+            limits = baseline['latency_p95_limits_seconds']
+            for kind, values in latency.items():
+                assert values['p95'] <= limits[kind], (kind, values, limits)
+            width = max(3, len(windows) // 10)
+            for name, maximum in baseline['resources_growth_limits'].items():
+                early = statistics.median(sample[name] for sample in windows[width : 2 * width])
+                late = statistics.median(sample[name] for sample in windows[-3 * width : -2 * width])
+                assert late - early <= maximum, (name, early, late, maximum)
+        accelerated_growth = {}
+        if accelerated:
+            width = max(3, len(steady_windows) // 10)
+            assert len(steady_windows) >= 2 * width + 1
+            growth_limits = fast['max_resource_growth']
+            assert set(growth_limits) == {'rss', 'fds', 'threads', 'processes'}
+            for name, maximum in growth_limits.items():
+                assert type(maximum) is int and maximum >= 0
+                early = statistics.median(row[name] for row in steady_windows[1 : width + 1])
+                late = statistics.median(row[name] for row in steady_windows[-width:])
+                accelerated_growth[name] = {'early': early, 'late': late, 'delta': late - early, 'limit': maximum}
+                assert late - early <= maximum, (name, early, late, maximum)
+        summary = {
+            'result': 'PASS',
+            'identity': identity,
+            'seconds': round(elapsed(), 3),
+            'counts': counts,
+            'errors': errors,
+            'latency_seconds': latency,
+            'totals': totals,
+            'sessions': len(sessions),
+            'source_file_gets': file_source.mixed_requests,
+            'store': store,
+            'native_gc_maintenance': native,
+            'scheduled_gc_maintenance': scheduled,
+            'gc_ticks': len(gc_ticks),
+            'manual_gc_calls': totals['manual_gc_calls'],
+            'load_seconds': round(load_seconds, 3) if load_seconds is not None else None,
+            'ttl_seconds': fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
+            'gc_interval_seconds': fast_gc if accelerated else _HOUR if native else None,
+            'gc_cohorts': milestone,
+            'accelerated_steady_windows': len(steady_windows),
+            'accelerated_steady_growth': accelerated_growth,
+            'phases': staircase_windows,
+        }
+        if mode == 'staircase':
+            # Explicit tolerances (rather than fitting to future data) are frozen
+            # into the baseline file that native mode must supply before starting.
+            summary['latency_p95_limits_seconds'] = {
+                kind: max(1.0, values['p95'] * 2.0) for kind, values in latency.items()
+            }
+            assert staircase_windows[-1]['within_offered_pace'], staircase_windows[-1]
+            warm = windows[-(staircase[-1]['waves'] + 1) : -1]
+            floors = {'rss': 32 * 1024 * 1024, 'fds': 4, 'threads': 4, 'processes': 2}
+            caps = {'rss': 96 * 1024 * 1024, 'fds': 16, 'threads': 12, 'processes': 3}
+            summary['resources_growth_limits'] = {
+                name: min(caps[name], max(floor, 2 * (max(row[name] for row in warm) - min(row[name] for row in warm))))
+                for name, floor in floors.items()
+            }
+        (evidence / (prefix + '.summary.json')).write_text(json.dumps(summary, indent=2) + '\n', encoding='utf-8')
+        record('completed', **summary)
+    except BaseException as error:
+        record('failed', error=repr(error), counts=counts, errors=errors, totals=totals)
         raise
