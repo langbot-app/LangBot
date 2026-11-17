@@ -1233,21 +1233,31 @@ def test_local_runner_compacts_without_persisting_artifact_bytes(
 
     first_event, second_event, refs = _run_local_agent_probe(local_agent_e2e_tmpdir, probe)
     with contextlib.closing(sqlite3.connect(local_agent_e2e_tmpdir / 'data' / 'langbot.db')) as conn:
-        query = "SELECT value_json FROM runner_state WHERE state_key = 'runner.compaction.checkpoint'"
-        checkpoint = json.loads(conn.execute(query).fetchone()[0])
+        rows = conn.execute(
+            'SELECT value_json FROM runner_state WHERE runner_id = ? AND scope = ? '
+            'AND conversation_id = ? AND state_key = ?',
+            (LOCAL_RUNNER_ID, 'conversation', session, 'runner.compaction.checkpoint'),
+        ).fetchall()
+        assert len(rows) == 1
+        checkpoint = json.loads(rows[0][0])
         assert checkpoint['conversation_id'] == session
         assert 'Compacted history without file payloads' in checkpoint['summary']
         run_ids = conn.execute(
             'SELECT run_id, status FROM agent_run WHERE event_id IN (?, ?)', (first_event, second_event)
         ).fetchall()
         assert len(run_ids) == 2 and all(status == 'completed' for _, status in run_ids)
-        # Database bytes cover journal/trace/checkpoint records but not the integrity-first
-        # object comparison above. Look for a long distinctive part of the encoded media.
-        blob = (local_agent_e2e_tmpdir / 'data' / 'langbot.db').read_bytes()
-        assert all(ref.encode() in blob for ref in refs)
+        stored = dict(conn.execute('SELECT id, digest FROM artifacts WHERE id IN (?, ?)', refs))
+        assert stored == {refs[0]: image.sha256, refs[1]: pdf.sha256}
+
+        # Committed rows can still be in SQLite's WAL in the shared test suite.
+        # Scan both durable files for payload leakage; query logical rows above
+        # instead of relying on the checkpoint timing to find an artifact ID.
+        db_path = local_agent_e2e_tmpdir / 'data' / 'langbot.db'
+        files = [db_path, db_path.with_name(db_path.name + '-wal')]
+        blobs = [file.read_bytes() for file in files if file.exists()]
         for media in (image, pdf):
             content = base64.b64encode(media.data)
-            assert len(content) > 256 and content[96:256] not in blob
+            assert len(content) > 256 and all(content[96:256] not in blob for blob in blobs)
         for log in local_agent_e2e_tmpdir.glob('*.log'):
             logged = log.read_bytes()
             assert all(base64.b64encode(item.data)[96:256] not in logged for item in (image, pdf))
