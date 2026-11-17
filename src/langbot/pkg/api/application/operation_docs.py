@@ -125,6 +125,30 @@ DOMAINS: dict[str, dict] = {
 
 
 OPERATION_DOCS: dict[str, OperationDoc] = {
+    'artifact.publication.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Output Publication', 'zh_Hans': '查看产物发布授权'},
+        summary='Get Output Publication',
+        description='Read the current caller-owned producer output publication policy. A missing policy never authorizes publication.',
+        risk='read',
+        exposure='none',
+    ),
+    'artifact.publication.set': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Set Output Publication', 'zh_Hans': '设置产物发布授权'},
+        summary='Set Output Publication',
+        description='Explicitly enable or disable publication to the authenticated named account or API key. No recipient ID is accepted; existing policies can only be changed by their recipient.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.publication.disable': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Disable Output Publication', 'zh_Hans': '停用产物发布授权'},
+        summary='Disable Output Publication',
+        description='Disable the current caller-owned producer policy. Existing run snapshots become invalid; previously published assets keep their recipient.',
+        risk='write',
+        exposure='none',
+    ),
     'artifact.create': OperationDoc(
         domain='artifact',
         label={'en_US': 'Create Artifact', 'zh_Hans': '创建资产'},

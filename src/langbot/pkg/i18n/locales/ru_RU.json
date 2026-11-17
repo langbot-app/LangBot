@@ -135,5 +135,12 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "Извлечение текста PDF не включает изображения и макет. Для визуального содержимого используйте native с совместимой моделью.",
   "PDF text extraction exceeds the size limit.": "Извлечение текста PDF превышает ограничение размера.",
   "The selected model does not support native PDF input; read the PDF as text instead.": "Выбранная модель не поддерживает PDF; прочитайте PDF как текст.",
-  "Input attachment content budget for this run is exhausted": "Лимит чтения содержимого вложений этого запуска исчерпан"
+  "Input attachment content budget for this run is exhausted": "Лимит чтения содержимого вложений этого запуска исчерпан",
+  "Run file content budget is exhausted.": "Лимит чтения содержимого файлов для этого запуска исчерпан.",
+  "Run file access has ended.": "Доступ к файлам этого запуска завершён.",
+  "Artifact publication is not authorized": "Публикация артефакта не разрешена",
+  "Artifact read timed out": "Время чтения артефакта истекло",
+  "Artifact has a different manager": "У артефакта другой управляющий субъект",
+  "Legacy output requires explicit manager assignment": "Для устаревшего результата нужно явно назначить управляющего субъекта",
+  "Artifact access requires an active run lease": "Для доступа к артефакту нужна действующая аренда выполнения"
 }

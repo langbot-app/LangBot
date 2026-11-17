@@ -6,6 +6,11 @@ on:
   pull_request:
     paths: ['plugins/**', 'sdk/**', 'src/**', 'pyproject.toml', 'MANIFEST.in', '.gitattributes', '.gitignore', '.dockerignore', 'Dockerfile', 'packaging/**', 'scripts/check_core_artifacts.py', '.github/workflows/**']
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      production_acceptance:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -44,7 +49,7 @@ jobs:
           python scripts/check_core_artifacts.py --source --docker-archive "$RUNNER_TEMP/core-context.tar"
 
   production-image:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || inputs.production_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -120,6 +125,7 @@ jobs:
           PY
           cat "$RUNNER_TEMP/production-image-metadata/self-check.json"
       - name: Export the image and record its source and checksum
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -132,6 +138,7 @@ jobs:
           cat "$RUNNER_TEMP/production-image-metadata/image.sha256"
           docker image inspect "$IMAGE_TAG" --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
       - name: Upload the production image for Linux acceptance
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: production-image-${{ github.sha }}
@@ -147,3 +154,24 @@ jobs:
           compression-level: 0
           retention-days: 3
           if-no-files-found: error
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev --frozen
+      - name: Run production image upgrade and replacement acceptance
+        env:
+          LANGBOT_IMAGE_CANDIDATE: ${{ env.IMAGE_TAG }}
+          LANGBOT_IMAGE_PREVIOUS: rockchin/langbot:v4.11.7
+        run: |
+          docker pull "$LANGBOT_IMAGE_PREVIOUS"
+          uv run --no-sync pytest tests/e2e/test_image_upgrade.py --required-suite p0_image \
+            -q -rs --junitxml=image-upgrade.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-image-upgrade-evidence
+          include-hidden-files: true
+          path: |
+            image-upgrade.xml
+            .qa/image-upgrade/**/container*.log

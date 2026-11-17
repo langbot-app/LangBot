@@ -23,7 +23,9 @@ Artifact はファイルの不透明な参照とメタデータを提供しま�
 
 存在しない、削除済み、または権限のない ID は 404 を返します。所有ファイルの期限切れは `artifact_expired`（410）、保持中の削除は `artifact_in_use`（409）、読み取り上限超過は `artifact_too_large`（413）、整合性検証の失敗は `artifact_integrity_failed`（422）です。
 
-削除後のアクセスは拒否され、実データは保守処理で回収されます。すでに許可されたダウンロードは完了する場合も、並行した回収によって失敗する場合もあります。
+削除後のアクセスは拒否され、実データは保守処理で回収されます。有界ダウンロードには一時リースがあり、保守処理は読み取り完了か期限切れまで対象をスキップします。有効な実行リースを持つ run も、使用中の出力を保護します。
+
+Artifact の削除は、配信済みのプラットフォームファイルや、独立した規則で保持されるメッセージ履歴を削除しません。
 
 ## MCP
 
@@ -48,6 +50,33 @@ Runner の初期入力には添付参照、名前、MIME 型、サイズのみ�
 | `native` | 対応モデルへ画像や PDF を渡します。非対応モデルでは明示的に失敗します。 |
 | `pages` | ページ描画は現在未対応で、明示的なエラーになります。 |
 
-テキストは 0 始まりの `offset` と `max_chars`（既定 8192、最大 16384）を使用します。結果の `truncated` と `next_offset` を確認して続きを読み取ってください。PDF テキストは 1 始まりの `page_start` と任意の `page_end` を使用し、1 回最大 10 ページで、次のページ位置も返します。OCR、画像、ページレイアウトは対象外です。他のバイナリ形式は明示的に拒否され、元のファイルはダウンロードできます。
+テキストは 0 始まりの `offset` と `max_chars`（既定 8192、最大 16384）を使用します。結果の `truncated` と `next_offset` を確認して続きを読み取ってください。PDF テキストは 1 始まりの `page_start` と任意の `page_end` を使用し、1 回最大 10 ページで、次のページ位置も返します。OCR、画像、ページレイアウトは対象外です。他のバイナリ形式は明示的に拒否されます。自分がアップロードしたファイルは認証済みのダウンロード API で取得できます。
 
 Agent デバッグ API は、自分がアップロードした異なる ID を最大 20 件まで `artifact_ids` に指定できます。Host が認証済み主体の所有権を確認し、その run に参照だけを渡します。イベントの `actor` で所有者を変更することはできません。独立した Workspace 管理アシスタントの添付入力はこの段階では未対応です。既存の生バイト API `read_input_attachment` は権限のある Runner コード向けに維持されます。
+
+## Runner の出力ファイル
+
+`ctx.export_box_files(paths)` は、選択したサンドボックスファイルを一時 Artifact として登録します。返される `BoxFile.id` は従来どおり、エクスポートした run が所有する UUID ハンドルです。メタデータには `artifact_id`、`mime_type`、`digest`、`lifecycle`、`expires_at` が追加されます。`artifact_id` を知っても、アカウントの Artifact API で読み取る権限は得られません。
+
+`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` は、上記モードで制限付きの構造化コンテンツを読み取ります。出力を公開するには、認証済みアカウントまたは名前付き API キーが、Agent または Pipeline の公開ポリシーを先に有効にします。
+
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Pipeline には `pipeline`、イベントプロセッサーには `event_processor` を使います。サーバーが認証済み主体を受取人に設定し、リクエストから別の受取人を指定することはできません。`resource.view` と `resource.manage` の両方が必要です。ほかの Workspace メンバーはポリシーを引き継げません。新規・コピーした実行対象には既定でポリシーがありません。グローバルキーと旧互換キーは受取人にできないため、名前付き Workspace API キーを使用してください。
+
+Host は run 開始時にポリシーを固定します。`ctx.commit_run_files(file_ids)` はポリシーと受取人の現在の権限を再確認し、受取人の永続 pin と更新済みメタデータを返します。ポリシーの欠落、変更、無効化、権限の取り消しは commit を拒否します。エクスポート、読み取り、返信は自動 commit せず、既定のモデルツールにも commit は含まれません。commit の再試行で、受取人が後から行った release を取り消すことはありません。
+
+commit 後は、受取人が `artifact_id` を使って既存のメタデータ、ダウンロード、retain、release、delete API を利用できます。run 終了や Core 再起動後も利用でき、ほかのアカウント、キー、run に権限は付与されません。`file_id` は元の実行中 run 内だけで有効です。release は 24 時間の猶予を設定します。永続 pin や有効な使用リースがある間、delete は `artifact_in_use`（409）を返すため、解放後に再試行してください。
+
+管理には ID が必要です。Runner は commit が返す `artifact_id` を業務結果で受取人へ渡してください。Artifact の一覧 API はありません。
+
+同じ URL の `GET` で確認、`DELETE` で無効化します。MCP は `get_artifact_publication`、`set_artifact_publication`、`disable_artifact_publication` を提供します。無効化しても既に公開したファイルは元の受取人が管理します。
+
+実行の完了、失敗、キャンセル時に、Host は時間制限付きのクリーンアップで未公開の出力を期限切れにし、保守処理の回収対象にします。Core のクラッシュ、クリーンアップの失敗やタイムアウト時も、元の 24 時間の有効期限が適用されます。
+
+`ctx.reply_files` と Pipeline の添付返信は、既存のプラットフォーム配信経路で Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP ダウンロード API は追加しません。詳細は [Runner API](/ja/plugin/dev/apis/agent-run#box-と添付ファイル) を参照してください。

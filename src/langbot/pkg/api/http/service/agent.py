@@ -580,6 +580,9 @@ class AgentService:
             )
             if getattr(result, 'rowcount', None) == 0:
                 raise WorkspaceNotFoundError('Agent not found')
+            publication = getattr(self.ap, 'artifact_publication_service', None)
+            if publication is not None:
+                await publication.remove_producer(context, existing_agent.kind, agent_uuid)
             return
 
         pipeline = await self.ap.pipeline_service.get_pipeline(context, agent_uuid)

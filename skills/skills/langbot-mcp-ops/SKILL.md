@@ -359,7 +359,7 @@ See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
 
 Reads require `resource.view`; writes require `resource.manage`. The authenticated
 account or API key must own the asset in the current Workspace. An ID is not an
-access grant. Plugin/run references are not accepted by this initial API, and
+access grant. Plugin/run references are not accepted by this account API, and
 Account-owned Artifact operations are not added to default model tool sets or
 plugin grants. Runner attachment tools use their existing run-scoped grant and
 Host-only input references; an account upload can be passed to Agent debug with
@@ -372,3 +372,35 @@ Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
 repeating release does not extend it. `delete_artifact` refuses pinned files;
 release first when deletion is authorized. Expired references cannot be revived.
 Never treat a denied reference as permission to use a storage key or run handle.
+
+Run outputs use a separate ExecutionAPI path: `langbot_export_box_files` registers
+temporary Artifacts and `langbot_read_run_file` reads an exported UUID handle as
+bounded structured content. Runner code explicitly calls `ctx.commit_run_files`
+under the producer policy below; export, read and reply do not commit, and commit
+is not a default model tool. The authorized recipient can use the account
+Artifact APIs with `artifact_id` after the run ends or Core restarts. Another
+account, key or run gains no access. The `file_id` remains local to its live run.
+Commit retries preserve a recipient's later release.
+Finalization attempts bounded expiry cleanup of uncommitted outputs; crashes,
+cleanup failures and timeouts fall back to their original 24-hour expiry.
+Use the [Runner API](../../../docs/en/plugin/dev/apis/agent-run.mdx#box-and-attachments)
+for batch acceptance, warning and delivery semantics. No run-file HTTP endpoint
+is provided.
+
+
+### Publish producer outputs to the current caller
+
+Use `set_artifact_publication(producer_type, producer_id, enabled=true)` only
+when asked to retain that producer's generated files for the authenticated caller.
+`producer_type` is `agent`, `pipeline` or `event_processor`. The server chooses
+this named account or API key as recipient; never pass a recipient ID in config
+or tool arguments. Existing policies can only be changed by their recipient.
+`get_artifact_publication` reads the caller-owned policy;
+`disable_artifact_publication` revokes future commits, including frozen old run
+grants. Creating or copying a producer does not authorize publication. Agent debug
+and IM runs follow the same explicit policy. These operations are unavailable to
+plugins and default model tools.
+
+Setting or disabling a policy requires both `resource.view` and `resource.manage`.
+The recipient needs the `artifact_id` returned by commit for subsequent management;
+there is no listing tool. Runner implementations must include it in their result.

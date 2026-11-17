@@ -135,5 +135,12 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "Trích xuất văn bản PDF không bao gồm hình ảnh và bố cục. Hãy dùng chế độ native với mô hình phù hợp cho nội dung trực quan.",
   "PDF text extraction exceeds the size limit.": "Trích xuất văn bản PDF vượt giới hạn kích thước.",
   "The selected model does not support native PDF input; read the PDF as text instead.": "Mô hình đã chọn không hỗ trợ PDF gốc; hãy đọc PDF dưới dạng văn bản.",
-  "Input attachment content budget for this run is exhausted": "Đã hết hạn mức đọc nội dung đính kèm của lần chạy này"
+  "Input attachment content budget for this run is exhausted": "Đã hết hạn mức đọc nội dung đính kèm của lần chạy này",
+  "Run file content budget is exhausted.": "Đã hết hạn mức đọc nội dung tệp cho lần chạy này.",
+  "Run file access has ended.": "Quyền truy cập tệp của lần chạy này đã kết thúc.",
+  "Artifact publication is not authorized": "Không được phép xuất bản tài nguyên",
+  "Artifact read timed out": "Đọc tài nguyên đã hết thời gian chờ",
+  "Artifact has a different manager": "Tài nguyên có chủ thể quản lý khác",
+  "Legacy output requires explicit manager assignment": "Đầu ra cũ cần được chỉ định rõ chủ thể quản lý",
+  "Artifact access requires an active run lease": "Truy cập tài nguyên cần có thời hạn thuê thực thi còn hiệu lực"
 }

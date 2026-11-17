@@ -13,9 +13,7 @@ class TestCheckDeps:
 
     def _make_deps_import_mocks(self):
         """Create mocks for deps import."""
-        return {
-            'langbot.pkg.utils.pkgmgr': MagicMock(),
-        }
+        return {}
 
     def test_check_deps_all_present(self):
         """check_deps returns empty list when all deps present."""
@@ -93,45 +91,10 @@ class TestCheckDeps:
             assert required_deps['jwt'] == 'pyjwt'
 
 
-class TestPrecheckPluginDeps:
-    """Tests for precheck_plugin_deps function."""
+def test_deps_module_does_not_install_packages():
+    """Startup must never mutate the environment with pip (LANG-511)."""
+    from langbot.pkg.core.bootutils import deps
 
-    def _make_deps_import_mocks(self):
-        return {
-            'langbot.pkg.utils.pkgmgr': MagicMock(),
-        }
-
-    def test_precheck_plugin_deps_no_plugins_dir(self):
-        """precheck_plugin_deps skips when plugins dir doesn't exist."""
-        from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
-
-        with patch('os.path.exists', return_value=False):
-            with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
-                import asyncio
-
-                asyncio.run(precheck_plugin_deps())
-
-                mock_install.assert_not_called()
-
-    def test_precheck_plugin_deps_with_plugins_dir(self):
-        """precheck_plugin_deps checks plugins subdirectories."""
-        from langbot.pkg.core.bootutils.deps import precheck_plugin_deps
-
-        def mock_listdir(path):
-            if path == 'plugins':
-                return ['plugin1', 'plugin2']
-            if path == 'plugins/plugin1':
-                return ['requirements.txt', 'main.py']
-            if path == 'plugins/plugin2':
-                return ['main.py']
-            return []
-
-        with patch('os.path.exists', return_value=True):
-            with patch('os.path.isdir', return_value=True):
-                with patch('os.listdir', side_effect=mock_listdir):
-                    with patch('langbot.pkg.core.bootutils.deps.pkgmgr.install_requirements') as mock_install:
-                        import asyncio
-
-                        asyncio.run(precheck_plugin_deps())
-
-        mock_install.assert_called_once_with('plugins/plugin1/requirements.txt', extra_params=[])
+    assert not hasattr(deps, 'install_deps')
+    assert not hasattr(deps, 'precheck_plugin_deps')
+    assert not hasattr(deps, 'pip')

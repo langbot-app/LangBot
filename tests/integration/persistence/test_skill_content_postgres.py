@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
 from langbot.pkg.entity.persistence.artifact import Artifact, ArtifactReference
+from langbot.pkg.entity.persistence.artifact_publication import ArtifactPublication
 from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
 from langbot.pkg.entity.persistence.skill import SkillRegistry, SkillVersion
 from langbot.pkg.entity.persistence.workspace import Workspace
@@ -33,7 +34,15 @@ pytestmark = [
     pytest.mark.skill_persistence,
     pytest.mark.contract('skill_content_rls'),
 ]
-_TABLES = ('content_objects', 'content_aliases', 'skill_registry', 'skill_versions', 'artifacts', 'artifact_references')
+_TABLES = (
+    'content_objects',
+    'content_aliases',
+    'skill_registry',
+    'skill_versions',
+    'artifacts',
+    'artifact_references',
+    'artifact_publications',
+)
 _A = '00000000-0000-0000-0000-000000000001'
 _B = '00000000-0000-0000-0000-000000000002'
 _PUBLIC = 'media_cache/' + 'a' * 64 + '.png'
@@ -218,6 +227,17 @@ async def migrated_store():
                         holder_id='account:owner',
                     )
                 )
+                await uow.execute(
+                    sa.insert(ArtifactPublication).values(
+                        workspace_uuid=workspace,
+                        producer_type='agent',
+                        producer_id=prefix + '-producer',
+                        manager_type='account',
+                        manager_id=workspace,
+                        revision=str(uuid.uuid4()),
+                        enabled=True,
+                    )
+                )
         # Same media-shaped public_key without publication must remain private.
         async with manager.tenant_uow(_B) as uow:
             await uow.execute(sa.insert(ContentObject).values(_content(_B, 'private-media-shape', key=_PUBLIC)))
@@ -241,7 +261,15 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
     manager = migrated_store
     for workspace, other in ((_A, _B), (_B, _A)):
         async with manager.tenant_uow(workspace) as uow:
-            for model in (ContentObject, ContentAlias, SkillRegistry, SkillVersion, Artifact, ArtifactReference):
+            for model in (
+                ContentObject,
+                ContentAlias,
+                SkillRegistry,
+                SkillVersion,
+                Artifact,
+                ArtifactReference,
+                ArtifactPublication,
+            ):
                 rows = (await uow.execute(sa.select(model.workspace_uuid))).scalars().all()
                 assert rows and set(rows) == {workspace}
                 assert (await uow.execute(sa.delete(model).where(model.workspace_uuid == other))).rowcount == 0
@@ -265,6 +293,28 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
                     .values(holder_id='forbidden')
                 )
             ).rowcount == 0
+            assert (
+                await uow.execute(
+                    sa.update(ArtifactPublication)
+                    .where(
+                        ArtifactPublication.workspace_uuid == other,
+                    )
+                    .values(enabled=False)
+                )
+            ).rowcount == 0
+        with pytest.raises(sa.exc.DBAPIError):
+            async with manager.tenant_uow(workspace) as uow:
+                await uow.execute(
+                    sa.insert(ArtifactPublication).values(
+                        workspace_uuid=other,
+                        producer_type='agent',
+                        producer_id='forbidden',
+                        manager_type='account',
+                        manager_id=other,
+                        revision=str(uuid.uuid4()),
+                        enabled=True,
+                    )
+                )
         with pytest.raises(sa.exc.DBAPIError):
             async with manager.tenant_uow(workspace) as uow:
                 await uow.execute(sa.insert(ContentObject).values(_content(other, 'forbidden-insert')))

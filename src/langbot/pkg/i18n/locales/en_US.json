@@ -135,5 +135,12 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.",
   "PDF text extraction exceeds the size limit.": "PDF text extraction exceeds the size limit.",
   "The selected model does not support native PDF input; read the PDF as text instead.": "The selected model does not support native PDF input; read the PDF as text instead.",
-  "Input attachment content budget for this run is exhausted": "Input attachment content budget for this run is exhausted"
+  "Input attachment content budget for this run is exhausted": "Input attachment content budget for this run is exhausted",
+  "Run file content budget is exhausted.": "Run file content budget is exhausted.",
+  "Run file access has ended.": "Run file access has ended.",
+  "Artifact publication is not authorized": "Artifact publication is not authorized",
+  "Artifact read timed out": "Artifact read timed out",
+  "Artifact has a different manager": "Artifact has a different manager",
+  "Legacy output requires explicit manager assignment": "Legacy output requires explicit manager assignment",
+  "Artifact access requires an active run lease": "Artifact access requires an active run lease"
 }

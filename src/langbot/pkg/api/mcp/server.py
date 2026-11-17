@@ -96,6 +96,61 @@ class LangBotMCPServer:
                 raise ToolError(error_text(exc.error.code, exc.error.message)) from exc
 
         @mcp.tool(
+            description='Read the output publication policy owned by this authenticated caller for an Agent, Pipeline or event processor.'
+        )
+        async def get_artifact_publication(
+            producer_type: typing.Literal['agent', 'pipeline', 'event_processor'], producer_id: str
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_VIEW)
+            return _dump(
+                await artifact_operation(
+                    'artifact.publication.get',
+                    context,
+                    {
+                        'producer_type': producer_type,
+                        'producer_id': producer_id,
+                    },
+                )
+            )
+
+        @mcp.tool(
+            description='Explicitly enable or disable producer output publication to this authenticated named account or API key. Cannot choose another recipient; requires resource.manage and resource.view.'
+        )
+        async def set_artifact_publication(
+            producer_type: typing.Literal['agent', 'pipeline', 'event_processor'], producer_id: str, enabled: bool
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await artifact_operation(
+                    'artifact.publication.set',
+                    context,
+                    {
+                        'producer_type': producer_type,
+                        'producer_id': producer_id,
+                        'enabled': enabled,
+                    },
+                )
+            )
+
+        @mcp.tool(
+            description='Disable this caller-owned producer publication policy, invalidating in-flight publication grants without changing existing asset recipients.'
+        )
+        async def disable_artifact_publication(
+            producer_type: typing.Literal['agent', 'pipeline', 'event_processor'], producer_id: str
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await artifact_operation(
+                    'artifact.publication.disable',
+                    context,
+                    {
+                        'producer_type': producer_type,
+                        'producer_id': producer_id,
+                    },
+                )
+            )
+
+        @mcp.tool(
             description='Upload a base64 file as a temporary caller-owned Artifact (10 MiB maximum). Returns a reference and metadata; does not make it readable by other callers.'
         )
         async def create_artifact(

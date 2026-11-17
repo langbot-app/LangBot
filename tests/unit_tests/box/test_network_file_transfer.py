@@ -12,6 +12,8 @@ import shutil
 import shlex
 from pathlib import Path
 from types import SimpleNamespace
+
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 import uuid
 
 from aiohttp.test_utils import TestServer
@@ -78,7 +80,7 @@ async def _require_existing_docker_image():
 
 
 @pytest.fixture
-async def network_files(tmp_path, monkeypatch):
+async def network_files(tmp_path, monkeypatch, artifact_store):
     backend_name = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
     if backend_name not in {'host', 'docker', 'nsjail', 'e2b'}:
         pytest.fail('LANGBOT_CORE_NETWORK_BACKEND must select host, docker, nsjail or e2b')
@@ -212,12 +214,14 @@ async def network_files(tmp_path, monkeypatch):
             ap.instance_config.data['box']['backend'] = config['backend']
             ap.instance_config.data['box']['file_transfer_mode'] = 'network'
             ap.instance_config.data['box']['runtime']['endpoint'] = url
+            await artifact_store(ap, context)
             service = BoxService(ap, client=client)
             service._available = True
             assert service.default_workspace is None
             assert runtime.network_workspace is True
             query = make_query()
             object.__setattr__(query, 'instance_uuid', instance_uuid)
+            object.__setattr__(query, '_execution_context', context)
             object.__setattr__(query, '_box_binding', None)
             object.__setattr__(query, '_sandbox_backend', backend_name)
             object.__setattr__(
@@ -257,6 +261,7 @@ async def network_files(tmp_path, monkeypatch):
                 if backend_name == 'nsjail':
                     Path(session.info.host_path).chmod(0o777)
                 await box.runner.bind(context, query, 'run-' + uuid.uuid4().hex, acquired_session)
+                await seed_run(ap, context, query._box_binding.run_id)
                 assert query._box_binding.session_id == acquired_session
                 assert len(runtime._sessions) == 1
                 await _command(box, 'mkdir -p -- ' + shlex.quote(output_root))
@@ -336,7 +341,7 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
     assert item['name'] == 'private-output.bin'
     assert item['size'] == len(_CONTENT)
     assert 'base64' not in item
-    message = exported_message(box.query, [item['id']])
+    message = await exported_message(box.service.ap, box.query, [item['id']])
     assert _decode(message[0].base64) == _CONTENT
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'
     assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
@@ -518,7 +523,7 @@ async def test_network_cleanup_warning_keeps_accepted_handles_and_changed_source
     assert len(result['items']) == 1
     item = result['items'][0]
     assert item['id'] in box.query._box_binding.exported
-    assert _decode(exported_message(box.query, [item['id']])[0].base64) == b'original'
+    assert _decode((await exported_message(box.service.ap, box.query, [item['id']]))[0].base64) == b'original'
     assert await _command(box, f'cat {shlex.quote(path)}') == 'changed'
     assert await _command(box, "find /workspace/.langbot-snapshots -name '.langbot-export-*'") == ''
 

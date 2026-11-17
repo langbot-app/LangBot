@@ -10,7 +10,7 @@ description: 在插件中读取和管理 Agent、流水线、机器人、模型�
 
 Artifact 操作目前仅接受已认证账户和 API 密钥，不属于插件可申请的操作、通配授权或工作区类型化方法。参见 [Artifact 文件接口](/zh/develop/artifacts)。
 
-新增 `artifact.read_content` 也遵循这一边界，提供有界文本和结构化图片/PDF 读取。Runner 代码使用运行绑定的 `read_input_attachment_content` 执行 API，继续受原有附件权限约束。
+`artifact.read_content` 和 `artifact.publication.get/set/disable` 也遵循这一边界。发布策略将真实认证账户或密钥设为产物接收人，插件不能用它给自己授权。Runner 代码通过运行绑定的附件、产物执行 API 访问文件，继续受冻结权限约束。
 
 ## 调用操作
 

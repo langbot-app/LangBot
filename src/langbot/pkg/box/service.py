@@ -572,7 +572,7 @@ class BoxService:
             return
         from .runner import binding_for
 
-        binding = binding_for(query)
+        binding = binding_for(query, allow_closed=True)
         context = self._query_execution_context(query)
 
         async def clean_scopes():

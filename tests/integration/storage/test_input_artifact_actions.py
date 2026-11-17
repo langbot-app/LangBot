@@ -4,6 +4,7 @@
 import asyncio
 import base64
 from dataclasses import replace
+import datetime as dt
 import json
 from types import SimpleNamespace
 import uuid
@@ -18,6 +19,7 @@ from langbot.pkg.agent.runner import input_media
 from langbot.pkg.agent.runner.session_registry import AgentRunSessionRegistry
 from langbot.pkg.api.context import PrincipalContext, PrincipalType
 from langbot.pkg.entity.persistence.artifact import Artifact
+from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.plugin import agent_run_support, input_attachment_actions
 from tests.integration.storage.test_artifacts import (
     artifact_replicas,  # noqa: F401
@@ -110,20 +112,47 @@ async def test_first_content_read_creates_one_run_asset_and_reuses_it(input_acti
     assert (await x.case.a.client.get('/api/v1/artifacts/' + asset_id, headers=x.case.headers)).status_code == 404
 
 
-async def test_uploaded_debug_ids_keep_the_original_owner_context(input_actions):
+async def test_uploaded_debug_ids_require_an_authorized_live_run_binding(input_actions):
     x = input_actions
     metadata = await x.case.a.app.artifact_service.create(x.case.context, 'uploaded.txt', _BODY, 'text/plain')
+    service = x.case.a.app.artifact_service
+    run_context = replace(
+        x.query._execution_context,
+        trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=x.run_id),
+    )
+    async with x.case.a.app.persistence_mgr.tenant_uow(x.case.context.workspace_uuid) as uow:
+        await uow.execute(
+            sa.insert(AgentRun).values(
+                run_id=x.run_id,
+                workspace_id=x.case.context.workspace_uuid,
+                runner_id='plugin:test/runner/default',
+                status='running',
+                execution_owner_id=str(uuid.uuid4()),
+                execution_lease_expires_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+                + dt.timedelta(minutes=5),
+            )
+        )
     x.query._input_artifact_ids = frozenset({metadata['id']})
     x.query._input_artifact_context = x.case.context
     request = {**x.arguments, 'ref': metadata['id']}
+    with pytest.raises(FileNotFoundError):
+        await x.render(request)
+    foreign_owner = replace(
+        x.case.context,
+        principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid=str(uuid.uuid4())),
+    )
+    with pytest.raises(FileNotFoundError):
+        await service.bind_run_inputs(foreign_owner, run_context, [metadata['id']])
+    await service.bind_run_inputs(x.case.context, run_context, [metadata['id']])
     response = await x.render(request)
     result = json.loads(response.data['contents'][0]['text'])
     assert result['text'] == _BODY.decode() and result['artifact']['id'] == metadata['id']
     assert await _count(x.case) == 1
-    x.query._input_artifact_context = replace(
-        x.case.context,
-        principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid=str(uuid.uuid4())),
-    )
+    # Frozen Host authorization is carried by the exact run reference, not a later actor value.
+    x.query._input_artifact_context = foreign_owner
+    response = await x.render(request)
+    assert response.code == 0
+    await service.release_run_inputs(run_context)
     with pytest.raises(FileNotFoundError):
         await x.render(request)
     assert await _count(x.case) == 1

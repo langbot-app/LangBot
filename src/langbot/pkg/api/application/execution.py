@@ -546,6 +546,29 @@ EXECUTION_OPERATIONS = (
     ExecutionOperation(
         'export_box_files', _input('ExecutionExportBoxInput', paths=(list[str] | None, None)), ItemsOutput, 'run', True
     ),
+    ExecutionOperation(
+        'read_run_file',
+        _input(
+            'ExecutionReadRunFileInput',
+            file_id=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionRunFileContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
+        'commit_run_files',
+        _input(
+            'ExecutionCommitRunFilesInput', file_ids=(Annotated[list[Text], Field(min_length=1, max_length=100)], ...)
+        ),
+        ItemsOutput,
+        'run',
+        True,
+    ),
     ExecutionOperation('run_get', TargetRun, RunOutput, 'runner_admin'),
     ExecutionOperation(
         'run_list',

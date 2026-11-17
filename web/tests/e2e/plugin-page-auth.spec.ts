@@ -316,15 +316,17 @@ test('plugin asset hook replaces and revokes URLs on a same-document Workspace c
     },
   );
   await page.goto('/home/bots');
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const path = '/src/app/infra/http/currentWorkspaceStore.ts';
-        return (await import(path)).getCurrentWorkspaceSnapshot()?.workspace
-          .uuid;
-      }),
-    )
-    .toBe('asset-first');
+  const snapshotUuid = () =>
+    page.evaluate(async () => {
+      const path = '/src/app/infra/http/currentWorkspaceStore.ts';
+      return (await import(path)).getCurrentWorkspaceSnapshot()?.workspace.uuid;
+    });
+  await expect.poll(snapshotUuid).toBe('asset-first');
+  // The page still runs `initializeWorkspaceInfo`, which writes the server's
+  // Workspace over whatever the selector holds. Switching before it settles
+  // gets overwritten back to the old id, so let it land first.
+  await page.waitForTimeout(500);
+  await expect.poll(snapshotUuid).toBe('asset-first');
   await page.evaluate(async () => {
     const resources = performance
       .getEntriesByType('resource')

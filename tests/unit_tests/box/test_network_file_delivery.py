@@ -26,11 +26,13 @@ from langbot.pkg.agent.runner.platform_tools import (
     resolve_platform_api_call,
 )
 from langbot.pkg.api.http.context import ExecutionContext
-from langbot.pkg.box.runner import RunBoxBinding, exported_message, prepare_input_files
+from langbot.pkg.box.runner import RunBoxBinding, exported_message, mark_exported_files, prepare_input_files
 from langbot.pkg.platform.botmgr import RuntimeBot
 from langbot.pkg.platform.sources import http_bot_signing as signing
 from tests.unit_tests.box import test_network_file_transfer as network_tests
 from tests.unit_tests.platform.test_http_bot_agent_boundary import discovered_adapter, envelope
+
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- dependency of network_files
 
 network_files = network_tests.network_files
 pytestmark = network_tests.pytestmark
@@ -67,12 +69,14 @@ async def test_signed_http_network_file_roundtrip_and_handle_ownership(network_f
             event = envelope(bot, live_adapter, inbound)
             received.append(event)
             query = build_execution_query(event, [], context)
+            object.__setattr__(query, '_execution_context', context)
             prepare_input_files(query, event.input)
             for field in ('_sandbox_backend', '_sandbox_e2b_config', '_sandbox_limits'):
                 object.__setattr__(query, field, getattr(box.query, field))
             acquired = await box.runner.acquire(context, box.acquire_request, query)
             assert acquired['id'] == box.query._box_binding.session_id
             await box.runner.bind(context, query, 'http-delivery-run', acquired['id'])
+            await seed_run(box.service.ap, context, 'http-delivery-run')
             binding = query._box_binding
             imported = await box.runner.import_attachments(query, None)
             assert len(imported['items']) == 1
@@ -105,7 +109,7 @@ async def test_signed_http_network_file_roundtrip_and_handle_ownership(network_f
                     assert rpc_action == PluginToRuntimeAction.CALL_PLATFORM_API
                     current = self.query._box_binding
                     async with current.lock:
-                        files = exported_message(self.query, data['file_ids'])
+                        files = await exported_message(box.service.ap, self.query, data['file_ids'])
                         tool, params, rich = resolve_platform_api_call(
                             session,
                             event.bot_id,
@@ -114,7 +118,7 @@ async def test_signed_http_network_file_roundtrip_and_handle_ownership(network_f
                             data['context_tool'],
                         )
                         reply = await execute_platform_tool(app, context, session, tool, params, message_chain=rich)
-                        exported_message(self.query, data['file_ids'], consume=True)
+                        mark_exported_files(self.query, data['file_ids'])
                         return {'result': reply}
 
             other_query = copy.copy(query)

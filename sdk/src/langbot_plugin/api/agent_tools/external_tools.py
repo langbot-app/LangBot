@@ -38,13 +38,20 @@ class ImportBoxArgs(EmptyArgs):
     attachment_ids: list[str] | None = None
 
 
-class ReadInputAttachmentArgs(EmptyArgs):
-    ref: str = pydantic.Field(min_length=1)
+class ReadContentArgs(EmptyArgs):
     mode: typing.Literal["auto", "text", "native", "pages"] = "auto"
     offset: int = pydantic.Field(default=0, ge=0)
     max_chars: int = pydantic.Field(default=8192, ge=1, le=16384)
     page_start: int = pydantic.Field(default=1, ge=1)
     page_end: int | None = pydantic.Field(default=None, ge=1)
+
+
+class ReadInputAttachmentArgs(ReadContentArgs):
+    ref: str = pydantic.Field(min_length=1)
+
+
+class ReadRunFileArgs(ReadContentArgs):
+    file_id: str = pydantic.Field(min_length=1)
 
 
 class ReplyFilesArgs(EmptyArgs):
@@ -186,6 +193,7 @@ class AgentRunExternalTools:
                     "langbot_bind_box",
                     "langbot_import_box_attachments",
                     "langbot_export_box_files",
+                    "langbot_read_run_file",
                 }
             )
             if any(
@@ -596,6 +604,15 @@ class AgentRunExternalTools:
     )
     async def read_input_attachment(self, args: ReadInputAttachmentArgs):
         return await self.api.read_input_attachment_content(**args.model_dump())
+
+    @agent_tool(
+        name="langbot_read_run_file",
+        description="Read a file ID returned by this run's sandbox export. Auto returns bounded text or a structured image; PDF defaults to text. Use native for PDF visual content with a supporting model. Text offsets are Unicode characters; use next_offset to continue. At most ten PDF pages per call. Page rendering is unavailable.",
+        args_model=ReadRunFileArgs,
+        read_only=True,
+    )
+    async def read_run_file(self, args: ReadRunFileArgs):
+        return await self.api.read_run_file(**args.model_dump())
 
     @agent_tool(
         name="langbot_export_box_files",
