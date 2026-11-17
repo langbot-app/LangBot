@@ -58,10 +58,14 @@ permission means these rows remain unexecuted; it does not block local work.
 
 ## Repeat-run harness
 
-`tools/entrypoints/skill_artifact_soak.py` records repeated pytest scenarios with
-per-round logs, JUnit and a JSON-lines manifest. It rejects empty collections,
-skips, xfails, failures and missing reports. Supply exact phase-four node IDs;
-there is deliberately no fallback to unrelated tests. For example:
+`tools/entrypoints/skill_artifact_soak.py` is Linux-only and records repeated
+pytest scenarios with per-round logs, JUnit and a JSON-lines manifest. Each round
+runs under its own subreaper supervisor. On timeout, SIGINT or SIGTERM, the
+supervisor cleans up and reaps its descendants, including detached processes
+that called `setsid()`, while preserving logs and the manifest. Leaked descendants
+fail the round even if pytest exited zero. The harness also rejects empty
+collections, skips, xfails, failures and missing reports. Supply exact phase-four
+node IDs; there is deliberately no fallback to unrelated tests. For example:
 
 ```sh
 uv run --no-sync python tools/entrypoints/skill_artifact_soak.py \

@@ -106,7 +106,12 @@ The four source decisions are:
    downgrade while source references remain, preventing an older reader from
    mistaking package bytes for the selected file.
 4. **Storage.** Use the database Skill repository's authoritative immutable
-   package, integrity checks and bounded archive reader. Do not copy individual
+   package, integrity checks and bounded archive reader. Artifact source reads
+   share the legacy resource path's per-Core bounded LRU archive cache (32 MiB,
+   at most 256 entries), not a separate cache or durable copy. Every read still
+   validates the live scoped version/content metadata, digest and manifest, and
+   source authorization; a cache hit is not permission to read. A cold replacement
+   Core fetches the package from authoritative storage. Do not copy individual
    files or whole packages into Artifact-owned ContentObjects. Clearing caches
    does not change source identity. Filesystem-only packages fail explicitly
    rather than falling back to mutable paths or copying into a second store.

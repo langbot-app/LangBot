@@ -260,16 +260,22 @@ class SkillRepository:
         if self._database is None:
             raise ValueError('Skill Artifact resources require database Skill persistence')
         execution_context = await self._validated_execution_context(context)
-        return await self._database.resolve_artifact_resource(
-            execution_context, name, path, expected_revision=expected_revision, max_bytes=max_bytes
-        )
+        namespace = self._namespace(execution_context)
+        async with self._workspace_lock(namespace):
+            with blocking_work_scope(f'skill:{namespace}'):
+                return await self._database.resolve_artifact_resource(
+                    execution_context, name, path, expected_revision=expected_revision, max_bytes=max_bytes
+                )
 
     async def read_artifact_resource(self, context, source, *, max_bytes):
         """Internal byte reader; the Artifact service must authorize and lease the source."""
         if self._database is None:
             raise ValueError('Skill Artifact resources require database Skill persistence')
         execution_context = await self._validated_execution_context(context)
-        return await self._database.read_artifact_resource(execution_context, source, max_bytes=max_bytes)
+        namespace = self._namespace(execution_context)
+        async with self._workspace_lock(namespace):
+            with blocking_work_scope(f'skill:{namespace}'):
+                return await self._database.read_artifact_resource(execution_context, source, max_bytes=max_bytes)
 
     async def list_skill_resources(
         self,
