@@ -26,7 +26,7 @@ class TestStorageProviderSelection:
         with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock) as mock_init:
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
-            mock_init.assert_called_once()
+            mock_init.assert_awaited_once_with()
 
     @pytest.mark.asyncio
     async def test_explicit_local_storage(self):
@@ -42,7 +42,7 @@ class TestStorageProviderSelection:
         with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock) as mock_init:
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
-            mock_init.assert_called_once()
+            mock_init.assert_awaited_once_with()
 
     @pytest.mark.asyncio
     async def test_s3_storage_provider_selection(self):
@@ -69,7 +69,7 @@ class TestStorageProviderSelection:
         with patch.object(S3StorageProvider, 'initialize', new_callable=AsyncMock) as mock_init:
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, S3StorageProvider)
-            mock_init.assert_called_once()
+            mock_init.assert_awaited_once_with()
 
     @pytest.mark.asyncio
     async def test_invalid_storage_type_defaults_to_local(self):
@@ -85,7 +85,7 @@ class TestStorageProviderSelection:
         with patch.object(LocalStorageProvider, 'initialize', new_callable=AsyncMock) as mock_init:
             await storage_mgr.initialize()
             assert isinstance(storage_mgr.storage_provider, LocalStorageProvider)
-            mock_init.assert_called_once()
+            mock_init.assert_awaited_once_with()
 
 
 if __name__ == '__main__':

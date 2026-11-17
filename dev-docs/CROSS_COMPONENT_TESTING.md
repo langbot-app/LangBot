@@ -2,6 +2,35 @@
 
 Run the paths affected by the change before recommending merge. A passing PR check covers only its selected contracts. Daily coverage is additional evidence; it does not replace acceptance of a changed backend. All commands below start at the repository root on the approved Linux development host. Follow the execution-host restrictions in the active workspace instructions; when local macOS execution is restricted, use the designated remote host and report unavailable verification instead of falling back to Mac.
 
+## Test assets for developers and agents
+
+Start from the affected user behavior and the whole change, not only unstaged
+files. Compare the PR base's merge base to `HEAD` (`git diff --name-status <base>...HEAD`),
+then include staged, unstaged and relevant untracked files
+(`git status --short`). Use the actual PR base in place of `<base>`.
+
+| What changed | Existing asset to use |
+| --- | --- |
+| A local calculation, policy boundary or state transition | Focused pytest node(s) for rapid iteration; `make test-quick` for broader local feedback |
+| Core/SDK/API/Runtime across a process boundary | A named `pytest --required-suite` from this guide, or a real-stack [regression profile](../tools/README.md) |
+| A visible WebUI or Debug Chat flow | From `skills/`, [bootstrap `lbs` if needed](../skills/README.md); run `bin/lbs suite list` and `bin/lbs test plan <case-id>`; supply the intended test instance and collect UI plus backend evidence. Treat `test recommend` as a hint, not proof the risk is covered. |
+| A user-visible regression already supported by the regression harness | Look up the stable behavior ID and its evidence binding in [the contract catalog](../tools/contracts/regression_contracts.json) before adding a new scenario |
+
+In the handoff, list the behavior, test command, candidate SHA or dirty state,
+actual environment, verdict, and evidence file or run link. Mark missing,
+skipped or environment-blocked cases separately. An unrelated passing suite, a
+manual evidence label without its artifact, or a mock response alone is not
+proof that a user path works. This checklist is advisory and does not add a
+required PR check.
+
+Maintain one clear owner for each assertion unless testing a different
+integration boundary. Preserve differences in status, output, state and side
+effects when consolidating. Before retiring a test, compare the before/after
+suite on the same production SHA with known-bad controls or selected semantic
+mutants; preserve distinct failures even if line coverage is unchanged. See
+[the bounded mutation experiment](review/p0-mutations-20261116.md) for the
+difference between detected changes, skips and inconclusive runs.
+
 ## CI tiers and evidence
 
 [Core Smoke](../.github/workflows/core-smoke.yml) still runs on every PR and on
