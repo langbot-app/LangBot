@@ -59,6 +59,8 @@ Delete commits a tombstone that rejects subsequent operations; physical cleanup 
 
 Creation inherits ContentStore's upload transaction behavior: cancellation rolls back the record and schedules external cleanup. A process crash before an S3 locator commits can leave an untracked upload; this phase does not add a bucket-wide orphan scanner.
 
+Artifact release/deletion governs its own stored content, not independently retained platform or monitoring history. The existing `MediaReferenceText` contract externalizes recognized inline images; delivered `File.base64` history retains its existing representation and retention. Artifact row/object reclamation is therefore not a claim that every delivered copy has disappeared.
+
 Errors: missing, deleted and unauthorized asset IDs return 404 without disclosing existence; expired assets return `artifact_expired` (410); pinned deletion returns `artifact_in_use` (409); excessive reads return `artifact_too_large` (413); integrity failures return `artifact_integrity_failed` (422).
 
 ## Acceptance

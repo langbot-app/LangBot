@@ -25,6 +25,8 @@ Missing, deleted and unauthorized IDs return 404. An expired owned file returns 
 
 Deletion blocks subsequent access; maintenance reclaims the underlying bytes. Bounded downloads hold a temporary read lease, so cleanup skips the file until the read finishes or its lease expires. An active run also protects the outputs it is using while its execution lease remains valid.
 
+Deleting an Artifact does not retract files already delivered to a platform or remove message history retained under its own rules.
+
 ## MCP
 
 Native PDF input requires trusted model capability information. For an alias whose provider has confirmed PDF support but which the capability catalog does not recognize, an administrator can declare `pdf_input` in the model's existing `abilities` field. Undeclared, unknown capability rejects native PDF input; text mode remains available.
