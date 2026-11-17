@@ -2,7 +2,8 @@
 
 Implementation started from `0d5a5eea1` (PR #3065 merged). The branch was then
 refreshed onto `3d67a88025f81a0167a86467a8d9d5308469d3c8`, which removes the old
-30-hour native soak mode. Use the PR head for the delivered SHA. No SDK version,
+30-hour native soak mode. Implementation candidate: `62e32bc378686532a56bf494da151b68faeb474e`.
+The following evidence-only commit changes no production behavior; use the PR head for delivery. No SDK version,
 release tag, production deployment or merge is part of this delivery.
 
 Environment: Linux, Python 3.12.14, checkout-local editable SDK 0.7.25.
@@ -62,3 +63,13 @@ Candidate plugin tests do not replace their separate released-SDK CI checks.
 KB import deliberately accepts ordinary account/API-owned upload Artifacts only;
 Skill sources, run outputs and installation-owned sources are not implicitly shared.
 Legacy nonpersistent upload mode retains its original handle-only response.
+
+## Refreshed candidate verification
+
+After rebasing onto `3d67a8802`, the final implementation candidate passed:
+
+- Required SDK/Core: 59 passed, 13 unrelated deselected ([log](evidence/postrebase-sdk.log)).
+- New migration, KB, legacy, plugin, and i18n regression: 56 passed, 44 unavailable-backend skips ([log](evidence/postrebase-targeted.log)).
+- Actual installed Runtime/host Box delivery: 1 passed, 35.52 seconds ([log](evidence/postrebase-network.log)).
+- The final migration test was rerun after formatting: 4 passed.
+- Full source/tests Ruff lint, source/tools format, generated proxy drift and SDK action consistency passed. Changed Python files pass format checks. Existing unrelated test-file formatting drift is not changed by this PR.
