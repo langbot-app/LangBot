@@ -68,3 +68,52 @@ Errors: missing, deleted and unauthorized asset IDs return 404 without disclosin
 Native PDF uses LiteLLM capability metadata or the administrator's explicit `pdf_input` model ability for a provider-confirmed alias. Unknown capability without that declaration fails explicitly. Content reads charge source materialization once per attachment, and separately cap cumulative returned content at the run read budget; the legacy raw-byte API continues to charge each full read.
 
 Exercise authenticated HTTP and MCP against real persistence: byte-for-byte upload/download and digest, principal and Workspace isolation, limited permissions, expiry, retain/release/delete, malformed and excessive inputs, cancellation, GC concurrency and cleanup failure. PostgreSQL/MinIO acceptance includes restricted-role RLS and a second Core/restart reading persistent assets without shared cache roots. See [cross-component testing](../CROSS_COMPONENT_TESTING.md). A successful base64 transfer does not establish model understanding of an image or PDF.
+
+## Skill package sources (phase four)
+
+`artifact.skill_resource.create` (`POST /api/v1/artifacts/skill-resources`, MCP
+`create_skill_resource_artifact`) accepts `skill_name`, an explicit `revision`,
+`path`, and optional `ttl_seconds`. Creation requires both source viewing and
+Artifact management permission. Like other account Artifact operations, it has
+`exposure=none`: no plugin Workspace grant, generated Workspace SDK method,
+default model management tool or `lbctl` command is added.
+
+The four source decisions are:
+
+1. **Identity.** Resolve name and revision at registration, then bind the immutable
+   version UUID, package content reference and canonical file path. File digest,
+   size and MIME describe the selected file, not the archive. Later reads resolve
+   the stored version identity, never `latest` or the current Skill name. Repeated
+   registration for one owner/version/path returns the same deterministic ID,
+   without renewing expiry. An expired or deleted reference must be collected
+   before that identity can be registered again.
+2. **Authorization.** A Workspace reference is owned by its creating account or
+   API key; knowing the ID, sharing Workspace membership or adding a retention
+   pin grants nothing. Run consumers must use the existing installed ExecutionAPI
+   tool path and frozen activated-Skill revision, not a new arbitrary by-ID action.
+   A Workspace Skill source cannot be converted into an ordinary run input to
+   bypass that source authorization. Run-owned sources use the existing
+   `call_tool` installation authorization, persisted `activated_skills` revision
+   and live run lease; every read rechecks the bound run. No generic source
+   publication or cross-run by-ID action is added.
+3. **Lifecycle.** A source Artifact references the existing package and retained
+   version. Its foreign-key protection and ordinary read leases protect the
+   package while live metadata or a read still depends on it. Artifact GC deletes
+   only source-reference metadata, never bytes owned by the Skill subsystem.
+   Removing the current Skill catalog entry leaves retained versions intact.
+   This is not a new package-version GC policy or a promise that a retained
+   package is deleted when its last Artifact disappears. Migration 0052 refuses
+   downgrade while source references remain, preventing an older reader from
+   mistaking package bytes for the selected file.
+4. **Storage.** Use the database Skill repository's authoritative immutable
+   package, integrity checks and bounded archive reader. Do not copy individual
+   files or whole packages into Artifact-owned ContentObjects. Clearing caches
+   does not change source identity. Filesystem-only packages fail explicitly
+   rather than falling back to mutable paths or copying into a second store.
+
+The existing `read_skill_resource` text result remains compatible. Structured
+binary results must go through the shared Artifact reader and existing model
+content adapters; a base64-bearing ordinary string is not model media input.
+Native PDF capability checks and the lack of page rendering remain unchanged.
+See the [phase-four acceptance handoff](../review/artifact-phase4/README.md) for
+verification boundaries; documented behavior alone is not acceptance evidence.

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from dataclasses import replace
+import json
 import os
 import typing
 
@@ -292,11 +295,18 @@ class SkillToolLoader(loader.ToolLoader):
             expected_revision=skill_data.get('revision'),
         )
 
-    async def _invoke_read_skill_resource(self, parameters: dict, query) -> dict:
+    async def _invoke_read_skill_resource(self, parameters: dict, query) -> typing.Any:
         skill_data = self._activated_skill(parameters, query)
         path = str(parameters.get('path', '') or '').strip()
         if not path:
             raise ValueError('path is required')
+        session = getattr(query, '_agent_run_session', None)
+        if (
+            isinstance(session, dict)
+            and session.get('run_id')
+            and getattr(self.ap.skill_repository, 'database_backed', False)
+        ):
+            return await self._read_run_skill_artifact(parameters, query, skill_data, path, session['run_id'])
         result = await self.ap.skill_repository.read_skill_resource(
             self._execution_context(query),
             skill_data['name'],
@@ -317,6 +327,68 @@ class SkillToolLoader(loader.ToolLoader):
         variables[_SKILL_RESOURCE_BYTES_READ_KEY] = total
         result['size'] = size
         return result
+
+    async def _read_run_skill_artifact(self, parameters, query, skill_data, path, run_id):
+        """Use the host-pinned run source, never a Runner-supplied artifact ID."""
+        from ....api.context import PrincipalContext, PrincipalType
+        from ....storage.artifact_reader import read_artifact_content
+
+        context = replace(
+            self._execution_context(query),
+            trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=run_id),
+        )
+        lock = getattr(query, '_skill_artifact_read_lock', None)
+        if lock is None:
+            lock = asyncio.Lock()
+            object.__setattr__(query, '_skill_artifact_read_lock', lock)
+        async with lock:
+            variables = getattr(query, 'variables', None)
+            if not isinstance(variables, dict):
+                variables = {}
+                query.variables = variables
+            spent = int(variables.get(_SKILL_RESOURCE_BYTES_READ_KEY, 0) or 0)
+            remaining = _MAX_SKILL_RESOURCE_RUN_BYTES - spent
+            if remaining <= 0:
+                raise ValueError('Skill resource reads exceed the per-run limit')
+            # Private Host state is not writable through Runner conversation variables.
+            refs = getattr(query, '_skill_artifact_refs', None)
+            if refs is None:
+                refs = {}
+                object.__setattr__(query, '_skill_artifact_refs', refs)
+            key = (run_id, skill_data['name'], skill_data['revision'], path)
+            if key not in refs:
+                metadata = await self.ap.artifact_service.create_run_skill_resource(
+                    context, skill_data['name'], skill_data['revision'], path
+                )
+                refs[key] = metadata['id']
+            result = await self.ap.artifact_service.read_run_skill_resource(
+                context, refs[key], max_bytes=min(_MAX_SKILL_RESOURCE_FILE_BYTES, remaining)
+            )
+            payload, metadata = result['content'], result['metadata']
+            # Charge successful source reads, including reads whose renderer rejects the format.
+            variables[_SKILL_RESOURCE_BYTES_READ_KEY] = spent + len(payload)
+            contents = await read_artifact_content(
+                payload,
+                metadata,
+                **{
+                    key: parameters[key]
+                    for key in ('mode', 'offset', 'max_chars', 'page_start', 'page_end')
+                    if key in parameters
+                },
+            )
+            # Keep the existing text dictionary for legacy callers. Images/native PDF remain
+            # structured ContentElements so SDK/LocalAgent never stringify their payloads.
+            if len(contents) == 1 and contents[0]['type'] == 'text':
+                rendered = json.loads(contents[0]['text'])
+                return {
+                    'skill': {'name': skill_data['name'], 'revision': skill_data['revision']},
+                    'revision': skill_data['revision'],
+                    'path': path,
+                    'content': rendered.pop('text', ''),
+                    'size': len(payload),
+                    **rendered,
+                }
+            return contents
 
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:
         """Register a skill from sandbox directory to data/skills/."""
@@ -462,13 +534,22 @@ class SkillToolLoader(loader.ToolLoader):
         return resource_tool.LLMTool(
             name=READ_SKILL_RESOURCE_TOOL_NAME,
             human_desc='Read an activated skill resource',
-            description='Read a UTF-8 text resource from an activated skill package without starting a sandbox.',
+            description=(
+                'Read a pinned resource from an activated skill without a sandbox. '
+                'Text is bounded with continuation offsets; images and native PDF use structured model content. '
+                'Use mode=text for PDF text extraction or mode=native with a PDF-capable model.'
+            ),
             parameters={
                 'type': 'object',
                 'properties': {
                     'skill_name': {'type': 'string', 'description': 'The activated skill name.'},
                     'path': {'type': 'string', 'description': 'File path relative to the skill package root.'},
                     'revision': {'type': 'string', 'description': 'Optional revision returned by activate.'},
+                    'mode': {'type': 'string', 'enum': ['auto', 'text', 'native'], 'default': 'auto'},
+                    'offset': {'type': 'integer', 'minimum': 0},
+                    'max_chars': {'type': 'integer', 'minimum': 1, 'maximum': 16384},
+                    'page_start': {'type': 'integer', 'minimum': 1},
+                    'page_end': {'type': 'integer', 'minimum': 1},
                 },
                 'required': ['skill_name', 'path'],
                 'additionalProperties': False,

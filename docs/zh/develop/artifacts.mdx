@@ -27,6 +27,22 @@ Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能
 
 删除 Artifact 不会撤回已投递的平台文件，也不会删除按独立规则保留的消息历史。
 
+## 固定版本 Skill 资源
+
+`POST /api/v1/artifacts/skill-resources` 为数据库持久化 Skill 包中的单个文件创建调用方拥有的引用。JSON 请求包含 `skill_name`、明确的 `revision`、包内相对 `path`，以及可选的 `ttl_seconds`。需要同时具备 `resource.view` 和 `resource.manage`。对应的 ApplicationAPI 操作是 `artifact.skill_resource.create`；MCP 工具 `create_skill_resource_artifact` 使用相同参数。
+
+登记直接复用 ContentStore 中已有的不可变版本包，不上传或复制文件、整包。引用绑定存储版本身份和规范包内路径，并包含文件摘要、大小和 MIME 类型。发布新版本不会改变旧引用。使用现有 Artifact 元信息、下载和结构化读取接口即可读取，无需 Box 会话。
+
+只有创建引用的账户或 API key 能使用它。分享 ID 或保留引用都不授予其他主体权限。来源引用不是普通上传附件，不能假定将其放入调试请求的 `artifact_ids` 就会授权 run 访问。该 Workspace 操作不向插件、默认模型工具或 `lbctl` 开放。
+
+释放和 Artifact 清理只回收引用，不删除共享 Skill 包。存活引用保护其保留版本，临时读租约保护正在进行的读取。删除 Skill 当前目录项不会重写保留版本。此引用接口不支持仅文件系统的 Skill 存储，请使用数据库持久化；原文本资源读取接口仍然可用。
+
+同一所有者、版本和路径的重复登记返回同一引用，不延长过期时间。已过期或删除的引用须先回收，才能重新登记。
+
+
+在已授权的存活 run 中，`read_skill_resource` 使用已激活 Skill 的冻结版本和同一有界 reader。文本保留文本契约，截断时给出继续读取位置；图片和原生 PDF 使用结构化模型内容，而不是普通文本中的 base64。来源读取限制为每文件 256 KiB、每 run 1 MiB。原生 PDF 仍要求模型支持。没有该存活 run 授权时只保留旧文本读取路径，不隐式授予二进制来源访问权。
+
+
 ## MCP
 
 原生 PDF 需要可信的模型能力信息；对于已由供应商确认支持、但能力目录尚未识别的模型别名，可由管理员在模型的现有 `abilities` 字段中声明 `pdf_input`。未声明且能力未知时会明确拒绝原生 PDF，仍可使用文本模式。

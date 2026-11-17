@@ -97,6 +97,18 @@ class ArtifactsRouterGroup(group.RouterGroup):
             )
 
         @self.route(
+            '/skill-resources',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def create_skill_resource(request_context: RequestContext):
+            payload = await quart.request.json
+            if not isinstance(payload, dict):
+                return self.http_status(400, 'invalid_input', 'Expected an object')
+            return await invoke('artifact.skill_resource.create', request_context, payload)
+
+        @self.route(
             '/<artifact_id>',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

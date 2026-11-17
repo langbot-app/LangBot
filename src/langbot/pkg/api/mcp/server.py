@@ -180,6 +180,24 @@ class LangBotMCPServer:
             )
 
         @mcp.tool(
+            description='Reference one file in a fixed Skill version without copying its package. Requires source permission; the resulting Artifact ID does not grant access.'
+        )
+        async def create_skill_resource_artifact(
+            skill_name: str,
+            revision: str,
+            path: str,
+            ttl_seconds: int = 86400,
+        ) -> str:
+            context = _authorized(Permission.RESOURCE_MANAGE)
+            return _dump(
+                await artifact_operation(
+                    'artifact.skill_resource.create',
+                    context,
+                    {'skill_name': skill_name, 'revision': revision, 'path': path, 'ttl_seconds': ttl_seconds},
+                )
+            )
+
+        @mcp.tool(
             description='Get metadata for a caller-owned Artifact without reading its content. The reference is not an access grant.'
         )
         async def get_artifact(artifact_id: str) -> str:

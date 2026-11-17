@@ -7,6 +7,7 @@ SDK in the Python environment used by pytest and its Core subprocesses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -244,3 +245,89 @@ def test_two_core_processes_share_skill_packages_and_uploaded_media(core_pair):
                 if path.exists():
                     print(f'{path}:\n{path.read_text(errors="replace")[-16000:]}', flush=True)
         raise
+
+
+@pytest.mark.contract('skill_artifact_process_recovery')
+def test_skill_artifact_fixed_bytes_survive_two_core_restart_without_box(core_pair):
+    """Exercise the public source API and reader across independent processes."""
+    a, b = core_pair.a, core_pair.b
+    headers = {'Authorization': f'Bearer {core_pair.token}'}
+    original = _data(
+        a.client.post(
+            '/api/v1/skills/install/upload',
+            headers=headers,
+            files={'file': ('probe.zip', _zip_package(), 'application/zip')},
+        )
+    )['skills'][0]['revision']
+
+    def register(replica, revision):
+        return _data(
+            replica.client.post(
+                '/api/v1/artifacts/skill-resources',
+                headers=headers,
+                json={
+                    'skill_name': _NAME,
+                    'revision': revision,
+                    'path': 'SKILL.md',
+                },
+            )
+        )
+
+    def read(replica, item):
+        response = replica.client.get(f'/api/v1/artifacts/{item["id"]}/content', headers=headers)
+        assert response.status_code == 200, response.text
+        assert hashlib.sha256(response.content).hexdigest() == item['digest']
+        assert len(response.content) == item['size']
+        metadata = _data(replica.client.get(f'/api/v1/artifacts/{item["id"]}', headers=headers))
+        assert metadata['source'] == 'skill_resource' and metadata['digest'] == item['digest']
+        return response.content
+
+    first = register(a, original)
+    old_bytes = read(b, first)
+    assert register(b, original)['id'] == first['id'], 'Repeated registration must not duplicate the reference'
+    current = _data(
+        a.client.put(
+            f'/api/v1/skills/{_NAME}',
+            headers=headers,
+            json={
+                'base_revision': original,
+                'instructions': 'Stage four version two immutable content.',
+            },
+        )
+    )['skill']['revision']
+    assert current != original
+    second = register(b, current)
+    new_bytes = read(a, second)
+    assert new_bytes != old_bytes and b'Stage four version two' in new_bytes
+    assert read(b, first) == old_bytes
+    chunks = _data(
+        b.client.get(f'/api/v1/artifacts/{first["id"]}/read', headers=headers, params={'mode': 'text', 'max_chars': 8})
+    )
+    rendered = json.loads(chunks[0]['text'])
+    assert rendered['text'] == old_bytes.decode()[:8] and rendered['next_offset'] == 8
+    # Stop before removing the disposable cache: no shared cache or existing service is touched.
+    _stop(a.process)
+    _discard_cache(a)
+    _start(a)
+    for replica in (a, b):
+        assert read(replica, first) == old_bytes
+        assert read(replica, second) == new_bytes
+    # Removing one resource must not remove its package or another version's bytes.
+    _data(a.client.delete(f'/api/v1/artifacts/{first["id"]}', headers=headers))
+    assert b.client.get(f'/api/v1/artifacts/{first["id"]}/content', headers=headers).status_code == 404
+    assert read(b, second) == new_bytes
+    package = b.client.get(f'/api/v1/skills/{_NAME}/package', headers=headers, params={'revision': original})
+    assert package.status_code == 200
+    _assert_package(package.content)
+    print(
+        json.dumps(
+            {
+                'event': 'skill_artifact_process_recovery_verified',
+                'old_revision': original,
+                'new_revision': current,
+                'old_digest': first['digest'],
+                'new_digest': second['digest'],
+            }
+        ),
+        flush=True,
+    )

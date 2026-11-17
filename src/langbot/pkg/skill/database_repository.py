@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import mimetypes
 import tempfile
 import uuid
 from collections import OrderedDict
@@ -124,7 +125,88 @@ class DatabaseSkillRepository:
                 'skill': dict(registry.skill_json if registry is not None else version.skill_json),
                 'manifest': version.manifest_json,
                 'content_ref': version.content_ref,
+                'version_id': version.uuid,
             }
+
+    @staticmethod
+    def _artifact_resource_metadata(record, path):
+        """Describe a manifest member, never an object-store key supplied by a caller."""
+        path = SkillStore._publication_resource_path(path)
+        _, revision, manifest = SkillStore._publication_manifest_identity(record['skill'], record['manifest'])
+        entry = next((item for item in manifest['files'] if item['path'] == path), None)
+        if entry is None:
+            raise FileNotFoundError('Skill resource not found')
+        # Match the existing SDK's verified publication reader ceiling.
+        if entry['size'] > 1024 * 1024:
+            raise ValueError('Skill resource exceeds the 1048576-byte limit')
+        return {
+            'version_id': record['version_id'],
+            'content_ref': record['content_ref'],
+            'revision': revision,
+            'path': path,
+            'digest': entry['sha256'],
+            'size': entry['size'],
+            'mime_type': mimetypes.guess_type(path)[0] or 'application/octet-stream',
+            'name': record['skill']['name'],
+        }
+
+    async def resolve_artifact_resource(self, context, name, path, *, expected_revision):
+        """Resolve an explicitly pinned publication; authorization belongs to the caller."""
+        if not expected_revision:
+            raise ValueError('Skill Artifact resources require an explicit revision')
+        await self._validate_context(context)
+        record = await self._record(context, name, expected_revision)
+        if record is None:
+            raise FileNotFoundError('Skill resource not found')
+        source = self._artifact_resource_metadata(record, path)
+        # Do not return a successful reference to a corrupt or unavailable package.
+        await self.read_artifact_resource(context, source, max_bytes=1024 * 1024)
+        return source
+
+    async def read_artifact_resource(self, context, source, *, max_bytes):
+        """Read a version UUID, independent of registry names, aliases and local caches."""
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            raise ValueError('Skill resource read limit must be a positive integer')
+        await self._validate_context(context)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            version = (
+                await uow.execute(
+                    sqlalchemy.select(SkillVersion).where(
+                        *self._scope(SkillVersion, context), SkillVersion.uuid == source.get('version_id')
+                    )
+                )
+            ).scalar_one_or_none()
+            if version is None:
+                raise FileNotFoundError('Skill resource not found')
+            record = {
+                'version_id': version.uuid,
+                'content_ref': version.content_ref,
+                'skill': dict(version.skill_json),
+                'manifest': version.manifest_json,
+            }
+            expected = self._artifact_resource_metadata(record, source.get('path'))
+            # MIME is persisted presentation metadata, not immutable byte identity.
+            # Replacement hosts may have different system MIME registries.
+            for key in ('content_ref', 'revision', 'path', 'digest', 'size'):
+                if source.get(key) != expected[key]:
+                    raise ValueError('Skill resource identity does not match its publication')
+            if expected['size'] > max_bytes:
+                raise ValueError('Skill resource exceeds the requested read limit')
+            await self.content._validate(context)
+            row = await self.content._row(uow, context.workspace_uuid, record['content_ref'])
+        # The Artifact read lease protects this package during object-store IO.
+        archive = bytes(await self.content._read(row, MAX_PUBLICATION_BYTES))
+        _, _, value = await run_blocking_atomic(
+            SkillStore._publication_resource,
+            record['skill'],
+            record['manifest'],
+            archive,
+            expected['path'],
+            expected['revision'],
+        )
+        if value is None or len(value) != expected['size'] or hashlib.sha256(value).hexdigest() != expected['digest']:
+            raise ValueError('Skill resource content does not match its publication')
+        return value
 
     async def _archive(self, context, record: dict) -> bytes:
         return await self.content.get(context, record['content_ref'], max_bytes=MAX_PUBLICATION_BYTES)

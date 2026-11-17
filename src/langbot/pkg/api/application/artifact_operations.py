@@ -18,6 +18,13 @@ class ArtifactCreate(Input):
     ttl_seconds: int = Field(default=DEFAULT_TTL_SECONDS, ge=1, le=MAX_TTL_SECONDS)
 
 
+class SkillResourceArtifactCreate(Input):
+    skill_name: str = Field(min_length=1, max_length=64)
+    revision: str = Field(min_length=1, max_length=71)
+    path: str = Field(min_length=1, max_length=1024)
+    ttl_seconds: int = Field(default=DEFAULT_TTL_SECONDS, ge=1, le=MAX_TTL_SECONDS)
+
+
 class ArtifactID(Input):
     artifact_id: str = Field(min_length=1, max_length=64)
 
@@ -57,6 +64,10 @@ async def publication_disable(ap, context, payload):
 
 async def create(ap, context, payload):
     return await ap.artifact_service.create(context, **payload.model_dump())
+
+
+async def create_skill_resource(ap, context, payload):
+    return await ap.artifact_service.create_skill_resource(context, **payload.model_dump())
 
 
 async def get(ap, context, payload):
@@ -109,6 +120,15 @@ def operations():
             principals=principals,
         ),
         Operation('artifact.create', manage, create, ArtifactCreate, dict, True, principals=principals),
+        Operation(
+            'artifact.skill_resource.create',
+            manage,
+            create_skill_resource,
+            SkillResourceArtifactCreate,
+            dict,
+            True,
+            principals=principals,
+        ),
         Operation('artifact.get', view, get, ArtifactID, dict, principals=principals),
         Operation('artifact.read', view, read, ArtifactRead, dict, principals=principals),
         Operation('artifact.read_content', view, read_content, ArtifactContent, list[dict], principals=principals),

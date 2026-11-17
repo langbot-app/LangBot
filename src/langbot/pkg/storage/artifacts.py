@@ -6,15 +6,18 @@ import datetime as dt
 import asyncio
 from dataclasses import replace
 import hashlib
+import json
+import posixpath
 import re
 import uuid
 
 import sqlalchemy as sa
 
-from ..api.authz import Permission, permissions_for_role, require_permission
+from ..api.authz import Permission, PermissionDeniedError, permissions_for_role, require_permission
 from ..api.context import ExecutionContext, PrincipalType, RequestContext
 from ..entity.persistence.artifact import Artifact, ArtifactReference
 from ..entity.persistence.content import ContentObject
+from ..entity.persistence.skill import SkillVersion
 from ..entity.persistence.agent_run import AgentRun
 from ..entity.persistence.apikey import ApiKey
 
@@ -156,7 +159,7 @@ class ArtifactService:
         )
 
     async def _origin_is_active(self, uow, row):
-        return row['owner_type'] == 'run_output' and bool(
+        return row['owner_type'] in {'run_output', 'run_skill'} and bool(
             await uow.session.scalar(
                 sa.select(self._live_run(row['workspace_uuid'], row['owner_id'])),
             )
@@ -208,6 +211,18 @@ class ArtifactService:
         row = (await uow.execute(sa.select(Artifact.__table__).where(*conditions))).mappings().first()
         if row is None or (live and row['deleted_at'] is not None):
             raise FileNotFoundError('Resource not found')
+        if live and row['owner_type'] == 'run_skill':
+            version = (
+                await uow.execute(
+                    sa.select(SkillVersion.name).where(
+                        SkillVersion.uuid == row['source_version_id'],
+                        SkillVersion.workspace_uuid == context.workspace_uuid,
+                    )
+                )
+            ).first()
+            if version is None:
+                raise FileNotFoundError('Resource not found')
+            await self._require_skill_run(uow, context, version.name, row['source_revision'])
         run_active = run_read and await self._origin_is_active(uow, row)
         if live and run_read and not run_active:
             raise ArtifactError('artifact_run_not_active', 'Artifact access requires an active run lease', 403)
@@ -232,7 +247,11 @@ class ArtifactService:
             'mime_type': row['mime_type'],
             'size': row['size'],
             'digest': row['digest'],
-            'source': {'run': 'input_attachment', 'run_output': 'tool_output'}.get(row['owner_type'], 'upload'),
+            'source': (
+                'skill_resource'
+                if row['source_version_id']
+                else {'run': 'input_attachment', 'run_output': 'tool_output'}.get(row['owner_type'], 'upload')
+            ),
             'lifecycle': 'persistent' if row['expires_at'] is None else 'temporary',
             'created_at': timestamp(row['created_at']),
             'expires_at': timestamp(row['expires_at']),
@@ -248,6 +267,113 @@ class ArtifactService:
     ) -> dict:
         owner = await self._authorize(context, write=True)
         return await self._create_owned(context, owner, filename, content, mime_type, ttl_seconds)
+
+    async def create_skill_resource(
+        self,
+        context,
+        skill_name: str,
+        revision: str,
+        path: str,
+        ttl_seconds: int = DEFAULT_TTL_SECONDS,
+    ) -> dict:
+        """Register a caller-private reference, never upload or copy package bytes."""
+        owner = await self._authorize(context, write=True)
+        require_permission(context, Permission.RESOURCE_VIEW)
+        if type(ttl_seconds) is not int or not 1 <= ttl_seconds <= MAX_TTL_SECONDS:
+            raise ValueError('Artifact TTL must be between 1 and 604800 seconds')
+        source = await self.ap.skill_repository.resolve_artifact_resource(
+            context,
+            skill_name,
+            path,
+            expected_revision=revision,
+        )
+        return await self._create_skill_resource_owned(context, owner, source, ttl_seconds)
+
+    @staticmethod
+    def _skill_source(row):
+        return {
+            'version_id': row['source_version_id'],
+            'revision': row['source_revision'],
+            'path': row['source_path'],
+            'content_ref': row['content_ref'],
+            'digest': row['digest'],
+            'size': row['size'],
+            'mime_type': row['mime_type'],
+            'name': row['name'],
+        }
+
+    async def _create_skill_resource_owned(self, context, owner, source, ttl_seconds=DEFAULT_TTL_SECONDS):
+        identity = '\0'.join((context.workspace_uuid, *owner, source['version_id'], source['path']))
+        artifact_id = 'art_' + hashlib.sha256(identity.encode()).hexdigest()[:32]
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            # Serialize registration against version deletion before creating the FK pin.
+            scope = (
+                SkillVersion.uuid == source['version_id'],
+                SkillVersion.workspace_uuid == context.workspace_uuid,
+                SkillVersion.instance_uuid == context.instance_uuid,
+                SkillVersion.content_ref == source['content_ref'],
+                SkillVersion.revision == source['revision'],
+            )
+            changed = await uow.execute(sa.update(SkillVersion).where(*scope).values(uuid=SkillVersion.uuid))
+            if not changed.rowcount:
+                raise FileNotFoundError('Resource not found')
+            if owner[0] == 'run_skill':
+                await self._require_skill_run(uow, context, source['name'], source['revision'])
+            existing = (await uow.execute(sa.select(Artifact.id).where(*self._scope(context, artifact_id)))).first()
+            if existing is None:
+                await uow.execute(
+                    sa.insert(Artifact).values(
+                        id=artifact_id,
+                        workspace_uuid=context.workspace_uuid,
+                        owner_type=owner[0],
+                        owner_id=owner[1],
+                        name=posixpath.basename(source['path']),
+                        mime_type=source['mime_type'],
+                        size=source['size'],
+                        digest=source['digest'],
+                        content_ref=source['content_ref'],
+                        source_version_id=source['version_id'],
+                        source_revision=source['revision'],
+                        source_path=source['path'],
+                        expires_at=_now() + dt.timedelta(seconds=ttl_seconds),
+                    )
+                )
+            return self._public(await self._row(uow, context, artifact_id, owner))
+
+    async def _require_skill_run(self, uow, context, skill_name, revision):
+        run_id = self._run_owner(context)[1]
+        await self._require_run_lease(uow, context, run_id)
+        raw = (
+            await uow.execute(
+                sa.select(AgentRun.metadata_json).where(
+                    AgentRun.workspace_id == context.workspace_uuid,
+                    AgentRun.run_id == run_id,
+                )
+            )
+        ).scalar_one()
+        try:
+            pinned = json.loads(raw or '{}').get('activated_skills', {}).get(skill_name)
+        except (ValueError, AttributeError, TypeError):
+            pinned = None
+        if not revision or pinned != revision:
+            raise PermissionDeniedError('Permission denied')
+        return run_id
+
+    async def create_run_skill_resource(self, context, skill_name: str, revision: str, path: str):
+        run_id = await self._authorize_run(context)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            await self._require_skill_run(uow, context, skill_name, revision)
+        source = await self.ap.skill_repository.resolve_artifact_resource(
+            context,
+            skill_name,
+            path,
+            expected_revision=revision,
+        )
+        return await self._create_skill_resource_owned(context, ('run_skill', run_id), source)
+
+    async def read_run_skill_resource(self, context, artifact_id, *, max_bytes=MAX_ARTIFACT_BYTES):
+        run_id = await self._authorize_run(context)
+        return await self._read_owned(context, ('run_skill', run_id), artifact_id, max_bytes, run_read=True)
 
     @staticmethod
     def _run_owner(context):
@@ -290,6 +416,8 @@ class ArtifactService:
             if not (await uow.execute(sa.select(self._live_run(run_context.workspace_uuid, run_id)))).scalar_one():
                 raise PermissionError('Input binding requires an active run lease')
             for row in rows:
+                if row['source_version_id'] is not None:
+                    raise PermissionDeniedError('Permission denied')
                 pin = dict(
                     workspace_uuid=run_context.workspace_uuid,
                     artifact_id=row['id'],
@@ -542,7 +670,14 @@ class ArtifactService:
         # A committed, bounded lease protects bytes without holding a DB writer during object-store I/O.
         try:
             async with asyncio.timeout_at(deadline):
-                value = await self.content._read(content_row, max_bytes)
+                if row['source_version_id'] is not None:
+                    value = await self.ap.skill_repository.read_artifact_resource(
+                        context,
+                        self._skill_source(row),
+                        max_bytes=max_bytes,
+                    )
+                else:
+                    value = await self.content._read(content_row, max_bytes)
             if len(value) != row['size'] or hashlib.sha256(value).hexdigest() != row['digest']:
                 raise ArtifactError('artifact_integrity_failed', 'Artifact content failed integrity verification', 422)
             return {'metadata': self._public(row), 'content': value}
@@ -675,7 +810,7 @@ class ArtifactService:
                             sa.or_(Artifact.deleted_at.is_not(None), Artifact.expires_at <= _now()),
                             sa.not_(
                                 sa.and_(
-                                    Artifact.owner_type == 'run_output',
+                                    Artifact.owner_type.in_(['run_output', 'run_skill']),
                                     self._live_run(Artifact.workspace_uuid, Artifact.owner_id),
                                 )
                             ),
@@ -718,6 +853,10 @@ class ArtifactService:
             except FileNotFoundError:
                 return False
             content = await self.content._row(uow, context.workspace_uuid, row['content_ref'])
+            if row['source_version_id'] is not None:
+                # The package belongs to SkillVersion. Dropping our FK pin must never delete it.
+                await uow.execute(sa.delete(Artifact).where(*self._scope(context, artifact_id)))
+                return True
             if content['owner_type'] != 'artifact' or content['owner'] != artifact_id:
                 raise RuntimeError('Artifact cannot collect content owned by another business')
             # Check FK protection before external deletion; rollback restores only the committed tombstone.
