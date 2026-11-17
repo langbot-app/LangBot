@@ -7,6 +7,7 @@ import re
 import pytest
 
 from langbot.pkg.api.application.contracts import Operation
+from langbot.pkg.api.application.artifact_operations import operations as artifact_operations
 from langbot.pkg.api.application.operation_docs import DOMAINS, OPERATION_DOCS, OperationDoc, get_operation_doc
 from langbot.pkg.api.application.service_operations import operations as service_operations
 from langbot.pkg.api.application.auxiliary import operations as auxiliary_operations
@@ -26,6 +27,7 @@ def all_application_operations() -> list[Operation]:
         *platform_operations(),
         *connection_operations(),
         *workspace_streams(),
+        *artifact_operations(),
     ]
 
 
@@ -61,14 +63,15 @@ def in_scope_operation_ids(operations_by_id: dict[str, Operation]) -> set[str]:
             or op_id.startswith('model.')
             or op_id.startswith('provider.')
             or op_id.startswith('requester.')
+            or op_id.startswith('artifact.')
         ):
             in_scope.add(op_id)
     return in_scope
 
 
 def test_in_scope_operations_coverage(in_scope_operation_ids: set[str], operations_by_id: dict[str, Operation]):
-    assert len(in_scope_operation_ids) == 170
-    assert len(OPERATION_DOCS) == 170
+    assert len(in_scope_operation_ids) == 180
+    assert len(OPERATION_DOCS) == 180
 
     # Check all in-scope operations are documented
     missing = in_scope_operation_ids - set(OPERATION_DOCS.keys())
@@ -135,6 +138,7 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
             or op_id.startswith('workspace.member.')
             or op_id.startswith('workspace.invitation.')
             or op_id.startswith('provider.codex.')
+            or op_id.startswith('artifact.')
         ):
             assert doc.exposure == 'none', f"Operation {op_id} must have exposure='none'"
 
@@ -237,7 +241,7 @@ def test_referenced_operation_ids_exist(
     all_application_operations: list[Operation], operations_by_id: dict[str, Operation]
 ):
     catalog_op_ids = set(operations_by_id.keys())
-    assert len(catalog_op_ids) == 242
+    assert len(catalog_op_ids) == 252
 
     # 1. Parameter descriptions in input schema
     param_references: list[tuple[str, str]] = []

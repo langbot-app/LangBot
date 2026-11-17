@@ -16,6 +16,10 @@ from .provider import HARD_MAX_STORAGE_OBJECT_BYTES, normalize_read_limit
 from .providers.s3storage import S3StorageProvider
 
 
+class ContentIntegrityError(ValueError):
+    """Persisted bytes no longer match their immutable metadata."""
+
+
 class ContentStore:
     def __init__(self, ap):
         self.ap = ap
@@ -201,7 +205,7 @@ class ContentStore:
         if metadata['size'] > normalize_read_limit(max_bytes):
             raise ValueError('Content exceeds the read size limit')
         if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:
-            raise ValueError('Persisted content failed digest verification')
+            raise ContentIntegrityError('Persisted content failed digest verification')
         return value
 
     async def get(self, context, ref, *, max_bytes=HARD_MAX_STORAGE_OBJECT_BYTES):

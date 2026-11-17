@@ -167,6 +167,12 @@ class BuildAppStage(stage.BootingStage):
         ap.storage_mgr = storage_mgr_inst
         await storage_mgr_inst.initialize()
 
+        from ...storage.artifacts import ArtifactService
+        from ...storage.artifact_publication import ArtifactPublicationService
+
+        ap.artifact_service = ArtifactService(ap)
+        ap.artifact_publication_service = ArtifactPublicationService(ap)
+
         persistence_mgr_inst = persistencemgr.PersistenceManager(
             ap,
             mode=persistencemgr.PersistenceMode(deployment.persistence_mode),

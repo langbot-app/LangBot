@@ -13,6 +13,9 @@ The flow has three steps:
 
 Declaring a permission does not grant it. Only a member's confirmation does.
 
+
+`artifact.*`, including `artifact.publication.*`, is not a plugin grant: these operations accept accounts and API keys only. They cannot be requested individually or through a wildcard. Publishing a run output requires a recipient policy configured by that authenticated principal in addition to the Runner's frozen Box grant.
+
 ## Declare permissions
 
 Permissions belong to the plugin as a whole, so they live under the plugin-level `spec` in `manifest.yaml`, not inside a component. The same grants apply to every component of the plugin: commands, event listeners, tools, knowledge engines, parsers and Runners.

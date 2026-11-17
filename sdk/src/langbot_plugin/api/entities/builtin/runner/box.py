@@ -31,6 +31,11 @@ class BoxFile(pydantic.BaseModel):
     size: int
     path: str | None = None
     warning: str | None = None
+    artifact_id: str | None = None
+    mime_type: str | None = None
+    digest: str | None = None
+    lifecycle: str | None = None
+    expires_at: str | None = None
 
 
 class BoxAcquireRequest(pydantic.BaseModel):

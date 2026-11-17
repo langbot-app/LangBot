@@ -314,7 +314,7 @@ def test_context_builder_renders_message_chain_without_preprocessing():
 
     input_data = QueryEntryAdapter._build_input(query)
 
-    assert [content.type for content in input_data.contents] == ['text', 'image_base64']
+    assert [content.type for content in input_data.contents] == ['text']
     assert input_data.text == '[attachment att-1: image]'
     assert len(input_data.attachments) == 1
     assert input_data.attachments[0].type == 'image'
@@ -802,7 +802,9 @@ async def test_cancel_request_preserves_one_terminal_event(clean_agent_state, re
         ('run.cancelled', {'reason': 'stopped', 'cleanup_confirmed': True}, 'cancelled'),
     ],
 )
-async def test_terminal_is_persisted_before_runner_stream_cleanup(clean_agent_state, monkeypatch, result_type, data, status):
+async def test_terminal_is_persisted_before_runner_stream_cleanup(
+    clean_agent_state, monkeypatch, result_type, data, status
+):
     """Transport cleanup must not hold a validated terminal run open."""
     cleanup_started = asyncio.Event()
     release_cleanup = asyncio.Event()
@@ -2115,8 +2117,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert len(event_logs) >= 1
         # First event should be the incoming message.received
         assert event_logs[0]['event_type'] == 'message.received'
-        assert event_logs[0]['input_json']['contents'][1]['image_base64'] is None
-        assert event_logs[0]['input_json']['contents'][1]['content_redacted'] is True
+        assert event_logs[0]['input_json']['contents'][1]['type'] == 'text'
+        assert event_logs[0]['input_json']['contents'][1]['text'] == '[attachment att-2: image]'
         assert 'aGVsbG8=' not in str(event_logs[0]['input_json'])
         assert 'Pinned documentation' not in str(event_logs[0]['input_json'])
 
@@ -2133,7 +2135,8 @@ class TestQueryEntryAdapterHostCapabilities:
         assert 'user' in roles
         assert 'assistant' in roles
         user_item = next(t for t in transcripts if t['role'] == 'user')
-        assert user_item['content_json']['content'][1]['image_base64'] is None
+        assert user_item['content_json']['content'][1]['type'] == 'text'
+        assert user_item['content_json']['content'][1]['text'] == '[attachment att-2: image]'
         assert user_item['attachment_refs'][0]['content'] is None
         assert 'aGVsbG8=' not in str(user_item)
         assert 'Pinned documentation' not in str(user_item)
@@ -2272,3 +2275,70 @@ async def test_event_without_query_identity_gets_a_task_scoped_identity(clean_ag
     assert all(item.query_uuid for item in contexts)
     assert contexts[0].query_uuid != contexts[1].query_uuid
     assert context.query_uuid is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('runner_failure', [False, True])
+async def test_repeated_cancel_during_box_cleanup_expires_outputs_and_unregisters(clean_agent_state, runner_failure):
+    from langbot.pkg.box.runner import RunBoxBinding
+
+    query = make_query()
+    cleanup_entered = asyncio.Event()
+    cleanup_release = asyncio.Event()
+    expired = []
+
+    class OutputConnector(FakePluginConnector):
+        async def run_runner(self, **kwargs):
+            self.contexts.append(kwargs['context'])
+            run_id = kwargs['context']['run_id']
+            object.__setattr__(query, '_box_binding', RunBoxBinding(run_id, 'cleanup-box', {}, run_id))
+            if runner_failure:
+                raise RuntimeError('original runner failure')
+            yield {
+                'type': 'run.completed',
+                'data': {'finish_reason': 'stop', 'message': {'role': 'assistant', 'content': 'done'}},
+            }
+
+    connector = OutputConnector()
+    application = FakeApplication(connector, clean_agent_state)
+
+    async def delayed_cleanup(execution_query):
+        assert execution_query is query
+        cleanup_entered.set()
+        await cleanup_release.wait()
+
+    async def expire_outputs(context):
+        expired.append(context.trigger_principal.run_id)
+        return 0
+
+    application.box_service.cleanup_run_files = delayed_cleanup
+    application.artifact_service = types.SimpleNamespace(expire_run_outputs=expire_outputs)
+    orchestrator = AgentRunOrchestrator(application, FakeRegistry(make_descriptor()))
+
+    async def consume():
+        return [result async for result in orchestrator.run_from_query(query)]
+
+    task = asyncio.create_task(consume())
+    try:
+        await asyncio.wait_for(cleanup_entered.wait(), timeout=2)
+        task.cancel('first cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        task.cancel('second cancellation during Box cleanup')
+        await asyncio.sleep(0)
+        assert not task.done()
+        cleanup_release.set()
+        if runner_failure:
+            with pytest.raises(RunnerExecutionError, match='original runner failure'):
+                await asyncio.wait_for(task, timeout=2)
+        else:
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(task, timeout=2)
+    finally:
+        cleanup_release.set()
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+    run_id = connector.contexts[0]['run_id']
+    assert expired == [run_id]
+    assert not hasattr(query, '_box_binding')
+    assert await get_session_registry().get(run_id) is None
