@@ -84,7 +84,9 @@ async def protocol_stack(tmp_path, monkeypatch, profile='oss_dev', binding=LEGAC
     stored.write_bytes(PAYLOAD)
     storage_calls = []
 
-    async def get_file_stream(execution_context, storage_path):
+    async def get_file_stream(execution_context, storage_path, *, plugin_id=None):
+        # Direct engine requests carry identity; legacy parser reads remain internal.
+        assert plugin_id in {None, 'tester/engine'}
         storage_calls.append((execution_context, storage_path))
         assert execution_context.workspace_uuid == BINDING.workspace_uuid
         assert storage_path == 'knowledge/original.bin'

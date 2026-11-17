@@ -488,3 +488,7 @@ After creation, execute the command `lbp run` in the plugin directory to start d
 3. Select the Knowledge Engine provided by your plugin and fill in the configuration based on the engine's `creation_schema`
 4. After creation, upload documents to test ingestion capabilities (if the engine declares `DOC_INGESTION` capability)
 5. Bind the knowledge base to a pipeline and test retrieval capabilities
+
+## Artifact-backed ingestion compatibility
+
+The existing ingestion callback and `get_knowledge_file_stream(context.file_object.storage_path)` call also handle Artifact-backed knowledge files. Treat `storage_path` as opaque: `artifact:<knowledge_file_uuid>` identifies a Core-managed business reference, not a local path or a transferable permission. Core authorizes the installed engine for that knowledge base before returning bounded bytes. Do not replace this call with direct storage access. Existing uploads and `file_id` consumers keep their existing interface. See [Artifact imports](/en/develop/artifacts#knowledge-base-artifact-imports) for import and deletion semantics.

@@ -226,11 +226,17 @@ async def test_http_send_without_sync_waiter_preserves_callback_delivery():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('text_api', ['send', 'reply', 'chunk'])
-async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api, artifact_store):
+@pytest.mark.parametrize(
+    ('text_api', 'completion'),
+    [('send', 'timely'), ('reply', 'timely'), ('chunk', 'timely')]
+    + [('send', case) for case in ('before_deadline', 'after_deadline', 'cancelled', 'export_failed')],
+)
+async def test_sync_waits_for_authorized_exported_file_after_final_text(
+    text_api, completion, artifact_store, monkeypatch
+):
     adapter = discovered_adapter()
-    adapter.config['callback_timeout'] = 5
-    adapter._enqueue_callback = AsyncMock()
+    adapter._enqueue_callback = AsyncMock(wraps=adapter._enqueue_callback)
+    adapter._deliver_callback = AsyncMock()
     bot = object.__new__(RuntimeBot)
     bot.bot_entity = SimpleNamespace(uuid='http-test-bot')
     inbound, session_id, _, message_id = adapter._build_event(
@@ -240,17 +246,43 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
     export_allowed = asyncio.Event()
     content = b'generated file bytes'
 
-    # Provision the real store before starting the HTTP timeout; only delivery belongs in the measured turn.
+    # Database/schema setup is not part of the HTTP delivery timing contract.
     context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
     app = SimpleNamespace(
         platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
     )
     await artifact_store(app, context)
     await seed_run(app, context, 'generated-run')
-    query = SimpleNamespace(
-        _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
-        _execution_context=context,
-    )
+    export_started = asyncio.Event()
+    file_delivered = asyncio.Event()
+    export_failed = asyncio.Event()
+
+    deadline = asyncio.Event()
+    deadline_waiting = asyncio.Event()
+    if completion == 'before_deadline':
+        original_wait_for = asyncio.wait_for
+
+        async def controlled_deadline(awaitable, timeout):
+            # Control completion-before-expiry ordering without making database
+            # speed a correctness requirement. Other waits retain real watchdogs.
+            if getattr(getattr(awaitable, 'cr_code', None), 'co_name', None) != 'wait_for_turn':
+                return await original_wait_for(awaitable, timeout)
+            assert timeout == 4
+            turn = asyncio.create_task(awaitable)
+            expiry = asyncio.create_task(deadline.wait())
+            deadline_waiting.set()
+            try:
+                done, _ = await asyncio.wait((turn, expiry), return_when=asyncio.FIRST_COMPLETED)
+                if turn in done:
+                    return await turn
+                raise asyncio.TimeoutError
+            finally:
+                for task in (turn, expiry):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(turn, expiry, return_exceptions=True)
+
+        monkeypatch.setattr(asyncio, 'wait_for', controlled_deadline)
 
     async def listener(event, live_adapter):
         text = message.MessageChain([message.Plain(text=content.decode())])
@@ -271,6 +303,10 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                 'platform_context': freeze_platform_context(agent_event),
             }
         }
+        query = SimpleNamespace(
+            _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
+            _execution_context=context,
+        )
         box = SimpleNamespace(
             ap=app,
             _ATTACHMENT_MAX_FILES=10,
@@ -286,7 +322,16 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
             ),
         )
         paths = ['/workspace/generated-proof.txt']
-        exported = await RunnerBoxService(box).export_files(query, paths)
+        export_started.set()
+        if completion == 'export_failed':
+            box.collect_selected_files.side_effect = RuntimeError('private export failure')
+        try:
+            exported = await RunnerBoxService(box).export_files(query, paths)
+        except RuntimeError as error:
+            box.collect_selected_files.assert_awaited_once_with(query, paths)
+            assert str(error) == 'private export failure'
+            export_failed.set()
+            raise
         box.collect_selected_files.assert_awaited_once_with(query, paths)
         file_ids = [item['id'] for item in exported['items']]
 
@@ -306,38 +351,91 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                 return {'result': result}
 
         await FileReplyAPI().reply_files(file_ids)
+        file_delivered.set()
 
     web = quart.Quart(__name__)
     async with web.app_context():
         request_task = asyncio.create_task(adapter._run_sync(inbound, listener, session_id, message_id))
         try:
-            await asyncio.wait_for(text_sent.wait(), timeout=5)
-            done, _ = await asyncio.wait({request_task}, timeout=0.03)
-            assert not done, 'A final text send must not close the active Agent collector'
+            await asyncio.wait_for(text_sent.wait(), timeout=10)
+            # The listener is blocked on an explicit export gate, not an arbitrary
+            # sleep. Let the collector process the final text before inspecting it.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert not request_task.done(), 'Final text must not close the active Agent collector'
+            assert not export_started.is_set()
+            assert session_id in adapter.sync_waiters
             assert adapter.sync_waiters[session_id].done.is_set()
-            export_allowed.set()
-            # Bound a hung test, but let the adapter own its shorter request timeout.
-            response, status = await asyncio.wait_for(request_task, timeout=25)
+            listener_tasks = tuple(adapter.inbound_tasks)
+            assert listener_tasks and all(not task.done() for task in listener_tasks)
+
+            if completion == 'cancelled':
+                request_task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await request_task
+            elif completion == 'after_deadline':
+                # Keep the export gate closed beyond the real four-second
+                # application deadline. The HTTP response contains only text.
+                response, status = await asyncio.wait_for(request_task, timeout=10)
+                assert status == 200
+                assert (await response.get_json())['data']['message'] == [{'type': 'Plain', 'text': content.decode()}]
+                adapter.logger.warning.assert_awaited_once()
+            elif completion == 'before_deadline':
+                await asyncio.wait_for(deadline_waiting.wait(), timeout=10)
+                assert not request_task.done()
+
+            if completion in ('cancelled', 'after_deadline'):
+                assert adapter.sync_waiters == {}
+                assert all(not task.done() for task in listener_tasks)
+                export_allowed.set()
+                await asyncio.wait_for(asyncio.gather(*listener_tasks), timeout=10)
+                assert file_delivered.is_set()
+                adapter._enqueue_callback.assert_awaited_once()
+                await asyncio.wait_for(adapter.outbound_states[session_id].queue.join(), timeout=10)
+                adapter._deliver_callback.assert_awaited_once()
+                delivered = adapter._deliver_callback.await_args.args[0]['message'][0]
+            else:
+                export_allowed.set()
+                if completion == 'before_deadline':
+                    # Let the listener finish, then fire expiry while the HTTP
+                    # request is still allowed to finish collecting its result.
+                    await asyncio.wait_for(asyncio.gather(*listener_tasks), timeout=10)
+                    deadline.set()
+                response, status = await asyncio.wait_for(request_task, timeout=10)
+                assert status == 200
+                payload = (await response.get_json())['data']
+                assert payload['reply_to'] == message_id
+                assert payload['message'][0] == {'type': 'Plain', 'text': content.decode()}
+                adapter._enqueue_callback.assert_not_awaited()
+                if completion == 'export_failed':
+                    assert export_started.is_set()
+                    assert export_failed.is_set()
+                    assert not file_delivered.is_set()
+                    assert len(payload['message']) == 1
+                    assert 'private export failure' not in (await response.get_data()).decode()
+                    adapter.logger.warning.assert_awaited_once()
+                else:
+                    assert file_delivered.is_set()
+                    assert len(payload['message']) == 2, adapter.logger.mock_calls
+                    delivered = payload['message'][1]
+            if completion != 'export_failed':
+                assert delivered['type'] == 'File'
+                assert delivered['name'] == 'generated-proof.txt'
+                assert base64.b64decode(delivered['base64'], validate=True) == content
+            assert adapter.sync_waiters == {}
+            if completion not in ('cancelled', 'after_deadline'):
+                assert adapter.outbound_states == {}
+            assert not adapter.inbound_tasks
         finally:
-            # The adapter shields the listener. Drain both even on an assertion or timeout.
-            export_allowed.set()
-            pending = {request_task, *adapter.inbound_tasks}
-            for task in pending:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)
-        assert status == 200
-        payload = (await response.get_json())['data']
-    assert payload['reply_to'] == message_id
-    assert len(payload['message']) == 2, adapter.logger.mock_calls
-    assert payload['message'][0] == {'type': 'Plain', 'text': content.decode()}
-    delivered = payload['message'][1]
-    assert delivered['type'] == 'File'
-    assert delivered['name'] == 'generated-proof.txt'
-    assert base64.b64decode(delivered['base64'], validate=True) == content
-    adapter._enqueue_callback.assert_not_awaited()
+            # _run_sync deliberately shields the listener on disconnect. Drain
+            # it before the database fixture is torn down, even on assertion failure.
+            request_task.cancel()
+            await asyncio.gather(request_task, return_exceptions=True)
+            await adapter.kill()
+
     assert adapter.sync_waiters == {}
     assert adapter.outbound_states == {}
+    assert not adapter.inbound_tasks
 
 
 @pytest.mark.asyncio

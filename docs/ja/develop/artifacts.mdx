@@ -50,7 +50,7 @@ Artifact の削除は、配信済みのプラットフォームファイルや�
 
 組み込み `/mcp` サーバーは、同じ所有者と権限のチェックを適用する `create_artifact`、`get_artifact`、`read_artifact`、`retain_artifact`、`release_artifact`、`delete_artifact` を提供します。作成には `filename`、`content_base64`、任意の `mime_type` と `ttl_seconds` を渡します。読み取りには `artifact_id` と任意の `max_bytes` を渡し、base64 とメタデータを受け取ります。
 
-`read_artifact` は元のバイト列を転送します。アカウント所有の管理操作は、引き続きプラグインの Workspace 権限、型付きメソッド、既定のモデルツール、`lbctl` からは利用できません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。
+`read_artifact` は元のバイト列を転送します。プラグイン許可や型付きメソッドはアカウント所有ファイルへのアクセスを許可しません。インストール所有の Artifact 操作は後述します。アカウント管理は既定モデルツールや `lbctl` に追加されません。既存のアップロード API と run の `file_id` API は従来の契約を維持します。
 
 `read_artifact_content` は HTTP `/read` と同じパラメーターを受け付け、通常のテキストに base64 を入れず、MCP のテキスト、画像、埋め込み PDF を返します。Workspace 操作は `artifact.read_content` です。
 
@@ -97,3 +97,30 @@ commit 後は、受取人が `artifact_id` を使って既存のメタデータ�
 実行の完了、失敗、キャンセル時に、Host は時間制限付きのクリーンアップで未公開の出力を期限切れにし、保守処理の回収対象にします。Core のクラッシュ、クリーンアップの失敗やタイムアウト時も、元の 24 時間の有効期限が適用されます。
 
 `ctx.reply_files` と Pipeline の添付返信は、既存のプラットフォーム配信経路で Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP ダウンロード API は追加しません。詳細は [Runner API](/ja/plugin/dev/apis/agent-run#box-と添付ファイル) を参照してください。
+
+## ナレッジベースへの Artifact 取り込み
+
+所有する既存 Artifact を再アップロードせずに索引化するには、`knowledge.file.store_artifact` に `kb_uuid`、`artifact_id`、任意の `parser_plugin_id` を渡します。または `POST /api/v1/knowledge/bases/{kb_uuid}/files/artifact` に後者二つを JSON で送信します。`resource.view` と `resource.manage` の両方が必要です。MCP の `add_knowledge_file_artifact` も同じ引数を使用します。応答は既存の索引タスクの `task_id` 契約を維持します。従来のアップロードと `file_id` による取り込みも引き続き利用できます。
+
+このアカウント/API キー用の入口は永続的なナレッジファイルの業務参照を作成します。Artifact ID を知るだけでは認可されません。この経路では Skill パッケージ由来と run 所有のソースを受け付けません。ナレッジファイルやベースの削除は自身の業務参照だけを解除し、他の消費者の参照や共有バイトを削除しません。有効な業務参照がある間は Artifact の削除を拒否します。
+
+KnowledgeEngine プラグインは引き続き `get_knowledge_file_stream` で `context.file_object.storage_path` を読み取ります。Artifact 取り込み時、この値は不透明な `artifact:<knowledge_file_uuid>` トークンであり、ファイルシステムパス、URL、公開ダウンロードキーではありません。Core はインストールされた呼び出し元がそのベースに割り当てられたエンジンであることを確認し、共通 Artifact サービスから読み取ります。トークンをローカルで開いたり、別のインストールへの認可として渡したりしないでください。
+
+
+## プラグイン所有の Artifact
+
+プラグインは `artifact.create`、`artifact.get`、`artifact.read`、`artifact.read_content`、`artifact.retain`、`artifact.release`、`artifact.delete` を明示的に要求できます。必要な操作 ID を個別に列挙してください。`artifact.*` にはアカウント専用の公開・Skill ソース操作も含まれるため拒否されます。型付き呼び出しは `self.plugin.workspace.artifact.<method>(...)`、または run に結び付いた `ctx.api.workspace` プロキシを使用します。
+
+これらの Artifact はインストール UUID に属し、プラグインの作者/名前、アカウント、run には属しません。各操作は現在の有効なインストールと許可を再確認します。許可の取消後や新 UUID による再インストール後は古い資産にアクセスできません。ID の把握や保持はアクセス権の共有になりません。この経路でアカウントのアップロード、Skill ソース、run ハンドルを取り込むことはできません。`artifact.skill_resource.create` と `artifact.publication.get/set/disable` はアカウント/API キー専用です。[Artifact API](/ja/develop/artifacts) を参照してください。
+
+JSON RPC の作成には `filename`、`content_base64`、任意の `mime_type`、`ttl_seconds` を指定します。デコード後の入力は 256 KiB 以下です。プラグインの生バイト読み取りも 256 KiB が上限で、`metadata` と `content_base64` を返します。有界テキスト/構造化メディアには `read_content` を優先してください。この転送上限は既存の認証付き HTTP アップロード/ダウンロード契約を変更しません。保持/解放はそのインストールの pin のみに作用し、有効な業務参照がある間は削除を拒否します。
+
+## 従来のアップロードと共有保持
+
+`/api/v1/files/images` と `/api/v1/files/documents` は既存の `file_key`、`file_id` 応答を維持します。永続ストレージへの新しいアップロードは `artifact_id` も返します。従来のエイリアスと Artifact 参照は同じコンテンツオブジェクトを共有し、バイトを複製しません。エイリアスは独立した永続参照を持ち、エイリアスの削除はその参照だけを解放します。他の保持者には影響しません。非永続の従来ストレージは元のフィールドだけを返します。既存の不透明キーを移行したり Artifact ID として再解釈したりしません。
+
+永続ストレージへの従来のアップロードは、`storage.max_object_read_bytes` と Artifact のサイズ制限の小さい方を超えると、書き込み前に HTTP 413 を返します。255 文字を超える通常のファイル名も受け付けます。Artifact の表示名だけを短縮し、拡張子と MIME タイプを保持します。返される従来のハンドルと保存バイトは変わりません。
+
+ナレッジファイルへの取り込みはアカウント/API キー所有の通常アップロードに限定されます。公開済み run 出力と Skill パッケージソースは、元の権限を拡張しないよう除外します。ナレッジベース削除中は永続的な削除フェンスで新規ファイルの受け入れを止めます。失敗または結果不明時は保持参照と再試行可能なフェンスを残し、使用中かもしれないバイトを回収しません。
+
+ナレッジファイル一覧には `artifact_id`（従来ファイルは `null`）が追加されます。この変更でダイジェスト、サイズ、MIME フィールドは追加しません。上流のベース削除が失敗、キャンセル、結果不明になった場合は、Core 再起動後も明示的な削除操作を再試行できます。削除完了まではフェンスが新規取り込みを拒否します。実行中または未完了で中断された取り込みは、フェンス設置前に削除を阻止します。

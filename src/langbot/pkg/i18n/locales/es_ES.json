@@ -142,5 +142,8 @@
   "Artifact read timed out": "Se agotó el tiempo de lectura del artefacto",
   "Artifact has a different manager": "El artefacto tiene otro responsable",
   "Legacy output requires explicit manager assignment": "La salida heredada requiere asignar un responsable explícitamente",
-  "Artifact access requires an active run lease": "El acceso al artefacto requiere una concesión de ejecución activa"
+  "Artifact access requires an active run lease": "El acceso al artefacto requiere una concesión de ejecución activa",
+  "Artifact knowledge ingestion requires an account or API key": "La ingesta de conocimiento desde un Artifact requiere una cuenta o una clave API",
+  "Artifact ZIP ingestion is not supported; use the existing document upload entrypoint": "No se admite la ingesta de archivos ZIP desde Artifacts; utilice la opción existente de carga de documentos",
+  "Knowledge base deletion is pending; retry deletion before admitting new files": "La eliminación de la base de conocimiento está pendiente; vuelva a intentar eliminarla antes de añadir archivos nuevos"
 }

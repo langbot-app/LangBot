@@ -16,12 +16,16 @@ import sqlalchemy as sa
 from ..api.authz import Permission, PermissionDeniedError, permissions_for_role, require_permission
 from ..api.context import ExecutionContext, PrincipalType, RequestContext
 from ..entity.persistence.artifact import Artifact, ArtifactReference
-from ..entity.persistence.content import ContentObject
+from ..entity.persistence.content import ContentAlias, ContentObject
 from ..entity.persistence.skill import SkillVersion
+from ..entity.persistence.plugin import PluginSetting
 from ..entity.persistence.agent_run import AgentRun
 from ..entity.persistence.apikey import ApiKey
 
 MAX_ARTIFACT_BYTES = 10 * 1024 * 1024
+MAX_PLUGIN_ARTIFACT_BYTES = 256 * 1024
+# Leave transport envelope and authenticated routing metadata room below the 1 MiB frame limit.
+MAX_PLUGIN_CONTENT_RESPONSE_BYTES = 768 * 1024
 DEFAULT_TTL_SECONDS = 86400
 MAX_TTL_SECONDS = 7 * DEFAULT_TTL_SECONDS
 READ_LEASE_SECONDS = 120
@@ -47,7 +51,7 @@ class ArtifactService:
     def content(self):
         return self.ap.storage_mgr.content_store
 
-    async def _authorize(self, context, *, write=False):
+    async def _authorize(self, context, *, write=False, operation=None):
         if not isinstance(context, RequestContext):
             raise ArtifactError(
                 'artifact_principal_not_supported', 'Artifact operations require an account or API key', 403
@@ -58,12 +62,27 @@ class ArtifactService:
             owner_id = principal.account_uuid
         elif principal.principal_type == PrincipalType.API_KEY:
             owner_id = principal.api_key_uuid
+        elif principal.principal_type == PrincipalType.PLUGIN:
+            from ..api.application.plugin_permissions import load_installation, effective_grants
+
+            owner_id = principal.installation_uuid
+            if not owner_id or not operation or operation not in (context.allowed_operation_ids or ()):
+                raise PermissionDeniedError('Permission denied')
+            installation = await load_installation(self.ap, context.workspace_uuid, owner_id)
+            if (
+                not installation.enabled
+                or operation not in effective_grants(self.ap, installation)['workspace_operations']
+            ):
+                raise PermissionDeniedError('Permission denied')
         if not owner_id:
             raise ArtifactError(
                 'artifact_principal_not_supported', 'Artifact operations require an account or API key', 403
             )
         require_permission(context, Permission.RESOURCE_MANAGE if write else Permission.RESOURCE_VIEW)
         await self.content._validate(context)
+        if principal.principal_type == PrincipalType.PLUGIN and principal.run_id:
+            async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+                await self._require_run_lease(uow, context, principal.run_id)
         return principal.principal_type.value, owner_id
 
     async def resolve_manager_context(self, execution_context, manager_context: RequestContext) -> RequestContext:
@@ -177,6 +196,7 @@ class ArtifactService:
         public=False,
         run_read=False,
         bound_run=None,
+        business_holder=None,
     ):
         conditions = self._scope(context, artifact_id)
         if owner is not None:
@@ -202,6 +222,19 @@ class ArtifactService:
                         ArtifactReference.holder_type == 'run_input',
                         ArtifactReference.holder_id == bound_run,
                         self._live_run(context.workspace_uuid, bound_run),
+                    )
+                ),
+            )
+        if business_holder is not None:
+            holder_type, holder_id = business_holder
+            conditions += (
+                sa.exists(
+                    sa.select(ArtifactReference.artifact_id).where(
+                        ArtifactReference.workspace_uuid == context.workspace_uuid,
+                        ArtifactReference.artifact_id == artifact_id,
+                        ArtifactReference.holder_type == holder_type,
+                        ArtifactReference.holder_id == holder_id,
+                        ArtifactReference.expires_at.is_(None),
                     )
                 ),
             )
@@ -265,8 +298,82 @@ class ArtifactService:
         mime_type: str = 'application/octet-stream',
         ttl_seconds: int = DEFAULT_TTL_SECONDS,
     ) -> dict:
-        owner = await self._authorize(context, write=True)
+        owner = await self._authorize(context, write=True, operation='artifact.create')
+        if owner[0] == 'plugin' and isinstance(content, bytes) and len(content) > MAX_PLUGIN_ARTIFACT_BYTES:
+            raise ArtifactError('artifact_too_large', 'Artifact exceeds the size limit.', 413)
         return await self._create_owned(context, owner, filename, content, mime_type, ttl_seconds)
+
+    async def create_legacy_upload(
+        self,
+        context,
+        *,
+        owner_type,
+        owner,
+        key,
+        value,
+        filename=None,
+        mime_type='application/octet-stream',
+    ):
+        """Keep legacy scoped handles while persistent uploads share the Artifact byte owner."""
+        principal = await self._authorize(context, write=True)
+        expected_owner = ('account:' if principal[0] == 'account' else 'api-key:') + principal[1]
+        if owner_type not in {'upload_image', 'upload_document'} or owner != expected_owner:
+            raise PermissionDeniedError('Permission denied')
+        storage = self.ap.storage_mgr
+        if not storage.persistent_content:
+            file_key = await storage.save_scoped(
+                context,
+                owner_type=owner_type,
+                owner=owner,
+                key=key,
+                value=value,
+            )
+            return {'artifact': None, 'file_key': file_key}
+        # Legacy aliases are still read through StorageMgr's configured bound. Never persist
+        # a successful upload that its compatibility handle cannot subsequently read.
+        if isinstance(value, bytes) and len(value) > min(storage._object_read_limit(), MAX_ARTIFACT_BYTES):
+            raise ArtifactError('artifact_too_large', 'Artifact exceeds the size limit.', 413)
+        metadata_name = filename or key
+        if isinstance(metadata_name, str) and len(metadata_name) > 255:
+            # Legacy routes stored UUID keys and did not constrain display-name length.
+            # Preserve valid extensions/MIME without weakening ordinary Artifact validation.
+            if any(c in metadata_name for c in '/\\') or any(ord(c) < 32 or ord(c) == 127 for c in metadata_name):
+                raise ValueError('Invalid artifact filename')
+            # Routes already supply an opaque UUID key with the original extension.
+            metadata_name = key
+            if isinstance(metadata_name, str) and len(metadata_name) > 255:
+                # Legacy document extensions were unbounded too; MIME is stored separately.
+                metadata_name = 'upload-' + hashlib.sha256(metadata_name.encode('utf-8')).hexdigest()
+        file_key = storage.scoped_object_key(context, owner_type=owner_type, owner=owner, key=key)
+        if len(file_key) > 255:
+            raise ValueError('Invalid artifact reference')
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            metadata = await self._create_owned(
+                context,
+                principal,
+                metadata_name,
+                value,
+                mime_type,
+                DEFAULT_TTL_SECONDS,
+            )
+            row = await self._row(uow, context, metadata['id'], principal, lock=True)
+            await uow.execute(
+                sa.insert(ContentAlias).values(
+                    workspace_uuid=context.workspace_uuid,
+                    key=file_key,
+                    content_ref=row['content_ref'],
+                )
+            )
+            await uow.execute(
+                sa.insert(ArtifactReference).values(
+                    workspace_uuid=context.workspace_uuid,
+                    artifact_id=row['id'],
+                    holder_type='legacy_alias',
+                    holder_id=file_key,
+                )
+            )
+            await uow.execute(sa.update(Artifact).where(*self._scope(context, row['id'])).values(expires_at=None))
+            return {'artifact': self._public(await self._row(uow, context, row['id'], principal)), 'file_key': file_key}
 
     async def create_skill_resource(
         self,
@@ -641,16 +748,30 @@ class ArtifactService:
             return self._public(await self._row(uow, context, artifact_id, owner))
 
     async def get(self, context, artifact_id: str) -> dict:
-        owner = await self._authorize(context)
+        owner = await self._authorize(context, operation='artifact.get')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             return self._public(await self._row(uow, context, artifact_id, owner, public=True))
 
     async def read(self, context, artifact_id: str, max_bytes: int = MAX_ARTIFACT_BYTES) -> dict:
-        owner = await self._authorize(context)
-        return await self._read_owned(context, owner, artifact_id, max_bytes, public=True)
+        owner = await self._authorize(context, operation='artifact.read')
+        if owner[0] == 'plugin' and type(max_bytes) is int:
+            max_bytes = min(max_bytes, MAX_PLUGIN_ARTIFACT_BYTES)
+        result = await self._read_owned(context, owner, artifact_id, max_bytes, public=True)
+        if owner[0] == 'plugin':
+            await self._authorize(context, operation='artifact.read')
+        return result
 
     async def _read_owned(
-        self, context, owner, artifact_id, max_bytes, *, public=False, run_read=False, bound_run=None
+        self,
+        context,
+        owner,
+        artifact_id,
+        max_bytes,
+        *,
+        public=False,
+        run_read=False,
+        bound_run=None,
+        business_holder=None,
     ):
         from .content import ContentIntegrityError
 
@@ -662,8 +783,18 @@ class ArtifactService:
         lease_id = uuid.uuid4().hex
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             row = await self._row(
-                uow, context, artifact_id, owner, lock=True, public=public, run_read=run_read, bound_run=bound_run
+                uow,
+                context,
+                artifact_id,
+                owner,
+                lock=True,
+                public=public,
+                run_read=run_read,
+                bound_run=bound_run,
+                business_holder=business_holder,
             )
+            if business_holder is not None:
+                await self._require_business_file(uow, context, artifact_id, business_holder[1])
             if row['size'] > max_bytes:
                 raise ArtifactError('artifact_too_large', 'Artifact exceeds the read size limit', 413)
             content_row = await self.content._row(uow, context.workspace_uuid, row['content_ref'])
@@ -714,8 +845,108 @@ class ArtifactService:
     async def read_content(self, context, artifact_id, **options):
         from .artifact_reader import read_artifact_content
 
-        result = await self.read(context, artifact_id)
-        return await read_artifact_content(result['content'], result['metadata'], **options)
+        owner = await self._authorize(context, operation='artifact.read_content')
+        limit = MAX_PLUGIN_ARTIFACT_BYTES if owner[0] == 'plugin' else MAX_ARTIFACT_BYTES
+        result = await self._read_owned(context, owner, artifact_id, limit, public=True)
+        blocks = await read_artifact_content(result['content'], result['metadata'], **options)
+        if owner[0] == 'plugin' and len(json.dumps(blocks).encode('utf-8')) > MAX_PLUGIN_CONTENT_RESPONSE_BYTES:
+            raise ArtifactError('artifact_too_large', 'Artifact exceeds the read size limit', 413)
+        if owner[0] == 'plugin':
+            await self._authorize(context, operation='artifact.read_content')
+        return blocks
+
+    @staticmethod
+    def _business_holder(holder_type, holder_id):
+        # Internal KB adapter only; arbitrary caller-selected reference kinds are never accepted.
+        if holder_type != 'knowledge_file' or not isinstance(holder_id, str) or not 1 <= len(holder_id) <= 255:
+            raise ValueError('Invalid artifact reference')
+        return holder_type, holder_id
+
+    async def _require_business_file(self, uow, context, artifact_id, holder_id):
+        from ..entity.persistence.rag import File, KnowledgeBase
+
+        row = (
+            await uow.execute(
+                sa.select(File.uuid)
+                .join(
+                    KnowledgeBase,
+                    sa.and_(KnowledgeBase.uuid == File.kb_id, KnowledgeBase.workspace_uuid == File.workspace_uuid),
+                )
+                .where(
+                    File.workspace_uuid == context.workspace_uuid,
+                    File.uuid == holder_id,
+                    File.artifact_id == artifact_id,
+                )
+            )
+        ).first()
+        if row is None:
+            raise FileNotFoundError('Resource not found')
+
+    async def bind_business(self, context, artifact_id, *, holder_type='knowledge_file', holder_id):
+        """Pin an explicitly authorized source inside the KB file-creation transaction.
+
+        The KB service authorizes the destination before calling this internal seam.
+        A pin protects lifetime; only the KB read adapter can delegate access to its consumers.
+        """
+        self._business_holder(holder_type, holder_id)
+        owner = await self._authorize(context, write=True)
+        require_permission(context, Permission.RESOURCE_VIEW)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            row = await self._row(uow, context, artifact_id, owner, lock=True, public=True)
+            if row['source_version_id'] is not None or row['owner_type'] not in {'account', 'api_key'}:
+                raise PermissionDeniedError('Permission denied')
+            await self._require_business_file(uow, context, artifact_id, holder_id)
+            pin = dict(
+                workspace_uuid=context.workspace_uuid,
+                artifact_id=artifact_id,
+                holder_type=holder_type,
+                holder_id=holder_id,
+            )
+            if (await uow.execute(sa.select(ArtifactReference.artifact_id).filter_by(**pin))).first() is None:
+                await uow.execute(sa.insert(ArtifactReference).values(**pin))
+            await uow.execute(sa.update(Artifact).where(*self._scope(context, artifact_id)).values(expires_at=None))
+            return self._public(await self._row(uow, context, artifact_id, owner, public=True))
+
+    async def release_business(self, context, artifact_id, *, holder_type='knowledge_file', holder_id):
+        """Detach exactly one authorized KB holder in its deletion transaction, never delete bytes.
+
+        Only the trusted KB service may call this after destination authorization. File deletion
+        may already have happened in the same UoW, so the former File row is not required here.
+        """
+        self._business_holder(holder_type, holder_id)
+        await self.content._validate(context)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            await self._row(uow, context, artifact_id, lock=True, live=False)
+            removed = await uow.execute(
+                sa.delete(ArtifactReference).where(
+                    ArtifactReference.workspace_uuid == context.workspace_uuid,
+                    ArtifactReference.artifact_id == artifact_id,
+                    ArtifactReference.holder_type == holder_type,
+                    ArtifactReference.holder_id == holder_id,
+                )
+            )
+            if removed.rowcount and not await self._has_references(uow, context, artifact_id, durable_only=True):
+                await uow.execute(
+                    sa.update(Artifact)
+                    .where(*self._scope(context, artifact_id))
+                    .values(
+                        expires_at=_now() + dt.timedelta(seconds=DEFAULT_TTL_SECONDS),
+                    )
+                )
+
+    async def read_business(
+        self, context, artifact_id, *, holder_type='knowledge_file', holder_id, max_bytes=MAX_ARTIFACT_BYTES
+    ):
+        """Read after the KB service verifies its caller/engine ACL, not from an external ID alone."""
+        holder = self._business_holder(holder_type, holder_id)
+        await self.content._validate(context)
+        result = await self._read_owned(context, None, artifact_id, max_bytes, business_holder=holder)
+        # Deleting a KB membership while object-store IO is in flight revokes delivery too.
+        await self.content._validate(context)
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            await self._row(uow, context, artifact_id, business_holder=holder)
+            await self._require_business_file(uow, context, artifact_id, holder_id)
+        return result
 
     def _references(self, context, artifact_id, *, durable_only=False):
         return sa.select(ArtifactReference.artifact_id).where(
@@ -750,7 +981,7 @@ class ArtifactService:
         )
 
     async def retain(self, context, artifact_id: str) -> dict:
-        owner = await self._authorize(context, write=True)
+        owner = await self._authorize(context, write=True, operation='artifact.retain')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             await self._row(uow, context, artifact_id, owner, lock=True, public=True)
             pin = dict(
@@ -766,7 +997,7 @@ class ArtifactService:
             return self._public(await self._row(uow, context, artifact_id, owner, public=True))
 
     async def release(self, context, artifact_id: str) -> dict:
-        owner = await self._authorize(context, write=True)
+        owner = await self._authorize(context, write=True, operation='artifact.release')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             await self._row(uow, context, artifact_id, owner, lock=True, public=True)
             removed = await uow.execute(
@@ -788,13 +1019,80 @@ class ArtifactService:
             return self._public(await self._row(uow, context, artifact_id, owner, public=True))
 
     async def delete(self, context, artifact_id: str) -> dict:
-        owner = await self._authorize(context, write=True)
+        owner = await self._authorize(context, write=True, operation='artifact.delete')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             row = await self._row(uow, context, artifact_id, owner, lock=True, public=True)
             if await self._origin_is_active(uow, row) or await self._has_references(uow, context, artifact_id):
                 raise ArtifactError('artifact_in_use', 'Artifact is still in use', 409)
             await uow.execute(sa.update(Artifact).where(*self._scope(context, artifact_id)).values(deleted_at=_now()))
         return {'id': artifact_id, 'deleted': True}
+
+    async def _release_uninstalled_plugin_pins(self, context, limit):
+        """Bounded maintenance for principals that can never release their own pins again."""
+        installation_exists = sa.exists(
+            sa.select(PluginSetting.installation_uuid).where(
+                PluginSetting.workspace_uuid == context.workspace_uuid,
+                PluginSetting.installation_uuid == Artifact.owner_id,
+            )
+        )
+        own_pin = sa.exists(
+            sa.select(ArtifactReference.artifact_id).where(
+                ArtifactReference.workspace_uuid == context.workspace_uuid,
+                ArtifactReference.artifact_id == Artifact.id,
+                ArtifactReference.holder_type == 'principal',
+                ArtifactReference.holder_id == sa.literal('plugin:') + Artifact.owner_id,
+            )
+        )
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            ids = (
+                (
+                    await uow.execute(
+                        sa.select(Artifact.id)
+                        .where(
+                            Artifact.workspace_uuid == context.workspace_uuid,
+                            Artifact.owner_type == 'plugin',
+                            sa.not_(installation_exists),
+                            own_pin,
+                        )
+                        .order_by(Artifact.id)
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            for artifact_id in ids:
+                try:
+                    row = await self._row(uow, context, artifact_id, lock=True, live=False)
+                except FileNotFoundError:
+                    continue
+                # Disable/revoke is reversible and intentionally does not make assets collectible.
+                if (
+                    await uow.execute(
+                        sa.select(PluginSetting.installation_uuid).where(
+                            PluginSetting.workspace_uuid == context.workspace_uuid,
+                            PluginSetting.installation_uuid == row['owner_id'],
+                        )
+                    )
+                ).first() is not None:
+                    continue
+                await uow.execute(
+                    sa.delete(ArtifactReference).where(
+                        ArtifactReference.workspace_uuid == context.workspace_uuid,
+                        ArtifactReference.artifact_id == artifact_id,
+                        ArtifactReference.holder_type == 'principal',
+                        ArtifactReference.holder_id == 'plugin:' + row['owner_id'],
+                    )
+                )
+                if not await self._has_references(uow, context, artifact_id, durable_only=True):
+                    await uow.execute(
+                        sa.update(Artifact)
+                        .where(*self._scope(context, artifact_id))
+                        .values(
+                            expires_at=_now() + dt.timedelta(seconds=DEFAULT_TTL_SECONDS),
+                        )
+                    )
 
     async def collect_expired(self, context: ExecutionContext, *, limit: int = 100) -> int:
         if (
@@ -809,6 +1107,7 @@ class ArtifactService:
         # The tombstone must commit before deleting external bytes, even if a later transaction fails.
         if self.ap.persistence_mgr.current_session() is not None:
             raise RuntimeError('Artifact collection must not run inside a transaction')
+        await self._release_uninstalled_plugin_pins(context, limit)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             ids = (
                 (

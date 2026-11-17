@@ -1,6 +1,7 @@
 """Tests for Workspace-scoped RAG manager and runtime knowledge bases."""
 
 from __future__ import annotations
+from contextlib import asynccontextmanager
 
 import dataclasses
 from types import SimpleNamespace
@@ -53,10 +54,16 @@ def _entity(*, kb_uuid='kb-a', workspace_uuid='workspace-a', plugin_id='author/e
     )
 
 
+@asynccontextmanager
+async def _tenant_uow(workspace_uuid):
+    yield SimpleNamespace(execute=AsyncMock())
+
+
 def _app():
     return SimpleNamespace(
         logger=Mock(),
         persistence_mgr=SimpleNamespace(
+            tenant_uow=_tenant_uow,
             execute_async=AsyncMock(return_value=_Result()),
             serialize_model=Mock(
                 side_effect=lambda _model, row: {
@@ -289,7 +296,7 @@ async def test_delete_file_checks_workspace_and_parent_before_plugin_call():
     app = _app()
     runtime = RuntimeKnowledgeBase(app, _entity(), CONTEXT_A)
     app.persistence_mgr.execute_async.return_value = _Result(
-        first=SimpleNamespace(uuid='file-a', status='completed', engine_document_id=None)
+        first=SimpleNamespace(uuid='file-a', status='completed', engine_document_id=None, artifact_id=None)
     )
 
     await runtime.delete_file(CONTEXT_A, 'file-a')
@@ -480,7 +487,7 @@ class TestRuntimeKnowledgeBaseDeleteFile:
     async def test_delete_file_calls_plugin_and_db(self):
         app = _app()
         app.persistence_mgr.execute_async.return_value = _Result(
-            first=SimpleNamespace(uuid='file-uuid', status='completed', engine_document_id=None)
+            first=SimpleNamespace(uuid='file-uuid', status='completed', engine_document_id=None, artifact_id=None)
         )
 
         await RuntimeKnowledgeBase(app, _entity(), CONTEXT_A).delete_file(
@@ -821,12 +828,11 @@ class TestRAGManagerDeleteKnowledgeBase:
         app.plugin_connector.rag_on_kb_delete.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_delete_logs_warning_when_not_in_runtime(self):
+    async def test_delete_missing_kb_does_not_silently_skip_upstream(self):
         app = _app()
 
-        await RAGManager(app).delete_knowledge_base(CONTEXT_A, 'nonexistent-uuid')
-
-        app.logger.warning.assert_called_once()
+        with pytest.raises(WorkspaceNotFoundError):
+            await RAGManager(app).delete_knowledge_base(CONTEXT_A, 'nonexistent-uuid')
 
 
 class TestRAGManagerGetAllDetails:
@@ -895,3 +901,31 @@ class TestRAGManagerLoadKnowledgeBase:
         await manager.load_knowledge_base(CONTEXT_A, kb_dict)
 
         assert ('workspace-a', 'kb-uuid') in manager.knowledge_bases
+
+
+@pytest.mark.asyncio
+async def test_delete_uncached_draft_skips_upstream_callback():
+    app = _app()
+    entity = _entity()
+    entity.initialized = False
+    app.persistence_mgr.execute_async.return_value = _Result(first=entity)
+    manager = RAGManager(app)
+    await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    app.plugin_connector.rag_on_kb_delete.assert_not_awaited()
+    assert not manager.knowledge_bases
+
+
+@pytest.mark.asyncio
+async def test_delete_uncached_initialized_kb_retries_upstream_after_failure():
+    app = _app()
+    app.persistence_mgr.execute_async.return_value = _Result(first=_entity())
+    app.plugin_connector.rag_on_kb_delete.side_effect = RuntimeError('remote outcome unknown')
+    manager = RAGManager(app)
+    with pytest.raises(RuntimeError, match='remote outcome unknown'):
+        await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    assert ('workspace-a', 'kb-a') in manager.knowledge_bases
+    app.plugin_connector.rag_on_kb_create.assert_not_awaited()
+    app.plugin_connector.rag_on_kb_delete.side_effect = None
+    await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    assert not manager.knowledge_bases
+    assert app.plugin_connector.rag_on_kb_delete.await_count == 2

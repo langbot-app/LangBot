@@ -307,3 +307,7 @@ The following components receive task input rather than an EventListener or Runn
 The ACP daemon uses the existing LangBot run-scoped MCP bridge. With Box available and `event_reply` authorized, bind a Box, generate the file there, export the selected absolute paths with `langbot_export_box_files`, and send the returned IDs with `langbot_reply_files`. The platform adapter owns media upload and delivery; the ACP agent does not need platform credentials.
 
 File IDs are valid only within the run that exported them. Replies still target the original inbound message even when Pipeline filters rewrite the working text.
+
+## Installation-owned Artifacts in a run
+
+`ctx.api.artifacts` exposes the [typed Artifact helpers](/en/plugin/dev/apis/common#typed-artifact-helpers). These are installation-owned Workspace assets, not replacements for run-local attachment or Box file handles. Calls are additionally bound to the live run and its frozen Workspace grants. The helper does not convert an account, Skill or another run's reference into access. Existing export/read/commit/reply `file_id` behavior remains unchanged.

@@ -175,6 +175,9 @@ class PluginConnectionHandler(handler.Handler):
                     PluginToRuntimeAction.COMMIT_RUN_FILES,
                 }
                 and payload.get("run_id") is not None
+            ) or (
+                action == PluginToRuntimeAction.CALL_APPLICATION_OPERATION
+                and str(payload.get("operation_id", "")).startswith("artifact.")
             )
             if binding is None:
                 # Compatibility for non-Workspace APIs used with an older

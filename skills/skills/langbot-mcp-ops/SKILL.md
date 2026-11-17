@@ -360,8 +360,9 @@ See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
 Reads require `resource.view`; writes require `resource.manage`. The authenticated
 account or API key must own the asset in the current Workspace. An ID is not an
 access grant. Plugin/run references are not accepted by this account API, and
-Account-owned Artifact operations are not added to default model tool sets or
-plugin grants. Runner attachment tools use their existing run-scoped grant and
+Account-owned files do not become accessible through plugin grants or default
+model tools. The installation-owned plugin operation boundary is described below.
+Runner attachment tools use their existing run-scoped grant and
 Host-only input references; an account upload can be passed to Agent debug with
 `artifact_ids` after ownership validation. The management assistant does not
 accept attachments in this phase.
@@ -416,3 +417,19 @@ Skill package. Filesystem-only sources are unsupported. See
 `docs/en/develop/artifacts.mdx` and `dev-docs/architecture/artifacts.md` for bounds
 and run-consumer authorization. Do not claim that byte transfer proves a model
 understands an image or PDF.
+
+## Artifact knowledge-file imports
+
+`add_knowledge_file_artifact(kb_uuid, artifact_id, parser_plugin_id=None)` indexes
+an authorized account-owned Artifact and returns the existing ingestion task ID.
+It creates a knowledge-file business reference without reuploading bytes. Skill
+sources and run-owned files are not accepted by this path. Deleting the knowledge
+file/base releases its own holder only; another holder still protects the bytes.
+MCP retains account/API-key authorization and does not impersonate a plugin.
+
+Plugins have separate installation-owned access through explicitly granted
+Workspace `artifact.create/get/read/read_content/retain/release/delete` operations.
+Do not use account MCP tools as a fallback for a denied plugin call. Publication
+and Skill-source operations remain account-only; `artifact.*` is not a valid
+plugin wildcard because it includes those excluded operations. See the localized
+Workspace API documentation for the 256 KiB RPC envelope and compatibility rules.

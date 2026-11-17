@@ -2802,6 +2802,16 @@ class RuntimeConnectionHandler(handler.Handler):
                 content_bytes = await self.ap.rag_runtime_service.get_file_stream(
                     execution_context,
                     storage_path,
+                    plugin_id=f'{identity.plugin_author}/{identity.plugin_name}',
+                )
+                # Storage I/O may outlive installation/grant revocation. Never start
+                # the binary transfer under stale authority after the await.
+                await self._require_plugin_action_context()
+                await self._require_active_action_context(action_context)
+                from ..api.application.plugin_permissions import authorize_action
+
+                await authorize_action(
+                    self.ap, installation_binding, PluginToRuntimeAction.GET_KNOWLEDEGE_FILE_STREAM.value, data
                 )
                 file_key = await self.send_file(
                     content_bytes,
@@ -3162,6 +3172,19 @@ class RuntimeConnectionHandler(handler.Handler):
             operation_id = data['operation_id']
             if operation_id not in context.allowed_operation_ids:
                 fail('permission_denied', 'Workspace operation has not been granted', denied_operations=[operation_id])
+            if operation_id.startswith('artifact.') and data.get('run_id'):
+                session, error = await _validate_agent_run_session(
+                    data['run_id'], data.get('caller_plugin_identity'), self.ap, 'Artifact'
+                )
+                if error:
+                    return error
+                frozen = {item['id'] for item in session['authorization'].get('workspace_operations', [])}
+                if operation_id not in frozen:
+                    fail(
+                        'permission_denied',
+                        'Workspace operation has not been granted',
+                        denied_operations=[operation_id],
+                    )
             result = await call(self.ap, context, operation_id, data.get('arguments', {}), consumer='processor')
             return handler.ActionResponse.success(data=result)
 

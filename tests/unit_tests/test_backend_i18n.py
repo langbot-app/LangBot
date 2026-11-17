@@ -105,3 +105,21 @@ def test_lark_card_uses_selected_language():
         assert '思考過程' in card
         assert 'AI による生成コンテンツ' in card
         assert 'Thinking' not in card
+
+
+@pytest.mark.parametrize('locale', i18n.SUPPORTED_LANGUAGES)
+@pytest.mark.parametrize(
+    'message',
+    [
+        'Artifact knowledge ingestion requires an account or API key',
+        'Artifact ZIP ingestion is not supported; use the existing document upload entrypoint',
+        'Knowledge base deletion is pending; retry deletion before admitting new files',
+    ],
+)
+def test_artifact_knowledge_business_messages_are_localized(locale, message):
+    with i18n.language_scope(locale):
+        translated = i18n.t(message)
+        assert translated == i18n._catalogs[locale][message]
+        assert (translated == message) is (locale == 'en_US')
+        # HTTP/MCP response boundaries preserve already-localized business text.
+        assert i18n.error_text('invalid_input', translated) == translated

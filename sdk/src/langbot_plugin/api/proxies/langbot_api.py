@@ -43,6 +43,13 @@ class LangBotAPIProxy:
         self.plugin_runtime_handler = plugin_runtime_handler
 
     @property
+    def artifacts(self):
+        """Installation-owned bounded Artifact helpers, preserving active run scope."""
+        from .artifacts import ArtifactsProxy
+
+        return ArtifactsProxy(self.plugin_runtime_handler)
+
+    @property
     def execution(self):
         """Generic ExecutionAPI entry point for Core operations."""
         if not hasattr(self, "_execution_proxy"):

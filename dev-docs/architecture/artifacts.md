@@ -4,7 +4,7 @@ Artifact references identify account-owned files and run-owned attachments or ou
 
 ## Account API
 
-The account-facing operations accept only authenticated accounts and API keys. Each operation checks the Workspace execution fence, the required permission and the exact owning principal, or the named manager of a published run output. Another account or key cannot read an asset merely by knowing its ID, including within the same Workspace. Unpublished run assets use the separate, live-run-authorized ExecutionAPI paths below. These Workspace operations have `exposure=none` and are excluded from plugin wildcard grants, SDK Workspace methods and default model tools.
+The account-facing operations accept only authenticated accounts and API keys. Each operation checks the Workspace execution fence, the required permission and the exact owning principal, or the named manager of a published run output. Another account or key cannot read an asset merely by knowing its ID, including within the same Workspace. Unpublished run assets use the separate, live-run-authorized ExecutionAPI paths below. The principal-private create/get/read/read_content/retain/release/delete operations also support installed plugins under the phase-five boundary below. Skill-source creation and publication policy operations retain `exposure=none` and remain unavailable to plugins.
 
 | Workspace operation | HTTP | Permission |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ The account-facing operations accept only authenticated accounts and API keys. E
 
 HTTP and MCP execute the same ApplicationAPI operations and Artifact service. HTTP downloads use attachment disposition, `nosniff`, `private, no-store` and a digest ETag. Raw downloads return the complete bounded object: an object larger than `max_bytes` is rejected. Structured content reads support the text and PDF ranges described below. Uploads and source reads are limited to 10 MiB. Field validation diagnostics retain their technical wording; owned business errors use the Workspace message language.
 
-MCP tools are `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact`. Creation accepts strict base64 with a pre-decode encoded-length limit; raw reads return base64 plus metadata. Fixed-version Skill resources remain a later stage of #3051.
+MCP tools are `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact`. Creation accepts strict base64 with a pre-decode encoded-length limit; raw reads return base64 plus metadata. Fixed-version Skill resources use the source boundary described below.
 
 The existing file upload and Runner `file_id` APIs retain their contracts. No existing storage key or run handle is accepted as an Artifact ID. The separate `lbctl` client can continue using its existing routes; it has no Artifact commands in this phase.
 
@@ -127,3 +127,69 @@ model content adapters; a base64-bearing ordinary string is not model media inpu
 Native PDF capability checks and the lack of page rendering remain unchanged.
 See the [phase-four acceptance handoff](../review/artifact-phase4/README.md) for
 verification boundaries; documented behavior alone is not acceptance evidence.
+
+
+## Plugin and knowledge-file consumers (phase five)
+
+The seven operations `artifact.create`, `get`, `read`, `read_content`, `retain`,
+`release` and `delete` admit the plugin principal with `exposure=all`. The owner is
+its trusted installation UUID, never a caller-selected author/name or account.
+Every call revalidates the enabled current installation and effective grants,
+including stale captured RequestContexts. A replacement installation UUID cannot
+read its predecessor's files. Declare operation IDs individually: `artifact.*`
+expands to account-only Skill/publication operations too and is therefore rejected.
+Account/Skill/run resources are not converted into plugin-owned assets.
+
+Plugin JSON RPC creation uses bounded `content_base64`; decoding and raw plugin
+reads have a 256 KiB ceiling. Raw reads return `metadata` and `content_base64`;
+structured reads use the existing shared reader. Existing HTTP bytes and account
+upload/download responses remain unchanged. Retain is an installation-private
+pin, not a grant; deleting while any live business reference remains is refused.
+
+`knowledge.file.store_artifact(kb_uuid, artifact_id, parser_plugin_id=None)` is
+an account/API-key operation and HTTP `POST /api/v1/knowledge/bases/{kb_uuid}/files/artifact`;
+MCP exposes `add_knowledge_file_artifact`. It preserves the indexing task-ID
+response and binds a durable knowledge-file holder to already-authorized bytes.
+It rejects Skill/run sources rather than weakening their original restrictions.
+KnowledgeEngine's legacy `get_knowledge_file_stream(storage_path)` resolves the
+opaque `artifact:<knowledge_file_uuid>` token only for the currently installed
+engine assigned to that knowledge base, then uses the common holder read. A token
+is not a filesystem path or independent permission. Deleting a file/base releases
+only its holder. Existing uploads and file IDs remain compatible; denied Artifact
+reads must not fall back to unscoped legacy storage access.
+
+SDK convenience proxies `self.plugin.artifacts` and `ctx.api.artifacts` use the
+existing Workspace action, with no new protocol action or capability flag. They
+return typed metadata and decoded bytes, while preserving Host business errors
+as `ArtifactOperationError(code, details)`. A run proxy must also pass its live
+run and frozen Workspace-operation boundary. Discover support in the existing
+Workspace catalog, including the `content_base64` create schema; unsupported or
+ungranted Hosts fail visibly and never fall back to a storage path. Independent
+older Runtimes can forward the existing action, but cancellation across an older
+hop is best effort. Coordinated Runtime code forwards cancellation for Artifact
+Workspace calls; caller cancellation is not proof that a completed mutation was
+rolled back. Existing upload fields and run UUID handles are unchanged.
+
+Persistent legacy `/api/v1/files/images` and `/api/v1/files/documents` uploads keep
+`file_key`/`file_id` and additionally return `artifact_id`. ContentAlias and
+Artifact share one ContentObject. The alias has an independent durable holder;
+its deletion releases only that holder. Nonpersistent legacy uploads retain only
+the old response fields, and existing opaque keys are not automatically migrated.
+Knowledge-file binding accepts only account/API-key-owned plain uploads; even
+published run outputs remain excluded alongside Skill-package sources. A durable
+knowledge-base deletion fence blocks new admissions. Failed or uncertain deletion
+retains the holders and retryable fence instead of deleting possibly live bytes.
+
+The convenience helpers accept Python bytes and return Pydantic metadata/data
+(or structured elements), raising `ArtifactOperationError` on business failure.
+Generated `workspace.artifact` methods instead retain the standard
+`ok/result/error` envelope and JSON `content_base64` field. Shared plugin helpers
+inherit the active invocation/run scope and cannot reuse an escaped invocation
+after it ends; this is not a global plugin object that bypasses run authorization.
+
+Knowledge-file lists add nullable `artifact_id`; digest/size/MIME are not new list
+fields. The durable `KnowledgeBase.deleting` fence survives Core restart. Upstream
+delete failure, cancellation or unknown outcome keeps the runtime, files and
+holders; an explicit delete retry resumes cleanup. No new ingestion is admitted
+until deletion completes. Active or interrupted ingestion blocks deletion before
+fencing, rather than releasing a still-needed source.

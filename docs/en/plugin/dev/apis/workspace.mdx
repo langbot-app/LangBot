@@ -8,9 +8,11 @@ The Workspace API lets a plugin work with the Workspace it is installed in: list
 Every operation has a stable ID, such as `pipeline.list` or `knowledge.base.retrieve`. A plugin can only call operations it [declares in its manifest](/en/plugin/dev/permissions#declare-permissions) and a member has granted to its installation.
 
 
-Artifact operations are currently reserved for authenticated accounts and API keys. They are excluded from plugin grants, wildcard permissions and typed Workspace methods. See the [Artifact file API](/en/develop/artifacts).
+Plugins may explicitly request `artifact.create`, `artifact.get`, `artifact.read`, `artifact.read_content`, `artifact.retain`, `artifact.release` and `artifact.delete`. List the seven needed operation IDs individually: `artifact.*` is rejected because it also includes account-only publication and Skill-source operations. Typed calls use `self.plugin.workspace.artifact.<method>(...)`, or the run-bound `ctx.api.workspace` proxy.
 
-This includes `artifact.read_content` and `artifact.publication.get/set/disable`. Publication policies name the authenticated account or key as the output recipient; plugins cannot grant themselves that access. Runner code uses the run-bound attachment and output execution APIs under its frozen grants.
+These Artifacts belong to the installation UUID, not the plugin's author/name, an account or a run. Every operation rechecks the current enabled installation and effective grants; a revoked grant or reinstallation with a new UUID cannot access old assets. Knowing an ID or retaining it does not share access. Account uploads, Skill sources and run handles cannot be imported through these plugin operations. `artifact.skill_resource.create` and `artifact.publication.get/set/disable` remain account/API-key only. See [Artifact API](/en/develop/artifacts).
+
+For the JSON RPC path, create with `filename`, `content_base64`, optional `mime_type` and `ttl_seconds`. The decoded input is limited to 256 KiB; plugin raw reads use the same 256 KiB ceiling and return `metadata` plus `content_base64`. Prefer `read_content` for bounded text/structured media. This smaller transport limit does not change existing authenticated HTTP upload/download contracts. Retain/release concern this installation's pin; deletion refuses active business references.
 
 ## Calling an operation
 

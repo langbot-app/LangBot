@@ -37,11 +37,12 @@ from langbot.pkg.api.http.controller.groups.workspaces import WorkspacesRouterGr
 from langbot.pkg.api.http.service.skill import SkillService
 from langbot.pkg.api.http.service.user import UserService
 from langbot.pkg.entity.persistence.base import Base
-from langbot.pkg.entity.persistence.content import ContentObject
+from langbot.pkg.entity.persistence.content import ContentObject, ContentAlias
 from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.skill.manager import SkillManager
 from langbot.pkg.skill.repository import SkillRepository
 from langbot.pkg.storage.mgr import StorageMgr
+from langbot.pkg.storage.artifacts import ArtifactService
 from langbot.pkg.workspace.collaboration import WorkspaceCollaborationService
 from langbot.pkg.workspace.errors import WorkspaceGenerationMismatchError
 from langbot.pkg.workspace.service import WorkspaceService
@@ -134,8 +135,18 @@ async def _assert_backend(replica, owner_type, key, expected):
             await uow.execute(
                 sa.select(ContentObject.backend, ContentObject.value, ContentObject.locator).where(
                     ContentObject.workspace_uuid == replica.context.workspace_uuid,
-                    ContentObject.owner_type == owner_type,
-                    ContentObject.key == key,
+                    sa.or_(
+                        sa.and_(ContentObject.owner_type == owner_type, ContentObject.key == key),
+                        sa.and_(
+                            ContentObject.owner_type == 'artifact',
+                            ContentObject.ref.in_(
+                                sa.select(ContentAlias.content_ref).where(
+                                    ContentAlias.workspace_uuid == replica.context.workspace_uuid,
+                                    ContentAlias.key == key,
+                                )
+                            ),
+                        ),
+                    ),
                 )
             )
         ).one()
@@ -292,6 +303,7 @@ async def replicas(tmp_path, monkeypatch, persistence_case):
         )
         application.user_service = UserService(application)
         application.storage_mgr = StorageMgr(application)
+        application.artifact_service = ArtifactService(application)
         await application.storage_mgr.initialize()
         application.skill_repository = SkillRepository(application)
         application.skill_service = SkillService(application)

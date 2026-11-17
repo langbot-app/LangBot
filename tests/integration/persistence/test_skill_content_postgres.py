@@ -49,6 +49,34 @@ _PUBLIC = 'media_cache/' + 'a' * 64 + '.png'
 _OTHER_PUBLIC = 'media_cache/' + 'b' * 64 + '.png'
 
 
+def _preceding_release_metadata():
+    """Model 0047, not today's File FK to tables that Alembic has yet to create."""
+    metadata = sa.MetaData()
+    for table in Base.metadata.sorted_tables:
+        if table.name not in _TABLES:
+            clone = table.to_metadata(metadata)
+            # SQLAlchemy does not copy dialect-conditional index DDL guards.
+            for index in clone.indexes:
+                original = next(
+                    candidate
+                    for candidate in table.indexes
+                    if candidate.name == index.name
+                    and [str(expr) for expr in candidate.expressions] == [str(expr) for expr in index.expressions]
+                )
+                index._ddl_if = original._ddl_if
+    for table in metadata.tables.values():
+        for constraint in list(table.foreign_key_constraints):
+            if any(fk.target_fullname.split('.')[0] in _TABLES for fk in constraint.elements):
+                table.constraints.remove(constraint)
+                for fk in constraint.elements:
+                    table.foreign_keys.discard(fk)
+                    fk.parent.foreign_keys.discard(fk)
+        for name in {'knowledge_base_files': ('artifact_id',), 'knowledge_bases': ('deleting',)}.get(table.name, ()):
+            if name in table.c:
+                table._columns.remove(table.c[name])
+    return metadata
+
+
 def _content(workspace, ref, *, public=False, key=None):
     value = ref.encode()
     return dict(
@@ -96,7 +124,7 @@ async def migrated_store():
             assert await conn.scalar(sa.text('SELECT current_schema()')) == schema
             # Create the preceding release's ORM tables only. The new tables
             # must be introduced by Alembic, never by metadata.create_all.
-            old_tables = [table for table in Base.metadata.sorted_tables if table.name not in _TABLES]
+            old_tables = _preceding_release_metadata().sorted_tables
             await conn.run_sync(lambda sync: Base.metadata.create_all(sync, tables=old_tables))
             before = set(await conn.run_sync(lambda sync: sa.inspect(sync).get_table_names(schema=schema)))
             assert not before.intersection(_TABLES)
@@ -403,3 +431,19 @@ async def test_migrated_skill_content_rls_and_exact_public_media(migrated_store)
             await uow.execute(sa.insert(ContentObject).values(_content(_A, 'public-write', public=True, key=_PUBLIC)))
     async with manager.public_media_uow('media_cache/' + 'c' * 64 + '.png') as uow:
         assert (await uow.execute(sa.select(ContentObject.ref))).all() == []
+
+
+async def test_preceding_release_metadata_has_no_future_artifact_dependency():
+    metadata = _preceding_release_metadata()
+    assert not set(_TABLES).intersection(metadata.tables)
+    for table in metadata.sorted_tables:
+        assert 'artifact_id' not in table.c
+        assert 'deleting' not in table.c
+        for fk in table.foreign_keys:
+            assert fk.column.table.name in metadata.tables
+    # Exercise actual DDL without requiring a PostgreSQL service.
+    engine = sa.create_engine('sqlite://')
+    try:
+        metadata.create_all(engine)
+    finally:
+        engine.dispose()

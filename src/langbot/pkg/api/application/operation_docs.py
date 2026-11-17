@@ -155,7 +155,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Create a temporary caller-owned file.',
         description='Upload bounded bytes with a name, MIME type and lifetime. The opaque ID does not grant access.',
         risk='write',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.skill_resource.create': OperationDoc(
         domain='artifact',
@@ -171,7 +171,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Get authorized file metadata without reading bytes.',
         description='Return name, MIME type, size, digest and lifetime for an owned asset.',
         risk='read',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.read': OperationDoc(
         domain='artifact',
@@ -179,7 +179,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Read an owned file within the requested byte limit.',
         description='Return exact bytes and metadata for authenticated download; this is not model content extraction.',
         risk='read',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.read_content': OperationDoc(
         domain='artifact',
@@ -187,7 +187,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Read bounded text or structured media from an owned asset.',
         description='Returns text slices, images or native PDF input. PDF page rendering is unavailable.',
         risk='read',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.retain': OperationDoc(
         domain='artifact',
@@ -195,7 +195,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Retain an owned file until its pin is released.',
         description='Add a persistent caller-owned pin without changing access permissions.',
         risk='write',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.release': OperationDoc(
         domain='artifact',
@@ -203,7 +203,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Release the caller-owned persistent pin.',
         description='Remove the caller pin and restore the temporary expiry grace period.',
         risk='write',
-        exposure='none',
+        exposure='all',
     ),
     'artifact.delete': OperationDoc(
         domain='artifact',
@@ -211,7 +211,7 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         summary='Delete an unpinned owned file.',
         description='Refuse deletion while any persistent pin still protects the file.',
         risk='dangerous',
-        exposure='none',
+        exposure='all',
     ),
     'adapter.get': OperationDoc(
         domain='adapter',
@@ -532,6 +532,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         description='List files and documents stored in a knowledge base with ingestion status, chunk counts, and error details. Prerequisites: Call knowledge.base.list to obtain kb_uuid.',
         risk='read',
         exposure='all',
+    ),
+    'knowledge.file.store_artifact': OperationDoc(
+        domain='knowledge',
+        label={'zh_Hans': '导入知识库资产', 'en_US': 'Store Knowledge Artifact'},
+        summary='Ingest an owned Artifact into a knowledge base.',
+        description='Explicitly retain an owned Artifact for knowledge ingestion; returns the existing task identifier.',
+        risk='write',
+        exposure='none',
     ),
     'knowledge.file.store': OperationDoc(
         domain='knowledge',

@@ -1,8 +1,11 @@
-"""Account/API-key Artifact operations; plugin and run access is opt-in later."""
+"""Principal-private Artifact operations with explicit installation grants."""
 
 from __future__ import annotations
 
-from pydantic import Field
+import base64
+import binascii
+
+from pydantic import Field, model_validator
 from typing import Literal
 
 from ..authz import Permission
@@ -13,9 +16,23 @@ from .contracts import Input, Operation
 
 class ArtifactCreate(Input):
     filename: str = Field(min_length=1, max_length=255)
-    content: bytes = Field(max_length=MAX_ARTIFACT_BYTES)
+    content: bytes | None = Field(default=None, max_length=MAX_ARTIFACT_BYTES)
+    content_base64: str | None = Field(default=None, max_length=349528)
     mime_type: str = 'application/octet-stream'
     ttl_seconds: int = Field(default=DEFAULT_TTL_SECONDS, ge=1, le=MAX_TTL_SECONDS)
+
+    @model_validator(mode='after')
+    def exactly_one_content(self):
+        if (self.content is None) == (self.content_base64 is None):
+            raise ValueError('Supply exactly one of content or content_base64')
+        if self.content_base64 is not None:
+            try:
+                content = base64.b64decode(self.content_base64, validate=True)
+            except (ValueError, binascii.Error) as exc:
+                raise ValueError('Invalid Artifact base64 content') from exc
+            if len(content) > 256 * 1024:
+                raise ValueError('Artifact RPC content exceeds the 262144 byte limit')
+        return self
 
 
 class SkillResourceArtifactCreate(Input):
@@ -63,7 +80,15 @@ async def publication_disable(ap, context, payload):
 
 
 async def create(ap, context, payload):
-    return await ap.artifact_service.create(context, **payload.model_dump())
+    values = payload.model_dump(exclude={'content_base64'})
+    if payload.content_base64 is not None:
+        try:
+            values['content'] = base64.b64decode(payload.content_base64, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError('Invalid Artifact base64 content') from exc
+        if len(values['content']) > 256 * 1024:
+            raise ValueError('Artifact RPC content exceeds the 262144 byte limit')
+    return await ap.artifact_service.create(context, **values)
 
 
 async def create_skill_resource(ap, context, payload):
@@ -75,7 +100,10 @@ async def get(ap, context, payload):
 
 
 async def read(ap, context, payload):
-    return await ap.artifact_service.read(context, payload.artifact_id, max_bytes=payload.max_bytes)
+    result = await ap.artifact_service.read(context, payload.artifact_id, max_bytes=payload.max_bytes)
+    if context.principal.principal_type == PrincipalType.PLUGIN:
+        return {'metadata': result['metadata'], 'content_base64': base64.b64encode(result['content']).decode('ascii')}
+    return result
 
 
 async def read_content(ap, context, payload):
@@ -96,6 +124,7 @@ async def delete(ap, context, payload):
 
 def operations():
     principals = frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
+    artifact_principals = principals | {PrincipalType.PLUGIN}
     view, manage = Permission.RESOURCE_VIEW, Permission.RESOURCE_MANAGE
     return [
         Operation(
@@ -119,7 +148,7 @@ def operations():
             True,
             principals=principals,
         ),
-        Operation('artifact.create', manage, create, ArtifactCreate, dict, True, principals=principals),
+        Operation('artifact.create', manage, create, ArtifactCreate, dict, True, principals=artifact_principals),
         Operation(
             'artifact.skill_resource.create',
             manage,
@@ -129,10 +158,12 @@ def operations():
             True,
             principals=principals,
         ),
-        Operation('artifact.get', view, get, ArtifactID, dict, principals=principals),
-        Operation('artifact.read', view, read, ArtifactRead, dict, principals=principals),
-        Operation('artifact.read_content', view, read_content, ArtifactContent, list[dict], principals=principals),
-        Operation('artifact.retain', manage, retain, ArtifactID, dict, True, principals=principals),
-        Operation('artifact.release', manage, release, ArtifactID, dict, True, principals=principals),
-        Operation('artifact.delete', manage, delete, ArtifactID, dict, True, principals=principals),
+        Operation('artifact.get', view, get, ArtifactID, dict, principals=artifact_principals),
+        Operation('artifact.read', view, read, ArtifactRead, dict, principals=artifact_principals),
+        Operation(
+            'artifact.read_content', view, read_content, ArtifactContent, list[dict], principals=artifact_principals
+        ),
+        Operation('artifact.retain', manage, retain, ArtifactID, dict, True, principals=artifact_principals),
+        Operation('artifact.release', manage, release, ArtifactID, dict, True, principals=artifact_principals),
+        Operation('artifact.delete', manage, delete, ArtifactID, dict, True, principals=artifact_principals),
     ]

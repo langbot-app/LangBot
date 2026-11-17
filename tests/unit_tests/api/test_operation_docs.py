@@ -122,7 +122,8 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
             or op_id.startswith('workspace.member.')
             or op_id.startswith('workspace.invitation.')
             or op_id.startswith('provider.codex.')
-            or op_id.startswith('artifact.')
+            or op_id.startswith('artifact.publication.')
+            or op_id == 'artifact.skill_resource.create'
         ):
             assert doc.exposure == 'none', f"Operation {op_id} must have exposure='none'"
 
@@ -132,6 +133,16 @@ def test_restricted_exposure_operations(all_application_operations: list[Operati
         if op_id in {'mcp.server.create', 'mcp.server.update'}:
             assert doc.exposure == 'assistant', f"Operation {op_id} must have exposure='assistant'"
             assert doc.risk == 'dangerous', f"Operation {op_id} must have risk='dangerous'"
+
+
+def test_artifact_plugin_exposure_is_explicit(operations_by_id):
+    from langbot.pkg.api.context import PrincipalType
+
+    allowed = {'artifact.' + name for name in ('create', 'get', 'read', 'read_content', 'retain', 'release', 'delete')}
+    for op_id, op in operations_by_id.items():
+        if op_id.startswith('artifact.'):
+            assert (PrincipalType.PLUGIN in op.principals) == (op_id in allowed)
+            assert (get_operation_doc(op_id, side_effect=op.side_effect).exposure == 'all') == (op_id in allowed)
 
 
 def test_principals_exposure_consistency(all_application_operations: list[Operation]):

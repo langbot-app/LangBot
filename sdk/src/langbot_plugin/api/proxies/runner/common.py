@@ -182,6 +182,13 @@ class AgentRunProxyBase:
         return self.ctx.run_id
 
     @property
+    def artifacts(self):
+        """Artifact helpers bound to this run and its frozen Workspace grants."""
+        from langbot_plugin.api.proxies.artifacts import ArtifactsProxy
+
+        return ArtifactsProxy(self._api.plugin_runtime_handler, self.run_id)
+
+    @property
     def execution(self):
         """Generic ExecutionAPI entry point bound to this agent run."""
         if not hasattr(self, "_execution_proxy"):
