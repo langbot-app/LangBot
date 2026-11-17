@@ -38,8 +38,20 @@ def upgrade():
 
 
 def downgrade():
-    with op.batch_alter_table('artifact_references') as batch:
-        batch.drop_constraint('ck_artifact_reference_lease_kind', type_='check')
-    op.drop_column('artifact_references', 'expires_at')
-    op.drop_column('artifacts', 'manager_id')
-    op.drop_column('artifacts', 'manager_type')
+    conn = op.get_bind()
+    tables = set(sa.inspect(conn).get_table_names())
+    if 'artifact_references' in tables:
+        columns = {column['name'] for column in sa.inspect(conn).get_columns('artifact_references')}
+        constraints = {
+            constraint['name'] for constraint in sa.inspect(conn).get_check_constraints('artifact_references')
+        }
+        if 'ck_artifact_reference_lease_kind' in constraints:
+            with op.batch_alter_table('artifact_references') as batch:
+                batch.drop_constraint('ck_artifact_reference_lease_kind', type_='check')
+        if 'expires_at' in columns:
+            op.drop_column('artifact_references', 'expires_at')
+    if 'artifacts' in tables:
+        columns = {column['name'] for column in sa.inspect(conn).get_columns('artifacts')}
+        for name in ('manager_id', 'manager_type'):
+            if name in columns:
+                op.drop_column('artifacts', name)
