@@ -220,7 +220,7 @@ async def test_box_stdio_connection_does_not_capture_unconsumed_stderr(
         def __init__(self, connection):
             self.release = asyncio.Event()
 
-        async def call_action(self, action, data):
+        async def call_action(self, action, data, **kwargs):
             return None
 
         async def run(self):
@@ -266,7 +266,7 @@ async def test_box_disconnect_notifies_once_and_clears_handler(
         def __init__(self, connection):
             pass
 
-        async def call_action(self, action, data):
+        async def call_action(self, action, data, **kwargs):
             return None
 
         async def run(self):

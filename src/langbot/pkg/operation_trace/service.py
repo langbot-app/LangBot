@@ -386,6 +386,12 @@ ACTION_RULE_TABLE: typing.Final[tuple[ActionRule, ...]] = (
         resource_type='plugin',
     ),
     ActionRule(
+        action='content_publish',
+        category='extension',
+        bucket='write',
+        resource_type='content',
+    ),
+    ActionRule(
         action='page_view',
         category='extension',
         bucket='read',
@@ -627,6 +633,9 @@ _ROUTE_RULES: typing.Final[tuple[tuple[tuple[str, ...], str, str | None, str | N
         'plugin_view',
     ),
     (('/plugins/', '/config'), 'plugin_view', 'plugin_config', None, 'plugin_view'),
+    # LANG-439: sharing Skills / MCP servers / prompts to LangBot Space, and
+    # (un)favoriting library prompts with the bound LangBot Account.
+    (('/space-share/',), 'view', 'content_publish', 'content_publish', 'view'),
     (('/plugins/', '/page-api'), 'page_view', 'page_view', None, 'page_view'),
     (('/plugins/', '/upgrade'), 'plugin_view', 'plugin_upgrade', None, 'plugin_view'),
     (('/plugins/', '/logs'), 'plugin_view', 'plugin_view', None, 'plugin_view'),

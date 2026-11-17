@@ -11,10 +11,12 @@ from typing import Any
 
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.entities.io.context import ActionContext
+from langbot_plugin.entities.io.errors import ActionCallError
 
 from .actions import LangBotToBoxAction
-from .errors import BoxError, BoxRuntimeUnavailableError
+from .errors import BoxError, BoxRuntimeCompatibilityError, BoxRuntimeUnavailableError
 from .models import (
+    BoxArtifactDescriptor,
     BoxExecutionResult,
     BoxExecutionStatus,
     BoxManagedProcessInfo,
@@ -123,10 +125,28 @@ class BoxRuntimeClient(abc.ABC):
         session_id: str,
         path: str,
         action_context: ActionContext | None = None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
         raise NotImplementedError
 
+    async def cleanup_run_files(
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        raise NotImplementedError
+
     async def verify_shared_workspace(self, marker_name: str) -> dict:
+        raise NotImplementedError
+
+    async def prepare_artifact(
+        self,
+        descriptor: BoxArtifactDescriptor,
+        content: bytes | None = None,
+        action_context: ActionContext | None = None,
+    ) -> dict:
         raise NotImplementedError
 
     async def upsert_sandbox_admission_grant(
@@ -145,6 +165,7 @@ def _translate_action_error(exc: Exception) -> BoxError:
     from .errors import (
         BoxBackendUnavailableError,
         BoxAdmissionError,
+        BoxArtifactNotPreparedError,
         BoxManagedProcessConflictError,
         BoxManagedProcessNotFoundError,
         BoxCapacityExceededError,
@@ -155,6 +176,11 @@ def _translate_action_error(exc: Exception) -> BoxError:
     )
 
     msg = str(exc)
+    # Only this exact remote preflight failure permits replaying an exec.
+    if isinstance(exc, ActionCallError) and exc.message.startswith(
+        "BoxArtifactNotPreparedError:"
+    ):
+        return BoxArtifactNotPreparedError(msg)
     _ERROR_PREFIX_MAP: list[tuple[str, type[BoxError]]] = [
         ("BoxAdmissionError:", BoxAdmissionError),
         ("BoxReadinessError:", BoxReadinessError),
@@ -196,6 +222,13 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         timeout: float = 15.0,
         action_context: ActionContext | None = None,
     ) -> dict[str, Any]:
+        if action in {
+            LangBotToBoxAction.EXEC,
+            LangBotToBoxAction.CREATE_SESSION,
+        } and not data.get("artifact_mounts"):
+            data = {
+                key: value for key, value in data.items() if key != "artifact_mounts"
+            }
         try:
             return await self.handler.call_action(
                 action,
@@ -207,6 +240,7 @@ class ActionRPCBoxClient(BoxRuntimeClient):
                     LangBotToBoxAction.EXEC,
                     LangBotToBoxAction.UPLOAD_FILE,
                     LangBotToBoxAction.DOWNLOAD_FILE,
+                    LangBotToBoxAction.PREPARE_ARTIFACT,
                 },
             )
         except BoxRuntimeUnavailableError:
@@ -312,6 +346,8 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         session_id: str,
         path: str,
         action_context: ActionContext | None = None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
         """Read one complete file and verify its transfer receipt."""
         if action_context is None:
@@ -320,7 +356,12 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         try:
             result = await self._call(
                 LangBotToBoxAction.DOWNLOAD_FILE,
-                {"session_id": session_id, "path": path, "file_key": file_key},
+                {
+                    "session_id": session_id,
+                    "path": path,
+                    "file_key": file_key,
+                    **({"directory_archive": True} if directory_archive else {}),
+                },
                 timeout=60.0,
                 action_context=action_context,
             )
@@ -336,6 +377,47 @@ class ActionRPCBoxClient(BoxRuntimeClient):
             return content
         finally:
             await self._cleanup_file_transfer(file_key, action_context, local=True)
+
+    async def prepare_artifact(
+        self,
+        descriptor: BoxArtifactDescriptor,
+        content: bytes | None = None,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        """Probe a scoped cache and transfer a complete archive only on a miss."""
+        if action_context is None:
+            raise ValueError(
+                "Artifact preparation requires a trusted Workspace context"
+            )
+        descriptor = BoxArtifactDescriptor.model_validate(descriptor)
+        payload = {"descriptor": descriptor.model_dump(mode="json")}
+        ready = await self._call(
+            LangBotToBoxAction.PREPARE_ARTIFACT,
+            payload,
+            timeout=60.0,
+            action_context=action_context,
+        )
+        if ready.get("ready") or content is None:
+            return ready
+        if (
+            not isinstance(content, bytes)
+            or len(content) != descriptor.archive_size
+            or hashlib.sha256(content).hexdigest() != descriptor.archive_sha256
+        ):
+            raise ValueError("Artifact archive does not match its descriptor")
+        file_key = "ft1_" + uuid.uuid4().hex + uuid.uuid4().hex
+        try:
+            await self.handler.send_file(
+                content, "", action_context=action_context, file_key=file_key
+            )
+            return await self._call(
+                LangBotToBoxAction.PREPARE_ARTIFACT,
+                {**payload, "file_key": file_key},
+                timeout=120.0,
+                action_context=action_context,
+            )
+        finally:
+            await self._cleanup_file_transfer(file_key, action_context, local=False)
 
     async def shutdown(self) -> None:
         if self._handler is not None:
@@ -504,7 +586,46 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         )
 
     async def init(self, config: dict) -> None:
-        await self._call(LangBotToBoxAction.INIT, config)
+        prepare_chunks = getattr(self.handler, "_prepare_box_file_chunks", None)
+        configure_chunks = getattr(self.handler, "_configure_box_file_chunks", None)
+        can_offer_chunks = callable(prepare_chunks) and callable(configure_chunks)
+        payload = {
+            key: value for key, value in config.items() if key != "file_chunk_256k"
+        }
+        if can_offer_chunks:
+            # The peer may send a large chunk before our INIT waiter resumes.
+            prepare_chunks()
+            configure_chunks(False)
+            payload["file_chunk_256k"] = True
+        result = await self._call(LangBotToBoxAction.INIT, payload)
+        if can_offer_chunks:
+            configure_chunks(
+                isinstance(result, dict) and result.get("file_chunk_256k") is True
+            )
+        if config.get("file_transfer_mode") == "network" and (
+            not isinstance(result, dict)
+            or result.get("network_workspace") is not True
+            or result.get("directory_archive") is not True
+            or result.get("artifact_cache_preflight") is not True
+        ):
+            raise BoxRuntimeCompatibilityError(
+                "Network workspaces require an updated Box Runtime"
+            )
+
+    async def cleanup_run_files(
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext | None = None,
+    ) -> dict:
+        if action_context is None:
+            raise ValueError("Run cleanup requires a trusted Workspace context")
+        return await self._call(
+            LangBotToBoxAction.CLEANUP_RUN_FILES,
+            {"session_id": session_id, "io_scope": io_scope},
+            timeout=45.0,
+            action_context=action_context,
+        )
 
     async def verify_shared_workspace(self, marker_name: str) -> dict:
         return await self._call(

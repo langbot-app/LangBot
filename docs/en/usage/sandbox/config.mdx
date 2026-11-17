@@ -15,23 +15,22 @@ All `box.*` settings on this page live in `data/config.yaml`. See [System Enviro
 box:
   enabled: true
   backend: 'local'        # auto-pick from Docker / Nsjail
+  file_transfer_mode: 'network'
   local:
     profile: 'default'
-    host_root: './data/box'
-    skills_root: 'skills'
   docker:
     cpu_limit_enabled: true
 ```
 
-- `enabled`: master switch. When `false`, all Box-dependent features are disabled (sandbox tools, skill add/edit, stdio MCP hosting).
+- `enabled`: master switch. When `false`, all Box-dependent features are disabled (sandbox tools, sandbox draft publication, stdio MCP hosting).
 - `backend`: see "Backend Selection" below.
 - `local.profile`: security profile — controls network, mounts, and resource limits.
-- `local.host_root`: host workspace directory, mapped to `/workspace` inside the sandbox.
-- `local.skills_root`: skill package directory; relative paths resolve under `host_root` (defaults to `host_root/skills`).
+- `local.host_root`: shared workspace root in `legacy` mode. Network mode uses Runtime-owned roots; Core does not send host paths.
+- `local.skills_root`: legacy fallback used only when top-level `skills.root` is missing. Relative paths resolve under `host_root`; new configurations use top-level `skills.root`.
 - `docker.cpu_limit_enabled`: whether Docker sandbox containers get a CPU limit; set to `false` to omit `docker run --cpus` while keeping memory and PID limits.
 
 <Note>
-Skills are loaded only from the Box-managed skill store. When Box Runtime or the backend is unavailable, the skill list is empty and create/edit/`register_skill` are disabled — there's no fallback to `data/skills/`.
+Core owns Skill management, activation and read-only resources without Box; scripts and sandbox draft publication require Box. Fresh installations default to `file_transfer_mode: network`, with no shared Skill or workspace directories between Core and Box. Existing explicit `legacy` settings remain supported. See [Skills](../skills/readme) for persistence and upgrades.
 </Note>
 
 ## Backend Selection

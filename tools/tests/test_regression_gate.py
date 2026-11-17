@@ -66,6 +66,27 @@ class GateTest(unittest.TestCase):
             self.assertFalse(result['passed'])
             self.assertIn('sandbox teardown failed', result['infrastructure_error'])
 
+    def test_gate_requires_both_zero_process_exit_and_successful_business_verdict(self):
+        for process_exit, suite_passed in ((23, True), (0, False)):
+            with self.subTest(process_exit=process_exit, suite_passed=suite_passed):
+                with tempfile.TemporaryDirectory() as directory:
+                    output = Path(directory) / 'gate'
+                    code = (
+                        'from pathlib import Path; import json; '
+                        f'p=Path({str(output / "suite")!r}); p.mkdir(); '
+                        f'(p/"summary.json").write_text(json.dumps({{"passed": {suite_passed!r}, "requests": 7}})); '
+                        f'raise SystemExit({process_exit})'
+                    )
+
+                    result = supervise([sys.executable, '-c', code], output, 5, {})
+                    persisted = json.loads((output / 'gate.json').read_text())
+
+                    self.assertFalse(result['passed'])
+                    self.assertFalse(result['timed_out'])
+                    self.assertEqual(result['exit_code'], process_exit)
+                    self.assertEqual(result['requests'], 7)
+                    self.assertEqual(persisted, result)
+
     def test_zero_exit_without_business_verdict_is_failed(self):
         with tempfile.TemporaryDirectory() as directory:
             result = supervise([sys.executable, '-c', 'pass'], Path(directory) / 'gate', 5, {})

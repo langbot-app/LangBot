@@ -346,7 +346,6 @@ class PreProcessor(stage.PipelineStage):
         rendered = input_media.render_input(
             query.message_chain,
             include_quotes=bool(quote_msg),
-            keep_images=keep_image_inputs,
         )
         # Runner attachments and Box imports address exactly the media rendered here.
         input_media.remember_media(query, rendered.media)

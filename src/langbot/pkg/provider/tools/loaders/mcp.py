@@ -4,6 +4,7 @@ from ....i18n import t
 
 import contextvars
 import dataclasses
+import base64
 import enum
 import json
 import math
@@ -11,7 +12,7 @@ import re
 import time
 import typing
 import ipaddress
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from contextlib import AsyncExitStack, asynccontextmanager
 from datetime import timedelta
 import traceback
@@ -60,6 +61,7 @@ MCP_RESOURCE_CACHE_MAX_ENTRIES = 32
 MCP_RESOURCE_PREVIEW_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_BYTES = 64 * 1024
 MCP_RESOURCE_AGENT_READ_MAX_TOKENS = 12000
+MCP_TOOL_PDF_MAX_BYTES = 10 * 1024 * 1024
 MCP_RESOURCE_CONTEXT_MAX_TOKENS = 8000
 MCP_RESOURCE_CONTEXT_MAX_BYTES = 96 * 1024
 MCP_RESOURCE_TRACE_QUERY_KEY = '_mcp_resource_reads'
@@ -1219,6 +1221,22 @@ class RuntimeMCPSession:
                 }
                 return [provider_message.ContentElement.from_text(f'{json.dumps(header, ensure_ascii=False)}\n{text}')]
             if isinstance(resource, mcp_types.BlobResourceContents):
+                if (resource.mimeType or '').split(';', 1)[0].strip().lower() == 'application/pdf':
+                    if len(resource.blob) > 4 * ((MCP_TOOL_PDF_MAX_BYTES + 2) // 3):
+                        raise ValueError(t('Artifact exceeds the read size limit'))
+                    try:
+                        value = base64.b64decode(resource.blob, validate=True)
+                    except ValueError as exc:
+                        raise ValueError('MCP tool returned invalid PDF base64') from exc
+                    if len(value) > MCP_TOOL_PDF_MAX_BYTES:
+                        raise ValueError(t('Artifact exceeds the read size limit'))
+                    filename = unquote(urlparse(str(resource.uri)).path).rsplit('/', 1)[-1] or 'document.pdf'
+                    return [
+                        provider_message.ContentElement.from_file_base64(
+                            'data:application/pdf;base64,' + resource.blob,
+                            filename,
+                        )
+                    ]
                 return [
                     provider_message.ContentElement.from_text(
                         json.dumps(

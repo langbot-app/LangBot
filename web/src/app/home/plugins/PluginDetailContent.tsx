@@ -31,7 +31,8 @@ import { httpClient } from '@/app/infra/http/HttpClient';
 import { Plugin } from '@/app/infra/entities/plugin';
 import { extractI18nObject } from '@/i18n/I18nProvider';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
-import { Bug, Puzzle, Trash2 } from 'lucide-react';
+import { Bug, Puzzle, Trash2, Upload } from 'lucide-react';
+import PluginSpaceUploadDialog from './components/plugin-installed/PluginSpaceUploadDialog';
 import { toast } from 'sonner';
 
 /**
@@ -47,6 +48,7 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const [pluginInfo, setPluginInfo] = useState<Plugin | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteData, setDeleteData] = useState(false);
+  const [showSpaceUpload, setShowSpaceUpload] = useState(false);
 
   // Parse "author/name" composite key
   const slashIndex = id.indexOf('/');
@@ -54,6 +56,13 @@ export default function PluginDetailContent({ id }: { id: string }) {
   const pluginName = slashIndex >= 0 ? id.substring(slashIndex + 1) : id;
 
   const plugin = plugins.find((p) => p.id === id);
+  // Same rule as the installed-plugin card menu: debug, local and GitHub
+  // installs can be uploaded to the marketplace as-is.
+  const canUploadToSpace =
+    !!plugin &&
+    (plugin.debug ||
+      plugin.installSource === 'local' ||
+      plugin.installSource === 'github');
   const title =
     pluginInfo?.manifest.manifest.metadata.label &&
     extractI18nObject(pluginInfo.manifest.manifest.metadata.label)
@@ -209,6 +218,18 @@ export default function PluginDetailContent({ id }: { id: string }) {
         <div className="flex shrink-0 flex-col gap-2 pb-4">
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <h1 className="truncate text-xl font-semibold">{title}</h1>
+            {canUploadToSpace && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="order-last ml-auto shrink-0"
+                onClick={() => setShowSpaceUpload(true)}
+              >
+                <Upload className="mr-1.5 size-4" />
+                {t('plugins.spaceUpload.menuAction')}
+              </Button>
+            )}
             <Badge variant="outline" className="shrink-0 text-[0.7rem]">
               <Puzzle className="size-3.5" />
               {t('market.typePlugin')}
@@ -338,6 +359,20 @@ export default function PluginDetailContent({ id }: { id: string }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {showSpaceUpload && (
+        <PluginSpaceUploadDialog
+          author={pluginAuthor}
+          name={pluginName}
+          open
+          onOpenChange={(open) => {
+            if (!open) setShowSpaceUpload(false);
+          }}
+          onUploaded={() => {
+            void refreshPlugins();
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+        />
+      )}
     </>
   );
 }

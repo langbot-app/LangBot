@@ -59,6 +59,14 @@ def _make_app() -> Mock:
     app.storage_mgr = storage_mgr
     app.persistence_mgr = Mock()
     app.persistence_mgr.execute_async = AsyncMock(return_value=SimpleNamespace(rowcount=1))
+
+    @asynccontextmanager
+    async def tenant_uow(workspace_uuid):
+        assert workspace_uuid == WORKSPACE_A
+        yield SimpleNamespace(execute=AsyncMock(return_value=SimpleNamespace(rowcount=1)))
+
+    app.persistence_mgr.tenant_uow = tenant_uow
+
     app.plugin_connector = Mock()
     app.plugin_connector.require_workspace_context = AsyncMock(side_effect=lambda context: context)
     app.workspace_service = SimpleNamespace(
@@ -281,7 +289,7 @@ class TestStoreFileTask:
         kb._set_file_status = AsyncMock(side_effect=[True, True])
         kb._ingest_document = AsyncMock(return_value={'status': 'completed', 'document_id': 'file-uuid'})
         object_key = _upload_key('scoped.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
 
         await kb._store_file_task(CONTEXT, file_obj, Mock())
 
@@ -292,7 +300,7 @@ class TestStoreFileTask:
         kb = _make_kb()
         kb._ingest_document = AsyncMock(return_value={'status': 'completed', 'document_id': 'file-uuid'})
         object_key = _upload_key('test.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
         task_context = Mock()
 
         await kb._store_file_task(CONTEXT, file_obj, task_context)
@@ -312,7 +320,7 @@ class TestStoreFileTask:
             return_value={'status': 'failed', 'error_message': 'parser failed', 'document_id': 'file-uuid'}
         )
         object_key = _upload_key('bad.pdf')
-        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf')
+        file_obj = SimpleNamespace(uuid='file-uuid', file_name=object_key, extension='pdf', artifact_id=None)
         task_context = Mock()
 
         with pytest.raises(Exception, match='parser failed'):

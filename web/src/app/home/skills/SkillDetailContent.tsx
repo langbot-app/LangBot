@@ -21,7 +21,8 @@ import {
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import { httpClient } from '@/app/infra/http/HttpClient';
 import SkillForm from '@/app/home/skills/components/skill-form/SkillForm';
-import { Sparkles, Trash2 } from 'lucide-react';
+import { Share2, Sparkles, Trash2 } from 'lucide-react';
+import ShareSkillDialog from '@/app/home/components/space-share/ShareSkillDialog';
 import { useCurrentWorkspace } from '@/app/infra/http';
 
 export default function SkillDetailContent({ id }: { id: string }) {
@@ -33,6 +34,7 @@ export default function SkillDetailContent({ id }: { id: string }) {
     currentWorkspace?.permissions.includes('resource.manage') ?? false;
   const { refreshSkills, skills, setDetailEntityName } = useSidebarData();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showShare, setShowShare] = useState(false);
   const skill = skills.find((item) => item.id === id);
   useEffect(() => {
     if (isCreateMode) {
@@ -161,15 +163,36 @@ export default function SkillDetailContent({ id }: { id: string }) {
               </p>
             )}
           </div>
-          <Button
-            type="submit"
-            form="skill-form"
-            className="shrink-0"
-            disabled={!canManage}
-          >
-            {t('common.save')}
-          </Button>
+          <div className="flex shrink-0 items-center gap-2">
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowShare(true)}
+              >
+                <Share2 className="mr-1.5 size-4" />
+                {t('spaceShare.shareToSpace')}
+              </Button>
+            )}
+            <Button
+              type="submit"
+              form="skill-form"
+              className="shrink-0"
+              disabled={!canManage}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
         </div>
+        {showShare && (
+          <ShareSkillDialog
+            open={showShare}
+            onOpenChange={setShowShare}
+            skillName={id}
+            displayName={skill?.name || id}
+            description={skill?.description || ''}
+          />
+        )}
 
         <div className="min-h-0 flex-1">
           <fieldset className="contents" disabled={!canManage}>

@@ -186,6 +186,8 @@ class SkillsRouterGroup(group.RouterGroup):
                     base_revision=base_revision,
                 )
                 return self.success(data=result)
+            except SkillRevisionConflictError as exc:
+                return self.http_status(409, -1, str(exc))
             except ValueError as exc:
                 return self.http_status(400, -1, str(exc))
 

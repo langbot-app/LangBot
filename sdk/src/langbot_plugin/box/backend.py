@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import csv
 import dataclasses
 import datetime as dt
 import logging
 import hashlib
 import inspect
+import io
+import json
 import os
 import re
 import shlex
@@ -110,6 +113,30 @@ class BaseSandboxBackend(abc.ABC):
         return await bounded_executor.run_blocking_atomic(
             read_workspace_file, self._file_workspace_root(session), relative, max_bytes
         )
+
+    async def download_directory(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        from .file_io import archive_workspace_directory, workspace_relative_path
+
+        relative = (
+            ""
+            if path == session.mount_path
+            else workspace_relative_path(session.mount_path, path)
+        )
+        return await bounded_executor.run_blocking_atomic(
+            archive_workspace_directory,
+            self._file_workspace_root(session),
+            relative,
+            max_bytes,
+        )
+
+    async def remove_owned_workspace(
+        self, session: BoxSessionInfo, owner: tuple[str, int, int]
+    ) -> None:
+        from .file_io import remove_owned_workspace
+
+        await bounded_executor.run_blocking_cleanup(remove_owned_workspace, owner)
 
     async def is_session_alive(self, session: BoxSessionInfo) -> bool:
         return True
@@ -450,6 +477,33 @@ class CLISandboxBackend(BaseSandboxBackend):
             f"LangBot Box backend stop_session: backend={self.name} "
             f"session_id={session.session_id} container_name={session.backend_session_id}"
         )
+        if (
+            session._runtime_workspace_owner is not None
+            and session._runtime_image_id is None
+        ):
+            try:
+                image = await self._run_command(
+                    [
+                        self.command,
+                        "inspect",
+                        "-f",
+                        "{{.Image}}",
+                        session.backend_session_id,
+                    ],
+                    timeout_sec=5,
+                    check=False,
+                )
+                if (
+                    image.return_code == 0
+                    and not image.timed_out
+                    and re.fullmatch(r"sha256:[0-9a-f]{64}", image.stdout.strip())
+                ):
+                    session._runtime_image_id = image.stdout.strip()
+            except Exception:
+                self.logger.warning(
+                    "Cannot record workspace cleanup image; stopping the original container",
+                    exc_info=True,
+                )
         result = await self._run_command(
             [self.command, "rm", "-f", session.backend_session_id],
             timeout_sec=20,
@@ -504,16 +558,32 @@ class CLISandboxBackend(BaseSandboxBackend):
                 session, path, max_bytes, None
             )
 
+    async def download_directory(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        try:
+            return await super().download_directory(session, path, max_bytes)
+        except PermissionError:
+            return await self._transfer_workspace_via_cli(
+                session, path, max_bytes, None, directory_archive=True
+            )
+
     async def _transfer_workspace_via_cli(
         self,
         session: BoxSessionInfo,
         path: str,
         max_bytes: int,
         content: bytes | None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes:
         from . import file_io
 
-        relative = file_io.workspace_relative_path(session.mount_path, path)
+        relative = (
+            ""
+            if directory_archive and path == session.mount_path
+            else file_io.workspace_relative_path(session.mount_path, path)
+        )
         if content is not None:
             if session.host_path_mode == BoxHostMountMode.READ_ONLY:
                 raise BoxError("Cannot upload into a read-only workspace")
@@ -527,8 +597,13 @@ class CLISandboxBackend(BaseSandboxBackend):
             "signal.alarm(20)\n"
         )
         if content is None:
+            reader = (
+                "archive_workspace_directory"
+                if directory_archive
+                else "read_workspace_file"
+            )
             script += (
-                f"data = read_workspace_file({session.mount_path!r}, {relative!r}, {max_bytes!r})\n"
+                f"data = {reader}({session.mount_path!r}, {relative!r}, {max_bytes!r})\n"
                 "sys.stdout.buffer.write(data)\n"
                 "sys.stdout.buffer.flush()\n"
             )
@@ -560,6 +635,181 @@ class CLISandboxBackend(BaseSandboxBackend):
                     operation.exception(),
                 )
             raise
+
+    async def remove_owned_workspace(
+        self, session: BoxSessionInfo, owner: tuple[str, int, int]
+    ) -> None:
+        operation = asyncio.create_task(
+            self._remove_owned_workspace_once(session, owner)
+        )
+        try:
+            await asyncio.shield(operation)
+        except asyncio.CancelledError:
+            while not operation.done():
+                try:
+                    await asyncio.shield(operation)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not operation.cancelled():
+                operation.exception()
+            raise
+
+    async def _retire_workspace_cleanup(self, session: BoxSessionInfo) -> None:
+        name = session._workspace_cleanup_container
+        if name is None:
+            return
+        await self._run_command(
+            [self.command, "rm", "-f", "-v", name], timeout_sec=20, check=False
+        )
+        remaining = await self._run_command(
+            [
+                self.command,
+                "ps",
+                "-a",
+                "--filter",
+                f"name={name}",
+                "--format",
+                "{{.Names}}",
+            ],
+            timeout_sec=5,
+            check=True,
+        )
+        if (
+            remaining.timed_out
+            or remaining.return_code != 0
+            or name in remaining.stdout.splitlines()
+        ):
+            raise BoxError("Workspace cleanup container has not stopped")
+        session._workspace_cleanup_container = None
+
+    async def _remove_owned_workspace_once(
+        self, session: BoxSessionInfo, owner: tuple[str, int, int]
+    ) -> None:
+        from . import file_io
+
+        if session._runtime_workspace_owner != owner or session.host_path != owner[0]:
+            raise BoxError("Workspace cleanup requires Runtime ownership")
+        # A previous helper may still be alive even when it already emptied the root.
+        await self._retire_workspace_cleanup(session)
+        try:
+            await super().remove_owned_workspace(session, owner)
+            return
+        except PermissionError:
+            pass
+        image_id = session._runtime_image_id
+        if self.name != "docker" or image_id is None:
+            raise BoxError("Cannot safely clean this backend's foreign-owned workspace")
+        image_result = await self._run_command(
+            [self.command, "image", "inspect", image_id], timeout_sec=5, check=True
+        )
+        image = json.loads(image_result.stdout)[0]
+        if image.get("Id") != image_id or image.get("Config", {}).get("Volumes"):
+            raise BoxError(
+                "Workspace cleanup requires an immutable image without declared volumes"
+            )
+        environment = {}
+        for entry in image.get("Config", {}).get("Env") or []:
+            key = entry.split("=", 1)[0]
+            if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+                raise BoxError("Unsafe cleanup image environment")
+            environment[key] = ""
+        environment.update(PATH="/usr/local/bin:/usr/bin:/bin", HOME="/tmp")
+        script = inspect.getsource(file_io) + "\nimport signal\n"
+        script += (
+            "def cleanup_timeout(signum, frame):\n"
+            "    raise TimeoutError('Workspace cleanup timed out')\n"
+            "signal.signal(signal.SIGALRM, cleanup_timeout)\n"
+            "signal.alarm(20)\n"
+        )
+        script += (
+            f"clear_workspace_directory('/workspace', {owner[1]!r}, {owner[2]!r})\n"
+        )
+        mount = io.StringIO()
+        csv.writer(mount).writerow(
+            [
+                "type=bind",
+                f"src={owner[0]}",
+                "dst=/workspace",
+                "bind-recursive=disabled",
+            ]
+        )
+        name = "langbot-workspace-cleanup-" + uuid.uuid4().hex
+        args = [
+            self.command,
+            "create",
+            "--name",
+            name,
+            "--pull",
+            "never",
+            "--restart",
+            "no",
+            "--user",
+            "0:0",
+            "--no-healthcheck",
+            "--read-only",
+            "--network",
+            "none",
+            "--cap-drop",
+            "ALL",
+            "--cap-add",
+            "DAC_OVERRIDE",
+            "--cap-add",
+            "FOWNER",
+            "--security-opt",
+            "no-new-privileges",
+            "--memory",
+            "128m",
+            "--pids-limit",
+            "32",
+            "--workdir",
+            "/",
+            "--entrypoint",
+            "python3",
+            "--label",
+            "langbot.box=true",
+            "--label",
+            f"langbot.box.instance_id={self.instance_id}",
+            "--label",
+            f"langbot.session_id={session.session_id}",
+            "--label",
+            "langbot.workspace_cleanup=true",
+            "--mount",
+            mount.getvalue().rstrip("\r\n"),
+        ]
+        if self.cpu_limit_enabled:
+            args.extend(["--cpus", "0.5"])
+        for key, value in environment.items():
+            args.extend(["--env", f"{key}={value}"])
+        args.extend([image_id, "-I", "-S", "-c", script])
+        session._workspace_cleanup_container = name
+        try:
+            await self._run_command(args, timeout_sec=10, check=True)
+            prepared = await self._run_command(
+                [self.command, "inspect", name], timeout_sec=5, check=True
+            )
+            container = json.loads(prepared.stdout)[0]
+            mounts = container.get("Mounts", [])
+            if (
+                container.get("Image") != image_id
+                or len(mounts) != 1
+                or mounts[0].get("Type") != "bind"
+                or mounts[0].get("Source") != owner[0]
+                or mounts[0].get("Destination") != "/workspace"
+                or mounts[0].get("RW") is not True
+            ):
+                raise BoxError("Workspace cleanup mount differs from its Runtime owner")
+            result = await self._run_command(
+                [self.command, "start", "-a", name], timeout_sec=30, check=True
+            )
+            if result.timed_out or result.return_code != 0:
+                raise BoxError("Workspace cleanup helper failed or timed out")
+        finally:
+            await self._retire_workspace_cleanup(session)
+        await bounded_executor.run_blocking_cleanup(
+            file_io.remove_owned_workspace, owner, empty_only=True
+        )
 
     async def _run_file_transfer(
         self,

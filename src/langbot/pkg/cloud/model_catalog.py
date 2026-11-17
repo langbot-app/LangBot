@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import time
 import uuid
 from datetime import datetime
 from typing import Any, Literal, Protocol, runtime_checkable
@@ -156,6 +158,13 @@ class CloudModelCatalogSyncService:
         self._runtime_reload_pending = False
         self._workspace_credits: dict[str, int | None] = {}
         self._sync_requested = asyncio.Event()
+        # Digest of the desired state last committed per Workspace. Directory
+        # changes wake the loop many times an hour; with thousands of Workspaces
+        # an incremental pass only reconciles Workspaces whose desired state
+        # changed (or that are new), while the periodic pass stays a full
+        # reconcile that also repairs drift in the database.
+        self._applied_digests: dict[str, str] = {}
+        self._last_full_sync_at: float | None = None
 
     def get_workspace_credits(self, workspace_uuid: str) -> int | None:
         """Return the latest signed owner-credit projection for a Workspace."""
@@ -163,6 +172,11 @@ class CloudModelCatalogSyncService:
 
     async def initialize(self) -> None:
         await self.sync_once(reload_runtime=False)
+
+    def _full_sync_due(self) -> bool:
+        return (
+            self._last_full_sync_at is None or time.monotonic() - self._last_full_sync_at >= self.sync_interval_seconds
+        )
 
     def request_sync(self) -> None:
         """Wake the catalog loop after a directory Workspace change."""
@@ -177,7 +191,7 @@ class CloudModelCatalogSyncService:
                 pass
             self._sync_requested.clear()
             try:
-                await self.sync_once(reload_runtime=True)
+                await self.sync_once(reload_runtime=True, incremental=not self._full_sync_due())
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -185,8 +199,14 @@ class CloudModelCatalogSyncService:
                 # including provider API keys. Log only the exception class.
                 self.ap.logger.warning(f'Cloud model catalog synchronization failed ({type(exc).__name__})')
 
-    async def sync_once(self, *, reload_runtime: bool = True) -> dict[str, int]:
+    async def sync_once(self, *, reload_runtime: bool = True, incremental: bool = False) -> dict[str, int]:
+        """Reconcile the catalog into Workspaces.
+
+        ``incremental`` skips Workspaces whose desired state is unchanged since
+        their last committed reconcile; a full pass reconciles every Workspace.
+        """
         summary = {'workspaces': 0, 'created': 0, 'updated': 0, 'deleted': 0}
+        full_pass_started_at = None if incremental else time.monotonic()
         snapshot: CloudModelCatalogSnapshot | None = None
         sync_error: Exception | None = None
         reload_error: Exception | None = None
@@ -205,7 +225,16 @@ class CloudModelCatalogSyncService:
                     f'Cloud model catalog is missing billing projections for {len(missing)} active Workspaces'
                 )
 
+            catalog_digest = self._catalog_digest(snapshot)
             for binding in bindings:
+                billing = billing_by_workspace[binding.workspace_uuid]
+                desired_digest = self._workspace_digest(catalog_digest, billing)
+                if incremental and self._applied_digests.get(binding.workspace_uuid) == desired_digest:
+                    summary['workspaces'] += 1
+                    self._workspace_credits[binding.workspace_uuid] = billing.credits
+                    continue
+                # Forget the digest first so a failed reconcile is retried.
+                self._applied_digests.pop(binding.workspace_uuid, None)
                 counts = await self._sync_workspace(
                     binding.workspace_uuid,
                     snapshot,
@@ -218,7 +247,13 @@ class CloudModelCatalogSyncService:
                     self._runtime_reload_pending = True
                 for key in ('created', 'updated', 'deleted'):
                     summary[key] += counts[key]
+                self._applied_digests[binding.workspace_uuid] = desired_digest
                 self._workspace_credits[binding.workspace_uuid] = billing_by_workspace[binding.workspace_uuid].credits
+            if full_pass_started_at is not None:
+                self._last_full_sync_at = full_pass_started_at
+                active = {binding.workspace_uuid for binding in bindings}
+                for workspace_uuid in set(self._applied_digests) - active:
+                    del self._applied_digests[workspace_uuid]
         except Exception as exc:
             sync_error = exc
         finally:
@@ -304,6 +339,18 @@ class CloudModelCatalogSyncService:
                         counts['deleted'] += 1
 
         return counts
+
+    @staticmethod
+    def _catalog_digest(snapshot: CloudModelCatalogSnapshot) -> str:
+        digest = hashlib.sha256(snapshot.base_url.encode())
+        for item in snapshot.models:
+            digest.update(b'\0' + item.model_dump_json().encode())
+        return digest.hexdigest()
+
+    @staticmethod
+    def _workspace_digest(catalog_digest: str, billing: CloudWorkspaceModelBilling) -> str:
+        api_key = billing.api_key.get_secret_value() if billing.api_key is not None else ''
+        return hashlib.sha256(f'{catalog_digest}\0{api_key}'.encode()).hexdigest()
 
     @staticmethod
     def _update_entity(entity: Any, values: dict[str, Any]) -> bool:

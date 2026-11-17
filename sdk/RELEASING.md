@@ -17,9 +17,13 @@ its own CI (`.github/workflows/sdk-*.yml`) and its own PyPI package.
   accept `v*` tags, but a SDK release in the list would still hide Core updates
   from deployed instances. Write SDK release notes in the PR that bumps the version.
 - Never use plain `vX.Y.Z` tags for the SDK; those are Core releases.
-- Core installs the SDK from PyPI through the exact pin `langbot-plugin==X` in
-  the root `pyproject.toml`. Core artifacts (wheel, sdist, Docker context,
-  release ZIP, fnOS package) exclude `sdk/`.
+- Root `uv sync` resolves Core's exact `langbot-plugin==X` requirement to the
+  editable local `sdk/` source. Checkouts, Docker, release ZIPs and fnOS carry
+  that source and can use coordinated SDK changes before an SDK release.
+- The standalone Core PyPI package retains the exact published dependency;
+  its wheel excludes SDK code. Publishing that package requires the matching
+  SDK release first. Independently installed Runtimes and plugins also need
+  their own compatible SDK installation.
 
 ## Steps
 
@@ -34,13 +38,15 @@ its own CI (`.github/workflows/sdk-*.yml`) and its own PyPI package.
 
 3. Confirm the **SDK / Publish to PyPI** run and the new version on
    https://pypi.org/project/langbot-plugin/.
-4. When Core needs the release, bump `langbot-plugin==X` in the root
-   `pyproject.toml`, run `uv lock`, and release Core as usual.
+4. For the standalone Core PyPI package, bump `langbot-plugin==X` in the root
+   `pyproject.toml`, run `uv lock`, and pass the gate below before publishing.
+   Source-based Core deployments do not need to wait for this publication.
 
 ## Core release gate
 
-`scripts/check_sdk_release_pin.py` runs in the Core PyPI and Docker release
-workflows. It fails when:
+`scripts/check_sdk_release_pin.py` runs in the standalone Core PyPI release
+workflow. Docker and source distributions use the checked-out SDK directly.
+The PyPI gate fails when:
 
 - Core's pin differs from `sdk/pyproject.toml`;
 - that version is not on PyPI;

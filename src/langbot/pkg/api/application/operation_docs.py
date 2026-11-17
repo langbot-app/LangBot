@@ -17,6 +17,10 @@ class OperationDoc:
 
 
 DOMAINS: dict[str, dict] = {
+    'artifact': {
+        'label': {'zh_Hans': '资产', 'en_US': 'Artifact'},
+        'summary': 'Create and access caller-owned files in the authenticated Workspace.',
+    },
     'adapter': {
         'label': {'zh_Hans': '适配器', 'en_US': 'Adapter'},
         'summary': 'Inspect IM platforms and chat network adapters available in the workspace.',
@@ -121,6 +125,94 @@ DOMAINS: dict[str, dict] = {
 
 
 OPERATION_DOCS: dict[str, OperationDoc] = {
+    'artifact.publication.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Output Publication', 'zh_Hans': '查看产物发布授权'},
+        summary='Get Output Publication',
+        description='Read the current caller-owned producer output publication policy. A missing policy never authorizes publication.',
+        risk='read',
+        exposure='none',
+    ),
+    'artifact.publication.set': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Set Output Publication', 'zh_Hans': '设置产物发布授权'},
+        summary='Set Output Publication',
+        description='Explicitly enable or disable publication to the authenticated named account or API key. No recipient ID is accepted; existing policies can only be changed by their recipient.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.publication.disable': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Disable Output Publication', 'zh_Hans': '停用产物发布授权'},
+        summary='Disable Output Publication',
+        description='Disable the current caller-owned producer policy. Existing run snapshots become invalid; previously published assets keep their recipient.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Create Artifact', 'zh_Hans': '创建资产'},
+        summary='Create a temporary caller-owned file.',
+        description='Upload bounded bytes with a name, MIME type and lifetime. The opaque ID does not grant access.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.skill_resource.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Reference Skill Resource', 'zh_Hans': '引用技能资源'},
+        summary='Reference a file in an explicitly fixed Skill version.',
+        description='Create a caller-owned reference without copying package bytes. Source permission is required; IDs do not grant access.',
+        risk='write',
+        exposure='none',
+    ),
+    'artifact.get': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Get Artifact', 'zh_Hans': '查看资产'},
+        summary='Get authorized file metadata without reading bytes.',
+        description='Return name, MIME type, size, digest and lifetime for an owned asset.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.read': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact', 'zh_Hans': '读取资产'},
+        summary='Read an owned file within the requested byte limit.',
+        description='Return exact bytes and metadata for authenticated download; this is not model content extraction.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.read_content': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Read Artifact content', 'zh_Hans': '读取资产内容'},
+        summary='Read bounded text or structured media from an owned asset.',
+        description='Returns text slices, images or native PDF input. PDF page rendering is unavailable.',
+        risk='read',
+        exposure='all',
+    ),
+    'artifact.retain': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Retain Artifact', 'zh_Hans': '保留资产'},
+        summary='Retain an owned file until its pin is released.',
+        description='Add a persistent caller-owned pin without changing access permissions.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.release': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Release Artifact', 'zh_Hans': '释放资产'},
+        summary='Release the caller-owned persistent pin.',
+        description='Remove the caller pin and restore the temporary expiry grace period.',
+        risk='write',
+        exposure='all',
+    ),
+    'artifact.delete': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Delete Artifact', 'zh_Hans': '删除资产'},
+        summary='Delete an unpinned owned file.',
+        description='Refuse deletion while any persistent pin still protects the file.',
+        risk='dangerous',
+        exposure='all',
+    ),
     'adapter.get': OperationDoc(
         domain='adapter',
         label={'zh_Hans': '适配器详情', 'en_US': 'Get Adapter'},
@@ -440,6 +532,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         description='List files and documents stored in a knowledge base with ingestion status, chunk counts, and error details. Prerequisites: Call knowledge.base.list to obtain kb_uuid.',
         risk='read',
         exposure='all',
+    ),
+    'knowledge.file.store_artifact': OperationDoc(
+        domain='knowledge',
+        label={'zh_Hans': '导入知识库资产', 'en_US': 'Store Knowledge Artifact'},
+        summary='Ingest an owned Artifact into a knowledge base.',
+        description='Explicitly retain an owned Artifact for knowledge ingestion; returns the existing task identifier.',
+        risk='write',
+        exposure='none',
     ),
     'knowledge.file.store': OperationDoc(
         domain='knowledge',

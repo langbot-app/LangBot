@@ -1,20 +1,7 @@
 name: Plugins / LocalAgent tests
 
 on:
-  push:
-    paths:
-      - "sdk/**"
-      - "src/langbot/**"
-      - "plugins/pytest.ini"
-      - "plugins/Runner/LocalAgent/**"
-      - ".github/workflows/plugins-local-agent-tests.yml"
-  pull_request:
-    paths:
-      - "sdk/**"
-      - "src/langbot/**"
-      - "plugins/pytest.ini"
-      - "plugins/Runner/LocalAgent/**"
-      - ".github/workflows/plugins-local-agent-tests.yml"
+  # PRs exercise this consumer via plugins-runner-tests.yml; keep isolated manual repro.
   workflow_dispatch:
 
 permissions:

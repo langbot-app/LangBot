@@ -119,6 +119,12 @@ def _write_file_runner(plugin_root):
                             {'run_id': old, 'target_run_id': old}, 15)
                         report['persisted_run'] = record['run_id']
                         report['persisted_status'] = record['status']
+                        try:
+                            await self.plugin.plugin_runtime_handler.call_action(
+                                PluginToRuntimeAction.READ_RUN_FILE,
+                                {'run_id': old, 'file_id': request['file_id']}, 15)
+                        except Exception as error:
+                            report['closed_run_read_denied'] = str(error)
                     elif request['operation'] == 'foreign-ledger':
                         try:
                             await ctx.run_get(request['run_id'])
@@ -136,6 +142,14 @@ def _write_file_runner(plugin_root):
                                 await ctx.reply_files([request['file_id']])
                             except Exception as error:
                                 report['denied'] = str(error)
+                            try:
+                                await ctx.read_run_file(request['file_id'])
+                            except Exception as error:
+                                report['read_denied'] = str(error)
+                            try:
+                                await ctx.commit_run_files([request['file_id']])
+                            except Exception as error:
+                                report['commit_denied'] = str(error)
                         elif request['operation'] == 'revoked':
                             report['unexpected_sandbox_access'] = True
                         else:
@@ -143,18 +157,37 @@ def _write_file_runner(plugin_root):
                             assert len(imported) == 1, imported
                             source = imported[0]
                             output = '/tmp/network-plugin-' + ctx.run_id + '.bin'
+                            text_output = '/tmp/network-plugin-' + ctx.run_id + '.txt'
+                            probe = 'Run output 甲乙😀丁'
                             command = ('sha256sum ' + shlex.quote(source.path) +
-                                       ' && cp ' + shlex.quote(source.path) + ' ' + shlex.quote(output))
+                                       ' && cp ' + shlex.quote(source.path) + ' ' + shlex.quote(output) +
+                                       ' && printf %s ' + shlex.quote(probe) + ' > ' + shlex.quote(text_output))
                             result = await ctx.call_tool('exec', {'command': command, 'timeout_sec': 10})
                             assert result['ok'], result
-                            exported = await ctx.export_box_files([output])
-                            assert len(exported) == 1 and not exported[0].warning, exported
+                            exported = await ctx.export_box_files([output, text_output])
+                            assert len(exported) == 2 and not any(item.warning for item in exported), exported
+                            binary = next(item for item in exported if item.name.endswith('.bin'))
+                            text_file = next(item for item in exported if item.name.endswith('.txt'))
+                            first = await ctx.read_run_file(text_file.id, max_chars=4)
+                            first = json.loads(first[0]['text'])
+                            assert first['truncated'] and first['next_offset'] == 4, first
+                            rest = await ctx.read_run_file(text_file.id, offset=first['next_offset'])
+                            rest = json.loads(rest[0]['text'])
+                            assert first['text'] + rest['text'] == probe and not rest['truncated'], rest
                             check = await ctx.call_tool('exec', {
-                                'command': 'test ! -e ' + shlex.quote(output), 'timeout_sec': 5})
+                                'command': 'test ! -e ' + shlex.quote(output) +
+                                           ' && test ! -e ' + shlex.quote(text_output), 'timeout_sec': 5})
                             assert check['ok'], check
-                            report.update(file_id=exported[0].id, size=source.size,
-                                          sha256=result['stdout'].split()[0])
-                            await ctx.reply_files([exported[0].id])
+                            report.update(file_id=binary.id, artifact_id=binary.artifact_id,
+                                          text_artifact_id=text_file.artifact_id, size=source.size,
+                                          sha256=result['stdout'].split()[0], read_text=probe)
+                            await ctx.reply_files([binary.id])
+                            if request.get('commit'):
+                                committed = await ctx.commit_run_files([binary.id])
+                                assert committed[0].id == binary.id, committed
+                                assert committed[0].artifact_id == binary.artifact_id, committed
+                                assert committed[0].lifecycle == 'persistent', committed
+                                report['committed'] = True
                 except Exception as error:
                     report['error'] = str(error)
                 await ctx.reply('NETWORK_E2E ' + json.dumps(report))
@@ -243,6 +276,8 @@ def _provider_presence(info, expected, config):
 
 @pytest.fixture(scope='session')
 def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_tmpdir, runner_runtime_process):
+    box_config = yaml.safe_load(runner_e2e_config_path.read_text())['box']
+
     class GracefulCore(LangBotProcess):
         token = None
 
@@ -256,7 +291,7 @@ def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_t
                         sessions = _data(
                             client.get('/api/v1/box/sessions', headers={'Authorization': f'Bearer {self.token}'})
                         )
-                    assert len(sessions) <= 1, sessions
+                    assert len(sessions) <= box_config['limits']['max_sessions'], sessions
                     for info in sessions:
                         _provider_presence(info, True, self.e2b_config)
             finally:
@@ -287,7 +322,7 @@ def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_t
         collect_coverage=False,
         cli_args=['--standalone-runtime'],
     )
-    proc.e2b_config = yaml.safe_load(runner_e2e_config_path.read_text())['box']['e2b']
+    proc.e2b_config = box_config['e2b']
     assert proc.start(), proc.get_logs()
     try:
         yield proc
@@ -435,6 +470,13 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
             },
         )
     )['uuid']
+    _data(
+        client.put(
+            f'/api/v1/artifacts/producers/agent/{agent_id}/publication',
+            headers=headers,
+            json={'enabled': True},
+        )
+    )
     bot_id = _data(
         client.post(
             '/api/v1/platform/bots',
@@ -464,11 +506,19 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
         )
     )['uuid']
 
-    def roundtrip():
-        report, files = _turn(client, bot_id, {'operation': 'roundtrip'}, url=source_url)
+    def roundtrip(*, commit=False):
+        report, files = _turn(client, bot_id, {'operation': 'roundtrip', 'commit': commit}, url=source_url)
         assert 'error' not in report, report
         assert report['size'] == len(content)
         assert report['sha256'] == hashlib.sha256(content).hexdigest()
+        assert report['read_text'] == 'Run output 甲乙😀丁'
+        assert report['artifact_id'].startswith('art_') and report['text_artifact_id'].startswith('art_')
+        metadata = client.get('/api/v1/artifacts/' + report['artifact_id'], headers=headers)
+        assert metadata.status_code == (200 if commit else 404), metadata.text
+        if commit:
+            downloaded = client.get('/api/v1/artifacts/' + report['artifact_id'] + '/content', headers=headers)
+            assert downloaded.status_code == 200, downloaded.text
+            assert downloaded.content == content
         assert len(files) == 1, files
         assert base64.b64decode(files[0]['base64'].split(';base64,')[-1], validate=True) == content
         snapshot = _completed_snapshot(db_path, report['run_id'])
@@ -481,9 +531,11 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
         assert {'exec', 'event_reply'} <= names, snapshot['resources']
         return report
 
-    first = roundtrip()
+    first = roundtrip(commit=True)
+    assert first['committed']
     denied, files = _turn(client, bot_id, {'operation': 'foreign-file', 'file_id': first['file_id']})
     assert denied.get('denied') and 'error' not in denied and not files, denied
+    assert denied.get('read_denied') and denied.get('commit_denied'), denied
     assert denied['run_id'] != first['run_id']
     foreign, files = _turn(
         client, bot_id, {'operation': 'foreign-ledger', 'run_id': first['run_id']}, session='foreign-conversation'
@@ -496,9 +548,32 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
     assert runner_langbot_process.start(), runner_langbot_process.get_logs()
     assert QA_RUNNER_ID in _wait_for_qa_runner(client, token)
     assert _read_installation(db_path) == before
-    persisted, files = _turn(client, bot_id, {'operation': 'persisted', 'run_id': first['run_id']})
+    persisted, files = _turn(
+        client, bot_id, {'operation': 'persisted', 'run_id': first['run_id'], 'file_id': first['file_id']}
+    )
     assert persisted.get('persisted_run') == first['run_id'], persisted
     assert persisted.get('persisted_status') == 'completed' and not files, persisted
+    assert persisted.get('closed_run_read_denied'), persisted
+    with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as db:
+        row = db.execute(
+            'SELECT owner_type, owner_id, expires_at, deleted_at, manager_type, manager_id FROM artifacts WHERE id=?',
+            (first['artifact_id'],),
+        ).fetchone()
+        assert row[:4] == ('run_output', first['run_id'], None, None), row
+        assert row[4] == 'account' and row[5], row
+        assert db.execute(
+            'SELECT holder_type, holder_id FROM artifact_references WHERE artifact_id=?',
+            (first['artifact_id'],),
+        ).fetchone() == ('principal', f'{row[4]}:{row[5]}')
+    artifact_url = '/api/v1/artifacts/' + first['artifact_id']
+    downloaded = client.get(artifact_url + '/content', headers=headers)
+    assert downloaded.status_code == 200 and downloaded.content == content
+    assert client.delete(artifact_url, headers=headers).status_code == 409
+    released = _data(client.post(artifact_url + '/release', headers=headers))
+    assert released['lifecycle'] == 'temporary' and released['expires_at']
+    assert _data(client.post(artifact_url + '/release', headers=headers))['expires_at'] == released['expires_at']
+    _data(client.delete(artifact_url, headers=headers))
+    assert client.get(artifact_url, headers=headers).status_code == 404
     roundtrip()
     assert source_requests == ['/input.bin', '/input.bin'], source_requests
 

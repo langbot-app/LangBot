@@ -100,6 +100,7 @@ class WorkspaceService:
                 raise WorkspaceInvariantError(
                     f'Expected one local workspace for {self.instance_uuid!r}, found {len(workspaces)}'
                 )
+            self.ap._telemetry_default_workspace = workspaces[0].uuid
             return workspaces[0]
 
         return await self._run(operation, session=session)
@@ -346,6 +347,7 @@ class WorkspaceService:
                 await repository.flush()
 
             await self._ensure_execution_state(repository, workspace)
+            self.ap._telemetry_default_workspace = workspace.uuid
             return workspace
 
         return await self._run(operation, session=session)

@@ -1,6 +1,6 @@
 [project]
 name = "langbot"
-version = "4.11.7"
+version = "4.11.8"
 description = "Production-grade platform for building agentic IM bots"
 readme = "README.md"
 license-files = ["LICENSE"]
@@ -51,7 +51,7 @@ dependencies = [
     "python-socks>=2.7.1", # dingtalk missing dependency
     "pip>=26.2.0",
     "uv>=0.13.4",
-    "pypdf>=6.0.0",
+    "pypdf>=6.21.2",
     "python-docx>=1.1.0",
     "chardet>=5.2.0",
     "xxhash>=3.5.0",
@@ -67,7 +67,7 @@ dependencies = [
     "langchain-text-splitters>=1.1.2",
     "chromadb>=1.0.0,<2.0.0",
     "qdrant-client (>=1.15.1,<2.0.0)",
-    "langbot-plugin==0.7.24",
+    "langbot-plugin==0.7.25",
     "asyncpg>=0.30.0",
     "line-bot-sdk>=3.19.0",
     "matrix-nio>=0.25.2",
@@ -148,6 +148,9 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.11.9",
 ]
+
+[tool.uv.sources]
+langbot-plugin = { path = "sdk", editable = true }
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

@@ -6,45 +6,69 @@ on:
     paths:
       - 'web/**'
       - '.github/workflows/frontend-tests.yml'
-  push:
-    branches:
-      - master
-      - develop
-    paths:
-      - 'web/**'
-      - '.github/workflows/frontend-tests.yml'
+      - '.github/workflows/lint.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   playwright-smoke:
     name: Playwright Smoke
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
         with:
-          node-version: '24'
-
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
         with:
           version: 8.9.2
-
-      - name: Install dependencies
-        working-directory: web
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - id: install
+        name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Run frontend unit tests
-        working-directory: web
+      - name: Frontend lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: pnpm lint
+      - name: Check i18n keys against en-US reference
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: node scripts/check-i18n.mjs
+      - name: Typecheck frontend on the PR
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && github.event_name == 'pull_request' }}
+        run: pnpm exec tsc --noEmit
+      - name: Frontend unit tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm test:unit
-
-      - name: Install Playwright browsers
-        working-directory: web
+      - id: browser
+        name: Install Playwright browser
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: pnpm exec playwright install --with-deps chromium
-
-      - name: Run Playwright smoke tests
-        working-directory: web
+      - name: Playwright browser checks against Vite dev server
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        # This suite uses test-only source fixtures that are not in the production bundle.
         run: pnpm test:e2e
+      - name: Production bundle (daily and manual)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && github.event_name != 'pull_request' }}
+        run: pnpm build
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
+        with:
+          name: frontend-browser-${{ github.run_attempt }}
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore

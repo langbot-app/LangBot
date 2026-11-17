@@ -1,0 +1,88 @@
+name: P0 acceptance
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      persistence: ${{ steps.scope.outputs.persistence }}
+      permissions: ${{ steps.scope.outputs.permissions }}
+      image: ${{ steps.scope.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Select affected acceptance paths
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        run: python3 scripts/p0_acceptance_scope.py
+
+  persistence:
+    needs: changes
+    if: needs.changes.outputs.persistence == 'true'
+    uses: ./.github/workflows/persistence-acceptance.yml
+
+  permissions:
+    needs: changes
+    if: needs.changes.outputs.permissions == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      LANGBOT_PERMISSION_E2E: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --dev --frozen
+      - name: Run real Core, Runtime and SDK permission lifecycle
+        run: >-
+          uv run --no-sync pytest tests/integration/api/test_plugin_permission_lifecycle.py
+          tests/integration/api/test_application_foundation.py
+          --required-suite p0_permissions -q -rs --junitxml=permission-lifecycle.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: p0-permission-evidence
+          include-hidden-files: true
+          path: |
+            permission-lifecycle.xml
+            .qa/permissions/permissions-e2e-*/*.log
+            .qa/permissions/permissions-e2e-*/instance-metadata.json
+
+  image:
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
+    uses: ./.github/workflows/core-packaging.yml
+    with:
+      production_acceptance: true
+
+  verdict:
+    name: P0 Acceptance
+    needs: [changes, persistence, permissions, image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject missing or unsuccessful acceptance
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          needs = json.loads(os.environ['NEEDS'])
+          assert needs['changes']['result'] == 'success', needs
+          for name in ('persistence', 'permissions', 'image'):
+              selected = needs['changes']['outputs'].get(name)
+              assert selected in ('true', 'false'), (name, 'invalid selection', selected)
+              expected = 'success' if selected == 'true' else 'skipped'
+              assert needs[name]['result'] == expected, (name, expected, needs[name]['result'])
+          PY

@@ -42,13 +42,31 @@ async def test_box_storage_analysis_reports_workspace_mcp_without_skills(tmp_pat
 
     directories = {item["key"]: item for item in result["directories"]}
     assert directories["workspace"]["size_bytes"] == 8
+    assert directories["workspace"]["file_count"] == 2
     assert directories["mcp"]["size_bytes"] == 3
+    assert directories["mcp"]["file_count"] == 1
+    assert directories["mcp"]["kind"] == "detail"
     assert directories["mcp"]["parent_key"] == "workspace"
+    assert directories["inbox"]["size_bytes"] == 5
+    assert directories["inbox"]["file_count"] == 1
     assert directories["outbox"]["exists"] is False
     assert "skills" not in directories
     assert result["size_bytes"] == 8
     assert result["active_sessions"] == 0
     assert result["managed_processes"] == 0
+
+    (mcp / "cache.bin").unlink()
+    outbox = workspace / "outbox"
+    outbox.mkdir()
+    (outbox / "reply.bin").write_bytes(b"reply!")
+    refreshed = await runtime.get_storage_analysis(context)
+
+    refreshed_directories = {item["key"]: item for item in refreshed["directories"]}
+    assert refreshed["size_bytes"] == 11
+    assert refreshed_directories["workspace"]["file_count"] == 2
+    assert refreshed_directories["mcp"]["size_bytes"] == 0
+    assert refreshed_directories["outbox"]["exists"] is True
+    assert refreshed_directories["outbox"]["size_bytes"] == 6
 
 
 def test_box_storage_analysis_aggregates_ephemeral_managed_process_sessions():

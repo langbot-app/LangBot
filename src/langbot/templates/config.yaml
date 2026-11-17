@@ -262,7 +262,11 @@ vdb:
 storage:
     # 'persistent' stores uploaded assets/media in the database by default.
     # Existing local/S3 deployments retain their explicit provider selection.
-    use: local
+    use: persistent
+    migration:
+        # Set true for a populated local-storage upgrade. Missing old volumes
+        # then stop startup instead of being mistaken for a new empty replica.
+        require_source: false
     content:
         backend: database
         # Optional named S3 backends. Keep names and endpoint/bucket locations
@@ -427,14 +431,15 @@ monitoring:
         # Supports MONITORING__AUTO_CLEANUP__MAX_BATCHES_PER_TABLE_PER_RUN.
         max_batches_per_table_per_run: 4
 skills:
-    # Explicit opt-in until the automatic migration/default-switch stage.
-    # 'database' persists metadata and versions; content uses storage.content.
-    persistence: filesystem
-    # Core-owned SkillStore. Skill discovery, activation, resources, CRUD and
-    # revisions remain available when Box is disabled.
-    # TODO(next-major): change the fresh-install default to './data/skills'
-    # after the online-upgrade window for the historical Box path closes.
-    root: './data/box/skills'
+    # Metadata and retained versions live in the DB; content uses storage.content.
+    # Existing filesystem configurations remain explicit upgrade choices.
+    persistence: database
+    # Legacy import source and disposable legacy-mode cache, never DB authority.
+    root: './data/skills'
+    migration:
+        # For a populated upgrade, keep root pointing to the old Skill volume
+        # and set true. Completed imports no longer require the source volume.
+        require_source: false
 
 box:
     # Master switch for the Box sandbox runtime. When false, LangBot does NOT
@@ -448,9 +453,9 @@ box:
     # isolation. It is never auto-selected and is only for trusted local
     # development. Can be written via BOX__BACKEND.
     backend: 'local'  # 'local' (Docker/nsjail), 'docker', 'nsjail', 'e2b', or explicit unsafe 'host'.
-    # Use 'network' with a compatible SDK/Runtime to transfer attachments
-    # without shared Core/Box paths. 'legacy' preserves existing transfer paths.
-    file_transfer_mode: 'legacy'
+    # Requires a compatible Core SDK and Runtime; startup checks the handshake.
+    # 'legacy' explicitly preserves shared Core/Box transfer paths.
+    file_transfer_mode: 'network'
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret
@@ -469,6 +474,9 @@ box:
         # bound; Cloud may override this with BOX__LIMITS__MAX_ADMISSION_RECORDS.
         max_admission_records: 100000
         max_rpc_file_bytes: 20971520
+        # Runtime-owned immutable package cache; active session mounts stay pinned.
+        max_artifact_cache_bytes: 268435456
+        artifact_cache_ttl_sec: 300
     # Cloud v2 overrides these values through the instance config/environment.
     # OSS keeps admission disabled and preserves the existing multi-session
     # local behavior. These limits are Runtime-owned and cannot be relaxed by
@@ -532,6 +540,8 @@ space:
     # OAuth authorization page URL (user will be redirected here)
     oauth_authorize_url: 'https://space.langbot.app/auth/authorize'
     disable_models_service: false
+    # Skip the startup release-list request when running without Space access.
+    disable_release_check: false
     # Optional telemetry is enabled by default. Set true to disable usage,
     # heartbeat and execution reporting; restart after changing this setting.
     disable_telemetry: false

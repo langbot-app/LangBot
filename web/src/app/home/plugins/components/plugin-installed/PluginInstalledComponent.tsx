@@ -24,11 +24,13 @@ import { toast } from 'sonner';
 import { useAsyncTask, AsyncTaskStatus } from '@/hooks/useAsyncTask';
 import { useSidebarData } from '@/app/home/components/home-sidebar/SidebarDataContext';
 import {
+  ArrowRight,
   Loader2,
   Puzzle,
   Search,
   Server,
   ShieldAlert,
+  ShieldCheck,
   Sparkles,
 } from 'lucide-react';
 import {
@@ -437,11 +439,16 @@ const PluginInstalledComponent = forwardRef<
                 </div>
                 <Button
                   size="sm"
-                  variant="outline"
-                  className="shrink-0"
+                  className="group shrink-0 bg-amber-600 text-white hover:bg-amber-700 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400"
                   onClick={() => handleExtensionClick(extension)}
+                  aria-label={t('pluginPermissions.reviewLabel')}
                 >
+                  <ShieldCheck aria-hidden="true" />
                   {t('pluginPermissions.review')}
+                  <ArrowRight
+                    className="transition-transform group-hover:translate-x-0.5 motion-reduce:transition-none"
+                    aria-hidden="true"
+                  />
                 </Button>
               </li>
             ))}

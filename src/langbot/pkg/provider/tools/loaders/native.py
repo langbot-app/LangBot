@@ -330,7 +330,8 @@ class NativeToolLoader(loader.ToolLoader):
                 raise ValueError('exec can reference files from only one activated skill package per call.')
 
             package_root = str(selected_skill.get('package_root', '') or '').strip()
-            if not package_root:
+            network_packages = getattr(self.ap.box_service, 'file_transfer_mode', None) == 'network'
+            if not package_root and not network_packages:
                 raise ValueError(f'Activated skill "{selected_skill_name}" has no package_root.')
 
             # Wrap command with Python venv bootstrap if the skill has a Python project.
@@ -342,7 +343,7 @@ class NativeToolLoader(loader.ToolLoader):
                 workdir = skill_mount + workdir[len(legacy_mount) :]
             parameters = {**parameters, 'command': command, 'workdir': workdir}
             python_project = selected_skill.get('python_project') is True
-            if 'python_project' not in selected_skill:
+            if 'python_project' not in selected_skill and not network_packages:
                 python_project = skill_loader.should_prepare_skill_python_env(package_root)
             if python_project:
                 revision_key = str(selected_skill.get('revision', '') or '').removeprefix('sha256:')
@@ -431,7 +432,7 @@ class NativeToolLoader(loader.ToolLoader):
 
     def _should_use_box_workspace_files(self, selected_skill: dict | None) -> bool:
         if selected_skill is not None:
-            return False
+            return getattr(self.ap.box_service, 'file_transfer_mode', None) == 'network'
         box_service = getattr(self.ap, 'box_service', None)
         if box_service is None or not hasattr(box_service, 'execute_tool'):
             return False
@@ -746,6 +747,14 @@ class NativeToolLoader(loader.ToolLoader):
     def _sandbox_child_path(base: str, relative: str) -> str:
         return f'{str(base).rstrip("/")}/{relative}'
 
+    def _box_file_path(self, path: str, query: pipeline_query.Query) -> tuple[str, str]:
+        request = self._resolve_skill_relative_path(query, path, include_visible=False, include_activated=True)
+        if request is None:
+            return path, '/workspace'
+        skill, relative = request
+        root = skill_loader.get_virtual_skill_mount_path(skill['name'], skill['revision'])
+        return (root if relative == '.' else f'{root}/{relative}'), root
+
     async def _run_workspace_file_script(self, script: str, query: pipeline_query.Query) -> dict:
         # Box file tools need Python 3 (f-strings, etc.). Prefer `python3` and
         # never fall back to unversioned `python`, which may still be Python 2
@@ -949,14 +958,16 @@ else:
         return await self._run_workspace_file_script(script, query)
 
     async def _glob_workspace_via_box(self, path: str, pattern: str, query: pipeline_query.Query) -> dict:
+        path, allowed_root = self._box_file_path(path, query)
         script = f"""
 import heapq, json, os
 from pathlib import Path
 path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
 skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
-if not path.startswith('/workspace'):
-    print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+allowed_root = {json.dumps(allowed_root)}
+if path != allowed_root and not path.startswith(allowed_root + '/'):
+    print(json.dumps({{'ok': False, 'error': 'Path is outside the authorized package or Workspace.'}}))
 elif not os.path.isdir(path):
     print(json.dumps({{'ok': False, 'error': f'Path is not a directory: {{path}}'}}))
 else:
@@ -1016,6 +1027,7 @@ else:
         include: str | None,
         query: pipeline_query.Query,
     ) -> dict:
+        path, allowed_root = self._box_file_path(path, query)
         script = f"""
 import json, os, re, signal, time
 from pathlib import Path
@@ -1023,6 +1035,7 @@ path = {json.dumps(path)}
 pattern = {json.dumps(pattern)}
 include = {include!r}
 skip_dirs = {json.dumps(sorted(_SKIP_DIRS))}
+allowed_root = {json.dumps(allowed_root)}
 def regex_timeout(_signum, _frame):
     raise TimeoutError
 signal.signal(signal.SIGALRM, regex_timeout)
@@ -1031,8 +1044,8 @@ try:
 except re.error as exc:
     print(json.dumps({{'ok': False, 'error': f'Invalid regex: {{exc}}'}}))
 else:
-    if not path.startswith('/workspace'):
-        print(json.dumps({{'ok': False, 'error': 'Path must be under /workspace.'}}))
+    if path != allowed_root and not path.startswith(allowed_root + '/'):
+        print(json.dumps({{'ok': False, 'error': 'Path is outside the authorized package or Workspace.'}}))
     elif not os.path.exists(path):
         print(json.dumps({{'ok': False, 'error': f'Path not found: {{path}}'}}))
     else:

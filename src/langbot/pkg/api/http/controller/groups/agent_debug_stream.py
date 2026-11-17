@@ -17,6 +17,7 @@ from .....agent.runner.errors import (
     RunnerNotFoundError,
     RunnerProtocolError,
 )
+from ....application.contracts import ApplicationAPIException
 
 
 def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> quart.Response:
@@ -44,7 +45,9 @@ def debug_stream_response(service, context, agent_uuid: str, payload: dict) -> q
                     )
                 await queue.put({'kind': 'completed', 'data': result})
             except Exception as exc:
-                if isinstance(exc, RunnerExecutionError):
+                if isinstance(exc, ApplicationAPIException):
+                    code, message = exc.error.code, exc.error.message
+                elif isinstance(exc, RunnerExecutionError):
                     code, message = exc.error_code or 'runner_execution_failed', exc.message
                 elif isinstance(exc, RunnerNotFoundError):
                     code, message = 'runner_not_found', t('Agent runner temporarily unavailable. Please try again.')

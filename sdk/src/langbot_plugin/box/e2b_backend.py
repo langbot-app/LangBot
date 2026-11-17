@@ -478,9 +478,13 @@ class E2BSandboxBackend(BaseSandboxBackend):
         path: str,
         max_bytes: int,
         content: bytes | None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes | None:
         operation = asyncio.create_task(
-            self._file_transfer_once(session, path, max_bytes, content)
+            self._file_transfer_once(
+                session, path, max_bytes, content, directory_archive=directory_archive
+            )
         )
         try:
             return await asyncio.shield(operation)
@@ -513,12 +517,18 @@ class E2BSandboxBackend(BaseSandboxBackend):
         path: str,
         max_bytes: int,
         content: bytes | None,
+        *,
+        directory_archive: bool = False,
     ) -> bytes | None:
         from . import file_io
 
         if not _check_e2b_available():
             raise BoxError("e2b package not installed")
-        relative = file_io.workspace_relative_path(session.mount_path, path)
+        relative = (
+            ""
+            if directory_archive and path == session.mount_path
+            else file_io.workspace_relative_path(session.mount_path, path)
+        )
         if content is not None:
             if session.host_path_mode == BoxHostMountMode.READ_ONLY:
                 raise BoxError("Cannot upload into a read-only workspace")
@@ -565,8 +575,13 @@ class E2BSandboxBackend(BaseSandboxBackend):
                     user="root",
                 )
                 return None
+            reader = (
+                "archive_workspace_directory"
+                if directory_archive
+                else "read_workspace_file"
+            )
             script += (
-                f"content = read_workspace_file({workspace!r}, {relative!r}, {max_bytes!r})\n"
+                f"content = {reader}({workspace!r}, {relative!r}, {max_bytes!r})\n"
                 f"write_workspace_file({staging!r}, 'payload', content, {max_bytes!r})\n"
             )
             await self._run_e2b_checked(
@@ -613,6 +628,15 @@ class E2BSandboxBackend(BaseSandboxBackend):
         self, session: BoxSessionInfo, path: str, max_bytes: int
     ) -> bytes:
         content = await self._file_transfer(session, path, max_bytes, None)
+        assert content is not None
+        return content
+
+    async def download_directory(
+        self, session: BoxSessionInfo, path: str, max_bytes: int
+    ) -> bytes:
+        content = await self._file_transfer(
+            session, path, max_bytes, None, directory_archive=True
+        )
         assert content is not None
         return content
 

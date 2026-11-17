@@ -4,10 +4,12 @@ Integration smoke tests for Passkey API endpoints.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from langbot.pkg.utils import constants
 from tests.factories import FakeApp
 from tests.utils.import_isolation import isolated_sys_modules, MockLifecycleControlScope
 
@@ -62,12 +64,92 @@ def fake_api_app():
 
 
 @pytest.fixture
-async def quart_test_client(fake_api_app, http_controller_cls):
+async def api_controller(fake_api_app, http_controller_cls):
     controller = http_controller_cls(fake_api_app)
     await controller.initialize()
+    return controller
 
-    client = controller.quart_app.test_client()
-    yield client
+
+@pytest.fixture
+def quart_test_client(api_controller):
+    return api_controller.quart_app.test_client()
+
+
+# Use request-shaped but inert credentials: the edition check must stop these
+# requests before any WebAuthn service operation, even for a valid session.
+_VERIFY_PAYLOAD = {'challenge_token': 'fixture-challenge', 'credential': {'id': 'fixture-credential'}}
+_PASSKEY_ROUTES = (
+    ('POST', '/passkey/auth/options', False, {}, 'generate_passkey_authentication_options'),
+    ('POST', '/passkey/auth/verify', False, _VERIFY_PAYLOAD, 'verify_passkey_authentication'),
+    ('POST', '/passkey/register/options', True, {}, 'generate_passkey_registration_options'),
+    ('POST', '/passkey/register/verify', True, _VERIFY_PAYLOAD, 'verify_and_save_passkey_registration'),
+    ('GET', '/passkeys', True, None, 'get_user_passkeys'),
+    ('PATCH', '/passkey/<passkey_uuid>', True, {'name': 'fixture name'}, 'rename_user_passkey'),
+    ('DELETE', '/passkey/<passkey_uuid>', True, None, 'delete_user_passkey'),
+)
+_USER_API_PREFIX = '/api/v1/user'
+
+
+def test_all_registered_passkey_routes_have_a_cloud_contract_case(api_controller):
+    registered_routes = {
+        (method, rule.rule.removeprefix(_USER_API_PREFIX))
+        for rule in api_controller.quart_app.url_map.iter_rules()
+        if rule.rule.startswith(f'{_USER_API_PREFIX}/passkey')
+        for method in rule.methods - {'HEAD', 'OPTIONS'}
+    }
+    assert registered_routes == {(method, path) for method, path, *_ in _PASSKEY_ROUTES}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    'edition,deployment_mode',
+    [
+        pytest.param('cloud', 'oss', id='cloud-edition'),
+        pytest.param('community', 'cloud', id='cloud-deployment'),
+    ],
+)
+@pytest.mark.parametrize(
+    'method,path,authenticated,payload',
+    [pytest.param(*case[:-1], id=f'{case[0]} {case[1]}') for case in _PASSKEY_ROUTES],
+)
+async def test_cloud_refuses_passkey_routes_before_service_dispatch(
+    quart_test_client,
+    fake_api_app,
+    monkeypatch,
+    edition,
+    deployment_mode,
+    method,
+    path,
+    authenticated,
+    payload,
+):
+    monkeypatch.setattr(constants, 'edition', edition)
+    fake_api_app.deployment = SimpleNamespace(mode=deployment_mode, multi_workspace_enabled=False)
+    user_service = fake_api_app.user_service
+    user_service.get_authenticated_account = AsyncMock(
+        return_value=SimpleNamespace(uuid='fixture-account', user='test@example.local')
+    )
+    for *_, service_method in _PASSKEY_ROUTES:
+        setattr(user_service, service_method, AsyncMock())
+
+    request_kwargs = {}
+    if payload is not None:
+        request_kwargs['json'] = payload
+    if authenticated:
+        request_kwargs['headers'] = {'Authorization': 'Bearer fixture-account-token'}
+
+    response = await quart_test_client.open(
+        f'{_USER_API_PREFIX}{path.replace("<passkey_uuid>", "fixture-passkey")}', method=method, **request_kwargs
+    )
+
+    assert response.status_code == 403
+    assert (await response.get_json())['code'] == 'edition_unsupported'
+    if authenticated:
+        user_service.get_authenticated_account.assert_awaited_once_with('fixture-account-token')
+    else:
+        user_service.get_authenticated_account.assert_not_called()
+    for *_, service_method in _PASSKEY_ROUTES:
+        getattr(user_service, service_method).assert_not_called()
 
 
 class TestPasskeyPublicEndpoints:

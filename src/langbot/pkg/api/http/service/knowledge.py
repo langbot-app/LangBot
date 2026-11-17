@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from ....i18n import t
+from ....telemetry import usage
 
 import sqlalchemy
 
@@ -258,6 +259,7 @@ class KnowledgeService:
         if kb is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
         if kb.get('initialized', True) is False:
+            usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
             return
 
         runtime_kb = await self.ap.rag_mgr.load_knowledge_base(context, kb)
@@ -279,6 +281,8 @@ class KnowledgeService:
                     .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
                 )
                 raise
+
+        usage.inc(self.ap, workspace_uuid, 'kb.update', engine=current.get('knowledge_engine_plugin_id'))
 
     async def _check_doc_capability(self, context: TenantContext, kb_uuid: str, operation: str) -> None:
         """Check if the KB's Knowledge Engine supports document operations.
@@ -323,6 +327,27 @@ class KnowledgeService:
         )
 
         return result
+
+    async def store_artifact(
+        self, context: RequestContext, kb_uuid: str, artifact_id: str, parser_plugin_id: str | None = None
+    ) -> int:
+        """Explicitly delegate an owned Artifact to this knowledge base's ingestion."""
+        from ....api.authz import Permission, PermissionDeniedError, require_permission
+        from ....api.context import PrincipalType
+
+        if not isinstance(context, RequestContext) or context.principal.principal_type not in {
+            PrincipalType.ACCOUNT,
+            PrincipalType.API_KEY,
+        }:
+            raise PermissionDeniedError(t('Artifact knowledge ingestion requires an account or API key'))
+        require_permission(context, Permission.RESOURCE_MANAGE)
+        require_permission(context, Permission.RESOURCE_VIEW)
+        execution_context = self._execution_context(context)
+        runtime_kb = await self.ap.rag_mgr.get_knowledge_base_by_uuid(execution_context, kb_uuid)
+        if runtime_kb is None:
+            raise WorkspaceNotFoundError('Knowledge base not found')
+        await self._check_doc_capability(context, kb_uuid, 'document upload')
+        return await runtime_kb.store_artifact(context, artifact_id, parser_plugin_id=parser_plugin_id)
 
     async def retrieve_knowledge_base(
         self,
@@ -393,7 +418,8 @@ class KnowledgeService:
     ) -> None:
         """删除知识库"""
         require_workspace_uuid(context)
-        if await self.get_knowledge_base(context, kb_uuid) is None:
+        knowledge_base = await self.get_knowledge_base(context, kb_uuid)
+        if knowledge_base is None:
             raise WorkspaceNotFoundError('Knowledge base not found')
 
         execution_context = self._execution_context(context)
@@ -403,43 +429,65 @@ class KnowledgeService:
                 await self._delete_knowledge_base_records(context, kb_uuid)
         else:
             await self._delete_knowledge_base_records(context, kb_uuid)
+        usage.inc(self.ap, context.workspace_uuid, 'kb.delete', engine=knowledge_base.get('knowledge_engine_plugin_id'))
 
     async def _delete_knowledge_base_records(self, context: RequestContext | ExecutionContext, kb_uuid: str) -> None:
         workspace_uuid = require_workspace_uuid(context)
-        # NOTE: Chunk cleanup is for legacy (pre-plugin) KBs that stored chunks locally.
-        # For plugin-based Knowledge Engines, the Chunk table is not populated, so this is a no-op.
-        files = await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.select(persistence_rag.File)
-            .where(persistence_rag.File.workspace_uuid == workspace_uuid)
-            .where(persistence_rag.File.kb_id == kb_uuid)
-        )
-        files = files.all()
-        if any(file.status in {'pending', 'processing', 'interrupted'} for file in files):
-            raise RuntimeError(
-                'Knowledge base has active or interrupted ingestion; retain its files and reconcile '
-                'plugin/upstream state before deleting the knowledge base.'
+        # Serialize the durable deletion fence against admission from every Core.
+        # Keep it after ambiguous failure/cancellation; explicit deletion retry is safe.
+        async with self.ap.persistence_mgr.tenant_uow(workspace_uuid) as uow:
+            locked = await uow.execute(
+                sqlalchemy.update(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                .values(uuid=persistence_rag.KnowledgeBase.uuid)
             )
-        for file in files:
-            # delete chunks
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(persistence_rag.Chunk)
-                .where(persistence_rag.Chunk.workspace_uuid == workspace_uuid)
-                .where(persistence_rag.Chunk.file_id == file.uuid)
+            if locked.rowcount != 1:
+                raise WorkspaceNotFoundError('Knowledge base not found')
+            files = (
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.select(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.File.kb_id == kb_uuid)
+                )
+            ).all()
+            if any(file.status in {'pending', 'processing', 'interrupted'} for file in files):
+                raise RuntimeError(
+                    'Knowledge base has active or interrupted ingestion; retain its files and reconcile '
+                    'plugin/upstream state before deleting the knowledge base.'
+                )
+            await uow.execute(
+                sqlalchemy.update(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+                .values(deleting=True)
             )
-            # delete file
-            await self.ap.persistence_mgr.execute_async(
-                sqlalchemy.delete(persistence_rag.File)
-                .where(persistence_rag.File.workspace_uuid == workspace_uuid)
-                .where(persistence_rag.File.uuid == file.uuid)
-            )
-
-        # Remove from runtime and notify plugin before deleting the owning row.
+        # Confirm upstream deletion before releasing recovery material or business pins.
         await self.ap.rag_mgr.delete_knowledge_base(context, kb_uuid)
-        await self.ap.persistence_mgr.execute_async(
-            sqlalchemy.delete(persistence_rag.KnowledgeBase)
-            .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
-            .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
-        )
+        async with self.ap.persistence_mgr.tenant_uow(workspace_uuid):
+            for file in files:
+                if file.artifact_id:
+                    await self.ap.artifact_service.release_business(
+                        context,
+                        file.artifact_id,
+                        holder_type='knowledge_file',
+                        holder_id=file.uuid,
+                    )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.Chunk)
+                    .where(persistence_rag.Chunk.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.Chunk.file_id == file.uuid)
+                )
+                await self.ap.persistence_mgr.execute_async(
+                    sqlalchemy.delete(persistence_rag.File)
+                    .where(persistence_rag.File.workspace_uuid == workspace_uuid)
+                    .where(persistence_rag.File.uuid == file.uuid)
+                )
+            await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.delete(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            )
 
     # ================= Knowledge Engine Discovery =================
 

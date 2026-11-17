@@ -1,0 +1,63 @@
+name: Classify CI changes
+description: Select regression boundaries from the complete checked-out PR diff
+outputs:
+  changed_paths:
+    description: JSON array of changed paths
+    value: ${{ steps.classify.outputs.changed_paths }}
+  core:
+    description: Core code or tests
+    value: ${{ steps.classify.outputs.core }}
+  core_full:
+    description: Broad Core unit coverage
+    value: ${{ steps.classify.outputs.core_full }}
+  compatibility:
+    description: Full Core and SDK compatibility matrix
+    value: ${{ steps.classify.outputs.compatibility }}
+  sdk:
+    description: SDK or Core-to-Runtime contracts
+    value: ${{ steps.classify.outputs.sdk }}
+  persistence:
+    description: Database, migration or persistence contracts
+    value: ${{ steps.classify.outputs.persistence }}
+  permissions:
+    description: Authorization, Workspace and execution boundaries
+    value: ${{ steps.classify.outputs.permissions }}
+  box:
+    description: Box, Runner, file transfer or recovery boundaries
+    value: ${{ steps.classify.outputs.box }}
+  frontend:
+    description: WebUI or its real-stack boundary
+    value: ${{ steps.classify.outputs.frontend }}
+  docs:
+    description: Public documentation or its build
+    value: ${{ steps.classify.outputs.docs }}
+  plugins:
+    description: Official plugins or their shared contracts
+    value: ${{ steps.classify.outputs.plugins }}
+  packaging:
+    description: Artifacts or deployment boundaries
+    value: ${{ steps.classify.outputs.packaging }}
+  production_image:
+    description: Production image dependencies, deployment or build configuration
+    value: ${{ steps.classify.outputs.production_image }}
+  workflows:
+    description: Shared CI configuration
+    value: ${{ steps.classify.outputs.workflows }}
+  compiled_cli:
+    description: Compiled CLI/Core HTTP contracts
+    value: ${{ steps.classify.outputs.compiled_cli }}
+  plugin_identity:
+    description: Released official adapter identity contracts
+    value: ${{ steps.classify.outputs.plugin_identity }}
+  seekdb:
+    description: Embedded SeekDB contracts
+    value: ${{ steps.classify.outputs.seekdb }}
+runs:
+  using: composite
+  steps:
+    - id: classify
+      shell: bash
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+      run: python3 "${GITHUB_ACTION_PATH}/classify.py"

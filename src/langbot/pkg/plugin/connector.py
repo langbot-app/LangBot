@@ -20,6 +20,7 @@ from urllib.parse import urljoin, urlparse
 from langbot_plugin.api.entities.builtin.pipeline.query import provider_session
 
 from ..core import app
+from ..telemetry import usage
 from . import handler
 from . import runtime_ops
 from .errors import (
@@ -1429,6 +1430,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                     return binding
         raise ValueError(f'Plugin {component_kind} {component_name!r} was not found in this Workspace')
 
+    @usage.observe_install('mcp', 'market')
     async def _install_mcp_from_marketplace(
         self,
         execution_context: ExecutionContext,
@@ -1466,9 +1468,13 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             self.ap.logger.info(f'MCP server {name} already exists, skipping installation')
             return
 
+        # Community-published MCP servers carry ``${VAR}`` placeholders instead
+        # of credentials (LANG-439). Install them disabled so nothing connects
+        # with a placeholder; the WebUI asks for the values before enabling.
+        required_inputs = mcp_data.get('required_inputs') or []
         server_data = {
             'name': name,
-            'enable': True,
+            'enable': not required_inputs,
             'mode': mode,
             'extra_args': extra_args,
             'readme': readme,
@@ -1493,11 +1499,15 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         self.ap.logger.info(f'Installing skill from marketplace ZIP ({len(file_bytes)} bytes)')
 
         # Install from ZIP using skill service
-        result = await skill_service.install_from_zip_upload(
-            execution_context,
-            file_bytes=file_bytes,
-            filename=filename + '.zip',
-        )
+        token = usage.install_source.set(usage.install_source.get() or 'market')
+        try:
+            result = await skill_service.install_from_zip_upload(
+                execution_context,
+                file_bytes=file_bytes,
+                filename=filename + '.zip',
+            )
+        finally:
+            usage.install_source.reset(token)
         self.ap.logger.info(f'Skill installed successfully: {result}')
 
     def _build_plugin_startup_failure_message(
@@ -1890,6 +1900,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if mcp_status == 200:
+                usage.install_source.set('market')
                 mcp_payload = _decode_json_object(mcp_body, subject='Marketplace MCP metadata')
                 mcp_data = mcp_payload.get('data', {}).get('mcp', {})
                 if not isinstance(mcp_data, dict):
@@ -1914,11 +1925,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 allow_not_found=True,
             )
             if skill_status == 200:
-                _download_status, skill_package = await _marketplace_get(
-                    client,
-                    f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
-                    max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
-                )
+                try:
+                    skill_data = _decode_json_object(_skill_body, subject='Marketplace skill metadata')
+                    source = skill_data.get('data', {}).get('skill', {}).get('source')
+                except Exception:
+                    source = None
+                source = 'community' if source == 'community' else 'market'
+                usage.install_source.set(source)
+                try:
+                    _download_status, skill_package = await _marketplace_get(
+                        client,
+                        f'{space_url}/api/v1/marketplace/skills/download/{plugin_author}/{plugin_name}',
+                        max_bytes=_MARKETPLACE_SKILL_DOWNLOAD_MAX_BYTES,
+                    )
+                except Exception:
+                    usage.inc(
+                        self.ap,
+                        execution_context.workspace_uuid,
+                        'ugc.install',
+                        type='skill',
+                        source=source,
+                        outcome='failed',
+                        unfilled='no',
+                    )
+                    raise
                 await self._install_skill_from_zip(
                     execution_context,
                     skill_package,
@@ -1993,6 +2023,36 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         return {**install_info, '_certification': certification_info}, verified
 
     async def install_plugin(
+        self,
+        install_source: PluginInstallSource,
+        install_info: dict[str, Any],
+        task_context: taskmgr.TaskContext | None = None,
+    ) -> None:
+        outcome = 'failed'
+        token = usage.install_source.set(None)
+        try:
+            await self._install_plugin(install_source, install_info, task_context)
+            outcome = 'ok'
+        finally:
+            try:
+                context = self._execution_context.get()
+                if usage.install_source.get() is None:
+                    source = 'market' if install_source.value == 'marketplace' else install_source.value
+                    usage.inc(
+                        self.ap,
+                        getattr(context, 'workspace_uuid', None),
+                        'ugc.install',
+                        type='plugin',
+                        source=source,
+                        outcome=outcome,
+                        unfilled='no',
+                    )
+            except Exception:
+                pass
+            finally:
+                usage.install_source.reset(token)
+
+    async def _install_plugin(
         self,
         install_source: PluginInstallSource,
         install_info: dict[str, Any],
@@ -2591,6 +2651,30 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 plugin_name,
                 manifest_overrides=manifest_overrides,
             )
+
+    async def get_installed_plugin_package(self, author: str, plugin_name: str) -> dict[str, Any]:
+        """Return the exact archive an installed local/GitHub plugin runs (LANG-439).
+
+        Every installation persists its verified ``.lbpkg`` by digest, so the
+        shared package is byte-identical to what this Workspace installed.
+        Marketplace installations are refused: they already live on Space.
+        """
+        execution_context, setting = await self._setting_for_plugin(author, plugin_name)
+        if setting.install_source not in (PluginInstallSource.LOCAL.value, PluginInstallSource.GITHUB.value):
+            raise ValueError('Only locally installed or GitHub-installed plugins can be shared to LangBot Space')
+        package = await self._load_artifact_package(execution_context, setting.artifact_digest)
+        if package is None:
+            raise ValueError('The installed plugin package is missing; reinstall the plugin and try again')
+        manifest, _, _ = inspect_plugin_archive_metadata(package, require_manifest=True)
+        metadata = (manifest or {}).get('metadata') or {}
+        version = str(metadata.get('version') or '')
+        return {
+            'package': package,
+            'filename': f'{author}-{plugin_name}-{version or "local"}.lbpkg',
+            'install_source': setting.install_source,
+            'version': version,
+            'artifact_digest': setting.artifact_digest,
+        }
 
     async def git_sync_plugin(
         self,

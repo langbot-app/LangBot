@@ -7,6 +7,7 @@ SDK in the Python environment used by pytest and its Core subprocesses.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -74,7 +75,12 @@ def _start(replica):
 
 
 @pytest.fixture
-def core_pair(tmp_path, monkeypatch):
+def core_pair_configure():
+    return lambda root, config: []
+
+
+@pytest.fixture
+def core_pair(tmp_path, monkeypatch, core_pair_configure):
     url = os.environ.get('LANGBOT_PERSISTENCE_CORE_POSTGRES_URL')
     if not url:
         pytest.skip('LANGBOT_PERSISTENCE_CORE_POSTGRES_URL must identify a fresh task-owned PostgreSQL database')
@@ -114,11 +120,20 @@ def core_pair(tmp_path, monkeypatch):
         config['box']['enabled'] = False
         config['skills'] = {'persistence': 'database', 'root': str(root / 'skills')}
         config['storage'].update(use='persistent', content={'backend': 'database'})
+        cli_args = core_pair_configure(root, config)
         path.write_text(yaml.safe_dump(config), encoding='utf-8')
         path.chmod(0o600)
         replica = SimpleNamespace(
             root=root,
-            process=LangBotProcess(project, root, port=port, timeout=180, collect_coverage=False),
+            process=LangBotProcess(
+                project,
+                root,
+                port=port,
+                timeout=180,
+                collect_coverage=False,
+                cli_args=cli_args,
+                env_overrides={'LANGBOT_PLUGIN_FILE_STORAGE_DIR': str(root / 'rpc-transfers')},
+            ),
             client=httpx.Client(base_url=f'http://127.0.0.1:{port}', timeout=30, trust_env=False),
         )
         created.append(replica)
@@ -220,9 +235,11 @@ def _exercise_core_pair(core_pair):
     )
 
 
+@pytest.mark.contract('skill_artifact_process_recovery')
 def test_two_core_processes_share_skill_packages_and_uploaded_media(core_pair):
     try:
         _exercise_core_pair(core_pair)
+        _exercise_skill_artifact_recovery(core_pair)
     except Exception:
         for replica in (core_pair.a, core_pair.b):
             for filename in ('langbot.stdout.log', 'langbot.stderr.log'):
@@ -230,3 +247,87 @@ def test_two_core_processes_share_skill_packages_and_uploaded_media(core_pair):
                 if path.exists():
                     print(f'{path}:\n{path.read_text(errors="replace")[-16000:]}', flush=True)
         raise
+
+
+def _exercise_skill_artifact_recovery(core_pair):
+    """Continue on the same task-owned database and fenced Core instance.
+
+    The PostgreSQL URL identifies one fresh database for this acceptance case,
+    not a disposable database per function-scoped fixture invocation. Starting
+    another pair with a new instance UUID would collide with its durable binding.
+    """
+    a, b = core_pair.a, core_pair.b
+    headers = {'Authorization': f'Bearer {core_pair.token}'}
+    original = _data(a.client.get(f'/api/v1/skills/{_NAME}', headers=headers))['skill']['revision']
+
+    def register(replica, revision):
+        return _data(
+            replica.client.post(
+                '/api/v1/artifacts/skill-resources',
+                headers=headers,
+                json={
+                    'skill_name': _NAME,
+                    'revision': revision,
+                    'path': 'SKILL.md',
+                },
+            )
+        )
+
+    def read(replica, item):
+        response = replica.client.get(f'/api/v1/artifacts/{item["id"]}/content', headers=headers)
+        assert response.status_code == 200, response.text
+        assert hashlib.sha256(response.content).hexdigest() == item['digest']
+        assert len(response.content) == item['size']
+        metadata = _data(replica.client.get(f'/api/v1/artifacts/{item["id"]}', headers=headers))
+        assert metadata['source'] == 'skill_resource' and metadata['digest'] == item['digest']
+        return response.content
+
+    first = register(a, original)
+    old_bytes = read(b, first)
+    assert register(b, original)['id'] == first['id'], 'Repeated registration must not duplicate the reference'
+    current = _data(
+        a.client.put(
+            f'/api/v1/skills/{_NAME}',
+            headers=headers,
+            json={
+                'base_revision': original,
+                'instructions': 'Stage four version two immutable content.',
+            },
+        )
+    )['skill']['revision']
+    assert current != original
+    second = register(b, current)
+    new_bytes = read(a, second)
+    assert new_bytes != old_bytes and b'Stage four version two' in new_bytes
+    assert read(b, first) == old_bytes
+    chunks = _data(
+        b.client.get(f'/api/v1/artifacts/{first["id"]}/read', headers=headers, params={'mode': 'text', 'max_chars': 8})
+    )
+    rendered = json.loads(chunks[0]['text'])
+    assert rendered['text'] == old_bytes.decode()[:8] and rendered['next_offset'] == 8
+    # Stop before removing the disposable cache: no shared cache or existing service is touched.
+    _stop(a.process)
+    _discard_cache(a)
+    _start(a)
+    for replica in (a, b):
+        assert read(replica, first) == old_bytes
+        assert read(replica, second) == new_bytes
+    # Removing one resource must not remove its package or another version's bytes.
+    _data(a.client.delete(f'/api/v1/artifacts/{first["id"]}', headers=headers))
+    assert b.client.get(f'/api/v1/artifacts/{first["id"]}/content', headers=headers).status_code == 404
+    assert read(b, second) == new_bytes
+    package = b.client.get(f'/api/v1/skills/{_NAME}/package', headers=headers, params={'revision': original})
+    assert package.status_code == 200
+    _assert_package(package.content)
+    print(
+        json.dumps(
+            {
+                'event': 'skill_artifact_process_recovery_verified',
+                'old_revision': original,
+                'new_revision': current,
+                'old_digest': first['digest'],
+                'new_digest': second['digest'],
+            }
+        ),
+        flush=True,
+    )

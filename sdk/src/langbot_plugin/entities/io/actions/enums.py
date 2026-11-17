@@ -41,7 +41,10 @@ class PluginToRuntimeAction(ActionType):
     BIND_BOX = "bind_box"
     IMPORT_BOX_ATTACHMENTS = "import_box_attachments"
     READ_INPUT_ATTACHMENT = "read_input_attachment"
+    READ_INPUT_ATTACHMENT_CONTENT = "read_input_attachment_content"
     EXPORT_BOX_FILES = "export_box_files"
+    READ_RUN_FILE = "read_run_file"
+    COMMIT_RUN_FILES = "commit_run_files"
 
     GET_BOTS = "get_bots"
     GET_BOT_INFO = "get_bot_info"

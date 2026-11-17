@@ -13,6 +13,8 @@ The flow has three steps:
 
 Declaring a permission does not grant it. Only a member's confirmation does.
 
+Plugins may explicitly request `artifact.create`, `artifact.get`, `artifact.read`, `artifact.read_content`, `artifact.retain`, `artifact.release` and `artifact.delete`. List the seven needed operation IDs individually: `artifact.*` is rejected because it also includes account-only publication and Skill-source operations. Typed calls use `self.plugin.workspace.artifact.<method>(...)`, or the run-bound `ctx.api.workspace` proxy.
+
 ## Declare permissions
 
 Permissions belong to the plugin as a whole, so they live under the plugin-level `spec` in `manifest.yaml`, not inside a component. The same grants apply to every component of the plugin: commands, event listeners, tools, knowledge engines, parsers and Runners.

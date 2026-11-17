@@ -24,7 +24,7 @@ def _load_catalog() -> list[dict]:
 
 def test_catalog_has_all_operations():
     catalog = _load_catalog()
-    assert len(catalog) == 80
+    assert len(catalog) == 83
     assert "execution.request_interaction" in {item["id"] for item in catalog}
     for item in catalog:
         assert item["id"].startswith("execution.")
@@ -161,7 +161,7 @@ async def test_execution_proxy_stream():
 async def test_langbot_api_proxy_box_methods():
     handler = Mock()
     handler.call_action = AsyncMock(
-        side_effect=lambda action, data, timeout=15.0: {
+        side_effect=lambda action, data, timeout=15.0, **kwargs: {
             PluginToRuntimeAction.BIND_BOX: {"box_id": "box-1", "outbox": "/out"},
             PluginToRuntimeAction.IMPORT_BOX_ATTACHMENTS: {
                 "items": [
@@ -186,6 +186,21 @@ async def test_langbot_api_proxy_box_methods():
                 ],
                 "warning": None,
             },
+            PluginToRuntimeAction.READ_RUN_FILE: {
+                "contents": [{"type": "text", "text": "answer"}],
+            },
+            PluginToRuntimeAction.COMMIT_RUN_FILES: {
+                "items": [
+                    {
+                        "id": "f-2",
+                        "name": "out.txt",
+                        "type": "file",
+                        "size": 200,
+                        "artifact_id": "artifact-2",
+                        "lifecycle": "durable",
+                    }
+                ],
+            },
         }.get(action, {})
     )
 
@@ -202,6 +217,15 @@ async def test_langbot_api_proxy_box_methods():
     exported = await api.export_box_files(["/out/out.txt"])
     assert len(exported) == 1
     assert exported[0].id == "f-2"
+
+    assert await api.read_run_file("f-2") == [{"type": "text", "text": "answer"}]
+    assert handler.call_action.await_args.args[1]["file_id"] == "f-2"
+    assert "run_id" not in handler.call_action.await_args.args[1]
+    assert handler.call_action.await_args.kwargs["cancel_peer_on_cancel"] is True
+    committed = await api.commit_run_files(["f-2"])
+    assert committed[0].id == "f-2" and committed[0].artifact_id == "artifact-2"
+    assert handler.call_action.await_args.args[1] == {"file_ids": ["f-2"]}
+    assert handler.call_action.await_args.kwargs["cancel_peer_on_cancel"] is True
 
 
 @pytest.mark.asyncio

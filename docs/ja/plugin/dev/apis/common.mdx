@@ -752,3 +752,22 @@ commands = await self.plugin.list_commands()
 不明な数量は `None` です。残数がゼロでも既存 Box の再利用は可能です。新規作成時の上限は Runtime が原子的に確認します。キーは Runner が計算しますが、`required_reuse_key` が返された場合はその値を使います。異なるワークスペース間では同じキーでも共有されません。
 
 取得後は[Runner コンテキスト](/ja/plugin/dev/apis/agent-run#runner)でバインドしてから、添付のインポートやツール実行を行います。
+
+## 型付き Artifact ヘルパー
+
+プラグインでは `self.plugin.artifacts`、Runner では `ctx.api.artifacts` を使用します。ヘルパーは明示的に許可された七つの Workspace 操作を再利用し、新しい転送 action や capability は追加しません。run 呼び出しには実行中の run と固定された `workspace_operations` も必要です。インストールへの許可だけでは run の権限を拡張できません。
+
+```python
+asset = await self.plugin.artifacts.create("notes.txt", b"bounded content", mime_type="text/plain")
+body = await self.plugin.artifacts.read(asset.id, max_bytes=262144)
+assert body.content == b"bounded content"
+await self.plugin.artifacts.delete(asset.id)
+```
+
+`create(filename, content: bytes, mime_type=..., ttl_seconds=...)`、`get`、`retain`、`release` は `ArtifactMetadata` を返します。`read` は `ArtifactData(metadata, content: bytes)` を返します。`read_content` は共通の構造化コンテンツリストを返し、`mode`、`offset`、`max_chars`、`page_start`、`page_end` を受け取ります。`delete` は結果辞書を返します。SDK が 256 KiB の JSON RPC エンベロープを符号化・復号するため、base64 を通常のモデルテキストに入れないでください。
+
+操作失敗時は Host の `code` と `details` を保持する `ArtifactOperationError` が発生します。既存の Workspace カタログ（`workspace.list` と create schema の `content_base64`）で利用可否を確認します。新しい feature flag はありません。古い Host や未許可の呼び出しは `not_found`、`permission_denied` などの操作エラーを返します。内部ストレージパスにフォールバックしないでください。
+
+既存の Workspace action は独立配置された古い Runtime でも転送できますが、Artifact のキャンセル伝播には対応する Core/SDK/Runtime の組み合わせを使用してください。古い経路を通るキャンセルはベストエフォートであり、Host の変更処理が停止した証拠ではありません。従来の run `file_id`、アップロード、配信の契約は変更しません。新しいヘルパーを利用する前に実際の配置構成を検証してください。
+
+便宜ヘルパーと生成された `workspace.artifact` メソッドは異なります。後者は通常の `ok/result/error` エンベロープを返し、転送フィールド `content_base64` を公開します。二つの結果形式を混同しないでください。共有プラグインヘルパーは現在の run 呼び出しを引き継ぎ、保持した呼び出しコンテキストの終了後は利用を拒否します。

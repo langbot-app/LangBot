@@ -231,6 +231,35 @@ class SandboxAdmissionPolicy(pydantic.BaseModel):
 
 
 ARTIFACT_MOUNT_ROOT = "/opt/langbot-artifacts"
+MAX_ARTIFACT_ARCHIVE_BYTES = 64 * 1024 * 1024
+
+
+class BoxArtifactMountSpec(pydantic.BaseModel):
+    """A prepared Runtime-owned immutable artifact, never a caller host path."""
+
+    content_digest: str = pydantic.Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
+
+    @property
+    def mount_path(self) -> str:
+        return f"{ARTIFACT_MOUNT_ROOT}/{self.content_digest[7:]}"
+
+
+class BoxArtifactDescriptor(BoxArtifactMountSpec):
+    manifest: dict
+    archive_size: int = pydantic.Field(ge=0, le=MAX_ARTIFACT_ARCHIVE_BYTES, strict=True)
+    archive_sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")
+
+    @pydantic.model_validator(mode="after")
+    def validate_manifest(self):
+        from langbot_plugin.artifact import validate_tree_manifest
+
+        digest, _ = validate_tree_manifest(
+            self.manifest, max_files=2048, max_total_bytes=256 * 1024 * 1024
+        )
+        if digest != self.content_digest:
+            raise ValueError("Artifact manifest does not match content_digest")
+        return self
 
 
 class BoxMountSpec(pydantic.BaseModel):
@@ -347,6 +376,9 @@ class BoxSpec(pydantic.BaseModel):
     host_path_mode: BoxHostMountMode = BoxHostMountMode.READ_WRITE
     mount_path: str = DEFAULT_BOX_MOUNT_PATH
     extra_mounts: list[BoxMountSpec] = pydantic.Field(default_factory=list)
+    artifact_mounts: list[BoxArtifactMountSpec] = pydantic.Field(
+        default_factory=list, max_length=256
+    )
     persistent: bool = False
     workspace_max_sessions: int | None = pydantic.Field(
         default=None, ge=1, le=1024, strict=True
@@ -360,6 +392,15 @@ class BoxSpec(pydantic.BaseModel):
     workspace_quota_mb: int = 0
 
     model_config = pydantic.ConfigDict(extra="forbid")
+
+    @pydantic.field_validator("artifact_mounts")
+    @classmethod
+    def validate_artifact_mounts(
+        cls, value: list[BoxArtifactMountSpec]
+    ) -> list[BoxArtifactMountSpec]:
+        if len({mount.content_digest for mount in value}) != len(value):
+            raise ValueError("Artifact mounts must be unique")
+        return value
 
     @pydantic.model_validator(mode="before")
     @classmethod
@@ -556,6 +597,12 @@ BUILTIN_PROFILES: dict[str, BoxProfile] = {
 
 
 class BoxSessionInfo(pydantic.BaseModel):
+    _runtime_workspace_owner: tuple[str, int, int] | None = pydantic.PrivateAttr(
+        default=None
+    )
+    _runtime_image_id: str | None = pydantic.PrivateAttr(default=None)
+    _workspace_cleanup_container: str | None = pydantic.PrivateAttr(default=None)
+
     session_id: str
     backend_name: str
     backend_session_id: str
@@ -652,3 +699,23 @@ class BoxFileRequest(pydantic.BaseModel):
 class BoxFileUploadRequest(BoxFileRequest):
     size: int = pydantic.Field(ge=0)
     sha256: str = pydantic.Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class BoxFileDownloadRequest(BoxFileRequest):
+    directory_archive: bool = False
+
+
+class BoxRunFilesCleanupRequest(pydantic.BaseModel):
+    """Delete only the fixed IO directories belonging to one run scope."""
+
+    model_config = pydantic.ConfigDict(extra="forbid", strict=True)
+
+    session_id: str = pydantic.Field(min_length=1)
+    io_scope: str = pydantic.Field(min_length=1, max_length=512)
+
+    @pydantic.field_validator("io_scope")
+    @classmethod
+    def validate_io_scope(cls, value: str) -> str:
+        if value in {".", ".."} or any(char in value for char in "/\\\x00"):
+            raise ValueError("io_scope must be one directory component")
+        return value

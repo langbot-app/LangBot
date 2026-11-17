@@ -530,7 +530,44 @@ EXECUTION_OPERATIONS = (
         'run',
     ),
     ExecutionOperation(
+        'read_input_attachment_content',
+        _input(
+            'ExecutionReadInputContentInput',
+            ref=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionInputContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
         'export_box_files', _input('ExecutionExportBoxInput', paths=(list[str] | None, None)), ItemsOutput, 'run', True
+    ),
+    ExecutionOperation(
+        'read_run_file',
+        _input(
+            'ExecutionReadRunFileInput',
+            file_id=(Text, ...),
+            mode=(Literal['auto', 'text', 'native', 'pages'], 'auto'),
+            offset=(Nonnegative, 0),
+            max_chars=(Annotated[int, Field(ge=1, le=16384)], 8192),
+            page_start=(Positive, 1),
+            page_end=(Positive | None, None),
+        ),
+        _output('ExecutionRunFileContentOutput', contents=(list[Object], ...)),
+        'run',
+    ),
+    ExecutionOperation(
+        'commit_run_files',
+        _input(
+            'ExecutionCommitRunFilesInput', file_ids=(Annotated[list[Text], Field(min_length=1, max_length=100)], ...)
+        ),
+        ItemsOutput,
+        'run',
+        True,
     ),
     ExecutionOperation('run_get', TargetRun, RunOutput, 'runner_admin'),
     ExecutionOperation(
@@ -865,7 +902,17 @@ class ExecutionAPI:
                     action_handler = getattr(handler, '_raw_actions', {}).get(
                         operation.action, handler.actions[operation.action]
                     )
-                    yield operation, action_handler, data
+                    from ...telemetry import usage
+
+                    retrieval_origin = 'plugin'
+                    if context.run_id is not None:
+                        processor_type = session['authorization'].get('processor_type')
+                        retrieval_origin = 'pipeline' if processor_type == 'pipeline' else 'agent'
+                    usage_token = usage.origin.set(retrieval_origin)
+                    try:
+                        yield operation, action_handler, data
+                    finally:
+                        usage.origin.reset(usage_token)
         finally:
             handler._current_action_context.reset(token)
 
