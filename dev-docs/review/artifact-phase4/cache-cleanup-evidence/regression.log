@@ -1,0 +1,23 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.0.3, pluggy-1.6.0
+rootdir: CHECKOUT
+configfile: pytest.ini
+plugins: langsmith-0.8.18, anyio-4.14.2, asyncio-1.3.0, cov-7.0.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collected 159 items
+
+tests/unit_tests/storage/test_skill_artifact_resources.py .............. [  8%]
+.................                                                        [ 19%]
+tests/unit_tests/storage/test_skill_resource_cache.py ............       [ 27%]
+tests/unit_tests/storage/test_skill_resource_parallel.py ........        [ 32%]
+tests/unit_tests/provider/test_skill_artifact_tools.py ................. [ 42%]
+                                                                         [ 42%]
+tests/unit_tests/provider/test_skill_tools.py .......................... [ 59%]
+.......                                                                  [ 63%]
+tests/integration/storage/test_skill_artifacts.py .ss.ss.ss.ss.ss.ss.ss. [ 77%]
+ss.ss.ss.ss..ssss.ss                                                     [ 89%]
+tests/integration/storage/test_skill_artifact_loader.py .ss              [ 91%]
+tools/tests/test_skill_artifact_soak.py .............                    [100%]
+
+- generated xml file: CHECKOUT/.qa/skill-artifact-cache-cleanup/regression.xml -
+================ 129 passed, 30 skipped, 59 warnings in 29.11s =================

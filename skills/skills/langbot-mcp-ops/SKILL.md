@@ -404,3 +404,15 @@ plugins and default model tools.
 Setting or disabling a policy requires both `resource.view` and `resource.manage`.
 The recipient needs the `artifact_id` returned by commit for subsequent management;
 there is no listing tool. Runner implementations must include it in their result.
+
+## Fixed-version Skill resources
+
+Use `create_skill_resource_artifact(skill_name, revision, path, ttl_seconds=86400)`
+to register one immutable database-backed Skill package file without Box or an
+upload. Both `resource.view` and `resource.manage` are required. Then use the
+existing Artifact metadata, raw-read or structured-read tools. IDs remain private
+to the creator; retain does not share access, and release/GC does not delete the
+Skill package. Filesystem-only sources are unsupported. See
+`docs/en/develop/artifacts.mdx` and `dev-docs/architecture/artifacts.md` for bounds
+and run-consumer authorization. Do not claim that byte transfer proves a model
+understands an image or PDF.

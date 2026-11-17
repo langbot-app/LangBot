@@ -157,6 +157,14 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='write',
         exposure='none',
     ),
+    'artifact.skill_resource.create': OperationDoc(
+        domain='artifact',
+        label={'en_US': 'Reference Skill Resource', 'zh_Hans': '引用技能资源'},
+        summary='Reference a file in an explicitly fixed Skill version.',
+        description='Create a caller-owned reference without copying package bytes. Source permission is required; IDs do not grant access.',
+        risk='write',
+        exposure='none',
+    ),
     'artifact.get': OperationDoc(
         domain='artifact',
         label={'en_US': 'Get Artifact', 'zh_Hans': '查看资产'},

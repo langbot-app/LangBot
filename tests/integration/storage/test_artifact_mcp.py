@@ -30,7 +30,8 @@ _BODY = b'MCP Artifact exact bytes\x00\xff\n'
 async def _call(server, context, tool, **arguments):
     token = bind_request_context(context)
     try:
-        content, _structured = await server.mcp.call_tool(tool, arguments)
+        result = await server.mcp.call_tool(tool, arguments)
+        content = result.content if hasattr(result, 'content') else result[0]
     finally:
         reset_request_context(token)
     assert len(content) == 1 and content[0].type == 'text'
@@ -112,3 +113,38 @@ async def test_mcp_rejects_foreign_principals_and_invalid_uploads(artifact_repli
             content_base64='!' * (encoded_limit + 1),
         )
     assert (await _call(server, case.context, 'get_artifact', artifact_id=created['id'])) == created
+
+
+async def test_mcp_fixed_skill_reference_uses_shared_reader_and_permissions(artifact_replicas):
+    from tests.integration.storage.test_skill_artifacts import _install
+    from tests.integration.skill.test_persistent_skill_replicas import _NAME, _GUIDE
+
+    case = artifact_replicas
+    revision = await _install(case)
+    server = LangBotMCPServer(case.a.app)
+    created = await _call(
+        server,
+        case.context,
+        'create_skill_resource_artifact',
+        skill_name=_NAME,
+        revision=revision,
+        path='references/guide.md',
+    )
+    assert created['source'] == 'skill_resource'
+    raw = await _call(server, case.context, 'read_artifact', artifact_id=created['id'])
+    assert base64.b64decode(raw['content']) == _GUIDE.encode()
+    rendered = await _call(server, case.context, 'read_artifact_content', artifact_id=created['id'], max_chars=7)
+    assert rendered['text'] == _GUIDE[:7]
+    foreign = replace(case.context, principal=PrincipalContext(PrincipalType.ACCOUNT, account_uuid=str(uuid.uuid4())))
+    with pytest.raises(ToolError, match='Resource not found'):
+        await _call(server, foreign, 'read_artifact_content', artifact_id=created['id'])
+    denied = replace(case.context, workspace=replace(case.context.workspace, permissions=frozenset()))
+    with pytest.raises(ToolError):
+        await _call(
+            server,
+            denied,
+            'create_skill_resource_artifact',
+            skill_name=_NAME,
+            revision=revision,
+            path='references/guide.md',
+        )

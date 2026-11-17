@@ -29,6 +29,21 @@ Deleting an Artifact does not retract files already delivered to a platform or r
 
 Structured PDF reads, including native reads, reject malformed or password-protected files with `artifact_pdf_unreadable` (422). Raw download still returns the authorized original bytes.
 
+## Fixed-version Skill resources
+
+`POST /api/v1/artifacts/skill-resources` creates a caller-owned reference to one file in a published, database-backed Skill package. The JSON body contains `skill_name`, the explicit `revision`, `path` relative to the package, and optional `ttl_seconds`. Both `resource.view` and `resource.manage` are required. The equivalent ApplicationAPI operation is `artifact.skill_resource.create`; MCP exposes `create_skill_resource_artifact` with the same arguments.
+
+Registration reuses the existing immutable package in ContentStore. It does not upload or duplicate the file or package. The reference binds the stored version identity and canonical package path, with the file's digest, size and MIME type. Publishing a new version does not change an existing reference. Use the normal Artifact metadata, download and structured-read endpoints; no Box session is required.
+
+Only the creating account or API key may use this reference. Sharing the ID or retaining it does not grant another principal access. Source references are not ordinary uploaded attachments: do not assume that passing one as a debug run's `artifact_ids` grants a run access. Package-source references are not exposed as plugin Workspace operations, default model tools or `lbctl` commands.
+
+Release and Artifact cleanup reclaim the reference, not the shared Skill package. A live reference protects its retained version, and temporary read leases protect in-flight reads. Deleting a Skill's current catalog entry does not rewrite retained versions. Filesystem-only Skill storage is not supported by this reference API; use database-backed Skill persistence. The original text-resource interface remains available.
+
+A repeat registration for the same owner, version and path returns the same reference without extending its expiry. Collect an expired or deleted reference before registering it again.
+
+
+Within an authorized live run, `read_skill_resource` uses the frozen activated Skill revision and the same bounded reader. Text results keep the text contract and expose continuation when truncated; image and native-PDF results use structured model content rather than base64 in ordinary text. Registration verifies bounded source bytes. Source materialization is charged once per immutable Artifact in a run, with limits of 256 KiB per file and 1 MiB per run. A separate 1 MiB per-run budget counts cumulative returned JSON UTF-8 and media payload bytes. Every continuation rechecks authorization even when the source was already charged. The legacy text path is unchanged. Native PDF still requires a supporting model. Outside this live-run path, legacy text reading remains available; binary source access is not granted implicitly.
+
 ## MCP
 
 Native PDF input requires trusted model capability information. For an alias whose provider has confirmed PDF support but which the capability catalog does not recognize, an administrator can declare `pdf_input` in the model's existing `abilities` field. Undeclared, unknown capability rejects native PDF input; text mode remains available.

@@ -19,6 +19,13 @@ class Artifact(Base):
     size = sa.Column(sa.BigInteger, nullable=False)
     digest = sa.Column(sa.String(64), nullable=False)
     content_ref = sa.Column(sa.String(80), nullable=False)
+    source_version_id = sa.Column(
+        sa.String(36),
+        sa.ForeignKey('skill_versions.uuid', ondelete='RESTRICT', name='fk_artifact_skill_version'),
+        nullable=True,
+    )
+    source_revision = sa.Column(sa.String(71), nullable=True)
+    source_path = sa.Column(sa.String(1024), nullable=True)
     created_at = sa.Column(sa.DateTime, nullable=False, server_default=sa.func.now())
     expires_at = sa.Column(sa.DateTime, nullable=True)
     deleted_at = sa.Column(sa.DateTime, nullable=True)
@@ -31,6 +38,11 @@ class Artifact(Base):
             name='fk_artifacts_content_scope',
         ),
         sa.CheckConstraint('size >= 0', name='ck_artifacts_size'),
+        sa.CheckConstraint(
+            '(source_version_id IS NULL AND source_revision IS NULL AND source_path IS NULL) OR '
+            '(source_version_id IS NOT NULL AND source_revision IS NOT NULL AND source_path IS NOT NULL)',
+            name='ck_artifact_skill_source',
+        ),
         sa.Index('ix_artifacts_expiration', 'workspace_uuid', 'deleted_at', 'expires_at'),
     )
 

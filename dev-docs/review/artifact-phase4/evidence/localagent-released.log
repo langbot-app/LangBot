@@ -1,0 +1,8 @@
+....................................                                     [100%]
+=============================== warnings summary ===============================
+../../../../.localagent-venv/lib/python3.12/site-packages/langbot_plugin/api/entities/builtin/resource/tool.py:8
+  <workspace>/.localagent-venv/lib/python3.12/site-packages/langbot_plugin/api/entities/builtin/resource/tool.py:8: PydanticDeprecatedSince20: Support for class-based `config` is deprecated, use ConfigDict instead. Deprecated in Pydantic V2.0 to be removed in V3.0. See Pydantic V2 Migration Guide at https://errors.pydantic.dev/2.13/migration/
+    class LLMTool(pydantic.BaseModel):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+36 passed, 1 warning in 1.02s
