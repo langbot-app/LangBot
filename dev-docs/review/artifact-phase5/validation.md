@@ -73,3 +73,24 @@ After rebasing onto `3d67a8802`, the final implementation candidate passed:
 - Actual installed Runtime/host Box delivery: 1 passed, 35.52 seconds ([log](evidence/postrebase-network.log)).
 - The final migration test was rerun after formatting: 4 passed.
 - Full source/tests Ruff lint, source/tools format, generated proxy drift and SDK action consistency passed. Changed Python files pass format checks. Existing unrelated test-file formatting drift is not changed by this PR.
+
+## First CI pass and follow-up
+
+The first CI pass exposed a real compatibility defect: deleting an uninitialized
+knowledge-base draft attempted to find a runtime that intentionally does not exist.
+Deletion now resolves durable state, skips upstream cleanup only for a never-initialized
+draft, and reconstructs initialized runtime cleanup after restart without creating
+upstream resources. Scope and failure-retention checks remain in place.
+
+The same pass found test-fixture/catalog drift: the historical PostgreSQL migration
+fixture accidentally included today's File→Artifact FK before creating the Artifact
+table; a shared minimal content fixture pre-created Skill tables used by downstream
+fixtures; old telemetry file doubles lacked the nullable Artifact field; processor
+catalog tests assumed `exposure=all` also grants every principal. Fixtures now model
+their actual historical/legacy schema and tests explicitly prove all seven new
+plugin Artifact operations remain denied to processor identities.
+
+Follow-up local checks: storage unit suite 188 passed; KB/API/historical-schema
+regression 67 passed/1 unavailable-PG skip; telemetry42 passed; tool-grant tests30
+passed; processor sweep4 passed. The exact remote PostgreSQL and full CI results
+must be rechecked on the updated head; these local checks are not a substitute.

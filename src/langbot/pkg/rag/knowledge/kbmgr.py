@@ -1223,6 +1223,21 @@ class RAGManager:
         execution_context = await self._to_execution_context(context)
         kb = await self.get_knowledge_base_by_uuid(execution_context, kb_uuid)
         if kb is None:
-            raise WorkspaceNotFoundError('Knowledge base not found')
+            result = await self.ap.persistence_mgr.execute_async(
+                sqlalchemy.select(persistence_rag.KnowledgeBase)
+                .where(persistence_rag.KnowledgeBase.workspace_uuid == execution_context.workspace_uuid)
+                .where(persistence_rag.KnowledgeBase.uuid == kb_uuid)
+            )
+            entity = result.first()
+            if entity is None:
+                raise WorkspaceNotFoundError('Knowledge base not found')
+            if entity.initialized is False:
+                # Drafts have never created upstream state and are intentionally not cached.
+                return
+            if isinstance(entity, sqlalchemy.Row):
+                entity = persistence_rag.KnowledgeBase(**entity._mapping)
+            # Retry after restart without creating upstream state or reopening admission.
+            kb = RuntimeKnowledgeBase(self.ap, entity, execution_context)
+            self._cache_runtime(kb)
         await kb.dispose(execution_context)
         self._pop_runtime(execution_context, kb_uuid)

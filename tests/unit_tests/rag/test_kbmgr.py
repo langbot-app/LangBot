@@ -909,3 +909,31 @@ class TestRAGManagerLoadKnowledgeBase:
         await manager.load_knowledge_base(CONTEXT_A, kb_dict)
 
         assert ('workspace-a', 'kb-uuid') in manager.knowledge_bases
+
+
+@pytest.mark.asyncio
+async def test_delete_uncached_draft_skips_upstream_callback():
+    app = _app()
+    entity = _entity()
+    entity.initialized = False
+    app.persistence_mgr.execute_async.return_value = _Result(first=entity)
+    manager = RAGManager(app)
+    await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    app.plugin_connector.rag_on_kb_delete.assert_not_awaited()
+    assert not manager.knowledge_bases
+
+
+@pytest.mark.asyncio
+async def test_delete_uncached_initialized_kb_retries_upstream_after_failure():
+    app = _app()
+    app.persistence_mgr.execute_async.return_value = _Result(first=_entity())
+    app.plugin_connector.rag_on_kb_delete.side_effect = RuntimeError('remote outcome unknown')
+    manager = RAGManager(app)
+    with pytest.raises(RuntimeError, match='remote outcome unknown'):
+        await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    assert ('workspace-a', 'kb-a') in manager.knowledge_bases
+    app.plugin_connector.rag_on_kb_create.assert_not_awaited()
+    app.plugin_connector.rag_on_kb_delete.side_effect = None
+    await manager.delete_knowledge_base(CONTEXT_A, 'kb-a')
+    assert not manager.knowledge_bases
+    assert app.plugin_connector.rag_on_kb_delete.await_count == 2
