@@ -25,6 +25,7 @@ lbctl はシステムの言語に合わせて英語または中国語で出力�
 | 複数インスタンスの運用 | ディレクトリをコピーしてポートを手動で変更 | `lbctl install --name <インスタンス名> --port <ポート>`、`lbctl list` |
 | アンインストール | コンテナとディレクトリを手動で削除 | `lbctl uninstall`（デフォルトでデータは保持） |
 | lbctl 自体の更新 | 再ダウンロード | `lbctl update` |
+| コマンドラインからローカルインスタンスに接続 | WebUI で API キーを作成して `lbctl context add` | インストール後に自動接続、そのまま `lbctl bot list` |
 
 ## 状態の確認と診断
 
@@ -144,15 +145,28 @@ lbctl uninstall --purge-data --yes  # lbctl が管理するデータディレク
 
 ## コマンドラインでボット、プラグイン、モデルを管理する（任意）
 
-日常的な設定は WebUI で行うのが簡単です。lbctl は HTTP API 経由で Workspace のリソースも管理でき、スクリプトや AI エージェントに向いています。WebUI で API キーを作成してから、接続先を追加します。
+日常的な設定は WebUI で行うのが簡単です。lbctl は HTTP API 経由で Workspace のリソースも管理でき、スクリプトや AI エージェントに向いています。
+
+lbctl でインストールまたは引き継いだローカルインスタンスは自動で接続されます（lbctl v0.5.11 以降）。lbctl はインスタンスごとに API キーを生成して `data/config.yaml` の `api.global_api_key` に書き込み、そのインスタンスの接続先に設定します。設定なしでそのまま使えます。
 
 ```bash
-export LANGBOT_API_KEY=<あなたの API キー>
-lbctl context add local --endpoint http://127.0.0.1:5300 --api-key-env LANGBOT_API_KEY
 lbctl whoami
 lbctl bot list
 lbctl plugin list
 lbctl model list
+lbctl knowledge-base list
+```
+
+- 既存のインスタンスは、次に `lbctl start`、`restart`、`upgrade` を実行したときにキーが追加されます。引き継いだデプロイでは、案内に従って `lbctl restart` を一度実行してください。
+- キーはインスタンスディレクトリにのみ保存され（権限 0600）、lbctl の設定ファイル、`-o json` の出力、ログには表示されません。MCP クライアントなどに設定する場合は `lbctl auth show-key --yes` で確認できます。
+- ローカルに複数のインスタンスがある場合は、`lbctl context list` で接続先を確認し、`--context <名前>` で対象を指定します。
+
+リモートのインスタンスや LangBot Cloud に接続する場合は、WebUI で API キーを作成してから接続先を追加します。
+
+```bash
+export LANGBOT_API_KEY=<あなたの API キー>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
 ```
 
 すべてのコマンドは `lbctl help` または [lbctl リポジトリ](https://github.com/langbot-app/langbot-cli)を参照してください。

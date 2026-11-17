@@ -25,6 +25,7 @@ lbctl prints English or Chinese based on your system language; override it with 
 | Run several instances | Copy directories and edit ports | `lbctl install --name <instance> --port <port>`, `lbctl list` |
 | Uninstall | Remove containers and directories by hand | `lbctl uninstall` (keeps data by default) |
 | Update lbctl itself | Download again | `lbctl update` |
+| Connect the CLI to a local instance | Create an API key in the WebUI, then `lbctl context add` | Connected automatically after install; just run `lbctl bot list` |
 
 ## Status and diagnostics
 
@@ -144,15 +145,28 @@ lbctl uninstall --purge-data --yes  # also delete lbctl-managed data directories
 
 ## Manage bots, plugins and models from the command line (optional)
 
-Day-to-day configuration is easiest in the WebUI. lbctl can also manage Workspace resources over the HTTP API, which suits scripts and AI agents. Create an API key in the WebUI, then add a connection:
+Day-to-day configuration is easiest in the WebUI. lbctl can also manage Workspace resources over the HTTP API, which suits scripts and AI agents.
+
+Local instances installed or adopted with lbctl connect automatically (lbctl v0.5.11 or later). lbctl generates an API key for each instance, writes it to `api.global_api_key` in `data/config.yaml`, and attaches it to that instance's connection. No setup is needed:
 
 ```bash
-export LANGBOT_API_KEY=<your API key>
-lbctl context add local --endpoint http://127.0.0.1:5300 --api-key-env LANGBOT_API_KEY
 lbctl whoami
 lbctl bot list
 lbctl plugin list
 lbctl model list
+lbctl knowledge-base list
+```
+
+- Existing instances get a key the next time you run `lbctl start`, `restart` or `upgrade`. For adopted deployments, run `lbctl restart` once when prompted.
+- The key is stored only in the instance directory (mode 0600) and never appears in lbctl's config file, `-o json` output or logs. To configure an MCP client or another tool, show it with `lbctl auth show-key --yes`.
+- With several local instances, list their connections with `lbctl context list` and pick one with `--context <name>`.
+
+For a remote instance or LangBot Cloud, create an API key in the WebUI, then add a connection:
+
+```bash
+export LANGBOT_API_KEY=<your API key>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
 ```
 
 See `lbctl help` or the [lbctl repository](https://github.com/langbot-app/langbot-cli) for every command.

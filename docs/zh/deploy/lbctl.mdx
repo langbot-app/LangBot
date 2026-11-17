@@ -25,6 +25,7 @@ lbctl 默认按系统语言输出中文或英文，可用 `--lang zh-Hans` / `--
 | 运行多个实例 | 复制目录、手动改端口 | `lbctl install --name <实例名> --port <端口>`、`lbctl list` |
 | 卸载 | 手动删除容器和目录 | `lbctl uninstall`（默认保留数据） |
 | 升级 lbctl 本身 | 重新下载 | `lbctl update` |
+| 命令行连接本地实例 | 在 WebUI 创建 API Key，再 `lbctl context add` | 安装后自动连接，直接 `lbctl bot list` |
 
 ## 查看状态与诊断
 
@@ -144,15 +145,28 @@ lbctl uninstall --purge-data --yes  # 同时删除 lbctl 管理的数据目录
 
 ## 用命令行管理机器人、插件和模型（可选）
 
-日常配置建议在 WebUI 中完成。lbctl 也可以通过 HTTP API 管理 Workspace 内的资源，适合脚本和 AI Agent：先在 WebUI 中创建 API Key，再添加连接：
+日常配置建议在 WebUI 中完成。lbctl 也可以通过 HTTP API 管理 Workspace 内的资源，适合脚本和 AI Agent。
+
+用 lbctl 安装或接管的本地实例会自动连接（需要 lbctl v0.5.11 及以上）：lbctl 为每个实例生成一个 API Key，写入 `data/config.yaml` 的 `api.global_api_key`，并自动配到该实例的连接上。不需要任何配置，就可以直接使用：
 
 ```bash
-export LANGBOT_API_KEY=<你的 API Key>
-lbctl context add local --endpoint http://127.0.0.1:5300 --api-key-env LANGBOT_API_KEY
 lbctl whoami
 lbctl bot list
 lbctl plugin list
 lbctl model list
+lbctl knowledge-base list
+```
+
+- 已有的实例在下一次执行 `lbctl start`、`restart` 或 `upgrade` 时会自动补上 Key；接管（adopt）的部署按提示执行一次 `lbctl restart` 即可生效。
+- Key 只保存在实例目录中（权限 0600），不会出现在 lbctl 的配置文件、`-o json` 输出或日志里。需要把它配给 MCP 客户端等工具时，用 `lbctl auth show-key --yes` 查看。
+- 本机有多个实例时，用 `lbctl context list` 查看各实例的连接，用 `--context <名称>` 指定要操作的实例。
+
+连接远程实例或 LangBot Cloud 时，先在 WebUI 中创建 API Key，再添加连接：
+
+```bash
+export LANGBOT_API_KEY=<你的 API Key>
+lbctl context add remote --endpoint https://your-langbot.example.com --api-key-env LANGBOT_API_KEY
+lbctl --context remote whoami
 ```
 
 完整命令见 `lbctl help` 或 [lbctl 仓库](https://github.com/langbot-app/langbot-cli)。
