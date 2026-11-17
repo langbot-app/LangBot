@@ -60,3 +60,28 @@ control time or a fault does not by itself make a test a duplicate.
 
 For asset discovery, chosen commands, evidence status and safe consolidation,
 see [developer acceptance](../CROSS_COMPONENT_TESTING.md#test-assets-for-developers-and-agents).
+
+## Second pass: broaden the changed test surface
+
+Compared against the first-pass PR head `6c7b468cccdeeafc49bb7ae05228bcd44a2f52b1`.
+The additional edits cover six pools. This is targeted strengthening after a
+broader inventory, not a rewrite of every file.
+
+| Pool | Newly exercised behavior | Local evidence |
+| --- | --- | --- |
+| Core | Real package imports and packaged resource content; exact log cursors, eviction, truncation and retention limits; independent YAML/JSON disk readback for synchronous and asynchronous saves | Focused 49 → 28 passed. The neighboring config/utilities run had the same existing DNS failure on both sides; no speedup claim. |
+| SDK | Runner history/event cursors and typed payload handling, Box storage rescan and totals, byte-level plugin archive contents and failed-build cleanup, RSS, and recovery after clipping a UTF-8 log line | Python 3.12 standalone CI suite: 2,648 → 2,650 passed, 15 skipped on both, 84.61% coverage on both. Five installed-wheel packaging tests passed separately. |
+| Core + SDK | Shared protocol contracts in the same source checkout | 40 passed, 13 deselected by the suite selector. Source paths were verified locally; the release-version compatibility lanes are unchanged. |
+| Official plugins | RunnerDemo reply payloads, StickerHub byte readback/shared blobs and pagination, LangRAG event order, persistence and clear/readback | RunnerDemo, StickerHub and LangRAG: 156 tests passed on each side, plus 11 subtests. |
+| WebUI | Render migration diagnostics; test exact HTTP status boundaries, all eight locale catalogs and ordered embed reply contents | Full Web unit suite: 203 → 206 passed, no skips. SSR/unit only; no browser E2E. |
+| Regression tools | Real child process and request-file delivery to a CLI fixture, exact case identities, full rename/diff inventory and isolation of optional state scenarios | All 232 tool tests passed on both sides. The child process is a fixture, not a released `lbctl` binary. |
+| Documentation | Verify localized GitHub Wiki page bytes and links from both Home and the sidebar rather than file presence alone | 22 Python docs tests passed, one skipped. No static site build claim. |
+
+Controlled substitutions were run outside the PR tree. The strengthened
+checks caught stale log offsets, exact-limit truncation, dropped config fields,
+disappearing payload/archive bytes, RSS mix-ups, clip-recovery mistakes, wrong
+plugin replies and order, invalid HTTP status handling, missing locale
+interpolation, lost CLI arguments/case identity, and missing localized wiki
+content. These are targeted counterexamples, not a repository-wide mutation
+score. No live provider/Docker acceptance, daily endurance, new CI job, or new
+required merge check is implied.

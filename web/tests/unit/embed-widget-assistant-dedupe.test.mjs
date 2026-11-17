@@ -160,8 +160,10 @@ function launchWidget() {
         data: JSON.stringify({ type: 'response', data: message }),
       });
     },
-    assistantMessages() {
-      return root.shadowRoot.querySelectorAll('.lb-msg-assistant');
+    assistantReplies() {
+      return root.shadowRoot
+        .querySelectorAll('.lb-msg-assistant')
+        .map((message) => message.querySelector('.lb-msg-bubble').innerHTML);
     },
   };
 }
@@ -176,12 +178,7 @@ test('renders a non-empty reply after an empty assistant frame', () => {
   widget.receive(assistant('thought', ''));
   widget.receive(assistant('answer', 'visible answer'));
 
-  const messages = widget.assistantMessages();
-  assert.equal(messages.length, 2);
-  assert.equal(
-    messages[1].querySelector('.lb-msg-bubble').innerHTML,
-    'visible answer',
-  );
+  assert.deepEqual(widget.assistantReplies(), ['', 'visible answer']);
 });
 
 test('still drops a duplicate non-empty assistant frame', () => {
@@ -190,7 +187,7 @@ test('still drops a duplicate non-empty assistant frame', () => {
   widget.receive(assistant('answer-1', 'same answer'));
   widget.receive(assistant('answer-2', 'same answer'));
 
-  assert.equal(widget.assistantMessages().length, 1);
+  assert.deepEqual(widget.assistantReplies(), ['same answer']);
 });
 
 test('still keeps two distinct non-empty assistant frames', () => {
@@ -199,5 +196,5 @@ test('still keeps two distinct non-empty assistant frames', () => {
   widget.receive(assistant('answer-1', 'first answer'));
   widget.receive(assistant('answer-2', 'second answer'));
 
-  assert.equal(widget.assistantMessages().length, 2);
+  assert.deepEqual(widget.assistantReplies(), ['first answer', 'second answer']);
 });
