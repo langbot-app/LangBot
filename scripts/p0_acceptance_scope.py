@@ -6,6 +6,18 @@ from pathlib import PurePosixPath
 import subprocess
 
 
+# Files used by the image build or its image-selection contract, but not
+# necessarily by any of the separate permission and persistence suites.
+IMAGE_INPUTS = {
+    '.github/actions/classify-test-changes/action.yml',
+    '.github/actions/classify-test-changes/classify.py',
+    'scripts/check_core_artifacts.py',
+    'scripts/stamp_build_revision.py',
+    'web/package.json',
+    'web/pnpm-lock.yaml',
+}
+
+
 def select(paths):
     paths = set(paths)
     shared = any(
@@ -62,6 +74,7 @@ def select(paths):
         or any(
             p.startswith(('docker/', 'packaging/'))
             or PurePosixPath(p).name in {'Dockerfile', 'MANIFEST.in', '.dockerignore'}
+            or p in IMAGE_INPUTS
             or p == 'tests/e2e/test_image_upgrade.py'
             for p in paths
         )
@@ -75,7 +88,9 @@ if __name__ == '__main__':
     if not base or set(base) == {'0'}:
         result = dict.fromkeys(('persistence', 'permissions', 'image'), True)
     else:
-        paths = subprocess.check_output(['git', 'diff', '--name-only', base, head], text=True).splitlines()
+        # A rename also removes the old path, which can have a stricter lane than its destination.
+        data = subprocess.check_output(['git', 'diff', '--name-only', '--no-renames', '-z', base, head, '--'])
+        paths = [os.fsdecode(path) for path in data.split(b'\0') if path]
         result = select(paths)
     print(json.dumps(result, sort_keys=True))
     with open(os.environ['GITHUB_OUTPUT'], 'a') as output:

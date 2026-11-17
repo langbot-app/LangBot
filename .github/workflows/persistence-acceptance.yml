@@ -2,6 +2,11 @@ name: Persistence acceptance
 
 on:
   workflow_call:
+    inputs:
+      uploaded_artifacts:
+        description: Require the real two-Core uploaded Artifact PostgreSQL and MinIO contract
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -104,6 +109,22 @@ jobs:
             --required-suite skill_network -q --tb=short -rs \
             --basetemp=.qa/persistence-runtime/skill-network-processes \
             --junitxml=.qa/persistence-runtime/skill-network.xml
+      - name: Prepare a separate database for uploaded Artifacts
+        if: inputs.uploaded_artifacts
+        run: >-
+          docker exec "${{ job.services.postgres.id }}"
+          psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE DATABASE langbot_artifact_upload;'
+      - name: Require the two-Core uploaded Artifact contract on PostgreSQL and MinIO
+        if: inputs.uploaded_artifacts
+        env:
+          LANGBOT_PERSISTENCE_CORE_POSTGRES_URL: postgresql+asyncpg://postgres@127.0.0.1:5432/langbot_artifact_upload
+          LANGBOT_ARTIFACT_CORE_S3: '1'
+        run: |
+          uv run --no-sync pytest tests/e2e/test_artifact_persistence.py \
+            --required-suite artifact_persistence -q --tb=short -rs -o xfail_strict=true \
+            --basetemp=.qa/persistence-runtime/artifact-upload-processes \
+            --junitxml=.qa/persistence-runtime/artifact-upload.xml
+          python3 tools/verify_junit.py .qa/persistence-runtime/artifact-upload.xml
       - name: Preserve execution scope and service logs
         if: always()
         run: |
@@ -142,11 +163,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: daily-persistence-runtime-${{ github.run_id }}-${{ github.run_attempt }}
+          include-hidden-files: true
           path: |
             .qa/persistence-runtime/*.xml
             .qa/persistence-runtime/*.txt
             .qa/persistence-runtime/*.log
             .qa/persistence-runtime/processes/**/langbot.*.log
             .qa/persistence-runtime/processes/**/before-restart-*.log
+            .qa/persistence-runtime/artifact-upload-processes/**/langbot.*.log
           if-no-files-found: warn
           retention-days: 30

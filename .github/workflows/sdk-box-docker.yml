@@ -1,16 +1,25 @@
 name: SDK / Box Docker Acceptance
 
 on:
-  push:
-    branches:
-      - master
+  pull_request:
     paths:
-      - 'sdk/**'
+      - 'sdk/src/langbot_plugin/box/**'
+      - 'sdk/src/langbot_plugin/runtime/io/**'
+      - 'sdk/tests/e2e/**'
+      - 'sdk/pyproject.toml'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - 'Dockerfile'
       - '.github/workflows/sdk-box-docker.yml'
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
+
+concurrency:
+  group: sdk-box-docker-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:

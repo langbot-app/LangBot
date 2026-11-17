@@ -81,6 +81,8 @@ jobs:
           needs = json.loads(os.environ['NEEDS'])
           assert needs['changes']['result'] == 'success', needs
           for name in ('persistence', 'permissions', 'image'):
-              expected = 'success' if needs['changes']['outputs'][name] == 'true' else 'skipped'
+              selected = needs['changes']['outputs'].get(name)
+              assert selected in ('true', 'false'), (name, 'invalid selection', selected)
+              expected = 'success' if selected == 'true' else 'skipped'
               assert needs[name]['result'] == expected, (name, expected, needs[name]['result'])
           PY
