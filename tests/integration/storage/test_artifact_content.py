@@ -17,6 +17,7 @@ from tests.integration.storage.test_artifacts import (
     replicas,  # noqa: F401
     _data,
 )
+from tests.utils.artifact_media import text_pdf
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 
@@ -61,3 +62,17 @@ async def test_http_text_ranges_and_cross_core_mcp_image(artifact_replicas):
     assert blocks[1].type == 'image' and blocks[1].mimeType == 'image/png'
     assert base64.b64decode(blocks[1].data) == png
     assert base64.b64encode(png).decode() not in blocks[0].text
+
+
+async def test_truncated_native_pdf_is_not_delivered_as_model_content(artifact_replicas):
+    case = artifact_replicas
+    content = text_pdf('Truncated file on disk')[:-45]
+    metadata = await upload(case, 'report.pdf', content, 'application/pdf')
+    path = '/api/v1/artifacts/' + metadata['id']
+    for mode in ('native', 'text'):
+        response = await case.b.client.get(path + f'/read?mode={mode}', headers=case.headers)
+        assert response.status_code == 422
+        assert (await response.get_json())['code'] == 'artifact_pdf_unreadable'
+    # Decode failures do not make the original bytes inaccessible to their owner.
+    response = await case.b.client.get(path + '/content', headers=case.headers)
+    assert response.status_code == 200 and await response.get_data() == content
