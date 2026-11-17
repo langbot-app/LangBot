@@ -196,5 +196,8 @@ test('still keeps two distinct non-empty assistant frames', () => {
   widget.receive(assistant('answer-1', 'first answer'));
   widget.receive(assistant('answer-2', 'second answer'));
 
-  assert.deepEqual(widget.assistantReplies(), ['first answer', 'second answer']);
+  assert.deepEqual(widget.assistantReplies(), [
+    'first answer',
+    'second answer',
+  ]);
 });

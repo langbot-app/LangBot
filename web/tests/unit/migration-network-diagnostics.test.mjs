@@ -6,7 +6,13 @@ import jsxRuntime from 'react/jsx-runtime';
 import icons from 'lucide-react';
 import { loadLocale, locales, loadTs } from './load-ts.mjs';
 
-const diagnosticKeys = ['timeout', 'connection', 'incomplete', 'http', 'network'];
+const diagnosticKeys = [
+  'timeout',
+  'connection',
+  'incomplete',
+  'http',
+  'network',
+];
 const en = loadLocale('en-US');
 
 test('every runtime catalog provides translated diagnostics without a URL or raw diagnostic interpolation', () => {
@@ -16,7 +22,11 @@ test('every runtime catalog provides translated diagnostics without a URL or raw
       const message = diagnostics[key];
       assert.equal(typeof message, 'string', `${locale}.${key}`);
       assert.ok(message.trim(), `${locale}.${key}`);
-      assert.doesNotMatch(message, /https?:\/\/|\{\{kind\}\}/, `${locale}.${key}`);
+      assert.doesNotMatch(
+        message,
+        /https?:\/\/|\{\{kind\}\}/,
+        `${locale}.${key}`,
+      );
     }
   }
 });

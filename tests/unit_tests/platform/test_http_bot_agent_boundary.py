@@ -229,6 +229,7 @@ async def test_http_send_without_sync_waiter_preserves_callback_delivery():
 @pytest.mark.parametrize('text_api', ['send', 'reply', 'chunk'])
 async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api, artifact_store):
     adapter = discovered_adapter()
+    adapter.config['callback_timeout'] = 5
     adapter._enqueue_callback = AsyncMock()
     bot = object.__new__(RuntimeBot)
     bot.bot_entity = SimpleNamespace(uuid='http-test-bot')
@@ -238,6 +239,18 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
     text_sent = asyncio.Event()
     export_allowed = asyncio.Event()
     content = b'generated file bytes'
+
+    # Provision the real store before starting the HTTP timeout; only delivery belongs in the measured turn.
+    context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+    app = SimpleNamespace(
+        platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=adapter)))
+    )
+    await artifact_store(app, context)
+    await seed_run(app, context, 'generated-run')
+    query = SimpleNamespace(
+        _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
+        _execution_context=context,
+    )
 
     async def listener(event, live_adapter):
         text = message.MessageChain([message.Plain(text=content.decode())])
@@ -258,16 +271,6 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                 'platform_context': freeze_platform_context(agent_event),
             }
         }
-        context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
-        app = SimpleNamespace(
-            platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=live_adapter)))
-        )
-        await artifact_store(app, context)
-        await seed_run(app, context, 'generated-run')
-        query = SimpleNamespace(
-            _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
-            _execution_context=context,
-        )
         box = SimpleNamespace(
             ap=app,
             _ATTACHMENT_MAX_FILES=10,
@@ -308,13 +311,21 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
     async with web.app_context():
         request_task = asyncio.create_task(adapter._run_sync(inbound, listener, session_id, message_id))
         try:
-            await asyncio.wait_for(text_sent.wait(), timeout=1)
+            await asyncio.wait_for(text_sent.wait(), timeout=5)
             done, _ = await asyncio.wait({request_task}, timeout=0.03)
             assert not done, 'A final text send must not close the active Agent collector'
-            assert session_id in adapter.sync_waiters
-        finally:
+            assert adapter.sync_waiters[session_id].done.is_set()
             export_allowed.set()
-            response, status = await asyncio.wait_for(request_task, timeout=2)
+            # Bound a hung test, but let the adapter own its shorter request timeout.
+            response, status = await asyncio.wait_for(request_task, timeout=25)
+        finally:
+            # The adapter shields the listener. Drain both even on an assertion or timeout.
+            export_allowed.set()
+            pending = {request_task, *adapter.inbound_tasks}
+            for task in pending:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
         assert status == 200
         payload = (await response.get_json())['data']
     assert payload['reply_to'] == message_id

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import datetime as dt
+from contextlib import AsyncExitStack
 from types import SimpleNamespace
 
 import pytest
@@ -23,11 +24,14 @@ from langbot.pkg.workspace.service import WorkspaceService
 
 @pytest.fixture(name='artifact_store')
 async def _artifact_store(tmp_path):
-    stores = []
+    store_count = 0
+    cleanup = AsyncExitStack()
 
     async def attach(ap, context):
-        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / ("artifacts-" + str(len(stores)) + ".db")}')
-        stores.append((ap, engine))
+        nonlocal store_count
+        engine = create_async_engine(f'sqlite+aiosqlite:///{tmp_path / f"artifacts-{store_count}.db"}')
+        store_count += 1
+        cleanup.push_async_callback(engine.dispose)
         async with engine.begin() as connection:
             await connection.run_sync(Base.metadata.create_all)
             await connection.execute(
@@ -57,16 +61,13 @@ async def _artifact_store(tmp_path):
         if not getattr(ap, 'workspace_service', None):
             ap.workspace_service = WorkspaceService(ap, instance_uuid=context.instance_uuid)
         ap.storage_mgr = StorageMgr(ap)
+        cleanup.push_async_callback(ap.storage_mgr.shutdown)
         ap.artifact_service = ArtifactService(ap)
         ap.artifact_publication_service = ArtifactPublicationService(ap)
         return ap
 
-    try:
+    async with cleanup:
         yield attach
-    finally:
-        for ap, engine in reversed(stores):
-            await ap.storage_mgr.shutdown()
-            await engine.dispose()
 
 
 async def seed_run(ap, context, run_id):
