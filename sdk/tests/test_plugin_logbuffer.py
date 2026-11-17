@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from langbot_plugin.runtime.plugin.logbuffer import MAX_LOG_LINE_BYTES, PluginLogBuffer
 
 
@@ -38,8 +40,9 @@ def test_ring_buffer_cap():
     for i in range(20):
         buf.add_line(f"[06-13 10:30:00.1] a.py (1) - [INFO] : line {i}")
     logs = buf.get_logs(limit=100)
-    assert len(logs) == 5
-    assert logs[-1]["text"].endswith("line 19")
+    assert [entry["text"].rsplit(": ", 1)[-1] for entry in logs] == [
+        f"line {i}" for i in range(15, 20)
+    ]
 
 
 def test_limit():
@@ -47,8 +50,9 @@ def test_limit():
     for i in range(50):
         buf.add_line(f"[06-13 10:30:00.1] a.py (1) - [INFO] : line {i}")
     logs = buf.get_logs(limit=10)
-    assert len(logs) == 10
-    assert logs[-1]["text"].endswith("line 49")
+    assert [entry["text"].rsplit(": ", 1)[-1] for entry in logs] == [
+        f"line {i}" for i in range(40, 50)
+    ]
 
 
 def test_empty_lines_skipped():
@@ -114,3 +118,23 @@ def test_attach_stream_drains_and_clips_line_without_newline():
     assert logs[0]["text"].startswith("x" * 100)
     assert f"clipped at {MAX_LOG_LINE_BYTES} bytes" in logs[0]["text"]
     assert len(logs[0]["text"]) < MAX_LOG_LINE_BYTES + 100
+
+
+@pytest.mark.anyio
+async def test_attach_stream_recovers_after_clipping_and_keeps_utf8():
+    reader = asyncio.StreamReader()
+    oversized = "é".encode() * MAX_LOG_LINE_BYTES
+    next_line = "[06-13 10:30:00.1] a.py (1) - [WARNING] : après"
+    reader.feed_data(oversized + b"\n" + next_line.encode() + b"\n")
+    reader.feed_eof()
+    buf = PluginLogBuffer()
+
+    await buf.attach_stream(reader)
+
+    clipped, following = buf.get_logs()
+    assert clipped["text"] == (
+        "é" * (MAX_LOG_LINE_BYTES // len("é".encode()))
+        + f"... [log line clipped at {MAX_LOG_LINE_BYTES} bytes]"
+    )
+    assert (following["level"], following["text"]) == ("WARNING", next_line)
+    assert buf.get_logs(limit=1, level="WARNING") == [following]

@@ -50,7 +50,7 @@ uv run pytest tests/manual/mcp_smoke.py
 
 ## Before-Merge Acceptance
 
-Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. PR unit/smoke checks alone do not establish cross-component behavior. Use the [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) for commands and environment requirements:
+Agents must choose and run the existing acceptance paths that exercise the changed boundary before recommending merge. Start with the [test asset map and evidence checklist](dev-docs/CROSS_COMPONENT_TESTING.md#test-assets-for-developers-and-agents). PR unit/smoke checks alone do not establish cross-component behavior. The [cross-component test guide](dev-docs/CROSS_COMPONENT_TESTING.md) lists the commands and environment requirements:
 
 - Shared SDK entities, APIs or Runtime protocol: Core with the in-tree SDK and representative official plugin consumers, retaining their declared SDK support and released-SDK checks.
 - File transfer, installation grants or Box routing: full HTTP → installed Plugin Runtime Runner → Box → HTTP file delivery, plus the affected real Box backend.

@@ -113,21 +113,6 @@ class TestCommandHandlerReal:
     """Tests for real CommandHandler class."""
 
     @pytest.mark.asyncio
-    async def test_real_import_works(self):
-        """Verify we can import the real handler class."""
-        command = get_command_handler()
-        assert hasattr(command, 'CommandHandler')
-        handler_cls = command.CommandHandler
-        assert handler_cls.__name__ == 'CommandHandler'
-
-    @pytest.mark.asyncio
-    async def test_handler_creation(self, fake_app):
-        """CommandHandler can be instantiated."""
-        command = get_command_handler()
-        handler = command.CommandHandler(fake_app)
-        assert handler.ap is fake_app
-
-    @pytest.mark.asyncio
     async def test_command_parsing_extracts_command_name(self, fake_app, mock_event_ctx):
         """Command text is extracted after prefix."""
         command = get_command_handler()
@@ -331,7 +316,8 @@ class TestCommandHandlerReal:
         """Error result creates error message."""
         command = get_command_handler()
         fake_app.plugin_connector.emit_event = AsyncMock(return_value=mock_event_ctx)
-        fake_app.cmd_mgr.execute = mock_execute_factory(text=None, error='Command failed')
+        error = '0123456789abcdefghij more details\nsecond line'
+        fake_app.cmd_mgr.execute = mock_execute_factory(text=None, error=error)
 
         handler = command.CommandHandler(fake_app)
         query = command_query('fail')
@@ -344,7 +330,8 @@ class TestCommandHandlerReal:
         assert len(query.resp_messages) == 1
         msg = query.resp_messages[0]
         assert msg.role == 'command'
-        assert msg.content == 'Command failed'
+        assert msg.content == error
+        fake_app.logger.info.assert_any_call(f'Command({query.query_id}) error: 0123456789abcdefghij...')
 
     @pytest.mark.asyncio
     async def test_command_result_image_url(self, fake_app, mock_event_ctx, mock_execute_factory):
@@ -386,30 +373,3 @@ class TestCommandHandlerReal:
             results.append(result)
 
         assert results[0].result_type == entities.ResultType.INTERRUPT
-
-
-@pytest.mark.usefixtures('mock_circular_import_chain')
-class TestCommandHandlerHelper:
-    """Tests for helper methods."""
-
-    def test_cut_str_short(self, fake_app):
-        """cut_str returns short string unchanged."""
-        command = get_command_handler()
-        handler = command.CommandHandler(fake_app)
-        result = handler.cut_str('short text')
-        assert result == 'short text'
-
-    def test_cut_str_long(self, fake_app):
-        """cut_str truncates long string."""
-        command = get_command_handler()
-        handler = command.CommandHandler(fake_app)
-        result = handler.cut_str('this is a very long string that exceeds twenty characters')
-        assert '...' in result
-        assert len(result) <= 23
-
-    def test_cut_str_multiline(self, fake_app):
-        """cut_str truncates multiline string."""
-        command = get_command_handler()
-        handler = command.CommandHandler(fake_app)
-        result = handler.cut_str('first line\nsecond line')
-        assert result == 'first line...'

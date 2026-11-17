@@ -693,14 +693,6 @@ class TestRuntimeKnowledgeBaseDispose:
 
 
 class TestRAGManagerInit:
-    def test_init_stores_app_reference(self):
-        app = _app()
-
-        assert RAGManager(app).ap is app
-
-    def test_init_creates_empty_knowledge_bases_dict(self):
-        assert RAGManager(_app()).knowledge_bases == {}
-
     def test_generation_advance_prunes_superseded_runtime_knowledge_bases(self):
         class NoGlobalItemsScan(dict):
             def items(self):

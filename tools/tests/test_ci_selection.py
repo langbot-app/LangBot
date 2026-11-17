@@ -107,14 +107,13 @@ class ChangeSelectionTests(unittest.TestCase):
         self.write(original)
         self.commit()
         self.base = self.git('rev-parse', 'HEAD').strip()
-        for index in range(320):
-            self.write(f'docs/en/{index:03d}.md')
+        docs = {f'docs/en/{index:03d}.md' for index in range(320)}
+        for path in sorted(docs):
+            self.write(path)
         self.git('mv', original, 'docs/en/renamed.md')
         self.commit()
         lanes, changed = self.run_selector()
-        self.assertEqual(len(changed), 322)
-        self.assertIn(original, changed)
-        self.assertIn('docs/en/renamed.md', changed)
+        self.assertCountEqual(changed, docs | {original, 'docs/en/renamed.md'})
         self.assertEqual(lanes, {'core', 'docs', 'permissions', 'persistence'})
 
     def test_production_images_only_follow_image_inputs(self):
