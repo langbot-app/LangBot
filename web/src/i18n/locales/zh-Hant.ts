@@ -2101,6 +2101,12 @@ const zhHant = {
       depsInfo: '共 {{count}} 個依賴需要安裝',
       depsProgress: '已安裝 {{installed}}/{{total}} · 剩餘 {{remaining}} 個',
       installComplete: '外掛安裝成功',
+      followUp: {
+        nextSteps: '下一步',
+        agents: '建立 Agent 或插件處理器',
+        pipelines: '建立流水線',
+        knowledge: '建立知識庫',
+      },
       updateComplete: '插件更新成功',
       installCompletePlugin: '外掛安裝成功',
       installCompleteMCP: 'MCP 伺服器安裝成功',

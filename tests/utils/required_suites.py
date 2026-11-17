@@ -5,6 +5,16 @@ import pytest
 
 # These are behavior obligations, independent of file names and parametrization.
 REQUIRED_CONTRACTS = {
+    'p0_permissions': {
+        'permission_lifecycle',
+        'permission_legacy',
+        'permission_transport',
+        'permission_inflight',
+        'permission_key_revocation',
+        'permission_workspace_isolation',
+        'permission_reinstall',
+    },
+    'p0_image': {'legacy_image_upgrade', 'image_fresh_defaults'},
     'sdk_core': {'execution_routing', 'rag_file_transfer', 'rag_cancellation'},
     'network_plugin': {'registered_runner_file_delivery'},
     'skill_network': {'two_core_skill_network'},

@@ -30,6 +30,12 @@ export interface RequestConfig extends AxiosRequestConfig {
   retry?: number; // 重试次数
   /** Account-scoped endpoints must not receive a stale Workspace selector. */
   skipWorkspace?: boolean;
+  /**
+   * Workspace to stamp instead of the current global one. Callers that captured
+   * a Workspace in a render closure use this so the header cannot disagree with
+   * the data they were built from when a switch is in flight.
+   */
+  workspaceUuid?: string | null;
   /** Set after one retry of a transient authentication failure. */
   authRetried?: boolean;
 }
@@ -100,6 +106,8 @@ export abstract class BaseHttpClient {
           if (requestConfig.skipWorkspace) {
             delete config.headers['X-Workspace-Id'];
             delete config.headers['x-workspace-id'];
+          } else if (requestConfig.workspaceUuid) {
+            config.headers['X-Workspace-Id'] = requestConfig.workspaceUuid;
           } else if (workspaceUuid) {
             config.headers['X-Workspace-Id'] = workspaceUuid;
           }

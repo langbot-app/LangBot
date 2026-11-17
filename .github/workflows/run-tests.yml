@@ -409,9 +409,9 @@ jobs:
 
       - name: Run E2E startup tests
         if: needs.plan.outputs.full_e2e == 'true'
-        # Deployment/legacy credentialed entrypoints are validated separately.
+        # Production-image upgrades and legacy credentialed entrypoints run in separate jobs.
         run: |
-          uv run --no-sync pytest tests/e2e -m "not local_agent" \
+          uv run --no-sync pytest tests/e2e -m "not local_agent and not p0_image" \
             --ignore=tests/e2e/test_deployed_content.py \
             --ignore=tests/e2e/test_network_file_plugin_runtime.py \
             --ignore=tests/e2e/test_skill_legacy_upgrade.py \

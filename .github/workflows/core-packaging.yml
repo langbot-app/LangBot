@@ -4,23 +4,38 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      production_acceptance:
+        description: Also require an upgrade from the published v4.11.7 image
+        type: boolean
+        default: true
+      export_image:
+        description: Export the image for independent Linux acceptance
+        type: boolean
+        default: true
   workflow_call:
+    inputs:
+      production_acceptance:
+        description: Require the strict published-image upgrade suite (P0 acceptance)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: core-packaging-${{ github.event.pull_request.number || github.run_id }}
+  # A direct PR invocation and a P0 reusable invocation must not cancel one another.
+  group: core-packaging-${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
-    name: Select core packaging
+    name: Select lightweight PR checks
+    if: github.event_name == 'pull_request' && !inputs.production_acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       packaging: ${{ steps.select.outputs.packaging }}
-      production_image: ${{ steps.select.outputs.production_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,7 +46,13 @@ jobs:
 
   artifacts:
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.packaging == 'true'
+    # A P0 PR invocation builds and exercises a real image; the direct PR
+    # workflow owns the artifact boundary checks and should not run them twice.
+    if: >-
+      !cancelled() &&
+      (github.event_name != 'pull_request' ||
+       (!inputs.production_acceptance && needs.changes.result == 'success' &&
+        needs.changes.outputs.packaging == 'true'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -64,8 +85,9 @@ jobs:
           python scripts/check_core_artifacts.py --source --docker-archive "$RUNNER_TEMP/core-context.tar"
 
   production-image:
-    needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.production_image == 'true'
+    # PR production images are owned by the P0 caller. Daily gets the image
+    # smoke and metadata without re-running upgrade or saving a large image.
+    if: inputs.production_acceptance || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -141,6 +163,7 @@ jobs:
           PY
           cat "$RUNNER_TEMP/production-image-metadata/self-check.json"
       - name: Export the image and record its source and checksum
+        if: github.event_name == 'workflow_dispatch' && inputs.export_image
         shell: bash
         run: |
           set -euo pipefail
@@ -153,6 +176,7 @@ jobs:
           cat "$RUNNER_TEMP/production-image-metadata/image.sha256"
           docker image inspect "$IMAGE_TAG" --format '{{.Id}} {{index .Config.Labels "org.opencontainers.image.revision"}}'
       - name: Upload the production image for Linux acceptance
+        if: github.event_name == 'workflow_dispatch' && inputs.export_image
         uses: actions/upload-artifact@v4
         with:
           name: production-image-${{ github.sha }}
@@ -168,3 +192,30 @@ jobs:
           compression-level: 0
           retention-days: 3
           if-no-files-found: error
+      - uses: actions/setup-python@v5
+        if: inputs.production_acceptance
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v4
+        if: inputs.production_acceptance
+      - name: Install locked upgrade test dependencies
+        if: inputs.production_acceptance
+        run: uv sync --dev --frozen
+      - name: Run production image upgrade and replacement acceptance
+        if: inputs.production_acceptance
+        env:
+          LANGBOT_IMAGE_CANDIDATE: ${{ env.IMAGE_TAG }}
+          LANGBOT_IMAGE_PREVIOUS: rockchin/langbot:v4.11.7
+        run: |
+          docker pull "$LANGBOT_IMAGE_PREVIOUS"
+          uv run --no-sync pytest tests/e2e/test_image_upgrade.py --required-suite p0_image \
+            -q -rs --junitxml=image-upgrade.xml
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.production_acceptance
+        with:
+          name: p0-image-upgrade-evidence
+          if-no-files-found: error
+          include-hidden-files: true
+          path: |
+            image-upgrade.xml
+            .qa/image-upgrade/**/container*.log

@@ -327,11 +327,16 @@ class MixedScheduleTest(unittest.TestCase):
         self.assertEqual(set(verdict['needs']), jobs.keys() - {'verdict'})
         daily = dict.fromkeys(verdict['needs'], 'success')
         manual = {**daily, 'dify-cloud': 'skipped'}
-        workload_only = {**manual, **{name: 'skipped' for name, job in jobs.items() if 'uses' in job}}
+        persistence = jobs['persistence-runtime']
+        self.assertEqual(persistence['uses'], './.github/workflows/persistence-acceptance.yml')
+        self.assertNotIn('if', persistence)
+        matrix = {name for name, job in jobs.items() if "inputs.validation_scope == 'full'" in job.get('if', '')}
+        workload_only = {**manual, **dict.fromkeys(matrix, 'skipped')}
         commands = [
             (True, True, daily, 0),
             (True, False, manual, 0),
             (False, False, workload_only, 0),
+            (False, False, {**workload_only, 'persistence-runtime': 'skipped'}, 1),
             (True, True, {name: state for name, state in daily.items() if name != 'migrations'}, 1),
             *[(True, True, {**daily, 'migrations': state}, 1) for state in ('failure', 'skipped', 'cancelled')],
         ]

@@ -1,0 +1,2408 @@
+{
+  "engine": "mutmut 3.8.1",
+  "product_base": "fef053f7f55e1776fd31d6c26ae2f63e96dba4d9",
+  "generated_total": 1533,
+  "selected": 102,
+  "outside_selected_scope": 1431,
+  "initial": {
+    "baseline_passed": 58,
+    "killed": 19,
+    "survived": 10,
+    "not_covered_by_selected_fast_tests": 73
+  },
+  "after": {
+    "baseline_passed": 64,
+    "killed": 87,
+    "survived": 15,
+    "invalid": 0,
+    "timeouts": 0,
+    "not_covered": 0,
+    "repeats": 2,
+    "identical_results": 102
+  },
+  "patterns": [
+    "*require_permission*",
+    "*installation_context*",
+    "*_validated_value*"
+  ],
+  "confirmation": [
+    {
+      "group": "inclusive-limit",
+      "mutant": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_3",
+      "repeat": 1,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 7.738446103408933,
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "inclusive-limit",
+      "mutant": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_3",
+      "repeat": 1,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 6.28196781873703,
+      "tests": 1,
+      "failures": 1,
+      "errors": 0
+    },
+    {
+      "group": "inclusive-limit",
+      "mutant": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_3",
+      "repeat": 2,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 7.385806428268552,
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "inclusive-limit",
+      "mutant": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_3",
+      "repeat": 2,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 6.387366710230708,
+      "tests": 1,
+      "failures": 1,
+      "errors": 0
+    },
+    {
+      "group": "wire-permission",
+      "mutant": "langbot.pkg.api.authz.x_require_permission__mutmut_3",
+      "repeat": 1,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 1.5183127280324697,
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "wire-permission",
+      "mutant": "langbot.pkg.api.authz.x_require_permission__mutmut_3",
+      "repeat": 1,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 2.170204656198621,
+      "tests": 1,
+      "failures": 1,
+      "errors": 0
+    },
+    {
+      "group": "wire-permission",
+      "mutant": "langbot.pkg.api.authz.x_require_permission__mutmut_3",
+      "repeat": 2,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 2.1713511645793915,
+      "tests": 1,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "wire-permission",
+      "mutant": "langbot.pkg.api.authz.x_require_permission__mutmut_3",
+      "repeat": 2,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 2.1206820216029882,
+      "tests": 1,
+      "failures": 1,
+      "errors": 0
+    },
+    {
+      "group": "stale-binding",
+      "mutant": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_18",
+      "repeat": 1,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 9.792978243902326,
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "stale-binding",
+      "mutant": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_18",
+      "repeat": 1,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 8.54159058071673,
+      "tests": 3,
+      "failures": 2,
+      "errors": 0
+    },
+    {
+      "group": "stale-binding",
+      "mutant": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_18",
+      "repeat": 2,
+      "variant": "original",
+      "exit_code": 0,
+      "seconds": 8.709284488111734,
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "group": "stale-binding",
+      "mutant": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_18",
+      "repeat": 2,
+      "variant": "mutant",
+      "exit_code": 1,
+      "seconds": 10.648211499676108,
+      "tests": 3,
+      "failures": 2,
+      "errors": 0
+    }
+  ],
+  "mutants": [
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_1",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,6 +1,6 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n-    if metadata['size'] > normalize_read_limit(max_bytes):\n+    if metadata['XXsizeXX'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_2",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,6 +1,6 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n-    if metadata['size'] > normalize_read_limit(max_bytes):\n+    if metadata['SIZE'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_3",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "VERIFIED_GAP",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,6 +1,6 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n-    if metadata['size'] > normalize_read_limit(max_bytes):\n+    if metadata['size'] >= normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_4",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Read callers already enforce the bound; cached Skill publication uses its publication bound. No valid-input behavioral difference demonstrated. Revisit when callers change.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,6 +1,6 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n-    if metadata['size'] > normalize_read_limit(max_bytes):\n+    if metadata['size'] > normalize_read_limit(None):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_5",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,7 +1,7 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n-        raise ValueError('Content exceeds the read size limit')\n+        raise ValueError(None)\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_6",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,7 +1,7 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n-        raise ValueError('Content exceeds the read size limit')\n+        raise ValueError('XXContent exceeds the read size limitXX')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_7",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,7 +1,7 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n-        raise ValueError('Content exceeds the read size limit')\n+        raise ValueError('content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_8",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -1,7 +1,7 @@\n @staticmethod\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n-        raise ValueError('Content exceeds the read size limit')\n+        raise ValueError('CONTENT EXCEEDS THE READ SIZE LIMIT')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_9",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['size'] and hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_10",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) == metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_11",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['XXsizeXX'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_12",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['SIZE'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_13",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['size'] or hashlib.sha256(None).hexdigest() != metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_14",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() == metadata['digest']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_15",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['XXdigestXX']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_16",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -2,6 +2,6 @@\n def _validated_value(value, metadata, max_bytes):\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n-    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n+    if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['DIGEST']:\n         raise ValueError('Persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_17",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -3,5 +3,5 @@\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n-        raise ValueError('Persisted content failed digest verification')\n+        raise ValueError(None)\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_18",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -3,5 +3,5 @@\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n-        raise ValueError('Persisted content failed digest verification')\n+        raise ValueError('XXPersisted content failed digest verificationXX')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_19",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Diagnostic wording only, or an error branch preempted by the caller size check. Failure remains enforced; exact English wording is not a contract.",
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -3,5 +3,5 @@\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n-        raise ValueError('Persisted content failed digest verification')\n+        raise ValueError('persisted content failed digest verification')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.storage.content.xǁContentStoreǁ_validated_value__mutmut_20",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/storage/content.py\n+++ src/langbot/pkg/storage/content.py\n@@ -3,5 +3,5 @@\n     if metadata['size'] > normalize_read_limit(max_bytes):\n         raise ValueError('Content exceeds the read size limit')\n     if len(value) != metadata['size'] or hashlib.sha256(value).hexdigest() != metadata['digest']:\n-        raise ValueError('Persisted content failed digest verification')\n+        raise ValueError('PERSISTED CONTENT FAILED DIGEST VERIFICATION')\n     return value"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_1",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -1,6 +1,6 @@\n def require_permission(ctx: RequestContext, permission: str | Permission) -> None:\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n-    permission_value = permission.value if isinstance(permission, Permission) else permission\n+    permission_value = None\n     if not has_permission(ctx, permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_2",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Permission is a StrEnum and the downstream check normalizes it again. No supported enum/string input difference demonstrated.",
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -1,6 +1,6 @@\n def require_permission(ctx: RequestContext, permission: str | Permission) -> None:\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n-    permission_value = permission.value if isinstance(permission, Permission) else permission\n+    permission_value = permission.value if (isinstance(permission, Permission)) and False else permission\n     if not has_permission(ctx, permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_3",
+      "initial": {
+        "exit_code": 0,
+        "status": "survived"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "VERIFIED_GAP",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -1,6 +1,6 @@\n def require_permission(ctx: RequestContext, permission: str | Permission) -> None:\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n-    permission_value = permission.value if isinstance(permission, Permission) else permission\n+    permission_value = permission.value if (isinstance(permission, Permission)) or True else permission\n     if not has_permission(ctx, permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_4",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -2,5 +2,5 @@\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n-    if not has_permission(ctx, permission_value):\n+    if has_permission(ctx, permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_5",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -2,5 +2,5 @@\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n-    if not has_permission(ctx, permission_value):\n+    if not has_permission(None, permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_6",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -2,5 +2,5 @@\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n-    if not has_permission(ctx, permission_value):\n+    if not has_permission(ctx, None):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_7",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -2,5 +2,5 @@\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n-    if not has_permission(ctx, permission_value):\n+    if not has_permission(permission_value):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_8",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -2,5 +2,5 @@\n     \"\"\"Raise a stable authorization error when a permission is missing.\"\"\"\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n-    if not has_permission(ctx, permission_value):\n+    if not has_permission(ctx, ):\n         raise PermissionDeniedError(permission_value)"
+    },
+    {
+      "id": "langbot.pkg.api.authz.x_require_permission__mutmut_9",
+      "initial": {
+        "exit_code": 1,
+        "status": "killed"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/authz.py\n+++ src/langbot/pkg/api/authz.py\n@@ -3,4 +3,4 @@\n \n     permission_value = permission.value if isinstance(permission, Permission) else permission\n     if not has_permission(ctx, permission_value):\n-        raise PermissionDeniedError(permission_value)\n+        raise PermissionDeniedError(None)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_1",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = None\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_2",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(None, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_3",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(ap, None, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_4",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(ap, binding.workspace_uuid, None)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_5",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_6",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(ap, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_7",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,5 +1,5 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n-    setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n+    setting = await load_installation(ap, binding.workspace_uuid, )\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_8",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,6 +1,6 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n-    if not setting.enabled:\n+    if setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_9",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail(None, 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_10",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('permission_denied', None)\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_11",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_12",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('permission_denied', )\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_13",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('XXpermission_deniedXX', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_14",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('PERMISSION_DENIED', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_15",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('permission_denied', 'XXPlugin installation is not enabledXX')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_16",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('permission_denied', 'plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_17",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -1,7 +1,7 @@\n async def installation_context(ap, binding, *, run_id: str | None = None) -> RequestContext:\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n-        fail('permission_denied', 'Plugin installation is not enabled')\n+        fail('permission_denied', 'PLUGIN INSTALLATION IS NOT ENABLED')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_18",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -2,7 +2,7 @@\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n-    if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n+    if setting.runtime_revision != binding.runtime_revision and setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_19",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -2,7 +2,7 @@\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n-    if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n+    if setting.runtime_revision == binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_20",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -2,7 +2,7 @@\n     setting = await load_installation(ap, binding.workspace_uuid, binding.installation_uuid)\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n-    if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n+    if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest == binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_21",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail(None, 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_22",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('permission_denied', None)\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_23",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_24",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('permission_denied', )\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_25",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('XXpermission_deniedXX', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_26",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('PERMISSION_DENIED', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_27",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('permission_denied', 'XXPlugin installation binding is staleXX')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_28",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('permission_denied', 'plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_29",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "Disabled/stale binding still fails with permission_denied and a nonempty message. Prefix/case of English diagnostic is not a contract.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -3,7 +3,7 @@\n     if not setting.enabled:\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n-        fail('permission_denied', 'Plugin installation binding is stale')\n+        fail('permission_denied', 'PLUGIN INSTALLATION BINDING IS STALE')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_30",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -4,7 +4,7 @@\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n-    grants = effective_grants(ap, setting)\n+    grants = None\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_31",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 0,
+          "status": "survived"
+        },
+        {
+          "run": 2,
+          "exit_code": 0,
+          "status": "survived"
+        }
+      ],
+      "classification": "NO_NEW_TEST_JUSTIFIED",
+      "rationale": "The fallback builds the same current static ApplicationAPI catalog. Revisit if production operation catalogs become configurable.",
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -4,7 +4,7 @@\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n-    grants = effective_grants(ap, setting)\n+    grants = effective_grants(None, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_32",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -4,7 +4,7 @@\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n-    grants = effective_grants(ap, setting)\n+    grants = effective_grants(ap, None)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_33",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -4,7 +4,7 @@\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n-    grants = effective_grants(ap, setting)\n+    grants = effective_grants(setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_34",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -4,7 +4,7 @@\n         fail('permission_denied', 'Plugin installation is not enabled')\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n-    grants = effective_grants(ap, setting)\n+    grants = effective_grants(ap, )\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_35",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -5,7 +5,7 @@\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n-    permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n+    permissions = None\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext("
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_36",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -5,7 +5,7 @@\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n-    permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n+    permissions = {ap.application_api._operations[name].permission for name in grants['XXworkspace_operationsXX']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext("
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_37",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -5,7 +5,7 @@\n     if setting.runtime_revision != binding.runtime_revision or setting.artifact_digest != binding.artifact_digest:\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n-    permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n+    permissions = {ap.application_api._operations[name].permission for name in grants['WORKSPACE_OPERATIONS']}\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext("
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_38",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -6,7 +6,7 @@\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n-    for capability in grants['capabilities']:\n+    for capability in grants['XXcapabilitiesXX']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_39",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -6,7 +6,7 @@\n         fail('permission_denied', 'Plugin installation binding is stale')\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n-    for capability in grants['capabilities']:\n+    for capability in grants['CAPABILITIES']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_40",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -7,7 +7,7 @@\n     grants = effective_grants(ap, setting)\n     permissions = {ap.application_api._operations[name].permission for name in grants['workspace_operations']}\n     for capability in grants['capabilities']:\n-        permissions.update(CAPABILITY_PERMISSIONS[capability])\n+        permissions.update(None)\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_41",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -9,7 +9,7 @@\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n-        instance_uuid=binding.instance_uuid,\n+        instance_uuid=None,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_42",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -10,7 +10,7 @@\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n-        placement_generation=binding.placement_generation,\n+        placement_generation=None,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n         principal=PrincipalContext("
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_43",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -11,7 +11,7 @@\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n-        request_id=str(uuid.uuid4()),\n+        request_id=None,\n         auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_44",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -12,7 +12,7 @@\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n-        auth_type='plugin',\n+        auth_type=None,\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_45",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -13,11 +13,7 @@\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n-        principal=PrincipalContext(\n-            principal_type=PrincipalType.PLUGIN,\n-            installation_uuid=binding.installation_uuid,\n-            run_id=run_id,\n-        ),\n+        principal=None,\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_46",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=None,\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_47",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -19,5 +19,5 @@\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n-        allowed_operation_ids=frozenset(grants['workspace_operations']),\n+        allowed_operation_ids=None,\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_48",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -9,7 +9,6 @@\n     for capability in grants['capabilities']:\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n-        instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_49",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -10,7 +10,6 @@\n         permissions.update(CAPABILITY_PERMISSIONS[capability])\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n-        placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n         principal=PrincipalContext("
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_50",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -11,7 +11,6 @@\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n-        request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_51",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -12,7 +12,6 @@\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n-        auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_52",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -13,11 +13,6 @@\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n-        principal=PrincipalContext(\n-            principal_type=PrincipalType.PLUGIN,\n-            installation_uuid=binding.installation_uuid,\n-            run_id=run_id,\n-        ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_53",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,5 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_54",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -19,5 +19,4 @@\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n-        allowed_operation_ids=frozenset(grants['workspace_operations']),\n-    )\n+        )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_55",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -11,7 +11,7 @@\n     return RequestContext(\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n-        request_id=str(uuid.uuid4()),\n+        request_id=str(None),\n         auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_56",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -12,7 +12,7 @@\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n-        auth_type='plugin',\n+        auth_type='XXpluginXX',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_57",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -12,7 +12,7 @@\n         instance_uuid=binding.instance_uuid,\n         placement_generation=binding.placement_generation,\n         request_id=str(uuid.uuid4()),\n-        auth_type='plugin',\n+        auth_type='PLUGIN',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_58",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -14,7 +14,7 @@\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n         principal=PrincipalContext(\n-            principal_type=PrincipalType.PLUGIN,\n+            principal_type=None,\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_59",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -15,7 +15,7 @@\n         auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n-            installation_uuid=binding.installation_uuid,\n+            installation_uuid=None,\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_60",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -16,7 +16,7 @@\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,\n-            run_id=run_id,\n+            run_id=None,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_61",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -14,7 +14,6 @@\n         request_id=str(uuid.uuid4()),\n         auth_type='plugin',\n         principal=PrincipalContext(\n-            principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_62",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -15,7 +15,6 @@\n         auth_type='plugin',\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n-            installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_63",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -16,8 +16,7 @@\n         principal=PrincipalContext(\n             principal_type=PrincipalType.PLUGIN,\n             installation_uuid=binding.installation_uuid,\n-            run_id=run_id,\n-        ),\n+            ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_64",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(None, None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_65",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(binding.workspace_uuid, None, None, None),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_66",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(None, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_67",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(binding.workspace_uuid, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_68",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(binding.workspace_uuid, None, frozenset(permissions)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_69",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(binding.workspace_uuid, None, None, ),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_70",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -18,6 +18,6 @@\n             installation_uuid=binding.installation_uuid,\n             run_id=run_id,\n         ),\n-        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n+        workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(None)),\n         allowed_operation_ids=frozenset(grants['workspace_operations']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_71",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -19,5 +19,5 @@\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n-        allowed_operation_ids=frozenset(grants['workspace_operations']),\n+        allowed_operation_ids=frozenset(None),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_72",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -19,5 +19,5 @@\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n-        allowed_operation_ids=frozenset(grants['workspace_operations']),\n+        allowed_operation_ids=frozenset(grants['XXworkspace_operationsXX']),\n     )"
+    },
+    {
+      "id": "langbot.pkg.api.application.plugin_permissions.x_installation_context__mutmut_73",
+      "initial": {
+        "exit_code": 33,
+        "status": "not_covered_by_selected_fast_tests"
+      },
+      "after": [
+        {
+          "run": 1,
+          "exit_code": 1,
+          "status": "killed"
+        },
+        {
+          "run": 2,
+          "exit_code": 1,
+          "status": "killed"
+        }
+      ],
+      "classification": "KILLED",
+      "rationale": null,
+      "diff": "--- src/langbot/pkg/api/application/plugin_permissions.py\n+++ src/langbot/pkg/api/application/plugin_permissions.py\n@@ -19,5 +19,5 @@\n             run_id=run_id,\n         ),\n         workspace=WorkspaceContext(binding.workspace_uuid, None, None, frozenset(permissions)),\n-        allowed_operation_ids=frozenset(grants['workspace_operations']),\n+        allowed_operation_ids=frozenset(grants['WORKSPACE_OPERATIONS']),\n     )"
+    }
+  ]
+}

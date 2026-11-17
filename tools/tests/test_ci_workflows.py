@@ -99,13 +99,51 @@ class CoverageWorkflowTests(unittest.TestCase):
                 self.assertNotEqual(targets, FULL[0])
 
     def test_image_build_and_lightweight_packaging_have_separate_selection(self):
-        packaging = yaml.safe_load((ROOT / '.github/workflows/core-packaging.yml').read_text())['jobs']
-        self.assertIn("needs.changes.outputs.packaging == 'true'", packaging['artifacts']['if'])
-        self.assertIn("needs.changes.outputs.production_image == 'true'", packaging['production-image']['if'])
-        self.assertIn("github.event_name != 'pull_request'", packaging['production-image']['if'])
-        self.assertEqual(
-            packaging['changes']['outputs']['production_image'], '${{ steps.select.outputs.production_image }}'
-        )
+        workflow = yaml.safe_load((ROOT / '.github/workflows/core-packaging.yml').read_text())
+        triggers = workflow[True]
+        jobs = workflow['jobs']
+        self.assertFalse(triggers['workflow_call']['inputs']['production_acceptance']['default'])
+        self.assertTrue(triggers['workflow_dispatch']['inputs']['production_acceptance']['default'])
+        self.assertIn("needs.changes.outputs.packaging == 'true'", jobs['artifacts']['if'])
+        self.assertIn('!inputs.production_acceptance', jobs['artifacts']['if'])
+        image = jobs['production-image']
+        self.assertNotIn('needs', image)
+        self.assertIn('inputs.production_acceptance', image['if'])
+        self.assertIn("github.event_name == 'schedule'", image['if'])
+        self.assertIn("github.event_name == 'workflow_dispatch'", image['if'])
+        self.assertNotIn("'pull_request'", image['if'])
+        steps = {step.get('name'): step for step in image['steps']}
+        upgrade = steps['Run production image upgrade and replacement acceptance']
+        self.assertEqual(upgrade['if'], 'inputs.production_acceptance')
+        self.assertEqual(upgrade['env']['LANGBOT_IMAGE_PREVIOUS'], 'rockchin/langbot:v4.11.7')
+        self.assertIn('--required-suite p0_image', upgrade['run'])
+        self.assertIn('inputs.export_image', steps['Upload the production image for Linux acceptance']['if'])
+        self.assertNotIn('if', steps['Upload image verification metadata'])
+
+    def test_p0_image_covers_image_inputs_without_enabling_other_suites(self):
+        import runpy
+
+        select = runpy.run_path(str(ROOT / 'scripts/p0_acceptance_scope.py'))['select']
+        for path in (
+            'web/package.json',
+            'web/pnpm-lock.yaml',
+            '.github/actions/classify-test-changes/action.yml',
+            '.github/actions/classify-test-changes/classify.py',
+            'scripts/stamp_build_revision.py',
+            'scripts/check_core_artifacts.py',
+            'Dockerfile',
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(select([path]), {'image': True, 'permissions': False, 'persistence': False})
+        for path in ('web/src/app/page.tsx', 'docs/index.mdx'):
+            with self.subTest(path=path):
+                self.assertEqual(select([path]), {'image': False, 'permissions': False, 'persistence': False})
+
+    def test_generic_startup_e2e_leaves_image_upgrade_to_p0(self):
+        startup = next(step['run'] for step in JOBS['e2e']['steps'] if step.get('name') == 'Run E2E startup tests')
+        command = shlex.split(startup)
+        self.assertEqual(command[command.index('-m') + 1], 'not local_agent and not p0_image')
+        self.assertIn('python tools/verify_junit.py e2e-results.xml', startup)
 
     def test_runtime_contracts_only_run_for_the_affected_or_full_lane(self):
         flags = ('CORE', 'CORE_FULL', 'SDK', 'COMPATIBILITY', 'PERSISTENCE', 'PERMISSIONS', 'BOX', 'FRONTEND')

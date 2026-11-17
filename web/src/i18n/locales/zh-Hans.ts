@@ -2104,6 +2104,12 @@ const zhHans = {
       depsInfo: '共 {{count}} 个依赖需要安装',
       depsProgress: '已安装 {{installed}}/{{total}} · 剩余 {{remaining}} 个',
       installComplete: '安装成功',
+      followUp: {
+        nextSteps: '下一步',
+        agents: '新建 Agent 或插件处理器',
+        pipelines: '创建流水线',
+        knowledge: '创建知识库',
+      },
       updateComplete: '插件更新成功',
       installCompletePlugin: '插件安装成功',
       installCompleteMCP: 'MCP 服务器安装成功',
