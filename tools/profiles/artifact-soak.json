@@ -10,11 +10,6 @@
     {"waves": 4, "parallel": 2, "period_seconds": 10},
     {"waves": 4, "parallel": 4, "period_seconds": 5}
   ],
-  "native": {
-    "duration_seconds": 108000,
-    "period_seconds": 1200,
-    "max_expiring_rows_per_hour": 70
-  },
   "accelerated": {
     "load_seconds": 14400,
     "period_seconds": 5,

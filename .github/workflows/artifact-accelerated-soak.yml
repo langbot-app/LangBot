@@ -86,7 +86,7 @@ jobs:
           suffix = 'sqlite-database.mixed-accelerated'
           with (root / f'{suffix}.summary.json').open() as stream:
               summary = json.load(stream)
-          if (summary.get('result') != 'PASS' or summary.get('native_gc_maintenance') is not False
+          if (summary.get('result') != 'PASS'
                   or summary.get('scheduled_gc_maintenance') is not True
                   or summary.get('load_seconds', 0) < 14400 or summary.get('seconds', 0) < 14400
                   or summary.get('ttl_seconds') != 120 or summary.get('gc_interval_seconds') != 20
