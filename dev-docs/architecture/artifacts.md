@@ -111,9 +111,14 @@ The four source decisions are:
    does not change source identity. Filesystem-only packages fail explicitly
    rather than falling back to mutable paths or copying into a second store.
 
-The existing `read_skill_resource` text result remains compatible. Structured
-binary results must go through the shared Artifact reader and existing model
-content adapters; a base64-bearing ordinary string is not model media input.
+The existing `read_skill_resource` text result remains compatible. Database-backed
+run Skill registration verifies bounded source bytes. Source materialization is
+charged once per immutable Artifact per run, capped at 256 KiB per file and 1 MiB
+per run. A separate 1 MiB per-run budget counts cumulative returned JSON UTF-8
+and media payload bytes. Every continuation reauthorizes the source even when
+its materialization was previously charged. The legacy text path is unchanged.
+Structured binary results must go through the shared Artifact reader and existing
+model content adapters; a base64-bearing ordinary string is not model media input.
 Native PDF capability checks and the lack of page rendering remain unchanged.
 See the [phase-four acceptance handoff](../review/artifact-phase4/README.md) for
 verification boundaries; documented behavior alone is not acceptance evidence.

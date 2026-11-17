@@ -150,8 +150,10 @@ class DatabaseSkillRepository:
             'name': record['skill']['name'],
         }
 
-    async def resolve_artifact_resource(self, context, name, path, *, expected_revision):
+    async def resolve_artifact_resource(self, context, name, path, *, expected_revision, max_bytes=1024 * 1024):
         """Resolve an explicitly pinned publication; authorization belongs to the caller."""
+        if isinstance(max_bytes, bool) or not isinstance(max_bytes, int) or max_bytes <= 0:
+            raise ValueError('Skill resource read limit must be a positive integer')
         if not expected_revision:
             raise ValueError('Skill Artifact resources require an explicit revision')
         await self._validate_context(context)
@@ -159,8 +161,11 @@ class DatabaseSkillRepository:
         if record is None:
             raise FileNotFoundError('Skill resource not found')
         source = self._artifact_resource_metadata(record, path)
+        # Enforce the caller's remaining budget before fetching or verifying archive bytes.
+        if source['size'] > max_bytes:
+            raise ValueError('Skill resource exceeds the requested read limit')
         # Do not return a successful reference to a corrupt or unavailable package.
-        await self.read_artifact_resource(context, source, max_bytes=1024 * 1024)
+        await self.read_artifact_resource(context, source, max_bytes=max_bytes)
         return source
 
     async def read_artifact_resource(self, context, source, *, max_bytes):

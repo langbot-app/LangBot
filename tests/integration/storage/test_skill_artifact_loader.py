@@ -10,6 +10,7 @@ import zipfile
 import pytest
 import sqlalchemy as sa
 from quart.datastructures import FileStorage
+from pypdf import PdfWriter
 
 from langbot.pkg.entity.persistence.agent_run import AgentRun
 from langbot.pkg.provider.tools.loaders.skill import register_activated_skill
@@ -29,7 +30,11 @@ pytestmark = [pytest.mark.integration, pytest.mark.asyncio]
 async def test_real_run_skill_loader_text_png_pdf_and_revocation(artifact_replicas):
     case = artifact_replicas
     package = io.BytesIO(_zip_package())
-    pdf = b'%PDF-1.4\nmodel-input-fixture'
+    document = PdfWriter()
+    document.add_blank_page(width=72, height=72)
+    pdf_stream = io.BytesIO()
+    document.write(pdf_stream)
+    pdf = pdf_stream.getvalue()
     with zipfile.ZipFile(package, 'a') as archive:
         archive.writestr(f'{_NAME}/asset.png', _PNG)
         archive.writestr(f'{_NAME}/asset.pdf', pdf)

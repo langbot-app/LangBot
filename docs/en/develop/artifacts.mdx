@@ -40,7 +40,7 @@ Release and Artifact cleanup reclaim the reference, not the shared Skill package
 A repeat registration for the same owner, version and path returns the same reference without extending its expiry. Collect an expired or deleted reference before registering it again.
 
 
-Within an authorized live run, `read_skill_resource` uses the frozen activated Skill revision and the same bounded reader. Text results keep the text contract and expose continuation when truncated; image and native-PDF results use structured model content rather than base64 in ordinary text. The source read limits are 256 KiB per file and 1 MiB per run. Native PDF still requires a supporting model. Outside this live-run path, legacy text reading remains available; binary source access is not granted implicitly.
+Within an authorized live run, `read_skill_resource` uses the frozen activated Skill revision and the same bounded reader. Text results keep the text contract and expose continuation when truncated; image and native-PDF results use structured model content rather than base64 in ordinary text. Registration verifies bounded source bytes. Source materialization is charged once per immutable Artifact in a run, with limits of 256 KiB per file and 1 MiB per run. A separate 1 MiB per-run budget counts cumulative returned JSON UTF-8 and media payload bytes. Every continuation rechecks authorization even when the source was already charged. The legacy text path is unchanged. Native PDF still requires a supporting model. Outside this live-run path, legacy text reading remains available; binary source access is not granted implicitly.
 
 
 ## MCP

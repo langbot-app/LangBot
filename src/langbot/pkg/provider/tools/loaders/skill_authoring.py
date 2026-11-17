@@ -346,10 +346,16 @@ class SkillToolLoader(loader.ToolLoader):
             if not isinstance(variables, dict):
                 variables = {}
                 query.variables = variables
-            spent = int(variables.get(_SKILL_RESOURCE_BYTES_READ_KEY, 0) or 0)
-            remaining = _MAX_SKILL_RESOURCE_RUN_BYTES - spent
-            if remaining <= 0:
-                raise ValueError('Skill resource reads exceed the per-run limit')
+            # Source materialization and returned content have independent budgets. Keep
+            # both in Host state so changing Runner conversation variables cannot reset them.
+            budgets = getattr(query, '_skill_artifact_budgets', None)
+            if budgets is None:
+                budgets = {}
+                object.__setattr__(query, '_skill_artifact_budgets', budgets)
+            budget = budgets.setdefault(run_id, {'source_bytes': 0, 'returned_bytes': 0, 'materialized': set()})
+            if budget['returned_bytes'] >= _MAX_SKILL_RESOURCE_RUN_BYTES:
+                raise ValueError('Skill resource returned content exceeds the per-run limit')
+            remaining = _MAX_SKILL_RESOURCE_RUN_BYTES - budget['source_bytes']
             # Private Host state is not writable through Runner conversation variables.
             refs = getattr(query, '_skill_artifact_refs', None)
             if refs is None:
@@ -357,16 +363,32 @@ class SkillToolLoader(loader.ToolLoader):
                 object.__setattr__(query, '_skill_artifact_refs', refs)
             key = (run_id, skill_data['name'], skill_data['revision'], path)
             if key not in refs:
+                if remaining <= 0:
+                    raise ValueError('Skill resource reads exceed the per-run limit')
+                create_limit = min(_MAX_SKILL_RESOURCE_FILE_BYTES, remaining)
                 metadata = await self.ap.artifact_service.create_run_skill_resource(
-                    context, skill_data['name'], skill_data['revision'], path
+                    context, skill_data['name'], skill_data['revision'], path, max_bytes=create_limit
                 )
+                # Registration verifies the source bytes before returning success. Charge
+                # that work even if the subsequent authorized read or renderer fails.
+                size = metadata['size']
+                if type(size) is not int or not 0 <= size <= create_limit:
+                    raise ValueError('Skill resource exceeds the permitted read limit')
+                identity = (run_id, metadata['id'])
+                if identity not in budget['materialized']:
+                    budget['source_bytes'] += size
+                    budget['materialized'].add(identity)
                 refs[key] = metadata['id']
+                variables[_SKILL_RESOURCE_BYTES_READ_KEY] = budget['source_bytes']
+            # Reauthorize every continuation. Only immutable identity accounting is cached,
+            # never permission, content bytes or a successful response.
             result = await self.ap.artifact_service.read_run_skill_resource(
-                context, refs[key], max_bytes=min(_MAX_SKILL_RESOURCE_FILE_BYTES, remaining)
+                context, refs[key], max_bytes=_MAX_SKILL_RESOURCE_FILE_BYTES
             )
             payload, metadata = result['content'], result['metadata']
-            # Charge successful source reads, including reads whose renderer rejects the format.
-            variables[_SKILL_RESOURCE_BYTES_READ_KEY] = spent + len(payload)
+            if len(payload) > _MAX_SKILL_RESOURCE_FILE_BYTES:
+                raise ValueError('Skill resource exceeds the permitted read limit')
+            variables[_SKILL_RESOURCE_BYTES_READ_KEY] = budget['source_bytes']
             contents = await read_artifact_content(
                 payload,
                 metadata,
@@ -380,7 +402,7 @@ class SkillToolLoader(loader.ToolLoader):
             # structured ContentElements so SDK/LocalAgent never stringify their payloads.
             if len(contents) == 1 and contents[0]['type'] == 'text':
                 rendered = json.loads(contents[0]['text'])
-                return {
+                contents = {
                     'skill': {'name': skill_data['name'], 'revision': skill_data['revision']},
                     'revision': skill_data['revision'],
                     'path': path,
@@ -388,6 +410,10 @@ class SkillToolLoader(loader.ToolLoader):
                     'size': len(payload),
                     **rendered,
                 }
+            returned_bytes = len(json.dumps(contents, ensure_ascii=False).encode('utf-8'))
+            if budget['returned_bytes'] + returned_bytes > _MAX_SKILL_RESOURCE_RUN_BYTES:
+                raise ValueError('Skill resource returned content exceeds the per-run limit')
+            budget['returned_bytes'] += returned_bytes
             return contents
 
     async def _invoke_register_skill(self, parameters: dict, query) -> typing.Any:

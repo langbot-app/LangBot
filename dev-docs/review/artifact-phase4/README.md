@@ -108,7 +108,7 @@ The following new/strengthened cases are ready for the reviewer environment:
   guards, downgrade refusal and full FK-connected model-schema roundtrip.
 - `tests/integration/storage/test_skill_artifact_loader.py`: actual database-backed
   run loader with text/PNG/native PDF, SDK content shape and finished-run denial.
-- `tests/e2e/test_skill_persistence_replicas.py::test_skill_artifact_fixed_bytes_survive_two_core_restart_without_box`:
+- `tests/e2e/test_skill_persistence_replicas.py::test_two_core_processes_share_skill_packages_and_uploaded_media`:
   real HTTP, v1/v2 references, two Core instances, cache deletion/restart and safe
   reference deletion. Requires the existing opt-in persistence process environment.
 - `tests/e2e/test_skill_network_runtime.py`: existing installed Runtime probes now

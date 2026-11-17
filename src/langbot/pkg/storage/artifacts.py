@@ -359,7 +359,15 @@ class ArtifactService:
             raise PermissionDeniedError('Permission denied')
         return run_id
 
-    async def create_run_skill_resource(self, context, skill_name: str, revision: str, path: str):
+    async def create_run_skill_resource(
+        self,
+        context,
+        skill_name: str,
+        revision: str,
+        path: str,
+        *,
+        max_bytes=1024 * 1024,
+    ):
         run_id = await self._authorize_run(context)
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
             await self._require_skill_run(uow, context, skill_name, revision)
@@ -368,6 +376,7 @@ class ArtifactService:
             skill_name,
             path,
             expected_revision=revision,
+            max_bytes=max_bytes,
         )
         return await self._create_skill_resource_owned(context, ('run_skill', run_id), source)
 

@@ -396,3 +396,32 @@ async def test_skill_artifact_registration_serializes_version_delete(artifact_re
                 task.cancel()
         await asyncio.gather(*(task for task in (registration, deletion) if task is not None), return_exceptions=True)
         sa.event.remove(engine.sync_engine, 'before_cursor_execute', observe_competitor)
+
+
+async def test_run_skill_creation_budget_denies_before_bytes_or_registration(artifact_replicas, monkeypatch):
+    case = artifact_replicas
+    revision = await _install(case)
+    context = await _start_run(case)
+    async with case.a.app.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        await uow.execute(
+            sa.update(AgentRun)
+            .where(AgentRun.run_id == context.trigger_principal.run_id)
+            .values(
+                metadata_json=json.dumps({'activated_skills': {_NAME: revision}}),
+            )
+        )
+
+    async def forbidden_read(*args, **kwargs):
+        pytest.fail('An over-budget registration must not fetch any package bytes')
+
+    monkeypatch.setattr(case.a.app.storage_mgr.content_store, '_read', forbidden_read)
+    with pytest.raises(ValueError, match='requested read limit'):
+        await case.a.app.artifact_service.create_run_skill_resource(
+            context,
+            _NAME,
+            revision,
+            'references/guide.md',
+            max_bytes=len(_GUIDE.encode()) - 1,
+        )
+    async with case.a.app.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        assert not (await uow.execute(sa.select(Artifact.id))).first()

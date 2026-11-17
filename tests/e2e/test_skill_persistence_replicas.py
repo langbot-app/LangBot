@@ -235,9 +235,11 @@ def _exercise_core_pair(core_pair):
     )
 
 
+@pytest.mark.contract('skill_artifact_process_recovery')
 def test_two_core_processes_share_skill_packages_and_uploaded_media(core_pair):
     try:
         _exercise_core_pair(core_pair)
+        _exercise_skill_artifact_recovery(core_pair)
     except Exception:
         for replica in (core_pair.a, core_pair.b):
             for filename in ('langbot.stdout.log', 'langbot.stderr.log'):
@@ -247,18 +249,16 @@ def test_two_core_processes_share_skill_packages_and_uploaded_media(core_pair):
         raise
 
 
-@pytest.mark.contract('skill_artifact_process_recovery')
-def test_skill_artifact_fixed_bytes_survive_two_core_restart_without_box(core_pair):
-    """Exercise the public source API and reader across independent processes."""
+def _exercise_skill_artifact_recovery(core_pair):
+    """Continue on the same task-owned database and fenced Core instance.
+
+    The PostgreSQL URL identifies one fresh database for this acceptance case,
+    not a disposable database per function-scoped fixture invocation. Starting
+    another pair with a new instance UUID would collide with its durable binding.
+    """
     a, b = core_pair.a, core_pair.b
     headers = {'Authorization': f'Bearer {core_pair.token}'}
-    original = _data(
-        a.client.post(
-            '/api/v1/skills/install/upload',
-            headers=headers,
-            files={'file': ('probe.zip', _zip_package(), 'application/zip')},
-        )
-    )['skills'][0]['revision']
+    original = _data(a.client.get(f'/api/v1/skills/{_NAME}', headers=headers))['skill']['revision']
 
     def register(replica, revision):
         return _data(

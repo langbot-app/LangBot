@@ -128,3 +128,32 @@ async def test_source_survives_replacement_host_mime_registry(resources, monkeyp
     monkeypatch.setattr(mimetypes, 'guess_type', lambda path: ('application/x-host-specific', None))
     assert await resources.repo.read_artifact_resource(context(), source, max_bytes=100) == b'verified guide 0'
     assert source['mime_type'] != 'application/x-host-specific'
+
+
+@pytest.mark.asyncio
+async def test_resolve_budget_denies_before_archive_read(resources):
+    resources.provider.load_bounded.reset_mock()
+    with pytest.raises(ValueError, match='requested read limit'):
+        await resources.repo.resolve_artifact_resource(
+            context(),
+            'packet',
+            'guide.md',
+            expected_revision=resources.versions[0]['revision'],
+            max_bytes=1,
+        )
+    resources.provider.load_bounded.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('limit', [0, -1, True, 1.5, None])
+async def test_resolve_budget_rejects_invalid_limits_without_archive_read(resources, limit):
+    resources.provider.load_bounded.reset_mock()
+    with pytest.raises(ValueError, match='positive integer'):
+        await resources.repo.resolve_artifact_resource(
+            context(),
+            'packet',
+            'guide.md',
+            expected_revision=resources.versions[0]['revision'],
+            max_bytes=limit,
+        )
+    resources.provider.load_bounded.assert_not_called()
