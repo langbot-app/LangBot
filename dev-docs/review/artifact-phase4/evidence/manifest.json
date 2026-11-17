@@ -1,0 +1,14 @@
+{
+  "candidate_sha": "ae58f17e8a1b215df481d4a84d0ef97b7178b356",
+  "baseline": "83b6b0607b426db3a35f8dbe22e556dfe96d0938",
+  "branch": "feat/3051-skill-artifact-resources",
+  "published": false,
+  "repeat": {
+    "duration_requested_seconds": 60,
+    "rounds": 7,
+    "tests": 21,
+    "skips": 0,
+    "all_clean_candidate": true,
+    "all_passed": true
+  }
+}
