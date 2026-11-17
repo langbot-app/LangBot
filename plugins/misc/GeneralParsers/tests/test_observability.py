@@ -123,6 +123,10 @@ class ParserTelemetryTests(unittest.TestCase):
             [('bad.pdf', 'broken')],
         )
 
+
+class TelemetryBindingScopeTests(unittest.IsolatedAsyncioTestCase):
+    """Two installations through one component object must not share records."""
+
     def setUp(self) -> None:
         from components.general_parsers.general_parsers import GeneralParsers
         from components.pages.observability import ParserObservabilityPage
