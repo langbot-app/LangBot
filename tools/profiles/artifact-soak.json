@@ -12,12 +12,20 @@
   ],
   "native": {
     "duration_seconds": 108000,
-    "period_seconds": 300,
+    "period_seconds": 1200,
     "max_expiring_rows_per_hour": 70
   },
+  "accelerated": {
+    "load_seconds": 14400,
+    "period_seconds": 5,
+    "ttl_seconds": 120,
+    "gc_interval_seconds": 20,
+    "drain_seconds": 360,
+    "max_resource_growth": {"rss": 100663296, "fds": 16, "threads": 12, "processes": 3}
+  },
   "budgets": {
-    "offered_bytes": 268435456,
-    "artifact_rows": 250,
+    "offered_bytes": 1073741824,
+    "artifact_rows": 1500,
     "content_bytes": 134217728,
     "free_bytes": 1073741824
   }

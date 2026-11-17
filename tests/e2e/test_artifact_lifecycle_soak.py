@@ -62,6 +62,7 @@ _data = network._data
 # replaced. Read-only directories are a real sandbox cleanup failure stimulus.
 _RUNNER = """\
 import asyncio
+import base64
 import hashlib
 import json
 import shlex
@@ -81,11 +82,41 @@ class DefaultRunner(Runner):
             if request['operation'] == 'mixed':
                 report['inputs'] = []
                 for attachment in ctx.input.attachments:
-                    data = await ctx.read_input_attachment(attachment)
-                    assert data is not None, attachment
-                    report['inputs'].append([attachment.ref, hashlib.sha256(data.data).hexdigest(), len(data.data)])
+                    ref = attachment.ref
+                    # Platform attachments materialize only on a structured read.
+                    # Verify bounded extraction before the additional cached raw read.
+                    is_text_pdf = attachment.name == 'reference.pdf'
+                    options = {'mode': 'text', 'max_chars': 11} if is_text_pdf else {'mode': 'native'}
+                    items = await ctx.read_input_attachment_content(ref, **options)
+                    metadata = json.loads(items[0]['text'])
+                    asset = metadata['artifact']
+                    assert asset['ref'] == ref and asset['id'] != ref, asset
+                    entry = {'ref': ref, 'id': asset['id'], 'name': asset['name'],
+                             'mode': metadata['mode'], 'mime': asset['mime_type']}
+                    if is_text_pdf:
+                        assert metadata['truncated'] and metadata['offset'] == 0 and len(metadata['text']) == 11
+                        assert metadata['next_offset'] == 11, metadata
+                        tail = json.loads((await ctx.read_input_attachment_content(
+                            ref, mode='text', offset=metadata['next_offset']
+                        ))[0]['text'])
+                        assert tail['offset'] == 11 and tail['next_offset'] is None and not tail['truncated'], tail
+                        assert tail['artifact']['id'] == asset['id'] and tail['page_count'] == metadata['page_count'] == 1
+                        entry['text'] = metadata['text'] + tail['text']
+                        entry['continuation'] = True
+                        raw = await ctx.read_input_attachment(attachment)
+                        assert raw is not None and raw.ref == ref
+                        body = raw.data
+                    else:
+                        field = 'file_base64' if asset['mime_type'] == 'application/pdf' else 'image_base64'
+                        assert len(items) == 2 and items[1]['type'] == field, items[0]
+                        header, encoded = items[1][field].split(',', 1)
+                        assert header == 'data:' + asset['mime_type'] + ';base64', header
+                        body = base64.b64decode(encoded, validate=True)
+                    entry.update(sha256=hashlib.sha256(body).hexdigest(), size=len(body))
+                    assert entry['sha256'] == asset['digest'] and entry['size'] == asset['size']
+                    report['inputs'].append(entry)
                 if report['inputs']:
-                    first = (await ctx.import_box_attachments([report['inputs'][0][0]]))[0]
+                    first = (await ctx.import_box_attachments([report['inputs'][0]['ref']]))[0]
                     output = '/workspace/mixed-' + ctx.run_id + '.bin'
                     made = await ctx.call_tool('exec', {'command': 'cp ' + shlex.quote(first.path) + ' ' +
                                                                   shlex.quote(output), 'timeout_sec': 15})
@@ -314,10 +345,10 @@ class StoreObserver:
                     region_name=backend['region'],
                 )
             ) as client:
-                listing = client.list_objects_v2(Bucket=backend['bucket'])
-            assert not listing.get('IsTruncated'), 'Owned soak bucket exceeded the bounded object inventory'
-            values['object_count'] = len(listing.get('Contents', []))
-            values['object_bytes'] = sum(item['Size'] for item in listing.get('Contents', []))
+                pages = client.get_paginator('list_objects_v2').paginate(Bucket=backend['bucket'])
+                objects = [item for page in pages for item in page.get('Contents', [])]
+            values['object_count'] = len(objects)
+            values['object_bytes'] = sum(item['Size'] for item in objects)
         return values
 
     def seed_foreign_workspace(self, account_uuid):
@@ -413,6 +444,12 @@ def runner_runtime_process(runner_e2e_tmpdir, runner_runtime_ports):
         runtime_process.stop()
 
 
+def _artifact_soak_profile():
+    root = Path(__file__).resolve().parents[2]
+    path = Path(os.environ.get('LANGBOT_SOAK_PROFILE', root / 'tools/profiles/artifact-soak.json'))
+    return path.read_bytes()
+
+
 @pytest.fixture(scope='session')
 def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
     lane = os.environ.get('LANGBOT_SOAK_LANE', 'sqlite-database')
@@ -423,8 +460,13 @@ def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
         # The shared fixture disables maintenance otherwise. Restore product defaults.
         config['storage'].pop('cleanup', None)
         config['box']['limits']['max_sessions'] = 4
-    elif os.environ.get('LANGBOT_SOAK_MIXED_MODE') in {'short', 'staircase'}:
+    elif os.environ.get('LANGBOT_SOAK_MIXED_MODE') in {'short', 'staircase', 'accelerated'}:
         config['box']['limits']['max_sessions'] = 4
+        if os.environ['LANGBOT_SOAK_MIXED_MODE'] == 'accelerated':
+            nominal = json.loads(_artifact_soak_profile())['accelerated']
+            config['storage']['cleanup'].update(
+                enabled=True, check_interval_hours=nominal['gc_interval_seconds'] / 3600
+            )
     admin_url = None
     database = None
     s3 = None
@@ -481,8 +523,24 @@ def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
     finally:
         if request.session.testsfailed == 0:
             if s3 is not None:
-                objects = s3.list_objects_v2(Bucket=bucket)
-                assert not objects.get('Contents'), 'Owned soak bucket retained content after successful GC'
+                pages = s3.get_paginator('list_objects_v2').paginate(Bucket=bucket)
+                keys = {item['Key'] for page in pages for item in page.get('Contents', [])}
+                if os.environ.get('LANGBOT_SOAK_MIXED_MODE') == 'native':
+                    # Final SQLite/PostgreSQL report distinguishes future-due
+                    # run inputs from leaks. After verdict, tear down only this
+                    # ephemeral fixture bucket and only known input locators.
+                    rows = StoreObserver(config).query(
+                        "SELECT locator FROM content_objects WHERE owner_type='artifact'"
+                    )
+                    locators = {
+                        (json.loads(row['locator']) if isinstance(row['locator'], str) else row['locator'])['key']
+                        for row in rows
+                    }
+                    assert keys == locators, 'Owned bucket contains independently leaked or missing bytes'
+                    for key in keys:
+                        s3.delete_object(Bucket=bucket, Key=key)
+                else:
+                    assert not keys, 'Owned soak bucket retained content after successful GC'
                 s3.delete_bucket(Bucket=bucket)
             if database:
 
@@ -1181,12 +1239,13 @@ def test_artifact_mixed_soak(
     from tests.utils.artifact_media import make_artifact_media
 
     mode = os.environ['LANGBOT_SOAK_MIXED_MODE']
-    assert mode in {'short', 'staircase', 'native'}, mode
+    assert mode in {'short', 'staircase', 'native', 'accelerated'}, mode
     native = mode == 'native'
+    accelerated = mode == 'accelerated'
+    scheduled = native or accelerated
     lane = os.environ.get('LANGBOT_SOAK_LANE', 'sqlite-database')
     root = Path(__file__).resolve().parents[2]
-    profile_file = Path(os.environ.get('LANGBOT_SOAK_PROFILE', root / 'tools/profiles/artifact-soak.json'))
-    profile_bytes = profile_file.read_bytes()
+    profile_bytes = _artifact_soak_profile()
     profile = json.loads(profile_bytes)
     identity = {
         'lane': lane,
@@ -1204,13 +1263,28 @@ def test_artifact_mixed_soak(
     assert all(1 <= step['parallel'] <= 4 and step['waves'] >= 1 and step['period_seconds'] > 0 for step in staircase)
     parallel = staircase[-1]['parallel']
     native_period = profile['native']['period_seconds']
-    # A successful mixed burst exports at most one Artifact per turn. Other stored
-    # media are counted in evidence and checked against the live store budget.
-    assert math.ceil(_HOUR / native_period) * parallel + 2 <= profile['native']['max_expiring_rows_per_hour'] <= 90, (
+    # One mixed turn can create 4 run-owned inputs and 1 output. The real
+    # maintenance service processes at most 100 Artifacts per tick/Workspace.
+    rows_per_wave = parallel * 5
+    native_limit = profile['native']['max_expiring_rows_per_hour']
+    assert math.ceil(_HOUR / native_period) * rows_per_wave + 2 <= native_limit <= 90, (
         'Native offered rate exceeds the fixed production maintenance budget'
     )
     duration = profile['native']['duration_seconds']
     assert duration >= max(30 * _HOUR, DEFAULT_TTL_SECONDS + 4 * _HOUR)
+    if accelerated:
+        fast = profile['accelerated']
+        fast_period = fast['period_seconds']
+        fast_load = fast['load_seconds']
+        fast_ttl = fast['ttl_seconds']
+        fast_gc = fast['gc_interval_seconds']
+        fast_drain = fast['drain_seconds']
+        assert 0 < fast_gc <= fast_ttl < fast_load and fast_drain >= fast_ttl + 2 * fast_gc
+        assert fast_load >= 9 * fast_period
+        assert math.ceil(fast_gc / fast_period) * rows_per_wave <= 80, 'Offered rows exceed the scheduled GC budget'
+        assert (
+            math.ceil((fast_ttl + 2 * fast_gc) / fast_period) * rows_per_wave + 2 <= profile['budgets']['artifact_rows']
+        ), 'Worst-case accelerated backlog exceeds the live row budget'
     evidence = Path(os.environ.get('LANGBOT_SOAK_EVIDENCE', str(runner_e2e_tmpdir)))
     evidence.mkdir(parents=True, exist_ok=True)
     prefix = f'{lane}.mixed-{mode}'
@@ -1234,6 +1308,9 @@ def test_artifact_mixed_soak(
         assert cleanup.get('enabled', True) is True, 'Native must keep Core storage maintenance enabled'
         assert cleanup.get('check_interval_hours', 1) == 1, 'Native must use the hourly maintenance default'
         assert cleanup.get('max_files_per_run', 1000) == 1000, 'Native must keep the default cleanup batch size'
+    if accelerated:
+        cleanup = config['storage']['cleanup']
+        assert cleanup['enabled'] is True and abs(cleanup['check_interval_hours'] * _HOUR - fast_gc) < 0.01
     observer = StoreObserver(config)
     client, core, plugin_runtime = runner_client, runner_langbot_process, runner_runtime_process
     token = runtime._init_and_auth(client)
@@ -1276,10 +1353,13 @@ def test_artifact_mixed_soak(
     sessions = set()
     previous_media = {}
     windows = []
+    steady_windows = []
     staircase_windows = []
     milestone = {}
     guards = []
     cohorts = {}
+    load_seconds = None
+    gc_ticks = []
     startup_log = runner_e2e_tmpdir / 'langbot.stdout.log'
 
     def elapsed():
@@ -1393,15 +1473,40 @@ def test_artifact_mixed_soak(
         begin = time.monotonic()
         report, output = _mixed_turn(client, bot, session, group, member, [(file, url) for file, url, _ in files], slot)
         assert 'error' not in report, report
-        refs = [item[0] for item in report['inputs']]
-        actual = Counter((item[1], item[2]) for item in report['inputs'])
-        assert actual == Counter((file.sha256, file.size) for file, _, _ in files), (actual, kind)
+        entries = report['inputs']
+        refs = [item['ref'] for item in entries]
         assert all(refs) and len(set(refs)) == len(refs), refs
+        actual = Counter((item['sha256'], item['size']) for item in entries)
+        assert actual == Counter((file.sha256, file.size) for file, _, _ in files), (actual, kind)
+        expected = {file.sha256: file for file, _, _ in files}
+        run_id = report['run_id']
+        rows = observer.query(
+            "SELECT id, digest, size, name, mime_type FROM artifacts WHERE owner_type='run' AND owner_id=:run",
+            {'run': run_id},
+        )
+        assert {row['id'] for row in rows} == {item['id'] for item in entries}, (run_id, rows, entries)
+        assert len(rows) == len(entries), (run_id, rows, entries)
+        by_id = {row['id']: row for row in rows}
+        for item in entries:
+            fixture = expected[item['sha256']]
+            row = by_id[item['id']]
+            assert (row['digest'], row['size'], row['name'], row['mime_type']) == (
+                fixture.sha256,
+                fixture.size,
+                fixture.filename,
+                fixture.mime_type,
+            ), row
+            assert (item['name'], item['mime']) == (fixture.filename, fixture.mime_type), item
+            if fixture.kind == 'text_pdf':
+                assert item['mode'] == 'text' and item['continuation'] is True and fixture.marker in item['text']
+            else:
+                assert item['mode'] == ('native' if fixture.kind == 'scanned_pdf' else 'image'), item
         lifecycle = None
+        inputs = report['inputs']
         if files:
             assert len(output) == 1, output
             exported = base64.b64decode(output[0]['base64'].split(';base64,')[-1], validate=True)
-            first = next(file for file, _, _ in files if file.sha256 == report['inputs'][0][1])
+            first = expected[entries[0]['sha256']]
             assert first.data == exported, (number, session, kind, hashlib.sha256(exported).hexdigest())
             artifact = report['artifact_id']
             read_exact(artifact, first)
@@ -1416,7 +1521,9 @@ def test_artifact_mixed_soak(
                 raise AssertionError((report['run_id'], 'completion not persisted'))
             # Include normal released Runner assets in the native expiry cohort
             # only while a full TTL plus two hourly sweeps fit within the run.
-            if native and number % 2 == 0 and elapsed() < duration - DEFAULT_TTL_SECONDS - _NATIVE_DRAIN:
+            if accelerated or (
+                native and number % 2 == 0 and elapsed() < duration - DEFAULT_TTL_SECONDS - _NATIVE_DRAIN
+            ):
                 lifecycle = {'artifact': artifact, 'expires_at': release_asset(artifact)}
                 read_exact(artifact, first)
             else:
@@ -1424,7 +1531,27 @@ def test_artifact_mixed_soak(
                 lifecycle = {'artifact': artifact, 'tombstoned': True}
         else:
             assert not output and 'artifact_id' not in report, report
-        return time.monotonic() - begin, lifecycle
+        if not native and entries:
+            # Change expiry only on IDs verified to belong to this owned run.
+            # Do not call observer GC in scheduler modes.
+            due = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) + dt.timedelta(
+                seconds=fast_ttl if accelerated else -1
+            )
+            for item in entries:
+                observer.query(
+                    "UPDATE artifacts SET expires_at=:due WHERE id=:id AND owner_type='run' AND owner_id=:run",
+                    {'due': due, 'id': item['id'], 'run': run_id},
+                )
+            if accelerated:
+                observer.query(
+                    "UPDATE artifacts SET expires_at=:due WHERE id=:id AND owner_type='run_output' AND owner_id=:run AND expires_at IS NOT NULL",
+                    {'due': due, 'id': lifecycle['artifact'], 'run': run_id},
+                )
+                found = observer.query('SELECT expires_at FROM artifacts WHERE id=:id', {'id': lifecycle['artifact']})[
+                    0
+                ]['expires_at']
+                assert abs((dt.datetime.fromisoformat(str(found)) - due).total_seconds()) < 0.01, found
+        return time.monotonic() - begin, lifecycle, inputs
 
     def wave(number, count, phase):
         cases = [plan(number, slot, phase) for slot in range(count)]
@@ -1436,7 +1563,7 @@ def test_artifact_mixed_soak(
             for spec, future in zip(cases, [pool.submit(execute, spec) for spec in cases], strict=True):
                 turn_id, session, _group, member, kind, files, phase, _slot = spec
                 try:
-                    latency, lifecycle = future.result()
+                    latency, lifecycle, inputs = future.result()
                 except Exception as error:
                     from httpx import TimeoutException
 
@@ -1450,7 +1577,10 @@ def test_artifact_mixed_soak(
                 counts[kind] += 1
                 durations[kind].append(latency)
                 if lifecycle:
-                    totals['native_ttl_outputs' if lifecycle.get('expires_at') else 'tombstoned_outputs'] += 1
+                    totals['scheduled_ttl_outputs' if lifecycle.get('expires_at') else 'tombstoned_outputs'] += 1
+                totals['materialized_inputs_created'] += len(inputs)
+                for item in inputs:
+                    totals[f'structured_{item["mode"]}_reads'] += 1
                 record(
                     'turn',
                     kind=kind,
@@ -1462,8 +1592,12 @@ def test_artifact_mixed_soak(
                     bytes=sum(file.size for file, _, _ in files),
                     digests=[file.sha256 for file, _, _ in files],
                     lifecycle=lifecycle,
+                    materialized_inputs=[
+                        {'id': item['id'], 'mode': item['mode'], 'size': item['size']} for item in inputs
+                    ],
                 )
-        if not native:
+        if not scheduled:
+            totals['manual_gc_calls'] += 1
             totals['observer_collected'] += observer.gc()
 
     def sample(phase):
@@ -1484,6 +1618,8 @@ def test_artifact_mixed_soak(
             for key in ('rss', 'fds', 'threads', 'processes')
         }
         windows.append(resource)
+        if phase == 'accelerated-steady':
+            steady_windows.append(resource)
         for label, (artifact, _) in cohorts.items():
             if label in milestone:
                 continue
@@ -1497,15 +1633,16 @@ def test_artifact_mixed_soak(
             resources=topology,
             store=snapshot,
             source_file_gets=file_source.mixed_requests,
-            ttl_outputs=totals['native_ttl_outputs'],
+            ttl_outputs=totals['scheduled_ttl_outputs'],
+            materialized_inputs_created=totals['materialized_inputs_created'],
             tombstoned_outputs=totals['tombstoned_outputs'],
         )
         return snapshot
 
     def wait_until(target, phase):
         while elapsed() < target:
-            time.sleep(min(60, target - elapsed()))
-            if native and elapsed() < target:
+            time.sleep(min(fast_gc if accelerated else 60, target - elapsed()))
+            if scheduled and elapsed() < target:
                 sample(phase)
 
     def native_probe_cadence():
@@ -1537,9 +1674,9 @@ def test_artifact_mixed_soak(
         identity=identity,
         profile=profile,
         baseline=baseline,
-        ttl_seconds=DEFAULT_TTL_SECONDS,
-        gc_interval_seconds=_HOUR if native else None,
-        storage_gc_mode='scheduler' if native else 'explicit iteration',
+        ttl_seconds=fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
+        gc_interval_seconds=fast_gc if accelerated else _HOUR if native else None,
+        storage_gc_mode='scheduler' if scheduled else 'explicit iteration',
         sdk_path=str(Path(langbot_plugin.__file__).resolve()),
         sdk_version=version('langbot-plugin'),
         box_backend=config['box']['backend'],
@@ -1562,11 +1699,41 @@ def test_artifact_mixed_soak(
                 discard(artifact)
             wait_until(duration, 'native-drain-released')
             sample('native-drain-released')
-            ticks = observed_native_gc_ticks()
-            assert len(ticks) >= 2 and set(milestone) == {'A', 'B'}, (ticks, milestone)
+            gc_ticks = observed_native_gc_ticks()
+            assert len(gc_ticks) >= 2 and set(milestone) == {'A', 'B'}, (gc_ticks, milestone)
             assert milestone['B'] - milestone['A'] >= _HOUR / 2, milestone
-            assert totals['native_ttl_outputs'] > 0
-            record('native_gc_observed', ticks=ticks, reclaimed=milestone, retained_survived_drain=True)
+            assert totals['scheduled_ttl_outputs'] > 0
+            record('native_gc_observed', ticks=gc_ticks, reclaimed=milestone, retained_survived_drain=True)
+        elif accelerated:
+            guards.append(upload_probe('accelerated-retained', retain=True))
+            index = 0
+            while elapsed() < fast_load:
+                begin = elapsed()
+                wave(index, parallel, 'accelerated-steady')
+                sample('accelerated-steady')
+                assert elapsed() - begin < fast_period, 'Accelerated offered pace exceeded'
+                index += 1
+                wait_until(min(index * fast_period, fast_load), 'accelerated-steady')
+            load_seconds = elapsed()
+            record('offered_load_complete', seconds=load_seconds, turns=sum(counts.values()))
+            artifact, fixture = guards[0]
+            read_exact(artifact, fixture)
+            discard(artifact)
+            drain_until = elapsed() + fast_drain
+            while True:
+                store = sample('accelerated-drain')
+                if not store['artifacts'] and not store['content_objects']:
+                    break
+                assert elapsed() < drain_until, ('Scheduled GC did not drain within budget', store)
+                wait_until(min(drain_until, elapsed() + fast_gc), 'accelerated-drain')
+            gc_ticks = observed_native_gc_ticks()
+            assert len(gc_ticks) >= 2 and totals['scheduled_ttl_outputs'] > 0, gc_ticks
+            record(
+                'accelerated_gc_observed',
+                ticks=gc_ticks,
+                retained_survived_load=True,
+                drain_seconds=elapsed() - load_seconds,
+            )
         else:
             phases = staircase if mode == 'staircase' else [{'waves': 9, 'parallel': 2, 'period_seconds': 0}]
             index = 0
@@ -1595,8 +1762,26 @@ def test_artifact_mixed_soak(
                 staircase_windows.append(measurement)
                 record('phase', **measurement)
         store = sample('final')
-        assert store['artifacts'] == store['artifact_references'] == store['content_objects'] == 0, store
-        assert store.get('object_count', 0) == 0, store
+        future_inputs = observer.query("SELECT COUNT(*) AS n FROM artifacts WHERE owner_type='run'")[0]['n']
+        if native:
+            # The continuously offered native workload ends only 2h before
+            # completion; its newest input rows are intentionally still in TTL.
+            assert store['gc_backlog'] == store['artifact_references'] == store['live_runs'] == 0, store
+            assert future_inputs == store['artifacts'], store
+            orphan = observer.query(
+                "SELECT COUNT(*) AS n FROM content_objects c WHERE c.owner_type='artifact' AND NOT EXISTS "
+                '(SELECT 1 FROM artifacts a WHERE a.workspace_uuid=c.workspace_uuid AND a.content_ref=c.ref)'
+            )[0]['n']
+            assert orphan == 0, store
+            if 'object_count' in store:
+                assert store['object_count'] == store['content_objects'], store
+        else:
+            assert store['artifacts'] == store['artifact_references'] == store['content_objects'] == 0, store
+            assert store.get('object_count', 0) == 0, store
+        totals['materialized_inputs_reclaimed'] = totals['materialized_inputs_created'] - future_inputs
+        assert totals['materialized_inputs_created'] == totals['files'] > 0, totals
+        assert totals['materialized_inputs_reclaimed'] > 0
+        assert all(totals[f'structured_{mode}_reads'] > 0 for mode in ('text', 'image', 'native')), totals
         assert all(counts[kind] for kind in _MIXED_KINDS)
         assert totals['old_body_reuploads'] >= 1 and totals['group_turns'] and totals['person_turns'], totals
         latency = {kind: _percentiles(durations[kind]) for kind in _MIXED_KINDS}
@@ -1610,6 +1795,18 @@ def test_artifact_mixed_soak(
                 early = statistics.median(sample[name] for sample in windows[width : 2 * width])
                 late = statistics.median(sample[name] for sample in windows[-3 * width : -2 * width])
                 assert late - early <= maximum, (name, early, late, maximum)
+        accelerated_growth = {}
+        if accelerated:
+            width = max(3, len(steady_windows) // 10)
+            assert len(steady_windows) >= 2 * width + 1
+            growth_limits = fast['max_resource_growth']
+            assert set(growth_limits) == {'rss', 'fds', 'threads', 'processes'}
+            for name, maximum in growth_limits.items():
+                assert type(maximum) is int and maximum >= 0
+                early = statistics.median(row[name] for row in steady_windows[1 : width + 1])
+                late = statistics.median(row[name] for row in steady_windows[-width:])
+                accelerated_growth[name] = {'early': early, 'late': late, 'delta': late - early, 'limit': maximum}
+                assert late - early <= maximum, (name, early, late, maximum)
         summary = {
             'result': 'PASS',
             'identity': identity,
@@ -1622,7 +1819,15 @@ def test_artifact_mixed_soak(
             'source_file_gets': file_source.mixed_requests,
             'store': store,
             'native_gc_maintenance': native,
+            'scheduled_gc_maintenance': scheduled,
+            'gc_ticks': len(gc_ticks),
+            'manual_gc_calls': totals['manual_gc_calls'],
+            'load_seconds': round(load_seconds, 3) if load_seconds is not None else None,
+            'ttl_seconds': fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
+            'gc_interval_seconds': fast_gc if accelerated else _HOUR if native else None,
             'gc_cohorts': milestone,
+            'accelerated_steady_windows': len(steady_windows),
+            'accelerated_steady_growth': accelerated_growth,
             'phases': staircase_windows,
         }
         if mode == 'staircase':

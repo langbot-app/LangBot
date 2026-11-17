@@ -13,6 +13,7 @@ Scope: Artifact service, Agent attachment reads and Runner outputs ([#3063](http
 | Read/commit/release/expiry/GC race; cancellation vs another session’s active reference | Barrier or observed overlap; A’s cancellation does not alter B’s legal reference; expired or revoked access cannot be satisfied through prior cache state | Deterministic lifecycle plus repeated soak; no inference from sequential calls |
 | Bad/truncated PDFs, MIME spoofing, page/size bounds, timeout, cancel and backend failure | Identify the expected specific error, verify no leak of a live or partially committed reference, and prove healthy neighbors still work | Reader limits, fault/lifecycle checks and disposable object-store retry |
 | PDF native, text extraction or unsupported | Check representation sent downstream, semantic content separately, and an explicit unsupported result instead of blank or fabricated output | Deterministic checks and separate real-provider sample |
+| Accelerated TTL and cleanup under pressure | Age test-owned rows, prove autonomous cleanup on several rotations during concurrent activity, preserve guards, and drain the backlog after load | Separate four-hour accelerated lane; never native-TTL evidence |
 | Native TTL and cleanup under load | Unmodified TTL and scheduler, multiple cleanup periods after an observed expiration, backlog drainage and retained-object usability | Native soak only |
 
 Keep deterministic and real-provider evidence separate:
@@ -52,6 +53,46 @@ Run long-lived jobs only on an explicitly approved disposable Linux host with su
 Allow the test to finish teardown before archiving evidence. Use a different output directory for each run and record the full command, fixed seed, attachment mix and request schedule. A short run proves instrumentation and verdicts; use a stepped-rate run to identify a sustainable rate and freeze the budgets and comparison windows **before** starting native soak. A valid native run observes the normal 24-hour Artifact TTL and Core's normal one-hour storage maintenance interval (or selected larger real configuration), and at least two actual maintenance cycles after the first native expiration. Controlled faults and accelerated GC can supplement, not substitute for, this.
 
 Set an explicit cap on offered files/bytes and actual stored objects/bytes, and a minimum disk-free floor. Include many short sessions, some long sessions with old references, and upload bursts. Stop on correctness or authorization failures, resource-budget exhaustion, or inability to keep collecting required evidence. After load stops, verify GC catches up and still-referenced objects remain usable. Record steady-state resource samples across equivalent load and data age. SQLite file size (or PostgreSQL allocated size) alone does not indicate a leak: look at active data, remaining/free pages or reuse and backlog as well.
+
+### Four-hour accelerated regression (separate from native)
+
+The `Artifact accelerated soak` workflow runs the fixed SQLite/database and
+host Box configuration. It is not a PR job or a required status check. Once
+the workflow is on the default branch, a maintainer may manually dispatch it
+there. The daily trigger at 03:43 UTC runs its job only when maintainers set
+the repository Actions variable `ARTIFACT_ACCELERATED_SOAK_ENABLED=true`; a
+disabled schedule is not an executed test. There are no provider credentials
+or new self-hosted runners.
+
+This mode keeps the production TTL unchanged but shortens the TTL of
+test-owned rows to two minutes on the disposable database. Core's real cleanup
+scheduler runs every 20 seconds with four turns offered every five seconds
+for four hours of active load, plus a drain of up to six minutes. Live
+references must stay correct during multiple expiry rotations, not just
+after requests stop. Keep the journal
+and the summary alongside the mandatory passing JUnit case. Neither a
+shortened smoke profile nor an accelerated pass establishes the 24-hour
+native TTL. Failed/missing/short evidence must not be called a pass.
+
+To run the same profile locally on approved Linux, set the shared environment
+and sync described below, then start this separate command rather than the
+native block:
+
+```bash
+export LANGBOT_SOAK_MIXED_MODE=accelerated
+export LANGBOT_SOAK_EVIDENCE="$SOAK_HOME/accelerated"
+mkdir -p "$LANGBOT_SOAK_EVIDENCE"
+uv run --no-sync pytest -q -rs -o xfail_strict=true \
+    --junitxml="$LANGBOT_SOAK_EVIDENCE/results.xml" \
+    tests/e2e/test_artifact_lifecycle_soak.py::test_artifact_mixed_soak
+test -s "$LANGBOT_SOAK_EVIDENCE/$LANGBOT_SOAK_LANE.mixed-accelerated.summary.json"
+```
+
+The native run started on frozen checkout `c748cdeb9182468ebc416e973bb9f1895cb978c0`
+(tree `5a1ff69a570632b548778525c60ec152309c7d09`) remains raw evidence for
+that exact checkout only. Do not stop, restart, migrate or rewrite it for
+this review. It does not certify the current candidate or the revised
+acceptance checks.
 
 ### Reproduce the run
 
