@@ -43,15 +43,18 @@ Windows 下通过环境变量传参，例如 `$env:LANGBOT_DRIVER="docker"`、`$
 ```bash
 lbctl status              # 查看运行状态和版本
 lbctl logs                # 查看日志
+lbctl doctor              # 诊断环境问题
 lbctl stop / start / restart
 lbctl upgrade --yes       # 升级到最新 LangBot
 lbctl update              # 更新 lbctl 本身
 lbctl autostart disable   # 关闭开机自启
-lbctl uninstall           # 卸载（默认保留数据）
+lbctl uninstall --yes     # 卸载（默认保留数据）
 lbctl list                # 列出本机所有实例
 ```
 
 `lbctl` 默认按系统语言输出中文或英文，可用 `--lang en` / `--lang zh-Hans` 指定。
+
+完整用法（升级细节、接入已有 Docker 部署、多实例、命令行管理资源等）见[使用 lbctl 管理 LangBot](/zh/deploy/lbctl)。
 
 ## 其他部署方式
 
