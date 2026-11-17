@@ -420,22 +420,26 @@ class RunnerBoxService:
                 if binding.closing or getattr(query, '_run_files_closing', False):
                     raise BoxValidationError(t('Run file access has ended.'))
             # Commit may have awaited across finalization after the last transaction check.
-            if binding.closing or getattr(query, '_run_files_closing', False):
-                try:
-                    await self.box.ap.artifact_service.expire_run_outputs(context)
-                except Exception as exc:
-                    self.box.ap.logger.warning(f'Failed to expire outputs committed after run close: {exc}')
-                raise BoxValidationError(t('Run file access has ended.'))
+            await self._reject_closed_export(query, binding, context)
             binding.exported.update(pending)
             binding.exported_fingerprints.update(fingerprints)
             try:
                 warning = await self.box.clear_selected_files(query, items)
             except Exception:
                 warning = 'Files accepted, but cleanup failed; do not repeat delivery.'
+            await self._reject_closed_export(query, binding, context)
             return {
                 'warning': warning,
                 'items': [dict(item) for key, item in binding.exported.items() if key not in binding.submitted],
             }
+
+    async def _reject_closed_export(self, query, binding, context):
+        if binding.closing or getattr(query, '_run_files_closing', False):
+            try:
+                await self.box.ap.artifact_service.expire_run_outputs(context)
+            except Exception as exc:
+                self.box.ap.logger.warning(f'Failed to expire outputs from a closed run: {exc}')
+            raise BoxValidationError(t('Run file access has ended.'))
 
     async def read_file(self, query, file_id, **options):
         from ..storage.artifact_reader import read_artifact_content

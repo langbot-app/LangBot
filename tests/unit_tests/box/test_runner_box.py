@@ -468,3 +468,33 @@ async def test_export_commit_return_after_finalization_expires_without_accepting
     with pytest.raises(ArtifactError) as failure:
         await api.box.ap.artifact_service.read_run_output(context, artifact_id)
     assert failure.value.error_code == 'artifact_expired'
+
+
+@pytest.mark.asyncio
+async def test_export_finishing_source_cleanup_after_run_close_expires_accepted_files(artifact_store):
+    from langbot.pkg.box.runner import run_artifact_context
+    from langbot.pkg.storage.artifacts import ArtifactError
+
+    api = service()
+    await artifact_store(api.box.ap, _CONTEXT)
+    binding = RunBoxBinding('run', 'box', {}, 'run')
+    query = SimpleNamespace(_box_binding=binding, _execution_context=_CONTEXT)
+    context = run_artifact_context(query)
+    api.box.collect_selected_files = AsyncMock(
+        return_value=[{'name': 'accepted.txt', 'type': 'File', 'base64': 'YQ=='}]
+    )
+
+    async def close_during_cleanup(*args):
+        binding.closing = True
+        object.__setattr__(query, '_run_files_closing', True)
+        object.__delattr__(query, '_box_binding')
+
+    api.box.clear_selected_files = AsyncMock(side_effect=close_during_cleanup)
+    with pytest.raises(BoxValidationError, match='access has ended'):
+        await api.export_files(query, ['/workspace/accepted.txt'])
+    api.box.clear_selected_files.assert_awaited_once()
+    assert len(binding.exported) == 1
+    artifact_id = next(iter(binding.exported.values()))['artifact_id']
+    with pytest.raises(ArtifactError) as failure:
+        await api.box.ap.artifact_service.read_run_output(context, artifact_id)
+    assert failure.value.error_code == 'artifact_expired'
