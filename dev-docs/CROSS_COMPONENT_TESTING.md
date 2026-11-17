@@ -60,6 +60,7 @@ The Runner, LocalAgent and KnowledgeEngine workflows trigger on Core and SDK cha
 | Changed behavior | Required developer acceptance | Environment |
 | --- | --- | --- |
 | File import/export, Runtime envelopes, persistent grants, reply delivery | `network_plugin` below | Full Core + Plugin Runtime + installed test Runner + Box on loopback; host is the account-free baseline |
+| Artifact service, attachment reads, Runner outputs or retained history | [Artifact QA](ARTIFACT_QA.md) | Deterministic media, real TCP/Runner, LocalAgent compaction and separate opt-in native-TTL soak |
 | Skill publication, content aliases, media, cache or database schema | `skill_persistence` below | Disposable PostgreSQL + MinIO and two real Core processes; includes SQLite, PostgreSQL and named-S3 replicas, CAS, retained versions, migration/RLS, restart and deleted-cache recovery |
 | Network Skill execution, resource reads or draft registration | `skill_network` below | Two real Core processes with independent Plugin/Box Runtimes and no shared Skill/workspace roots; run pins across publication, registration, grants, restart and cancellation |
 | Box backend execution, mounts, sessions or file transfer | Relevant `sdk/tests/box` and Core Box tests; repeat network delivery on the changed supported backend | Docker/Podman, nsjail or E2B as applicable; host success does not establish another backend's behavior |

@@ -276,6 +276,8 @@ def _provider_presence(info, expected, config):
 
 @pytest.fixture(scope='session')
 def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_tmpdir, runner_runtime_process):
+    box_config = yaml.safe_load(runner_e2e_config_path.read_text())['box']
+
     class GracefulCore(LangBotProcess):
         token = None
 
@@ -289,7 +291,7 @@ def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_t
                         sessions = _data(
                             client.get('/api/v1/box/sessions', headers={'Authorization': f'Bearer {self.token}'})
                         )
-                    assert len(sessions) <= 1, sessions
+                    assert len(sessions) <= box_config['limits']['max_sessions'], sessions
                     for info in sessions:
                         _provider_presence(info, True, self.e2b_config)
             finally:
@@ -320,7 +322,7 @@ def runner_langbot_process(runner_e2e_config_path, runner_e2e_port, runner_e2e_t
         collect_coverage=False,
         cli_args=['--standalone-runtime'],
     )
-    proc.e2b_config = yaml.safe_load(runner_e2e_config_path.read_text())['box']['e2b']
+    proc.e2b_config = box_config['e2b']
     assert proc.start(), proc.get_logs()
     try:
         yield proc

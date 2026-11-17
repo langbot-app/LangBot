@@ -43,7 +43,7 @@ def _slice(text: str, offset: int, max_chars: int) -> dict:
     }
 
 
-def _extract_pdf(content: bytes, page_start: int, page_end: int | None) -> tuple[str, dict]:
+def _parse_pdf(content: bytes, page_start: int, page_end: int | None, *, extract_text: bool) -> tuple[str, dict]:
     from pypdf import PdfReader, apply_configuration
     from pypdf.errors import PdfReadError
 
@@ -74,6 +74,12 @@ def _extract_pdf(content: bytes, page_start: int, page_end: int | None) -> tuple
         if reader.is_encrypted:
             raise PdfReadError('Encrypted PDF')
         page_count = len(reader.pages)
+        if not page_count:
+            raise PdfReadError('PDF has no pages')
+        if not extract_text:
+            # Check the native file structure and page tree, but do not extract
+            # text or rasterize images before passing the document to the model.
+            return '', {}
         if page_start > page_count:
             raise ArtifactError('invalid_input', 'PDF page_start exceeds the page count', 400)
         last_page = min(page_start + MAX_PDF_PAGES - 1, page_count) if page_end is None else page_end
@@ -100,11 +106,11 @@ def _extract_pdf(content: bytes, page_start: int, page_end: int | None) -> tuple
         }
 
 
-def _pdf_text(content: bytes, page_start: int, page_end: int | None) -> tuple[str, dict]:
+def _read_pdf(content: bytes, page_start: int, page_end: int | None, *, extract_text: bool = True) -> tuple[str, dict]:
     from pypdf.errors import LimitReachedError, PdfReadError
 
     try:
-        return _extract_pdf(content, page_start, page_end)
+        return _parse_pdf(content, page_start, page_end, extract_text=extract_text)
     except (LimitReachedError, MemoryError) as exc:
         raise ArtifactError('artifact_too_large', t('PDF text extraction exceeds the size limit.'), 413) from exc
     except (PdfReadError, NotImplementedError, KeyError, TypeError, ValueError, IndexError, RecursionError) as exc:
@@ -176,6 +182,7 @@ async def read_artifact_content(
         if mode == 'native':
             if offset or page_start != 1 or page_end is not None:
                 raise ValueError('Native PDF mode reads the complete document, without text offsets or page ranges')
+            await asyncio.to_thread(_read_pdf, content, page_start, page_end, extract_text=False)
             return _text_result(metadata, 'native') + [
                 {
                     'type': 'file_base64',
@@ -183,7 +190,7 @@ async def read_artifact_content(
                     'file_base64': 'data:application/pdf;base64,' + base64.b64encode(content).decode('ascii'),
                 }
             ]
-        text, pages = await asyncio.to_thread(_pdf_text, content, page_start, page_end)
+        text, pages = await asyncio.to_thread(_read_pdf, content, page_start, page_end)
         return _text_result(metadata, 'text', **pages, **_slice(text, offset, max_chars))
     if mode == 'native' or image_mime:
         raise _unsupported('This file type cannot be read by the model. Download the original file instead.')

@@ -42,7 +42,10 @@ from ....agent.runner.platform_tools import (
     validate_debug_mock_options,
 )
 from ....entity.persistence import agent as persistence_agent
+from ....storage.artifacts import ArtifactError
 from ....workspace.errors import WorkspaceNotFoundError
+from ...application.contracts import ApplicationAPIException
+from ...application.errors import error_from_exception
 from ...application.tool_grants import get_workspace_operations_catalog, validate_operation_preferences
 from ...application.plugin_permissions import workspace_operation_grants
 from ..context import ExecutionContext, RequestContext
@@ -197,7 +200,10 @@ class AgentService:
         artifacts = []
         for artifact_id in artifact_ids:
             # Check the authenticated caller, never the synthetic event actor.
-            metadata = await self.ap.artifact_service.get(context, artifact_id)
+            try:
+                metadata = await self.ap.artifact_service.get(context, artifact_id)
+            except (FileNotFoundError, ArtifactError) as exc:
+                raise ApplicationAPIException(error_from_exception(exc, operation_id='artifact.get')) from exc
             artifacts.append(
                 {
                     'ref': artifact_id,
