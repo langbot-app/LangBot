@@ -135,5 +135,7 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.",
   "PDF text extraction exceeds the size limit.": "PDF text extraction exceeds the size limit.",
   "The selected model does not support native PDF input; read the PDF as text instead.": "The selected model does not support native PDF input; read the PDF as text instead.",
-  "Input attachment content budget for this run is exhausted": "Input attachment content budget for this run is exhausted"
+  "Input attachment content budget for this run is exhausted": "Input attachment content budget for this run is exhausted",
+  "Run file content budget is exhausted.": "Run file content budget is exhausted.",
+  "Run file access has ended.": "Run file access has ended."
 }

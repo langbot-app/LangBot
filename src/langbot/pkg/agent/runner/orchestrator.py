@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import sys
 import asyncio
 import contextlib
 import re
@@ -61,6 +62,32 @@ def _visible_auto_reply_text(content: str) -> str:
         if any(tag.startswith(visible[-size:].lower()) for tag in ('<think>', '</think>')):
             return visible[:-size]
     return visible
+
+
+async def _await_run_cleanup(operation, logger, description, *, timeout=20):
+    """Bound cleanup and defer repeated caller cancellation until finalization finishes."""
+    cancellation = None
+    deadline = asyncio.get_running_loop().time() + timeout
+    try:
+        task = asyncio.create_task(operation())
+        while not task.done():
+            remaining = deadline - asyncio.get_running_loop().time()
+            if remaining <= 0:
+                task.cancel()
+                task.add_done_callback(lambda done: done.exception() if not done.cancelled() else None)
+                raise TimeoutError('Cleanup deadline exceeded')
+            try:
+                await asyncio.wait_for(asyncio.shield(task), remaining)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+            except asyncio.TimeoutError:
+                continue
+        if task.cancelled():
+            raise RuntimeError('Cleanup operation was cancelled')
+        task.result()
+    except Exception as exc:
+        logger.warning(f'{description}: {exc}')
+    return cancellation
 
 
 class AgentRunOrchestrator:
@@ -189,6 +216,7 @@ class AgentRunOrchestrator:
             )
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
+        object.__setattr__(execution_query, '_run_files_closing', False)
         object.__setattr__(execution_query, '_sandbox_backend', adapter_context.get('_sandbox_backend'))
         object.__setattr__(execution_query, '_sandbox_e2b_config', adapter_context.get('_sandbox_e2b_config', {}))
         object.__setattr__(execution_query, '_sandbox_limits', adapter_context.get('_sandbox_limits', {}))
@@ -595,7 +623,9 @@ class AgentRunOrchestrator:
                             from ...box.runner import exported_message, binding_for
 
                             async with binding_for(execution_query).lock:
-                                result.attachments = exported_message(execution_query, file_ids, consume=True)
+                                result.attachments = await exported_message(
+                                    self.ap, execution_query, file_ids, consume=True
+                                )
 
                         if auto_reply_enabled and not explicit_event_reply_sent and result is not None:
                             if result_type == 'message.delta' and isinstance(result, provider_message.MessageChunk):
@@ -782,14 +812,39 @@ class AgentRunOrchestrator:
             trace_mod.reset_run(run_token)
             if trace_binding is not None and trace_mod.unbind_root(trace_binding):
                 close_execution_trace(self.ap, trace_binding.state, 'completed')
+            cleanup_original_error = sys.exception()
+            cleanup_cancellation = None
+            object.__setattr__(execution_query, '_run_files_closing', True)
             binding_box = getattr(execution_query, '_box_binding', None)
             if binding_box is not None and binding_box.run_id == run_id:
+                # Fence callers before waiting: an authorized request may already be queued on the lock.
+                binding_box.closing = True
                 cleanup = getattr(getattr(self.ap, 'box_service', None), 'cleanup_run_files', None)
                 if callable(cleanup):
-                    try:
-                        await cleanup(execution_query)
-                    except Exception as exc:
-                        self.ap.logger.warning(f'Failed to clean transient Box files for run {run_id}: {exc}')
+
+                    async def clean_box_files():
+                        async with binding_box.lock:
+                            await cleanup(execution_query)
+
+                    cleanup_cancellation = await _await_run_cleanup(
+                        clean_box_files,
+                        self.ap.logger,
+                        f'Failed to clean transient Box files for run {run_id}',
+                    )
+                from ...box.runner import run_artifact_context
+
+                async def expire_output_files():
+                    async with binding_box.lock:
+                        await self.ap.artifact_service.expire_run_outputs(
+                            run_artifact_context(execution_query, allow_closed=True)
+                        )
+
+                expiry_cancellation = await _await_run_cleanup(
+                    expire_output_files,
+                    self.ap.logger,
+                    f'Failed to expire transient output assets for run {run_id}',
+                )
+                cleanup_cancellation = cleanup_cancellation or expiry_cancellation
                 object.__delattr__(execution_query, '_box_binding')
             session = await self._session_registry.unregister(run_id)
             await reply_streams.close()
@@ -806,6 +861,9 @@ class AgentRunOrchestrator:
                         f'Failed to write dropped steering audit for run {run_id}: {exc}',
                         exc_info=True,
                     )
+
+            if cleanup_cancellation is not None and cleanup_original_error is None:
+                raise cleanup_cancellation
 
     async def run_from_query(
         self,

@@ -17,6 +17,7 @@ from langbot_plugin.api.proxies.runner.box import RunnerBoxAPIMixin
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from langbot.pkg.api.http.context import ExecutionContext
+from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
 from langbot.pkg.agent.runner.execution_context import build_execution_query
 from langbot.pkg.agent.runner.platform_tools import (
     build_platform_tool_resources,
@@ -25,7 +26,13 @@ from langbot.pkg.agent.runner.platform_tools import (
     resolve_agent_platform_tool_names,
     resolve_platform_api_call,
 )
-from langbot.pkg.box.runner import RunBoxBinding, RunnerBoxService, exported_message, prepare_input_files
+from langbot.pkg.box.runner import (
+    RunBoxBinding,
+    RunnerBoxService,
+    exported_message,
+    mark_exported_files,
+    prepare_input_files,
+)
 from langbot.pkg.box.service import BoxService
 from langbot.pkg.discover.engine import Component
 from langbot.pkg.platform.botmgr import RuntimeBot
@@ -220,7 +227,7 @@ async def test_http_send_without_sync_waiter_preserves_callback_delivery():
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('text_api', ['send', 'reply', 'chunk'])
-async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api):
+async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api, artifact_store):
     adapter = discovered_adapter()
     adapter._enqueue_callback = AsyncMock()
     bot = object.__new__(RuntimeBot)
@@ -251,8 +258,17 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                 'platform_context': freeze_platform_context(agent_event),
             }
         }
-        query = SimpleNamespace(_box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'))
+        context = ExecutionContext(instance_uuid='instance-a', workspace_uuid='workspace-a', placement_generation=1)
+        app = SimpleNamespace(
+            platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=live_adapter)))
+        )
+        await artifact_store(app, context)
+        query = SimpleNamespace(
+            _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
+            _execution_context=context,
+        )
         box = SimpleNamespace(
+            ap=app,
             _ATTACHMENT_MAX_FILES=10,
             _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
             collect_selected_files=AsyncMock(
@@ -269,14 +285,11 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
         exported = await RunnerBoxService(box).export_files(query, paths)
         box.collect_selected_files.assert_awaited_once_with(query, paths)
         file_ids = [item['id'] for item in exported['items']]
-        app = SimpleNamespace(
-            platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=live_adapter)))
-        )
 
         class FileReplyAPI(RunnerBoxAPIMixin):
             async def _box_call(self, rpc_action, **data):
                 assert rpc_action == PluginToRuntimeAction.CALL_PLATFORM_API
-                files = exported_message(query, data['file_ids'])
+                files = await exported_message(app, query, data['file_ids'])
                 tool, params, rich = resolve_platform_api_call(
                     session,
                     agent_event.bot_id,
@@ -285,7 +298,7 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
                     data['context_tool'],
                 )
                 result = await execute_platform_tool(app, object(), session, tool, params, message_chain=rich)
-                exported_message(query, data['file_ids'], consume=True)
+                mark_exported_files(query, data['file_ids'])
                 return {'result': result}
 
         await FileReplyAPI().reply_files(file_ids)

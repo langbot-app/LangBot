@@ -248,6 +248,57 @@ async def test_external_input_attachment_tool_reads_by_ref():
 
 
 @pytest.mark.asyncio
+async def test_external_run_file_reader_requires_box_and_preserves_mcp_media():
+    ctx = _authorized_ctx()
+    api = MagicMock()
+    contents = [
+        {"type": "text", "text": "metadata"},
+        {
+            "type": "file_base64",
+            "file_base64": "data:application/pdf;base64,JVBERg==",
+            "file_name": "report.pdf",
+        },
+    ]
+    api.read_run_file = AsyncMock(return_value=contents)
+    tools = AgentRunExternalTools(api, ctx)
+    with pytest.raises(ValueError, match="Unknown LangBot external tool"):
+        await tools.call_tool("langbot_read_run_file", {"file_id": "file-1"})
+    api.read_run_file.assert_not_called()
+    ctx.context.available_apis.box = True
+    names = {tool["name"] for tool in tools.mcp_tools()}
+    assert "langbot_read_run_file" in names
+    assert "langbot_commit_run_files" not in names
+    result = await tools.call_mcp_tool(
+        "langbot_read_run_file", {"file_id": "file-1", "mode": "native"}
+    )
+    assert result == {
+        "content": [
+            {"type": "text", "text": "metadata"},
+            {
+                "type": "resource",
+                "resource": {
+                    "uri": "langbot-artifact:///report.pdf",
+                    "mimeType": "application/pdf",
+                    "blob": "JVBERg==",
+                },
+            },
+        ]
+    }
+    api.read_run_file.assert_awaited_once_with(
+        file_id="file-1",
+        mode="native",
+        offset=0,
+        max_chars=8192,
+        page_start=1,
+        page_end=None,
+    )
+    with pytest.raises(pydantic.ValidationError):
+        await tools.call_tool(
+            "langbot_read_run_file", {"file_id": "file-1", "workspace_uuid": "forged"}
+        )
+
+
+@pytest.mark.asyncio
 async def test_external_input_content_uses_native_mcp_image_and_pdf_blocks():
     from langbot_plugin.api.entities.builtin.runner.input import InputAttachment
 

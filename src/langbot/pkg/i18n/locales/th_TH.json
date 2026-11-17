@@ -135,5 +135,7 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "การแยกข้อความ PDF ไม่รวมรูปภาพและเค้าโครง โปรดใช้โหมด native กับโมเดลที่รองรับสำหรับเนื้อหาภาพ",
   "PDF text extraction exceeds the size limit.": "การแยกข้อความ PDF เกินขีดจำกัดขนาด",
   "The selected model does not support native PDF input; read the PDF as text instead.": "โมเดลที่เลือกไม่รองรับ PDF โดยตรง โปรดอ่าน PDF เป็นข้อความ",
-  "Input attachment content budget for this run is exhausted": "งบการอ่านเนื้อหาไฟล์แนบของการทำงานนี้หมดแล้ว"
+  "Input attachment content budget for this run is exhausted": "งบการอ่านเนื้อหาไฟล์แนบของการทำงานนี้หมดแล้ว",
+  "Run file content budget is exhausted.": "ใช้โควตาการอ่านเนื้อหาไฟล์สำหรับการรันนี้หมดแล้ว",
+  "Run file access has ended.": "การเข้าถึงไฟล์ของการรันนี้สิ้นสุดแล้ว"
 }

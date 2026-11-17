@@ -89,6 +89,41 @@ async def test_input_reader_is_discovered_from_the_run_grant_and_uses_installed_
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("granted,enabled", [(False, True), (True, False), (True, True)])
+async def test_run_file_reader_uses_structured_media_only_with_box_grant(granted, enabled):
+    api = FakeRunnerAPIProxy(models=[ModelResource(model_id="model-primary")])
+    ctx = make_context(
+        config={"model": {"primary": "model-primary"}, "box-enabled": enabled},
+        resources=AgentResources(models=[ModelResource(model_id="model-primary")]),
+    )
+    ctx.context.available_apis.box = granted
+    payload = "data:image/png;base64,cHJpdmF0ZQ=="
+    api.read_run_file = AsyncMock(
+        return_value=[{"type": "text", "text": "output"}, {"type": "image_base64", "image_base64": payload}]
+    )
+    api._results = asyncio.Queue()
+    api._run_id = ctx.run_id
+    assembly = await AgentRunAssembler(api, ctx).assemble()
+    available = granted and enabled and hasattr(RunnerAPIProxy, "read_run_file")
+    assert ("langbot_read_run_file" in {tool.name for tool in assembly.tools}) is available
+    if not available:
+        api.read_run_file.assert_not_awaited()
+        return
+    prepared = assembly.tool_executor.prepare(
+        ToolCallRequest.from_raw(
+            {"id": "read-output", "function": {"name": "langbot_read_run_file", "arguments": '{"file_id":"file-1"}'}}
+        )
+    )
+    outcome = await assembly.tool_executor.execute(prepared)
+    assert outcome.error is None and outcome.model_only_messages[0].content[0].image_base64 == payload
+    assert api.read_run_file.await_args.kwargs["file_id"] == "file-1"
+    assert payload not in outcome.message.content
+    started, completed = api._results.get_nowait(), api._results.get_nowait()
+    assert started.type.value == "tool.call.started" and completed.type.value == "tool.call.completed"
+    assert payload not in json.dumps(completed.data)
+
+
+@pytest.mark.asyncio
 async def test_assembler_builds_authorized_loop_inputs() -> None:
     api = FakeRunnerAPIProxy(
         models=[ModelResource(model_id="model-primary"), ModelResource(model_id="model-fallback")],

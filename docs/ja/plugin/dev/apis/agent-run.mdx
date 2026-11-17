@@ -220,10 +220,16 @@ Box の有効化、取得、再利用方針は Runner が決めます。リソ�
 | --- | --- | --- |
 | `await ctx.bind_box(box_id)` | `BoxBinding` | Box を現在の実行にバインドし、`box_id`、`outbox` を返す。同じ実行内では変更不可 |
 | `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | 入力の `ref` を指定してインポート。省略時は全件。サンドボックスの `path` を返す |
-| `await ctx.export_box_files()` | `list[BoxFile]` | 現在の実行の outbox をファイルハンドルとしてエクスポート。メッセージは送信しない |
+| `await ctx.export_box_files(paths)` | `list[BoxFile]` | 指定したサンドボックスの絶対パスを一時 Artifact として登録。メッセージは送信しない |
+| `await ctx.read_run_file(file_id, **options)` | `list[dict]` | 出力ファイルを制限付きテキストまたは構造化画像・PDF として読み取る |
+| `await ctx.commit_run_files(file_ids)` | `list[BoxFile]` | 元の run に属する永続 pin を明示的に追加して出力ファイルを保持する |
 | `await ctx.reply_files(file_ids)` | `Any` | エクスポートした ID で返信。返信ツールの権限制限が適用される |
 
-`BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。入力添付ファイルのメタデータは変わらず、明示的にインポートして初めてファイルパスが生成されます。ハンドルは今回の実行でのみ有効で、重複送信できません。
+`BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。出力ファイルには `artifact_id`、`mime_type`、`digest`、`lifecycle`、`expires_at` も含まれます。`id` は従来どおり run 内の UUID ハンドルで、読み取り、commit、返信にはこの値を使います。`artifact_id` はアカウントの Artifact API の権限を与えません。入力添付ファイルのメタデータは変わらず、明示的にインポートして初めてサンドボックスのパスが生成されます。出力ハンドルは今回の run に属し、重複送信できません。
+
+`read_run_file` は [Artifact の読み取り](/ja/develop/artifacts) と同じモード、文字範囲、ページ範囲を使用します。送信済みでも run が実行中なら読み取れます。commit 後のメタデータは `lifecycle="persistent"`、`expires_at=None` になります。エクスポート、読み取り、返信では自動 commit されません。アカウント、別の run、終了した run は、これらの ID だけでは保持したファイルを読み取れません。終了時は時間制限付きのクリーンアップを試みます。Core のクラッシュ、クリーンアップの失敗やタイムアウト時も、元の 24 時間の有効期限で保守処理の回収対象になります。
+
+元ファイルの削除は一括登録が完了してから行います。登録失敗時はサンドボックスの元ファイルを保持します。登録後の削除失敗では、返された ID は受理済みのままで warning が付きます。その ID を保持し、重複送信しないでください。プラットフォームへのファイル返信は登録済み Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP API はありません。
 
 ネイティブツールやファイル操作の前に Box をバインドします。Box を共有しても添付ディレクトリは実行ごとに分かれます。`ctx.variables` の公開リクエスト変数で再利用キーを計算できます。
 
@@ -231,7 +237,7 @@ Pipeline では `ctx.delivery.automatic_reply` が `True` になり、`RunnerRes
 
 自動返信では、`RunnerResult.message_completed` はそれぞれ独立したメッセージとして送信されるため、Runner は回答の前に進捗メッセージを送れます。`RunnerResult.message_delta` はストリーミング対応プラットフォームでは 1 つのストリーミングメッセージを更新します。それ以外では完了したメッセージだけが送信され、delta だけで終わる実行は最後の結果を 1 回送信します。
 
-外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`。入力添付ファイルを読み取れる場合は `langbot_read_input_attachment` も利用できます。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。
+外部ランナーも `AgentRunExternalTools` で同じ手順を使用できます：`langbot_get_box_status`、`langbot_list_boxes`、`langbot_acquire_box`、`langbot_bind_box`、`langbot_import_box_attachments`、`langbot_export_box_files`、`langbot_read_run_file`。入力添付ファイルを読み取れる場合は `langbot_read_input_attachment` も利用できます。イベントへの返信権限がある場合は `langbot_reply_files` も利用できます。すべての呼び出しに現在の実行の権限が適用されます。commit は明示的な Runner API 呼び出しであり、既定のモデルツールには含まれません。
 
 ### プロンプト、履歴、イベント
 

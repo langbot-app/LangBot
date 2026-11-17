@@ -201,6 +201,56 @@ async def test_input_content_forwarding_uses_trusted_identity_scope_and_cancella
     assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
 
 
+@pytest.mark.parametrize(
+    "action,payload,response",
+    [
+        (
+            PluginToRuntimeAction.EXPORT_BOX_FILES,
+            {"paths": ["/out/report.txt"]},
+            {"items": []},
+        ),
+        (
+            PluginToRuntimeAction.READ_RUN_FILE,
+            {"file_id": "file-1", "mode": "text"},
+            {"contents": []},
+        ),
+        (
+            PluginToRuntimeAction.COMMIT_RUN_FILES,
+            {"file_ids": ["file-1"]},
+            {"items": []},
+        ),
+    ],
+)
+async def test_run_file_forwarding_keeps_trusted_scope_and_cancellation(
+    action, payload, response
+):
+    binding = _action_context()
+    handler, manager, control = _handler(action_context=binding)
+    manager.plugins = [FakePluginContainer(runtime_handler=handler)]
+    control.call_action = AsyncMock(return_value=response)
+    async with ProtocolSession(handler) as session:
+        result = await session.request(
+            action.value,
+            {
+                **payload,
+                "run_id": "run-1",
+                "caller_plugin_identity": "forged/identity",
+                "workspace_uuid": "forged-workspace",
+            },
+            action_context=None,
+        )
+    assert result["code"] == 0 and result["data"] == response
+    forwarded_action, data = control.call_action.call_args.args
+    assert forwarded_action == action
+    assert data == {
+        **payload,
+        "run_id": "run-1",
+        "caller_plugin_identity": "tester/demo",
+    }
+    assert control.call_action.call_args.kwargs["action_context"] == binding
+    assert control.call_action.call_args.kwargs["cancel_peer_on_cancel"] is True
+
+
 def test_reserved_decode_capacity_is_consumed_by_first_message_only():
     handler, _manager, _control = _handler()
     handler._certified_shared_stdio = True

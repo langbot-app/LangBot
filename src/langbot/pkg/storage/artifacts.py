@@ -88,7 +88,7 @@ class ArtifactService:
             'mime_type': row['mime_type'],
             'size': row['size'],
             'digest': row['digest'],
-            'source': 'input_attachment' if row['owner_type'] == 'run' else 'upload',
+            'source': {'run': 'input_attachment', 'run_output': 'tool_output'}.get(row['owner_type'], 'upload'),
             'lifecycle': 'persistent' if row['expires_at'] is None else 'temporary',
             'created_at': timestamp(row['created_at']),
             'expires_at': timestamp(row['expires_at']),
@@ -109,7 +109,7 @@ class ArtifactService:
     def _run_owner(context):
         principal = context.trigger_principal if isinstance(context, ExecutionContext) else None
         if principal is None or principal.principal_type != PrincipalType.PROCESSOR or not principal.run_id:
-            raise PermissionError('Input assets require a trusted active run context')
+            raise PermissionError('Run assets require a trusted active run context')
         return 'run', principal.run_id
 
     async def create_run_input(self, context, filename, content, mime_type):
@@ -121,6 +121,87 @@ class ArtifactService:
         owner = self._run_owner(context)
         await self.content._validate(context)
         return await self._read_owned(context, owner, artifact_id, max_bytes)
+
+    async def create_run_output(self, context, filename, content, mime_type):
+        owner = 'run_output', self._run_owner(context)[1]
+        await self.content._validate(context)
+        return await self._create_owned(context, owner, filename, content, mime_type, DEFAULT_TTL_SECONDS)
+
+    async def read_run_output(self, context, artifact_id, *, max_bytes=MAX_ARTIFACT_BYTES):
+        owner = 'run_output', self._run_owner(context)[1]
+        await self.content._validate(context)
+        return await self._read_owned(context, owner, artifact_id, max_bytes)
+
+    async def commit_run_outputs(self, context, artifact_ids):
+        owner = 'run_output', self._run_owner(context)[1]
+        await self.content._validate(context)
+        if (
+            not isinstance(artifact_ids, list)
+            or not 1 <= len(artifact_ids) <= 100
+            or any(not isinstance(artifact_id, str) for artifact_id in artifact_ids)
+            or len(set(artifact_ids)) != len(artifact_ids)
+        ):
+            raise ValueError('Commit requires 1 to 100 unique output asset IDs')
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            # Authorize the whole batch before pinning; lock order prevents reversed-batch deadlocks.
+            rows = {
+                artifact_id: await self._row(uow, context, artifact_id, owner, lock=True)
+                for artifact_id in sorted(artifact_ids)
+            }
+            for artifact_id in artifact_ids:
+                pin = dict(
+                    workspace_uuid=context.workspace_uuid,
+                    artifact_id=artifact_id,
+                    holder_type='run_output_commit',
+                    holder_id=owner[1],
+                )
+                exists = (await uow.execute(sa.select(ArtifactReference.artifact_id).filter_by(**pin))).first()
+                if exists is None:
+                    await uow.execute(sa.insert(ArtifactReference).values(**pin))
+            await uow.execute(
+                sa.update(Artifact)
+                .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id.in_(artifact_ids))
+                .values(expires_at=None)
+            )
+            return [self._public({**rows[artifact_id], 'expires_at': None}) for artifact_id in artifact_ids]
+
+    async def expire_run_outputs(self, context):
+        owner = 'run_output', self._run_owner(context)[1]
+        await self.content._validate(context)
+        now = _now()
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            ids = (
+                (
+                    await uow.execute(
+                        sa.select(Artifact.id)
+                        .where(
+                            Artifact.workspace_uuid == context.workspace_uuid,
+                            Artifact.owner_type == owner[0],
+                            Artifact.owner_id == owner[1],
+                            Artifact.deleted_at.is_(None),
+                            Artifact.expires_at.is_not(None),
+                            Artifact.expires_at > now,
+                        )
+                        .order_by(Artifact.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        # Discovery must release SQLite's read snapshot before the first write reservation.
+        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            expired = 0
+            for artifact_id in ids:
+                try:
+                    row = await self._row(uow, context, artifact_id, owner, lock=True, live=False)
+                except FileNotFoundError:
+                    continue
+                if row['deleted_at'] is None and row['expires_at'] is not None and row['expires_at'] > now:
+                    await uow.execute(
+                        sa.update(Artifact).where(*self._scope(context, artifact_id)).values(expires_at=now)
+                    )
+                    expired += 1
+            return expired
 
     async def _create_owned(self, context, owner, filename, content, mime_type, ttl_seconds):
         if (

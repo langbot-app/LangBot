@@ -194,6 +194,46 @@ class LangBotAPIProxy:
         ]
 
     @run_scoped
+    async def read_run_file(
+        self,
+        file_id: str,
+        *,
+        mode: str = "auto",
+        offset: int = 0,
+        max_chars: int = 8192,
+        page_start: int = 1,
+        page_end: int | None = None,
+    ) -> list[dict]:
+        """Read bounded model content from an exported file in the active run."""
+        result = await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.READ_RUN_FILE,
+            {
+                "file_id": file_id,
+                "mode": mode,
+                "offset": offset,
+                "max_chars": max_chars,
+                "page_start": page_start,
+                "page_end": page_end,
+            },
+            180,
+            cancel_peer_on_cancel=True,
+        )
+        return result["contents"]
+
+    @run_scoped
+    async def commit_run_files(self, file_ids: list[str]):
+        """Persist selected run files without sending them."""
+        from langbot_plugin.api.entities.builtin.runner.box import BoxFile
+
+        result = await self.plugin_runtime_handler.call_action(
+            PluginToRuntimeAction.COMMIT_RUN_FILES,
+            {"file_ids": file_ids},
+            180,
+            cancel_peer_on_cancel=True,
+        )
+        return [BoxFile.model_validate(item) for item in result["items"]]
+
+    @run_scoped
     async def get_langbot_version(self) -> str:
         """Get the langbot version"""
         return (

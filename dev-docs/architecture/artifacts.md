@@ -1,10 +1,10 @@
 # Artifact service
 
-Artifact references identify caller-owned files in a Workspace. The service is the authorization and lifecycle boundary; `ContentStore` remains the immutable byte store. IDs do not grant access and never expose storage keys, S3 locators or Box paths.
+Artifact references identify account-owned files and run-owned attachments or outputs in a Workspace. The service is the authorization and lifecycle boundary; `ContentStore` remains the immutable byte store. IDs do not grant access and never expose storage keys, S3 locators or Box paths.
 
-## Phase-one API
+## Account API
 
-Only authenticated accounts and API keys are accepted. Each operation checks the Workspace execution fence, the required permission and the owning principal. Another account or key cannot read an asset merely by knowing its ID, including within the same Workspace. Plugin, processor, support-admin and run access is not enabled by this foundation. The operations have `exposure=none` and are excluded from plugin wildcard grants, SDK Workspace methods and default model tools.
+The account-facing operations accept only authenticated accounts and API keys. Each operation checks the Workspace execution fence, the required permission and the owning principal. Another account or key cannot read an asset merely by knowing its ID, including within the same Workspace. Run-owned assets use the separate, live-run-authorized ExecutionAPI paths below; they cannot be read or retained through the account API. These Workspace operations have `exposure=none` and are excluded from plugin wildcard grants, SDK Workspace methods and default model tools.
 
 | Workspace operation | HTTP | Permission |
 | --- | --- | --- |
@@ -18,7 +18,7 @@ Only authenticated accounts and API keys are accepted. Each operation checks the
 
 HTTP and MCP execute the same ApplicationAPI operations and Artifact service. HTTP downloads use attachment disposition, `nosniff`, `private, no-store` and a digest ETag. Raw downloads return the complete bounded object: an object larger than `max_bytes` is rejected. Structured content reads support the text and PDF ranges described below. Uploads and source reads are limited to 10 MiB. Field validation diagnostics retain their technical wording; owned business errors use the Workspace message language.
 
-MCP tools are `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact`. Creation accepts strict base64 with a pre-decode encoded-length limit; raw reads return base64 plus metadata. Runner file conversion and fixed-version Skill resources remain later stages of #3051.
+MCP tools are `create_artifact`, `get_artifact`, `read_artifact`, `read_artifact_content`, `retain_artifact`, `release_artifact` and `delete_artifact`. Creation accepts strict base64 with a pre-decode encoded-length limit; raw reads return base64 plus metadata. Fixed-version Skill resources remain a later stage of #3051.
 
 The existing file upload and Runner `file_id` APIs retain their contracts. No existing storage key or run handle is accepted as an Artifact ID. The separate `lbctl` client can continue using its existing routes; it has no Artifact commands in this phase.
 
@@ -31,6 +31,16 @@ Inbound platform inputs render text markers and attachment metadata only, indepe
 The first authorized platform attachment read creates a run-owned Artifact through the shared service. Only the Host's current-input registry may resolve an `att-N` ref; knowing another asset ID is not a grant. Run-owned assets do not become account-owned or publicly accessible. Agent debug accepts at most 20 distinct `artifact_ids`: it checks metadata with the original RequestContext before execution and stores the authorized set plus context in Host-only query fields. Synthetic event actors cannot select the asset owner. The separate Workspace management assistant still accepts text/approval turns only.
 
 Structured reads use `auto`, `text`, `native` or `pages`, zero-based text `offset`, `max_chars` (8192 default, 16384 maximum), and one-based PDF `page_start`/`page_end` (at most ten pages). Results identify truncation and continuation offsets/pages. Auto mode returns structured images and UTF-8 text, and extracts PDF text. PDF text explicitly excludes images, layout and OCR. Native mode returns structured image/PDF content for a supporting provider; unsupported models fail visibly. Pages mode currently fails explicitly rather than implying that page rendering occurred. Raw bytes and structured content are returned only after source authorization; metadata and retained history do not contain base64 payloads.
+
+## Runner output files
+
+`RunnerBoxService.export_files` stores each selected sandbox file as a temporary `run_output` Artifact. The complete batch is registered in one tenant transaction before handles are accepted or sandbox sources are removed. A registration failure leaves the sources and prior accepted handles intact. Source cleanup failure after acceptance returns a warning with the accepted IDs; it must not cause repeat delivery.
+
+The public `BoxFile.id` remains the existing UUID run handle. Its metadata additionally contains `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`, with no inline bytes. `execution.read_run_file` resolves that handle through its run's export registry and returns bounded structured content using the shared reader. A previously submitted file remains readable while the original run is active, but cannot be submitted again. Platform replies resolve the registered bytes through ArtifactService; Core and Runtime need no shared file roots.
+
+`execution.commit_run_files` validates the entire batch against the original run, adds idempotent `run_output_commit` retention references and clears expiry atomically. It changes retention only. Export, read and delivery do not commit, and commit is not added to default model tools. The account Artifact API, another run and an ended run cannot read the asset merely by possessing either ID. The existing run/session, installation, Workspace fence and frozen sandbox authorization apply to both new ExecutionAPI operations. No generic run-file HTTP endpoint is added.
+
+The orchestrator's `finally` attempts bounded cleanup to expire uncommitted outputs on completion, failure or cancellation; committed outputs retain their pin. Maintenance physically collects expired output content through the same tombstone rules below. Core crashes, cleanup failures and timeouts leave the original 24-hour expiry as the fallback. Retaining bytes does not provide run resumption or a new download grant.
 
 ## Lifecycle
 

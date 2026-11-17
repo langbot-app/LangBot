@@ -63,11 +63,13 @@ class AgentRunAssembler:
 
         allowed_tools = self._allowed_tool_names()
         input_tools = AgentRunExternalTools(self.api, self.ctx)
-        input_tool = next(
-            (tool for tool in input_tools.mcp_tools() if tool["name"] == "langbot_read_input_attachment"), None
-        )
-        if input_tool is not None:
-            allowed_tools.discard(input_tool["name"])
+        readers = [
+            tool
+            for tool in input_tools.mcp_tools()
+            if tool["name"] == "langbot_read_input_attachment"
+            or (tool["name"] == "langbot_read_run_file" and self.ctx.config.get("box-enabled", True))
+        ]
+        allowed_tools.difference_update(tool["name"] for tool in readers)
 
         max_tool_iterations = get_max_tool_iterations(self.ctx.config)
         max_tool_result_chars = get_max_tool_result_chars(self.ctx.config)
@@ -86,22 +88,26 @@ class AgentRunAssembler:
         tools.extend(workspace_manager.tools)
         all_allowed_tools = allowed_tools | workspace_manager._tool_names
         local_tools = {}
-        if input_tool is not None:
 
-            async def read_input(**arguments):
-                return await input_tools.call_tool(input_tool["name"], arguments)
+        def reader(name):
+            async def read(**arguments):
+                return await input_tools.call_tool(name, arguments)
 
+            return read
+
+        for spec in readers:
+            read = reader(spec["name"])
             tools.append(
                 LLMTool(
-                    name=input_tool["name"],
-                    human_desc=input_tool["description"],
-                    description=input_tool["description"],
-                    parameters=input_tool["inputSchema"],
-                    func=read_input,
+                    name=spec["name"],
+                    human_desc=spec["description"],
+                    description=spec["description"],
+                    parameters=spec["inputSchema"],
+                    func=read,
                 )
             )
-            all_allowed_tools.add(input_tool["name"])
-            local_tools[input_tool["name"]] = read_input
+            all_allowed_tools.add(spec["name"])
+            local_tools[spec["name"]] = read
 
         token_counter = HostContextTokenCounter(self.api, model_ids[0], tools, reasoning_level=reasoning_level)
 

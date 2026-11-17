@@ -1553,13 +1553,13 @@ class RuntimeConnectionHandler(handler.Handler):
             output_lock_acquired = False
             try:
                 if data.get('file_ids') is not None:
-                    from ..box.runner import exported_message, binding_for
+                    from ..box.runner import exported_message, binding_for, mark_exported_files
 
                     query = _resolve_action_query(data, session, self.ap, action_context)
                     output_lock = binding_for(query).lock
                     await output_lock.acquire()
                     output_lock_acquired = True
-                    files = exported_message(query, data['file_ids'])
+                    files = await exported_message(self.ap, query, data['file_ids'])
                     data = {**data, 'params': {**(data.get('params') or {}), 'message': files.model_dump(mode='json')}}
                 tool_name, parameters, message = resolve_platform_api_call(
                     session, data.get('bot_uuid'), data['action'], data.get('params') or {}, data.get('context_tool')
@@ -1581,7 +1581,7 @@ class RuntimeConnectionHandler(handler.Handler):
                     message_chain=message,
                 )
                 if data.get('file_ids') is not None:
-                    exported_message(query, data['file_ids'], consume=True)
+                    mark_exported_files(query, data['file_ids'])
                 return handler.ActionResponse.success(data={'result': _serialize_plugin_api_result(result)})
             except (ValueError, KeyError, TypeError) as exc:
                 return handler.ActionResponse.error(message=str(exc))

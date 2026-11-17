@@ -204,6 +204,14 @@ class RunnerContext(pydantic.BaseModel):
         """Export explicitly selected absolute sandbox paths; does not send them."""
         return await self.api.export_box_files(paths)
 
+    async def read_run_file(self, file_id: str, **options) -> list[dict]:
+        """Read a run-owned exported handle using the frozen Box grant."""
+        return await self.api.read_run_file(file_id, **options)
+
+    async def commit_run_files(self, file_ids: list[str]) -> list["BoxFile"]:
+        """Persist selected run files without sending a message."""
+        return await self.api.commit_run_files(file_ids)
+
     async def reply_files(self, file_ids: list[str]) -> typing.Any:
         """Explicitly reply with exported handles, subject to tool authorization."""
         return await self.api.reply_files(file_ids)

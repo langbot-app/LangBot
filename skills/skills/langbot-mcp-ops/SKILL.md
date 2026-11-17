@@ -359,7 +359,7 @@ See [Artifact API](../../../docs/en/develop/artifacts.mdx) for limits and modes.
 
 Reads require `resource.view`; writes require `resource.manage`. The authenticated
 account or API key must own the asset in the current Workspace. An ID is not an
-access grant. Plugin/run references are not accepted by this initial API, and
+access grant. Plugin/run references are not accepted by this account API, and
 Account-owned Artifact operations are not added to default model tool sets or
 plugin grants. Runner attachment tools use their existing run-scoped grant and
 Host-only input references; an account upload can be passed to Agent debug with
@@ -372,3 +372,15 @@ Temporary files expire after 24 hours by default (`ttl_seconds`: 1 to 604800).
 repeating release does not extend it. `delete_artifact` refuses pinned files;
 release first when deletion is authorized. Expired references cannot be revived.
 Never treat a denied reference as permission to use a storage key or run handle.
+
+Run outputs use a separate ExecutionAPI path: `langbot_export_box_files` registers
+temporary Artifacts and `langbot_read_run_file` reads an exported UUID handle as
+bounded structured content. Runner code explicitly calls `ctx.commit_run_files`
+to retain selected outputs; export, read and reply do not commit, and commit is
+not a default model tool. Both IDs retain the original live-run authorization:
+an account, a new run or an ended run cannot read them through the account APIs.
+Finalization attempts bounded expiry cleanup of uncommitted outputs; crashes,
+cleanup failures and timeouts fall back to their original 24-hour expiry.
+Use the [Runner API](../../../docs/en/plugin/dev/apis/agent-run.mdx#box-and-attachments)
+for batch acceptance, warning and delivery semantics. No run-file HTTP endpoint
+is provided.

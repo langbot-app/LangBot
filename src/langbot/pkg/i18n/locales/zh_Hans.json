@@ -135,5 +135,7 @@
   "PDF text extraction excludes images and page layout. Use native mode with a supported model for visual content.": "PDF 文本提取不包含图片和页面布局。需要视觉内容时，请使用受支持模型的原生模式。",
   "PDF text extraction exceeds the size limit.": "PDF 文本提取超过大小限制。",
   "The selected model does not support native PDF input; read the PDF as text instead.": "所选模型不支持原生 PDF 输入，请改为读取 PDF 文本。",
-  "Input attachment content budget for this run is exhausted": "本次运行的附件内容读取预算已用尽"
+  "Input attachment content budget for this run is exhausted": "本次运行的附件内容读取预算已用尽",
+  "Run file content budget is exhausted.": "本次运行的文件内容读取额度已用尽。",
+  "Run file access has ended.": "本次运行的文件访问已结束。"
 }

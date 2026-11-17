@@ -46,6 +46,16 @@ Runner inputs initially contain attachment references, names, MIME types and siz
 | `native` | Return image/PDF content for a model that supports that input; unsupported models report a visible error. |
 | `pages` | Page rendering is currently unsupported and returns an explicit error. |
 
-Text uses zero-based `offset` and `max_chars` (default 8192, maximum 16384). Results include `truncated` and `next_offset`; continue from that position rather than treating a partial result as the full file. PDF text uses one-based `page_start` and optional `page_end`, at most ten pages per read, and reports the next page. It does not perform OCR or preserve images/layout. Other binary formats fail explicitly; the original remains downloadable.
+Text uses zero-based `offset` and `max_chars` (default 8192, maximum 16384). Results include `truncated` and `next_offset`; continue from that position rather than treating a partial result as the full file. PDF text uses one-based `page_start` and optional `page_end`, at most ten pages per read, and reports the next page. It does not perform OCR or preserve images/layout. Other binary formats fail explicitly; caller-owned uploads remain available through authenticated download.
 
 Agent debug API requests may include `artifact_ids`, up to 20 distinct IDs from the caller's uploads. The Host checks the authenticated caller's ownership before starting the run and gives that run references only. Supplying an event `actor` does not change ownership. The separate Workspace management assistant does not accept attachment inputs in this phase. The existing raw-byte `read_input_attachment` API remains available to authorized Runner code.
+
+## Runner output files
+
+`ctx.export_box_files(paths)` registers the selected sandbox files as temporary Artifacts. The returned `BoxFile.id` remains a UUID file handle for the exporting run. Export metadata also includes `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`; `artifact_id` does not grant access through the account Artifact API.
+
+Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. Retention is explicit: `ctx.commit_run_files(file_ids)` adds a persistent pin owned by the original run and returns updated file metadata. Exporting, reading and replying do not commit files, and the model's default tools do not include commit. Committing retains bytes; it does not authorize an account, a new run or a finished run to read them.
+
+At run completion, failure or cancellation, the Host attempts bounded cleanup to expire uncommitted outputs for maintenance collection. A Core crash, cleanup failure or timeout can defer expiry to their original 24-hour lifetime. A batch registration failure leaves the sandbox source files intact. If source cleanup fails after registration, the returned IDs remain accepted and carry a warning; do not repeat delivery.
+
+`ctx.reply_files` and Pipeline file replies read the registered Artifact bytes through the existing platform delivery path. There is no separate run-file HTTP download endpoint. See the [Runner API](/en/plugin/dev/apis/agent-run#box-and-attachments) for the complete flow.
