@@ -32,7 +32,7 @@ from langbot.pkg.platform.sources import http_bot_signing as signing
 from tests.unit_tests.box import test_network_file_transfer as network_tests
 from tests.unit_tests.platform.test_http_bot_agent_boundary import discovered_adapter, envelope
 
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- dependency of network_files
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- dependency of network_files
 
 network_files = network_tests.network_files
 pytestmark = network_tests.pytestmark
@@ -76,6 +76,7 @@ async def test_signed_http_network_file_roundtrip_and_handle_ownership(network_f
             acquired = await box.runner.acquire(context, box.acquire_request, query)
             assert acquired['id'] == box.query._box_binding.session_id
             await box.runner.bind(context, query, 'http-delivery-run', acquired['id'])
+            await seed_run(box.service.ap, context, 'http-delivery-run')
             binding = query._box_binding
             imported = await box.runner.import_attachments(query, None)
             assert len(imported['items']) == 1

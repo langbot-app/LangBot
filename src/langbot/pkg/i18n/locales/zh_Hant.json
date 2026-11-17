@@ -137,5 +137,10 @@
   "The selected model does not support native PDF input; read the PDF as text instead.": "所選模型不支援原生 PDF 輸入，請改為讀取 PDF 文字。",
   "Input attachment content budget for this run is exhausted": "本次執行的附件內容讀取額度已用盡",
   "Run file content budget is exhausted.": "本次執行的檔案內容讀取額度已用盡。",
-  "Run file access has ended.": "本次執行的檔案存取已結束。"
+  "Run file access has ended.": "本次執行的檔案存取已結束。",
+  "Artifact publication is not authorized": "未獲得資產發佈授權",
+  "Artifact read timed out": "資產讀取逾時",
+  "Artifact has a different manager": "資產已有其他管理主體",
+  "Legacy output requires explicit manager assignment": "舊版產物需要明確指定管理主體",
+  "Artifact access requires an active run lease": "資產存取需要有效的執行租約"
 }

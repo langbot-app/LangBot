@@ -332,7 +332,21 @@ class RunnerBoxService:
                 scope = f'{binding.io_scope}-{hashlib.sha256(key.encode()).hexdigest()}'
                 binding.import_scopes.add(scope)
                 object.__setattr__(transfer, '_box_binding', replace(binding, io_scope=scope))
-                transfer.message_chain = pm.MessageChain([available[key]])
+                component = available[key]
+                if key in getattr(query, '_input_artifact_ids', frozenset()):
+                    authorized = await self.box.ap.artifact_service.read_bound_run_input(
+                        run_artifact_context(query),
+                        key,
+                        max_bytes=self.box._ATTACHMENT_MAX_BYTES,
+                    )
+                    component = component.model_copy(
+                        update={
+                            'base64': base64.b64encode(authorized['content']).decode('ascii'),
+                            'url': '',
+                            'path': '',
+                        }
+                    )
+                transfer.message_chain = pm.MessageChain([component])
                 items = await self.box.materialize_inbound_attachments(transfer)
                 if not items:
                     raise BoxValidationError(f'Failed to import input attachment {key}')
@@ -467,10 +481,18 @@ class RunnerBoxService:
             items = validate_exported_files(query, file_ids, allow_submitted=True)
             if not items:
                 raise BoxValidationError('file_ids must contain at least one exported file ID')
-            result = await self.box.ap.artifact_service.commit_run_outputs(
-                run_artifact_context(query),
-                [item['artifact_id'] for item in items],
-            )
+            context = run_artifact_context(query)
+            # Keep revocation and publication in one transaction under the frozen Host policy.
+            async with self.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
+                manager = await self.box.ap.artifact_publication_service.manager_for_commit(
+                    context,
+                    getattr(query, '_output_publication', None),
+                )
+                result = await self.box.ap.artifact_service.commit_run_outputs(
+                    context,
+                    [item['artifact_id'] for item in items],
+                    manager_context=manager,
+                )
             for item, metadata in zip(items, result, strict=True):
                 item.update({**metadata, 'id': item['id'], 'artifact_id': metadata['id']})
             return {'items': [dict(item) for item in items]}

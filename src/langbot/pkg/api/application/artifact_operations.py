@@ -34,6 +34,27 @@ class ArtifactContent(ArtifactID):
     page_end: int | None = Field(default=None, ge=1)
 
 
+class ArtifactPublicationInput(Input):
+    producer_type: Literal['agent', 'pipeline', 'event_processor']
+    producer_id: str = Field(min_length=1, max_length=255)
+
+
+class ArtifactPublicationSet(ArtifactPublicationInput):
+    enabled: bool
+
+
+async def publication_get(ap, context, payload):
+    return await ap.artifact_publication_service.get(context, **payload.model_dump())
+
+
+async def publication_set(ap, context, payload):
+    return await ap.artifact_publication_service.set(context, **payload.model_dump())
+
+
+async def publication_disable(ap, context, payload):
+    return await ap.artifact_publication_service.disable(context, **payload.model_dump())
+
+
 async def create(ap, context, payload):
     return await ap.artifact_service.create(context, **payload.model_dump())
 
@@ -66,6 +87,27 @@ def operations():
     principals = frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
     view, manage = Permission.RESOURCE_VIEW, Permission.RESOURCE_MANAGE
     return [
+        Operation(
+            'artifact.publication.get', view, publication_get, ArtifactPublicationInput, dict, principals=principals
+        ),
+        Operation(
+            'artifact.publication.set',
+            manage,
+            publication_set,
+            ArtifactPublicationSet,
+            dict,
+            True,
+            principals=principals,
+        ),
+        Operation(
+            'artifact.publication.disable',
+            manage,
+            publication_disable,
+            ArtifactPublicationInput,
+            dict,
+            True,
+            principals=principals,
+        ),
         Operation('artifact.create', manage, create, ArtifactCreate, dict, True, principals=principals),
         Operation('artifact.get', view, get, ArtifactID, dict, principals=principals),
         Operation('artifact.read', view, read, ArtifactRead, dict, principals=principals),

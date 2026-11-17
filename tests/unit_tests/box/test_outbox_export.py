@@ -16,7 +16,7 @@ from langbot_plugin.box.client import BoxRuntimeClient
 from langbot_plugin.box.errors import BoxError, BoxValidationError
 from langbot_plugin.box.models import BoxExecutionResult, BoxExecutionStatus
 from tests.unit_tests.box.test_box_service import make_app, make_query, _CONTEXT
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ async def env(tmp_path, artifact_store):
     box.default_workspace = str(tmp_path / 'box' / 'default')
     workspace = Path(box._tenant_workspace(_CONTEXT))
     query = make_query()
+    await seed_run(app, _CONTEXT, query._box_binding.run_id)
     object.__setattr__(query, '_execution_context', _CONTEXT)
     outbox = workspace / 'outbox' / query.query_uuid
     outbox.mkdir(parents=True)

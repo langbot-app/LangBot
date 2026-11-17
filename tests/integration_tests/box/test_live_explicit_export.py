@@ -16,7 +16,7 @@ from langbot.pkg.box.service import BoxService
 from langbot_plugin.box.runtime import BoxRuntime
 from tests.integration_tests.box.test_outbox_export import _TestDockerBackend, _Client
 from tests.unit_tests.box.test_box_service import make_app, make_query, _CONTEXT
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 
 
 @pytest.mark.asyncio
@@ -67,6 +67,7 @@ async def test_live_model_explicit_export(tmp_path, artifact_store):
         object.__setattr__(query, '_execution_context', _CONTEXT)
         object.__setattr__(query, '_box_binding', None)
         await api.bind(_CONTEXT, query, 'live-explicit-export', acquired['id'])
+        await seed_run(app, _CONTEXT, 'live-explicit-export')
         outbox = f'/workspace/outbox/{binding_for(query).io_scope}'
         target = outbox + '/answer.txt'
         keep = outbox + '/keep.txt'

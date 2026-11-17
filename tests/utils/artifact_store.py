@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import datetime as dt
 from types import SimpleNamespace
 
 import pytest
@@ -10,9 +11,12 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.entity.persistence.base import Base
+from langbot.pkg.entity.persistence.agent_run import AgentRun
+from langbot.pkg.utils.execution_lease import OWNER_ID
 from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState
 from langbot.pkg.persistence.mgr import PersistenceManager
 from langbot.pkg.storage.artifacts import ArtifactService
+from langbot.pkg.storage.artifact_publication import ArtifactPublicationService
 from langbot.pkg.storage.mgr import StorageMgr
 from langbot.pkg.workspace.service import WorkspaceService
 
@@ -54,6 +58,7 @@ async def _artifact_store(tmp_path):
             ap.workspace_service = WorkspaceService(ap, instance_uuid=context.instance_uuid)
         ap.storage_mgr = StorageMgr(ap)
         ap.artifact_service = ArtifactService(ap)
+        ap.artifact_publication_service = ArtifactPublicationService(ap)
         return ap
 
     try:
@@ -62,3 +67,44 @@ async def _artifact_store(tmp_path):
         for ap, engine in reversed(stores):
             await ap.storage_mgr.shutdown()
             await engine.dispose()
+
+
+async def seed_run(ap, context, run_id):
+    async with ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        await uow.execute(
+            sa.insert(AgentRun).values(
+                run_id=run_id,
+                runner_id='plugin:test/runner/default',
+                workspace_id=context.workspace_uuid,
+                status='running',
+                execution_owner_id=OWNER_ID,
+                execution_lease_expires_at=dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+                + dt.timedelta(seconds=120),
+            )
+        )
+
+
+async def named_key_context(ap, context):
+    import uuid
+    from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+    from langbot.pkg.entity.persistence.apikey import ApiKey
+
+    manager_id = str(uuid.uuid4())
+    async with ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        await uow.execute(
+            sa.insert(ApiKey).values(
+                uuid=manager_id,
+                workspace_uuid=context.workspace_uuid,
+                name='test-manager',
+                key_hash=uuid.uuid4().hex,
+                scopes=['resource.view', 'resource.manage'],
+            )
+        )
+    return RequestContext(
+        instance_uuid=context.instance_uuid,
+        placement_generation=context.placement_generation,
+        request_id='artifact-test',
+        auth_type='api-key',
+        principal=PrincipalContext(PrincipalType.API_KEY, api_key_uuid=manager_id),
+        workspace=WorkspaceContext(context.workspace_uuid, None, None, frozenset({'resource.view', 'resource.manage'})),
+    )

@@ -222,7 +222,7 @@ class LangBotAPIProxy:
 
     @run_scoped
     async def commit_run_files(self, file_ids: list[str]):
-        """Persist selected run files without sending them."""
+        """Publish selected files under the producer's frozen Host policy."""
         from langbot_plugin.api.entities.builtin.runner.box import BoxFile
 
         result = await self.plugin_runtime_handler.call_action(

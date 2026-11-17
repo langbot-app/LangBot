@@ -13,7 +13,7 @@ import shlex
 from pathlib import Path
 from types import SimpleNamespace
 
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 import uuid
 
 from aiohttp.test_utils import TestServer
@@ -261,6 +261,7 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
                 if backend_name == 'nsjail':
                     Path(session.info.host_path).chmod(0o777)
                 await box.runner.bind(context, query, 'run-' + uuid.uuid4().hex, acquired_session)
+                await seed_run(ap, context, query._box_binding.run_id)
                 assert query._box_binding.session_id == acquired_session
                 assert len(runtime._sessions) == 1
                 await _command(box, 'mkdir -p -- ' + shlex.quote(output_root))

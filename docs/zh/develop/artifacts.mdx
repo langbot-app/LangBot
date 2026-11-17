@@ -23,7 +23,7 @@ Artifact 为文件提供不透明引用和元信息。账户或 API 密钥只能
 
 不存在、已删除和无权访问的 ID 均返回 404。已过期的自有文件返回 `artifact_expired`（410），删除仍在使用的文件返回 `artifact_in_use`（409），读取超限返回 `artifact_too_large`（413），完整性校验失败返回 `artifact_integrity_failed`（422）。
 
-删除立即阻止后续访问，底层字节由维护任务回收；已授权的在途下载可能完成，也可能因并发回收而失败。
+删除立即阻止后续访问，底层字节由维护任务回收。有界下载持有临时读取租约，清理会跳过该文件，直至读取结束或租约到期。执行租约有效的活跃 run 也会保护它正在使用的输出。
 
 ## MCP
 
@@ -54,8 +54,25 @@ Agent 调试 API 的请求可带 `artifact_ids`，最多 20 个不同的自有�
 
 `ctx.export_box_files(paths)` 把选定的沙箱文件登记为临时 Artifact。返回的 `BoxFile.id` 仍是原有 UUID 文件句柄，归导出它的 run 所有；元信息新增 `artifact_id`、`mime_type`、`digest`、`lifecycle` 和 `expires_at`。`artifact_id` 不会授予账户 Artifact API 的读取权限。
 
-`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用上述模式有界读取结构化内容。持久保留需要 Runner 代码显式调用 `ctx.commit_run_files(file_ids)`，它为原 run 添加持久 pin，并返回更新后的文件元信息。导出、读取和投递都不会自动提交，默认模型工具也不提供 commit。提交只保留字节，不让账户、新 run 或已结束的 run 获得读取权限。
+`ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` 使用上述模式有界读取结构化内容。要发布选定的输出，认证账户或具名 API 密钥需要先为 Agent 或流水线启用发布策略：
 
-运行完成、失败或取消时，Host 在有时间限制的清理中尝试使未提交输出过期，再由维护任务回收。Core 崩溃、清理失败或超时时，仍以原有 24 小时期限兜底。整批登记失败时保留沙箱源文件；登记成功后清理源文件失败，则返回的 ID 仍已被接受，并附带 warning，不应重复投递。
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+流水线使用 `pipeline`，事件处理器使用 `event_processor`。服务器将真实认证主体设为接收人，请求不能指定其他人；需要同时具有 `resource.view` 和 `resource.manage`。策略属于该主体，同工作区其他成员不能接管。新建或复制的执行器默认没有策略。全局和旧版兼容 API key 不能接收发布产物，需要使用具名工作区 API key。
+
+Host 在运行开始时冻结策略。`ctx.commit_run_files(file_ids)` 重新检查策略和接收人的当前权限，通过后添加接收人的持久保留标记，并返回更新后的元信息。策略缺失、被修改、停用或权限被撤销时会拒绝提交。导出、读取和投递都不会自动提交，默认模型工具也不提供 commit。重复提交不会撤销接收人随后执行的 release。
+
+提交后，接收人可用 `artifact_id` 调用已有 Artifact 元信息、下载、retain、release 和 delete 接口，运行结束或 Core 重启后仍可管理。其他账户、密钥和 run 不因此获得权限；原 `file_id` 仍只在原 run 存活时有效。release 恢复 24 小时临时保留期。仍有持久保留标记或有效使用租约时，delete 返回 `artifact_in_use`（409），解除后重试。
+
+管理接口按 ID 操作，没有 Artifact 列表接口。Runner 实现需要在业务结果中把 commit 返回的 `artifact_id` 交给接收人，供后续管理使用。
+
+同一 URL 的 `GET` 查看策略，`DELETE` 停用策略；MCP 对应 `get_artifact_publication`、`set_artifact_publication` 和 `disable_artifact_publication`。停用会阻止后续发布，已发布文件继续由原接收人管理。
+
+运行完成、失败或取消时，Host 在有时间限制的清理中尝试使未发布输出过期，再由维护任务回收。Core 崩溃、清理失败或超时时，仍以原有 24 小时期限兜底。
 
 `ctx.reply_files` 和流水线附件回复通过原有平台投递路径读取 Artifact 字节。本阶段没有新增通用 run 文件 HTTP 下载入口。完整流程见 [Runner API](/zh/plugin/dev/apis/agent-run#box-与附件)。

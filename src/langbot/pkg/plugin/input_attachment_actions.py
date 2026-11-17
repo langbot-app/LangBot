@@ -66,8 +66,7 @@ def register(h):
                     run_context, trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=run_id)
                 )
             if ref in uploaded_ids:
-                original_context = query._input_artifact_context
-                result = await h.ap.artifact_service.read(original_context, ref, max_bytes=limit)
+                result = await h.ap.artifact_service.read_bound_run_input(run_context, ref, max_bytes=limit)
                 payload, metadata = result['content'], result['metadata']
             elif ref in cached:
                 result = await h.ap.artifact_service.read_run_input(run_context, cached[ref], max_bytes=limit)

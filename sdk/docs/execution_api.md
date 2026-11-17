@@ -125,7 +125,7 @@ async for chunk in api.execution.stream(
 | `execution.read_input_attachment_content` | `run` | 否 | 否 | 按当前 Run 的冻结权限读取输入附件，返回有界文本或结构化媒体 |
 | `execution.export_box_files` | `run` | 是 | 否 | 导出 Box 沙箱生成的文件 |
 | `execution.read_run_file` | `run` | 否 | 否 | 按当前 Run 的文件句柄有界读取已导出 Artifact 的结构化内容 |
-| `execution.commit_run_files` | `run` | 是 | 否 | 为原 Run 的已导出文件显式添加持久保留 pin，不扩大读取权限 |
+| `execution.commit_run_files` | `run` | 是 | 否 | 按 Host 冻结并重新核验的执行器策略，将已导出文件发布给具名接收人 |
 | `execution.run_get` | `runner_admin` | 否 | 否 | 管理员查询指定 Agent Run 状态 |
 | `execution.run_list` | `runner_admin` | 否 | 否 | 管理员分页查询历史 Agent Run 列表 |
 | `execution.run_events_page` | `runner_admin` | 否 | 否 | 分页读取指定运行的事件 |

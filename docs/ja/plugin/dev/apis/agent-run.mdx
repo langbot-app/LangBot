@@ -222,12 +222,12 @@ Box の有効化、取得、再利用方針は Runner が決めます。リソ�
 | `await ctx.import_box_attachments(attachment_ids=None)` | `list[BoxFile]` | 入力の `ref` を指定してインポート。省略時は全件。サンドボックスの `path` を返す |
 | `await ctx.export_box_files(paths)` | `list[BoxFile]` | 指定したサンドボックスの絶対パスを一時 Artifact として登録。メッセージは送信しない |
 | `await ctx.read_run_file(file_id, **options)` | `list[dict]` | 出力ファイルを制限付きテキストまたは構造化画像・PDF として読み取る |
-| `await ctx.commit_run_files(file_ids)` | `list[BoxFile]` | 元の run に属する永続 pin を明示的に追加して出力ファイルを保持する |
+| `await ctx.commit_run_files(file_ids)` | `list[BoxFile]` | 実行対象のポリシーで許可された受取人へ出力を公開する |
 | `await ctx.reply_files(file_ids)` | `Any` | エクスポートした ID で返信。返信ツールの権限制限が適用される |
 
 `BoxFile` は `id`、`name`、`type`、`size`、任意の `path` を含みます。出力ファイルには `artifact_id`、`mime_type`、`digest`、`lifecycle`、`expires_at` も含まれます。`id` は従来どおり run 内の UUID ハンドルで、読み取り、commit、返信にはこの値を使います。`artifact_id` はアカウントの Artifact API の権限を与えません。入力添付ファイルのメタデータは変わらず、明示的にインポートして初めてサンドボックスのパスが生成されます。出力ハンドルは今回の run に属し、重複送信できません。
 
-`read_run_file` は [Artifact の読み取り](/ja/develop/artifacts) と同じモード、文字範囲、ページ範囲を使用します。送信済みでも run が実行中なら読み取れます。commit 後のメタデータは `lifecycle="persistent"`、`expires_at=None` になります。エクスポート、読み取り、返信では自動 commit されません。アカウント、別の run、終了した run は、これらの ID だけでは保持したファイルを読み取れません。終了時は時間制限付きのクリーンアップを試みます。Core のクラッシュ、クリーンアップの失敗やタイムアウト時も、元の 24 時間の有効期限で保守処理の回収対象になります。
+`read_run_file` は [Artifact の読み取り](/ja/develop/artifacts) と同じモード、文字範囲、ページ範囲を使用し、実行中は送信後も読み取れます。commit には明示的な公開ポリシーが必要で、開始時に固定し、提出時に再確認します。受取人は終了後もアカウント Artifact API で管理できますが、ほかのアカウント、キー、run に権限は付与されません。初回公開では `lifecycle="persistent"`、`expires_at=None` となり、再試行は後からの release を維持します。エクスポート、読み取り、返信は自動 commit しません。未公開出力には時間制限付きクリーンアップを行い、失敗時は元の 24 時間の期限が適用されます。設定は [公開と解放](/ja/develop/artifacts#runner-の出力ファイル) を参照してください。
 
 元ファイルの削除は一括登録が完了してから行います。登録失敗時はサンドボックスの元ファイルを保持します。登録後の削除失敗では、返された ID は受理済みのままで warning が付きます。その ID を保持し、重複送信しないでください。プラットフォームへのファイル返信は登録済み Artifact のバイト列を読み取ります。汎用の run ファイル用 HTTP API はありません。
 

@@ -24,6 +24,7 @@ from langbot.pkg.entity.persistence.artifact import Artifact, ArtifactReference
 from langbot.pkg.entity.persistence.content import ContentAlias, ContentObject
 from langbot.pkg.entity.persistence.workspace import Workspace, WorkspaceExecutionState
 from langbot.pkg.storage.artifacts import ArtifactService
+from langbot.pkg.storage.artifact_publication import ArtifactPublicationService
 from tests.integration.skill.test_persistent_skill_replicas import (
     _auth,
     _close_replica,
@@ -52,6 +53,7 @@ async def artifact_replicas(replicas):
             async with replica.engine.connect() as connection:
                 await connection.execute(sa.text('PRAGMA foreign_keys=ON'))
         replica.app.artifact_service = ArtifactService(replica.app)
+        replica.app.artifact_publication_service = ArtifactPublicationService(replica.app)
         replica.app.apikey_service = ApiKeyService(replica.app)
         await ArtifactsRouterGroup(replica.app, replica.client.app).initialize()
         if replicas.minio:

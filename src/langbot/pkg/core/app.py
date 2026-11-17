@@ -174,6 +174,7 @@ class Application:
 
     storage_mgr: storagemgr.StorageMgr = None
     artifact_service = None
+    artifact_publication_service = None
 
     # ========= HTTP Services =========
 

@@ -39,6 +39,37 @@ class ArtifactsRouterGroup(group.RouterGroup):
             )
 
         @self.route(
+            '/producers/<producer_type>/<producer_id>/publication',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def get_publication(producer_type: str, producer_id: str, request_context: RequestContext):
+            return await invoke(
+                'artifact.publication.get',
+                request_context,
+                {
+                    'producer_type': producer_type,
+                    'producer_id': producer_id,
+                },
+            )
+
+        @self.route(
+            '/producers/<producer_type>/<producer_id>/publication',
+            methods=['PUT', 'DELETE'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
+        )
+        async def update_publication(producer_type: str, producer_id: str, request_context: RequestContext):
+            payload = {'producer_type': producer_type, 'producer_id': producer_id}
+            if quart.request.method == 'DELETE':
+                return await invoke('artifact.publication.disable', request_context, payload)
+            data = await quart.request.json
+            if not isinstance(data, dict):
+                return self.http_status(400, 'invalid_input', 'Expected an object')
+            return await invoke('artifact.publication.set', request_context, {**data, **payload})
+
+        @self.route(
             '', methods=['POST'], auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_MANAGE
         )
         async def upload(request_context: RequestContext):

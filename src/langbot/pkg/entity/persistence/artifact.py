@@ -12,6 +12,8 @@ class Artifact(Base):
     workspace_uuid = sa.Column(sa.String(36), sa.ForeignKey('workspaces.uuid', ondelete='CASCADE'), nullable=False)
     owner_type = sa.Column(sa.String(16), nullable=False)
     owner_id = sa.Column(sa.String(36), nullable=False)
+    manager_type = sa.Column(sa.String(16), nullable=True)
+    manager_id = sa.Column(sa.String(36), nullable=True)
     name = sa.Column(sa.String(255), nullable=False)
     mime_type = sa.Column(sa.String(255), nullable=False)
     size = sa.Column(sa.BigInteger, nullable=False)
@@ -40,7 +42,9 @@ class ArtifactReference(Base):
     artifact_id = sa.Column(sa.String(40), primary_key=True)
     holder_type = sa.Column(sa.String(64), primary_key=True)
     holder_id = sa.Column(sa.String(255), primary_key=True)
+    expires_at = sa.Column(sa.DateTime, nullable=True)
     __table_args__ = (
+        sa.CheckConstraint("expires_at IS NULL OR holder_type = 'read_lease'", name='ck_artifact_reference_lease_kind'),
         sa.ForeignKeyConstraint(
             ['workspace_uuid', 'artifact_id'],
             ['artifacts.workspace_uuid', 'artifacts.id'],

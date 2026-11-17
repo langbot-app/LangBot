@@ -87,7 +87,7 @@ class RunnerBoxAPIMixin:
         return self._expect_key(result, "contents", Action.READ_RUN_FILE)
 
     async def commit_run_files(self, file_ids: list[str]) -> list[BoxFile]:
-        """Persist selected run files without sending them to the conversation."""
+        """Publish selected files under the producer's frozen Host policy."""
         result = await self._box_call(Action.COMMIT_RUN_FILES, file_ids=file_ids)
         return [
             BoxFile.model_validate(item)

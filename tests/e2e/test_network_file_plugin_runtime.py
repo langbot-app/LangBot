@@ -468,6 +468,13 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
             },
         )
     )['uuid']
+    _data(
+        client.put(
+            f'/api/v1/artifacts/producers/agent/{agent_id}/publication',
+            headers=headers,
+            json={'enabled': True},
+        )
+    )
     bot_id = _data(
         client.post(
             '/api/v1/platform/bots',
@@ -504,7 +511,12 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
         assert report['sha256'] == hashlib.sha256(content).hexdigest()
         assert report['read_text'] == 'Run output 甲乙😀丁'
         assert report['artifact_id'].startswith('art_') and report['text_artifact_id'].startswith('art_')
-        assert client.get('/api/v1/artifacts/' + report['artifact_id'], headers=headers).status_code == 404
+        metadata = client.get('/api/v1/artifacts/' + report['artifact_id'], headers=headers)
+        assert metadata.status_code == (200 if commit else 404), metadata.text
+        if commit:
+            downloaded = client.get('/api/v1/artifacts/' + report['artifact_id'] + '/content', headers=headers)
+            assert downloaded.status_code == 200, downloaded.text
+            assert downloaded.content == content
         assert len(files) == 1, files
         assert base64.b64decode(files[0]['base64'].split(';base64,')[-1], validate=True) == content
         snapshot = _completed_snapshot(db_path, report['run_id'])
@@ -542,14 +554,24 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
     assert persisted.get('closed_run_read_denied'), persisted
     with sqlite3.connect(f'file:{db_path}?mode=ro', uri=True) as db:
         row = db.execute(
-            'SELECT owner_type, owner_id, expires_at, deleted_at FROM artifacts WHERE id=?',
+            'SELECT owner_type, owner_id, expires_at, deleted_at, manager_type, manager_id FROM artifacts WHERE id=?',
             (first['artifact_id'],),
         ).fetchone()
-        assert row == ('run_output', first['run_id'], None, None), row
+        assert row[:4] == ('run_output', first['run_id'], None, None), row
+        assert row[4] == 'account' and row[5], row
         assert db.execute(
             'SELECT holder_type, holder_id FROM artifact_references WHERE artifact_id=?',
             (first['artifact_id'],),
-        ).fetchone() == ('run_output_commit', first['run_id'])
+        ).fetchone() == ('principal', f'{row[4]}:{row[5]}')
+    artifact_url = '/api/v1/artifacts/' + first['artifact_id']
+    downloaded = client.get(artifact_url + '/content', headers=headers)
+    assert downloaded.status_code == 200 and downloaded.content == content
+    assert client.delete(artifact_url, headers=headers).status_code == 409
+    released = _data(client.post(artifact_url + '/release', headers=headers))
+    assert released['lifecycle'] == 'temporary' and released['expires_at']
+    assert _data(client.post(artifact_url + '/release', headers=headers))['expires_at'] == released['expires_at']
+    _data(client.delete(artifact_url, headers=headers))
+    assert client.get(artifact_url, headers=headers).status_code == 404
     roundtrip()
     assert source_requests == ['/input.bin', '/input.bin'], source_requests
 

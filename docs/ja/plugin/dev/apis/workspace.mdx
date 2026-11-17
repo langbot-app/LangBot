@@ -10,7 +10,7 @@ description: プラグインから Agent、パイプライン、ボット、モ�
 
 Artifact 操作は現在、認証済みアカウントと API キー専用です。プラグイン権限、ワイルドカード、型付き Workspace メソッドには含まれません。[Artifact ファイル API](/ja/develop/artifacts) を参照してください。
 
-有界テキストと構造化画像/PDF を読む `artifact.read_content` も同じ境界に従います。Runner は既存の添付権限に制限された、run に結び付く `read_input_attachment_content` 実行 API を使用します。
+`artifact.read_content` と `artifact.publication.get/set/disable` もこの制限に従います。公開ポリシーの受取人は認証済みアカウントまたはキーであり、プラグイン自身への権限付与には使えません。Runner は固定済み権限の下で run に紐づく添付・出力の実行 API を使用します。
 
 ## 操作を呼び出す
 

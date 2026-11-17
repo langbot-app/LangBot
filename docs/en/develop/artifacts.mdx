@@ -23,7 +23,7 @@ A newly uploaded file expires after 24 hours by default; `ttl_seconds` accepts 1
 
 Missing, deleted and unauthorized IDs return 404. An expired owned file returns `artifact_expired` (410), pinned deletion returns `artifact_in_use` (409), excessive reads return `artifact_too_large` (413), and failed integrity checks return `artifact_integrity_failed` (422).
 
-Deletion blocks subsequent access; maintenance reclaims the underlying bytes. An already-authorized download may complete or fail if those bytes are concurrently reclaimed.
+Deletion blocks subsequent access; maintenance reclaims the underlying bytes. Bounded downloads hold a temporary read lease, so cleanup skips the file until the read finishes or its lease expires. An active run also protects the outputs it is using while its execution lease remains valid.
 
 ## MCP
 
@@ -54,8 +54,25 @@ Agent debug API requests may include `artifact_ids`, up to 20 distinct IDs from 
 
 `ctx.export_box_files(paths)` registers the selected sandbox files as temporary Artifacts. The returned `BoxFile.id` remains a UUID file handle for the exporting run. Export metadata also includes `artifact_id`, `mime_type`, `digest`, `lifecycle` and `expires_at`; `artifact_id` does not grant access through the account Artifact API.
 
-Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. Retention is explicit: `ctx.commit_run_files(file_ids)` adds a persistent pin owned by the original run and returns updated file metadata. Exporting, reading and replying do not commit files, and the model's default tools do not include commit. Committing retains bytes; it does not authorize an account, a new run or a finished run to read them.
+Use `ctx.read_run_file(file_id, mode="auto", offset=0, max_chars=8192, page_start=1, page_end=None)` to read bounded structured content with the modes above. To publish selected outputs, an authenticated account or named API key must first enable a publication policy for the Agent or Pipeline:
 
-At run completion, failure or cancellation, the Host attempts bounded cleanup to expire uncommitted outputs for maintenance collection. A Core crash, cleanup failure or timeout can defer expiry to their original 24-hour lifetime. A batch registration failure leaves the sandbox source files intact. If source cleanup fails after registration, the returned IDs remain accepted and carry a warning; do not repeat delivery.
+```http
+PUT /api/v1/artifacts/producers/agent/{agent_id}/publication
+Content-Type: application/json
+
+{"enabled": true}
+```
+
+Use `pipeline` for a Pipeline or `event_processor` for an event processor. The server selects the authenticated principal as the recipient; request fields cannot name another recipient. This requires both `resource.view` and `resource.manage`. The policy belongs to that principal; other Workspace members cannot take it over. New and copied producers have no policy. Global and legacy compatibility API keys cannot receive published outputs; use a named Workspace API key.
+
+The Host freezes the policy when a run starts. `ctx.commit_run_files(file_ids)` rechecks the policy and the recipient's current authorization, then adds a persistent recipient pin and returns updated metadata. Missing, changed, disabled or revoked authorization rejects commit. Exporting, reading and replying do not commit files, and the model's default tools do not include commit. Repeating a successful commit does not undo a recipient's later release.
+
+After commit, the recipient can use the existing Artifact metadata, content, retain, release and delete endpoints with `artifact_id`, including after the run or Core restarts. Other accounts, keys and runs gain no access. The original `file_id` remains local to its live run. Release restores the 24-hour grace period. Delete returns `artifact_in_use` (409) while a persistent pin or active-use lease remains; retry after it ends.
+
+Management requires the ID: Runner implementations must return the `artifact_id` from commit to the recipient in their application result. There is no Artifact listing endpoint.
+
+Read the policy with `GET` on the same URL; disable it with `DELETE`. These actions are also available through MCP as `get_artifact_publication`, `set_artifact_publication` and `disable_artifact_publication`. Disabling stops future publication without removing previously published files.
+
+At run completion, failure or cancellation, the Host attempts bounded cleanup to expire unpublished outputs for maintenance collection. A Core crash, cleanup failure or timeout can defer expiry to their original 24-hour lifetime.
 
 `ctx.reply_files` and Pipeline file replies read the registered Artifact bytes through the existing platform delivery path. There is no separate run-file HTTP download endpoint. See the [Runner API](/en/plugin/dev/apis/agent-run#box-and-attachments) for the complete flow.

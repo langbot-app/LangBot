@@ -137,5 +137,10 @@
   "The selected model does not support native PDF input; read the PDF as text instead.": "El modelo seleccionado no admite PDF nativo; lea el PDF como texto.",
   "Input attachment content budget for this run is exhausted": "Se agotó el límite de lectura de contenido adjunto de esta ejecución",
   "Run file content budget is exhausted.": "Se agotó el límite de lectura del contenido de archivos de esta ejecución.",
-  "Run file access has ended.": "El acceso a los archivos de esta ejecución ha finalizado."
+  "Run file access has ended.": "El acceso a los archivos de esta ejecución ha finalizado.",
+  "Artifact publication is not authorized": "La publicación del artefacto no está autorizada",
+  "Artifact read timed out": "Se agotó el tiempo de lectura del artefacto",
+  "Artifact has a different manager": "El artefacto tiene otro responsable",
+  "Legacy output requires explicit manager assignment": "La salida heredada requiere asignar un responsable explícitamente",
+  "Artifact access requires an active run lease": "El acceso al artefacto requiere una concesión de ejecución activa"
 }

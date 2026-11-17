@@ -7,7 +7,7 @@ import pytest
 from langbot_plugin.api.entities.builtin.platform.message import File, MessageChain
 from langbot_plugin.box.errors import BoxValidationError
 from langbot.pkg.box.runner import RunnerBoxService, RunBoxBinding, exported_message
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 from tests.unit_tests.box.test_box_service import _CONTEXT
 
 
@@ -115,6 +115,7 @@ async def test_selective_import_is_idempotent_and_separates_duplicate_names():
 async def test_export_does_not_send_and_references_cannot_cross_runs_or_repeat(artifact_store):
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     api.box.collect_selected_files = AsyncMock(
         return_value=[
@@ -237,6 +238,7 @@ def test_contents_only_files_keep_distinct_sources_behind_markers():
 async def test_image_export_accepts_data_url_and_enforces_total_bytes(artifact_store):
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     api.box.collect_selected_files = AsyncMock(
         return_value=[{'name': 'a.png', 'type': 'Image', 'base64': 'data:image/png;base64,YQ=='}]
@@ -255,6 +257,7 @@ async def test_image_export_accepts_data_url_and_enforces_total_bytes(artifact_s
 async def test_cleanup_retry_preserves_ids_and_never_redelivers_consumed_files(artifact_store):
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     # A best-effort cleanup can leave the same files in the outbox.
     api.box.collect_selected_files = AsyncMock(
@@ -283,6 +286,7 @@ async def test_run_quota_failure_is_atomic_and_reports_remaining_budget(artifact
 
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     api.box._ATTACHMENT_MAX_TOTAL_BYTES = 2
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     api.box.collect_selected_files = AsyncMock(
@@ -337,6 +341,7 @@ async def test_output_asset_batch_failure_preserves_all_sources_and_registry(art
 
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     api.box.collect_selected_files = AsyncMock(
         return_value=[
@@ -381,7 +386,45 @@ async def test_submitted_file_can_be_read_and_committed_without_redelivery(artif
 
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
+    import uuid
+    import sqlalchemy as sa
+    from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
+    from langbot.pkg.entity.persistence.agent import Agent
+    from langbot.pkg.entity.persistence.apikey import ApiKey
+
+    manager_id, producer_id = str(uuid.uuid4()), str(uuid.uuid4())
+    async with api.box.ap.persistence_mgr.tenant_uow(_CONTEXT.workspace_uuid) as uow:
+        await uow.execute(
+            sa.insert(ApiKey).values(
+                uuid=manager_id,
+                workspace_uuid=_CONTEXT.workspace_uuid,
+                name='test-manager',
+                key_hash=uuid.uuid4().hex,
+                scopes=['resource.view', 'resource.manage'],
+            )
+        )
+        await uow.execute(
+            sa.insert(Agent).values(
+                uuid=producer_id,
+                workspace_uuid=_CONTEXT.workspace_uuid,
+                name='published-producer',
+                kind='agent',
+            )
+        )
+    manager = RequestContext(
+        instance_uuid=_CONTEXT.instance_uuid,
+        placement_generation=1,
+        request_id='publish-test',
+        auth_type='api-key',
+        principal=PrincipalContext(PrincipalType.API_KEY, api_key_uuid=manager_id),
+        workspace=WorkspaceContext(
+            _CONTEXT.workspace_uuid, None, None, frozenset({'resource.view', 'resource.manage'})
+        ),
+    )
+    q._output_publication = await api.box.ap.artifact_publication_service.set(manager, 'agent', producer_id, True)
+
     api.box.collect_selected_files = AsyncMock(
         return_value=[
             {'name': 'answer.txt', 'type': 'File', 'base64': base64.b64encode(b'answer').decode()},
@@ -409,6 +452,7 @@ async def test_submitted_file_can_be_read_and_committed_without_redelivery(artif
 async def test_repeated_run_file_reads_share_a_cumulative_content_budget(artifact_store):
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     api.box._ATTACHMENT_MAX_TOTAL_BYTES = 1024
     q = SimpleNamespace(_box_binding=RunBoxBinding('run', 'box', {}, 'run'), _execution_context=_CONTEXT)
     api.box.collect_selected_files = AsyncMock(
@@ -435,10 +479,11 @@ async def test_export_commit_return_after_finalization_expires_without_accepting
     import sqlalchemy as sa
     from langbot.pkg.box.runner import run_artifact_context
     from langbot.pkg.entity.persistence.artifact import Artifact
-    from langbot.pkg.storage.artifacts import ArtifactError
+    import datetime as dt
 
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     binding = RunBoxBinding('run', 'box', {}, 'run')
     query = SimpleNamespace(_box_binding=binding, _execution_context=_CONTEXT)
     context = run_artifact_context(query)
@@ -454,9 +499,12 @@ async def test_export_commit_return_after_finalization_expires_without_accepting
         async with actual_uow(workspace_uuid) as uow:
             yield uow
         if outer and not closed:
-            closed = binding.closing = True
-            object.__setattr__(query, '_run_files_closing', True)
-            object.__delattr__(query, '_box_binding')
+            async with actual_uow(workspace_uuid) as probe:
+                has_output = (await probe.execute(sa.select(Artifact.id))).first() is not None
+            if has_output:
+                closed = binding.closing = True
+                object.__setattr__(query, '_run_files_closing', True)
+                object.__delattr__(query, '_box_binding')
 
     monkeypatch.setattr(manager, 'tenant_uow', close_after_commit)
     with pytest.raises(BoxValidationError, match='access has ended'):
@@ -464,19 +512,20 @@ async def test_export_commit_return_after_finalization_expires_without_accepting
     assert not binding.exported and not binding.exported_fingerprints
     api.box.clear_selected_files.assert_not_awaited()
     async with actual_uow(context.workspace_uuid) as uow:
-        artifact_id = (await uow.execute(sa.select(Artifact.id))).scalar_one()
-    with pytest.raises(ArtifactError) as failure:
-        await api.box.ap.artifact_service.read_run_output(context, artifact_id)
-    assert failure.value.error_code == 'artifact_expired'
+        expires_at = (await uow.execute(sa.select(Artifact.expires_at))).scalar_one()
+    assert expires_at <= dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
 
 
 @pytest.mark.asyncio
 async def test_export_finishing_source_cleanup_after_run_close_expires_accepted_files(artifact_store):
     from langbot.pkg.box.runner import run_artifact_context
-    from langbot.pkg.storage.artifacts import ArtifactError
+    import datetime as dt
+    import sqlalchemy as sa
+    from langbot.pkg.entity.persistence.artifact import Artifact
 
     api = service()
     await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
     binding = RunBoxBinding('run', 'box', {}, 'run')
     query = SimpleNamespace(_box_binding=binding, _execution_context=_CONTEXT)
     context = run_artifact_context(query)
@@ -495,6 +544,54 @@ async def test_export_finishing_source_cleanup_after_run_close_expires_accepted_
     api.box.clear_selected_files.assert_awaited_once()
     assert len(binding.exported) == 1
     artifact_id = next(iter(binding.exported.values()))['artifact_id']
-    with pytest.raises(ArtifactError) as failure:
-        await api.box.ap.artifact_service.read_run_output(context, artifact_id)
-    assert failure.value.error_code == 'artifact_expired'
+    async with api.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        expires_at = (await uow.execute(sa.select(Artifact.expires_at).where(Artifact.id == artifact_id))).scalar_one()
+    assert expires_at <= dt.datetime.now(dt.timezone.utc).replace(tzinfo=None)
+
+
+@pytest.mark.asyncio
+async def test_bound_upload_import_uses_authorized_bytes_and_preserves_initial_descriptor(artifact_store):
+    from langbot.pkg.box.runner import run_artifact_context
+    from tests.utils.artifact_store import named_key_context
+
+    api = service()
+    await artifact_store(api.box.ap, _CONTEXT)
+    await seed_run(api.box.ap, _CONTEXT, 'run')
+    manager = await named_key_context(api.box.ap, _CONTEXT)
+    asset = await api.box.ap.artifact_service.create(manager, 'uploaded.txt', b'bound upload', 'text/plain')
+    original = File(name='uploaded.txt')
+    query = SimpleNamespace(
+        _box_binding=RunBoxBinding('run', 'box', {}, 'run'),
+        _execution_context=_CONTEXT,
+        _input_artifact_ids=frozenset({asset['id']}),
+        _input_components={asset['id']: original},
+    )
+    api.box._ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
+    await api.box.ap.artifact_service.bind_run_inputs(manager, run_artifact_context(query), [asset['id']])
+
+    async def materialize(transfer):
+        component = transfer.message_chain[0]
+        assert component is not original and base64.b64decode(component.base64) == b'bound upload'
+        assert not component.url and not component.path
+        return [{'name': component.name, 'type': 'File', 'size': 12, 'path': '/workspace/inbox/bound/uploaded.txt'}]
+
+    api.box.materialize_inbound_attachments = AsyncMock(side_effect=materialize)
+    first = await api.import_attachments(query, [asset['id']])
+    assert await api.import_attachments(query, [asset['id']]) == first
+    api.box.materialize_inbound_attachments.assert_awaited_once()
+    assert not original.base64 and not original.url and not original.path
+    await seed_run(api.box.ap, _CONTEXT, 'foreign-run')
+    foreign = SimpleNamespace(
+        _box_binding=RunBoxBinding('foreign-run', 'box', {}, 'foreign-run'),
+        _execution_context=_CONTEXT,
+        _input_artifact_ids=query._input_artifact_ids,
+        _input_components=query._input_components,
+    )
+    with pytest.raises(FileNotFoundError):
+        await api.import_attachments(foreign, [asset['id']])
+    other_asset = await api.box.ap.artifact_service.create(manager, 'unbound.txt', b'unbound', 'text/plain')
+    query._input_artifact_ids = frozenset({asset['id'], other_asset['id']})
+    query._input_components[other_asset['id']] = File(name='unbound.txt')
+    with pytest.raises(FileNotFoundError):
+        await api.import_attachments(query, [other_asset['id']])
+    api.box.materialize_inbound_attachments.assert_awaited_once()

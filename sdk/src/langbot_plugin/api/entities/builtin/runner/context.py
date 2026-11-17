@@ -209,7 +209,7 @@ class RunnerContext(pydantic.BaseModel):
         return await self.api.read_run_file(file_id, **options)
 
     async def commit_run_files(self, file_ids: list[str]) -> list["BoxFile"]:
-        """Persist selected run files without sending a message."""
+        """Publish selected files to the Host-authorized recipient without sending a message."""
         return await self.api.commit_run_files(file_ids)
 
     async def reply_files(self, file_ids: list[str]) -> typing.Any:

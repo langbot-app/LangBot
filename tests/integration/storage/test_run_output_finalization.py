@@ -20,6 +20,7 @@ from tests.integration.storage.test_artifacts import (
     persistence_case,  # noqa: F401 -- fixture dependency
     replicas,  # noqa: F401 -- fixture dependency
 )
+from tests.utils.artifact_store import seed_run
 from tests.unit_tests.agent.test_orchestrator_integration import (
     FakeApplication,
     FakePluginConnector,
@@ -85,6 +86,7 @@ async def test_finalization_drains_export_and_rejects_queued_file_actions(
         async def run_runner(self, **kwargs):
             self.contexts.append(kwargs['context'])
             run_id = kwargs['context']['run_id']
+            await seed_run(case.a.app, context, run_id)
             object.__setattr__(query, '_box_binding', RunBoxBinding(run_id, 'finalizing-box', {}, run_id))
             jobs.append(asyncio.create_task(api.export_files(query, ['/workspace/inflight.txt'])))
             await staged.wait()

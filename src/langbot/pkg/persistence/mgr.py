@@ -67,6 +67,7 @@ _ALEMBIC_TENANT_TABLES = {
     'content_aliases',
     'artifacts',
     'artifact_references',
+    'artifact_publications',
     'skill_registry',
     'skill_versions',
     'mcp_servers',

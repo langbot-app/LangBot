@@ -17,7 +17,7 @@ from langbot_plugin.api.proxies.runner.box import RunnerBoxAPIMixin
 from langbot_plugin.entities.io.actions.enums import PluginToRuntimeAction
 
 from langbot.pkg.api.http.context import ExecutionContext
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 from langbot.pkg.agent.runner.execution_context import build_execution_query
 from langbot.pkg.agent.runner.platform_tools import (
     build_platform_tool_resources,
@@ -263,6 +263,7 @@ async def test_sync_waits_for_authorized_exported_file_after_final_text(text_api
             platform_mgr=SimpleNamespace(get_bot_by_uuid=AsyncMock(return_value=SimpleNamespace(adapter=live_adapter)))
         )
         await artifact_store(app, context)
+        await seed_run(app, context, 'generated-run')
         query = SimpleNamespace(
             _box_binding=RunBoxBinding('generated-run', 'box', {}, 'generated-run'),
             _execution_context=context,

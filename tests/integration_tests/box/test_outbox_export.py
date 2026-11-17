@@ -16,7 +16,7 @@ from langbot_plugin.api.entities.builtin.platform.message import File, MessageCh
 from langbot_plugin.box.backend import DockerBackend
 from langbot_plugin.box.runtime import BoxRuntime
 from tests.unit_tests.box.test_box_service import _InProcessBoxRuntimeClient, make_app, make_query, _CONTEXT
-from tests.utils.artifact_store import _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
 
 
 class _TestDockerBackend(DockerBackend):
@@ -64,6 +64,7 @@ async def test_root_owned_output_exports_from_reused_box_without_cross_run_leaks
             object.__setattr__(query, '_execution_context', _CONTEXT)
             object.__setattr__(query, '_box_binding', None)
             await api.bind(_CONTEXT, query, f'export-run-{index}', acquired['id'])
+            await seed_run(app, _CONTEXT, f'export-run-{index}')
             payload = f'exact input for run {index}'.encode()
             query.message_chain = MessageChain([File(name='input.txt', base64=base64.b64encode(payload).decode())])
             imported = await api.import_attachments(query, None)

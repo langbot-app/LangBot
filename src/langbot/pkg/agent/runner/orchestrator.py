@@ -23,6 +23,7 @@ from ...core import app
 from ...i18n import t
 from ...i18n.workspace import get_workspace_language
 from ...api.http.context import ExecutionContext
+from ...api.context import PrincipalContext, PrincipalType
 from ...pipeline.pool import get_query_execution_context
 from .binding_resolver import AgentBindingResolver
 from .context_builder import RunnerContextBuilder, RunnerContextPayload
@@ -217,6 +218,17 @@ class AgentRunOrchestrator:
             project_mcp_resource_config(execution_query, binding.runner_config)
         object.__setattr__(execution_query, '_execution_context', execution_context)
         object.__setattr__(execution_query, '_run_files_closing', False)
+        publication_service = getattr(self.ap, 'artifact_publication_service', None)
+        publication = (
+            await publication_service.snapshot_for_run(
+                execution_context,
+                binding.processor_type,
+                binding.processor_id or binding.agent_id,
+            )
+            if publication_service is not None
+            else None
+        )
+        object.__setattr__(execution_query, '_output_publication', publication)
         object.__setattr__(execution_query, '_sandbox_backend', adapter_context.get('_sandbox_backend'))
         object.__setattr__(execution_query, '_sandbox_e2b_config', adapter_context.get('_sandbox_e2b_config', {}))
         object.__setattr__(execution_query, '_sandbox_limits', adapter_context.get('_sandbox_limits', {}))
@@ -368,6 +380,11 @@ class AgentRunOrchestrator:
         run_token: typing.Any = None
         # Workflow step node for this run; '' until the step scope is opened.
         node = ''
+        artifact_input_ids = getattr(execution_query, '_input_artifact_ids', frozenset())
+        artifact_run_context = dataclasses.replace(
+            execution_context,
+            trigger_principal=PrincipalContext(PrincipalType.PROCESSOR, run_id=run_id),
+        )
 
         try:
             trace_binding = bind_execution_trace(self.ap, run_id)
@@ -425,6 +442,12 @@ class AgentRunOrchestrator:
                 ),
                 runtime_context=context.get('runtime'),
             )
+            if artifact_input_ids:
+                await self.ap.artifact_service.bind_run_inputs(
+                    execution_query._input_artifact_context,
+                    artifact_run_context,
+                    list(artifact_input_ids),
+                )
             recovered_steering = await self._load_recoverable_steering(
                 event=event,
                 descriptor=descriptor,
@@ -846,6 +869,22 @@ class AgentRunOrchestrator:
                 )
                 cleanup_cancellation = cleanup_cancellation or expiry_cancellation
                 object.__delattr__(execution_query, '_box_binding')
+            if artifact_input_ids:
+
+                async def release_input_files():
+                    lock = getattr(execution_query, '_input_attachment_lock', None)
+                    if lock is None:
+                        await self.ap.artifact_service.release_run_inputs(artifact_run_context)
+                    else:
+                        async with lock:
+                            await self.ap.artifact_service.release_run_inputs(artifact_run_context)
+
+                input_cancellation = await _await_run_cleanup(
+                    release_input_files,
+                    self.ap.logger,
+                    f'Failed to release input asset references for run {run_id}',
+                )
+                cleanup_cancellation = cleanup_cancellation or input_cancellation
             session = await self._session_registry.unregister(run_id)
             await reply_streams.close()
             pending_steering = session.get('steering_queue', []) if session else []
