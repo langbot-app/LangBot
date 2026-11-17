@@ -34,13 +34,16 @@ irm https://langbot.app/install.ps1 | iex
 ```bash
 lbctl status              # 状態とバージョン
 lbctl logs                # ログ
+lbctl doctor              # 問題の診断
 lbctl stop / start / restart
 lbctl upgrade --yes       # 最新の LangBot へアップグレード
 lbctl update              # lbctl 自体を更新
 lbctl autostart disable   # 自動起動を無効化
-lbctl uninstall           # アンインストール（データは既定で保持）
+lbctl uninstall --yes     # アンインストール（データは既定で保持）
 lbctl list                # ローカルの全インスタンス
 ```
+
+詳しい使い方（アップグレードの詳細、既存の Docker デプロイの移行、複数インスタンス、コマンドラインでのリソース管理など）は [lbctl で LangBot を管理する](/ja/deploy/lbctl)を参照してください。
 
 ## その他のデプロイ方法
 

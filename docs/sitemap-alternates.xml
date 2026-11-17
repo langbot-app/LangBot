@@ -1744,6 +1744,27 @@
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/langbot/one-click/bt" />
   </url>
   <url>
+    <loc>https://langbot.app/docs/en/deploy/langbot/one-line</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/deploy/langbot/one-line</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/deploy/langbot/one-line</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/langbot/one-line" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/langbot/one-line" />
+  </url>
+  <url>
     <loc>https://langbot.app/docs/en/deploy/langbot/package</loc>
     <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/langbot/package" />
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/langbot/package" />
@@ -1763,6 +1784,27 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/langbot/package" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/langbot/package" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/langbot/package" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/deploy/lbctl</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/lbctl" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/deploy/lbctl</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/lbctl" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/deploy/lbctl</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/deploy/lbctl" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/deploy/lbctl" />
   </url>
   <url>
     <loc>https://langbot.app/docs/en/deploy/settings</loc>
@@ -1826,6 +1868,27 @@
     <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/agent-context" />
     <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/agent-context" />
     <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/agent-context" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/en/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/zh/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
+  </url>
+  <url>
+    <loc>https://langbot.app/docs/ja/develop/artifacts</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://langbot.app/docs/en/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://langbot.app/docs/zh/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="ja" href="https://langbot.app/docs/ja/develop/artifacts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://langbot.app/docs/en/develop/artifacts" />
   </url>
   <url>
     <loc>https://langbot.app/docs/en/develop/comp-arch</loc>

@@ -43,15 +43,18 @@ On Windows pass options as environment variables, e.g. `$env:LANGBOT_DRIVER="doc
 ```bash
 lbctl status              # status and versions
 lbctl logs                # logs
+lbctl doctor              # diagnose problems
 lbctl stop / start / restart
 lbctl upgrade --yes       # upgrade to the latest LangBot
 lbctl update              # update lbctl itself
 lbctl autostart disable   # stop starting on boot
-lbctl uninstall           # uninstall (data kept by default)
+lbctl uninstall --yes     # uninstall (data kept by default)
 lbctl list                # all local instances
 ```
 
 `lbctl` follows your system language (English or Chinese); override it with `--lang en` / `--lang zh-Hans`.
+
+For the full guide (upgrade details, adopting an existing Docker deployment, multiple instances, managing resources from the command line) see [Manage LangBot with lbctl](/en/deploy/lbctl).
 
 ## Other deployment options
 
