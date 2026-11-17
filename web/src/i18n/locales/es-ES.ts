@@ -2279,6 +2279,12 @@ const esES = {
       depsProgress:
         '{{installed}}/{{total}} instaladas · {{remaining}} restantes',
       installComplete: 'Plugin instalado correctamente',
+      followUp: {
+        nextSteps: 'Próximos pasos',
+        agents: 'Crea un Agent o un procesador de plugin',
+        pipelines: 'Crea una canalización',
+        knowledge: 'Crea una base de conocimiento',
+      },
       updateComplete: 'Plugin actualizado correctamente',
       installCompletePlugin: 'Plugin instalado correctamente',
       installCompleteMCP: 'Servidor MCP instalado correctamente',

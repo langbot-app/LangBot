@@ -87,6 +87,7 @@ async def test_content_joins_caller_transaction_and_is_workspace_scoped(storage)
 async def test_content_checks_read_limits_and_digest(storage):
     store = storage.content_store
     ref = await store.put(context(), owner_type='skill', owner='one', key='rev1', value=b'payload')
+    assert await store.get(context(), ref, max_bytes=7) == b'payload'
     with pytest.raises(ValueError, match='size limit'):
         await store.get(context(), ref, max_bytes=2)
     async with storage.ap.persistence_mgr.tenant_uow(WORKSPACE) as uow:

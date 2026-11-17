@@ -2,6 +2,46 @@
 
 Run the paths affected by the change before recommending merge. A passing PR check covers only its selected contracts. Daily coverage is additional evidence; it does not replace acceptance of a changed backend. All commands below start at the repository root on the approved Linux development host. Follow the execution-host restrictions in the active workspace instructions; when local macOS execution is restricted, use the designated remote host and report unavailable verification instead of falling back to Mac.
 
+## P0 pull-request acceptance
+
+`core-smoke.yml` calls the reusable `p0-acceptance.yml` before its existing required
+`Core smoke (60s)` job. Backend/SDK/dependency/workflow changes select all P0 paths;
+test-only changes select their affected boundary. Documentation and WebUI-only
+changes do not select backend acceptance. Selected jobs must succeed; a missing
+environment, failed job, cancellation or skipped required case blocks the existing
+required smoke status. No online branch-rule change is needed after this workflow
+is merged.
+
+- `persistence-acceptance.yml` is shared with Daily Endurance. It runs real
+  Core/Plugin Runtime/Box file delivery and PG/MinIO/two-Core recovery.
+- `p0_permissions` runs real Core/Runtime/SDK installation, confirmation, upgrade,
+  uninstall/reinstall, in-flight revocation and HTTP/MCP key revocation. It also
+  checks independent database readback across Workspaces.
+- `p0_image` uses the production Dockerfile's candidate image and the published
+  `rockchin/langbot:v4.11.7` baseline. It seeds old Skill versions and images,
+  upgrades, removes legacy source paths, replaces the Core and Runtime containers and checks
+  retained content and newly installed plugin grants. A separate empty volume
+  checks generated persistence/network defaults. Containers publish loopback-only
+  HTTP ports. Verification does not recreate missing data.
+
+For Linux image acceptance, set `LANGBOT_IMAGE_CANDIDATE` and
+`LANGBOT_IMAGE_PREVIOUS`, then run:
+
+```sh
+uv run --no-sync pytest tests/e2e/test_image_upgrade.py --required-suite p0_image -q -rs
+LANGBOT_PERMISSION_E2E=1 uv run --no-sync pytest \
+  tests/integration/api/test_plugin_permission_lifecycle.py \
+  tests/integration/api/test_application_foundation.py --required-suite p0_permissions -q -rs
+```
+
+Image tests accept `LANGBOT_TEST_DOCKER_COMMAND` for the approved Docker CLI
+invocation (default `docker`). Core and Runtime run on a task-owned Docker network,
+following the production Compose topology. Their logs are retained under
+`.qa/image-upgrade`. Permission process evidence is retained
+under `.qa/permissions`. Private seed state and authentication material are not
+uploaded as CI evidence. These paths do not establish real-model understanding,
+non-host Box backend behavior or compatibility with every historical release.
+
 ## Shared SDK, API and Runtime changes
 
 Standard Core `uv sync` installs the SDK from this checkout's `sdk/` through the root local source declaration. No overlay or SDK publication is needed to test coordinated changes:
@@ -57,7 +97,7 @@ old Core HTTP writes, migration, source-volume removal, restart and a second
 Core. Box is disabled here; Runtime acceptance remains the separate network suite.
 The normal daily suite does not provision historical Core interpreters.
 
-The existing `daily-endurance.yml` runs both account-free suites on GitHub-hosted Linux, installs Core with its local SDK, and creates temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope. It neither adds a PR required check nor runs the heavyweight recovery suite on every PR.
+`daily-endurance.yml` calls the same reusable persistence acceptance on GitHub-hosted Linux, with the local SDK and temporary loopback PostgreSQL/MinIO services. The other endurance/API/provider jobs retain their existing scope.
 
 For nsjail, use an already prepared host and its delegated `LANGBOT_NSJAIL_CGROUP_V1_PARENT`. For E2B, use explicitly authorized `E2B_API_KEY`, `E2B_API_URL`, `E2B_SANDBOX_URL` and optional `E2B_TEMPLATE`. Set `LANGBOT_CORE_NETWORK_BACKEND=nsjail` or `e2b` for the same network suite. Do not add credentials, change machine configuration, or expose private development machines as runners for public PR code. These backend runs remain developer acceptance until suitable dedicated infrastructure exists.
 
