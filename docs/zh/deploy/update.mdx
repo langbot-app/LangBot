@@ -3,7 +3,15 @@ title: "更新 LangBot"
 description: "将 LangBot 更新到最新版本，按步骤安全升级自托管的 AI 聊天机器人平台。"
 ---
 
-## 使用包管理器部署
+## 使用一行命令安装（lbctl）部署
+
+```bash
+lbctl upgrade --yes
+```
+
+这会备份数据、升级到最新稳定版并重新启动；升级 lbctl 本身用 `lbctl update`，或重新执行一次一行命令安装脚本。
+
+## 使用包管理器（uvx）部署
 
 请在之前使用包管理器部署的目录下重新执行：
 
