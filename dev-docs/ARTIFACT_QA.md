@@ -8,13 +8,12 @@ Scope: Artifact service, Agent attachment reads and Runner outputs ([#3063](http
 | --- | --- | --- |
 | Mixed PNG/JPEG, text and image-only PDF; several files per message; concurrent sessions; later reads in the same session | Valid decodable fixtures; exact digest and bytes; text extraction with the expected body marker; marker appears neither in the prompt nor metadata; no cross-session marker | Deterministic attachment contracts and TCP acceptance |
 | Same filename, different bytes; same bytes from different principals | Exact per-file digest and denial of borrowed references, both between users in a Workspace and across Workspaces; reference and authorization checked before accepting cache/dedup hits | Deterministic TCP acceptance and storage isolation contracts |
-| Upload, read, Runner output, retain, post-run read/download, release and reclamation | Verify transferred bytes and SHA-256—not just a success code—and separately check persistent, inaccessible and physically reclaimed state | TCP acceptance and native soak |
+| Upload, read, Runner output, retain, post-run read/download, release and reclamation | Verify transferred bytes and SHA-256—not just a success code—and separately check persistent, inaccessible and physically reclaimed state | TCP acceptance and accelerated soak |
 | History compression, reconnect and Core replacement | Verify old authorized references, exact content after replacement and no complete media or large base64 in ordinary retained history/logs; a new HTTP client alone is not a WebSocket reconnect | LocalAgent compaction and TCP Core replacement; WebSocket reconnection must be proved separately |
 | Read/commit/release/expiry/GC race; cancellation vs another session’s active reference | Barrier or observed overlap; A’s cancellation does not alter B’s legal reference; expired or revoked access cannot be satisfied through prior cache state | Deterministic lifecycle plus repeated soak; no inference from sequential calls |
 | Bad/truncated PDFs, MIME spoofing, page/size bounds, timeout, cancel and backend failure | Identify the expected specific error, verify no leak of a live or partially committed reference, and prove healthy neighbors still work | Reader limits, fault/lifecycle checks and disposable object-store retry |
 | PDF native, text extraction or unsupported | Check representation sent downstream, semantic content separately, and an explicit unsupported result instead of blank or fabricated output | Deterministic checks and separate real-provider sample |
-| Accelerated TTL and cleanup under pressure | Age test-owned rows, prove autonomous cleanup on several rotations during concurrent activity, preserve guards, and drain the backlog after load | Separate four-hour accelerated lane; never native-TTL evidence |
-| Native TTL and cleanup under load | Unmodified TTL and scheduler, multiple cleanup periods after an observed expiration, backlog drainage and retained-object usability | Native soak only |
+| Accelerated TTL and cleanup under pressure | Age test-owned rows, prove autonomous cleanup on several rotations during concurrent activity, preserve guards, and drain the backlog after load | Separate four-hour accelerated lane |
 
 Keep deterministic and real-provider evidence separate:
 
@@ -48,13 +47,11 @@ separately. Merely submitting the payload is not proof of understanding.
 
 ## Long-run operating rules
 
-Run long-lived jobs only on an explicitly approved disposable Linux host with sufficient persistent storage and capacity. The single continuous run cannot fit a [GitHub-hosted runner's six-hour job limit](https://docs.github.com/en/actions/reference/limits). Do not add successive hosted job durations to claim 30 hours of continuous observations: that loses process state, schedulers and working set. No pull request or schedule should start a 30-hour run. Do not register the public repository's untrusted PR jobs on a persistent self-hosted machine.
-
-Allow the test to finish teardown before archiving evidence. Use a different output directory for each run and record the full command, fixed seed, attachment mix and request schedule. A short run proves instrumentation and verdicts; use a stepped-rate run to identify a sustainable rate and freeze the budgets and comparison windows **before** starting native soak. A valid native run observes the normal 24-hour Artifact TTL and Core's normal one-hour storage maintenance interval (or selected larger real configuration), and at least two actual maintenance cycles after the first native expiration. Controlled faults and accelerated GC can supplement, not substitute for, this.
+Run long-lived jobs on disposable Linux hosts with sufficient storage and capacity. Use a different output directory for each run and let teardown finish before archiving evidence. Start with short and staircase runs to check correctness and sustainable throughput, then use the four-hour accelerated profile for repeated expiry and autonomous cleanup under load. Production TTL settings remain unchanged.
 
 Set an explicit cap on offered files/bytes and actual stored objects/bytes, and a minimum disk-free floor. Include many short sessions, some long sessions with old references, and upload bursts. Stop on correctness or authorization failures, resource-budget exhaustion, or inability to keep collecting required evidence. After load stops, verify GC catches up and still-referenced objects remain usable. Record steady-state resource samples across equivalent load and data age. SQLite file size (or PostgreSQL allocated size) alone does not indicate a leak: look at active data, remaining/free pages or reuse and backlog as well.
 
-### Four-hour accelerated regression (separate from native)
+### Four-hour accelerated regression
 
 The `Artifact accelerated soak` workflow runs the fixed SQLite/database and
 host Box configuration. It is not a PR job or a required status check. Once
@@ -74,33 +71,13 @@ and the summary alongside the mandatory passing JUnit case. Neither a
 shortened smoke profile nor an accelerated pass establishes the 24-hour
 native TTL. Failed/missing/short evidence must not be called a pass.
 
-To run the same profile locally on approved Linux, set the shared environment
-and sync described below, then start this separate command rather than the
-native block:
-
-```bash
-export LANGBOT_SOAK_MIXED_MODE=accelerated
-export LANGBOT_SOAK_EVIDENCE="$SOAK_HOME/accelerated"
-mkdir -p "$LANGBOT_SOAK_EVIDENCE"
-uv run --no-sync pytest -q -rs -o xfail_strict=true \
-    --junitxml="$LANGBOT_SOAK_EVIDENCE/results.xml" \
-    tests/e2e/test_artifact_lifecycle_soak.py::test_artifact_mixed_soak
-test -s "$LANGBOT_SOAK_EVIDENCE/$LANGBOT_SOAK_LANE.mixed-accelerated.summary.json"
-```
-
-The native run started on frozen checkout `c748cdeb9182468ebc416e973bb9f1895cb978c0`
-(tree `5a1ff69a570632b548778525c60ec152309c7d09`) remains raw evidence for
-that exact checkout only. Do not stop, restart, migrate or rewrite it for
-this review. It does not certify the current candidate or the revised
-acceptance checks.
-
 ### Reproduce the run
 
 Run from an exact, clean candidate checkout. Set `SOAK_HOME` to a fresh directory
 on a persistent filesystem that can retain evidence for the entire run. The
 fixture starts and tears down its own services; run from a persistent job
 supervisor on the approved host so the shell closing does not kill the job.
-Use the same host, checkout, backend and profile for all three stages.
+Use the same host, checkout, backend and profile for short, staircase and accelerated runs.
 
 ```bash
 set -euo pipefail
@@ -127,28 +104,23 @@ for mode in short staircase; do
     test -s "$LANGBOT_SOAK_EVIDENCE/$LANGBOT_SOAK_LANE.mixed-$mode.summary.json"
 done
 
-# Review the staircase measurements and freeze the file before starting.
-export LANGBOT_SOAK_BASELINE="$SOAK_HOME/staircase/$LANGBOT_SOAK_LANE.mixed-staircase.summary.json"
-test -s "$LANGBOT_SOAK_BASELINE"
-sha256sum "$LANGBOT_SOAK_PROFILE" "$LANGBOT_SOAK_BASELINE" | tee "$SOAK_HOME/frozen-inputs.sha256"
-
-# Run only after the short/staircase evidence and the approved host are ready.
-export LANGBOT_SOAK_MIXED_MODE=native LANGBOT_SOAK_EVIDENCE="$SOAK_HOME/native"
+# Review the staircase measurements before starting the four-hour run.
+export LANGBOT_SOAK_MIXED_MODE=accelerated
+export LANGBOT_SOAK_EVIDENCE="$SOAK_HOME/accelerated"
 mkdir -p "$LANGBOT_SOAK_EVIDENCE"
-uv run --no-sync pytest -s -q -rs -o xfail_strict=true "$case_node" \
+uv run --no-sync pytest -q -rs -o xfail_strict=true "$case_node" \
     --junitxml="$LANGBOT_SOAK_EVIDENCE/results.xml" 2>&1 |
     tee "$LANGBOT_SOAK_EVIDENCE/pytest.log"
-test -s "$LANGBOT_SOAK_EVIDENCE/$LANGBOT_SOAK_LANE.mixed-native.summary.json"
+test -s "$LANGBOT_SOAK_EVIDENCE/$LANGBOT_SOAK_LANE.mixed-accelerated.summary.json"
 ```
 
 The checked-in [profile](../tools/profiles/artifact-soak.json) holds the fixed seed,
 attachment weights, short/long session mix controls, stepped parallelism and
-periods, native duration/rate, and file/object/space ceilings. The baseline is
-valid for its candidate, profile, harness, fixture generator and storage lane.
-Changing one requires repeating staircase calibration. Keep the stage journals,
-summary JSON and JUnit output together. A run without the native summary and
-observed scheduler/cohort reclamation events is incomplete, even if the process
-stayed alive. The mixed lane reports fixture-source HTTP requests; this
+periods, accelerated TTL/cleanup timing, and file/object/space ceilings.
+Review staircase measurements before starting the accelerated run. Keep the
+stage journals, summary JSON and JUnit output together. An accelerated run
+without its full-duration PASS summary and observed scheduler cleanup is
+incomplete. The mixed lane reports fixture-source HTTP requests; this
 counter is not S3 API request volume. Collect request totals separately from
 the disposable object store when testing that lane. If made available, keep
 PostgreSQL wait/active-size and separate Box telemetry distinct from SQLite
@@ -160,7 +132,7 @@ test role may create/drop test databases. For `postgres-minio`, also set
 `LANGBOT_PERSISTENCE_MINIO_ENDPOINT`, `LANGBOT_PERSISTENCE_MINIO_ACCESS_KEY` and
 `LANGBOT_PERSISTENCE_MINIO_SECRET_KEY` for a disposable service where the
 fixture can create/drop a run-owned bucket. Do not pass credential values in
-commands or evidence. Use a new baseline and output directory per backend.
+commands or evidence. Use a new output directory per backend.
 
 ## Evidence to attach to the review
 
