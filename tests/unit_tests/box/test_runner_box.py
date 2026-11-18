@@ -551,11 +551,13 @@ async def test_export_finishing_source_cleanup_after_run_close_expires_accepted_
 
 
 @pytest.mark.asyncio
-async def test_bound_upload_import_uses_authorized_bytes_and_preserves_initial_descriptor(artifact_store):
+@pytest.mark.parametrize('mode', ['legacy', 'network'])
+async def test_bound_upload_import_uses_authorized_bytes_and_preserves_initial_descriptor(artifact_store, mode):
     from langbot.pkg.box.runner import run_artifact_context
     from tests.utils.artifact_store import named_key_context
 
     api = service()
+    api.box.file_transfer_mode = mode
     await artifact_store(api.box.ap, _CONTEXT)
     await seed_run(api.box.ap, _CONTEXT, 'run')
     manager = await named_key_context(api.box.ap, _CONTEXT)
@@ -570,10 +572,15 @@ async def test_bound_upload_import_uses_authorized_bytes_and_preserves_initial_d
     api.box._ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
     await api.box.ap.artifact_service.bind_run_inputs(manager, run_artifact_context(query), [asset['id']])
 
-    async def materialize(transfer):
-        component = transfer.message_chain[0]
-        assert component is not original and base64.b64decode(component.base64) == b'bound upload'
-        assert not component.url and not component.path
+    async def materialize(transfer, *, resolved=None):
+        if mode == 'network':
+            component, content = resolved
+            assert component is original and content == b'bound upload'
+            assert not hasattr(transfer, 'message_chain')
+        else:
+            component = transfer.message_chain[0]
+            assert component is not original and base64.b64decode(component.base64) == b'bound upload'
+            assert not component.url and not component.path
         return [{'name': component.name, 'type': 'File', 'size': 12, 'path': '/workspace/inbox/bound/uploaded.txt'}]
 
     api.box.materialize_inbound_attachments = AsyncMock(side_effect=materialize)

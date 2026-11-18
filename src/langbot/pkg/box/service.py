@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import collections
 import contextlib
 import datetime as _dt
 import enum
 import hashlib
 import json
+import mimetypes
 import os
 import posixpath
 import re
@@ -1210,7 +1212,6 @@ class BoxService:
             raise export_error('invalid_response') from exc
 
     async def _read_selected_files_network(self, query, paths):
-        import base64
         from .selected_files import selected_files_script, selected_files_cleanup_script
 
         if not paths:
@@ -1282,9 +1283,10 @@ class BoxService:
                     action_context=self._action_context(context),
                     expected_session_generation=binding.session_generation,
                 )
-                if len(content) != size or hashlib.sha256(content).hexdigest() != item.get('sha256'):
+                digest = hashlib.sha256(content).hexdigest()
+                if len(content) != size or digest != item.get('sha256'):
                     raise export_error('invalid_response')
-                entries.append({'name': source_path, 'b64': base64.b64encode(content).decode('ascii')})
+                entries.append({'name': source_path, 'content': content, 'digest': digest})
             await self._validated_execution_context(context)
             return entries
         finally:
@@ -1348,6 +1350,7 @@ class BoxService:
         entries = await self._read_selected_files_network(query, paths)
         for entry in entries:
             entry['name'] = entry['name'][len(prefix) :]
+            entry['b64'] = base64.b64encode(entry.pop('content')).decode('ascii')
         return entries
 
     def _write_files_host(
@@ -1432,7 +1435,9 @@ class BoxService:
         except Exception:
             return []
 
-    async def materialize_inbound_attachments(self, query: pipeline_query.Query) -> list[dict]:
+    async def materialize_inbound_attachments(
+        self, query: pipeline_query.Query, *, resolved: tuple[object, bytes] | None = None
+    ) -> list[dict]:
         """Persist message-chain attachments into the sandbox inbox.
 
         Returns a list of ``{path, name, type, size}`` describing what was
@@ -1446,7 +1451,7 @@ class BoxService:
 
         import langbot_plugin.api.entities.builtin.platform.message as platform_message
 
-        message_chain = getattr(query, 'message_chain', None)
+        message_chain = [resolved[0]] if resolved is not None else getattr(query, 'message_chain', None)
         if not message_chain:
             return []
 
@@ -1469,10 +1474,13 @@ class BoxService:
                 continue
             kind, prefix, default_ext = matched
 
-            payload = await self._component_to_bytes(component)
-            if payload is None:
-                continue
-            data, _mime = payload
+            if resolved is not None:
+                data = resolved[1]
+            else:
+                payload = await self._component_to_bytes(component)
+                if payload is None:
+                    continue
+                data, _mime = payload
             if not data or len(data) > self._ATTACHMENT_MAX_BYTES:
                 continue
 
@@ -1689,12 +1697,14 @@ class BoxService:
         return self._classify_outbound_entries(entries, include_source_path=True)
 
     async def clear_selected_files(self, query, items):
-        import base64
-        import hashlib
         from .selected_files import selected_files_script
 
         digests = {
-            item['_outbox_path']: hashlib.sha256(base64.b64decode(item['base64'].split(';base64,')[-1])).hexdigest()
+            item['_outbox_path']: (
+                item['digest']
+                if 'content' in item
+                else hashlib.sha256(base64.b64decode(item['base64'].split(';base64,')[-1])).hexdigest()
+            )
             for item in items
         }
         script = selected_files_script(
@@ -1787,17 +1797,26 @@ class BoxService:
         for entry in entries or []:
             name = str(entry.get('name', '') or '')
             b64 = entry.get('b64')
-            if not name or not isinstance(b64, str):
+            content = entry.get('content')
+            if not name or (not isinstance(b64, str) and not isinstance(content, bytes)):
                 continue
             ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
             base_name = os.path.basename(name)
             if ext in image_exts:
-                mime = mime_by_ext.get(ext, 'image/png')
-                item = {'type': 'Image', 'name': base_name, 'base64': f'data:{mime};base64,{b64}'}
+                kind, mime = 'Image', mime_by_ext.get(ext, 'image/png')
             elif ext in voice_exts:
-                item = {'type': 'Voice', 'name': base_name, 'base64': f'data:audio/{ext};base64,{b64}'}
+                kind, mime = 'Voice', f'audio/{ext}'
             else:
-                item = {'type': 'File', 'name': base_name, 'base64': b64}
+                kind, mime = 'File', None
+            item = {'type': kind, 'name': base_name}
+            if isinstance(content, bytes):
+                item.update(
+                    content=content,
+                    digest=entry['digest'],
+                    mime_type=mime or mimetypes.guess_type(base_name)[0] or 'application/octet-stream',
+                )
+            else:
+                item['base64'] = f'data:{mime};base64,{b64}' if mime else b64
             if include_source_path:
                 item['_outbox_path'] = name
             attachments.append(item)
