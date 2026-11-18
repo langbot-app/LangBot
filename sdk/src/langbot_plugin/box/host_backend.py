@@ -37,6 +37,10 @@ _WINDOWS_ENV_KEYS = (
     "TEMP",
     "TMP",
     "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "ProgramFiles",
+    "PSModulePath",
 )
 _WINDOWS = os.name == "nt"
 
@@ -461,6 +465,7 @@ class HostProcessBackend(BaseSandboxBackend):
             command,
             cwd=cwd,
             env=env,
+            stdin=asyncio.subprocess.DEVNULL if _WINDOWS else None,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             **self._process_options(),
