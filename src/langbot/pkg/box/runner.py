@@ -250,7 +250,10 @@ class RunnerBoxService:
             )
         if names:
             if self.box.managed_admission_required or self.box.file_transfer_mode != 'network':
-                raise BoxValidationError('Local mounts require a self-hosted Docker network Box')
+                raise BoxValidationError(
+                    'Local mounts require self-hosted Docker with box.file_transfer_mode=network '
+                    'and box.workspace_mode=private. Save any shared workspace files before switching modes.'
+                )
             session_id += '-mounts-' + hashlib.sha256(json.dumps(sorted(names)).encode()).hexdigest()
         spec = {'session_id': session_id, **{key: value for key, value in request.options.items() if key != 'mounts'}}
         if names:

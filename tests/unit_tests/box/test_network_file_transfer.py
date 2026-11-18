@@ -248,7 +248,7 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
                 image = e2b_connection.template
             acquire_request = {'reuse_key': 'network-file-fixture', 'options': {'image': image}}
             if backend_name == 'docker':
-                with pytest.raises(BoxError, match='unavailable for this Workspace'):
+                with pytest.raises(BoxError, match="Local mount 'private'.*Workspace allowlist"):
                     await RunnerBoxService(service).acquire(
                         context,
                         {**acquire_request, 'options': {'image': image, 'mounts': ['private']}},

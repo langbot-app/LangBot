@@ -545,7 +545,7 @@ class BoxRuntime:
             not self.network_workspace or self.admission_required
         ):
             raise BoxValidationError(
-                "Local mounts require a self-hosted Docker network Box"
+                "Local mounts require a self-hosted Docker Box with a private network workspace"
             )
         if not self.network_workspace:
             return
@@ -569,28 +569,39 @@ class BoxRuntime:
             raise BoxValidationError("Duplicate local mount names")
         mounts = []
         for name in sorted(spec.local_mounts):
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", name):
+                raise BoxValidationError(
+                    "Invalid local mount name: use lowercase letters, digits, underscores or hyphens, "
+                    "starting with a letter or digit (up to 63 characters)"
+                )
             entry = self._local_mounts.get(name)
             if (
-                not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", name)
-                or not isinstance(entry, dict)
+                not isinstance(entry, dict)
                 or not isinstance(entry.get("workspaces"), list)
                 or context is None
                 or context.workspace_uuid not in entry["workspaces"]
             ):
                 raise BoxValidationError(
-                    "Local mount is unavailable for this Workspace"
+                    f"Local mount '{name}' is unavailable for this Workspace. "
+                    "Ask the Box administrator to check the Runtime's local_mounts configuration "
+                    "and Workspace allowlist."
                 )
             source = entry.get("path")
             if not isinstance(source, str) or not os.path.isabs(source):
                 raise BoxValidationError(
-                    "Local mount requires an absolute Runtime host directory"
+                    f"Local mount '{name}' needs an absolute directory path in the Box Runtime configuration."
                 )
             try:
                 source = str(Path(source).resolve(strict=True))
             except (OSError, RuntimeError, ValueError):
-                raise BoxValidationError("Local mount source is unavailable") from None
+                raise BoxValidationError(
+                    f"Local mount '{name}' source is unavailable. "
+                    "Check that the Box Runtime and Docker daemon can see the directory at the same absolute path."
+                ) from None
             if source == "/" or not os.path.isdir(source):
-                raise BoxValidationError("Local mount requires a dedicated directory")
+                raise BoxValidationError(
+                    f"Local mount '{name}' must point to a dedicated directory."
+                )
             mounts.append(
                 BoxMountSpec(
                     host_path=source,
