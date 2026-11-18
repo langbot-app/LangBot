@@ -210,7 +210,6 @@ def read_workspace_file(root: str, relative: str, max_bytes: int) -> bytes:
 
 def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> bytes:
     """Read a bounded, stable directory tree without links or workspace staging."""
-    _require_descriptor_io()
     if (
         not isinstance(relative, str)
         or "\\" in relative
@@ -232,6 +231,7 @@ def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> byt
         from .windows_file_io import archive_directory
 
         return archive_directory(root, relative, limit)
+    _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
     def identity(info):
