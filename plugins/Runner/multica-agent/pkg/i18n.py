@@ -14,6 +14,8 @@ SUPPORTED_LANGUAGES = ("en_US", "zh_Hans", "zh_Hant", "ja_JP", "es_ES", "ru_RU",
 
 MESSAGES: dict[str, dict[str, str]] = {
     "en_US": {
+        "late.header": "↩️ Earlier reply from {agent} that could not be delivered:",
+        "late.hint": "Its reply will be sent with your next message.",
         "progress.submitted": "⏳ Submitted to {agent} (task {task_id})",
         "progress.started": "▶️ {agent} started",
         "progress.running": "⏱ Still running · waited {seconds}s",
@@ -73,6 +75,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode must be one of: {options}",
     },
     "zh_Hans": {
+        "late.header": "↩️ 之前未能送达的 {agent} 回复：",
+        "late.hint": "回复会在你发送下一条消息时一并送达。",
         "progress.submitted": "⏳ 已提交给 {agent}（任务 {task_id}）",
         "progress.started": "▶️ {agent} 开始执行",
         "progress.running": "⏱ 仍在执行 · 已等待 {seconds}s",
@@ -128,6 +132,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode 只能是：{options}",
     },
     "zh_Hant": {
+        "late.header": "↩️ 先前未能送達的 {agent} 回覆：",
+        "late.hint": "回覆會在你傳送下一則訊息時一併送達。",
         "progress.submitted": "⏳ 已提交給 {agent}（任務 {task_id}）",
         "progress.started": "▶️ {agent} 開始執行",
         "progress.running": "⏱ 仍在執行 · 已等待 {seconds}s",
@@ -183,6 +189,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode 只能是：{options}",
     },
     "ja_JP": {
+        "late.header": "↩️ 届けられなかった {agent} の以前の返信：",
+        "late.hint": "返信は次のメッセージ送信時にお届けします。",
         "progress.submitted": "⏳ {agent} に送信しました（タスク {task_id}）",
         "progress.started": "▶️ {agent} が実行を開始しました",
         "progress.running": "⏱ 実行中 · 経過 {seconds} 秒",
@@ -242,6 +250,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode は次のいずれかです：{options}",
     },
     "es_ES": {
+        "late.header": "↩️ Respuesta anterior de {agent} que no se pudo entregar:",
+        "late.hint": "Su respuesta se enviará con tu próximo mensaje.",
         "progress.submitted": "⏳ Enviado a {agent} (tarea {task_id})",
         "progress.started": "▶️ {agent} ha empezado",
         "progress.running": "⏱ Sigue en ejecución · {seconds}s de espera",
@@ -301,6 +311,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode debe ser uno de: {options}",
     },
     "ru_RU": {
+        "late.header": "↩️ Ранее не доставленный ответ от {agent}:",
+        "late.hint": "Ответ будет отправлен вместе с вашим следующим сообщением.",
         "progress.submitted": "⏳ Отправлено агенту {agent} (задача {task_id})",
         "progress.started": "▶️ {agent} начал работу",
         "progress.running": "⏱ Всё ещё выполняется · ожидание {seconds} с",
@@ -360,6 +372,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode должен быть одним из: {options}",
     },
     "th_TH": {
+        "late.header": "↩️ คำตอบก่อนหน้าจาก {agent} ที่ส่งไม่สำเร็จ:",
+        "late.hint": "คำตอบจะถูกส่งพร้อมกับข้อความถัดไปของคุณ",
         "progress.submitted": "⏳ ส่งให้ {agent} แล้ว (งาน {task_id})",
         "progress.started": "▶️ {agent} เริ่มทำงานแล้ว",
         "progress.running": "⏱ ยังทำงานอยู่ · รอมาแล้ว {seconds} วินาที",
@@ -415,6 +429,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "config.progress_mode_invalid": "progress-mode ต้องเป็นหนึ่งใน: {options}",
     },
     "vi_VN": {
+        "late.header": "↩️ Phản hồi trước đó của {agent} chưa được gửi:",
+        "late.hint": "Phản hồi sẽ được gửi kèm tin nhắn tiếp theo của bạn.",
         "progress.submitted": "⏳ Đã gửi cho {agent} (tác vụ {task_id})",
         "progress.started": "▶️ {agent} đã bắt đầu",
         "progress.running": "⏱ Vẫn đang chạy · đã chờ {seconds}s",

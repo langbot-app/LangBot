@@ -15,6 +15,10 @@ Conversation-scoped state:
 - multica.agent_choices: ``{items, expires_at}`` numbered list behind ``<prefix> use <number>``.
 - multica.session_id: Multica chat session bound to this conversation.
 - multica.session_agent_id: agent the stored session was created for.
+- multica.pending_task: ``{task_id, session_id, agent, submitted_at}`` of a submitted task whose
+  reply has not been delivered yet. It is written as soon as the task is enqueued, so a run cut
+  short (Plugin Runtime restart, network outage, timeout) leaves it behind and the next message
+  in the conversation delivers the late reply first.
 """
 
 from __future__ import annotations
@@ -50,6 +54,9 @@ STATE_RESOLVED = "multica.agent_resolved"
 STATE_CHOICES = "multica.agent_choices"
 STATE_SESSION = "multica.session_id"
 STATE_SESSION_AGENT = "multica.session_agent_id"
+STATE_PENDING = "multica.pending_task"
+# Undelivered replies older than this are dropped instead of being sent late.
+PENDING_TTL = 24 * 3600
 
 PROGRESS_MODES = ("off", "messages", "stream")
 CHOICES_TTL = 600  # seconds a numbered agent list stays valid for "<prefix> use <number>"
@@ -146,6 +153,7 @@ class DefaultRunner(Runner):
         client = self._make_client(config)
         text = (ctx.input.to_text() or "").strip()
         state = dict(ctx.state.conversation or {})
+        submitted = False
 
         try:
             command = _parse_command(text, config["command_prefix"])
@@ -183,6 +191,20 @@ class DefaultRunner(Runner):
             for update in updates:
                 yield update
 
+            progress = _Progress(
+                ctx.run_id, config["progress_mode"], config["progress_interval"], config["progress_max_messages"]
+            )
+            # A task an earlier run submitted but never delivered: its late reply goes out first,
+            # or, if it is still running, after this message's reply (it is ahead in the queue).
+            late: tuple[str, str] | None = None
+            carried: dict[str, typing.Any] | None = None
+            previous = state.get(STATE_PENDING)
+            outcome, row = await _recover(client, previous)
+            if outcome == "reply":
+                late = (str(previous.get("agent") or ""), _reply_text(lang, row))
+            elif outcome == "pending":
+                carried = previous
+
             session_id = ""
             if state.get(STATE_SESSION_AGENT) == agent_id:
                 session_id = str(state.get(STATE_SESSION) or "")
@@ -202,14 +224,22 @@ class DefaultRunner(Runner):
                 created = True
                 task_id = await client.send_message(session_id, text)
 
+            label = agent_name or short_id(agent_id)
             if created:
                 yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION, session_id, scope="conversation")
                 yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION_AGENT, agent_id, scope="conversation")
-
-            progress = _Progress(
-                ctx.run_id, config["progress_mode"], config["progress_interval"], config["progress_max_messages"]
+            yield RunnerResult.state_updated(
+                ctx.run_id,
+                STATE_PENDING,
+                {"task_id": task_id, "session_id": session_id, "agent": label, "submitted_at": _now()},
+                scope="conversation",
             )
-            label = agent_name or short_id(agent_id)
+            submitted = True
+
+            if late is not None:
+                header = get_text(lang, "late.header", agent=late[0])
+                for result in progress.late_reply(f"{header}\n{late[1]}"):
+                    yield result
             for result in progress.emit(get_text(lang, "progress.submitted", agent=label, task_id=short_id(task_id))):
                 yield result
 
@@ -221,9 +251,20 @@ class DefaultRunner(Runner):
                     else:
                         reply = item
             except MulticaAPIError as e:
+                if e.code == "multica.no_reply":
+                    # The task is gone for good; nothing is left to deliver later.
+                    yield RunnerResult.state_updated(ctx.run_id, STATE_PENDING, "", scope="conversation")
                 for result in progress.close(_failure_line(lang, e.code)):
                     yield result
                 raise
+
+            yield RunnerResult.state_updated(ctx.run_id, STATE_PENDING, "", scope="conversation")
+            if carried is not None:
+                outcome, row = await _recover(client, carried)
+                if outcome == "reply":
+                    header = get_text(lang, "late.header", agent=str(carried.get("agent") or ""))
+                    for result in progress.late_reply(f"{header}\n{_reply_text(lang, row)}"):
+                        yield result
 
             if reply.get("failure_reason"):
                 for result in progress.close(get_text(lang, "progress.failed", agent=label)):
@@ -240,7 +281,11 @@ class DefaultRunner(Runner):
                 yield result
             yield RunnerResult.run_completed(ctx.run_id)
         except MulticaAPIError as e:
-            yield RunnerResult.run_failed(ctx.run_id, error=e.message, code=e.code, retryable=e.retryable)
+            error = e.message
+            if submitted and e.code != "multica.no_reply":
+                # The task keeps running in Multica; its reply is delivered with the next message.
+                error = f"{error} {get_text(lang, 'late.hint')}"
+            yield RunnerResult.run_failed(ctx.run_id, error=error, code=e.code, retryable=e.retryable)
         except Exception as e:  # pragma: no cover - defensive
             logger.exception("Multica runner unexpected error")
             yield RunnerResult.run_failed(
@@ -304,18 +349,19 @@ class DefaultRunner(Runner):
 
         while True:
             await _sleep(config["poll_interval"])
-            reply = _find_reply(await client.recent_messages(session_id), task_id)
+            try:
+                reply, status = await _poll(client, session_id, task_id)
+            except MulticaAPIError as e:
+                if not e.retryable:
+                    raise
+                # The task keeps running in Multica; a failed check (network blip, gateway 5xx)
+                # must not end the run. Keep polling until the deadline.
+                logger.warning("Multica poll for task %s failed (%s); will retry", task_id, e.code)
+                reply, status = None, ""
             if reply is not None:
                 yield reply
                 return
-
-            status = (await client.pending_tasks(session_id)).get(task_id)
             if status is None:
-                # The task left the queue; its reply row may have landed between the reads.
-                reply = _find_reply(await client.recent_messages(session_id), task_id)
-                if reply is not None:
-                    yield reply
-                    return
                 raise MulticaAPIError(
                     get_text(lang, "error.task_no_reply"),
                     code="multica.no_reply",
@@ -419,6 +465,7 @@ class DefaultRunner(Runner):
 
         elif verb in ("new", "reset"):
             yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION, "", scope="conversation")
+            yield RunnerResult.state_updated(ctx.run_id, STATE_PENDING, "", scope="conversation")
             yield RunnerResult.state_updated(ctx.run_id, STATE_SESSION_AGENT, "", scope="conversation")
             reply = get_text(lang, "new.ok")
 
@@ -488,6 +535,18 @@ class _Progress:
         if self.mode == "stream":
             return [self._delta(f"{line}\n", final=True)]
         return self.emit(line)
+
+    def late_reply(self, content: str) -> list[RunnerResult]:
+        """A reply an earlier run failed to deliver.
+
+        In ``messages`` mode it takes one slot of the progress budget so the per-message
+        reply cap still leaves room for the answer.
+        """
+        if self.mode == "stream":
+            return [self._delta(f"{content}\n\n", final=False)]
+        if self.mode == "messages":
+            self.max_messages = max(0, self.max_messages - 1)
+        return [RunnerResult.message_completed(self.run_id, Message(role="assistant", content=content))]
 
     def answer(self, content: str) -> list[RunnerResult]:
         if self.mode == "stream":
@@ -570,6 +629,50 @@ def _failure_line(lang: str, code: str) -> str:
     if code == "multica.no_reply":
         return get_text(lang, "progress.no_reply")
     return get_text(lang, "progress.error", code=code)
+
+
+async def _poll(
+    client: AsyncMulticaClient, session_id: str, task_id: str
+) -> tuple[dict[str, typing.Any] | None, str | None]:
+    """Return ``(reply, None)`` once the reply landed, ``(None, status)`` while pending,
+    and ``(None, None)`` when the task left the queue without a reply."""
+    reply = _find_reply(await client.recent_messages(session_id), task_id)
+    if reply is not None:
+        return reply, None
+    status = (await client.pending_tasks(session_id)).get(task_id)
+    if status is None:
+        # The task left the queue; its reply row may have landed between the reads.
+        reply = _find_reply(await client.recent_messages(session_id), task_id)
+        if reply is not None:
+            return reply, None
+    return None, status
+
+
+async def _recover(client: AsyncMulticaClient, pending: typing.Any) -> tuple[str, dict[str, typing.Any] | None]:
+    """Check a task an earlier run left undelivered.
+
+    Returns ``("reply", row)``, ``("pending", None)`` while it still runs, or
+    ``("none", None)`` when there is nothing to deliver (no task, expired, gone, or
+    Multica unreachable: recovery is best effort and never blocks the new message).
+    """
+    if not isinstance(pending, dict) or not pending.get("task_id") or not pending.get("session_id"):
+        return "none", None
+    try:
+        if _now() - float(pending.get("submitted_at") or 0) > PENDING_TTL:
+            return "none", None
+        reply, status = await _poll(client, str(pending["session_id"]), str(pending["task_id"]))
+    except (MulticaAPIError, TypeError, ValueError) as e:
+        logger.warning("Multica late-reply check failed: %s", e)
+        return "none", None
+    if reply is not None:
+        return "reply", reply
+    return ("pending", None) if status else ("none", None)
+
+
+def _reply_text(lang: str, row: dict[str, typing.Any]) -> str:
+    if row.get("failure_reason"):
+        return get_text(lang, "error.agent_failed", detail=row.get("content") or row["failure_reason"])
+    return str(row.get("content") or "")
 
 
 def _find_reply(messages: list[dict[str, typing.Any]], task_id: str) -> dict[str, typing.Any] | None:
