@@ -259,6 +259,7 @@ def test_image_upgrade_preserves_content_and_plugin_grants(image_instance, tmp_p
     config['storage'].update(use='persistent', content={'backend': 'database'}, migration={'require_source': True})
     config['skills'].update(persistence='database', migration={'require_source': True})
     config['box']['file_transfer_mode'] = 'network'
+    config['box']['workspace_mode'] = 'private'
     config['plugin']['enable'] = True
     config_path.write_text(yaml.safe_dump(config))
     current = image.start(os.environ['LANGBOT_IMAGE_CANDIDATE'], 'candidate')

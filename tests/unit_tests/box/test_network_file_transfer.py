@@ -99,6 +99,16 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
         json.dumps({'local': {'host_root': runtime_workspace_root, 'default_workspace': 'default'}}),
     )
     config = {'backend': backend_name, 'file_transfer_mode': 'network', 'limits': {'max_sessions': 1}}
+    if backend_name == 'docker':
+        dataset = tmp_path / 'dataset'
+        dataset.mkdir()
+        (dataset / 'sample.txt').write_text('local data')
+        runtime_config = json.loads(os.environ['LANGBOT_BOX_CONFIG'])
+        runtime_config['local_mounts'] = {
+            'sample': {'path': str(dataset), 'workspaces': [context.workspace_uuid]},
+            'private': {'path': str(dataset), 'workspaces': ['another-workspace']},
+        }
+        monkeypatch.setenv('LANGBOT_BOX_CONFIG', json.dumps(runtime_config))
     if backend_name in {'docker', 'nsjail'}:
         output_root = '/tmp/core-network-files-' + uuid.uuid4().hex
         if backend_name == 'docker':
@@ -237,6 +247,14 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
             if e2b_connection is not None:
                 image = e2b_connection.template
             acquire_request = {'reuse_key': 'network-file-fixture', 'options': {'image': image}}
+            if backend_name == 'docker':
+                with pytest.raises(BoxError, match="Local mount 'private'.*Workspace allowlist"):
+                    await RunnerBoxService(service).acquire(
+                        context,
+                        {**acquire_request, 'options': {'image': image, 'mounts': ['private']}},
+                        query,
+                    )
+                acquire_request['options']['mounts'] = ['sample']
             box = SimpleNamespace(
                 service=service,
                 client=client,
@@ -265,6 +283,9 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
                 assert query._box_binding.session_id == acquired_session
                 assert len(runtime._sessions) == 1
                 await _command(box, 'mkdir -p -- ' + shlex.quote(output_root))
+                if backend_name == 'docker':
+                    assert await _command(box, 'cat /datasets/sample/sample.txt') == 'local data'
+                    await _command(box, 'if touch /datasets/sample/blocked 2>/dev/null; then exit 1; fi')
                 if backend_name == 'e2b':
                     session = runtime._sessions[namespace_session_id(action_context, query._box_binding.session_id)]
                     assert runtime._backend is backend and session.info.backend_name == 'e2b'
@@ -278,6 +299,9 @@ async def network_files(tmp_path, monkeypatch, artifact_store):
                 try:
                     if acquired_session is not None:
                         await client.delete_session(acquired_session, action_context=action_context)
+                    if backend_name == 'docker':
+                        assert (dataset / 'sample.txt').read_text() == 'local data'
+                        assert not (dataset / 'blocked').exists()
                 finally:
                     await handler.close()
                     await asyncio.gather(handler_task, return_exceptions=True)

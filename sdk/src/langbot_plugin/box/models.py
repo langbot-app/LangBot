@@ -372,6 +372,7 @@ class BoxSpec(pydantic.BaseModel):
     session_id: str
     # Bound executions must target one Runtime incarnation, never auto-create.
     expected_session_generation: str | None = pydantic.Field(default=None, min_length=1)
+    local_mounts: list[str] = pydantic.Field(default_factory=list, max_length=16)
     env: dict[str, str] = pydantic.Field(default_factory=dict)
     image: str = DEFAULT_BOX_IMAGE
     host_path: str | None = None
@@ -610,6 +611,7 @@ class BoxSessionInfo(pydantic.BaseModel):
     backend_session_id: str
     # Assigned by Runtime, independent of reusable backend names/container IDs.
     session_generation: str = ""
+    local_mounts: list[str] = pydantic.Field(default_factory=list)
     image: str
     network: BoxNetworkMode
     host_path: str | None = None

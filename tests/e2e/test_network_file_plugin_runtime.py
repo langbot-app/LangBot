@@ -1,7 +1,7 @@
 """Opt-in TCP HTTP → installed Runner → Box → HTTP file delivery acceptance.
 
 Run on Linux with LANGBOT_NETWORK_PLUGIN_E2E=1 and an in-tree SDK installed.
-LANGBOT_CORE_NETWORK_BACKEND selects host (default), nsjail or e2b. The latter
+LANGBOT_CORE_NETWORK_BACKEND selects host (default), docker, nsjail or e2b. The latter
 uses E2B_API_KEY/API_URL/SANDBOX_URL/TEMPLATE; nsjail uses the existing delegated
 LANGBOT_NSJAIL_CGROUP_V1_PARENT. No test client or dispatcher replacement is used.
 """
@@ -134,7 +134,8 @@ def _write_file_runner(plugin_root):
                         status = await ctx.api.get_box_status()
                         box = await ctx.api.acquire_box(
                             status.required_reuse_key or ctx.config['reuse_key'],
-                            {'image': ctx.config['image']} if ctx.config['image'] else {})
+                            dict({'image': ctx.config['image']} if ctx.config['image'] else {},
+                                 **({'mounts': ['sample']} if ctx.config['image'] == 'python:3.12-alpine' else {})))
                         await ctx.bind_box(box.id)
                         report['box_id'] = box.id
                         if request['operation'] == 'foreign-file':
@@ -167,6 +168,9 @@ def _write_file_runner(plugin_root):
                             command = ('sha256sum ' + shlex.quote(source.path) +
                                        ' && cp ' + shlex.quote(source.path) + ' ' + shlex.quote(output) +
                                        ' && printf %s ' + shlex.quote(probe) + ' > ' + shlex.quote(text_output))
+                            if ctx.config['image'] == 'python:3.12-alpine':
+                                command = ('test "$(cat /datasets/sample/input.txt)" = dataset && '
+                                           '! touch /datasets/sample/blocked 2>/dev/null && ' + command)
                             result = await ctx.call_tool('exec', {'command': command, 'timeout_sec': 10})
                             assert result['ok'], result
                             exported = await ctx.export_box_files([output, text_output])
@@ -206,7 +210,7 @@ def _write_file_runner(plugin_root):
 def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_ports, network_process_env):
     directory = runner_e2e_tmpdir
     backend = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
-    assert backend in {'host', 'nsjail', 'e2b'}, 'select one supported backend'
+    assert backend in {'host', 'docker', 'nsjail', 'e2b'}, 'select one supported backend'
     path = create_minimal_config(directory, port=runner_e2e_port)
     create_test_directories(directory)
     config = yaml.safe_load(path.read_text())
@@ -219,12 +223,20 @@ def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_po
         backend=backend,
         instance_id='full-network-' + uuid.uuid4().hex,
         file_transfer_mode='network',
+        workspace_mode='private',
         limits={'max_sessions': 1, 'max_rpc_file_bytes': 3 * 1024 * 1024},
     )
     host_root = directory / 'box-workspaces'
     host_root.mkdir()
     config['box']['local'].update(host_root=str(host_root), allowed_mount_roots=[str(host_root)], image='')
-    if backend == 'nsjail':
+    if backend == 'docker':
+        dataset = directory / 'dataset'
+        dataset.mkdir()
+        (dataset / 'input.txt').write_text('dataset')
+        config['box']['local_mounts'] = {
+            'sample': {'path': str(dataset), 'workspaces': []},
+        }
+    elif backend == 'nsjail':
         parent = os.environ.get('LANGBOT_NSJAIL_CGROUP_V1_PARENT')
         assert parent, 'nsjail requires the existing delegated cgroup parent'
         config['box']['nsjail'] = {'cgroup_v1_parent': parent}
@@ -450,6 +462,15 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
     source_url, content, source_requests = file_source
     backend = os.environ.get('LANGBOT_CORE_NETWORK_BACKEND', 'host')
     image = runner_langbot_process.e2b_config['template'] if backend == 'e2b' else ''
+    if backend == 'docker':
+        image = 'python:3.12-alpine'
+        runner_langbot_process.stop()
+        path = runner_e2e_tmpdir / 'data/config.yaml'
+        config = yaml.safe_load(path.read_text())
+        config['box']['local_mounts']['sample']['workspaces'] = [before[6]]
+        path.write_text(yaml.safe_dump(config))
+        assert runner_langbot_process.start(), runner_langbot_process.get_logs()
+        assert QA_RUNNER_ID in _wait_for_qa_runner(client, token)
     if backend != 'host':
         selection = {'backend': backend, 'limits': {'timeout_sec': 10, 'idle_ttl_sec': 60, 'max_sessions': 1}}
         if backend == 'e2b':

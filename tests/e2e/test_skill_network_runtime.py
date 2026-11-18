@@ -223,6 +223,7 @@ def core_pair_configure(tmp_path, monkeypatch):
             backend='docker' if backend == 'e2b' else backend,
             instance_id=instance_id,
             file_transfer_mode='network',
+            workspace_mode='private',
             runtime={'endpoint': f'http://127.0.0.1:{box_port}'},
         )
         config['box']['local'].update(host_root='', default_workspace='', allowed_mount_roots=[])

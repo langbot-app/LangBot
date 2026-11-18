@@ -158,6 +158,22 @@ Configure after setting `backend: 'e2b'`:
 
 E2B doesn't need Docker or Nsjail on the host — every execution goes through the remote sandbox.
 
+## Read-only local datasets
+
+For a self-hosted Docker Box, add the following mapping to the Box Runtime's `LANGBOT_BOX_CONFIG` JSON, alongside its existing settings. Use a directory visible at the same absolute path to the Runtime and the Docker daemon.
+
+```json
+{
+  "local_mounts": {
+    "corpus": {"path": "/srv/corpus", "workspaces": ["<workspace-uuid>"]}
+  }
+}
+```
+
+Select `corpus` in LocalAgent’s **Local Box mounts** setting. Custom Runners can pass `{"mounts": ["corpus"]}` in `acquire_box` options. The Box reads the directory at `/datasets/corpus`. Network file transfer and Skill publishing continue through `/workspace`. Write generated files to `/workspace` before exporting them. Restart the Box Runtime after editing the mapping.
+
+New installations use network transfer with a private workspace. On upgrades from v4.11.8, omitted or explicit `legacy` transfer keeps the shared workspace. An existing `network` setting without `workspace_mode` keeps network file transfer and the shared workspace. After saving any files and unpublished drafts you need, set `box.workspace_mode: private` to switch to a private workspace and use named mounts.
+
 ## Docker Compose Deployment
 
 In Docker Compose, sandbox settings live on the `langbot` service. LangBot forwards them to `langbot_box` via INIT RPC at startup.
