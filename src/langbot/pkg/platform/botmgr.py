@@ -44,6 +44,7 @@ from ..api.http.authz import WorkspaceRequiredError
 from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
+from ..plugin.message_received import message_received_event
 from ..utils import constants
 from .adapter_names import canonical_adapter_name
 from .command_registration import PlatformCommandEvent, PlatformCommandRegistrar
@@ -1430,18 +1431,8 @@ class RuntimeBot:
         try:
             object.__setattr__(event, '_entry_query', query)
             await self.ap.message_policy_mgr.bind_query(query)
-            hook = plugin_events.GroupMessageReceived if group else plugin_events.PersonMessageReceived
-            ctx = await self.ap.plugin_connector.emit_event(
-                hook(
-                    query=query,
-                    launcher_type=query.launcher_type.value,
-                    launcher_id=query.launcher_id,
-                    sender_id=query.sender_id,
-                    message_event=legacy,
-                    message_chain=query.message_chain,
-                ),
-                query._listener_plugins,
-            )
+            ctx = await self.ap.plugin_connector.emit_event(message_received_event(query), query._listener_plugins)
+            object.__setattr__(query, '_message_received_dispatched', True)
             command_handled = ctx.is_prevented_default()
             query.message_chain = event.message_chain = ctx.event.message_chain
             query.message_event.message_chain = query.message_chain

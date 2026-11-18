@@ -9,6 +9,7 @@ import contextlib
 import sqlalchemy
 
 from ..core import app
+from ..plugin.message_received import message_received_event
 from . import entities as pipeline_entities
 from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
@@ -638,6 +639,18 @@ class RuntimePipeline:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
         try:
+            if not getattr(query, '_message_received_dispatched', False):
+                await self._assert_execution_active(query)
+                ctx = await self.ap.plugin_connector.emit_event(
+                    message_received_event(query), query.variables['_pipeline_bound_plugins']
+                )
+                await self._assert_execution_active(query)
+                if ctx.is_prevented_default():
+                    monitoring_helper.mark_plugin_handled(query, ctx)
+                    return
+                query.message_chain = ctx.event.message_chain
+                query.message_event.message_chain = query.message_chain
+
             self.ap.logger.debug(f'Processing query {query.query_id}')
 
             await self._execute_from_stage(0, query)

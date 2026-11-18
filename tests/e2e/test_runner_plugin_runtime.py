@@ -171,6 +171,9 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                 async def run(self, ctx: RunnerContext) -> AsyncGenerator[RunnerResult, None]:
                     text = ctx.input.to_text()
                     content = f'{ctx.config.get("prefix", "e2e echo")}: {text}'
+                    self.plugin.runner_inputs = getattr(self.plugin, 'runner_inputs', []) + [text]
+                    if text == 'lifecycle-counts':
+                        content = json.dumps({'received': self.plugin.received, 'ran': self.plugin.runner_inputs})
                     if text.startswith('boundary probe'):
                         tools = await ctx.get_available_tools()
                         names = [item['name'] for item in tools]
@@ -256,11 +259,16 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             class BoundaryListener(EventListener):
                 async def initialize(self):
                     await super().initialize()
+                    self.plugin.received = []
+                    @self.handler(events.PersonMessageReceived)
+                    async def person(ctx):
+                        self.plugin.received.append(str(ctx.event.message_chain))
                     @self.handler(events.PersonNormalMessageReceived)
                     async def handle(ctx):
                         self.plugin.boundary_listener_hits = getattr(self.plugin, 'boundary_listener_hits', 0) + 1
                     @self.handler(events.GroupMessageReceived)
                     async def group(ctx):
+                        self.plugin.received.append(str(ctx.event.message_chain))
                         if 'group-probe' in str(ctx.event.message_chain):
                             await ctx.reply(MessageChain([Plain(text='group:' + await ctx.get_bot_uuid())]))
                             ctx.prevent_default()
@@ -687,6 +695,19 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
             },
         )
     )['uuid']
+    pipeline = _create_boundary_pipeline(client, token)
+    enabled = {'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]}}
+
+    def route(target, uuid, text, priority, policy):
+        return {
+            'event_pattern': 'message.received',
+            'target_type': target,
+            'target_uuid': uuid,
+            'priority': priority,
+            'policy': policy,
+            'filters': [{'field': 'message_text', 'operator': 'contains', 'value': text}] if text else [],
+        }
+
     bot = data(
         client.post(
             '/api/v1/platform/bots',
@@ -695,27 +716,52 @@ def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
                 'adapter': 'http_bot',
                 'name': 'Plugin lifecycle QA',
                 'enable': True,
-                'adapter_config': {'signature_required': False, 'callback_timeout': 10},
-                'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+                'adapter_config': {'signature_required': False, 'callback_timeout': 2},
+                'event_bindings': [
+                    route('discard', '', 'discard-probe', 4, {}),
+                    route('pipeline', pipeline, 'disabled', 3, {}),
+                    route('agent', agent, 'agent-probe', 2, enabled),
+                    route('pipeline', pipeline, '', 1, enabled),
+                ],
                 'message_policy': {
-                    'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]}
+                    'plugins': {'enable_all': False, 'plugins': []},
+                    'trigger': {
+                        'group-respond-rules': {'enabled': True, 'at': True, 'prefix': [], 'regexp': [], 'random': 0}
+                    },
                 },
             },
         )
     )['uuid']
-    registrations = data(client.get(f'/api/v1/platform/bots/{bot}/plugin-registrations', headers=headers))['plugins']
-    assert 'GroupMessageReceived' in registrations['e2e/agent-runner-qa']['events']
-    for text, kind, expected in [
-        ('group-probe', 'group', 'group:'),
-        ('/qa_boundary_command query-probe', 'person', 'command:'),
-    ]:
+
+    def send(text, kind='person'):
         reply = data(
             client.post(
                 f'/bots/{bot}/sync',
                 json={'session_id': 'lifecycle', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]},
             )
         )
-        assert expected + bot in [item.get('text') for item in reply['message']]
+        return [item['text'] for item in reply['message'] if item.get('type') == 'Plain']
+
+    assert send('/qa_boundary_command query-probe') == ['command:' + bot]
+    assert send('group-probe messaging', 'group') == ['group:' + bot]
+    assert send('group-probe agent-probe', 'group') == ['group:' + bot]
+    assert data(client.get(f'/api/v1/agents/{agent}/runs', headers=headers))['items'] == []
+    assert send('no mention', 'group') == []
+    assert send('discard-probe disabled') == []
+    disabled_command = '/qa_boundary_command query-probe disabled'
+    assert send(disabled_command) == ['e2e echo: ' + disabled_command]
+    data(client.put(f'/api/v1/platform/bots/{bot}', headers=headers, json={'message_policy': enabled}))
+    registrations = data(client.get(f'/api/v1/platform/bots/{bot}/plugin-registrations', headers=headers))['plugins']
+    assert 'GroupMessageReceived' in registrations['e2e/agent-runner-qa']['events']
+    assert send('discard-probe') == []
+    counts = json.loads(send('lifecycle-counts')[0])
+    received = counts['received']
+    for text in ('group-probe messaging', 'group-probe agent-probe', 'no mention', 'discard-probe', 'lifecycle-counts'):
+        assert received.count(text) == 1, received
+    assert disabled_command not in received
+    assert 'discard-probe disabled' not in received
+    assert 'group-probe messaging' not in counts['ran']
+    assert 'no mention' not in counts['ran']
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(

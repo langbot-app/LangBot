@@ -283,18 +283,21 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
-async def test_received_event_is_not_repeated_in_messaging(mock_app, sample_query):
-    """The bot has already applied the received event before scheduling."""
+@pytest.mark.parametrize('from_entry,prevent', [(True, False), (False, False), (False, True)])
+async def test_received_event_before_messaging_stages(mock_app, sample_query, from_entry, prevent):
     from langbot_plugin.api.entities.context import EventContext
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
     sample_query.query_id = 1
+    if from_entry:
+        object.__setattr__(sample_query, '_message_received_dispatched', True)
+    original = str(sample_query.message_chain)
     pipeline_entity = SimpleNamespace(
         name='Compatibility test',
         uuid='test-pipeline-uuid',
         workspace_uuid='test-workspace',
         config=sample_query.pipeline_config,
-        extensions_preferences={'plugins': []},
+        extensions_preferences={'enable_all_plugins': False, 'plugins': [{'author': 'test', 'name': 'listener'}]},
     )
     runtime_pipeline = get_pipelinemgr_module().RuntimePipeline(
         mock_app,
@@ -305,8 +308,11 @@ async def test_received_event_is_not_repeated_in_messaging(mock_app, sample_quer
     observed = []
 
     async def plugin_edit(event, bound_plugins):
+        assert bound_plugins == ['test/listener']
         ctx = EventContext.model_validate(EventContext.from_event(event).model_dump())
         ctx.event.message_chain = MessageChain([Plain(text='edited by plugin')])
+        if prevent:
+            ctx.prevent_default()
         return ctx
 
     async def capture_stage(index, query):
@@ -317,8 +323,11 @@ async def test_received_event_is_not_repeated_in_messaging(mock_app, sample_quer
 
     await runtime_pipeline.run(sample_query)
 
-    mock_app.plugin_connector.emit_event.assert_not_awaited()
-    assert observed == [(str(sample_query.message_chain), str(sample_query.message_event.message_chain))]
+    assert mock_app.plugin_connector.emit_event.await_count == (0 if from_entry else 1)
+    expected = original if from_entry else 'edited by plugin'
+    assert observed == ([] if prevent else [(expected, expected)])
+    if prevent:
+        assert sample_query.variables['_monitoring_handled_by'] == 'plugin:unknown'
 
 
 @pytest.mark.asyncio
