@@ -2167,6 +2167,10 @@ const viVN = {
     updating: 'Đang cập nhật...',
     updateSuccess: 'Cập nhật plugin thành công',
     updateError: 'Cập nhật thất bại: ',
+    installedVersion: 'Phiên bản đã cài v{{version}}',
+    updateToVersion: 'Cập nhật lên v{{version}}',
+    confirmUpdatePluginVersion:
+      'Cập nhật plugin {{author}}/{{name}} từ v{{from}} lên v{{to}}?',
     saveConfigSuccessNormal: 'Lưu cấu hình thành công',
     saveConfigError: 'Lưu cấu hình thất bại: ',
     config: 'Cấu hình',

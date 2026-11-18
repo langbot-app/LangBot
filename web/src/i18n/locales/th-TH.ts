@@ -2132,6 +2132,10 @@ const thTH = {
     updating: 'กำลังอัปเดต...',
     updateSuccess: 'อัปเดตปลั๊กอินสำเร็จ',
     updateError: 'อัปเดตล้มเหลว: ',
+    installedVersion: 'เวอร์ชันที่ติดตั้ง v{{version}}',
+    updateToVersion: 'อัปเดตเป็น v{{version}}',
+    confirmUpdatePluginVersion:
+      'อัปเดตปลั๊กอิน {{author}}/{{name}} จาก v{{from}} เป็น v{{to}} หรือไม่?',
     saveConfigSuccessNormal: 'บันทึกการกำหนดค่าสำเร็จ',
     saveConfigError: 'บันทึกการกำหนดค่าล้มเหลว: ',
     config: 'การกำหนดค่า',

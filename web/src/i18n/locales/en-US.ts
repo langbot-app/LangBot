@@ -2181,6 +2181,10 @@ const enUS = {
     updating: 'Updating...',
     updateSuccess: 'Plugin updated successfully',
     updateError: 'Update failed: ',
+    installedVersion: 'Installed version v{{version}}',
+    updateToVersion: 'Update to v{{version}}',
+    confirmUpdatePluginVersion:
+      'Update plugin {{author}}/{{name}} from v{{from}} to v{{to}}?',
     saveConfigSuccessNormal: 'Configuration saved successfully',
     saveConfigError: 'Configuration save failed: ',
     config: 'Configuration',
