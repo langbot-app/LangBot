@@ -185,6 +185,8 @@ database:
     use: sqlite
     sqlite:
         path: 'data/langbot.db'
+        # Experimental: queue Artifact publication and Ledger writes within this Core process.
+        experimental_write_queue: false
     postgresql:
         # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
         # overrides the structured fields and preserves TLS/query options.

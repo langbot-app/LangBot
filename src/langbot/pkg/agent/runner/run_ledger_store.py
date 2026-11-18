@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
+from ...persistence.write_admission import write_slot
 from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
 from ...utils.execution_lease import (
@@ -139,7 +140,7 @@ class RunLedgerStore:
         leased = status == 'running' and queue_name is None
         if leased:
             await register_execution_scope(self.engine, workspace_id)
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             existing = await self._get_run_row(session, run_id)
             if existing is not None:
                 return self._run_to_dict(existing)
@@ -185,9 +186,9 @@ class RunLedgerStore:
         strict_thread: bool = False,
     ) -> dict[str, typing.Any] | None:
         """Claim the next queued or expired-leased run for a runtime."""
-        now = _utc_now()
-        lease_expires_at = now + datetime.timedelta(seconds=max(int(lease_seconds), 1))
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
+            lease_expires_at = now + datetime.timedelta(seconds=max(int(lease_seconds), 1))
             query = sqlalchemy.select(AgentRun).where(
                 sqlalchemy.or_(
                     AgentRun.status == 'queued',
@@ -238,8 +239,8 @@ class RunLedgerStore:
         lease_seconds: int = 60,
     ) -> dict[str, typing.Any] | None:
         """Extend a current claim lease if the token still matches."""
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or not _claim_is_active(run, runtime_id=runtime_id, claim_token=claim_token, now=now):
                 return None
@@ -261,8 +262,8 @@ class RunLedgerStore:
     ) -> dict[str, typing.Any] | None:
         """Release a current claim lease if the token still matches."""
         status = _validate_run_status(status)
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or not _claim_is_active(run, runtime_id=runtime_id, claim_token=claim_token, now=now):
                 return None
@@ -292,7 +293,7 @@ class RunLedgerStore:
         current_time = as_naive_utc(now or _utc_now())
         limit = min(max(int(limit), 1), 500)
 
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             result = await session.execute(
                 sqlalchemy.select(AgentRun)
                 .where(
@@ -332,7 +333,7 @@ class RunLedgerStore:
         If the same run_id + sequence already exists, the existing row is
         returned. This supports retrying append calls idempotently.
         """
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             if sequence is None:
                 # Serialize Host allocation across store instances and database connections.
                 locked = await session.execute(
@@ -399,7 +400,7 @@ class RunLedgerStore:
 
     async def pin_skill_revision(self, run_id: str, workspace_id: str, name: str, revision: str) -> str:
         """Pin a Host-owned revision without overwriting concurrent run metadata."""
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             run = await self._get_run_row(session, run_id)
             if run is None or run.workspace_id != workspace_id or run.status in TERMINAL_STATUSES:
                 raise ValueError('Skill activation requires an active run in the current Workspace')
@@ -436,8 +437,8 @@ class RunLedgerStore:
     ) -> dict[str, typing.Any] | None:
         """Update a run to a terminal or current status."""
         status = _validate_run_status(status)
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None:
                 return None
@@ -505,8 +506,8 @@ class RunLedgerStore:
         status_reason: str | None = None,
     ) -> dict[str, typing.Any] | None:
         """Record a cancellation request."""
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None or run.status in TERMINAL_STATUSES:
                 return None
@@ -530,8 +531,8 @@ class RunLedgerStore:
         stored on the run so dispatchers can make the next attempt observable
         and idempotent.
         """
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None:
                 return None
@@ -568,7 +569,7 @@ class RunLedgerStore:
     ) -> tuple[dict[str, typing.Any], bool]:
         """Create one fresh Host execution without overwriting the source attempt."""
         now = as_naive_utc(_utc_now())
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             source = await self._get_run_row(session, source_run_id)
             if source is None or source.status not in TERMINAL_STATUSES:
                 raise ValueError('Only terminal runs can be retried or resumed')
@@ -621,7 +622,7 @@ class RunLedgerStore:
 
     async def authorize_recovery_run(self, run_id: str, *, authorization: dict, deadline_at: float | None) -> None:
         """Replace inherited authority with grants rebuilt from the current configuration."""
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             updated = await session.execute(
                 sqlalchemy.update(AgentRun)
                 .where(AgentRun.run_id == run_id, AgentRun.status == 'running')
@@ -639,8 +640,8 @@ class RunLedgerStore:
         cleanup_confirmed: bool = True,
     ) -> dict[str, typing.Any] | None:
         """Persist an explicit cancellation cleanup acknowledgement."""
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             run = await self._get_run_row(session, run_id)
             if run is None:
                 return None
@@ -678,8 +679,8 @@ class RunLedgerStore:
         heartbeat_deadline_seconds: int = 60,
     ) -> dict[str, typing.Any]:
         """Create or update a runtime registry row and record a heartbeat."""
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             runtime = await self._get_runtime_row(session, runtime_id)
             if runtime is None:
                 runtime = AgentRuntime(runtime_id=runtime_id, created_at=as_naive_utc(now))
@@ -711,8 +712,8 @@ class RunLedgerStore:
         metadata: dict[str, typing.Any] | None = None,
     ) -> dict[str, typing.Any] | None:
         """Refresh a runtime heartbeat."""
-        now = _utc_now()
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
+            now = _utc_now()
             runtime = await self._get_runtime_row(session, runtime_id)
             if runtime is None:
                 return None
@@ -824,7 +825,7 @@ class RunLedgerStore:
                         AgentRuntime.last_heartbeat_at < current_time - stale_after_delta,
                     )
                 )
-        async with self._session_factory() as session:
+        async with write_slot(self.engine), self._session_factory() as session:
             result = await session.execute(
                 sqlalchemy.select(AgentRuntime).where(
                     sqlalchemy.or_(*stale_conditions),
