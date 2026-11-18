@@ -1908,6 +1908,17 @@ done
                 if session.info.host_path_mode == BoxHostMountMode.READ_ONLY:
                     raise BoxValidationError("Cannot clean a read-only workspace")
                 if (
+                    os.name == "nt"
+                    and session.backend.name == "host"
+                    and session.owned_workspace is not None
+                ):
+                    from .windows_file_io import run_files
+
+                    await self._artifact_work(
+                        run_files, session.owned_workspace, request.io_scope, True
+                    )
+                    return
+                if (
                     session.owned_workspace is not None
                     and not await self._artifact_work(
                         run_files_present, session.owned_workspace, request.io_scope
@@ -2589,7 +2600,9 @@ done
     async def get_backend_info(self) -> dict:
         if self.admission_required:
             readiness = await self.get_readiness()
+            details = readiness.get("backend", {}).get("details", {})
             return {
+                **({"shell": details["shell"]} if "shell" in details else {}),
                 "name": readiness.get("backend", {}).get("name"),
                 "available": bool(readiness.get("ready", False)),
                 "readiness": readiness,
@@ -2608,6 +2621,8 @@ done
         result = {"name": backend.name, "available": available}
         if getattr(backend, "unsafe_direct_execution", False):
             result["unsafe_direct_execution"] = True
+        if isinstance(backend, HostProcessBackend):
+            result["shell"] = (await backend.get_readiness())["shell"]
         return result
 
     def get_sessions(self) -> list[dict]:
