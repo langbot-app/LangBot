@@ -30,6 +30,8 @@ class Persistence:
             self.conn = conn
             yield
 
+    tenant_write_uow = tenant_uow
+
     async def execute_async(self, statement):
         return await self.conn.execute(statement)
 
