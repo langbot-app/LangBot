@@ -1,4 +1,8 @@
 {
+  "Skill not found": "Skill not found",
+  "Skill package name must match the requested Skill": "Skill package name must match the requested Skill",
+  "file and base_revision are required": "file and base_revision are required",
+  "Skill package exceeds the 10MB upload limit": "Skill package exceeds the 10MB upload limit",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.",
   "Request failed.": "Request failed.",

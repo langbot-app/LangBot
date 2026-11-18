@@ -7,18 +7,24 @@ from unittest.mock import AsyncMock
 import zipfile
 
 import pytest
+import quart
+from quart.datastructures import FileStorage
 
 from langbot.pkg.api.application.operation_docs import get_operation_doc
 from langbot.pkg.api.application.service_operations import operations
 from langbot.pkg.api.authz import PermissionDeniedError
 from langbot.pkg.api.context import PrincipalContext, PrincipalType, RequestContext, WorkspaceContext
 from langbot.pkg.api.http.service.skill import SkillService
+from langbot.pkg.api.http.controller.groups.skills import SkillsRouterGroup
 from langbot.pkg.skill.repository import SkillRevisionConflictError
 from tests.unit_tests.test_skill_repository import _repository
 
 
 CONTEXT = RequestContext(
-    instance_uuid='instance-a', placement_generation=1, request_id='test', auth_type='api_key',
+    instance_uuid='instance-a',
+    placement_generation=1,
+    request_id='test',
+    auth_type='api_key',
     principal=PrincipalContext(PrincipalType.API_KEY, api_key_uuid='key-a'),
     workspace=WorkspaceContext('workspace-a', None, None, frozenset({'resource.view', 'resource.manage'})),
 )
@@ -126,3 +132,52 @@ def test_package_operations_have_read_write_permissions_and_no_agent_exposure():
         assert operation.side_effect is write
         assert operation.principals == frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
         assert get_operation_doc(identifier).exposure == 'none'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('role', ['developer', 'viewer'])
+async def test_http_package_transport_and_permissions(service, role):
+    repository = service.ap.skill_repository
+    first = await repository.import_skill_zip(CONTEXT, package('first'), {})
+    app = quart.Quart(__name__)
+    service.ap.skill_service = service
+    service.ap.user_service = SimpleNamespace(
+        get_authenticated_account=AsyncMock(return_value=SimpleNamespace(uuid='account-a', user='test@example.com'))
+    )
+    service.ap.workspace_collaboration_service = SimpleNamespace(
+        resolve_account_workspace=AsyncMock(
+            return_value=SimpleNamespace(
+                execution=SimpleNamespace(instance_uuid='instance-a', placement_generation=1),
+                workspace=SimpleNamespace(uuid='workspace-a'),
+                membership=SimpleNamespace(uuid='member-a', role=role, projection_revision=1),
+            )
+        )
+    )
+    await SkillsRouterGroup(service.ap, app).initialize()
+    client = app.test_client()
+
+    async def post(suffix, content=None, revision=None):
+        return await client.post(
+            '/api/v1/skills/packet/package' + suffix,
+            headers={'Authorization': 'Bearer test-token'},
+            form={'base_revision': revision or first['revision']},
+            files={'file': FileStorage(stream=io.BytesIO(content or package('second')), filename='draft.zip')},
+        )
+
+    preview = await post('/preview')
+    assert preview.status_code == 200
+    assert (await preview.get_json())['data']['can_publish'] is (role == 'developer')
+    assert (await repository.get_skill(CONTEXT, 'packet'))['revision'] == first['revision']
+    published = await post('')
+    assert published.status_code == (200 if role == 'developer' else 403)
+    if role == 'developer':
+        assert (await post('')).status_code == 409
+        current = (await repository.get_skill(CONTEXT, 'packet'))['revision']
+        assert (await post('', package('wrong', name='other'), current)).status_code == 400
+        assert (await post('/preview', b'x' * (10 * 1024 * 1024 + 1), current)).status_code == 413
+        missing = await client.post(
+            '/api/v1/skills/packet/package',
+            headers={'Authorization': 'Bearer test-token'},
+            form={'base_revision': current},
+        )
+        assert missing.status_code == 400

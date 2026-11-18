@@ -18,6 +18,7 @@ from ...authz import Permission, has_permission, require_permission
 from ...context import RequestContext
 from ....workspace.errors import WorkspaceNotFoundError
 from ....core import app
+from ....i18n import t
 from ....telemetry import usage
 from ....skill.utils import parse_frontmatter
 from ....utils import httpclient
@@ -181,7 +182,7 @@ class SkillService:
         repository = self._repository()
         current = await repository.get_skill(execution_context, skill_name)
         if current is None:
-            raise WorkspaceNotFoundError('Skill not found')
+            raise WorkspaceNotFoundError(t('Skill not found'))
         SkillStore._require_base_revision(skill_name, {'current_revision': current['revision']}, base_revision)
         proposed, manifest = await asyncio.to_thread(self._inspect_skill_package, skill_name, file_bytes)
         previous = await repository.get_skill_package(
@@ -206,12 +207,12 @@ class SkillService:
     @staticmethod
     def _inspect_skill_package(skill_name: str, file_bytes: bytes) -> tuple[dict, dict]:
         # Reuse the publication validator and canonical SKILL.md formatting in
-        # disposable storage. No Workspace registry, content store or cache is written.
+        # disposable storage isolated from Workspace registries, content stores and caches.
         with tempfile.TemporaryDirectory(prefix='langbot-skill-preview-') as temporary:
             store = SkillStore(temporary)
             proposed = store.import_skill_zip(file_bytes, {})
             if proposed['name'] != skill_name:
-                raise ValueError('Skill package name must match the requested Skill')
+                raise ValueError(t('Skill package name must match the requested Skill'))
             _, manifest = store._package_manifest(proposed['package_root'])
             return proposed, manifest
 

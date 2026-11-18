@@ -7,6 +7,7 @@ from ...context import RequestContext
 from .....operation_trace import service as settings_service
 from .....skill.repository import SkillRevisionConflictError, SkillRevisionNotFoundError
 from .....workspace.errors import WorkspaceNotFoundError
+from .....i18n import t
 from .. import group
 
 
@@ -16,23 +17,27 @@ class SkillsRouterGroup(group.RouterGroup):
 
     async def initialize(self) -> None:
         @self.route(
-            '/<skill_name>/package/preview', methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_VIEW,
+            '/<skill_name>/package/preview',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
         )
         @self.route(
-            '/<skill_name>/package', methods=['POST'],
-            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY, permission=Permission.RESOURCE_MANAGE,
+            '/<skill_name>/package',
+            methods=['POST'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_MANAGE,
         )
         async def publish_package(skill_name: str, request_context: RequestContext) -> quart.Response:
             upload = (await quart.request.files).get('file')
             form = await quart.request.form
             base_revision = str(form.get('base_revision', '')).strip()
             if upload is None or not base_revision:
-                return self.http_status(400, -1, 'file and base_revision are required')
+                return self.http_status(400, -1, t('file and base_revision are required'))
             # Bound bytes before decompression; the shared SDK bounds the tree.
             content = upload.read(10 * 1024 * 1024 + 1)
             if len(content) > 10 * 1024 * 1024:
-                return self.http_status(413, -1, 'Skill package exceeds the 10MB upload limit')
+                return self.http_status(413, -1, t('Skill package exceeds the 10MB upload limit'))
             method = (
                 self.ap.skill_service.preview_skill_package
                 if quart.request.path.endswith('/preview')

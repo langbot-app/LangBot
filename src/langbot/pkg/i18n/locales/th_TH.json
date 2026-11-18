@@ -1,4 +1,8 @@
 {
+  "Skill not found": "ไม่พบ Skill",
+  "Skill package name must match the requested Skill": "ชื่อ Skill ในแพ็กเกจต้องตรงกับ Skill ที่ร้องขอ",
+  "file and base_revision are required": "ต้องระบุ file และ base_revision",
+  "Skill package exceeds the 10MB upload limit": "แพ็กเกจ Skill เกินขีดจำกัดการอัปโหลด 10MB",
   "Agent runner not found: {runner}. Open Plugins to check installation, enablement and permissions. If startup failed, check the installation task and runtime logs, then retry.": "ไม่พบตัวรัน Agent: {runner} เปิดหน้าปลั๊กอินเพื่อตรวจสอบการติดตั้ง การเปิดใช้งาน และสิทธิ์ หากเริ่มทำงานไม่สำเร็จ ให้ตรวจสอบงานติดตั้งและบันทึกรันไทม์แล้วลองอีกครั้ง",
   "Plugin {plugin} has no permission declaration. Review compatibility access in plugin settings.": "ปลั๊กอิน {plugin} ไม่ได้ประกาศสิทธิ์ โปรดตรวจสอบการเข้าถึงในโหมดความเข้ากันได้ในการตั้งค่าปลั๊กอิน",
   "Request failed.": "คำขอล้มเหลว",
