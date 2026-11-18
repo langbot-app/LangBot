@@ -230,9 +230,11 @@ class ActionRPCBoxClient(BoxRuntimeClient):
         if action in {
             LangBotToBoxAction.EXEC,
             LangBotToBoxAction.CREATE_SESSION,
-        } and not data.get("artifact_mounts"):
+        }:
             data = {
-                key: value for key, value in data.items() if key != "artifact_mounts"
+                key: value
+                for key, value in data.items()
+                if key not in {"artifact_mounts", "local_mounts"} or value
             }
         try:
             return await self.handler.call_action(

@@ -241,9 +241,20 @@ class RunnerBoxService:
         else:
             session_id = 'runner-' + hashlib.sha256(key.encode()).hexdigest()
         # Plugin options cannot override policy, host mounts, or execution identity.
-        if set(request.options) - {'image'}:
-            raise BoxValidationError('Only the Box image can be specified; resource limits are Host-owned')
-        spec = {'session_id': session_id, **request.options}
+        names = request.options.get('mounts', [])
+        if not isinstance(names, list) or len(names) > 16 or any(not isinstance(name, str) for name in names):
+            raise BoxValidationError('Box mounts must be a list of at most 16 names')
+        if set(request.options) - {'image', 'mounts'}:
+            raise BoxValidationError(
+                'Only the Box image and mount names can be specified; resource limits are Host-owned'
+            )
+        if names:
+            if self.box.managed_admission_required or self.box.file_transfer_mode != 'network':
+                raise BoxValidationError('Local mounts require a self-hosted Docker network Box')
+            session_id += '-mounts-' + hashlib.sha256(json.dumps(sorted(names)).encode()).hexdigest()
+        spec = {'session_id': session_id, **{key: value for key, value in request.options.items() if key != 'mounts'}}
+        if names:
+            spec['local_mounts'] = names
         from ..provider.tools.loaders.skill import build_execution_mounts
 
         mounts = build_execution_mounts(self.box.ap, query) if query is not None else []
@@ -286,6 +297,8 @@ class RunnerBoxService:
             return self.binding_info(current)
         fields = ('image', 'network', 'cpus', 'memory_mb', 'pids_limit', 'read_only_rootfs', 'persistent')
         spec = {key: item[key] for key in fields if key in item}
+        if item.get('local_mounts'):
+            spec['local_mounts'] = item['local_mounts']
         if backend is not None:
             spec['backend'] = backend
         limits = getattr(query, '_sandbox_limits', {}) or {}

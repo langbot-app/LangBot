@@ -133,6 +133,9 @@ def _complete_content_defaults(cfg: dict) -> dict:
             raise ValueError(f'{section} must be a mapping')
     cfg['skills'].setdefault('persistence', 'filesystem')
     cfg['storage'].setdefault('use', 'local')
+    cfg['box'].setdefault(
+        'workspace_mode', 'shared' if cfg['box'].get('file_transfer_mode') == 'network' else 'private'
+    )
     cfg['box'].setdefault('file_transfer_mode', 'legacy')
     for section in ('skills', 'storage'):
         migration = cfg[section].setdefault('migration', {})

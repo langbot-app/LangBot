@@ -130,6 +130,7 @@ def test_old_core_upgrade_preserves_versions_assets_and_survives_source_removal(
         config['skills'].update(persistence='database', migration={'require_source': True})
         config['storage'].update(use='persistent', migration={'require_source': True}, content={'backend': 'database'})
         config['box']['file_transfer_mode'] = 'network'
+        config['box']['workspace_mode'] = 'private'
         path.write_text(yaml.safe_dump(config))
         _start(SimpleNamespace(root=root, process=current))
 

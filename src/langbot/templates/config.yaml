@@ -456,6 +456,7 @@ box:
     # Requires a compatible Core SDK and Runtime; startup checks the handshake.
     # 'legacy' explicitly preserves shared Core/Box transfer paths.
     file_transfer_mode: 'network'
+    workspace_mode: 'private'
     runtime:
         # LANGBOT_BOX_CONTROL_TOKEN is optional for OSS external WebSocket
         # runtimes. To protect an exposed endpoint, set the same strong secret

@@ -12,6 +12,7 @@ import logging
 import os
 from pathlib import Path
 import posixpath
+import re
 import stat
 import tempfile
 import time
@@ -219,6 +220,10 @@ class BoxRuntime:
                     f"Failed to parse LANGBOT_BOX_CONFIG: {config_json[:100]}"
                 )
 
+        self._local_mounts = self._box_config.get("local_mounts", {})
+        if not isinstance(self._local_mounts, dict):
+            raise BoxValidationError("Runtime local_mounts must be a mapping")
+
         # Build backend list
         if backends is None:
             backends = [
@@ -411,7 +416,9 @@ class BoxRuntime:
             )
         previous_admission_policy = self._admission_policy
         candidate_config = dict(self._box_config)
-        candidate_config.update(config)
+        candidate_config.update(
+            {key: value for key, value in config.items() if key != "local_mounts"}
+        )
         mode = candidate_config.get("file_transfer_mode", "legacy")
         if mode not in {"legacy", "network"}:
             raise BoxValidationError("file_transfer_mode must be legacy or network")
@@ -534,6 +541,12 @@ class BoxRuntime:
     def _validate_network_spec(
         self, spec: BoxSpec, context: ActionContext | None
     ) -> None:
+        if spec.local_mounts and (
+            not self.network_workspace or self.admission_required
+        ):
+            raise BoxValidationError(
+                "Local mounts require a self-hosted Docker network Box"
+            )
         if not self.network_workspace:
             return
         if context is None:
@@ -546,6 +559,46 @@ class BoxRuntime:
             )
         if spec.mount_path != DEFAULT_BOX_MOUNT_PATH:
             raise BoxValidationError("Network workspace mount_path must be /workspace")
+
+    def _resolve_local_mounts(
+        self, spec: BoxSpec, context: ActionContext | None
+    ) -> BoxSpec:
+        if not spec.local_mounts:
+            return spec
+        if len(set(spec.local_mounts)) != len(spec.local_mounts):
+            raise BoxValidationError("Duplicate local mount names")
+        mounts = []
+        for name in sorted(spec.local_mounts):
+            entry = self._local_mounts.get(name)
+            if (
+                not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,62}", name)
+                or not isinstance(entry, dict)
+                or not isinstance(entry.get("workspaces"), list)
+                or context is None
+                or context.workspace_uuid not in entry["workspaces"]
+            ):
+                raise BoxValidationError(
+                    "Local mount is unavailable for this Workspace"
+                )
+            source = entry.get("path")
+            if not isinstance(source, str) or not os.path.isabs(source):
+                raise BoxValidationError(
+                    "Local mount requires an absolute Runtime host directory"
+                )
+            try:
+                source = str(Path(source).resolve(strict=True))
+            except (OSError, RuntimeError, ValueError):
+                raise BoxValidationError("Local mount source is unavailable") from None
+            if source == "/" or not os.path.isdir(source):
+                raise BoxValidationError("Local mount requires a dedicated directory")
+            mounts.append(
+                BoxMountSpec(
+                    host_path=source,
+                    mount_path=f"/datasets/{name}",
+                    mode=BoxHostMountMode.READ_ONLY,
+                )
+            )
+        return spec.model_copy(update={"extra_mounts": mounts})
 
     def _allocate_network_workspace(
         self, context: ActionContext, session_id: str
@@ -1612,6 +1665,7 @@ done
         if not spec.cmd:
             raise BoxValidationError("cmd must not be empty")
         self._validate_network_spec(spec, action_context)
+        spec = self._resolve_local_mounts(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -2069,6 +2123,7 @@ done
         action_context: ActionContext | None = None,
     ) -> dict:
         self._validate_network_spec(spec, action_context)
+        spec = self._resolve_local_mounts(spec, action_context)
         if self.admission_required:
             if action_context is None:
                 raise BoxAdmissionError(
@@ -2655,6 +2710,10 @@ done
                 )
         else:
             backend = await self._get_backend(spec.backend, spec.e2b_config)
+        if spec.local_mounts and backend.name != "docker":
+            raise BoxValidationError(
+                "Local mounts require a self-hosted Docker network Box"
+            )
         signature_spec = spec
         if backend.content_addressed_mounts:
             signature_spec = spec.model_copy(
@@ -2869,6 +2928,7 @@ done
                     async def start_session():
                         info = await backend.start_session(backend_spec)
                         info.session_generation = uuid.uuid4().hex
+                        info.local_mounts = sorted(spec.local_mounts)
                         info._runtime_workspace_owner = owned_workspace
                         runtime_session = _RuntimeSession(
                             info=info,

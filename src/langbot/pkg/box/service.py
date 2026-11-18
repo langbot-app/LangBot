@@ -126,9 +126,15 @@ class BoxService:
             self._runtime_connector = BoxRuntimeConnector(ap, runtime_disconnect_callback=self._on_runtime_disconnect)
             client = self._runtime_connector.client
         self.client = client
-        self.file_transfer_mode = _get_box_config(ap).get('file_transfer_mode', 'legacy')
-        if self.file_transfer_mode not in ('legacy', 'network'):
+        box_config = _get_box_config(ap)
+        transfer_mode = box_config.get('file_transfer_mode', 'legacy')
+        workspace_mode = box_config.get('workspace_mode', 'private')
+        if transfer_mode not in ('legacy', 'network'):
             raise BoxValidationError('box.file_transfer_mode must be legacy or network')
+        if workspace_mode not in ('private', 'shared'):
+            raise BoxValidationError('box.workspace_mode must be private or shared')
+        self.network_file_transfer = transfer_mode == 'network'
+        self.file_transfer_mode = 'legacy' if workspace_mode == 'shared' else transfer_mode
         if self.file_transfer_mode == 'network':
             from langbot_plugin.box import errors as sdk_box_errors
             from langbot_plugin.skill_store import SkillStore
@@ -617,6 +623,8 @@ class BoxService:
         """Reject tenant-owned policy fields and apply the Cloud hard policy."""
 
         payload = dict(spec_payload)
+        if payload.get('local_mounts') and (self._cloud_managed or self.file_transfer_mode != 'network'):
+            raise BoxAdmissionError('Local mounts require a self-hosted Docker network Box')
         if payload.get('artifact_mounts'):
             raise BoxAdmissionError('Runtime artifact mounts must be composed by the Host')
         if self.file_transfer_mode == 'network':
@@ -769,6 +777,9 @@ class BoxService:
         e2b_config = binding.spec.get('e2b_config')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
         spec_payload.pop('expected_session_generation', None)
+        spec_payload.pop('local_mounts', None)
+        if binding.spec.get('local_mounts'):
+            spec_payload['local_mounts'] = binding.spec['local_mounts']
         if binding.session_generation is not None:
             spec_payload['expected_session_generation'] = binding.session_generation
         spec_payload.pop('backend', None)
@@ -1102,7 +1113,7 @@ class BoxService:
         if not files:
             return []
 
-        if self.file_transfer_mode == 'network':
+        if self.network_file_transfer:
             return await self._write_files_network(query, target_mount_dir, files)
 
         host_dir = self._host_query_dir(subdir, query)
@@ -1533,9 +1544,9 @@ class BoxService:
         if self._cloud_managed:
             await self.require_workspace_sandbox(self._query_execution_context(query))
 
-        host_dir = None if self.file_transfer_mode == 'network' else self._host_query_dir(self.OUTBOX_SUBDIR, query)
+        host_dir = None if self.network_file_transfer else self._host_query_dir(self.OUTBOX_SUBDIR, query)
         try:
-            if self.file_transfer_mode == 'network':
+            if self.network_file_transfer:
                 entries = await self._read_outbox_network(query)
             elif host_dir is not None:
                 try:
@@ -1563,7 +1574,7 @@ class BoxService:
 
     async def clear_outbound_attachments(self, query: pipeline_query.Query) -> None:
         """Clear output after a complete read has been accepted by the Runner."""
-        host_dir = None if self.file_transfer_mode == 'network' else self._host_query_dir(self.OUTBOX_SUBDIR, query)
+        host_dir = None if self.network_file_transfer else self._host_query_dir(self.OUTBOX_SUBDIR, query)
         await self._clear_outbox(query, host_dir)
 
     def _read_outbox_host(self, host_dir: str) -> list[dict]:
@@ -1688,7 +1699,7 @@ class BoxService:
     async def collect_selected_files(self, query, paths):
         if not self._available:
             raise BoxError('Box runtime is not available')
-        if self.file_transfer_mode == 'network':
+        if self.network_file_transfer:
             entries = await self._read_selected_files_network(query, paths)
         else:
             entries = await self._read_outbox_via_exec(query, paths)
@@ -1913,7 +1924,7 @@ class BoxService:
 
         if (
             not self._cloud_managed
-            and self.file_transfer_mode == 'network'
+            and self.network_file_transfer
             and spec.backend == 'e2b'
             and spec.host_path_mode == BoxHostMountMode.READ_WRITE
         ):
