@@ -70,7 +70,10 @@ class BotsRouterGroup(group.RouterGroup):
         )
         async def _(bot_uuid: str, request_context: RequestContext) -> str:
             result = await self.ap.bot_service.get_plugin_registrations(
-                request_context, bot_uuid, quart.request.args.get('route_id')
+                request_context,
+                bot_uuid,
+                quart.request.args.get('route_id'),
+                include_disabled=quart.request.args.get('include_disabled') in {'1', 'true'},
             )
             if result is None:
                 return self.http_status(404, -1, 'bot not found')

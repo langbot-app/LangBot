@@ -431,6 +431,7 @@ export interface Bot {
   event_bindings?: EventBinding[];
   plugin_processors?: PluginProcessorBinding[];
   command_settings?: BotCommandSettings;
+  message_policy?: MessagePolicy;
   platform_command_sync?: PlatformCommandSync;
   platform_command_registration?: {
     rejected?: { name: string; reason: string }[];
@@ -497,6 +498,47 @@ export interface EventBinding {
   enabled: boolean;
   description?: string;
   order?: number;
+  /** Partial message policy overriding the bot's for this route; null clears it. */
+  policy?: MessagePolicyOverride | null;
+}
+
+export type MessagePolicySectionName = 'trigger' | 'safety' | 'output';
+
+export interface PluginSelection {
+  enable_all: boolean;
+  plugins: { author: string; name: string }[];
+}
+
+/** A bot's message policy: sections of blocks, as in the policy metadata. */
+export interface MessagePolicy {
+  trigger?: Record<string, Record<string, unknown>>;
+  safety?: Record<string, Record<string, unknown>>;
+  output?: Record<string, Record<string, unknown>>;
+  plugins?: PluginSelection;
+}
+
+export interface MessagePolicyOverride extends Omit<MessagePolicy, 'plugins'> {
+  plugins?: PluginSelection | null;
+}
+
+export interface MessagePolicyMetadata {
+  configs: import('../pipeline').PipelineConfigTab[];
+  default: MessagePolicy;
+  neutral: MessagePolicy;
+}
+
+/** Where a hook takes effect: Chat (``messaging``), Agent or command. */
+export type HookProcessor = 'messaging' | 'agent' | 'command';
+
+export interface PluginRegistration {
+  commands?: string[] | null;
+  events?: string[] | null;
+  event_processors?: Record<string, HookProcessor[]> | null;
+}
+
+export interface ApiRespPluginRegistrations {
+  /** null when the Plugin Runtime cannot report registrations. */
+  plugins: Record<string, PluginRegistration> | null;
 }
 
 export interface BotRouteDryRunRequest {

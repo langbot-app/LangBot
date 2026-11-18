@@ -686,10 +686,21 @@ class LangBotMCPServer:
             commands = await ap.plugin_connector.list_commands()
             return _dump({'commands': [c.model_dump() for c in commands]})
 
-        @mcp.tool(description='List enabled plugin commands, hooks and applicable processors for a bot route.')
-        async def list_bot_plugin_registrations(bot_uuid: str, route_id: str | None = None) -> str:
+        @mcp.tool(
+            description=(
+                'List plugin commands, hooks and applicable processors for a bot route. '
+                'Only plugins enabled there are listed unless include_disabled is true.'
+            )
+        )
+        async def list_bot_plugin_registrations(
+            bot_uuid: str, route_id: str | None = None, include_disabled: bool = False
+        ) -> str:
             context = _authorized(Permission.RESOURCE_VIEW)
-            return _dump(await ap.bot_service.get_plugin_registrations(context, bot_uuid, route_id))
+            return _dump(
+                await ap.bot_service.get_plugin_registrations(
+                    context, bot_uuid, route_id, include_disabled=include_disabled
+                )
+            )
 
         @mcp.tool(description='Delete a bot by UUID.')
         async def delete_bot(bot_uuid: str) -> str:

@@ -866,7 +866,13 @@ class BotService:
         async with runtime.admit(query, text, preview=True) as blocked:
             return blocked, command
 
-    async def get_plugin_registrations(self, context, bot_uuid, route_id=None):
+    async def get_plugin_registrations(self, context, bot_uuid, route_id=None, *, include_disabled=False):
+        """Return the events and commands each plugin registers.
+
+        By default only plugins enabled for the bot (or route) are listed;
+        ``include_disabled`` lists every installed plugin so editors can show
+        what enabling one would add.
+        """
         bot = await self.get_bot(context, bot_uuid, include_secret=False)
         if bot is None:
             return None
@@ -874,7 +880,7 @@ class BotService:
         policy = message_policy_schema.resolve_policy(bot.get('message_policy'), route.get('policy'))
         await self.ap.plugin_connector.require_workspace_context(context)
         plugins = await self.ap.plugin_connector.list_plugin_registrations(
-            message_policy_schema.enabled_plugins(policy)
+            None if include_disabled else message_policy_schema.enabled_plugins(policy)
         )
         for registration in (plugins or {}).values():
             if registration.get('events') is None:

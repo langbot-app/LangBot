@@ -280,10 +280,10 @@ const viVN = {
       'Chưa xác nhận gửi. Kiểm tra kết nối rồi mở lại cuộc trò chuyện.',
     draftPlaceholder: 'Có thể soạn tin nhắn tiếp theo trong lúc chờ…',
     operations: {
-      create_pipeline: 'Tạo Pipeline',
-      configure_pipeline: 'Cấu hình Pipeline',
+      create_pipeline: 'Tạo Chat',
+      configure_pipeline: 'Cấu hình Chat',
       create_knowledge_base: 'Tạo cơ sở tri thức',
-      get_pipeline: 'Xem Pipeline',
+      get_pipeline: 'Xem Chat',
       get_knowledge_schema: 'Xem lược đồ knowledge engine',
       list_operation_logs: 'Truy vấn nhật ký thao tác',
       workspace_search: 'Tìm khả năng của không gian làm việc',
@@ -293,7 +293,7 @@ const viVN = {
     resources: {
       models: 'Tìm mô hình trò chuyện',
       embedding_models: 'Tìm mô hình embedding',
-      pipelines: 'Tìm Pipeline',
+      pipelines: 'Tìm Chat',
       knowledge_bases: 'Tìm cơ sở tri thức',
       knowledge_engines: 'Tìm knowledge engine',
     },
@@ -302,8 +302,8 @@ const viVN = {
     newChat: 'Cuộc trò chuyện mới',
     close: 'Đóng',
     welcome:
-      'Hãy cho tôi biết bạn muốn xây dựng gì. Tôi có thể xem không gian làm việc này, đề xuất cấu hình cho bot, Agent, cơ sở tri thức, Pipeline và các tài nguyên khác, rồi áp dụng sau khi bạn xác nhận.',
-    discover: 'Có những mô hình, cơ sở tri thức và Pipeline nào khả dụng?',
+      'Hãy cho tôi biết bạn muốn xây dựng gì. Tôi có thể xem không gian làm việc này, đề xuất cấu hình cho bot, Agent, cơ sở tri thức, Chat và các tài nguyên khác, rồi áp dụng sau khi bạn xác nhận.',
+    discover: 'Có những mô hình, cơ sở tri thức và Chat nào khả dụng?',
     build: 'Giúp tôi tạo ứng dụng hỏi đáp dựa trên cơ sở tri thức.',
     toolResult: 'Kết quả thao tác',
     review: 'Kiểm tra thao tác và tham số cụ thể trước khi xác nhận',
@@ -345,7 +345,7 @@ const viVN = {
       pipelines: {
         title: 'Cấu hình bộ xử lý',
         description:
-          'Tạo pipeline, Agent và cấu hình bộ xử lý plugin có thể tái sử dụng rồi kết nối với bot.',
+          'Tạo chat, Agent và cấu hình bộ xử lý plugin có thể tái sử dụng rồi kết nối với bot.',
       },
       knowledge: {
         title: 'Quản lý cơ sở tri thức',
@@ -380,8 +380,7 @@ const viVN = {
     pipeline: {
       trigger: {
         title: 'Choose which messages to answer',
-        description:
-          'Pipelines handle message events and reply automatically with AI.',
+        description: 'Chat xử lý sự kiện tin nhắn và tự động trả lời bằng AI.',
       },
       speech: {
         title: 'Configure speech capabilities',
@@ -405,12 +404,12 @@ const viVN = {
       extensions: {
         title: 'Chọn tiện ích mở rộng',
         description:
-          'Chọn plugin, máy chủ MCP và kỹ năng mà pipeline này có thể dùng để mở rộng khả năng xử lý và công cụ.',
+          'Chọn plugin, máy chủ MCP và kỹ năng mà chat này có thể dùng để mở rộng khả năng xử lý và công cụ.',
       },
       basic: {
-        title: 'Quản lý pipeline',
+        title: 'Quản lý chat',
         description:
-          'Sao chép pipeline này để tạo cấu hình khác hoặc xóa pipeline không còn cần thiết.',
+          'Sao chép chat này để tạo cấu hình khác hoặc xóa chat không còn cần thiết.',
       },
       debug: {
         title: 'Thử cuộc trò chuyện',
@@ -433,7 +432,7 @@ const viVN = {
       save: {
         title: 'Lưu và kết nối bot',
         description:
-          'Lưu cấu hình rồi định tuyến sự kiện nhận tin nhắn tới pipeline này trên trang bot.',
+          'Lưu cấu hình rồi định tuyến sự kiện nhận tin nhắn tới chat này trên trang bot.',
       },
     },
     pluginProcessor: {
@@ -508,7 +507,7 @@ const viVN = {
       type: {
         title: 'Chọn loại bộ xử lý',
         description:
-          'Pipeline xử lý tin nhắn theo luồng cố định, Agent ra quyết định bằng mô hình và công cụ, còn bộ xử lý plugin xử lý các sự kiện nền tảng đã khai báo.',
+          'Chat xử lý tin nhắn theo luồng cố định, Agent ra quyết định bằng mô hình và công cụ, còn bộ xử lý plugin xử lý các sự kiện nền tảng đã khai báo.',
       },
       basic: {
         title: 'Đặt tên bộ xử lý',
@@ -833,8 +832,7 @@ const viVN = {
       confirmDisconnect: 'Xác nhận ngắt kết nối',
     },
     title: 'Mô hình',
-    description:
-      'Cấu hình và quản lý các mô hình có thể sử dụng trong Pipeline',
+    description: 'Cấu hình và quản lý các mô hình có thể sử dụng trong Chat',
     createModel: 'Tạo mô hình',
     editModel: 'Chỉnh sửa mô hình',
     getModelListError: 'Lấy danh sách mô hình thất bại: ',
@@ -1010,6 +1008,92 @@ const viVN = {
     },
   },
   bots: {
+    routingTabs: {
+      routes: 'Tuyến',
+      plugins: 'Plugin',
+      policy: 'Chính sách tin nhắn',
+    },
+    policy: {
+      scopeLabel: 'Áp dụng cho',
+      botDefault: 'Mặc định của bot',
+      routes: 'Tuyến',
+      custom: 'Tùy chỉnh',
+      inherit: 'Mặc định',
+      inheritDefault: 'Dùng mặc định',
+      routeMode: 'Chính sách của tuyến này',
+      promote: 'Đặt làm mặc định của bot',
+      promoted:
+        'Đã đặt làm mặc định của bot; {{count}} tuyến chuyển sang dùng mặc định',
+      loadFailed: 'Không tải được chính sách tin nhắn',
+      botDefaultHint:
+        'Mặc định của bot áp dụng cho mọi tuyến nhận tin nhắn; từng tuyến có thể ghi đè. Chỉ ảnh hưởng sự kiện message.received.',
+      neutralDefaultHint:
+        'Mặc định hiện tại không chặn gì và không thay đổi phản hồi.',
+      policyState: 'Chính sách: {{state}}',
+      pluginState: 'Plugin: {{state}}',
+      inheritHint:
+        'Tuyến này dùng mặc định của bot; bên dưới là thiết lập đang có hiệu lực. Chuyển sang Tùy chỉnh để thay đổi riêng cho tuyến.',
+      streamingNote:
+        'Phản hồi dạng stream chỉ áp dụng độ trễ bắt buộc, @người gửi và trích dẫn; không áp dụng xử lý văn bản dài.',
+      streamingPlatformLimit:
+        'Trên nền tảng này khung stream đầu tiên không thể kèm @ hoặc trích dẫn, nên chúng không hiển thị trong phản hồi stream.',
+      newRouteNeutral:
+        'Tuyến mới dùng chính sách tin nhắn mặc định của bot, hiện không chặn gì. Bạn có thể đặt riêng trong tab Chính sách tin nhắn.',
+      newRouteInherits:
+        'Tuyến mới dùng chính sách tin nhắn mặc định của bot. Bạn có thể đặt riêng trong tab Chính sách tin nhắn.',
+    },
+    pluginHooks: {
+      routeMode: 'Plugin của tuyến này',
+      lifecycleTitle: 'Vòng đời tin nhắn',
+      lifecycleHint: 'Biểu tượng là các plugin đã bật hoạt động ở mỗi bước',
+      policyCaption: 'Chính sách tin nhắn',
+      enableTitle: 'Plugin đã bật',
+      enableHint:
+        'Bật một plugin sẽ bật các lệnh và toàn bộ trình lắng nghe sự kiện của nó.',
+      inheritHint:
+        'Tuyến này dùng lựa chọn plugin mặc định của bot. Chuyển sang Tùy chỉnh để chọn plugin riêng.',
+      loadFailed: 'Không tải được plugin',
+      empty: 'Chưa có plugin nào có lệnh hoặc trình lắng nghe sự kiện.',
+      browseMarket: 'Cài plugin',
+      registrationsUnknown:
+        'Plugin Runtime quá cũ nên không báo được các hook mà mỗi plugin đăng ký.',
+      globallyDisabled: 'Plugin đã tắt',
+      hooksUnknown: 'Không rõ hook',
+      enablePlugin: 'Bật {{plugin}} trên bot này',
+      processors: {
+        messaging: 'Chat',
+        agent: 'Agent',
+        command: 'Lệnh',
+      },
+      reasons: {
+        observeOnly: 'Sự kiện nền tảng: chỉ thông báo, không chặn được',
+        promptOnAgent:
+          'Được định tuyến tới Agent; hook prompt không có hiệu lực',
+        notOnRoute:
+          'Không dùng trên tuyến này; chỉ có hiệu lực với {{processors}}',
+        streamObserveOnly:
+          'Với phản hồi stream, hook này chỉ quan sát, không sửa được nội dung đã gửi',
+      },
+      steps: {
+        received: 'Nhận',
+        command: 'Lệnh',
+        admission: 'Kiểm soát',
+        before: 'Trước phản hồi',
+        process: 'Xử lý',
+        after: 'Sau phản hồi',
+        send: 'Gửi',
+      },
+      events: {
+        GroupMessageReceived: 'Tin nhắn nhóm',
+        PersonMessageReceived: 'Tin nhắn riêng',
+        GroupCommandSent: 'Lệnh trong nhóm',
+        PersonCommandSent: 'Lệnh riêng',
+        GroupNormalMessageReceived: 'Tin nhắn thường trong nhóm',
+        PersonNormalMessageReceived: 'Tin nhắn thường riêng',
+        PromptPreProcessing: 'Tiền xử lý prompt',
+        NormalMessageResponded: 'Sau phản hồi',
+      },
+    },
     platformCommands: {
       title: 'Đăng ký trên nền tảng',
       overwrite:
@@ -1037,14 +1121,15 @@ const viVN = {
       createDefaultHint: 'Dùng cấu hình mặc định.',
       title: 'Ràng buộc lệnh plugin',
       description:
-        'Chỉ áp dụng cho các sự kiện message.received; khi khớp lệnh plugin, lệnh sẽ thực thi trực tiếp tại tầng định tuyến, bỏ qua bộ xử lý plugin, quy tắc định tuyến và pipeline.',
+        'Chỉ áp dụng cho sự kiện message.received. Lệnh được so khớp trước quy tắc định tuyến và dùng chính sách tin nhắn của tuyến mà tin nhắn lẽ ra khớp. Lệnh của plugin đã bật dùng được ngay; liên kết bộ xử lý lệnh ở đây để cấu hình lệnh và đặt độ ưu tiên.',
       prefixes: 'Tiền tố lệnh',
       prefixPlaceholder: 'Nhập tiền tố và nhấn Enter (ví dụ: / hoặc !)',
       addPrefix: 'Thêm tiền tố',
       prefixInvalid: 'Tiền tố không được để trống và không chứa khoảng trắng',
       prefixDuplicate: 'Tiền tố đã tồn tại',
       plugins: 'Các lệnh plugin đã ràng buộc',
-      empty: 'Chưa có lệnh plugin nào được ràng buộc.',
+      empty:
+        'Chưa liên kết bộ xử lý lệnh; lệnh của plugin đã bật dùng cấu hình mặc định.',
       addPlugin: 'Thêm plugin',
       noAvailablePlugins:
         'Không có plugin khả dụng nào khai báo thành phần lệnh.',
@@ -1107,8 +1192,7 @@ const viVN = {
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     createSuccess: 'Tạo thành công. Vui lòng cấu hình định tuyến sự kiện',
-    autoCreatedPipeline:
-      'Đã tự động tạo pipeline và liên kết các sự kiện tin nhắn',
+    autoCreatedPipeline: 'Đã tự động tạo chat và liên kết các sự kiện tin nhắn',
     createError: 'Tạo thất bại: ',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
@@ -1124,8 +1208,8 @@ const viVN = {
       'Adapter cũ chủ yếu gửi và nhận tin nhắn, được giữ để tương thích với cấu hình bot hiện có.\nAdapter mới kết nối cùng nền tảng qua sự kiện, gồm tin nhắn và các yêu cầu kết bạn hoặc thay đổi nhóm được hỗ trợ, rồi chuyển đến bộ xử lý.\nƯu tiên bản mới khi tạo bot. Bot hiện có vẫn dùng được bản cũ. Khi chuyển đổi, kiểm tra kết nối và tuyến sự kiện; tài khoản nền tảng không được nâng cấp.',
     adapterConfig: 'Cấu hình Adapter',
     viewAdapterDocs: 'Xem tài liệu',
-    bindPipeline: 'Liên kết Pipeline',
-    selectPipeline: 'Chọn Pipeline',
+    bindPipeline: 'Liên kết Chat',
+    selectPipeline: 'Chọn Chat',
     selectBot: 'Chọn Bot',
     botLogTitle: 'Nhật ký Bot',
     enableAutoRefresh: 'Bật tự động làm mới',
@@ -1144,8 +1228,7 @@ const viVN = {
     basicInfo: 'Thông tin cơ bản',
     basicInfoDescription: 'Đặt tên và mô tả Bot',
     routingConnection: 'Định tuyến & Kết nối',
-    routingConnectionDescription:
-      'Liên kết Pipeline xử lý tin nhắn cho Bot này',
+    routingConnectionDescription: 'Liên kết Chat xử lý tin nhắn cho Bot này',
     routingHelp: {
       title: 'Định tuyến sự kiện là gì?',
       intro:
@@ -1179,7 +1262,7 @@ const viVN = {
         'Lệnh plugin đang tắt; tin nhắn đi thẳng tới các tuyến.',
     },
     eventRoutingDescription:
-      'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Pipeline tương ứng. Pipeline chỉ hỗ trợ sự kiện tin nhắn.',
+      'Chọn bộ xử lý cho từng sự kiện của Bot. Chỉnh sửa logic trong cấu hình Agent hoặc Chat tương ứng. Chat chỉ hỗ trợ sự kiện tin nhắn.',
     eventBindings: 'Định tuyến sự kiện',
     addEventBinding: 'Thêm tuyến',
     addBehavior: 'Thêm hành vi',
@@ -1208,7 +1291,7 @@ const viVN = {
     targetType: 'Loại đích',
     target: 'Bộ xử lý',
     targetAgent: 'Agent',
-    targetPipeline: 'Pipeline',
+    targetPipeline: 'Chat',
     targetDiscard: 'Loại bỏ',
     selectTarget: 'Chọn bộ xử lý',
     searchTarget: 'Tìm bộ xử lý…',
@@ -1217,7 +1300,7 @@ const viVN = {
     enabled: 'Đã bật',
     eventBindingDescriptionPlaceholder: 'Mô tả quy tắc',
     noEventBindings: 'Chưa có tuyến sự kiện',
-    unsupportedPipelineEvent: 'Pipeline chỉ hỗ trợ sự kiện message.received',
+    unsupportedPipelineEvent: 'Chat chỉ hỗ trợ sự kiện message.received',
     disable: 'Tắt',
     enable: 'Bật',
     disabledBindings: 'Đã tắt',
@@ -1420,7 +1503,7 @@ const viVN = {
     operator_regex: 'biểu thức chính quy',
     routingRules: 'Quy tắc định tuyến có điều kiện',
     routingRulesDescription:
-      'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến pipeline tương ứng. Nếu không khớp, pipeline mặc định ở trên sẽ được sử dụng.',
+      'Các quy tắc được đánh giá theo thứ tự; kết quả khớp đầu tiên sẽ định tuyến đến chat tương ứng. Nếu không khớp, chat mặc định ở trên sẽ được sử dụng.',
     addRoutingRule: 'Thêm quy tắc',
     ruleTypeLauncherType: 'Loại phiên',
     ruleTypeLauncherId: 'ID phiên',
@@ -1624,7 +1707,7 @@ const viVN = {
       pipeline: {
         summary:
           'Tin nhắn đi qua quy tắc kích hoạt và AI tạo nội dung, rồi được trả lời.',
-        group: 'Bên trong Pipeline',
+        group: 'Bên trong Chat',
         trigger: 'Quy tắc kích hoạt và tiền xử lý',
         generate: 'AI tạo câu trả lời',
         generateCaption: 'Dùng mô hình, cơ sở tri thức và công cụ',
@@ -1756,7 +1839,7 @@ const viVN = {
       'Dùng runner để xử lý tin nhắn, thành viên nhóm, bạn bè, phản hồi và các sự kiện nền tảng khác.',
     pipelineType: 'Quy trình',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: 'Pipeline',
+    kindBadgePipeline: 'Chat',
     groupByKind: 'Nhóm theo loại',
     groupByKindShort: 'Nhóm',
     pipelineTypeDescription:
@@ -1773,9 +1856,9 @@ const viVN = {
     agentDiagramTitle: 'Agent: quyết định và hành động',
     agentDiagramDescription:
       'Agent nhận nhiều sự kiện nền tảng, dùng mô hình và công cụ để hiểu tình huống rồi quyết định hành động.',
-    pipelineDiagramTitle: 'Pipeline: theo quy trình định sẵn',
+    pipelineDiagramTitle: 'Chat: theo quy trình định sẵn',
     pipelineDiagramDescription:
-      'Pipeline chỉ xử lý sự kiện tin nhắn và chạy từng bước theo thứ tự đã cấu hình.',
+      'Chat chỉ xử lý sự kiện tin nhắn và chạy từng bước theo thứ tự đã cấu hình.',
     pipelineDiagramFlow: 'Tin nhắn đi qua chuỗi bước cố định',
     diagramEvents: 'Sự kiện nền tảng',
     diagramAgentCanUse: 'Khả năng của Agent',
@@ -1973,9 +2056,13 @@ const viVN = {
     debugRunFailed: 'Chạy gỡ lỗi Agent thất bại',
   },
   plugins: {
+    enabledOnBots: 'Plugin đã bật trên {{count}} bot',
+    notEnabledOnBots:
+      'Plugin chưa được bật trên bot nào nên lệnh và trình lắng nghe chưa hoạt động.',
+    goEnable: 'Bật',
     title: 'Tiện ích mở rộng',
     description:
-      'Cài đặt và cấu hình plugin để mở rộng chức năng, vui lòng chọn chúng trong cấu hình Pipeline',
+      'Cài đặt và cấu hình plugin để mở rộng chức năng, vui lòng chọn chúng trong cấu hình Chat',
     createPlugin: 'Tạo Plugin',
     editPlugin: 'Chỉnh sửa Plugin',
     installed: 'Đã cài đặt',
@@ -2394,7 +2481,7 @@ const viVN = {
       followUp: {
         nextSteps: 'Bước tiếp theo',
         agents: 'Tạo Agent hoặc bộ xử lý plugin',
-        pipelines: 'Tạo pipeline',
+        pipelines: 'Tạo chat',
         knowledge: 'Tạo cơ sở tri thức',
       },
       updateComplete: 'Đã cập nhật plugin thành công',
@@ -2423,7 +2510,7 @@ const viVN = {
 
     runnerUsage: 'Mục đích trình chạy',
     runnerUsageAll: 'Tất cả',
-    runnerUsageAgent: 'Agent / Pipeline',
+    runnerUsageAgent: 'Agent / Chat',
     runnerUsageEvent: 'Bộ xử lý plugin',
     searchPlaceholder: 'Tìm kiếm plugin...',
     searchPlaceholderCount:
@@ -2659,16 +2746,18 @@ const viVN = {
     deleteMCPHint: 'Sau khi xóa, cấu hình máy chủ MCP này không thể khôi phục.',
   },
   pipelines: {
+    outputMovedToPolicy:
+      'Điều kiện đầu vào, an toàn và thiết lập phản hồi chung (văn bản dài, độ trễ bắt buộc, @người gửi, trích dẫn, gợi ý lỗi) đã chuyển sang tab Chính sách tin nhắn của bot. Ở đây chỉ còn các tùy chọn đầu ra dành cho AI.',
     title: 'Quy trình',
     description:
-      'Pipeline xác định luồng xử lý sự kiện tin nhắn, dùng để liên kết với Bot',
-    createPipeline: 'Tạo Pipeline',
-    selectFromSidebar: 'Chọn một Pipeline từ thanh bên',
-    editPipeline: 'Chỉnh sửa Pipeline',
+      'Chat xác định luồng xử lý sự kiện tin nhắn, dùng để liên kết với Bot',
+    createPipeline: 'Tạo Chat',
+    selectFromSidebar: 'Chọn một Chat từ thanh bên',
+    editPipeline: 'Chỉnh sửa Chat',
     chat: 'Trò chuyện',
     configuration: 'Cấu hình',
     debugChat: 'Trò chuyện gỡ lỗi',
-    getPipelineListError: 'Lấy danh sách Pipeline thất bại: ',
+    getPipelineListError: 'Lấy danh sách Chat thất bại: ',
     daysAgo: 'ngày trước',
     today: 'Hôm nay',
     updateTime: 'Cập nhật ',
@@ -2679,8 +2768,8 @@ const viVN = {
     recentlyEdited: 'Chỉnh sửa gần đây',
     earliestEdited: 'Chỉnh sửa sớm nhất',
     basicInfo: 'Thông tin cơ bản',
-    basicInfoDescription: 'Đặt tên, biểu tượng và mô tả Pipeline',
-    managementDescription: 'Sao chép hoặc xóa pipeline này.',
+    basicInfoDescription: 'Đặt tên, biểu tượng và mô tả Chat',
+    managementDescription: 'Sao chép hoặc xóa chat này.',
     aiCapabilities: 'AI',
     triggerConditions: 'Điều kiện kích hoạt',
     safetyControls: 'An toàn',
@@ -2688,27 +2777,27 @@ const viVN = {
     speechProcessing: 'Giọng nói',
     nameRequired: 'Tên không được để trống',
     descriptionRequired: 'Mô tả không được để trống',
-    createSuccess: 'Tạo thành công. Vui lòng chỉnh sửa tham số Pipeline',
+    createSuccess: 'Tạo thành công. Vui lòng chỉnh sửa tham số Chat',
     createError: 'Tạo thất bại: ',
     saveSuccess: 'Lưu thành công',
     saveError: 'Lưu thất bại: ',
     copySuffix: ' Bản sao',
     deleteConfirmation:
-      'Bạn có chắc chắn muốn xóa Pipeline này không? Bot liên kết với Pipeline này sẽ không hoạt động.',
-    defaultPipelineCannotDelete: 'Không thể xóa Pipeline mặc định',
+      'Bạn có chắc chắn muốn xóa Chat này không? Bot liên kết với Chat này sẽ không hoạt động.',
+    defaultPipelineCannotDelete: 'Không thể xóa Chat mặc định',
     deleteSuccess: 'Xóa thành công',
     deleteError: 'Xóa thất bại: ',
     copyConfirmTitle: 'Xác nhận sao chép',
     copyConfirmation:
-      'Bạn có chắc chắn muốn sao chép Pipeline này không? Thao tác này sẽ tạo một Pipeline mới với tất cả cấu hình.',
+      'Bạn có chắc chắn muốn sao chép Chat này không? Thao tác này sẽ tạo một Chat mới với tất cả cấu hình.',
     unsavedChanges: 'Bạn có thay đổi chưa lưu',
     dangerZone: 'Vùng nguy hiểm',
     dangerZoneDescription: 'Các hành động không thể đảo ngược và phá hủy',
-    deletePipelineAction: 'Xóa Pipeline này',
+    deletePipelineAction: 'Xóa Chat này',
     deletePipelineHint:
-      'Sau khi xóa, Bot liên kết với Pipeline này sẽ ngừng hoạt động.',
-    copyPipelineAction: 'Sao chép Pipeline này',
-    copyPipelineHint: 'Tạo một Pipeline mới với tất cả cấu hình được sao chép.',
+      'Sau khi xóa, Bot liên kết với Chat này sẽ ngừng hoạt động.',
+    copyPipelineAction: 'Sao chép Chat này',
+    copyPipelineHint: 'Tạo một Chat mới với tất cả cấu hình được sao chép.',
     extensions: {
       title: 'Tiện ích mở rộng',
       loadError: 'Tải plugin thất bại',
@@ -2719,9 +2808,9 @@ const viVN = {
       noPluginsSelected: 'Chưa chọn plugin nào',
       addPlugin: 'Thêm Plugin',
       selectPlugins: 'Chọn Plugin',
-      pluginsTitle: 'Plugin',
+      pluginsTitle: 'Công cụ AI có thể gọi',
       pluginScopeHint:
-        'Chỉ kiểm soát trình lắng nghe sự kiện, công cụ và lệnh của pipeline này; không ảnh hưởng đến Runner được chọn trong cài đặt AI.',
+        'Chỉ kiểm soát những công cụ plugin mà AI trong chat này có thể gọi. Lệnh và trình lắng nghe sự kiện của plugin được bật trong tab Plugin của bot.',
       runnerScopeHint:
         'Chọn Runner độc lập tại đây, không phụ thuộc vào công tắc plugin tiện ích. Plugin của Runner vẫn phải được cài đặt và khả dụng.',
       mcpServersTitle: 'Máy chủ MCP',
@@ -2739,7 +2828,7 @@ const viVN = {
       enableAllMCPServers: 'Bật tất cả máy chủ MCP',
       enableAllSkills: 'Bật tất cả kỹ năng',
       toolsDescription:
-        'Chọn công cụ sự kiện, công cụ bot và thao tác không gian làm việc mà Agent được gọi. Pipeline tự động trả lời bằng văn bản do mô hình tạo, nên không cần công cụ trả lời.',
+        'Chọn công cụ sự kiện, công cụ bot và thao tác không gian làm việc mà Agent được gọi. Chat tự động trả lời bằng văn bản do mô hình tạo, nên không cần công cụ trả lời.',
       saveTools: 'Lưu quyền công cụ',
       allPluginsEnabled: 'Đã bật tất cả plugin',
       allMCPServersEnabled: 'Đã bật tất cả máy chủ MCP',
@@ -2750,7 +2839,7 @@ const viVN = {
       selectSkills: 'Chọn kỹ năng',
       noSkillsAvailable: 'Không có kỹ năng khả dụng',
       mcpServersScopeTooltip:
-        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Pipeline. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Runner.',
+        'Tại đây chỉ kiểm soát máy chủ MCP được liên kết với Chat. Công cụ và tài nguyên MCP cụ thể được chọn trong AI Feature > Runner.',
       enableAllMCPServersTooltip:
         'Khi bật, mọi máy chủ MCP đã cấu hình và bật sẽ trở thành ứng viên cho công cụ và tài nguyên MCP trong AI Feature.',
     },
@@ -2787,8 +2876,8 @@ const viVN = {
       selectKnowledgeBases: 'Chọn kho tri thức',
     },
     debugDialog: {
-      title: 'Trò chuyện Pipeline',
-      selectPipeline: 'Chọn Pipeline',
+      title: 'Chat gỡ lỗi',
+      selectPipeline: 'Chọn Chat',
       sessionType: 'Loại phiên',
       privateChat: 'Trò chuyện riêng',
       groupChat: 'Trò chuyện nhóm',
@@ -2803,7 +2892,7 @@ const viVN = {
       resetSuccess: 'Đặt lại cuộc trò chuyện thành công',
       resetFailed: 'Đặt lại thất bại',
       loadMessagesFailed: 'Tải tin nhắn thất bại',
-      loadPipelinesFailed: 'Tải Pipeline thất bại',
+      loadPipelinesFailed: 'Tải Chat thất bại',
       atTips: 'Nhắc đến Bot',
       streaming: 'Đang truyền',
       streamOutput: 'Luồng',
@@ -2834,7 +2923,7 @@ const viVN = {
       autoRefreshEvery: 'Làm mới mỗi {{seconds}} giây',
       title: 'Nhật ký chạy',
       workbench: 'Cấu hình và gỡ lỗi',
-      description: 'Xem nhật ký thực thi và lỗi của Pipeline này (24 giờ qua)',
+      description: 'Xem nhật ký thực thi và lỗi của Chat này (24 giờ qua)',
       detailedLogs: 'Nhật ký chi tiết',
     },
   },
@@ -3314,13 +3403,13 @@ const viVN = {
     execution: {
       title: 'Lượt thực thi',
       subtitle:
-        'Mọi sự kiện đầu vào và lượt thực thi được kích hoạt trên các tác nhân và pipeline.',
+        'Mọi sự kiện đầu vào và lượt thực thi được kích hoạt trên các tác nhân và chat.',
       tabs: { executions: 'Lượt thực thi' },
       filters: {
         source: 'Loại',
         sourceAll: 'Tất cả loại',
         sourceAgent: 'Tác nhân',
-        sourcePipeline: 'Pipeline',
+        sourcePipeline: 'Chat',
         mode: 'Chế độ thực thi',
         modeAll: 'Thực tế + gỡ lỗi',
         modeLive: 'Chỉ thực tế',
@@ -3339,7 +3428,7 @@ const viVN = {
       // prettier-ignore
       kind: {
         agent: 'Tác nhân',
-        pipeline: 'Pipeline',
+        pipeline: 'Chat',
         processor: 'Bộ xử lý',
       },
       columns: {
@@ -3355,8 +3444,8 @@ const viVN = {
       triggeredBy: 'Được kích hoạt bởi {{trigger}}',
       handledByPlugin: 'Được plugin {{plugin}} xử lý',
       handledByUnknownPlugin: 'Được một plugin không xác định xử lý',
-      filteredByStage: 'Bị pipeline chặn · {{stage}}',
-      filteredByUnknownStage: 'Bị pipeline chặn',
+      filteredByStage: 'Bị chat chặn · {{stage}}',
+      filteredByUnknownStage: 'Bị chat chặn',
       filterStages: {
         BanSessionCheckStage: 'Kiểm soát truy cập',
         GroupRespondRuleCheckStage: 'Quy tắc phản hồi nhóm',
@@ -3370,7 +3459,7 @@ const viVN = {
         tokensHint:
           'Chỉ cộng mức dùng đã ghi. Tổng có thể thiếu nếu mô hình không trả về dữ liệu sử dụng.',
         totalExecutions: 'Lượt thực thi',
-        bySource: 'Tác nhân {{agent}} · Pipeline {{pipeline}}',
+        bySource: 'Tác nhân {{agent}} · Chat {{pipeline}}',
         successRate: 'Tỷ lệ thực thi thành công',
         successRateHint:
           'Thành công ÷ (thành công + thất bại). Không tính lượt đang chạy, bỏ qua hoặc đã hủy.',
@@ -3421,14 +3510,14 @@ const viVN = {
     filters: {
       title: 'Bộ lọc',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'Chat',
       allBots: 'Tất cả Bot',
       selectBot: 'Chọn Bot',
       processor: 'Bộ xử lý',
       allProcessors: 'Tất cả bộ xử lý',
       selectProcessor: 'Chọn bộ xử lý',
-      allPipelines: 'Tất cả Pipeline',
-      selectPipeline: 'Chọn Pipeline',
+      allPipelines: 'Tất cả Chat',
+      selectPipeline: 'Chọn Chat',
       loading: 'Đang tải...',
       timeRange: 'Khoảng thời gian',
       customRange: 'Tùy chỉnh',
@@ -3464,7 +3553,7 @@ const viVN = {
     messageList: {
       timestamp: 'Thời gian',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'Chat',
       message: 'Tin nhắn',
       sessionId: 'ID phiên',
       status: 'Trạng thái',
@@ -3820,7 +3909,7 @@ const viVN = {
       codex_view: 'Xem ủy quyền Codex',
       codex_authorize: 'Ủy quyền Codex',
       embed: 'Phiên nhúng',
-      pipeline_extensions_update: 'Cập nhật liên kết tiện ích của pipeline',
+      pipeline_extensions_update: 'Cập nhật liên kết tiện ích của chat',
       export: 'Xuất dữ liệu',
       execute: 'Chạy tác vụ',
       debug: 'Gỡ lỗi tác vụ',
@@ -3924,7 +4013,7 @@ const viVN = {
     maxBotsReached:
       'Đã đạt số lượng Bot tối đa ({{max}}). Vui lòng xóa một Bot hiện có trước khi tạo mới.',
     maxPipelinesReached:
-      'Đã đạt số lượng Pipeline tối đa ({{max}}). Vui lòng xóa một Pipeline hiện có trước khi tạo mới.',
+      'Đã đạt số lượng Chat tối đa ({{max}}). Vui lòng xóa một Chat hiện có trước khi tạo mới.',
     maxExtensionsReached:
       'Đã đạt số lượng tiện ích mở rộng tối đa ({{max}}). Vui lòng xóa một máy chủ MCP hoặc plugin hiện có trước khi thêm mới.',
     quotaLoadingTooltip:
@@ -4040,7 +4129,7 @@ const viVN = {
     next: 'Tiếp',
     finish: 'Tạo & Triển khai',
     confirmCreateBot: 'Xác nhận, Tạo Bot',
-    createSuccess: 'Tạo Pipeline và liên kết với Bot thành công!',
+    createSuccess: 'Tạo Chat và liên kết với Bot thành công!',
     botCreateSuccess: 'Tạo Bot thành công!',
     botSaveSuccess: 'Cấu hình Bot đã lưu và bật!',
     createError: 'Tạo tài nguyên thất bại',
@@ -4113,7 +4202,7 @@ const viVN = {
       selectModelTitle: 'Chọn mô hình',
       selectScannedModelTitle: 'Chọn mô hình',
       selectScannedModelDescription:
-        'Mô hình đã chọn sẽ thay thế mô hình chính trong pipeline của bot này.',
+        'Mô hình đã chọn sẽ thay thế mô hình chính trong chat của bot này.',
       scanModelMode: 'Quét mô hình',
       manualModelMode: 'Thêm thủ công',
       scanningModels: 'Đang quét các mô hình khả dụng…',
@@ -4173,7 +4262,7 @@ const viVN = {
     done: {
       title: 'Hoàn tất!',
       description:
-        'Bot của bạn đã được tạo và kết nối với Pipeline AI. Bạn có thể quản lý nó từ bàn làm việc.',
+        'Bot của bạn đã được tạo và kết nối với Chat AI. Bạn có thể quản lý nó từ bàn làm việc.',
       backToWorkbench: 'Quay lại bàn làm việc',
     },
   },
@@ -4351,7 +4440,7 @@ const viVN = {
     },
     title: 'Cảnh báo',
     description:
-      'Thông báo qua email và webhook khi bot, Pipeline hoặc mô hình liên tục lỗi',
+      'Thông báo qua email và webhook khi bot, Chat hoặc mô hình liên tục lỗi',
     enabled: 'Bật cảnh báo',
     firingCount: '{{count}} đang cảnh báo',
     allClear: 'Mọi thứ ổn',
@@ -4400,8 +4489,8 @@ const viVN = {
     throttleHint:
       'Mỗi cảnh báo được gửi một lần khi mở, sau đó nhắc lại sau 6 giờ, 12 giờ và mỗi 24 giờ nếu vẫn lỗi.',
     rule: {
-      pipeline_failures: 'Lỗi Pipeline',
-      pipeline_failuresDescription: 'Lỗi xử lý trong một Pipeline',
+      pipeline_failures: 'Lỗi Chat',
+      pipeline_failuresDescription: 'Lỗi xử lý trong một Chat',
       model_failures: 'Lỗi gọi mô hình',
       model_failuresDescription: 'Yêu cầu thất bại tới một mô hình',
       bot_offline: 'Bot dừng do lỗi',
@@ -4508,7 +4597,7 @@ const viVN = {
     submit: 'Gửi duyệt',
     promptTitle: 'Chia sẻ prompt lên LangBot Space',
     promptDescriptionMessaging:
-      'Đăng dưới dạng prompt hội thoại để người khác dùng trong cấu hình pipeline.',
+      'Đăng dưới dạng prompt hội thoại để người khác dùng trong cấu hình chat.',
     promptDescriptionAgent:
       'Đăng dưới dạng prompt Agent để người khác dùng trong cấu hình Agent.',
     detectedVariables: 'Biến phát hiện:',

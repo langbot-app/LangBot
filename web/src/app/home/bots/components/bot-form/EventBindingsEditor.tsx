@@ -13,6 +13,7 @@ import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import styles from './EventBindingsEditor.module.css';
 import { appendMessageRoutingTemplate } from './message-routing-template';
+import { policyAdmitsAll } from './message-policy';
 import type { TFunction } from 'i18next';
 import { UseFormReturn } from 'react-hook-form';
 import {
@@ -1613,6 +1614,11 @@ export default function EventBindingsEditor({
           target_type: target?.kind === 'pipeline' ? 'pipeline' : 'agent',
           target_uuid: target?.uuid ?? '',
         }),
+      );
+      toast.info(
+        policyAdmitsAll(form.getValues('message_policy'))
+          ? t('bots.policy.newRouteNeutral')
+          : t('bots.policy.newRouteInherits'),
       );
       return;
     }

@@ -46,7 +46,8 @@ async def test_dry_run_reports_live_policy_item_without_charging_rate_limit():
 
 
 async def test_registration_lists_processor_scope_for_each_hook():
-    service = make_service(stored_bot={})
+    stored = {}
+    service = make_service(stored_bot=stored)
     service.ap.plugin_connector = SimpleNamespace(
         require_workspace_context=AsyncMock(),
         list_plugin_registrations=AsyncMock(
@@ -69,6 +70,13 @@ async def test_registration_lists_processor_scope_for_each_hook():
         'NormalMessageResponded': ['messaging', 'agent'],
         'GroupMessageReceived': ['messaging', 'agent', 'command'],
     }
+    service.ap.plugin_connector.list_plugin_registrations.assert_awaited_with(None)
+
+    stored['message_policy'] = {'plugins': {'enable_all': False, 'plugins': [{'author': 'a', 'name': 'b'}]}}
+    await service.get_plugin_registrations(WORKSPACE, 'bot')
+    service.ap.plugin_connector.list_plugin_registrations.assert_awaited_with(['a/b'])
+    await service.get_plugin_registrations(WORKSPACE, 'bot', include_disabled=True)
+    service.ap.plugin_connector.list_plugin_registrations.assert_awaited_with(None)
 
 
 def make_service(*, stored_bot=None, runtime_bot=None):

@@ -151,7 +151,7 @@ test('multi-component install shows one link per distinct next step', async ({
   const agent = dialog.getByRole('link', { name: /Create an Agent/i });
   await expect(agent).toBeVisible();
   await expect(
-    dialog.getByRole('link', { name: /Create a pipeline/i }),
+    dialog.getByRole('link', { name: /Create a chat/i }),
   ).toHaveCount(1);
   await expect(
     dialog.getByRole('link', { name: /knowledge base/i }),
@@ -174,7 +174,7 @@ test('multi-component install shows one link per distinct next step', async ({
  * page ignores `?id=new`.
  */
 for (const [name, url, marker] of [
-  ['Create a pipeline', /\/home\/pipelines\?id=new/, 'Create Pipeline'],
+  ['Create a chat', /\/home\/pipelines\?id=new/, 'Create Chat'],
   [
     'Create a knowledge base',
     /\/home\/knowledge\?id=new/,
@@ -311,8 +311,8 @@ test('the pending-review list button is short but fully labelled', async ({
  */
 test.describe('chinese', () => {
   for (const [locale, expected] of [
-    ['zh-Hans', ['新建 Agent 或插件处理器', '创建流水线']],
-    ['zh-Hant', ['建立 Agent 或插件處理器', '建立流水線']],
+    ['zh-Hans', ['新建 Agent 或插件处理器', '创建聊天']],
+    ['zh-Hant', ['建立 Agent 或插件處理器', '建立聊天']],
   ] as const) {
     test(`${locale} review button stays short with a full label`, async ({
       page,
@@ -340,9 +340,9 @@ test.describe('chinese', () => {
       for (const text of expected) {
         await expect(dialog.getByRole('link', { name: text })).toBeVisible();
       }
-      // The pipeline step stays a single link in Chinese too.
+      // The chat step stays a single link in Chinese too.
       await expect(
-        dialog.getByRole('link', { name: /流水[线線]/ }),
+        dialog.getByRole('link', { name: /创建聊天|建立聊天/ }),
       ).toHaveCount(1);
     });
 

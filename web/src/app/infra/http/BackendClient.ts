@@ -886,6 +886,25 @@ export class BackendClient extends BaseHttpClient {
     return this.get(`/api/v1/platform/bots/${uuid}`);
   }
 
+  public getMessagePolicyMetadata(): Promise<
+    import('../entities/api').MessagePolicyMetadata
+  > {
+    return this.get('/api/v1/platform/bots/_/message-policy/metadata');
+  }
+
+  public getBotPluginRegistrations(
+    uuid: string,
+    options: { routeId?: string; includeDisabled?: boolean } = {},
+  ): Promise<import('../entities/api').ApiRespPluginRegistrations> {
+    const params = new URLSearchParams();
+    if (options.routeId) params.set('route_id', options.routeId);
+    if (options.includeDisabled) params.set('include_disabled', '1');
+    const query = params.toString();
+    return this.get(
+      `/api/v1/platform/bots/${uuid}/plugin-registrations${query ? `?${query}` : ''}`,
+    );
+  }
+
   public syncBotPlatformCommands(
     uuid: string,
   ): Promise<import('../entities/api').PlatformCommandSync> {

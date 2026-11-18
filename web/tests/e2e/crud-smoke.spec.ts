@@ -106,11 +106,11 @@ test.describe('frontend CRUD smoke flows', () => {
     await page.goto('/home/agents?id=new');
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
-    ).toContainText('流水线');
+    ).toContainText('聊天');
     await expect(
       page.locator('[data-processor-kind="pipeline"]'),
     ).toContainText(
-      '流水线只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
+      '聊天只处理消息事件，由 AI 直接生成回复，并提供知识库、插件等实用功能。',
     );
   });
 
@@ -136,7 +136,7 @@ test.describe('frontend CRUD smoke flows', () => {
     await expect(page).toHaveURL(/\/home\/bots\?id=bot-1$/);
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Viewer Pipeline');
@@ -252,7 +252,7 @@ test.describe('frontend CRUD smoke flows', () => {
       '--processor-node-stroke-opacity',
       '0.5',
     );
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await expect(pipelineTypeCard).toHaveAttribute('aria-checked', 'true');
@@ -824,7 +824,7 @@ test.describe('bot advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Dirty state target');
@@ -923,7 +923,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Tab Test Pipeline');
@@ -966,7 +966,7 @@ test.describe('pipeline advanced flows', () => {
 
     // Create a pipeline
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Dirty Form Pipeline');
@@ -1002,7 +1002,7 @@ test.describe('pipeline advanced flows', () => {
     await installLangBotApiMocks(page, { authenticated: true });
 
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
 
@@ -1656,7 +1656,7 @@ test.describe('cross-resource flows', () => {
 
     // Create a pipeline first
     await page.goto('/home/agents?id=new');
-    await page.getByRole('radio', { name: /^Pipeline/ }).click();
+    await page.getByRole('radio', { name: /^Chat/ }).click();
     await page.locator('#agent-create-form').getByRole('combobox').click();
     await page.getByRole('option', { name: /Local Agent/ }).click();
     await page.locator('input[name="name"]').fill('Production Pipeline');

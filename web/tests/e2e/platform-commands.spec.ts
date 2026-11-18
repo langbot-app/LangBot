@@ -104,6 +104,7 @@ test('platform menu shows constraints, rejection reasons and synchronization sta
     },
   );
   await page.goto('/home/bots?id=menu-bot');
+  await page.getByRole('tab', { name: 'Plugins' }).click({ timeout: 30_000 });
   const panel = page.getByRole('region', { name: 'Register on platform' });
   await expect(panel).toBeVisible({ timeout: 15_000 });
   await expect(panel).toContainText('manually configured');

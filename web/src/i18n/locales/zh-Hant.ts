@@ -262,10 +262,10 @@ const zhHant = {
     sendUnconfirmed: '傳送狀態未確認，請檢查連線後重新開啟對話。',
     draftPlaceholder: '可以先寫下一條，回覆完成後傳送…',
     operations: {
-      create_pipeline: '建立 流水線',
-      configure_pipeline: '設定 流水線',
+      create_pipeline: '建立聊天',
+      configure_pipeline: '設定聊天',
       create_knowledge_base: '建立知識庫',
-      get_pipeline: '查看 流水線',
+      get_pipeline: '查看聊天',
       get_knowledge_schema: '查看知識引擎設定',
       list_operation_logs: '查詢操作日誌',
       workspace_search: '搜尋操作能力',
@@ -275,7 +275,7 @@ const zhHant = {
     resources: {
       models: '查詢聊天模型',
       embedding_models: '查詢嵌入模型',
-      pipelines: '查詢 流水線',
+      pipelines: '查詢聊天',
       knowledge_bases: '查詢知識庫',
       knowledge_engines: '查詢知識引擎',
     },
@@ -284,8 +284,8 @@ const zhHant = {
     newChat: '新對話',
     close: '關閉',
     welcome:
-      '告訴我你想建構什麼應用。我可以查看目前工作區，為機器人、Agent、知識庫和 流水線 等提供設定方案，由你確認後執行。',
-    discover: '目前有哪些可用的模型、知識庫和 流水線？',
+      '告訴我你想建構什麼應用。我可以查看目前工作區，為機器人、Agent、知識庫和聊天等提供設定方案，由你確認後執行。',
+    discover: '目前有哪些可用的模型、知識庫和聊天？',
     build: '幫我建立一個知識庫問答應用。',
     toolResult: '操作結果',
     review: '請檢查具體操作及參數，確認後執行',
@@ -325,7 +325,7 @@ const zhHant = {
       pipelines: {
         title: '配置處理器',
         description:
-          '建立可重複使用的流水線、Agent 和插件處理器配置，再將它們接入機器人。',
+          '建立可重複使用的聊天、Agent 和插件處理器配置，再將它們接入機器人。',
       },
       knowledge: {
         title: '管理知識庫',
@@ -359,7 +359,7 @@ const zhHant = {
       trigger: {
         title: '選擇要回覆的訊息',
         description:
-          '流水線只處理訊息事件，並由 AI 自動回覆。在這裡設定群聊觸發方式、私聊規則和訊息過濾條件。',
+          '聊天只處理訊息事件，並由 AI 自動回覆。在這裡設定群聊觸發方式、私聊規則和訊息過濾條件。',
       },
       speech: {
         title: '設定語音能力',
@@ -383,11 +383,11 @@ const zhHant = {
       extensions: {
         title: '選擇可用擴充',
         description:
-          '選擇這條流水線可使用的插件、MCP 服務和技能，擴充訊息處理與工具能力。',
+          '選擇這個聊天可使用的插件、MCP 服務和技能，擴充訊息處理與工具能力。',
       },
       basic: {
-        title: '管理流水線',
-        description: '複製目前流水線以建立其他設定，或刪除不再需要的流水線。',
+        title: '管理聊天',
+        description: '複製目前聊天以建立其他設定，或刪除不再需要的聊天。',
       },
       debug: {
         title: '測試對話效果',
@@ -410,7 +410,7 @@ const zhHant = {
       save: {
         title: '儲存並接入機器人',
         description:
-          '儲存設定後，在機器人的事件路由中，將「收到訊息」交給這條流水線處理。',
+          '儲存設定後，在機器人的事件路由中，將「收到訊息」交給這個聊天處理。',
       },
     },
     pluginProcessor: {
@@ -482,7 +482,7 @@ const zhHant = {
       type: {
         title: '選擇處理器類型',
         description:
-          '流水線按固定流程處理訊息，Agent 使用模型和工具決策，外掛處理器負責宣告的平台事件。',
+          '聊天按固定流程處理訊息，Agent 使用模型和工具決策，外掛處理器負責宣告的平台事件。',
       },
       basic: {
         title: '填寫處理器資訊',
@@ -786,7 +786,7 @@ const zhHant = {
       confirmDisconnect: '確認中斷',
     },
     title: '模型設定',
-    description: '設定和管理可在流水線中使用的模型',
+    description: '設定和管理可在聊天中使用的模型',
     createModel: '建立模型',
     editModel: '編輯模型',
     getModelListError: '取得模型清單失敗：',
@@ -954,6 +954,85 @@ const zhHant = {
     },
   },
   bots: {
+    routingTabs: {
+      routes: '路由規則',
+      plugins: '插件',
+      policy: '訊息策略',
+    },
+    policy: {
+      scopeLabel: '設定範圍',
+      botDefault: '機器人預設',
+      routes: '路由',
+      custom: '自訂',
+      inherit: '沿用預設',
+      inheritDefault: '沿用預設',
+      routeMode: '此路由的策略',
+      promote: '提升為機器人預設',
+      promoted: '已設為機器人預設，{{count}} 條路由改為沿用預設',
+      loadFailed: '訊息策略載入失敗',
+      botDefaultHint:
+        '機器人預設策略作用於所有收到訊息的路由，單條路由可以自訂覆蓋。只對收到訊息事件生效。',
+      neutralDefaultHint: '目前預設策略不攔截任何訊息，也不處理回覆。',
+      policyState: '策略：{{state}}',
+      pluginState: '插件：{{state}}',
+      inheritHint:
+        '此路由沿用機器人預設策略，下方為目前生效的設定。切換為「自訂」後可單獨修改。',
+      streamingNote:
+        '串流回覆只套用強制延遲、@發送者和引用原訊息，長文字處理不適用。',
+      streamingPlatformLimit:
+        '此平台的串流回覆首幀不支援 @ 或引用，開啟後對串流回覆不顯示。',
+      newRouteNeutral:
+        '新路由沿用機器人預設訊息策略：目前不攔截任何訊息。可在「訊息策略」頁籤單獨設定。',
+      newRouteInherits:
+        '新路由沿用機器人預設訊息策略，可在「訊息策略」頁籤單獨設定。',
+    },
+    pluginHooks: {
+      routeMode: '此路由的插件啟用',
+      lifecycleTitle: '訊息生命週期',
+      lifecycleHint: '圖示表示在這一步起作用的已啟用插件',
+      policyCaption: '訊息策略',
+      enableTitle: '啟用插件',
+      enableHint: '啟用一個插件即啟用它的指令和全部事件監聽器。',
+      inheritHint:
+        '此路由沿用機器人預設的插件啟用設定。切換為「自訂」後可單獨選擇。',
+      loadFailed: '插件資訊載入失敗',
+      empty: '尚未安裝帶指令或事件監聽器的插件。',
+      browseMarket: '去安裝插件',
+      registrationsUnknown: '插件執行環境版本較舊，無法讀取各插件註冊的鉤子。',
+      globallyDisabled: '插件已停用',
+      hooksUnknown: '鉤子未知',
+      enablePlugin: '在此機器人上啟用 {{plugin}}',
+      processors: {
+        messaging: '聊天',
+        agent: 'Agent',
+        command: '指令',
+      },
+      reasons: {
+        observeOnly: '平台事件，只通知不攔截',
+        promptOnAgent: '路由到 Agent，提示詞鉤子不生效',
+        notOnRoute: '目前路由用不到，只在 {{processors}} 上生效',
+        streamObserveOnly: '串流回覆下回覆後鉤子只能旁觀，不能改寫已發出的內容',
+      },
+      steps: {
+        received: '收到',
+        command: '指令',
+        admission: '准入',
+        before: '回覆前',
+        process: '處理',
+        after: '回覆後',
+        send: '發送',
+      },
+      events: {
+        GroupMessageReceived: '收到群組訊息',
+        PersonMessageReceived: '收到私聊訊息',
+        GroupCommandSent: '群組指令',
+        PersonCommandSent: '私聊指令',
+        GroupNormalMessageReceived: '群組一般訊息',
+        PersonNormalMessageReceived: '私聊一般訊息',
+        PromptPreProcessing: '提示詞預處理',
+        NormalMessageResponded: '回覆後',
+      },
+    },
     platformCommands: {
       title: '註冊到平台',
       overwrite:
@@ -981,14 +1060,14 @@ const zhHant = {
       createDefaultHint: '使用命令預設設定。',
       title: '外掛程式命令綁定',
       description:
-        '僅對 message.received 訊息事件生效；命中外掛程式命令後，不再進入外掛程式處理器、路由規則和流水線。',
+        '僅對收到訊息事件生效，先於路由規則比對，並沿用這則訊息原本會命中的路由的訊息策略。已啟用插件的指令可直接使用；在這裡綁定指令處理器可設定指令配置和比對優先順序。',
       prefixes: '命令前綴',
       prefixPlaceholder: '輸入前綴，按 Enter 新增（如 / 或 !）',
       addPrefix: '新增前綴',
       prefixInvalid: '前綴不能為空且不能包含空白字元',
       prefixDuplicate: '前綴已存在',
       plugins: '綁定的外掛程式命令',
-      empty: '尚未綁定任何外掛程式命令。',
+      empty: '未單獨綁定指令處理器，已啟用插件的指令按預設配置生效。',
       addPlugin: '新增外掛程式',
       noAvailablePlugins: '沒有包含命令組件的可用外掛程式。',
       selectPlugins: '選擇要綁定的外掛程式',
@@ -1043,7 +1122,7 @@ const zhHant = {
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
     createSuccess: '建立成功，請設定事件路由',
-    autoCreatedPipeline: '已自動建立流水線並綁定訊息處理事件',
+    autoCreatedPipeline: '已自動建立聊天並綁定訊息處理事件',
     createError: '建立失敗：',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
@@ -1059,8 +1138,8 @@ const zhHant = {
       '舊版主要用於訊息收發，保留以相容現有機器人設定。\n新版是同一平台的事件驅動接入，除訊息外，也可處理平台支援的好友請求、群成員變化等事件，透過事件路由交給處理器。\n新建機器人優先選新版。現有機器人可繼續使用舊版；切換時請依新版要求檢查連線參數和事件路由，並非直接升級平台帳號。',
     adapterConfig: '適配器設定',
     viewAdapterDocs: '查看文檔',
-    bindPipeline: '綁定流水線',
-    selectPipeline: '選擇流水線',
+    bindPipeline: '綁定聊天',
+    selectPipeline: '選擇聊天',
     selectBot: '請選擇機器人',
     botLogTitle: '機器人日誌',
     enableAutoRefresh: '開啟自動重新整理',
@@ -1079,7 +1158,7 @@ const zhHant = {
     basicInfo: '基礎資訊',
     basicInfoDescription: '設定機器人名稱和描述',
     routingConnection: '路由與連接',
-    routingConnectionDescription: '綁定處理此機器人訊息的流水線',
+    routingConnectionDescription: '綁定處理此機器人訊息的聊天',
     routingHelp: {
       title: '什麼是事件路由？',
       intro: '機器人不只會收到訊息，也會收到好友請求、加入群聊等事件。',
@@ -1110,7 +1189,7 @@ const zhHant = {
       commandsDisabled: '外掛指令已關閉，訊息直接進入路由規則。',
     },
     eventRoutingDescription:
-      '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或 流水線 設定中編輯處理邏輯；流水線 僅支援訊息事件。',
+      '選擇此機器人收到不同事件時交給哪個處理器。在對應的 Agent 或聊天 設定中編輯處理邏輯；聊天僅支援訊息事件。',
     eventBindings: '事件路由',
     addEventBinding: '添加路由',
     addBehavior: '添加行爲',
@@ -1134,7 +1213,7 @@ const zhHant = {
     targetType: '目標類型',
     target: '處理器',
     targetAgent: 'Agent',
-    targetPipeline: '流水線',
+    targetPipeline: '聊天',
     targetDiscard: '丟棄',
     selectTarget: '選擇處理器',
     searchTarget: '搜索處理器…',
@@ -1143,7 +1222,7 @@ const zhHant = {
     enabled: '啟用',
     eventBindingDescriptionPlaceholder: '規則說明',
     noEventBindings: '暫無事件路由',
-    unsupportedPipelineEvent: '流水線 僅可用於 message.received 事件',
+    unsupportedPipelineEvent: '聊天僅可用於 message.received 事件',
     disable: '禁用',
     enable: '啟用',
     disabledBindings: '已禁用',
@@ -1336,7 +1415,7 @@ const zhHant = {
     operator_regex: '正則匹配',
     routingRules: '條件路由規則',
     routingRulesDescription:
-      '按順序匹配，命中第一條規則後路由到對應流水線；都不匹配時使用上方預設流水線',
+      '按順序匹配，命中第一條規則後路由到對應聊天；都不匹配時使用上方預設聊天',
     addRoutingRule: '新增規則',
     ruleTypeLauncherType: '會話類型',
     ruleTypeLauncherId: '會話 ID',
@@ -1528,7 +1607,7 @@ const zhHant = {
       replyOrAction: '回覆或執行平台動作',
       pipeline: {
         summary: '訊息經過觸發規則與 AI 生成後回覆。',
-        group: '流水線內部',
+        group: '聊天內部',
         trigger: '觸發規則與前處理',
         generate: 'AI 生成回覆',
         generateCaption: '使用模型、知識庫與工具',
@@ -1650,9 +1729,9 @@ const zhHant = {
     selectFromSidebar: '從側邊欄選擇一個處理器',
     agentType: 'Agent',
     agentTypeDescription: '透過執行器處理訊息、群成員、好友、回饋等平台事件。',
-    pipelineType: '流水線',
+    pipelineType: '聊天',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: '流水線',
+    kindBadgePipeline: '聊天',
     groupByKind: '依類型分組',
     groupByKindShort: '分組',
     pipelineTypeDescription:
@@ -1668,9 +1747,9 @@ const zhHant = {
     agentDiagramTitle: 'Agent：自主判斷並行動',
     agentDiagramDescription:
       'Agent 可以接收多種平臺事件，結合模型和工具理解當前情況，並自主決定下一步動作。',
-    pipelineDiagramTitle: '流水線：按流程逐步處理',
+    pipelineDiagramTitle: '聊天：按流程逐步處理',
     pipelineDiagramDescription:
-      '流水線 只處理訊息事件，並嚴格按照你編排的固定步驟依次執行。',
+      '聊天只處理訊息事件，並嚴格按照你編排的固定步驟依次執行。',
     pipelineDiagramFlow: '訊息沿固定流程依次處理',
     diagramEvents: '平臺事件',
     diagramAgentCanUse: 'Agent 可使用',
@@ -1852,8 +1931,11 @@ const zhHant = {
     debugRunFailed: 'Agent 調試運行失敗',
   },
   plugins: {
+    enabledOnBots: '插件已在 {{count}} 個機器人上啟用',
+    notEnabledOnBots: '插件尚未在任何機器人上啟用，指令和事件監聽器暫不生效。',
+    goEnable: '去啟用',
     title: '外掛擴展',
-    description: '安裝和設定用於擴展功能的外掛，請在流水線配置中選用',
+    description: '安裝和設定用於擴展功能的外掛，請在聊天配置中選用',
     createPlugin: '建立外掛',
     editPlugin: '編輯外掛',
     installed: '已安裝',
@@ -2250,7 +2332,7 @@ const zhHant = {
       followUp: {
         nextSteps: '下一步',
         agents: '建立 Agent 或插件處理器',
-        pipelines: '建立流水線',
+        pipelines: '建立聊天',
         knowledge: '建立知識庫',
       },
       updateComplete: '插件更新成功',
@@ -2279,7 +2361,7 @@ const zhHant = {
 
     runnerUsage: '運行器用途',
     runnerUsageAll: '全部',
-    runnerUsageAgent: 'Agent / 流水線',
+    runnerUsageAgent: 'Agent / 聊天',
     runnerUsageEvent: '插件處理器',
     searchPlaceholder: '搜尋插件...',
     searchPlaceholderCount: '搜尋 {{count}} 個擴展、能力或場景...',
@@ -2506,15 +2588,17 @@ const zhHant = {
     deleteMCPHint: '刪除後，此 MCP 伺服器設定將無法恢復。',
   },
   pipelines: {
-    title: '流水線',
-    description: '流水線定義了對訊息事件的處理流程，用於綁定到機器人',
-    createPipeline: '建立流水線',
-    selectFromSidebar: '從側邊欄選擇一個流水線',
-    editPipeline: '編輯流水線',
+    outputMovedToPolicy:
+      '入口條件、安全和通用回覆設定（長文字、強制延遲、@發送者、引用、例外提示）已移到機器人的「訊息策略」頁籤，這裡只保留 AI 相關的輸出選項。',
+    title: '聊天',
+    description: '聊天定義 AI 如何處理和回覆訊息，用於綁定到機器人',
+    createPipeline: '建立聊天',
+    selectFromSidebar: '從側邊欄選擇一個聊天',
+    editPipeline: '編輯聊天',
     chat: '對話',
     configuration: '設定',
     debugChat: '對話除錯',
-    getPipelineListError: '取得流水線清單失敗：',
+    getPipelineListError: '取得聊天清單失敗：',
     daysAgo: '天前',
     today: '今天',
     updateTime: '更新於',
@@ -2525,8 +2609,8 @@ const zhHant = {
     recentlyEdited: '最近編輯',
     earliestEdited: '最早編輯',
     basicInfo: '基本資訊',
-    basicInfoDescription: '設定流水線名稱、圖示和描述',
-    managementDescription: '複製或刪除此流水線。',
+    basicInfoDescription: '設定聊天名稱、圖示和描述',
+    managementDescription: '複製或刪除此聊天。',
     aiCapabilities: 'AI 能力',
     triggerConditions: '觸發條件',
     safetyControls: '安全控制',
@@ -2534,26 +2618,26 @@ const zhHant = {
     speechProcessing: '語音處理',
     nameRequired: '名稱不能為空',
     descriptionRequired: '描述不能為空',
-    createSuccess: '建立成功 請編輯流水線詳細參數',
+    createSuccess: '建立成功 請編輯聊天詳細參數',
     createError: '建立失敗：',
     saveSuccess: '儲存成功',
     saveError: '儲存失敗：',
     copySuffix: ' Copy',
     deleteConfirmation:
-      '您確定要刪除這個流水線嗎？已綁定此流水線的機器人將無法使用。',
-    defaultPipelineCannotDelete: '預設流水線不可刪除',
+      '您確定要刪除這個聊天嗎？已綁定此聊天的機器人將無法使用。',
+    defaultPipelineCannotDelete: '預設聊天不可刪除',
     deleteSuccess: '刪除成功',
     deleteError: '刪除失敗：',
     copyConfirmTitle: '確認複製',
     copyConfirmation:
-      '確定要複製這個流水線嗎？複製將創建一個包含完整配置的新流水線。',
+      '確定要複製這個聊天嗎？複製將創建一個包含完整配置的新聊天。',
     unsavedChanges: '有未儲存的變更',
     dangerZone: '危險區域',
     dangerZoneDescription: '不可逆的操作',
-    deletePipelineAction: '刪除此流水線',
-    deletePipelineHint: '刪除後，綁定此流水線的機器人將無法正常運作。',
-    copyPipelineAction: '複製此流水線',
-    copyPipelineHint: '建立一條新的流水線，並複製所有設定。',
+    deletePipelineAction: '刪除此聊天',
+    deletePipelineHint: '刪除後，綁定此聊天的機器人將無法正常運作。',
+    copyPipelineAction: '複製此聊天',
+    copyPipelineHint: '建立一個新的聊天，並複製所有設定。',
     extensions: {
       title: '擴展集成',
       loadError: '載入插件清單失敗',
@@ -2564,9 +2648,9 @@ const zhHant = {
       noPluginsSelected: '未選擇任何插件',
       addPlugin: '新增插件',
       selectPlugins: '選擇插件',
-      pluginsTitle: '插件',
+      pluginsTitle: 'AI 可呼叫的工具',
       pluginScopeHint:
-        '此處僅控制本流水線使用的事件監聽器、工具和命令元件，不影響 AI 設定中選擇的執行器（Runner）。',
+        '這裡只控制此聊天中 AI 可以呼叫哪些插件工具。插件的指令和事件監聽器在機器人的「插件」頁籤啟用。',
       runnerScopeHint:
         '執行器在此獨立選擇，不受擴充整合中的外掛開關控制；其所屬外掛仍須已安裝且可用。',
       mcpServersTitle: 'MCP 伺服器',
@@ -2584,7 +2668,7 @@ const zhHant = {
       enableAllMCPServers: '啟用所有 MCP 伺服器',
       enableAllSkills: '啟用全部技能',
       toolsDescription:
-        '選擇 Agent 可呼叫的事件工具、機器人工具和工作區操作。流水線會將模型輸出的文字自動回覆到目前會話，無需回覆工具。',
+        '選擇 Agent 可呼叫的事件工具、機器人工具和工作區操作。聊天會將模型輸出的文字自動回覆到目前會話，無需回覆工具。',
       saveTools: '儲存工具權限',
       allPluginsEnabled: '已啟用所有插件',
       allMCPServersEnabled: '已啟用所有 MCP 伺服器',
@@ -2595,7 +2679,7 @@ const zhHant = {
       selectSkills: '選擇技能',
       noSkillsAvailable: '暫無可用技能',
       mcpServersScopeTooltip:
-        '這裡僅控制此流水線綁定哪些 MCP 伺服器；具體 MCP 工具和資源在 AI 能力的內建 Agent 表單中選擇。',
+        '這裡僅控制此聊天綁定哪些 MCP 伺服器；具體 MCP 工具和資源在 AI 能力的內建 Agent 表單中選擇。',
       enableAllMCPServersTooltip:
         '啟用後，所有已配置且啟用的 MCP 伺服器都會進入 AI 能力中的 MCP 工具和資源候選範圍。',
     },
@@ -2630,8 +2714,8 @@ const zhHant = {
       selectKnowledgeBases: '選擇知識庫',
     },
     debugDialog: {
-      title: '流水線對話',
-      selectPipeline: '選擇流水線',
+      title: '調試對話',
+      selectPipeline: '選擇聊天',
       sessionType: '對話類型',
       privateChat: '私聊',
       groupChat: '群聊',
@@ -2646,7 +2730,7 @@ const zhHant = {
       resetSuccess: '對話已重設',
       resetFailed: '重設失敗',
       loadMessagesFailed: '載入訊息失敗',
-      loadPipelinesFailed: '載入流水線失敗',
+      loadPipelinesFailed: '載入聊天失敗',
       atTips: '提及機器人',
       streaming: '串流傳輸',
       streamOutput: '串流',
@@ -2677,7 +2761,7 @@ const zhHant = {
       autoRefreshEvery: '每 {{seconds}} 秒重新整理',
       title: '執行日誌',
       workbench: '設定與除錯',
-      description: '檢視此流水線的執行記錄和錯誤資訊（最近24小時）',
+      description: '檢視此聊天的執行記錄和錯誤資訊（最近24小時）',
       detailedLogs: '詳細日誌',
     },
   },
@@ -3124,13 +3208,13 @@ const zhHant = {
     },
     execution: {
       title: '執行記錄',
-      subtitle: '每條入站事件及其觸發的執行，涵蓋 Agent 與 流水線。',
+      subtitle: '每條入站事件及其觸發的執行，涵蓋 Agent 與聊天。',
       tabs: { executions: '執行記錄' },
       filters: {
         source: '類型',
         sourceAll: '全部類型',
         sourceAgent: 'Agent',
-        sourcePipeline: '流水線',
+        sourcePipeline: '聊天',
         mode: '流量',
         modeAll: '真實 + 偵錯',
         modeLive: '僅真實',
@@ -3149,7 +3233,7 @@ const zhHant = {
       // prettier-ignore
       kind: {
         agent: 'Agent',
-        pipeline: '流水線',
+        pipeline: '聊天',
         processor: '處理器',
       },
       columns: {
@@ -3164,8 +3248,8 @@ const zhHant = {
       triggeredBy: '觸發：{{trigger}}',
       handledByPlugin: '外掛處理 · {{plugin}}',
       handledByUnknownPlugin: '外掛處理（未識別外掛）',
-      filteredByStage: '已被流水線攔截 · {{stage}}',
-      filteredByUnknownStage: '已被流水線攔截',
+      filteredByStage: '已被聊天攔截 · {{stage}}',
+      filteredByUnknownStage: '已被聊天攔截',
       filterStages: {
         BanSessionCheckStage: '存取控制',
         GroupRespondRuleCheckStage: '群組回應規則',
@@ -3180,7 +3264,7 @@ const zhHant = {
         tokensHint:
           '僅加總已記錄的用量；部分模型未回傳用量時，總數可能不完整。',
         totalExecutions: '執行總數',
-        bySource: 'Agent {{agent}} · 流水線 {{pipeline}}',
+        bySource: 'Agent {{agent}} · 聊天 {{pipeline}}',
         successRate: '執行成功率',
         successRateHint:
           '成功次數 ÷（成功 + 失敗）。不計進行中、已忽略及已取消的執行。',
@@ -3230,14 +3314,14 @@ const zhHant = {
     filters: {
       title: '篩選',
       bot: '機器人',
-      pipeline: '流水線',
+      pipeline: '聊天',
       allBots: '全部機器人',
       selectBot: '選擇機器人',
       processor: '處理器',
       allProcessors: '全部處理器',
       selectProcessor: '選擇處理器',
-      allPipelines: '全部流水線',
-      selectPipeline: '選擇流水線',
+      allPipelines: '全部聊天',
+      selectPipeline: '選擇聊天',
       loading: '載入中...',
       timeRange: '時間範圍',
       customRange: '自訂範圍',
@@ -3273,7 +3357,7 @@ const zhHant = {
     messageList: {
       timestamp: '時間戳記',
       bot: '機器人',
-      pipeline: '流水線',
+      pipeline: '聊天',
       message: '訊息',
       sessionId: '會話ID',
       status: '狀態',
@@ -3564,7 +3648,7 @@ const zhHant = {
       adapter: '適配器',
       model_provider: '模型提供商',
       llm_model: '模型',
-      pipeline: '流水線',
+      pipeline: '聊天',
       user: '使用者',
       workspace: '工作區',
       monitoring: '監控',
@@ -3625,7 +3709,7 @@ const zhHant = {
       codex_view: '查看 Codex 授權',
       codex_authorize: '授權 Codex',
       embed: '嵌入式工作階段',
-      pipeline_extensions_update: '修改流水線擴展綁定',
+      pipeline_extensions_update: '修改聊天擴展綁定',
       export: '匯出資料',
       execute: '執行任務',
       debug: '偵錯任務',
@@ -3725,7 +3809,7 @@ const zhHant = {
     maxBotsReached:
       '已達到機器人數量上限（{{max}}個）。請先刪除已有機器人後再建立新的。',
     maxPipelinesReached:
-      '已達到流水線數量上限（{{max}}個）。請先刪除已有流水線後再建立新的。',
+      '已達到聊天數量上限（{{max}}個）。請先刪除已有聊天後再建立新的。',
     maxExtensionsReached:
       '已達到擴充功能數量上限（{{max}}個）。請先刪除已有擴充功能後再新增。',
     quotaLoadingTooltip: '正在載入工作空間用量，請稍後再建立資源。',
@@ -3833,7 +3917,7 @@ const zhHant = {
     next: '下一步',
     finish: '建立並部署',
     confirmCreateBot: '確定，建立機器人',
-    createSuccess: '流水線已建立並關聯到機器人！',
+    createSuccess: '聊天已建立並關聯到機器人！',
     botCreateSuccess: '機器人建立成功！',
     botSaveSuccess: '機器人配置已儲存並啟用！',
     createError: '建立資源失敗',
@@ -3897,7 +3981,7 @@ const zhHant = {
       selectModelTitle: '選擇模型',
       selectScannedModelTitle: '選擇模型',
       selectScannedModelDescription:
-        '選取的模型將取代目前機器人流水線的主模型。',
+        '選取的模型將取代目前機器人所用聊天的主模型。',
       scanModelMode: '自動掃描',
       manualModelMode: '手動新增',
       scanningModels: '正在掃描可用模型…',
@@ -3913,7 +3997,7 @@ const zhHant = {
       rescanModels: '重新掃描模型',
       moreFeaturesTitle: '使用預設設定',
       moreFeaturesDescription:
-        '繼續使用本地 Agent 和推薦模型，之後可在流水線中新增工具、知識庫等功能。',
+        '繼續使用本地 Agent 和推薦模型，之後可在聊天中新增工具、知識庫等功能。',
       runnerDescription: '選擇外部 Agent 的運行器並完成連接配置。',
       backToChoices: '返回選項',
       backToList: '返回列表',
@@ -3949,8 +4033,7 @@ const zhHant = {
     },
     done: {
       title: '一切就緒！',
-      description:
-        '機器人已建立並連接到 AI 流水線。你現在可以在工作台中管理它。',
+      description: '機器人已建立並連接到 AI 聊天。你現在可以在工作台中管理它。',
       backToWorkbench: '返回工作台',
     },
   },
@@ -4113,8 +4196,7 @@ const zhHant = {
       selfHostedLink: '在 config.yaml 中設定 SMTP 或 Resend →',
     },
     title: '告警',
-    description:
-      '機器人、流水線或模型持續失敗時，透過郵件和 Webhook 通知管理員',
+    description: '機器人、聊天或模型持續失敗時，透過郵件和 Webhook 通知管理員',
     enabled: '啟用告警',
     firingCount: '{{count}} 則告警中',
     allClear: '一切正常',
@@ -4160,8 +4242,8 @@ const zhHant = {
     throttleHint:
       '每則告警在觸發時發送一次；持續失敗時會在 6 小時、12 小時後提醒，之後每 24 小時提醒一次。',
     rule: {
-      pipeline_failures: '流水線處理失敗',
-      pipeline_failuresDescription: '同一條流水線的處理錯誤',
+      pipeline_failures: '聊天處理失敗',
+      pipeline_failuresDescription: '同一個聊天的處理錯誤',
       model_failures: '模型呼叫失敗',
       model_failuresDescription: '同一個模型的請求失敗',
       bot_offline: '機器人異常退出',
@@ -4263,7 +4345,7 @@ const zhHant = {
     submit: '提交審核',
     promptTitle: '分享提示詞到 LangBot Space',
     promptDescriptionMessaging:
-      '作為「對話提示詞」發布，供其他使用者在流水線設定中搜尋使用。',
+      '作為「對話提示詞」發布，供其他使用者在聊天設定中搜尋使用。',
     promptDescriptionAgent:
       '作為「Agent 提示詞」發布，供其他使用者在 Agent 設定中搜尋使用。',
     detectedVariables: '識別到的變數：',

@@ -263,10 +263,10 @@ const zhHans = {
     sendUnconfirmed: '发送状态未确认，请检查连接后重新打开会话。',
     draftPlaceholder: '可以先写下一条，回复完成后发送…',
     operations: {
-      create_pipeline: '创建 流水线',
-      configure_pipeline: '配置 流水线',
+      create_pipeline: '创建聊天',
+      configure_pipeline: '配置聊天',
       create_knowledge_base: '创建知识库',
-      get_pipeline: '查看 流水线',
+      get_pipeline: '查看聊天',
       get_knowledge_schema: '查看知识引擎配置',
       list_operation_logs: '查询操作日志',
       workspace_search: '搜索操作能力',
@@ -276,7 +276,7 @@ const zhHans = {
     resources: {
       models: '查询聊天模型',
       embedding_models: '查询嵌入模型',
-      pipelines: '查询 流水线',
+      pipelines: '查询聊天',
       knowledge_bases: '查询知识库',
       knowledge_engines: '查询知识引擎',
     },
@@ -285,8 +285,8 @@ const zhHans = {
     newChat: '新对话',
     close: '关闭',
     welcome:
-      '告诉我你想构建什么应用。我可以查看当前工作区，为机器人、Agent、知识库和 流水线 等提供配置方案，由你确认后执行。',
-    discover: '当前有哪些可用的模型、知识库和 流水线？',
+      '告诉我你想构建什么应用。我可以查看当前工作区，为机器人、Agent、知识库和聊天等提供配置方案，由你确认后执行。',
+    discover: '当前有哪些可用的模型、知识库和聊天？',
     build: '帮我创建一个知识库问答应用。',
     toolResult: '操作结果',
     review: '请检查具体操作及参数，确认后执行',
@@ -326,7 +326,7 @@ const zhHans = {
       pipelines: {
         title: '配置处理器',
         description:
-          '创建可复用的流水线、Agent 和插件处理器配置，再将它们接入机器人。',
+          '创建可复用的聊天、Agent 和插件处理器配置，再将它们接入机器人。',
       },
       knowledge: {
         title: '管理知识库',
@@ -360,7 +360,7 @@ const zhHans = {
       trigger: {
         title: '选择要回复的消息',
         description:
-          '流水线只处理消息事件，并由 AI 自动回复。在这里设置群聊触发方式、私聊规则和消息过滤条件。',
+          '聊天只处理消息事件，并由 AI 自动回复。在这里设置群聊触发方式、私聊规则和消息过滤条件。',
       },
       speech: {
         title: '配置语音能力',
@@ -384,11 +384,11 @@ const zhHans = {
       extensions: {
         title: '选择可用扩展',
         description:
-          '选择这条流水线可使用的插件、MCP 服务和技能，扩展消息处理与工具能力。',
+          '选择这个聊天可使用的插件、MCP 服务和技能，扩展消息处理与工具能力。',
       },
       basic: {
-        title: '管理流水线',
-        description: '复制当前流水线以创建其他配置，或删除不再需要的流水线。',
+        title: '管理聊天',
+        description: '复制当前聊天以创建其他配置，或删除不再需要的聊天。',
       },
       debug: {
         title: '测试对话效果',
@@ -411,7 +411,7 @@ const zhHans = {
       save: {
         title: '保存并接入机器人',
         description:
-          '保存配置后，在机器人的事件路由中，将“收到消息”交给这条流水线处理。',
+          '保存配置后，在机器人的事件路由中，将“收到消息”交给这个聊天处理。',
       },
     },
     pluginProcessor: {
@@ -483,7 +483,7 @@ const zhHans = {
       type: {
         title: '选择处理器类型',
         description:
-          '流水线按固定流程处理消息，Agent 使用模型和工具自主决策，插件处理器负责声明的平台事件。',
+          '聊天按固定流程处理消息，Agent 使用模型和工具自主决策，插件处理器负责声明的平台事件。',
       },
       basic: {
         title: '填写处理器信息',
@@ -791,7 +791,7 @@ const zhHans = {
       confirmDisconnect: '确认断开',
     },
     title: '模型配置',
-    description: '配置和管理可在流水线中使用的模型',
+    description: '配置和管理可在聊天中使用的模型',
     createModel: '创建对话模型',
     editModel: '编辑模型',
     getModelListError: '获取模型列表失败：',
@@ -958,6 +958,85 @@ const zhHans = {
     },
   },
   bots: {
+    routingTabs: {
+      routes: '路由规则',
+      plugins: '插件',
+      policy: '消息策略',
+    },
+    policy: {
+      scopeLabel: '设置范围',
+      botDefault: '机器人默认',
+      routes: '路由',
+      custom: '自定义',
+      inherit: '沿用默认',
+      inheritDefault: '沿用默认',
+      routeMode: '此路由的策略',
+      promote: '提升为机器人默认',
+      promoted: '已设为机器人默认，{{count}} 条路由改为沿用默认',
+      loadFailed: '消息策略加载失败',
+      botDefaultHint:
+        '机器人默认策略作用于所有收到消息的路由，单条路由可以自定义覆盖。只对收到消息事件生效。',
+      neutralDefaultHint: '当前默认策略不拦截任何消息，也不处理回复。',
+      policyState: '策略：{{state}}',
+      pluginState: '插件：{{state}}',
+      inheritHint:
+        '此路由沿用机器人默认策略，下方为当前生效的设置。切换为「自定义」后可单独修改。',
+      streamingNote:
+        '流式回复只应用强制延迟、@发送者和引用原消息，长文本处理不适用。',
+      streamingPlatformLimit:
+        '该平台的流式回复首帧不支持 @ 或引用，开启后对流式回复不显示。',
+      newRouteNeutral:
+        '新路由沿用机器人默认消息策略：当前不拦截任何消息。可在「消息策略」页签单独设置。',
+      newRouteInherits:
+        '新路由沿用机器人默认消息策略，可在「消息策略」页签单独设置。',
+    },
+    pluginHooks: {
+      routeMode: '此路由的插件启用',
+      lifecycleTitle: '消息生命周期',
+      lifecycleHint: '图标表示在这一步起作用的已启用插件',
+      policyCaption: '消息策略',
+      enableTitle: '启用插件',
+      enableHint: '启用一个插件即启用它的命令和全部事件监听器。',
+      inheritHint:
+        '此路由沿用机器人默认的插件启用设置。切换为「自定义」后可单独选择。',
+      loadFailed: '插件信息加载失败',
+      empty: '还没有安装带命令或事件监听器的插件。',
+      browseMarket: '去安装插件',
+      registrationsUnknown: '插件运行时版本较旧，无法读取各插件注册的钩子。',
+      globallyDisabled: '插件已停用',
+      hooksUnknown: '钩子未知',
+      enablePlugin: '在此机器人上启用 {{plugin}}',
+      processors: {
+        messaging: '聊天',
+        agent: 'Agent',
+        command: '命令',
+      },
+      reasons: {
+        observeOnly: '平台事件，只通知不拦截',
+        promptOnAgent: '路由到 Agent，提示词钩子不生效',
+        notOnRoute: '当前路由用不到，只在 {{processors}} 上生效',
+        streamObserveOnly: '流式回复下回复后钩子只能旁观，不能改写已发出的内容',
+      },
+      steps: {
+        received: '收到',
+        command: '命令',
+        admission: '准入',
+        before: '回复前',
+        process: '处理',
+        after: '回复后',
+        send: '发送',
+      },
+      events: {
+        GroupMessageReceived: '收到群消息',
+        PersonMessageReceived: '收到私聊消息',
+        GroupCommandSent: '群命令',
+        PersonCommandSent: '私聊命令',
+        GroupNormalMessageReceived: '群普通消息',
+        PersonNormalMessageReceived: '私聊普通消息',
+        PromptPreProcessing: '提示词预处理',
+        NormalMessageResponded: '回复后',
+      },
+    },
     platformCommands: {
       title: '注册到平台',
       overwrite:
@@ -985,14 +1064,14 @@ const zhHans = {
       createDefaultHint: '使用命令默认配置。',
       title: '插件命令绑定',
       description:
-        '仅对 message.received 消息事件生效；命中插件命令后，不再进入插件处理器、路由规则和流水线。',
+        '仅对收到消息事件生效，先于路由规则匹配，并沿用这条消息本来会命中的路由的消息策略。已启用插件的命令可直接使用；在这里绑定命令处理器可设置命令配置和匹配优先级。',
       prefixes: '命令前缀',
       prefixPlaceholder: '输入前缀，按回车添加（如 / 或 !）',
       addPrefix: '添加前缀',
       prefixInvalid: '前缀不能为空且不能包含空白字符',
       prefixDuplicate: '前缀已存在',
       plugins: '绑定的插件命令',
-      empty: '尚未绑定任何插件命令。',
+      empty: '未单独绑定命令处理器，已启用插件的命令按默认配置生效。',
       addPlugin: '添加插件',
       noAvailablePlugins: '没有包含命令组件的可用插件。',
       selectPlugins: '选择要绑定的插件',
@@ -1046,7 +1125,7 @@ const zhHans = {
     saveSuccess: '保存成功',
     saveError: '保存失败：',
     createSuccess: '创建成功，请继续配置机器人',
-    autoCreatedPipeline: '已自动创建流水线并绑定消息处理事件',
+    autoCreatedPipeline: '已自动创建聊天并绑定消息处理事件',
     createError: '创建失败：',
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
@@ -1062,8 +1141,8 @@ const zhHans = {
       '旧版主要用于消息收发，保留用于兼容已有机器人配置。\n新版是同一平台的事件驱动接入，除消息外，还可处理该平台支持的好友请求、群成员变化等事件，并通过事件路由交给处理器。\n新建机器人优先选择新版。已有机器人可继续使用旧版；切换时请按新版接入要求重新检查连接参数和事件路由，并非直接升级平台账号。',
     adapterConfig: '适配器配置',
     viewAdapterDocs: '查看文档',
-    bindPipeline: '绑定流水线',
-    selectPipeline: '选择流水线',
+    bindPipeline: '绑定聊天',
+    selectPipeline: '选择聊天',
     selectBot: '请选择机器人',
     botLogTitle: '机器人日志',
     enableAutoRefresh: '开启自动刷新',
@@ -1082,7 +1161,7 @@ const zhHans = {
     basicInfo: '基础信息',
     basicInfoDescription: '设置机器人名称和描述',
     routingConnection: '路由与连接',
-    routingConnectionDescription: '绑定处理此机器人消息的流水线',
+    routingConnectionDescription: '绑定处理此机器人消息的聊天',
     routingHelp: {
       title: '什么是事件路由？',
       intro: '机器人不只会收到消息，也会收到好友请求、加入群聊等事件。',
@@ -1136,7 +1215,7 @@ const zhHans = {
     targetType: '目标类型',
     target: '处理器',
     targetAgent: 'Agent',
-    targetPipeline: '流水线',
+    targetPipeline: '聊天',
     targetDiscard: '丢弃',
     selectTarget: '选择处理器',
     searchTarget: '搜索处理器…',
@@ -1145,7 +1224,7 @@ const zhHans = {
     enabled: '启用',
     eventBindingDescriptionPlaceholder: '规则说明',
     noEventBindings: '暂无事件路由',
-    unsupportedPipelineEvent: '流水线 仅可用于 message.received 事件',
+    unsupportedPipelineEvent: '聊天仅可用于 message.received 事件',
     disable: '禁用',
     enable: '启用',
     disabledBindings: '已禁用',
@@ -1338,7 +1417,7 @@ const zhHans = {
     operator_regex: '正则匹配',
     routingRules: '条件路由规则',
     routingRulesDescription:
-      '按顺序匹配，命中第一条规则后路由到对应流水线；都不匹配时使用上方默认流水线',
+      '按顺序匹配，命中第一条规则后路由到对应聊天；都不匹配时使用上方默认聊天',
     addRoutingRule: '添加规则',
     ruleTypeLauncherType: '会话类型',
     ruleTypeLauncherId: '会话 ID',
@@ -1530,7 +1609,7 @@ const zhHans = {
       replyOrAction: '回复或执行平台动作',
       pipeline: {
         summary: '消息经过触发规则和 AI 生成后回复。',
-        group: '流水线内部',
+        group: '聊天内部',
         trigger: '触发规则与预处理',
         generate: 'AI 生成回复',
         generateCaption: '使用模型、知识库与工具',
@@ -1653,9 +1732,9 @@ const zhHans = {
     agentType: 'Agent',
     agentTypeDescription:
       '用自然语言描述多种事件的处理方式，让 AI 执行；也可接入外部 Agent 平台处理事件。',
-    pipelineType: '流水线',
+    pipelineType: '聊天',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: '流水线',
+    kindBadgePipeline: '聊天',
     groupByKind: '按类型分组',
     groupByKindShort: '分组',
     pipelineTypeDescription:
@@ -1671,9 +1750,9 @@ const zhHans = {
     agentDiagramTitle: 'Agent：自主判断并行动',
     agentDiagramDescription:
       'Agent 可以接收多种平台事件，结合模型和工具理解当前情况，并自主决定下一步动作。',
-    pipelineDiagramTitle: '流水线：按流程逐步处理',
+    pipelineDiagramTitle: '聊天：按流程逐步处理',
     pipelineDiagramDescription:
-      '流水线 只处理消息事件，并严格按照你编排的固定步骤依次执行。',
+      '聊天只处理消息事件，并严格按照你编排的固定步骤依次执行。',
     pipelineDiagramFlow: '消息沿固定流程依次处理',
     diagramEvents: '平台事件',
     diagramAgentCanUse: 'Agent 可使用',
@@ -1854,8 +1933,11 @@ const zhHans = {
     debugRunFailed: 'Agent 调试运行失败',
   },
   plugins: {
+    enabledOnBots: '插件已在 {{count}} 个机器人上启用',
+    notEnabledOnBots: '插件尚未在任何机器人上启用，命令和事件监听器暂不生效。',
+    goEnable: '去启用',
     title: '插件扩展',
-    description: '安装和配置用于扩展功能的插件，请在流水线配置中选用',
+    description: '安装和配置用于扩展功能的插件，请在聊天配置中选用',
     createPlugin: '创建插件',
     editPlugin: '编辑插件',
     installed: '已安装',
@@ -2252,7 +2334,7 @@ const zhHans = {
       followUp: {
         nextSteps: '下一步',
         agents: '新建 Agent 或插件处理器',
-        pipelines: '创建流水线',
+        pipelines: '创建聊天',
         knowledge: '创建知识库',
       },
       updateComplete: '插件更新成功',
@@ -2281,7 +2363,7 @@ const zhHans = {
 
     runnerUsage: '运行器用途',
     runnerUsageAll: '全部',
-    runnerUsageAgent: 'Agent / 流水线',
+    runnerUsageAgent: 'Agent / 聊天',
     runnerUsageEvent: '插件处理器',
     searchPlaceholder: '搜索插件...',
     searchPlaceholderCount: '搜索 {{count}} 个扩展、能力或场景...',
@@ -2509,15 +2591,17 @@ const zhHans = {
     deleteMCPHint: '删除后，此 MCP 服务器配置将无法恢复。',
   },
   pipelines: {
-    title: '流水线',
-    description: '流水线定义了对消息事件的处理流程，用于绑定到机器人',
-    createPipeline: '创建流水线',
-    selectFromSidebar: '从侧边栏选择一个流水线',
-    editPipeline: '编辑流水线',
+    outputMovedToPolicy:
+      '入口条件、安全和通用回复设置（长文本、强制延迟、@发送者、引用、异常提示）已移到机器人的「消息策略」页签，这里只保留 AI 相关的输出选项。',
+    title: '聊天',
+    description: '聊天定义 AI 如何处理和回复消息，用于绑定到机器人',
+    createPipeline: '创建聊天',
+    selectFromSidebar: '从侧边栏选择一个聊天',
+    editPipeline: '编辑聊天',
     chat: '对话',
     configuration: '配置',
     debugChat: '对话调试',
-    getPipelineListError: '获取流水线列表失败：',
+    getPipelineListError: '获取聊天列表失败：',
     daysAgo: '天前',
     today: '今天',
     updateTime: '更新于',
@@ -2528,8 +2612,8 @@ const zhHans = {
     recentlyEdited: '最近编辑',
     earliestEdited: '最早编辑',
     basicInfo: '基础信息',
-    basicInfoDescription: '设置流水线名称、图标和描述',
-    managementDescription: '复制或删除此流水线。',
+    basicInfoDescription: '设置聊天名称、图标和描述',
+    managementDescription: '复制或删除此聊天。',
     aiCapabilities: 'AI 能力',
     triggerConditions: '触发条件',
     safetyControls: '安全控制',
@@ -2537,26 +2621,26 @@ const zhHans = {
     speechProcessing: '语音处理',
     nameRequired: '名称不能为空',
     descriptionRequired: '描述不能为空',
-    createSuccess: '创建成功 请编辑流水线详细参数',
+    createSuccess: '创建成功 请编辑聊天详细参数',
     createError: '创建失败：',
     saveSuccess: '保存成功',
     saveError: '保存失败：',
     copySuffix: ' Copy',
     deleteConfirmation:
-      '你确定要删除这个流水线吗？已绑定此流水线的机器人将无法使用。',
-    defaultPipelineCannotDelete: '默认流水线不可删除',
+      '你确定要删除这个聊天吗？已绑定此聊天的机器人将无法使用。',
+    defaultPipelineCannotDelete: '默认聊天不可删除',
     deleteSuccess: '删除成功',
     deleteError: '删除失败：',
     copyConfirmTitle: '确认复制',
     copyConfirmation:
-      '确定要复制这个流水线吗？复制将创建一个包含完整配置的新流水线。',
+      '确定要复制这个聊天吗？复制将创建一个包含完整配置的新聊天。',
     unsavedChanges: '有未保存的更改',
     dangerZone: '危险区域',
     dangerZoneDescription: '不可逆的操作',
-    deletePipelineAction: '删除此流水线',
-    deletePipelineHint: '删除后，绑定此流水线的机器人将无法正常工作。',
-    copyPipelineAction: '复制此流水线',
-    copyPipelineHint: '创建一条新的流水线，并复制所有配置。',
+    deletePipelineAction: '删除此聊天',
+    deletePipelineHint: '删除后，绑定此聊天的机器人将无法正常工作。',
+    copyPipelineAction: '复制此聊天',
+    copyPipelineHint: '创建一个新的聊天，并复制所有配置。',
     extensions: {
       title: '扩展集成',
       loadError: '加载插件列表失败',
@@ -2567,9 +2651,9 @@ const zhHans = {
       noPluginsSelected: '未选择任何插件',
       addPlugin: '添加插件',
       selectPlugins: '选择插件',
-      pluginsTitle: '插件',
+      pluginsTitle: 'AI 可调用的工具',
       pluginScopeHint:
-        '此处仅控制本流水线使用的事件监听器、工具和命令组件，不影响 AI 设置中选择的运行器（Runner）。',
+        '这里只控制此聊天中 AI 可以调用哪些插件工具。插件的命令和事件监听器在机器人的「插件」页签启用。',
       runnerScopeHint:
         '运行器在此独立选择，不受扩展集成中的插件开关控制；其所属插件仍需已安装且可用。',
       mcpServersTitle: 'MCP 服务器',
@@ -2587,7 +2671,7 @@ const zhHans = {
       enableAllMCPServers: '启用所有 MCP 服务器',
       enableAllSkills: '启用所有技能',
       toolsDescription:
-        '选择 Agent 可调用的事件工具、机器人工具和工作区操作。流水线会把模型输出的文字自动回复到当前会话，无需回复工具。',
+        '选择 Agent 可调用的事件工具、机器人工具和工作区操作。聊天会把模型输出的文字自动回复到当前会话，无需回复工具。',
       saveTools: '保存工具权限',
       allPluginsEnabled: '已启用所有插件',
       allMCPServersEnabled: '已启用所有 MCP 服务器',
@@ -2598,7 +2682,7 @@ const zhHans = {
       selectSkills: '选择技能',
       noSkillsAvailable: '暂无可用技能',
       mcpServersScopeTooltip:
-        '这里仅控制此流水线绑定哪些 MCP 服务器；具体 MCP 工具和资源在 AI 能力的内置 Agent 表单中选择。',
+        '这里仅控制此聊天绑定哪些 MCP 服务器；具体 MCP 工具和资源在 AI 能力的内置 Agent 表单中选择。',
       enableAllMCPServersTooltip:
         '开启后，所有已配置且启用的 MCP 服务器都会进入 AI 能力里的 MCP 工具和资源候选范围。',
     },
@@ -2633,8 +2717,8 @@ const zhHans = {
       selectKnowledgeBases: '选择知识库',
     },
     debugDialog: {
-      title: '流水线对话',
-      selectPipeline: '选择流水线',
+      title: '调试对话',
+      selectPipeline: '选择聊天',
       sessionType: '会话类型',
       privateChat: '私聊',
       groupChat: '群聊',
@@ -2649,7 +2733,7 @@ const zhHans = {
       resetSuccess: '对话已重置',
       resetFailed: '重置失败',
       loadMessagesFailed: '加载消息失败',
-      loadPipelinesFailed: '加载流水线失败',
+      loadPipelinesFailed: '加载聊天失败',
       atTips: '提及机器人',
       streaming: '流式传输',
       streamOutput: '流式',
@@ -2680,7 +2764,7 @@ const zhHans = {
       autoRefreshEvery: '每 {{seconds}} 秒刷新',
       title: '运行日志',
       workbench: '配置与调试',
-      description: '查看此流水线的运行记录和错误信息（最近24小时）',
+      description: '查看此聊天的运行记录和错误信息（最近24小时）',
       detailedLogs: '详细日志',
     },
   },
@@ -3123,13 +3207,13 @@ const zhHans = {
     },
     execution: {
       title: '执行记录',
-      subtitle: '每条入站事件及其触发的执行，覆盖 Agent 与 流水线。',
+      subtitle: '每条入站事件及其触发的执行，覆盖 Agent 与聊天。',
       tabs: { executions: '执行记录' },
       filters: {
         source: '类型',
         sourceAll: '全部类型',
         sourceAgent: 'Agent',
-        sourcePipeline: '流水线',
+        sourcePipeline: '聊天',
         mode: '流量',
         modeAll: '真实 + 调试',
         modeLive: '仅真实',
@@ -3148,7 +3232,7 @@ const zhHans = {
       // prettier-ignore
       kind: {
         agent: 'Agent',
-        pipeline: '流水线',
+        pipeline: '聊天',
         processor: '处理器',
       },
       columns: {
@@ -3164,8 +3248,8 @@ const zhHans = {
       triggeredBy: '触发：{{trigger}}',
       handledByPlugin: '插件处理 · {{plugin}}',
       handledByUnknownPlugin: '插件处理（未识别插件）',
-      filteredByStage: '已被流水线拦截 · {{stage}}',
-      filteredByUnknownStage: '已被流水线拦截',
+      filteredByStage: '已被聊天拦截 · {{stage}}',
+      filteredByUnknownStage: '已被聊天拦截',
       filterStages: {
         BanSessionCheckStage: '访问控制',
         GroupRespondRuleCheckStage: '群聊响应规则',
@@ -3179,7 +3263,7 @@ const zhHans = {
         tokensHint:
           '仅汇总已记录的用量；部分模型未返回用量时，总数可能不完整。',
         totalExecutions: '执行总数',
-        bySource: 'Agent {{agent}} · 流水线 {{pipeline}}',
+        bySource: 'Agent {{agent}} · 聊天 {{pipeline}}',
         successRate: '执行成功率',
         successRateHint:
           '成功次数 ÷（成功 + 失败）。不计进行中、已忽略和已取消的执行。',
@@ -3229,14 +3313,14 @@ const zhHans = {
     filters: {
       title: '筛选',
       bot: '机器人',
-      pipeline: '流水线',
+      pipeline: '聊天',
       allBots: '全部机器人',
       selectBot: '选择机器人',
       processor: '处理器',
       allProcessors: '全部处理器',
       selectProcessor: '选择处理器',
-      allPipelines: '全部流水线',
-      selectPipeline: '选择流水线',
+      allPipelines: '全部聊天',
+      selectPipeline: '选择聊天',
       loading: '加载中...',
       timeRange: '时间范围',
       customRange: '自定义范围',
@@ -3272,7 +3356,7 @@ const zhHans = {
     messageList: {
       timestamp: '时间戳',
       bot: '机器人',
-      pipeline: '流水线',
+      pipeline: '聊天',
       message: '消息',
       sessionId: '会话ID',
       status: '状态',
@@ -3563,7 +3647,7 @@ const zhHans = {
       adapter: '适配器',
       model_provider: '模型提供商',
       llm_model: '模型',
-      pipeline: '流水线',
+      pipeline: '聊天',
       user: '用户',
       workspace: '工作区',
       monitoring: '监控',
@@ -3624,7 +3708,7 @@ const zhHans = {
       codex_view: '查看 Codex 授权',
       codex_authorize: '授权 Codex',
       embed: '嵌入式会话',
-      pipeline_extensions_update: '修改流水线扩展绑定',
+      pipeline_extensions_update: '修改聊天扩展绑定',
       export: '导出数据',
       execute: '执行任务',
       debug: '调试任务',
@@ -3724,7 +3808,7 @@ const zhHans = {
     maxBotsReached:
       '已达到机器人数量上限（{{max}}个）。请先删除已有机器人后再创建新的。',
     maxPipelinesReached:
-      '已达到流水线数量上限（{{max}}个）。请先删除已有流水线后再创建新的。',
+      '已达到聊天数量上限（{{max}}个）。请先删除已有聊天后再创建新的。',
     maxExtensionsReached:
       '已达到扩展数量上限（{{max}}个）。请先删除已有扩展后再添加新的。',
     quotaLoadingTooltip: '正在加载工作空间用量，请稍后再创建资源。',
@@ -3833,7 +3917,7 @@ const zhHans = {
     next: '下一步',
     finish: '创建并部署',
     confirmCreateBot: '确定，创建机器人',
-    createSuccess: '流水线已创建并关联到机器人！',
+    createSuccess: '聊天已创建并关联到机器人！',
     botCreateSuccess: '机器人创建成功！',
     botSaveSuccess: '机器人配置已保存并启用！',
     createError: '创建资源失败',
@@ -3896,7 +3980,7 @@ const zhHans = {
       selectModelTitle: '选择模型',
       selectScannedModelTitle: '选择一个模型',
       selectScannedModelDescription:
-        '选中的模型将替换当前机器人流水线的主模型。',
+        '选中的模型将替换当前机器人所用聊天的主模型。',
       scanModelMode: '扫描模型',
       manualModelMode: '手动添加',
       scanningModels: '正在扫描可用模型…',
@@ -3913,7 +3997,7 @@ const zhHans = {
       rescanModels: '重新扫描模型',
       moreFeaturesTitle: '使用默认配置',
       moreFeaturesDescription:
-        '继续使用本地 Agent 和推荐模型，之后可在流水线中添加工具、知识库等功能。',
+        '继续使用本地 Agent 和推荐模型，之后可在聊天中添加工具、知识库等功能。',
       runnerDescription: '选择外部 Agent 的运行器并完成连接配置。',
       backToChoices: '返回选项',
       backToList: '返回列表',
@@ -3949,7 +4033,7 @@ const zhHans = {
     },
     done: {
       title: '一切就绪！',
-      description: '机器人已创建并连接到流水线。你现在可以在工作台中管理它。',
+      description: '机器人已创建并连接到聊天。你现在可以在工作台中管理它。',
       backToWorkbench: '返回工作台',
     },
   },
@@ -4111,8 +4195,7 @@ const zhHans = {
       selfHostedLink: '在 config.yaml 中配置 SMTP 或 Resend →',
     },
     title: '告警',
-    description:
-      '机器人、流水线或模型持续失败时，通过邮件和 Webhook 通知管理员',
+    description: '机器人、聊天或模型持续失败时，通过邮件和 Webhook 通知管理员',
     enabled: '启用告警',
     firingCount: '{{count}} 条告警中',
     allClear: '一切正常',
@@ -4158,8 +4241,8 @@ const zhHans = {
     throttleHint:
       '每条告警在触发时发送一次；持续失败时会在 6 小时、12 小时后提醒，之后每 24 小时提醒一次。',
     rule: {
-      pipeline_failures: '流水线处理失败',
-      pipeline_failuresDescription: '同一条流水线的处理错误',
+      pipeline_failures: '聊天处理失败',
+      pipeline_failuresDescription: '同一个聊天的处理错误',
       model_failures: '模型调用失败',
       model_failuresDescription: '同一个模型的请求失败',
       bot_offline: '机器人异常退出',
@@ -4261,7 +4344,7 @@ const zhHans = {
     submit: '提交审核',
     promptTitle: '分享提示词到 LangBot Space',
     promptDescriptionMessaging:
-      '作为「对话提示词」发布，供其他用户在流水线配置中搜索使用。',
+      '作为「对话提示词」发布，供其他用户在聊天配置中搜索使用。',
     promptDescriptionAgent:
       '作为「Agent 提示词」发布，供其他用户在 Agent 配置中搜索使用。',
     detectedVariables: '识别到的变量：',

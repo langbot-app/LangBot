@@ -274,10 +274,10 @@ const thTH = {
       'ยังไม่ยืนยันการส่ง ตรวจสอบการเชื่อมต่อแล้วเปิดบทสนทนาใหม่',
     draftPlaceholder: 'ร่างข้อความถัดไประหว่างรอได้…',
     operations: {
-      create_pipeline: 'สร้าง Pipeline',
-      configure_pipeline: 'ตั้งค่า Pipeline',
+      create_pipeline: 'สร้างแชท',
+      configure_pipeline: 'ตั้งค่าแชท',
       create_knowledge_base: 'สร้างฐานความรู้',
-      get_pipeline: 'ดู Pipeline',
+      get_pipeline: 'ดูแชท',
       get_knowledge_schema: 'ดูสคีมาของ knowledge engine',
       list_operation_logs: 'ดูบันทึกการดำเนินการ',
       workspace_search: 'ค้นหาความสามารถของพื้นที่ทำงาน',
@@ -287,7 +287,7 @@ const thTH = {
     resources: {
       models: 'ค้นหาโมเดลแชต',
       embedding_models: 'ค้นหาโมเดล embedding',
-      pipelines: 'ค้นหา Pipeline',
+      pipelines: 'ค้นหาแชท',
       knowledge_bases: 'ค้นหาฐานความรู้',
       knowledge_engines: 'ค้นหา knowledge engine',
     },
@@ -296,8 +296,8 @@ const thTH = {
     newChat: 'บทสนทนาใหม่',
     close: 'ปิด',
     welcome:
-      'บอกฉันว่าคุณต้องการสร้างแอปอะไร ฉันสามารถตรวจสอบพื้นที่ทำงานนี้และเสนอการตั้งค่าสำหรับบอต, Agent, ฐานความรู้, Pipeline และอื่น ๆ แล้วดำเนินการหลังจากคุณยืนยันได้',
-    discover: 'มีโมเดล ฐานความรู้ และ Pipeline อะไรที่ใช้ได้บ้าง?',
+      'บอกฉันว่าคุณต้องการสร้างแอปอะไร ฉันสามารถตรวจสอบพื้นที่ทำงานนี้และเสนอการตั้งค่าสำหรับบอต, Agent, ฐานความรู้, แชทและอื่น ๆ แล้วดำเนินการหลังจากคุณยืนยันได้',
+    discover: 'มีโมเดล ฐานความรู้ และแชทอะไรที่ใช้ได้บ้าง?',
     build: 'ช่วยสร้างแอปตอบคำถามจากฐานความรู้ให้หน่อย',
     toolResult: 'ผลลัพธ์การดำเนินการ',
     review: 'ตรวจสอบการดำเนินการและพารามิเตอร์ก่อนยืนยัน',
@@ -339,7 +339,7 @@ const thTH = {
       pipelines: {
         title: 'ตั้งค่าตัวประมวลผล',
         description:
-          'สร้างไปป์ไลน์ Agent และการตั้งค่าตัวประมวลผลปลั๊กอินที่ใช้ซ้ำได้ แล้วเชื่อมต่อกับบอท',
+          'สร้างแชท Agent และการตั้งค่าตัวประมวลผลปลั๊กอินที่ใช้ซ้ำได้ แล้วเชื่อมต่อกับบอท',
       },
       knowledge: {
         title: 'จัดการฐานความรู้',
@@ -374,8 +374,7 @@ const thTH = {
     pipeline: {
       trigger: {
         title: 'Choose which messages to answer',
-        description:
-          'Pipelines handle message events and reply automatically with AI.',
+        description: 'แชทจัดการเหตุการณ์ข้อความและตอบกลับอัตโนมัติด้วย AI',
       },
       speech: {
         title: 'Configure speech capabilities',
@@ -399,12 +398,12 @@ const thTH = {
       extensions: {
         title: 'เลือกส่วนขยาย',
         description:
-          'เลือกปลั๊กอิน เซิร์ฟเวอร์ MCP และทักษะที่ไปป์ไลน์นี้ใช้ได้ เพื่อเพิ่มความสามารถในการประมวลผลและเครื่องมือ',
+          'เลือกปลั๊กอิน เซิร์ฟเวอร์ MCP และทักษะที่แชทนี้ใช้ได้ เพื่อเพิ่มความสามารถในการประมวลผลและเครื่องมือ',
       },
       basic: {
-        title: 'จัดการไปป์ไลน์',
+        title: 'จัดการแชท',
         description:
-          'คัดลอกไปป์ไลน์เพื่อสร้างการตั้งค่าอื่น หรือลบไปป์ไลน์ที่ไม่ต้องการแล้ว',
+          'คัดลอกแชทเพื่อสร้างการตั้งค่าอื่น หรือลบแชทที่ไม่ต้องการแล้ว',
       },
       debug: {
         title: 'ทดสอบการสนทนา',
@@ -427,7 +426,7 @@ const thTH = {
       save: {
         title: 'บันทึกและเชื่อมต่อบอท',
         description:
-          'บันทึกการตั้งค่า แล้วกำหนดเส้นทางเหตุการณ์รับข้อความให้ไปป์ไลน์นี้ในหน้าบอท',
+          'บันทึกการตั้งค่า แล้วกำหนดเส้นทางเหตุการณ์รับข้อความให้แชทนี้ในหน้าบอท',
       },
     },
     pluginProcessor: {
@@ -502,7 +501,7 @@ const thTH = {
       type: {
         title: 'เลือกประเภทตัวประมวลผล',
         description:
-          'ไปป์ไลน์ประมวลผลข้อความตามลำดับที่กำหนด Agent ตัดสินใจด้วยโมเดลและเครื่องมือ ส่วนตัวประมวลผลปลั๊กอินจัดการเหตุการณ์แพลตฟอร์มที่ประกาศไว้',
+          'แชทประมวลผลข้อความตามลำดับที่กำหนด Agent ตัดสินใจด้วยโมเดลและเครื่องมือ ส่วนตัวประมวลผลปลั๊กอินจัดการเหตุการณ์แพลตฟอร์มที่ประกาศไว้',
       },
       basic: {
         title: 'ตั้งชื่อตัวประมวลผล',
@@ -823,7 +822,7 @@ const thTH = {
       confirmDisconnect: 'ยืนยันการยกเลิกการเชื่อมต่อ',
     },
     title: 'โมเดล',
-    description: 'กำหนดค่าและจัดการโมเดลที่สามารถใช้ใน Pipeline',
+    description: 'กำหนดค่าและจัดการโมเดลที่สามารถใช้ในแชท',
     createModel: 'สร้างโมเดล',
     editModel: 'แก้ไขโมเดล',
     getModelListError: 'ไม่สามารถดึงรายการโมเดลได้: ',
@@ -994,6 +993,90 @@ const thTH = {
     },
   },
   bots: {
+    routingTabs: {
+      routes: 'เส้นทาง',
+      plugins: 'ปลั๊กอิน',
+      policy: 'นโยบายข้อความ',
+    },
+    policy: {
+      scopeLabel: 'ใช้กับ',
+      botDefault: 'ค่าเริ่มต้นของบอท',
+      routes: 'เส้นทาง',
+      custom: 'กำหนดเอง',
+      inherit: 'ค่าเริ่มต้น',
+      inheritDefault: 'ใช้ค่าเริ่มต้น',
+      routeMode: 'นโยบายของเส้นทางนี้',
+      promote: 'ตั้งเป็นค่าเริ่มต้นของบอท',
+      promoted:
+        'ตั้งเป็นค่าเริ่มต้นของบอทแล้ว มี {{count}} เส้นทางที่เปลี่ยนมาใช้ค่าเริ่มต้น',
+      loadFailed: 'โหลดนโยบายข้อความไม่สำเร็จ',
+      botDefaultHint:
+        'ค่าเริ่มต้นของบอทใช้กับทุกเส้นทางที่รับข้อความ และแต่ละเส้นทางกำหนดทับได้ มีผลเฉพาะเหตุการณ์ message.received',
+      neutralDefaultHint:
+        'ค่าเริ่มต้นปัจจุบันไม่บล็อกข้อความใดและไม่เปลี่ยนการตอบกลับ',
+      policyState: 'นโยบาย: {{state}}',
+      pluginState: 'ปลั๊กอิน: {{state}}',
+      inheritHint:
+        'เส้นทางนี้ใช้ค่าเริ่มต้นของบอท ด้านล่างคือการตั้งค่าที่มีผลอยู่ เปลี่ยนเป็น "กำหนดเอง" เพื่อแก้ไขเฉพาะเส้นทางนี้',
+      streamingNote:
+        'การตอบกลับแบบสตรีมใช้เฉพาะการหน่วงเวลา การ @ ผู้ส่ง และการอ้างอิงข้อความ ไม่ใช้การจัดการข้อความยาว',
+      streamingPlatformLimit:
+        'แพลตฟอร์มนี้ไม่รองรับ @ หรือการอ้างอิงในเฟรมแรกของการสตรีม จึงไม่แสดงในการตอบกลับแบบสตรีม',
+      newRouteNeutral:
+        'เส้นทางใหม่ใช้นโยบายข้อความเริ่มต้นของบอท ซึ่งขณะนี้ไม่บล็อกข้อความใด ตั้งค่าเฉพาะได้ในแท็บนโยบายข้อความ',
+      newRouteInherits:
+        'เส้นทางใหม่ใช้นโยบายข้อความเริ่มต้นของบอท ตั้งค่าเฉพาะได้ในแท็บนโยบายข้อความ',
+    },
+    pluginHooks: {
+      routeMode: 'ปลั๊กอินของเส้นทางนี้',
+      lifecycleTitle: 'วงจรของข้อความ',
+      lifecycleHint: 'ไอคอนแสดงปลั๊กอินที่เปิดใช้และทำงานในแต่ละขั้น',
+      policyCaption: 'นโยบายข้อความ',
+      enableTitle: 'ปลั๊กอินที่เปิดใช้',
+      enableHint:
+        'การเปิดใช้ปลั๊กอินจะเปิดใช้คำสั่งและตัวรับฟังเหตุการณ์ทั้งหมดของปลั๊กอินนั้น',
+      inheritHint:
+        'เส้นทางนี้ใช้การเลือกปลั๊กอินเริ่มต้นของบอท เปลี่ยนเป็น "กำหนดเอง" เพื่อเลือกปลั๊กอินเฉพาะเส้นทางนี้',
+      loadFailed: 'โหลดปลั๊กอินไม่สำเร็จ',
+      empty: 'ยังไม่มีปลั๊กอินที่มีคำสั่งหรือตัวรับฟังเหตุการณ์',
+      browseMarket: 'ติดตั้งปลั๊กอิน',
+      registrationsUnknown:
+        'Plugin Runtime เก่าเกินไป จึงอ่านฮุกที่แต่ละปลั๊กอินลงทะเบียนไม่ได้',
+      globallyDisabled: 'ปลั๊กอินถูกปิดใช้',
+      hooksUnknown: 'ไม่ทราบฮุก',
+      enablePlugin: 'เปิดใช้ {{plugin}} บนบอทนี้',
+      processors: {
+        messaging: 'แชท',
+        agent: 'Agent',
+        command: 'คำสั่ง',
+      },
+      reasons: {
+        observeOnly: 'เหตุการณ์แพลตฟอร์ม: แจ้งเตือนเท่านั้น บล็อกไม่ได้',
+        promptOnAgent: 'ส่งไปยัง Agent ฮุกพรอมต์จึงไม่มีผล',
+        notOnRoute: 'ไม่ได้ใช้ในเส้นทางนี้ มีผลเฉพาะ {{processors}}',
+        streamObserveOnly:
+          'เมื่อตอบกลับแบบสตรีม ฮุกนี้ทำได้เพียงสังเกต แก้ไขเนื้อหาที่ส่งไปแล้วไม่ได้',
+      },
+      steps: {
+        received: 'รับ',
+        command: 'คำสั่ง',
+        admission: 'คัดกรอง',
+        before: 'ก่อนตอบ',
+        process: 'ประมวลผล',
+        after: 'หลังตอบ',
+        send: 'ส่ง',
+      },
+      events: {
+        GroupMessageReceived: 'ข้อความกลุ่ม',
+        PersonMessageReceived: 'ข้อความส่วนตัว',
+        GroupCommandSent: 'คำสั่งในกลุ่ม',
+        PersonCommandSent: 'คำสั่งส่วนตัว',
+        GroupNormalMessageReceived: 'ข้อความทั่วไปในกลุ่ม',
+        PersonNormalMessageReceived: 'ข้อความทั่วไปส่วนตัว',
+        PromptPreProcessing: 'ประมวลผลพรอมต์ล่วงหน้า',
+        NormalMessageResponded: 'หลังตอบ',
+      },
+    },
     platformCommands: {
       title: 'ลงทะเบียนบนแพลตฟอร์ม',
       overwrite:
@@ -1022,14 +1105,15 @@ const thTH = {
       createDefaultHint: 'ใช้การตั้งค่าเริ่มต้น',
       title: 'การผูกคำสั่งปลั๊กอิน',
       description:
-        'มีผลเฉพาะกับเหตุการณ์ message.received เท่านั้น เมื่อตรงกับคำสั่งปลั๊กอิน จะดำเนินการที่เลเยอร์การกำหนดเส้นทางโดยตรง ข้ามตัวประมวลผลปลั๊กอิน กฎการกำหนดเส้นทาง และไปป์ไลน์',
+        'มีผลเฉพาะเหตุการณ์ message.received คำสั่งจะถูกจับคู่ก่อนกฎการกำหนดเส้นทาง และใช้นโยบายข้อความของเส้นทางที่ข้อความนั้นจะตรงกัน คำสั่งของปลั๊กอินที่เปิดใช้ใช้งานได้ทันที ผูกตัวประมวลผลคำสั่งที่นี่เพื่อกำหนดค่าคำสั่งและลำดับความสำคัญ',
       prefixes: 'คำนำหน้าคำสั่ง',
       prefixPlaceholder: 'ป้อนคำนำหน้าแล้วกด Enter (เช่น / หรือ !)',
       addPrefix: 'เพิ่มคำนำหน้า',
       prefixInvalid: 'คำนำหน้าต้องไม่ว่างเปล่าและไม่มีช่องว่าง',
       prefixDuplicate: 'มีคำนำหน้านี้อยู่แล้ว',
       plugins: 'คำสั่งปลั๊กอินที่ผูกไว้',
-      empty: 'ยังไม่ได้ผูกคำสั่งปลั๊กอินใดๆ',
+      empty:
+        'ยังไม่ได้ผูกตัวประมวลผลคำสั่ง คำสั่งของปลั๊กอินที่เปิดใช้ทำงานด้วยการตั้งค่าเริ่มต้น',
       addPlugin: 'เพิ่มปลั๊กอิน',
       noAvailablePlugins: 'ไม่มีปลั๊กอินที่ประกาศคอมโพเนนต์คำสั่งที่ใช้งานได้',
       selectPlugins: 'เลือกปลั๊กอินที่จะผูก',
@@ -1089,7 +1173,7 @@ const thTH = {
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     createSuccess: 'สร้างสำเร็จ กรุณากำหนดเส้นทางเหตุการณ์',
-    autoCreatedPipeline: 'สร้างไปป์ไลน์และผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
+    autoCreatedPipeline: 'สร้างแชทและผูกเหตุการณ์ข้อความโดยอัตโนมัติแล้ว',
     createError: 'สร้างล้มเหลว: ',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
@@ -1105,8 +1189,8 @@ const thTH = {
       'อะแดปเตอร์รุ่นเก่าเน้นรับส่งข้อความ และคงไว้เพื่อรองรับการตั้งค่าบอทเดิม\nรุ่นใหม่เชื่อมต่อแพลตฟอร์มเดียวกันผ่านเหตุการณ์ ทั้งข้อความ คำขอเป็นเพื่อนหรือการเปลี่ยนแปลงกลุ่มที่รองรับ แล้วส่งให้ตัวประมวลผล\nแนะนำรุ่นใหม่สำหรับบอทใหม่ บอทเดิมยังใช้รุ่นเก่าได้ เมื่อเปลี่ยนให้ตรวจการเชื่อมต่อและเส้นทางเหตุการณ์ ไม่ใช่การอัปเกรดบัญชีแพลตฟอร์ม',
     adapterConfig: 'การกำหนดค่าอะแดปเตอร์',
     viewAdapterDocs: 'ดูเอกสาร',
-    bindPipeline: 'ผูก Pipeline',
-    selectPipeline: 'เลือก Pipeline',
+    bindPipeline: 'ผูกแชท',
+    selectPipeline: 'เลือกแชท',
     selectBot: 'เลือก Bot',
     botLogTitle: 'บันทึก Bot',
     enableAutoRefresh: 'เปิดการรีเฟรชอัตโนมัติ',
@@ -1125,8 +1209,7 @@ const thTH = {
     basicInfo: 'ข้อมูลพื้นฐาน',
     basicInfoDescription: 'ตั้งชื่อและคำอธิบาย Bot',
     routingConnection: 'การกำหนดเส้นทางและการเชื่อมต่อ',
-    routingConnectionDescription:
-      'ผูก Pipeline ที่ประมวลผลข้อความสำหรับ Bot นี้',
+    routingConnectionDescription: 'ผูกแชทที่ประมวลผลข้อความสำหรับ Bot นี้',
     routingHelp: {
       title: 'การกำหนดเส้นทางเหตุการณ์คืออะไร?',
       intro: 'บอทรับได้ทั้งข้อความ คำขอเป็นเพื่อน และเหตุการณ์เข้าร่วมกลุ่ม',
@@ -1158,7 +1241,7 @@ const thTH = {
       commandsDisabled: 'ปิดคำสั่งปลั๊กอินอยู่ ข้อความจะส่งไปยังเส้นทางโดยตรง',
     },
     eventRoutingDescription:
-      'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือ Pipeline ที่เกี่ยวข้อง โดย Pipeline รองรับเฉพาะเหตุการณ์ข้อความ',
+      'เลือกตัวประมวลผลสำหรับแต่ละเหตุการณ์ของ Bot และแก้ไขตรรกะในการตั้งค่า Agent หรือแชทที่เกี่ยวข้อง โดยแชทรองรับเฉพาะเหตุการณ์ข้อความ',
     eventBindings: 'เส้นทางเหตุการณ์',
     addEventBinding: 'เพิ่มเส้นทาง',
     addBehavior: 'เพิ่มพฤติกรรม',
@@ -1186,7 +1269,7 @@ const thTH = {
     targetType: 'ประเภทปลายทาง',
     target: 'ตัวประมวลผล',
     targetAgent: 'Agent',
-    targetPipeline: 'ไปป์ไลน์',
+    targetPipeline: 'แชท',
     targetDiscard: 'ละทิ้ง',
     selectTarget: 'เลือกตัวประมวลผล',
     searchTarget: 'ค้นหาตัวประมวลผล…',
@@ -1195,8 +1278,7 @@ const thTH = {
     enabled: 'เปิดใช้งาน',
     eventBindingDescriptionPlaceholder: 'คำอธิบายกฎ',
     noEventBindings: 'ไม่มีเส้นทางเหตุการณ์',
-    unsupportedPipelineEvent:
-      'ไปป์ไลน์ใช้ได้กับเหตุการณ์ message.received เท่านั้น',
+    unsupportedPipelineEvent: 'แชทใช้ได้กับเหตุการณ์ message.received เท่านั้น',
     disable: 'ปิดใช้งาน',
     enable: 'เปิดใช้งาน',
     disabledBindings: 'ปิดใช้งาน',
@@ -1395,7 +1477,7 @@ const thTH = {
     operator_regex: 'นิพจน์ทั่วไป',
     routingRules: 'กฎการกำหนดเส้นทางตามเงื่อนไข',
     routingRulesDescription:
-      'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยัง Pipeline ที่เกี่ยวข้อง หากไม่ตรงกันจะใช้ Pipeline เริ่มต้นด้านบน',
+      'กฎจะถูกประเมินตามลำดับ การจับคู่แรกจะกำหนดเส้นทางไปยังแชทที่เกี่ยวข้อง หากไม่ตรงกันจะใช้แชทเริ่มต้นด้านบน',
     addRoutingRule: 'เพิ่มกฎ',
     ruleTypeLauncherType: 'ประเภทเซสชัน',
     ruleTypeLauncherId: 'ID เซสชัน',
@@ -1598,7 +1680,7 @@ const thTH = {
       replyOrAction: 'ตอบกลับหรือดำเนินการบนแพลตฟอร์ม',
       pipeline: {
         summary: 'ข้อความผ่านกฎทริกเกอร์และการสร้างคำตอบด้วย AI แล้วจึงตอบกลับ',
-        group: 'ภายใน Pipeline',
+        group: 'ภายในแชท',
         trigger: 'กฎทริกเกอร์และการประมวลผลล่วงหน้า',
         generate: 'AI สร้างคำตอบ',
         generateCaption: 'ใช้โมเดล ฐานความรู้ และเครื่องมือ',
@@ -1726,9 +1808,9 @@ const thTH = {
     agentType: 'Agent',
     agentTypeDescription:
       'ใช้ runner เพื่อประมวลผลข้อความ สมาชิกกลุ่ม เพื่อน ฟีดแบ็ก และเหตุการณ์แพลตฟอร์มอื่นๆ',
-    pipelineType: 'ไปป์ไลน์',
+    pipelineType: 'แชท',
     kindBadgeAgent: 'Agent',
-    kindBadgePipeline: 'Pipeline',
+    kindBadgePipeline: 'แชท',
     groupByKind: 'จัดกลุ่มตามประเภท',
     groupByKindShort: 'จัดกลุ่ม',
     pipelineTypeDescription:
@@ -1745,9 +1827,9 @@ const thTH = {
     agentDiagramTitle: 'Agent: ตัดสินใจและลงมือ',
     agentDiagramDescription:
       'Agent รับเหตุการณ์หลายประเภท ใช้โมเดลและเครื่องมือทำความเข้าใจ แล้วตัดสินใจทำงานต่อ',
-    pipelineDiagramTitle: 'ไปป์ไลน์: ทำตามขั้นตอนที่กำหนด',
+    pipelineDiagramTitle: 'แชท: ทำตามขั้นตอนที่กำหนด',
     pipelineDiagramDescription:
-      'ไปป์ไลน์ประมวลผลเฉพาะเหตุการณ์ข้อความและทำตามลำดับที่ตั้งไว้',
+      'แชทประมวลผลเฉพาะเหตุการณ์ข้อความและทำตามลำดับที่ตั้งไว้',
     pipelineDiagramFlow: 'ข้อความผ่านขั้นตอนตามลำดับคงที่',
     diagramEvents: 'เหตุการณ์แพลตฟอร์ม',
     diagramAgentCanUse: 'สิ่งที่ Agent ใช้ได้',
@@ -1942,9 +2024,13 @@ const thTH = {
     debugRunFailed: 'ดีบัก Agent ไม่สำเร็จ',
   },
   plugins: {
+    enabledOnBots: 'เปิดใช้ปลั๊กอินบน {{count}} บอทแล้ว',
+    notEnabledOnBots:
+      'ปลั๊กอินยังไม่ได้เปิดใช้บนบอทใด คำสั่งและตัวรับฟังจึงยังไม่ทำงาน',
+    goEnable: 'เปิดใช้',
     title: 'ส่วนขยาย',
     description:
-      'ติดตั้งและกำหนดค่าปลั๊กอินเพื่อขยายฟังก์ชันการทำงาน กรุณาเลือกใน Pipeline',
+      'ติดตั้งและกำหนดค่าปลั๊กอินเพื่อขยายฟังก์ชันการทำงาน กรุณาเลือกในแชท',
     createPlugin: 'สร้างปลั๊กอิน',
     editPlugin: 'แก้ไขปลั๊กอิน',
     installed: 'ติดตั้งแล้ว',
@@ -2355,7 +2441,7 @@ const thTH = {
       followUp: {
         nextSteps: 'ขั้นตอนถัดไป',
         agents: 'สร้าง Agent หรือตัวประมวลผลปลั๊กอิน',
-        pipelines: 'สร้างไปป์ไลน์',
+        pipelines: 'สร้างแชท',
         knowledge: 'สร้างฐานความรู้',
       },
       updateComplete: 'อัปเดตปลั๊กอินสำเร็จ',
@@ -2384,7 +2470,7 @@ const thTH = {
 
     runnerUsage: 'การใช้งานรันเนอร์',
     runnerUsageAll: 'ทั้งหมด',
-    runnerUsageAgent: 'Agent / ไปป์ไลน์',
+    runnerUsageAgent: 'Agent / แชท',
     runnerUsageEvent: 'ตัวประมวลผลปลั๊กอิน',
     searchPlaceholder: 'ค้นหาปลั๊กอิน...',
     searchPlaceholderCount:
@@ -2619,16 +2705,17 @@ const thTH = {
       'เมื่อลบแล้ว การกำหนดค่าเซิร์ฟเวอร์ MCP นี้จะไม่สามารถกู้คืนได้',
   },
   pipelines: {
-    title: 'ไปป์ไลน์',
-    description:
-      'Pipeline กำหนดกระบวนการประมวลผลเหตุการณ์ข้อความ ใช้เพื่อผูกกับ Bot',
-    createPipeline: 'สร้าง Pipeline',
-    selectFromSidebar: 'เลือก Pipeline จากแถบด้านข้าง',
-    editPipeline: 'แก้ไข Pipeline',
+    outputMovedToPolicy:
+      'เงื่อนไขการรับ ความปลอดภัย และการตั้งค่าการตอบกลับทั่วไป (ข้อความยาว การหน่วงเวลา การ @ ผู้ส่ง การอ้างอิง ข้อความแจ้งข้อผิดพลาด) ย้ายไปที่แท็บนโยบายข้อความของบอทแล้ว ที่นี่เหลือเฉพาะตัวเลือกเอาต์พุตของ AI',
+    title: 'แชท',
+    description: 'แชทกำหนดกระบวนการประมวลผลเหตุการณ์ข้อความ ใช้เพื่อผูกกับ Bot',
+    createPipeline: 'สร้างแชท',
+    selectFromSidebar: 'เลือกแชทจากแถบด้านข้าง',
+    editPipeline: 'แก้ไขแชท',
     chat: 'แชท',
     configuration: 'การกำหนดค่า',
     debugChat: 'แชทดีบัก',
-    getPipelineListError: 'ไม่สามารถดึงรายการ Pipeline ได้: ',
+    getPipelineListError: 'ไม่สามารถดึงรายการแชทได้: ',
     daysAgo: 'วันก่อน',
     today: 'วันนี้',
     updateTime: 'อัปเดตเมื่อ ',
@@ -2639,8 +2726,8 @@ const thTH = {
     recentlyEdited: 'แก้ไขล่าสุด',
     earliestEdited: 'แก้ไขเก่าสุด',
     basicInfo: 'ข้อมูลพื้นฐาน',
-    basicInfoDescription: 'ตั้งชื่อ ไอคอน และคำอธิบาย Pipeline',
-    managementDescription: 'คัดลอกหรือลบไปป์ไลน์นี้',
+    basicInfoDescription: 'ตั้งชื่อ ไอคอน และคำอธิบายแชท',
+    managementDescription: 'คัดลอกหรือลบแชทนี้',
     aiCapabilities: 'AI',
     triggerConditions: 'ทริกเกอร์',
     safetyControls: 'ความปลอดภัย',
@@ -2648,26 +2735,26 @@ const thTH = {
     speechProcessing: 'เสียง',
     nameRequired: 'ชื่อต้องไม่ว่างเปล่า',
     descriptionRequired: 'คำอธิบายต้องไม่ว่างเปล่า',
-    createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์ Pipeline',
+    createSuccess: 'สร้างสำเร็จ กรุณาแก้ไขพารามิเตอร์แชท',
     createError: 'สร้างล้มเหลว: ',
     saveSuccess: 'บันทึกสำเร็จ',
     saveError: 'บันทึกล้มเหลว: ',
     copySuffix: ' สำเนา',
     deleteConfirmation:
-      'คุณแน่ใจหรือไม่ว่าต้องการลบ Pipeline นี้? Bot ที่ผูกกับ Pipeline นี้จะไม่ทำงาน',
-    defaultPipelineCannotDelete: 'ไม่สามารถลบ Pipeline ค่าเริ่มต้นได้',
+      'คุณแน่ใจหรือไม่ว่าต้องการลบแชทนี้? Bot ที่ผูกกับแชทนี้จะไม่ทำงาน',
+    defaultPipelineCannotDelete: 'ไม่สามารถลบแชทค่าเริ่มต้นได้',
     deleteSuccess: 'ลบสำเร็จ',
     deleteError: 'ลบล้มเหลว: ',
     copyConfirmTitle: 'ยืนยันการคัดลอก',
     copyConfirmation:
-      'คุณแน่ใจหรือไม่ว่าต้องการคัดลอก Pipeline นี้? การดำเนินการนี้จะสร้าง Pipeline ใหม่พร้อมการกำหนดค่าทั้งหมด',
+      'คุณแน่ใจหรือไม่ว่าต้องการคัดลอกแชทนี้? การดำเนินการนี้จะสร้างแชทใหม่พร้อมการกำหนดค่าทั้งหมด',
     unsavedChanges: 'คุณมีการเปลี่ยนแปลงที่ยังไม่ได้บันทึก',
     dangerZone: 'โซนอันตราย',
     dangerZoneDescription: 'การดำเนินการที่ย้อนกลับไม่ได้และเป็นอันตราย',
-    deletePipelineAction: 'ลบ Pipeline นี้',
-    deletePipelineHint: 'เมื่อลบแล้ว Bot ที่ผูกกับ Pipeline นี้จะหยุดทำงาน',
-    copyPipelineAction: 'คัดลอก Pipeline นี้',
-    copyPipelineHint: 'สร้าง Pipeline ใหม่พร้อมการกำหนดค่าทั้งหมดที่คัดลอกมา',
+    deletePipelineAction: 'ลบแชทนี้',
+    deletePipelineHint: 'เมื่อลบแล้ว Bot ที่ผูกกับแชทนี้จะหยุดทำงาน',
+    copyPipelineAction: 'คัดลอกแชทนี้',
+    copyPipelineHint: 'สร้างแชทใหม่พร้อมการกำหนดค่าทั้งหมดที่คัดลอกมา',
     extensions: {
       title: 'ส่วนขยาย',
       loadError: 'ไม่สามารถโหลดปลั๊กอินได้',
@@ -2678,9 +2765,9 @@ const thTH = {
       noPluginsSelected: 'ไม่ได้เลือกปลั๊กอิน',
       addPlugin: 'เพิ่มปลั๊กอิน',
       selectPlugins: 'เลือกปลั๊กอิน',
-      pluginsTitle: 'ปลั๊กอิน',
+      pluginsTitle: 'เครื่องมือที่ AI เรียกใช้ได้',
       pluginScopeHint:
-        'ควบคุมเฉพาะตัวรับฟังเหตุการณ์ เครื่องมือ และคำสั่งของไปป์ไลน์นี้ ไม่ส่งผลต่อ Runner ที่เลือกในการตั้งค่า AI',
+        'ควบคุมเฉพาะเครื่องมือปลั๊กอินที่ AI ในแชทนี้เรียกใช้ได้ คำสั่งและตัวรับฟังเหตุการณ์ของปลั๊กอินเปิดใช้ในแท็บปลั๊กอินของบอท',
       runnerScopeHint:
         'เลือก Runner ได้อย่างอิสระจากสวิตช์ปลั๊กอินส่วนขยาย โดยปลั๊กอินของ Runner ต้องติดตั้งแล้วและพร้อมใช้งาน',
       mcpServersTitle: 'เซิร์ฟเวอร์ MCP',
@@ -2698,7 +2785,7 @@ const thTH = {
       enableAllMCPServers: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมด',
       enableAllSkills: 'เปิดใช้สกิลทั้งหมด',
       toolsDescription:
-        'เลือกเครื่องมือเหตุการณ์ เครื่องมือบอท และการดำเนินการของพื้นที่ทำงานที่ Agent เรียกใช้ได้ ไปป์ไลน์จะตอบกลับด้วยข้อความจากโมเดลโดยอัตโนมัติ จึงไม่ต้องใช้เครื่องมือตอบกลับ',
+        'เลือกเครื่องมือเหตุการณ์ เครื่องมือบอท และการดำเนินการของพื้นที่ทำงานที่ Agent เรียกใช้ได้แชทจะตอบกลับด้วยข้อความจากโมเดลโดยอัตโนมัติ จึงไม่ต้องใช้เครื่องมือตอบกลับ',
       saveTools: 'บันทึกสิทธิ์เครื่องมือ',
       allPluginsEnabled: 'เปิดใช้งานปลั๊กอินทั้งหมดแล้ว',
       allMCPServersEnabled: 'เปิดใช้งานเซิร์ฟเวอร์ MCP ทั้งหมดแล้ว',
@@ -2709,7 +2796,7 @@ const thTH = {
       selectSkills: 'เลือกสกิล',
       noSkillsAvailable: 'ไม่มีสกิลที่พร้อมใช้งาน',
       mcpServersScopeTooltip:
-        'ส่วนนี้ใช้ควบคุมว่า Pipeline ผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Runner',
+        'ส่วนนี้ใช้ควบคุมว่าแชทผูกกับเซิร์ฟเวอร์ MCP ใดเท่านั้น ส่วนเครื่องมือและทรัพยากร MCP รายตัวให้เลือกใน AI Feature > Runner',
       enableAllMCPServersTooltip:
         'เมื่อเปิดใช้ เซิร์ฟเวอร์ MCP ที่ตั้งค่าและเปิดใช้งานทั้งหมดจะเป็นตัวเลือกสำหรับเครื่องมือและทรัพยากร MCP ใน AI Feature',
     },
@@ -2745,8 +2832,8 @@ const thTH = {
       selectKnowledgeBases: 'เลือกคลังความรู้',
     },
     debugDialog: {
-      title: 'แชท Pipeline',
-      selectPipeline: 'เลือก Pipeline',
+      title: 'แชทดีบัก',
+      selectPipeline: 'เลือกแชท',
       sessionType: 'ประเภทเซสชัน',
       privateChat: 'แชทส่วนตัว',
       groupChat: 'แชทกลุ่ม',
@@ -2761,7 +2848,7 @@ const thTH = {
       resetSuccess: 'รีเซ็ตการสนทนาสำเร็จ',
       resetFailed: 'รีเซ็ตล้มเหลว',
       loadMessagesFailed: 'ไม่สามารถโหลดข้อความได้',
-      loadPipelinesFailed: 'ไม่สามารถโหลด Pipeline ได้',
+      loadPipelinesFailed: 'ไม่สามารถโหลดแชทได้',
       atTips: 'กล่าวถึง Bot',
       streaming: 'สตรีมมิ่ง',
       streamOutput: 'สตรีม',
@@ -2793,7 +2880,7 @@ const thTH = {
       title: 'บันทึกการทำงาน',
       workbench: 'กำหนดค่าและดีบัก',
       description:
-        'ดูบันทึกการดำเนินการและข้อผิดพลาดของ Pipeline นี้ (24 ชั่วโมงล่าสุด)',
+        'ดูบันทึกการดำเนินการและข้อผิดพลาดของแชทนี้ (24 ชั่วโมงล่าสุด)',
       detailedLogs: 'บันทึกโดยละเอียด',
     },
   },
@@ -3266,13 +3353,13 @@ const thTH = {
     execution: {
       title: 'การทำงาน',
       subtitle:
-        'เหตุการณ์ขาเข้าแต่ละรายการและการทำงานที่ถูกเรียกใช้ ทั้งในเอเจนต์และไปป์ไลน์',
+        'เหตุการณ์ขาเข้าแต่ละรายการและการทำงานที่ถูกเรียกใช้ ทั้งในเอเจนต์และแชท',
       tabs: { executions: 'การทำงาน' },
       filters: {
         source: 'ประเภท',
         sourceAll: 'ทุกประเภท',
         sourceAgent: 'เอเจนต์',
-        sourcePipeline: 'ไปป์ไลน์',
+        sourcePipeline: 'แชท',
         mode: 'โหมดการทำงาน',
         modeAll: 'ใช้งานจริง + ดีบัก',
         modeLive: 'เฉพาะใช้งานจริง',
@@ -3291,7 +3378,7 @@ const thTH = {
       // prettier-ignore
       kind: {
         agent: 'เอเจนต์',
-        pipeline: 'ไปป์ไลน์',
+        pipeline: 'แชท',
         processor: 'ตัวประมวลผล',
       },
       columns: {
@@ -3307,8 +3394,8 @@ const thTH = {
       triggeredBy: 'เรียกใช้โดย {{trigger}}',
       handledByPlugin: 'จัดการโดยปลั๊กอิน {{plugin}}',
       handledByUnknownPlugin: 'จัดการโดยปลั๊กอินที่ระบุไม่ได้',
-      filteredByStage: 'ถูกหยุดโดยไปป์ไลน์ · {{stage}}',
-      filteredByUnknownStage: 'ถูกหยุดโดยไปป์ไลน์',
+      filteredByStage: 'ถูกหยุดโดยแชท · {{stage}}',
+      filteredByUnknownStage: 'ถูกหยุดโดยแชท',
       filterStages: {
         BanSessionCheckStage: 'การควบคุมการเข้าถึง',
         GroupRespondRuleCheckStage: 'กฎการตอบกลับในกลุ่ม',
@@ -3322,7 +3409,7 @@ const thTH = {
         tokensHint:
           'รวมเฉพาะการใช้ที่บันทึกไว้ ผลรวมอาจไม่ครบหากโมเดลไม่ส่งข้อมูลการใช้กลับมา',
         totalExecutions: 'การทำงาน',
-        bySource: 'เอเจนต์ {{agent}} · ไปป์ไลน์ {{pipeline}}',
+        bySource: 'เอเจนต์ {{agent}} · แชท {{pipeline}}',
         successRate: 'อัตราการทำงานสำเร็จ',
         successRateHint:
           'สำเร็จ ÷ (สำเร็จ + ล้มเหลว) ไม่รวมงานที่กำลังทำงาน ถูกละเว้น หรือยกเลิก',
@@ -3373,14 +3460,14 @@ const thTH = {
     filters: {
       title: 'ตัวกรอง',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'แชท',
       allBots: 'Bot ทั้งหมด',
       selectBot: 'เลือก Bot',
       processor: 'ตัวประมวลผล',
       allProcessors: 'ตัวประมวลผลทั้งหมด',
       selectProcessor: 'เลือกตัวประมวลผล',
-      allPipelines: 'Pipeline ทั้งหมด',
-      selectPipeline: 'เลือก Pipeline',
+      allPipelines: 'แชททั้งหมด',
+      selectPipeline: 'เลือกแชท',
       loading: 'กำลังโหลด...',
       timeRange: 'ช่วงเวลา',
       customRange: 'ช่วงเวลาที่กำหนดเอง',
@@ -3416,7 +3503,7 @@ const thTH = {
     messageList: {
       timestamp: 'เวลา',
       bot: 'Bot',
-      pipeline: 'Pipeline',
+      pipeline: 'แชท',
       message: 'ข้อความ',
       sessionId: 'ID เซสชัน',
       status: 'สถานะ',
@@ -3711,7 +3798,7 @@ const thTH = {
       adapter: 'อะแดปเตอร์',
       model_provider: 'ผู้ให้บริการโมเดล',
       llm_model: 'โมเดล',
-      pipeline: 'ไปป์ไลน์',
+      pipeline: 'แชท',
       user: 'ผู้ใช้',
       workspace: 'เวิร์กสเปซ',
       monitoring: 'การมอนิเตอร์',
@@ -3772,7 +3859,7 @@ const thTH = {
       codex_view: 'ดูการอนุญาต Codex',
       codex_authorize: 'อนุญาต Codex',
       embed: 'เซสชันฝังตัว',
-      pipeline_extensions_update: 'แก้ไขการผูกส่วนขยายของไปป์ไลน์',
+      pipeline_extensions_update: 'แก้ไขการผูกส่วนขยายของแชท',
       export: 'ส่งออกข้อมูล',
       execute: 'รันงาน',
       debug: 'ดีบักงาน',
@@ -3874,7 +3961,7 @@ const thTH = {
     maxBotsReached:
       'จำนวน Bot สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Bot ที่มีอยู่ก่อนสร้างใหม่',
     maxPipelinesReached:
-      'จำนวน Pipeline สูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบ Pipeline ที่มีอยู่ก่อนสร้างใหม่',
+      'จำนวนแชทสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบแชทที่มีอยู่ก่อนสร้างใหม่',
     maxExtensionsReached:
       'จำนวนส่วนขยายสูงสุด ({{max}}) ถึงขีดจำกัดแล้ว กรุณาลบเซิร์ฟเวอร์ MCP หรือปลั๊กอินที่มีอยู่ก่อนเพิ่มใหม่',
     quotaLoadingTooltip:
@@ -3987,7 +4074,7 @@ const thTH = {
     next: 'ถัดไป',
     finish: 'สร้างและติดตั้ง',
     confirmCreateBot: 'ยืนยัน สร้าง Bot',
-    createSuccess: 'สร้าง Pipeline และเชื่อมกับ Bot สำเร็จ!',
+    createSuccess: 'สร้างแชทและเชื่อมกับ Bot สำเร็จ!',
     botCreateSuccess: 'สร้าง Bot สำเร็จ!',
     botSaveSuccess: 'บันทึกและเปิดใช้งาน Bot สำเร็จ!',
     createError: 'ไม่สามารถสร้างทรัพยากรได้',
@@ -4059,7 +4146,7 @@ const thTH = {
       selectModelTitle: 'เลือกโมเดล',
       selectScannedModelTitle: 'เลือกโมเดล',
       selectScannedModelDescription:
-        'โมเดลที่เลือกจะแทนที่โมเดลหลักในไปป์ไลน์ของบอทนี้',
+        'โมเดลที่เลือกจะแทนที่โมเดลหลักในแชทของบอทนี้',
       scanModelMode: 'สแกนโมเดล',
       manualModelMode: 'เพิ่มด้วยตนเอง',
       scanningModels: 'กำลังสแกนโมเดลที่พร้อมใช้งาน…',
@@ -4117,7 +4204,7 @@ const thTH = {
     done: {
       title: 'เสร็จเรียบร้อย!',
       description:
-        'Bot ของคุณถูกสร้างและเชื่อมต่อกับ Pipeline AI แล้ว คุณสามารถจัดการได้จากหน้าทำงาน',
+        'Bot ของคุณถูกสร้างและเชื่อมต่อกับแชท AI แล้ว คุณสามารถจัดการได้จากหน้าทำงาน',
       backToWorkbench: 'กลับไปหน้าทำงาน',
     },
   },
@@ -4266,7 +4353,7 @@ const thTH = {
     requiresPermission: 'ต้องมีสิทธิ์: {{permission}}',
     dangerousConfirmTitle: 'มีการดำเนินการของพื้นที่ทำงานที่อันตราย',
     dangerousConfirmDescription:
-      'ตัวประมวลผลนี้ให้บริการผู้ใช้แชท ใครก็ตามที่แชทกับบอทได้อาจเรียกการดำเนินการเหล่านี้ ต้องการบันทึกหรือไม่',
+      'ตัวประมวลผลนี้ให้บริการผู้ใช้แชทใครก็ตามที่แชทกับบอทได้อาจเรียกการดำเนินการเหล่านี้ ต้องการบันทึกหรือไม่',
     dangerousConfirmAction: 'ยืนยันการบันทึก',
     dangerousConfirmCancel: 'ยกเลิก',
     saveWorkspaceOperations: 'บันทึกการดำเนินการ',
@@ -4289,8 +4376,7 @@ const thTH = {
       selfHostedLink: 'ตั้งค่า SMTP หรือ Resend ใน config.yaml →',
     },
     title: 'การแจ้งเตือน',
-    description:
-      'แจ้งทางอีเมลและ webhook เมื่อบอท Pipeline หรือโมเดลล้มเหลวซ้ำ ๆ',
+    description: 'แจ้งทางอีเมลและ webhook เมื่อบอทแชทหรือโมเดลล้มเหลวซ้ำ ๆ',
     enabled: 'เปิดการแจ้งเตือน',
     firingCount: 'กำลังแจ้งเตือน {{count}} รายการ',
     allClear: 'ปกติทั้งหมด',
@@ -4338,8 +4424,8 @@ const thTH = {
     throttleHint:
       'แต่ละการแจ้งเตือนส่งครั้งเดียวเมื่อเปิด จากนั้นเตือนซ้ำหลัง 6 ชม. 12 ชม. และทุก 24 ชม. หากยังล้มเหลว',
     rule: {
-      pipeline_failures: 'Pipeline ล้มเหลว',
-      pipeline_failuresDescription: 'ข้อผิดพลาดในการประมวลผลของ Pipeline เดียว',
+      pipeline_failures: 'แชทล้มเหลว',
+      pipeline_failuresDescription: 'ข้อผิดพลาดในการประมวลผลของแชทเดียว',
       model_failures: 'การเรียกโมเดลล้มเหลว',
       model_failuresDescription: 'คำขอไปยังโมเดลเดียวล้มเหลว',
       bot_offline: 'บอทหยุดทำงานด้วยข้อผิดพลาด',
@@ -4443,8 +4529,7 @@ const thTH = {
       'ผลงานจะถูกตรวจก่อนเผยแพร่บน LangBot Space การแชร์ชื่อเดิมอีกครั้งจะเป็นเวอร์ชันใหม่',
     submit: 'ส่งตรวจสอบ',
     promptTitle: 'แชร์พรอมต์ไปยัง LangBot Space',
-    promptDescriptionMessaging:
-      'เผยแพร่เป็นพรอมต์บทสนทนาสำหรับการตั้งค่าไปป์ไลน์',
+    promptDescriptionMessaging: 'เผยแพร่เป็นพรอมต์บทสนทนาสำหรับการตั้งค่าแชท',
     promptDescriptionAgent: 'เผยแพร่เป็นพรอมต์ Agent สำหรับการตั้งค่า Agent',
     detectedVariables: 'ตัวแปรที่พบ:',
     skillTitle: 'แชร์ Skill ไปยัง LangBot Space',
