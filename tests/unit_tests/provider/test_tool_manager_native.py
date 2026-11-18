@@ -892,6 +892,43 @@ async def test_host_executes_box_grep(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_host_executes_legacy_skill_mount(tmp_path):
+    import json
+    import logging
+
+    from langbot_plugin.artifact import build_tree_manifest
+    from langbot_plugin.box.host_backend import HostProcessBackend
+    from langbot_plugin.box.models import BoxSpec
+    from langbot.pkg.provider.tools.loaders.skill import ACTIVATED_SKILLS_KEY, build_execution_mounts
+
+    package = tmp_path / 'published-skill'
+    package.mkdir()
+    (package / 'SKILL.md').write_text('pinned skill instructions')
+    revision, manifest = build_tree_manifest(str(package), max_files=10, max_total_bytes=1024)
+    manifest_path = tmp_path / 'manifest.json'
+    manifest_path.write_text(json.dumps(manifest))
+    query = _make_query()
+    query.variables[ACTIVATED_SKILLS_KEY] = {
+        'demo': {'package_root': str(package), 'revision': revision, 'manifest_path': str(manifest_path)}
+    }
+    mounts = build_execution_mounts(SimpleNamespace(box_service=SimpleNamespace(file_transfer_mode='legacy')), query)
+    backend = HostProcessBackend(logging.getLogger(__name__))
+    spec = BoxSpec(
+        session_id='skill-test',
+        host_path=str(tmp_path / 'workspace'),
+        extra_mounts=mounts,
+        cmd=f'cat {mounts[0]["mount_path"]}/SKILL.md',
+        read_only_rootfs=False,
+    )
+    session = await backend.start_session(spec)
+    try:
+        result = await backend.exec(session, spec)
+        assert result.exit_code == 0 and result.stdout == 'pinned skill instructions', result.stderr
+    finally:
+        await backend.stop_session(session)
+
+
+@pytest.mark.asyncio
 async def test_workspace_file_script_resolves_the_sandbox_interpreter():
     """Native file tools must use python3 and never fall back to python2."""
 
