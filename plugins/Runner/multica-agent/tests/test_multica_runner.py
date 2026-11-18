@@ -554,7 +554,7 @@ SAME_IN_EN_AND_ZH: set[str] = set()
 
 def test_manifest_language_option_matches_supported_locales():
     manifest = yaml.safe_load((PLUGIN_ROOT / "manifest.yaml").read_text(encoding="utf-8"))
-    assert manifest["metadata"]["version"] == "0.2.1"
+    assert manifest["metadata"]["version"] == "0.2.2"
     (language,) = [c for c in manifest["spec"]["config"] if c["name"] == "language"]
     assert language["type"] == "select" and language["default"] == "en_US"
     assert [o["name"] for o in language["options"]] == LOCALES
