@@ -831,6 +831,8 @@ def _field_description(name: str, operation_id: str) -> str | None:
         return f'UUID of the model; get it from {list_op}'
     if name == 'server_uuid':
         return 'UUID of the MCP server; get it from mcp.server.list'
+    if name == 'target_uuid' and operation_id == 'bot.routes.bind':
+        return 'For an Agent, get it from agent.list. For a Pipeline, get it from pipeline.list.'
     if name.endswith('_uuid'):
         entity = name[:-5]
         list_op = _LIST_OPS_BY_ENTITY.get(entity, f'{entity}.list')
