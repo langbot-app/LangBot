@@ -2037,6 +2037,10 @@ const zhHant = {
     updating: '更新中...',
     updateSuccess: '插件更新成功',
     updateError: '更新失敗：',
+    installedVersion: '已安裝版本 v{{version}}',
+    updateToVersion: '更新到 v{{version}}',
+    confirmUpdatePluginVersion:
+      '確定將插件（{{author}}/{{name}}）從 v{{from}} 更新到 v{{to}} 嗎？',
     saveConfigSuccessNormal: '儲存配置成功',
     saveConfigError: '儲存配置失敗：',
     config: '配置',

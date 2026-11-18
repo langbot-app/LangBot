@@ -2201,6 +2201,10 @@ const ruRU = {
     updating: 'Обновление...',
     updateSuccess: 'Плагин успешно обновлён',
     updateError: 'Ошибка обновления: ',
+    installedVersion: 'Установленная версия v{{version}}',
+    updateToVersion: 'Обновить до v{{version}}',
+    confirmUpdatePluginVersion:
+      'Обновить плагин {{author}}/{{name}} с v{{from}} до v{{to}}?',
     saveConfigSuccessNormal: 'Конфигурация успешно сохранена',
     saveConfigError: 'Ошибка сохранения конфигурации: ',
     config: 'Настройки',

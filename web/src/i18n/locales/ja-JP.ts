@@ -2195,6 +2195,10 @@ const jaJP = {
     updating: '更新中...',
     updateSuccess: 'プラグインの更新に成功しました',
     updateError: '更新に失敗しました：',
+    installedVersion: 'インストール済みバージョン v{{version}}',
+    updateToVersion: 'v{{version}} に更新',
+    confirmUpdatePluginVersion:
+      'プラグイン（{{author}}/{{name}}）を v{{from}} から v{{to}} に更新しますか？',
     saveConfigSuccessNormal: '設定を保存しました',
     saveConfigError: '設定の保存に失敗しました：',
     config: '設定',

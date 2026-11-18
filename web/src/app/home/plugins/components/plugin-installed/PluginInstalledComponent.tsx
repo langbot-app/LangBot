@@ -137,13 +137,13 @@ const PluginInstalledComponent = forwardRef<
     try {
       const client = getCloudServiceClientSync();
 
-      const [extensionsResp, marketplaceResp] = await Promise.all([
+      const [extensionsResp, marketplacePlugins] = await Promise.all([
         httpClient.getExtensions().catch(() => ({ extensions: [] })),
-        client.getMarketplacePlugins(1, 100).catch(() => ({ plugins: [] })),
+        client.getAllMarketplacePlugins().catch(() => []),
       ]);
 
       const marketplacePluginMap = new Map<string, any>();
-      marketplaceResp.plugins.forEach((plugin: any) => {
+      marketplacePlugins.forEach((plugin: any) => {
         const key = `${plugin.author}/${plugin.name}`;
         marketplacePluginMap.set(key, plugin);
       });

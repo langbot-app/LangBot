@@ -2361,6 +2361,7 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 metadata = plugin.get('manifest', {}).get('manifest', {}).get('metadata', {})
                 if plugin_id == f'{metadata.get("author", "")}/{metadata.get("name", "")}':
                     plugin['permission_status'] = permission_status(self.ap, setting)
+                    self._apply_setting_install_source(plugin, setting)
 
         # Filter plugins by component kinds if specified
         if component_kinds is not None:
@@ -2483,7 +2484,26 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
             from ..api.application.plugin_permissions import permission_status
 
             info['permission_status'] = permission_status(self.ap, setting)
+            self._apply_setting_install_source(info, setting)
         return info
+
+    @staticmethod
+    def _apply_setting_install_source(info: dict[str, Any], setting) -> None:
+        """Report the install source recorded by Core, not the runtime echo.
+
+        Shared runtime slots build their container inside the plugin process,
+        which never learns the install source, so Cloud reported an empty
+        ``install_source``. The WebUI keys marketplace update detection and
+        the source badge on that field. Debug connections keep their own
+        source. Internal ``_``-prefixed install_info keys stay private.
+        """
+
+        if info.get('debug') or not setting.install_source:
+            return
+        info['install_source'] = setting.install_source
+        info['install_info'] = {
+            key: value for key, value in (setting.install_info or {}).items() if not str(key).startswith('_')
+        }
 
     @staticmethod
     def _pending_plugin_info(setting) -> dict[str, Any]:
