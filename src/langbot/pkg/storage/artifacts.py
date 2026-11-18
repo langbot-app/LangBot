@@ -600,7 +600,7 @@ class ArtifactService:
             or len(set(artifact_ids)) != len(artifact_ids)
         ):
             raise ValueError('Commit requires 1 to 100 unique output asset IDs')
-        async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+        async with self.ap.persistence_mgr.tenant_write_uow(context.workspace_uuid) as uow:
             # Keep policy revocation and output publication in the same transaction.
             if manager_context is None:
                 manager_context = await self.ap.artifact_publication_service.manager_for_commit(context, publication)

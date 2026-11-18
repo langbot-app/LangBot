@@ -14,6 +14,7 @@ import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 import sqlalchemy
 
 from . import database, sqlite_migration_backup
+from .write_admission import write_slot
 from ..entity.persistence import base, metadata, model as persistence_model
 from ..entity.persistence import workspace as persistence_workspace
 from ..entity import persistence
@@ -1853,6 +1854,15 @@ class PersistenceManager:
 
     def tenant_uow(self, workspace_uuid: str) -> TenantUnitOfWork:
         return self._scoped_uow(PersistenceScope.workspace(workspace_uuid))
+
+    @contextlib.asynccontextmanager
+    async def tenant_write_uow(self, workspace_uuid: str, *, operation: str = 'artifact'):
+        # An already-owned transaction cannot wait behind a writer that needs it to finish.
+        active = self._active_transaction.get()
+        joined = active is not None and active.owner_task is asyncio.current_task()
+        slot = contextlib.nullcontext() if joined else write_slot(self.get_db_engine(), operation)
+        async with slot, self.tenant_uow(workspace_uuid) as uow:
+            yield uow
 
     def tenant_scope(self, workspace_uuid: str) -> PersistenceScopeBoundary:
         """Bind a Workspace without holding a database session between calls."""

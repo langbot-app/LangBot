@@ -8,6 +8,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..entity.persistence.monitoring import MonitoringSession, MonitoringSessionReceipt
+from .write_admission import timed_summary
 from .datetime_utils import as_naive_utc
 from .session_summary_contract import SessionSummaryChange, message_source_key
 
@@ -133,12 +134,13 @@ class SessionSummaryWriter:
     async def _lock_summaries(self, session, workspace, identities, change=None):
         """Lock sorted (bot, session) keys before message receipt FK checks."""
         model = MonitoringSession
+        rows = {}
         for bot_id, identity in sorted(identities):
             key = self._scope(model, workspace, bot_id, identity)
             if change is not None and (bot_id, identity) == (change.bot_id, change.session_id):
                 timestamp = as_naive_utc(change.timestamp)
                 # Updating the key takes FOR UPDATE, and recreates a deleted row.
-                await session.execute(
+                statement = (
                     self._insert(model)
                     .values(
                         workspace_uuid=workspace,
@@ -154,11 +156,13 @@ class SessionSummaryWriter:
                         is_active=True,
                     )
                     .on_conflict_do_update(index_elements=SESSION_KEY, set_={'session_id': identity})
+                    .returning(*model.__table__.c)
                 )
             else:
-                await session.execute(sa.select(model.session_id).where(*key).with_for_update())
-            row = (await session.execute(sa.select(model.__table__).where(*key))).mappings().one_or_none()
-            if row is not None:
+                statement = sa.select(model.__table__).where(*key).with_for_update()
+            locked = (await session.execute(statement)).mappings().one_or_none()
+            if locked is not None:
+                row = rows[bot_id, identity] = dict(locked)
                 # Legacy values are an unranked fallback, seeded one row at a time.
                 # Never promote a replaceable candidate into the immutable base.
                 if row['base_snapshot'] is None and row['metadata_source_key'] is None and row['message_count'] > 0:
@@ -168,21 +172,31 @@ class SessionSummaryWriter:
                         'role': None,
                         **{field: row[field] for field in SNAPSHOT_FIELDS},
                     }
-                    await session.execute(sa.update(model).where(*key).values(base_snapshot=json.dumps(fallback)))
+                    row['base_snapshot'] = json.dumps(fallback)
+                    await session.execute(sa.update(model).where(*key).values(base_snapshot=row['base_snapshot']))
+        return rows
 
-    async def _merge_base(self, session, workspace, bot_id, identity, snapshot):
+    async def _merge_base(self, session, workspace, bot_id, identity, snapshot, *, row=None):
         """Fold immutable messages and expired ingress under the summary lock."""
         model = MonitoringSession
         key = self._scope(model, workspace, bot_id, identity)
-        encoded = (await session.execute(sa.select(model.base_snapshot).where(*key))).scalar_one()
+        encoded = (
+            row['base_snapshot']
+            if row is not None
+            else (await session.execute(sa.select(model.base_snapshot).where(*key))).scalar_one()
+        )
         previous = json.loads(encoded) if encoded else None
         if previous is None or _rank(snapshot) >= _rank(previous):
-            await session.execute(sa.update(model).where(*key).values(base_snapshot=json.dumps(snapshot)))
+            encoded = json.dumps(snapshot)
+            await session.execute(sa.update(model).where(*key).values(base_snapshot=encoded))
+            if row is not None:
+                row['base_snapshot'] = encoded
 
-    async def _refresh(self, session, workspace, bot_id, identity, delta=0, *, backfill=False, observed=None):
+    async def _refresh(self, session, workspace, bot_id, identity, delta=0, *, backfill=False, observed=None, row=None):
         model, receipt = MonitoringSession, MonitoringSessionReceipt
         key = self._scope(model, workspace, bot_id, identity)
-        row = (await session.execute(sa.select(model.__table__).where(*key))).mappings().one()
+        if row is None:
+            row = (await session.execute(sa.select(model.__table__).where(*key))).mappings().one()
         candidate = (
             await session.execute(
                 sa.select(receipt.candidate_snapshot)
@@ -218,6 +232,7 @@ class SessionSummaryWriter:
         if count == 0 and displayed == 0:
             await session.execute(sa.delete(model).where(*key))
 
+    @timed_summary
     async def link_event(self, session: AsyncSession, workspace: str, bot_id: str, message_id: str, event_id: str):
         """Keep the message credit and retire an uncovered ingress credit once."""
         timestamp = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -250,6 +265,7 @@ class SessionSummaryWriter:
         if owner is not None:
             await self._refresh(session, workspace, bot_id, owner, -1)
 
+    @timed_summary
     async def apply_once(self, session: AsyncSession, change: SessionSummaryChange, *, backfill: bool = False) -> bool:
         """Project a source in its transaction; distinct message rows always count."""
         if not change.session_id:
@@ -274,7 +290,9 @@ class SessionSummaryWriter:
                 owner = await self._cover_event(session, workspace, bot_id, event_id, timestamp)
                 if owner is not None:
                     deltas[owner] = deltas.get(owner, 0) - 1
-        await self._lock_summaries(session, workspace, {(bot_id, key) for key in deltas} | {(bot_id, identity)}, change)
+        locked_rows = await self._lock_summaries(
+            session, workspace, {(bot_id, key) for key in deltas} | {(bot_id, identity)}, change
+        )
         if ingress:
             await session.execute(
                 sa.update(receipt)
@@ -300,7 +318,9 @@ class SessionSummaryWriter:
             )
             claimed = bool(result.rowcount)
             if claimed:
-                await self._merge_base(session, workspace, bot_id, identity, _snapshot(change))
+                await self._merge_base(
+                    session, workspace, bot_id, identity, _snapshot(change), row=locked_rows[bot_id, identity]
+                )
             else:
                 previous = (
                     await session.execute(
@@ -321,9 +341,11 @@ class SessionSummaryWriter:
                 delta,
                 backfill=backfill,
                 observed=timestamp if owner == identity else None,
+                row=locked_rows.get((bot_id, owner)),
             )
         return claimed
 
+    @timed_summary
     async def expire_ingress(self, session: AsyncSession, workspace: str, cutoff, keys) -> int:
         """Seal expired candidates before deleting their event anchors, in one transaction."""
         if not keys:

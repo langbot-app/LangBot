@@ -463,6 +463,13 @@ def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
             config['storage']['cleanup'].update(
                 enabled=True, check_interval_hours=nominal['gc_interval_seconds'] / 3600
             )
+    queue = os.environ.get('LANGBOT_SOAK_SQLITE_WRITE_QUEUE')
+    if queue is not None:
+        assert lane == 'sqlite-database' and queue in {'on', 'off', 'artifact_ledger'}
+        config['database']['sqlite']['experimental_write_queue'] = (
+            'artifact_ledger' if queue == 'artifact_ledger' else queue == 'on'
+        )
+        config['database']['sqlite']['experimental_write_timing'] = os.environ.get('LANGBOT_SOAK_WRITE_TIMING') == '1'
     admin_url = None
     database = None
     s3 = None
@@ -1594,6 +1601,7 @@ def test_artifact_mixed_soak(
     record(
         'started',
         mode=mode,
+        sqlite_write_queue=config['database']['sqlite'].get('experimental_write_queue', False),
         identity=identity,
         profile=profile,
         ttl_seconds=fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
@@ -1606,13 +1614,25 @@ def test_artifact_mixed_soak(
     try:
         if accelerated:
             retained_artifact, retained_fixture = upload_probe('accelerated-retained')
+            # Diagnostic comparisons need equal input prefixes even if one arm misses pace.
+            timing_waves = int(os.environ.get('LANGBOT_SOAK_TIMING_WAVES', '0'))
+            assert 0 <= timing_waves <= fast_load // fast_period
+            if timing_waves:
+                assert config['database']['sqlite']['experimental_write_timing'] is True
             index = 0
-            while elapsed() < fast_load:
+            while index < timing_waves if timing_waves else elapsed() < fast_load:
                 begin = elapsed()
                 wave(index, parallel, 'accelerated-steady')
                 sample('accelerated-steady')
-                assert elapsed() - begin < fast_period, 'Accelerated offered pace exceeded'
+                wave_seconds = elapsed() - begin
+                record('wave_timing', wave=index, seconds=round(wave_seconds, 4))
+                if not timing_waves:
+                    assert wave_seconds < fast_period, 'Accelerated offered pace exceeded'
                 index += 1
+                if timing_waves == index:
+                    record('diagnostic_complete', waves=index, turns=sum(counts.values()))
+                    discard(retained_artifact)
+                    return
                 wait_until(min(index * fast_period, fast_load), 'accelerated-steady')
             load_seconds = elapsed()
             record('offered_load_complete', seconds=load_seconds, turns=sum(counts.values()))
