@@ -1453,6 +1453,22 @@ OPERATION_DOCS: dict[str, OperationDoc] = {
         risk='read',
         exposure='none',
     ),
+    'skill.package.preview': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '预览技能整包更新', 'en_US': 'Preview Skill Package Update'},
+        summary='Validate a complete Skill replacement and list added, modified and deleted files.',
+        description='Account/API key transport. Requires resource.view and an explicit base_revision. No Workspace publication is written. The archive name must match skill_name.',
+        risk='read',
+        exposure='none',
+    ),
+    'skill.package.publish': OperationDoc(
+        domain='skill',
+        label={'zh_Hans': '发布技能整包更新', 'en_US': 'Publish Skill Package Update'},
+        summary='Atomically replace an existing Skill package using revision compare-and-swap.',
+        description='Account/API key transport. Requires resource.manage and resource.view. Includes binary files and removes absent files. The archive name must match skill_name. A stale base_revision fails without replacing the current publication.',
+        risk='write',
+        exposure='none',
+    ),
     'skill.github.install': OperationDoc(
         domain='skill',
         label={'zh_Hans': '从GitHub安装技能', 'en_US': 'Install Skill from GitHub'},

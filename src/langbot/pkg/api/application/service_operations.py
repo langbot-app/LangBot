@@ -502,6 +502,8 @@ _BINDINGS = (
     ('skill.list', 'skill_service', 'skill', 'SkillService', 'list_skills', 'RESOURCE_VIEW', False),
     ('skill.get', 'skill_service', 'skill', 'SkillService', 'get_skill', 'RESOURCE_VIEW', False),
     ('skill.package.get', 'skill_service', 'skill', 'SkillService', 'get_skill_package', 'RESOURCE_VIEW', False),
+    ('skill.package.preview', 'skill_service', 'skill', 'SkillService', 'preview_skill_package', 'RESOURCE_VIEW', False),
+    ('skill.package.publish', 'skill_service', 'skill', 'SkillService', 'publish_skill_package', 'RESOURCE_MANAGE', True),
     ('skill.create', 'skill_service', 'skill', 'SkillService', 'create_skill', 'RESOURCE_MANAGE', True),
     ('skill.update', 'skill_service', 'skill', 'SkillService', 'update_skill', 'RESOURCE_MANAGE', True),
     ('skill.delete', 'skill_service', 'skill', 'SkillService', 'delete_skill', 'RESOURCE_MANAGE', True),
@@ -893,7 +895,7 @@ def _operation(operation_id, service_name, method, permission, side_effect):
 
     principals = (
         frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
-        if operation_id == 'knowledge.file.store_artifact'
+        if operation_id in {'knowledge.file.store_artifact', 'skill.package.preview', 'skill.package.publish'}
         else None
     )
     return Operation(

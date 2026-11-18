@@ -109,6 +109,8 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'skill.files.read',
     'skill.files.write',
     'skill.preview',
+    'skill.package.preview',
+    'skill.package.publish',
     'skill.install.github',
     'skill.install.upload',
     'mcp_server.list',
