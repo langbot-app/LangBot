@@ -1,4 +1,5 @@
 {
+  "The bot route changed. Read the current binding.": "Маршрут бота изменился. Проверьте текущую привязку.",
   "Skill not found": "Skill не найден",
   "Skill package name must match the requested Skill": "Имя Skill в пакете должно совпадать с запрошенным Skill",
   "file and base_revision are required": "Поля file и base_revision обязательны",

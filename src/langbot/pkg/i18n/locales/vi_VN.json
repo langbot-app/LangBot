@@ -1,4 +1,5 @@
 {
+  "The bot route changed. Read the current binding.": "Tuyến của bot đã thay đổi. Hãy kiểm tra liên kết hiện tại.",
   "Skill not found": "Không tìm thấy Skill",
   "Skill package name must match the requested Skill": "Tên Skill trong gói phải khớp với Skill được yêu cầu",
   "file and base_revision are required": "Cần cung cấp file và base_revision",

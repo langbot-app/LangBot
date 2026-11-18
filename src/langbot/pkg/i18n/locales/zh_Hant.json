@@ -1,4 +1,5 @@
 {
+  "The bot route changed. Read the current binding.": "Bot 路由已變更。請讀取目前的綁定。",
   "Skill not found": "Skill 不存在",
   "Skill package name must match the requested Skill": "套件內 Skill 名稱必須與請求的 Skill 一致",
   "file and base_revision are required": "file 和 base_revision 為必填項",

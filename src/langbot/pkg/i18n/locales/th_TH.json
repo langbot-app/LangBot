@@ -1,4 +1,5 @@
 {
+  "The bot route changed. Read the current binding.": "เส้นทางของบอตเปลี่ยนไป โปรดตรวจสอบการผูกเส้นทางปัจจุบัน",
   "Skill not found": "ไม่พบ Skill",
   "Skill package name must match the requested Skill": "ชื่อ Skill ในแพ็กเกจต้องตรงกับ Skill ที่ร้องขอ",
   "file and base_revision are required": "ต้องระบุ file และ base_revision",

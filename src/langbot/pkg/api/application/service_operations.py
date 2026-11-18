@@ -320,6 +320,7 @@ _BINDINGS = (
     ('bot.runtime.get', 'bot_service', 'bot', 'BotService', 'get_runtime_bot_info', 'RESOURCE_VIEW', False),
     ('bot.create', 'bot_service', 'bot', 'BotService', 'create_bot', 'RESOURCE_MANAGE', True),
     ('bot.update', 'bot_service', 'bot', 'BotService', 'update_bot', 'RESOURCE_MANAGE', True),
+    ('bot.routes.bind', 'bot_service', 'bot', 'BotService', 'bind_event_route', 'RESOURCE_MANAGE', True),
     ('bot.delete', 'bot_service', 'bot', 'BotService', 'delete_bot', 'RESOURCE_MANAGE', True),
     ('bot.logs', 'bot_service', 'bot', 'BotService', 'list_event_logs', 'RESOURCE_VIEW', False),
     ('bot.routes.status', 'bot_service', 'bot', 'BotService', 'list_event_route_statuses', 'RESOURCE_VIEW', False),
@@ -502,8 +503,24 @@ _BINDINGS = (
     ('skill.list', 'skill_service', 'skill', 'SkillService', 'list_skills', 'RESOURCE_VIEW', False),
     ('skill.get', 'skill_service', 'skill', 'SkillService', 'get_skill', 'RESOURCE_VIEW', False),
     ('skill.package.get', 'skill_service', 'skill', 'SkillService', 'get_skill_package', 'RESOURCE_VIEW', False),
-    ('skill.package.preview', 'skill_service', 'skill', 'SkillService', 'preview_skill_package', 'RESOURCE_VIEW', False),
-    ('skill.package.publish', 'skill_service', 'skill', 'SkillService', 'publish_skill_package', 'RESOURCE_MANAGE', True),
+    (
+        'skill.package.preview',
+        'skill_service',
+        'skill',
+        'SkillService',
+        'preview_skill_package',
+        'RESOURCE_VIEW',
+        False,
+    ),
+    (
+        'skill.package.publish',
+        'skill_service',
+        'skill',
+        'SkillService',
+        'publish_skill_package',
+        'RESOURCE_MANAGE',
+        True,
+    ),
     ('skill.create', 'skill_service', 'skill', 'SkillService', 'create_skill', 'RESOURCE_MANAGE', True),
     ('skill.update', 'skill_service', 'skill', 'SkillService', 'update_skill', 'RESOURCE_MANAGE', True),
     ('skill.delete', 'skill_service', 'skill', 'SkillService', 'delete_skill', 'RESOURCE_MANAGE', True),
@@ -895,7 +912,8 @@ def _operation(operation_id, service_name, method, permission, side_effect):
 
     principals = (
         frozenset({PrincipalType.ACCOUNT, PrincipalType.API_KEY})
-        if operation_id in {'knowledge.file.store_artifact', 'skill.package.preview', 'skill.package.publish'}
+        if operation_id
+        in {'bot.routes.bind', 'knowledge.file.store_artifact', 'skill.package.preview', 'skill.package.publish'}
         else None
     )
     return Operation(

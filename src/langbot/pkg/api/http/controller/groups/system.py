@@ -45,6 +45,7 @@ SYSTEM_CAPABILITY_OPERATIONS = (
     'bot.get',
     'bot.create',
     'bot.update',
+    'bot.routes.bind',
     'bot.delete',
     'pipeline.list',
     'pipeline.get',
