@@ -2213,6 +2213,10 @@ const esES = {
     updating: 'Actualizando...',
     updateSuccess: 'Plugin actualizado correctamente',
     updateError: 'Error al actualizar: ',
+    installedVersion: 'Versión instalada v{{version}}',
+    updateToVersion: 'Actualizar a v{{version}}',
+    confirmUpdatePluginVersion:
+      '¿Actualizar el plugin {{author}}/{{name}} de v{{from}} a v{{to}}?',
     saveConfigSuccessNormal: 'Configuración guardada correctamente',
     saveConfigError: 'Error al guardar la configuración: ',
     config: 'Configuración',
