@@ -865,6 +865,33 @@ async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_host_executes_box_grep(tmp_path, monkeypatch):
+    import json
+    import logging
+
+    from langbot_plugin.box.host_backend import HostProcessBackend
+    from langbot_plugin.box.models import BoxSpec
+
+    backend = HostProcessBackend(logging.getLogger(__name__))
+    spec = BoxSpec(session_id='grep-test', host_path=str(tmp_path), cmd='true', read_only_rootfs=False)
+    session = await backend.start_session(spec)
+    loader = NativeToolLoader(SimpleNamespace(logger=Mock()))
+    (tmp_path / 'note.txt').write_text('find this line')
+
+    async def execute(payload, query):
+        result = await backend.exec(session, spec.model_copy(update={'cmd': payload['command']}))
+        return {'ok': result.exit_code == 0, 'stdout': result.stdout, 'stderr': result.stderr}
+
+    loader.ap.box_service = SimpleNamespace(execute_tool=execute)
+    try:
+        result = await loader._grep_workspace_via_box('/workspace', 'this', '*.txt', _make_query())
+        assert result['ok'], json.dumps(result)
+        assert [entry['content'] for entry in result['matches']] == ['find this line']
+    finally:
+        await backend.stop_session(session)
+
+
+@pytest.mark.asyncio
 async def test_workspace_file_script_resolves_the_sandbox_interpreter():
     """Native file tools must use python3 and never fall back to python2."""
 

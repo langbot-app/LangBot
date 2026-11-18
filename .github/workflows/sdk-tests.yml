@@ -37,6 +37,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv run --python 3.12 pytest -qs tests/box/test_windows_host_backend.py
         working-directory: sdk
+      - run: uv run --python 3.12 pytest -q tests/unit_tests/provider/test_tool_manager_native.py -k host_executes_box_grep
 
   scope:
     runs-on: ubuntu-latest

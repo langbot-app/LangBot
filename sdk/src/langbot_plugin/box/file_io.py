@@ -17,6 +17,10 @@ def workspace_usage(
     root: str, stop_after_bytes: int, max_entries: int
 ) -> tuple[int, int, bool]:
     """Bound a no-follow workspace scan by both bytes and directory entries."""
+    if os.name == "nt":
+        from .windows_file_io import usage
+
+        return usage(root, stop_after_bytes, max_entries)
     _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
@@ -102,6 +106,10 @@ finally:
 
 def run_files_present(owner: tuple[str, int, int], io_scope: str) -> bool:
     """Check one run without following links; uncertainty requires sandbox cleanup."""
+    if os.name == "nt":
+        from .windows_file_io import run_files
+
+        return run_files(owner, io_scope)
     _require_descriptor_io()
     root, device, inode = owner
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
@@ -178,6 +186,10 @@ def _parent_directory(root: str, relative: str, *, create: bool):
 
 
 def read_workspace_file(root: str, relative: str, max_bytes: int) -> bytes:
+    if os.name == "nt":
+        from .windows_file_io import read
+
+        return read(root, relative, max_bytes)
     with _parent_directory(root, relative, create=False) as (directory, name):
         fd = os.open(
             name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory
@@ -216,6 +228,10 @@ def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> byt
     if type(max_bytes) is not int or max_bytes < 0:
         raise ValueError("Directory archive size limit must be nonnegative")
     limit = min(max_bytes, 20 * 1024 * 1024)
+    if os.name == "nt":
+        from .windows_file_io import archive_directory
+
+        return archive_directory(root, relative, limit)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
     def identity(info):
@@ -382,6 +398,10 @@ def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> byt
 
 def clear_workspace_directory(root: str, device: int, inode: int) -> None:
     """Clear an identity-bound workspace without following links or other devices."""
+    if os.name == "nt":
+        from .windows_file_io import clear
+
+        return clear((root, device, inode))
     _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     entries = 0
@@ -431,6 +451,10 @@ def remove_owned_workspace(
     owner: tuple[str, int, int], *, empty_only: bool = False
 ) -> None:
     """Remove only the workspace still matching Runtime's allocated identity."""
+    if os.name == "nt":
+        from .windows_file_io import remove_owned
+
+        return remove_owned(owner, empty_only)
     path, device, inode = owner
     try:
         os.stat(path, follow_symlinks=False)
@@ -458,6 +482,10 @@ def write_workspace_file(
 ) -> None:
     if len(content) > max_bytes:
         raise ValueError("Workspace file exceeds the transfer size limit")
+    if os.name == "nt":
+        from .windows_file_io import write
+
+        return write(root, relative, content)
     with _parent_directory(root, relative, create=True) as (directory, name):
         try:
             info = os.stat(name, dir_fd=directory, follow_symlinks=False)

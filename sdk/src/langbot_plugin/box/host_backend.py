@@ -359,11 +359,6 @@ class HostProcessBackend(BaseSandboxBackend):
                     "POSIX shell scripts and native file tools require Git Bash on Windows; "
                     "the active host shell is PowerShell"
                 )
-            if "signal.setitimer(" in command:
-                raise BoxValidationError(
-                    "This file tool requires POSIX interval timers and is not supported "
-                    "by the Windows host backend"
-                )
             mounts = tuple(
                 (mount, host.replace("\\", "/")) for mount, host in state.mounts
             )

@@ -1843,6 +1843,17 @@ done
                 if session.info.host_path_mode == BoxHostMountMode.READ_ONLY:
                     raise BoxValidationError("Cannot clean a read-only workspace")
                 if (
+                    os.name == "nt"
+                    and session.backend.name == "host"
+                    and session.owned_workspace is not None
+                ):
+                    from .windows_file_io import run_files
+
+                    await self._artifact_work(
+                        run_files, session.owned_workspace, request.io_scope, True
+                    )
+                    return
+                if (
                     session.owned_workspace is not None
                     and not await self._artifact_work(
                         run_files_present, session.owned_workspace, request.io_scope
