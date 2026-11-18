@@ -257,6 +257,8 @@ async def service():
 
             return TenantUnitOfWork(engine, workspace, active_transaction=self.active_transaction)
 
+        tenant_write_uow = tenant_uow
+
         def get_db_engine(self):
             return engine
 

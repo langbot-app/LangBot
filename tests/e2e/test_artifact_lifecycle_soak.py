@@ -463,6 +463,10 @@ def runner_e2e_config_path(base_network_config, runner_e2e_tmpdir, request):
             config['storage']['cleanup'].update(
                 enabled=True, check_interval_hours=nominal['gc_interval_seconds'] / 3600
             )
+    queue = os.environ.get('LANGBOT_SOAK_SQLITE_WRITE_QUEUE')
+    if queue is not None:
+        assert lane == 'sqlite-database' and queue in {'on', 'off'}
+        config['database']['sqlite']['experimental_write_queue'] = queue == 'on'
     admin_url = None
     database = None
     s3 = None
@@ -1594,6 +1598,7 @@ def test_artifact_mixed_soak(
     record(
         'started',
         mode=mode,
+        sqlite_write_queue=config['database']['sqlite'].get('experimental_write_queue', False),
         identity=identity,
         profile=profile,
         ttl_seconds=fast_ttl if accelerated else DEFAULT_TTL_SECONDS,
@@ -1611,7 +1616,9 @@ def test_artifact_mixed_soak(
                 begin = elapsed()
                 wave(index, parallel, 'accelerated-steady')
                 sample('accelerated-steady')
-                assert elapsed() - begin < fast_period, 'Accelerated offered pace exceeded'
+                wave_seconds = elapsed() - begin
+                record('wave_timing', wave=index, seconds=round(wave_seconds, 4))
+                assert wave_seconds < fast_period, 'Accelerated offered pace exceeded'
                 index += 1
                 wait_until(min(index * fast_period, fast_load), 'accelerated-steady')
             load_seconds = elapsed()

@@ -205,6 +205,8 @@ class FakePersistenceManager:
 
         return TenantUnitOfWork(self._engine, workspace_uuid)
 
+    tenant_write_uow = tenant_uow
+
     async def execute_async(self, statement):
         # Match PersistenceManager's connection-level result shape.
         async with self._engine.connect() as connection:

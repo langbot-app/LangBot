@@ -43,6 +43,8 @@ class _PersistenceManager:
 
         return TenantUnitOfWork(self.engine, workspace, active_transaction=self.active_transaction)
 
+    tenant_write_uow = tenant_uow
+
     async def execute_async(self, *args, **kwargs):
         async with self.engine.connect() as connection:
             result = await connection.execute(*args, **kwargs)

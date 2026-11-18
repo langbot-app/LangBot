@@ -2,7 +2,7 @@
 
 Set `database.sqlite.experimental_write_queue: true` and restart Core to run the experiment. The default is false. Both configurations retain WAL, the 30-second SQLite busy timeout and the short Artifact publication transaction from #3075.
 
-The queue belongs to one SQLite engine. Artifact publication and RunLedgerStore's write sessions acquire it before opening a session, and release it after the session exits. Pure Ledger reads go straight to the pool. Nested Workspace calls join the owning transaction. A transaction that has already started outside admission cannot safely acquire a slot partway through. An independent Ledger write attempted by the same task while holding the slot fails explicitly. Other engines, other processes, monitoring writes and direct SQL are outside the queue.
+The queue belongs to one SQLite engine. Artifact publication, monitoring records, session summary updates and RunLedgerStore's write sessions acquire it before opening a session, and release it after the session exits. Pure Ledger reads go straight to the pool. Nested Workspace calls join the owning transaction. A transaction that has already started outside admission cannot safely acquire a slot partway through. An independent Ledger write attempted by the same task while holding the slot fails explicitly. Other engines, other processes and direct SQL are outside the queue.
 
 ## Reproduce
 
@@ -21,7 +21,7 @@ Each process initializes a fresh disk-backed database using the production SQLit
 
 Discard wave 0 as warm-up. Pool the next 16 waves per process by mode. Percentiles use nearest rank. Throughput is completed publications, appends and reads divided by the sum of timed wave durations. Time to first write starts at the Ledger call and ends immediately after its first INSERT succeeds; it includes queueing, connection checkout, duplicate lookup and driver time. The queued run additionally measures time inside lock acquisition. Neither value isolates SQLite's internal lock wait.
 
-## Results on Linux
+## Artifact and Ledger benchmark on Linux (before monitoring joined the queue)
 
 The baseline for both settings was #3075 (`85b7c9107`). Python 3.12.14, SQLite 3.53.1, ext4, database content backend, one process and one engine. Each setting completed 1,536 measured appends, 128 publications and 768 reads, with no missing or duplicate event sequences. The numbers below combine the two processes per setting.
 
