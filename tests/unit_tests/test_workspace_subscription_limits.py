@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -6,12 +7,12 @@ from langbot.pkg.cloud.entitlements import EntitlementSnapshot, EntitlementUnava
 from langbot.pkg.api.http.service.workspace_limits import entitlement_limitation, workspace_limits
 
 
-async def test_oss_retains_instance_limits():
+def test_oss_retains_instance_limits():
     ap = SimpleNamespace(instance_config=SimpleNamespace(data={'system': {'limitation': {'max_bots': 7}}}))
-    assert await workspace_limits(ap, 'one') == {'max_bots': 7}
+    assert asyncio.run(workspace_limits(ap, 'one')) == {'max_bots': 7}
 
 
-async def test_cloud_uses_signed_workspace_limits():
+def test_cloud_uses_signed_workspace_limits():
     class Resolver:
         async def resolve(self, workspace_uuid, **kwargs):
             assert workspace_uuid == 'one'
@@ -26,7 +27,7 @@ async def test_cloud_uses_signed_workspace_limits():
             )
 
     ap = SimpleNamespace(deployment=SimpleNamespace(mode='cloud'), entitlement_resolver=Resolver())
-    assert await workspace_limits(ap, 'one') == {
+    assert asyncio.run(workspace_limits(ap, 'one')) == {
         'max_bots': 2,
         'max_pipelines': 3,
         'max_extensions': 4,
@@ -56,7 +57,7 @@ def test_cloud_member_limit_follows_control_plane_semantics(members_max, expecte
     assert entitlement_limitation(snapshot)['max_members'] == expected
 
 
-async def test_cloud_missing_resolver_fails_closed():
+def test_cloud_missing_resolver_fails_closed():
     ap = SimpleNamespace(deployment=SimpleNamespace(mode='cloud'))
     with pytest.raises(EntitlementUnavailableError):
-        await workspace_limits(ap, 'one')
+        asyncio.run(workspace_limits(ap, 'one'))
