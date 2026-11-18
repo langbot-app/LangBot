@@ -38,7 +38,7 @@ class _PersistenceManager:
         self.engine = engine
         self.active_transaction = contextvars.ContextVar('monitoring-test-transaction', default=None)
 
-    def tenant_uow(self, workspace):
+    def tenant_uow(self, workspace, *, operation=None):
         from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
 
         return TenantUnitOfWork(self.engine, workspace, active_transaction=self.active_transaction)

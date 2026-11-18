@@ -186,7 +186,9 @@ database:
     sqlite:
         path: 'data/langbot.db'
         # Experimental: queue Artifact publication, Ledger and monitoring writes within this Core process.
+        # Set to artifact_ledger to leave monitoring writes out of the queue.
         experimental_write_queue: false
+        experimental_write_timing: false
     postgresql:
         # Optional SQLAlchemy URL (postgresql[+asyncpg]://...). When set, it
         # overrides the structured fields and preserves TLS/query options.

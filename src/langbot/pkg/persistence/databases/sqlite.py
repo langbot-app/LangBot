@@ -4,7 +4,7 @@ import sqlalchemy
 import sqlalchemy.ext.asyncio as sqlalchemy_asyncio
 
 from .. import database
-from ..write_admission import enable_sqlite_write_queue
+from ..write_admission import enable_sqlite_write_queue, enable_sqlite_write_timing
 
 
 WAL_RETAIN_BYTES = 64 * 1024 * 1024
@@ -31,8 +31,11 @@ class SQLiteDatabaseManager(database.BaseDatabaseManager):
         db_file_path = config.get('path', 'data/langbot.db')
         engine_url = f'sqlite+aiosqlite:///{db_file_path}'
         self.engine = sqlalchemy_asyncio.create_async_engine(engine_url)
-        if config.get('experimental_write_queue') is True:
-            enable_sqlite_write_queue(self.engine)
+        mode = config.get('experimental_write_queue', False)
+        if mode is True or mode == 'artifact_ledger':
+            enable_sqlite_write_queue(self.engine, monitoring=mode is True)
+        if config.get('experimental_write_timing') is True:
+            enable_sqlite_write_timing(self.engine)
         sqlalchemy.event.listen(self.engine.sync_engine, 'connect', _configure_connection)
         # Reader transactions must not block independent plugin callback commits.
         # Configure the persistent journal before serving requests, not per write.

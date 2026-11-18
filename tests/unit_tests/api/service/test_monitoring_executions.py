@@ -200,7 +200,7 @@ class FakePersistenceManager:
     def get_db_engine(self):
         return self._engine
 
-    def tenant_uow(self, workspace_uuid):
+    def tenant_uow(self, workspace_uuid, *, operation=None):
         from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
 
         return TenantUnitOfWork(self._engine, workspace_uuid)

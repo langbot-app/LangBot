@@ -87,3 +87,39 @@ async def test_queued_ledger_waits_before_checkout_and_cancelled_writer_does_not
         assert [event['sequence'] for event in events] == [2]
     finally:
         await engine.dispose()
+
+
+async def test_write_timing_uses_committed_connection_and_ignores_rollback(tmp_path, caplog, monkeypatch):
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from langbot.pkg.persistence import write_admission as admission
+
+    config = {'path': str(tmp_path / 'timing.db'), 'experimental_write_timing': True}
+    application = SimpleNamespace(instance_config=SimpleNamespace(data={'database': {'sqlite': config}}))
+    manager = SQLiteDatabaseManager(application)
+    await manager.initialize()
+    engine = manager.get_engine()
+    table = sa.Table('timing_example', sa.MetaData(), sa.Column('id', sa.Integer, primary_key=True))
+    now = 0
+    monkeypatch.setattr(admission, 'perf_counter', lambda: now)
+    caplog.set_level('INFO', logger=admission.__name__)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(table.metadata.create_all)
+        async with admission.write_slot(engine, 'monitoring.example'), AsyncSession(engine) as session:
+            now = 1
+            async with engine.begin() as other:
+                await other.execute(table.insert().values(id=1))
+            now = 3
+            await session.execute(table.insert().values(id=2))
+            now = 5
+            await admission.commit_write(session)
+            now = 8  # Post-commit result handling must not inflate the hold time.
+        async with admission.write_slot(engine, 'monitoring.rolled_back'), AsyncSession(engine) as session:
+            await session.execute(table.insert().values(id=3))
+            await session.rollback()
+        timings = [r.message for r in caplog.records if r.message.startswith('sqlite_write_timing')]
+        assert len(timings) == 1
+        assert 'op=monitoring.example queue_ms=0.000 before_write_ms=3000.000 through_commit_ms=2000.000' in timings[0]
+    finally:
+        await engine.dispose()

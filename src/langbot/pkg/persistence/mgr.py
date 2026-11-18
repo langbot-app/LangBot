@@ -1856,11 +1856,11 @@ class PersistenceManager:
         return self._scoped_uow(PersistenceScope.workspace(workspace_uuid))
 
     @contextlib.asynccontextmanager
-    async def tenant_write_uow(self, workspace_uuid: str):
+    async def tenant_write_uow(self, workspace_uuid: str, *, operation: str = 'artifact'):
         # An already-owned transaction cannot wait behind a writer that needs it to finish.
         active = self._active_transaction.get()
         joined = active is not None and active.owner_task is asyncio.current_task()
-        slot = contextlib.nullcontext() if joined else write_slot(self.get_db_engine())
+        slot = contextlib.nullcontext() if joined else write_slot(self.get_db_engine(), operation)
         async with slot, self.tenant_uow(workspace_uuid) as uow:
             yield uow
 

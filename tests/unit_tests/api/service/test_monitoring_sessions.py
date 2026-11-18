@@ -252,7 +252,7 @@ async def service():
         serialize_model = PersistenceManager.serialize_model
         active_transaction = contextvars.ContextVar('summary-test-transaction', default=None)
 
-        def tenant_uow(self, workspace):
+        def tenant_uow(self, workspace, *, operation=None):
             from langbot.pkg.persistence.tenant_uow import TenantUnitOfWork
 
             return TenantUnitOfWork(engine, workspace, active_transaction=self.active_transaction)

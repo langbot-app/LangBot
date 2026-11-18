@@ -25,7 +25,7 @@ class Persistence:
         return self.engine
 
     @contextlib.asynccontextmanager
-    async def tenant_uow(self, workspace):
+    async def tenant_uow(self, workspace, *, operation=None):
         async with self.engine.begin() as conn:
             self.conn = conn
             yield

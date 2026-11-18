@@ -37,3 +37,15 @@ The baseline for both settings was #3075 (`85b7c9107`). Python 3.12.14, SQLite 3
 | Read P99 | 256.73 ms | 15.65 ms |
 
 Both queue-on trials had higher throughput and lower read and Ledger P99 than either queue-off trial. The extra wait for otherwise fast appends raises their median. This measures overlapping bursts on one engine; sustained open-loop load, monitoring writes and multi-process contention remain unmeasured.
+
+## Transaction stage diagnostics
+
+In YAML, `experimental_write_queue: false` disables admission, `artifact_ledger` queues Artifact publication and Ledger writes, and `true` includes monitoring. Set `database.sqlite.experimental_write_timing: true` separately to emit one `sqlite_write_timing` log line for each measured committed write scope. Both experiments default to off.
+
+- `queue_ms` measures entry to acquisition of the application slot (zero when bypassed).
+- `before_write_ms` measures admission to the first successful compiled INSERT, UPDATE or DELETE on the committing connection. It includes connection checkout, preparation, reads and execution of that first DML. `first_dml_ms` is the driver-call portion; it includes scheduling, SQLite waits and SQL execution.
+- `through_commit_ms` measures first DML return to successful outer commit return. Nested Workspace calls share the outer sample. `summary_ms` separately measures time spent applying or linking the summary or expiring receipts inside the sampled scope; this overlaps the stages.
+
+No query text, arguments or tenant/session identifiers are logged. Read-only, rolled-back and uninstrumented transactions have no committed-write sample. An unqueued outer transaction cannot be promoted by a nested call. The measurements describe completed transactions and exclude time before entering the marked scope.
+
+For a matched-prefix diagnosis, use the existing accelerated soak environment and set `LANGBOT_SOAK_TIMING_WAVES=45`, `LANGBOT_SOAK_WRITE_TIMING=1`, and `LANGBOT_SOAK_SQLITE_WRITE_QUEUE` to `off`, `artifact_ledger`, or `on`. This replays the original deterministic inputs, GC and pacing schedule and records all wave times, including misses; it ends with a diagnostic marker, not a soak PASS. Leave the diagnostic length unset for normal fail-fast acceptance.

@@ -8,6 +8,7 @@ from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..entity.persistence.monitoring import MonitoringSession, MonitoringSessionReceipt
+from .write_admission import timed_summary
 from .datetime_utils import as_naive_utc
 from .session_summary_contract import SessionSummaryChange, message_source_key
 
@@ -218,6 +219,7 @@ class SessionSummaryWriter:
         if count == 0 and displayed == 0:
             await session.execute(sa.delete(model).where(*key))
 
+    @timed_summary
     async def link_event(self, session: AsyncSession, workspace: str, bot_id: str, message_id: str, event_id: str):
         """Keep the message credit and retire an uncovered ingress credit once."""
         timestamp = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
@@ -250,6 +252,7 @@ class SessionSummaryWriter:
         if owner is not None:
             await self._refresh(session, workspace, bot_id, owner, -1)
 
+    @timed_summary
     async def apply_once(self, session: AsyncSession, change: SessionSummaryChange, *, backfill: bool = False) -> bool:
         """Project a source in its transaction; distinct message rows always count."""
         if not change.session_id:
@@ -324,6 +327,7 @@ class SessionSummaryWriter:
             )
         return claimed
 
+    @timed_summary
     async def expire_ingress(self, session: AsyncSession, workspace: str, cutoff, keys) -> int:
         """Seal expired candidates before deleting their event anchors, in one transaction."""
         if not keys:

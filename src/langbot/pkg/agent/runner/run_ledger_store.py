@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 
 from ...persistence.datetime_utils import as_naive_utc
-from ...persistence.write_admission import write_slot
+from ...persistence.write_admission import commit_write, write_slot
 from ...storage.media import MediaCache
 from ...utils.inflight import inflight_hub
 from ...utils.execution_lease import (
@@ -168,7 +168,7 @@ class RunLedgerStore:
                 metadata_json=_json_dumps(metadata),
             )
             session.add(run)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -226,7 +226,7 @@ class RunLedgerStore:
             run.dispatch_attempts = (run.dispatch_attempts or 0) + 1
             run.last_claimed_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run, include_claim_token=True)
 
@@ -247,7 +247,7 @@ class RunLedgerStore:
 
             run.claim_lease_expires_at = as_naive_utc(now + datetime.timedelta(seconds=max(int(lease_seconds), 1)))
             run.updated_at = as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -276,7 +276,7 @@ class RunLedgerStore:
             run.updated_at = as_naive_utc(now)
             if status in TERMINAL_STATUSES:
                 run.finished_at = run.finished_at or as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -314,7 +314,7 @@ class RunLedgerStore:
                 run.updated_at = current_time
                 if status in TERMINAL_STATUSES:
                     run.finished_at = run.finished_at or current_time
-            await session.commit()
+            await commit_write(session)
             return [self._run_to_dict(run) for run in runs]
 
     async def append_event(
@@ -374,7 +374,7 @@ class RunLedgerStore:
                 if run is not None:
                     run.usage_json = _json_dumps(usage)
                     run.updated_at = as_naive_utc(_utc_now())
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify_run(run_id, event_type)
             return self._event_to_dict(row)
 
@@ -422,7 +422,7 @@ class RunLedgerStore:
             )
             if result.rowcount != 1:
                 raise ValueError('Concurrent run update; retry Skill activation')
-            await session.commit()
+            await commit_write(session)
             return revision
 
     async def finalize_run(
@@ -480,7 +480,7 @@ class RunLedgerStore:
                     run.metadata_json = _json_dumps(existing_metadata)
                 else:
                     run.metadata_json = _json_dumps(metadata)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -514,7 +514,7 @@ class RunLedgerStore:
             run.cancel_requested_at = as_naive_utc(now)
             run.updated_at = as_naive_utc(now)
             run.status_reason = status_reason or run.status_reason
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -560,7 +560,7 @@ class RunLedgerStore:
             run.claim_lease_expires_at = None
             run.metadata_json = _json_dumps(metadata)
             run.updated_at = as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -610,7 +610,7 @@ class RunLedgerStore:
                 **host_execution_lease(),
             )
             session.add(child)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(child.workspace_id)
             return self._run_to_dict(child), True
 
@@ -630,7 +630,7 @@ class RunLedgerStore:
             )
             if updated.rowcount != 1:
                 raise ValueError('Recovery run is no longer active')
-            await session.commit()
+            await commit_write(session)
 
     async def acknowledge_cancel(
         self,
@@ -655,7 +655,7 @@ class RunLedgerStore:
             }
             run.metadata_json = _json_dumps(metadata)
             run.updated_at = as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             inflight_hub.notify(run.workspace_id)
             return self._run_to_dict(run)
 
@@ -698,7 +698,7 @@ class RunLedgerStore:
                 now + datetime.timedelta(seconds=max(int(heartbeat_deadline_seconds), 1))
             )
             runtime.updated_at = as_naive_utc(now)
-            await session.commit()
+            await commit_write(session)
             return self._runtime_to_dict(runtime)
 
     async def heartbeat_runtime(
@@ -735,7 +735,7 @@ class RunLedgerStore:
                     runtime.metadata_json = _json_dumps(existing_metadata)
                 else:
                     runtime.metadata_json = _json_dumps(metadata)
-            await session.commit()
+            await commit_write(session)
             return self._runtime_to_dict(runtime)
 
     async def get_runtime(self, runtime_id: str) -> dict[str, typing.Any] | None:
@@ -836,7 +836,7 @@ class RunLedgerStore:
             for runtime in runtimes:
                 runtime.status = stale_status
                 runtime.updated_at = current_time
-            await session.commit()
+            await commit_write(session)
             return [self._runtime_to_dict(runtime) for runtime in runtimes]
 
     async def list_runs(
