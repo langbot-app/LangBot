@@ -1,6 +1,19 @@
 """Explicit file selection inside a sandbox, with no symlink traversal."""
 
+import base64
+import json
 import textwrap
+
+
+def windows_export_script(operation, settings):
+    encoded = base64.b64encode(json.dumps(settings).encode()).decode('ascii')
+    return (
+        'import os\nif os.name == "nt":\n'
+        '    import base64, json\n'
+        '    from langbot_plugin.box.windows_export import export\n'
+        f'    print(json.dumps(export({operation!r}, json.loads(base64.b64decode({encoded!r})))))\n'
+        '    raise SystemExit(0)\n'
+    )
 
 
 _SNAPSHOT_HELPERS = textwrap.dedent("""\
@@ -72,7 +85,8 @@ def selected_files_script(paths, *, max_file_bytes, max_total_bytes, cleanup=Non
         snapshot_root=snapshot_root,
     )
     return (
-        f'settings = {settings!r}\n'
+        windows_export_script('selected', settings)
+        + f'settings = {settings!r}\n'
         + _SNAPSHOT_HELPERS
         + textwrap.dedent("""\
         import base64, hashlib, sys, uuid
@@ -170,7 +184,8 @@ def selected_files_script(paths, *, max_file_bytes, max_total_bytes, cleanup=Non
 
 def selected_files_cleanup_script(root):
     return (
-        f'root = {root!r}\n'
+        windows_export_script('cleanup_snapshot', root)
+        + f'root = {root!r}\n'
         + _SNAPSHOT_HELPERS
         + textwrap.dedent("""\
         parent, name = snapshot_parent(root)

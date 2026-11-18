@@ -12,6 +12,7 @@ import pytest
 
 from langbot_plugin.box import host_backend
 from langbot_plugin.box import file_io
+from langbot_plugin.box.runtime import BoxRuntime
 from langbot_plugin.box.errors import BoxValidationError
 from langbot_plugin.box.models import BoxSpec
 
@@ -29,6 +30,50 @@ def test_shell_selection(monkeypatch, tmp_path):
     bash.parent.mkdir(parents=True)
     bash.touch()
     assert select() == (str(bash), "git-bash")
+
+
+@pytest.mark.asyncio
+async def test_runtime_host_shell_and_legacy_retention(tmp_path):
+    backend = host_backend.HostProcessBackend(logging.getLogger(__name__))
+    runtime = Mock(admission_required=False, _backend=backend)
+    status = await BoxRuntime.get_backend_info(runtime)
+    assert status["shell"] == ("git-bash" if os.name == "nt" else "sh")
+    spec = BoxSpec(
+        session_id="legacy",
+        host_path=str(tmp_path),
+        cmd="echo hi",
+        read_only_rootfs=False,
+    )
+    session = await backend.start_session(spec)
+    paths = [
+        tmp_path / name
+        for name in ("probe.txt", "inbox/input.txt", "outbox/output.txt")
+    ]
+    for path in paths:
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b"keep")
+    await backend.stop_session(session)
+    assert all(path.read_bytes() == b"keep" for path in paths)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires Git for Windows")
+@pytest.mark.asyncio
+async def test_git_bash_heredoc_bytes(tmp_path):
+    backend = host_backend.HostProcessBackend(logging.getLogger(__name__))
+    value = """first\\line "' $HOME\nsecond\\line `date`\n"""
+    spec = BoxSpec(
+        session_id="heredoc",
+        host_path=str(tmp_path),
+        read_only_rootfs=False,
+        cmd="cat > probe.bin <<'LBPY'\n" + value + "LBPY",
+    )
+    session = await backend.start_session(spec)
+    try:
+        result = await backend.exec(session, spec)
+        assert result.exit_code == 0, result.stderr
+        assert (tmp_path / "probe.bin").read_bytes() == value.encode()
+    finally:
+        await backend.stop_session(session)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="requires Windows host and junctions")

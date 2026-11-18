@@ -858,7 +858,11 @@ async def test_box_grep_script_serializes_optional_include_as_python(monkeypatch
     tree = ast.parse(script)
     values = {}
     for statement in tree.body:
-        if isinstance(statement, ast.Assign) and isinstance(statement.targets[0], ast.Name):
+        if (
+            isinstance(statement, ast.Assign)
+            and isinstance(statement.targets[0], ast.Name)
+            and statement.targets[0].id in ('path', 'include')
+        ):
             values[statement.targets[0].id] = ast.literal_eval(statement.value)
     assert values['include'] == include
     assert values['path'] == '/workspace'
@@ -887,6 +891,46 @@ async def test_host_executes_box_grep(tmp_path, monkeypatch):
         result = await loader._grep_workspace_via_box('/workspace', 'this', '*.txt', _make_query())
         assert result['ok'], json.dumps(result)
         assert [entry['content'] for entry in result['matches']] == ['find this line']
+    finally:
+        await backend.stop_session(session)
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != 'nt', reason='native Windows export')
+async def test_host_executes_windows_outbox_export(tmp_path):
+    import json
+    import logging
+    from langbot_plugin.box.host_backend import HostProcessBackend
+    from langbot_plugin.box.models import BoxSpec
+    from langbot.pkg.box.selected_files import selected_files_script, selected_files_cleanup_script
+    from langbot.pkg.box.sandbox_files import outbox_script
+
+    backend = HostProcessBackend(logging.getLogger(__name__))
+    spec = BoxSpec(session_id='export', host_path=str(tmp_path / 'with spaces'), cmd='true', read_only_rootfs=False)
+    session = await backend.start_session(spec)
+    path = '/workspace/outbox/run/result.bin'
+    data = bytes(range(256))
+    limits = dict(max_file_bytes=256, max_total_bytes=256)
+
+    async def execute(script):
+        result = await backend.exec(
+            session, spec.model_copy(update={'cmd': "python3 - <<'LBPY'\n" + script + '\nLBPY'})
+        )
+        assert result.exit_code == 0, result.stderr
+        return json.loads(result.stdout)
+
+    try:
+        await backend.upload_file(session, path, data, 256)
+        assert await execute(outbox_script('/workspace/outbox', 'run', operation='list', max_files=1, **limits)) == [
+            {'name': 'result.bin'}
+        ]
+        legacy = await execute(selected_files_script([path], **limits))
+        assert legacy[0]['name'] == path and base64.b64decode(legacy[0]['b64']) == data
+        snapshot = '/workspace/.langbot-snapshots/run/.langbot-export-' + 'a' * 32
+        network = await execute(selected_files_script([path], snapshot_root=snapshot, **limits))
+        assert await backend.download_file(session, network[0]['snapshot_path'], 256) == data
+        await execute(selected_files_cleanup_script(snapshot))
+        assert not (tmp_path / 'with spaces' / snapshot.removeprefix('/workspace/')).exists()
     finally:
         await backend.stop_session(session)
 

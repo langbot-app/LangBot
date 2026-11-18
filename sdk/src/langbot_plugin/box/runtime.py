@@ -2534,7 +2534,9 @@ done
     async def get_backend_info(self) -> dict:
         if self.admission_required:
             readiness = await self.get_readiness()
+            details = readiness.get("backend", {}).get("details", {})
             return {
+                **({"shell": details["shell"]} if "shell" in details else {}),
                 "name": readiness.get("backend", {}).get("name"),
                 "available": bool(readiness.get("ready", False)),
                 "readiness": readiness,
@@ -2553,6 +2555,8 @@ done
         result = {"name": backend.name, "available": available}
         if getattr(backend, "unsafe_direct_execution", False):
             result["unsafe_direct_execution"] = True
+        if isinstance(backend, HostProcessBackend):
+            result["shell"] = (await backend.get_readiness())["shell"]
         return result
 
     def get_sessions(self) -> list[dict]:

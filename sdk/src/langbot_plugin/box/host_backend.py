@@ -435,6 +435,8 @@ class HostProcessBackend(BaseSandboxBackend):
             }
         )
         env.update(extra)
+        if _WINDOWS:
+            env["LANGBOT_BOX_WORKSPACE"] = state.workspace_path
         return env
 
     async def _run_shell(
@@ -446,18 +448,27 @@ class HostProcessBackend(BaseSandboxBackend):
         timeout_sec: int,
     ) -> _CommandResult:
         assert self._shell is not None
+        if self._shell_kind == "git-bash":
+            python = shlex.quote(sys.executable.replace("\\", "/"))
+            with tempfile.TemporaryDirectory(prefix="langbot-box-script-") as directory:
+                path = os.path.join(directory, "command.sh")
+                with open(path, "w", encoding="utf-8", newline="\n") as script:
+                    script.write(f'python3() {{ {python} "$@"; }};\n' + command + "\n")
+                return await self._run_shell_args(
+                    ["-l", path.replace("\\", "/")], cwd, env, timeout_sec
+                )
         arguments = (
             ["-NoProfile", "-NonInteractive", "-Command"]
             if self._shell_kind == "powershell"
             else ["-lc"]
         )
-        if self._shell_kind == "git-bash":
-            python = shlex.quote(sys.executable.replace("\\", "/"))
-            command = f'python3() {{ {python} "$@"; }};\n' + command
+        return await self._run_shell_args([*arguments, command], cwd, env, timeout_sec)
+
+    async def _run_shell_args(self, arguments, cwd, env, timeout_sec) -> _CommandResult:
+        assert self._shell is not None
         process = await asyncio.create_subprocess_exec(
             self._shell,
             *arguments,
-            command,
             cwd=cwd,
             env=env,
             stdin=asyncio.subprocess.DEVNULL if _WINDOWS else None,
