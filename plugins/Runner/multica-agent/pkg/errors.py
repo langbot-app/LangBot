@@ -12,11 +12,14 @@ class MulticaAPIError(Exception):
         code: str = "multica.api_error",
         retryable: bool = False,
         status: int | None = None,
+        unsent: bool = False,
     ):
         self.message = message
         self.code = code
         self.retryable = retryable
         self.status = status
+        # True when the request never reached the server, so even a POST is safe to resend.
+        self.unsent = unsent
         super().__init__(message)
 
 

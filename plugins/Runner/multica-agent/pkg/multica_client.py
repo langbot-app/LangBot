@@ -16,7 +16,9 @@ Bearer token; the target workspace is selected with ``X-Workspace-ID``.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import re
 import typing
 
@@ -25,7 +27,11 @@ import httpx
 from pkg.endpoint import endpoint
 from pkg.errors import MulticaAPIError
 
+logger = logging.getLogger(__name__)
+
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+# Pauses before each extra attempt of a request that failed transiently.
+RETRY_DELAYS = (1.0, 3.0)
 MAX_LISTED_NAMES = 10
 
 _UUID = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -120,6 +126,33 @@ class AsyncMulticaClient:
         params: dict[str, typing.Any] | None = None,
         payload: dict[str, typing.Any] | None = None,
     ) -> typing.Any:
+        """Send a request, retrying transient failures.
+
+        GET requests are retried on any retryable failure. Other methods create
+        sessions or enqueue agent tasks, so they are retried only when the request
+        provably never reached the Multica server (``MulticaAPIError.unsent``).
+        """
+        idempotent = method == "GET"
+        attempt = 0
+        while True:
+            try:
+                return await self._request_once(method, path, params=params, payload=payload)
+            except MulticaAPIError as exc:
+                retry = exc.retryable if idempotent else exc.unsent
+                if not retry or attempt >= len(RETRY_DELAYS):
+                    raise
+                logger.warning("Multica request %s %s failed (%s); retrying", method, path, exc.code)
+                await _sleep(RETRY_DELAYS[attempt])
+                attempt += 1
+
+    async def _request_once(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, typing.Any] | None = None,
+        payload: dict[str, typing.Any] | None = None,
+    ) -> typing.Any:
         url = f"{self.server_url}{path}"
         try:
             async with httpx.AsyncClient(
@@ -141,6 +174,14 @@ class AsyncMulticaClient:
                         if len(body) > MAX_RESPONSE_BYTES:
                             raise MulticaAPIError("Multica response exceeds the runtime limit")
                     status = response.status_code
+        except _UNSENT_ERRORS as exc:
+            # No connection was established, so the server never saw the request.
+            raise MulticaAPIError(
+                f"Multica request {method} {path} failed: {exc.__class__.__name__}",
+                code="multica.network_error",
+                retryable=True,
+                unsent=True,
+            ) from None
         except httpx.TimeoutException:
             raise MulticaAPIError(
                 f"Multica request {method} {path} timed out after {self.timeout}s",
@@ -167,6 +208,8 @@ class AsyncMulticaClient:
                 f"Multica {method} {path} returned {status}: {message[:500]}",
                 code=_status_code(status),
                 retryable=status >= 500 or status == 429,
+                # A 503 comes from the gateway or an overloaded server refusing work.
+                unsent=status == 503,
                 status=status,
             )
         if not text.strip():
@@ -262,6 +305,10 @@ class AsyncMulticaClient:
             status = str(data.get("status") or TASK_RUNNING).lower()
             tasks[str(data["task_id"])] = TASK_RUNNING if status == TASK_RUNNING else TASK_QUEUED
         return tasks
+
+
+_UNSENT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+_sleep = asyncio.sleep
 
 
 def _status_code(status: int) -> str:
