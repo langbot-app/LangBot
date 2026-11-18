@@ -144,7 +144,31 @@ def _default_policy_template() -> str:
 
 def default_policy() -> dict[str, typing.Any]:
     """Return the policy a newly created bot starts with."""
-    return merge_policy(neutral_policy(), json.loads(_default_policy_template()))
+    return {
+        **merge_policy(neutral_policy(), json.loads(_default_policy_template())),
+        'plugins': {'enable_all': True, 'plugins': []},
+    }
+
+
+def enabled_plugins(policy: dict) -> list[str] | None:
+    selection = policy.get('plugins', {})
+    if selection.get('enable_all', True):
+        return None
+    return [f'{item["author"]}/{item["name"]}' for item in selection.get('plugins', [])]
+
+
+def retain_plugin_selection(incoming, stored):
+    if not isinstance(incoming, dict):
+        return incoming
+    result = dict(incoming)
+    previous = (stored or {}).get('plugins')
+    if 'plugins' not in result and previous is not None:
+        result['plugins'] = previous
+    elif result.get('plugins') is None:
+        result.pop('plugins', None)
+    elif isinstance(result['plugins'], dict) and isinstance(previous, dict):
+        result['plugins'] = {**previous, **result['plugins']}
+    return result
 
 
 def merge_policy(base: typing.Any, override: typing.Any) -> dict[str, typing.Any]:
@@ -367,6 +391,16 @@ def validate_policy(value: typing.Any, *, field: str = 'message_policy') -> dict
         raise ValueError(f'{field} must be an object')
     cleaned: dict[str, typing.Any] = {}
     for section, section_value in value.items():
+        if section == 'plugins':
+            from ..pipeline.extension_preferences import validate_extension_preferences
+
+            if not isinstance(section_value, dict) or set(section_value) - {'enable_all', 'plugins'}:
+                raise ValueError(f'{field}.plugins must contain only enable_all and plugins')
+            if 'enable_all' in section_value and not isinstance(section_value['enable_all'], bool):
+                raise ValueError(f'{field}.plugins.enable_all must be a boolean')
+            validate_extension_preferences(section_value, context=f'{field}.plugins')
+            cleaned[section] = copy.deepcopy(section_value)
+            continue
         if section not in POLICY_SCHEMA:
             raise ValueError(f'{field}.{section} is not a message policy section')
         if not isinstance(section_value, dict):

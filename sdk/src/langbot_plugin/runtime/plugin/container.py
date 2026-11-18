@@ -57,6 +57,7 @@ class PluginContainer(pydantic.BaseModel):
     """插件容器状态"""
 
     components: list[ComponentContainer]
+    registered_events: list[str] | None = None
     """组件容器列表"""
 
     _runtime_plugin_handler: typing.Any = pydantic.PrivateAttr(default=None)
@@ -82,6 +83,7 @@ class PluginContainer(pydantic.BaseModel):
     def from_dict(cls, data: dict[str, typing.Any]) -> PluginContainer:
         return cls(
             debug=data["debug"],
+            registered_events=data.get("registered_events"),
             install_source=data.get("install_source", ""),
             install_info=data.get("install_info", {}),
             manifest=ComponentManifest.model_validate(data["manifest"]),

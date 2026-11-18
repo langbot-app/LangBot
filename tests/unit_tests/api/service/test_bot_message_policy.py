@@ -58,6 +58,28 @@ def stored_values(service):
 
 
 @pytest.mark.asyncio
+async def test_old_runtime_reports_unknown_plugin_registrations():
+    from langbot.pkg.plugin.handler import RuntimeConnectionHandler
+    from langbot_plugin.entities.io.errors import ActionCallError
+
+    handler = SimpleNamespace(
+        call_action=AsyncMock(side_effect=ActionCallError('ValueError: Action list_plugin_registrations not found'))
+    )
+    assert await RuntimeConnectionHandler.list_plugin_registrations(handler, ['author/plugin']) is None
+
+
+@pytest.mark.asyncio
+async def test_plugin_selection_survives_older_policy_updates():
+    selection = {'enable_all': False, 'plugins': [{'author': 'owner', 'name': 'plugin'}]}
+    stored = {'uuid': 'bot', 'message_policy': {'plugins': selection}}
+    service = make_service(stored_bot=stored)
+    await service.update_bot(WORKSPACE, 'bot', {'message_policy': OVERRIDE})
+    assert stored_values(service)['message_policy']['plugins'] == selection
+    await service.update_bot(WORKSPACE, 'bot', {'message_policy': {'plugins': None}})
+    assert 'plugins' not in stored_values(service)['message_policy']
+
+
+@pytest.mark.asyncio
 async def test_a_partial_bot_policy_is_validated_and_stored_complete():
     service = make_service()
 

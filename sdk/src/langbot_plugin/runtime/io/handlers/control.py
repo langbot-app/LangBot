@@ -58,6 +58,7 @@ TENANT_SCOPED_CONTROL_ACTIONS = frozenset(
         LangBotToRuntimeAction.LIST_TOOLS.value,
         LangBotToRuntimeAction.CALL_TOOL.value,
         LangBotToRuntimeAction.LIST_COMMANDS.value,
+        LangBotToRuntimeAction.LIST_PLUGIN_REGISTRATIONS.value,
         LangBotToRuntimeAction.EXECUTE_COMMAND.value,
         LangBotToRuntimeAction.RETRIEVE_KNOWLEDGE.value,
         LangBotToRuntimeAction.LIST_KNOWLEDGE_ENGINES.value,
@@ -514,6 +515,18 @@ class ControlConnectionHandler(handler.Handler):
             return handler.ActionResponse.success(
                 {
                     "tool_response": resp,
+                }
+            )
+
+        @self.action(LangBotToRuntimeAction.LIST_PLUGIN_REGISTRATIONS)
+        async def list_plugin_registrations(
+            data: dict[str, Any],
+        ) -> handler.ActionResponse:
+            return handler.ActionResponse.success(
+                {
+                    "plugins": self.context.plugin_mgr.plugin_registrations(
+                        data.get("include_plugins")
+                    )
                 }
             )
 

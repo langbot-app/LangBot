@@ -155,6 +155,7 @@ class MessagePolicyRuntime:
     def attach(self, query: pipeline_query.Query, config: typing.Any = None) -> None:
         """Bind this policy to a query and expose it through ``query.pipeline_config``."""
         object.__setattr__(query, '_message_policy', self)
+        object.__setattr__(query, '_listener_plugins', schema.enabled_plugins(self.policy))
         query.pipeline_config = self.overlay(query.pipeline_config if config is None else config)
 
     @property
@@ -312,6 +313,19 @@ class MessagePolicyRuntime:
         """Prepend an @sender to a group reply when the policy asks for it."""
         if self.at_sender and isinstance(message_event, platform_events.GroupMessage):
             message_chain.insert(0, platform_message.At(target=message_event.sender.id))
+
+    async def send_command_reply(self, query, chain, quote_origin=False):
+        verdict = await self.filter_outbound(query, str(chain))
+        if not verdict.allowed:
+            return
+        if verdict.rewritten and verdict.text != str(chain).strip():
+            chain = platform_message.MessageChain([platform_message.Plain(text=verdict.text)])
+        chain = await self.process_long_text(query, chain)
+        await self.wait_force_delay()
+        self.mention_sender(query.message_event, chain)
+        await query.adapter.reply_message(
+            message_source=query.message_event, message=chain, quote_origin=quote_origin or self.quote_origin
+        )
 
     async def send_reply(self, query: pipeline_query.Query) -> None:
         """Send the latest reply chain of a query back to its conversation."""

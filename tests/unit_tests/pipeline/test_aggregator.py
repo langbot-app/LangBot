@@ -69,6 +69,7 @@ def aggregation_key(
         pipeline_uuid,
         launcher_type.value,
         launcher_id,
+        None,
     )
 
 
@@ -275,6 +276,7 @@ class TestMessageAggregatorSessionId:
             None,
             'person',
             45678,
+            None,
         )
 
     def test_session_id_different_launchers(self):
@@ -537,6 +539,7 @@ class TestMessageAggregatorAddMessage:
         assert len(agg.buffers[key].messages) == 1
         pending = agg.buffers[key].messages[0]
         assert {key: value for key, value in vars(pending).items() if key != 'timestamp'} == {
+            'entry_query': None,
             'execution_context': context,
             'bot_uuid': 'test-bot',
             'launcher_type': provider_session.LauncherTypes.PERSON,

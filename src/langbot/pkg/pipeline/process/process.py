@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from . import handler
-from .handlers import chat, command
+from .handlers import chat
 from .. import entities
 from .. import stage
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
@@ -17,15 +17,11 @@ class Processor(stage.PipelineStage):
         - resp_messages
     """
 
-    cmd_handler: handler.MessageHandler
-
     chat_handler: handler.MessageHandler
 
     async def initialize(self, pipeline_config: dict):
-        self.cmd_handler = command.CommandHandler(self.ap)
         self.chat_handler = chat.ChatMessageHandler(self.ap)
 
-        await self.cmd_handler.initialize()
         await self.chat_handler.initialize()
 
     async def process(
@@ -40,17 +36,4 @@ class Processor(stage.PipelineStage):
             f'Processing request from {query.launcher_type.value}_{query.launcher_id} ({query.query_id}): {message_text}'
         )
 
-        async def generator():
-            from .command_settings import get_bot_command_settings
-
-            cmd_enable, cmd_prefix = await get_bot_command_settings(self.ap, query)
-
-            if cmd_enable and any(message_text.startswith(prefix) for prefix in cmd_prefix):
-                handler_to_use = self.cmd_handler
-            else:
-                handler_to_use = self.chat_handler
-
-            async for result in handler_to_use.handle(query):
-                yield result
-
-        return generator()
+        return self.chat_handler.handle(query)

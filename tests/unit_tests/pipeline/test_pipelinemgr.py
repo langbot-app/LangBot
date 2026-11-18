@@ -283,8 +283,8 @@ async def test_runtime_pipeline_execute(mock_app, sample_query):
 
 
 @pytest.mark.asyncio
-async def test_received_event_edits_reach_pipeline_stages(mock_app, sample_query):
-    """Read edits from the returned RPC context before running message stages."""
+async def test_received_event_is_not_repeated_in_messaging(mock_app, sample_query):
+    """The bot has already applied the received event before scheduling."""
     from langbot_plugin.api.entities.context import EventContext
     from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
@@ -317,7 +317,8 @@ async def test_received_event_edits_reach_pipeline_stages(mock_app, sample_query
 
     await runtime_pipeline.run(sample_query)
 
-    assert observed == [('edited by plugin', 'edited by plugin')], mock_app.logger.error.call_args_list
+    mock_app.plugin_connector.emit_event.assert_not_awaited()
+    assert observed == [(str(sample_query.message_chain), str(sample_query.message_event.message_chain))]
 
 
 @pytest.mark.asyncio

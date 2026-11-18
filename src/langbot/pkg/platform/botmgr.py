@@ -1070,6 +1070,8 @@ class RuntimeBot:
                 continue
             processor_uuid = item.get('processor_uuid')
             if not processor_uuid:
+                if item.get('plugin_id'):
+                    resolved.append((item['plugin_id'], {}))
                 continue
             agent = await self.ap.agent_service.get_agent(self.execution_context, processor_uuid)
             if not agent or agent.get('kind') != command_processor.COMMAND_PROCESSOR_KIND:
@@ -1102,7 +1104,7 @@ class RuntimeBot:
             prefixes = ['/']
 
         processors = command_settings.get('processors', [])
-        if not isinstance(processors, list) or not processors:
+        if not isinstance(processors, list):
             return None
 
         full_command_text = self._command_text_from_event(event)
@@ -1132,11 +1134,17 @@ class RuntimeBot:
             return None
 
         resolved = await self._resolve_command_processors(processors)
-        if not resolved:
+        query = getattr(event, '_entry_query', None)
+        allowed = getattr(query, '_listener_plugins', None)
+        if allowed is not None:
+            resolved = [(name, instance) for name, instance in resolved if name in allowed]
+        if not resolved and query is None:
             return None
 
         try:
-            available_commands = await plugin_connector.list_commands([plugin_id for plugin_id, _ in resolved])
+            available_commands = await plugin_connector.list_commands(
+                allowed if query is not None else [name for name, _ in resolved]
+            )
         except Exception as exc:
             await self.logger.warning(f'Failed to list plugin commands: {exc}')
             return None
@@ -1149,6 +1157,17 @@ class RuntimeBot:
                 commands_by_plugin.setdefault(owner, set()).add(name)
 
         # Registered names only, in binding priority order.
+        if query is not None:
+            configured = {name for name, _ in resolved}
+            for item in processors:
+                if not item.get('enabled', True):
+                    disabled = await self._resolve_command_processors([{**item, 'enabled': True}])
+                    configured.update(name for name, _ in disabled)
+            resolved.extend(
+                (name, {})
+                for name in (allowed if allowed is not None else commands_by_plugin)
+                if name not in configured
+            )
         for plugin_id, agent in resolved:
             if command_name in commands_by_plugin.get(plugin_id, set()):
                 return (
@@ -1174,18 +1193,35 @@ class RuntimeBot:
         if matched is None:
             return False
         plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
-        await self._execute_matched_plugin_command(
-            event=event,
-            adapter=adapter,
-            plugin_id=plugin_id,
-            command_name=cmd_name,
-            command_text=cmd_text,
-            full_command_text=full_cmd_text,
-            command_config=cmd_config,
-            processor_uuid=processor_uuid,
-            execution_id=execution_id,
-            node=node,
-        )
+        query = getattr(event, '_entry_query', None)
+        runtime = getattr(query, '_message_policy', None)
+        if runtime is not None:
+            if not runtime.check_access(query.launcher_type.value, query.launcher_id, query.sender_id).allowed:
+                return True
+            if query.launcher_type == provider_session.LauncherTypes.GROUP and not await runtime.match_group_rules(
+                query
+            ):
+                return True
+            if not await runtime.acquire_rate_limit(query):
+                return True
+        try:
+            if runtime is not None and not (await runtime.filter_inbound(query, cmd_text)).allowed:
+                return True
+            await self._execute_matched_plugin_command(
+                event=event,
+                adapter=adapter,
+                plugin_id=plugin_id,
+                command_name=cmd_name,
+                command_text=cmd_text,
+                full_command_text=full_cmd_text,
+                command_config=cmd_config,
+                processor_uuid=processor_uuid,
+                execution_id=execution_id,
+                node=node,
+            )
+        finally:
+            if runtime is not None:
+                await runtime.release_rate_limit(query)
         return True
 
     async def _execute_matched_plugin_command(
@@ -1235,8 +1271,9 @@ class RuntimeBot:
         else:
             session = None
 
-        query_id = int(time.time() * 1000)
-        query_uuid = str(uuid.uuid4())
+        query = getattr(event, '_entry_query', None)
+        query_id = query.query_id if query is not None else int(time.time() * 1000)
+        query_uuid = query.query_uuid if query is not None else str(uuid.uuid4())
         cmd_ctx = await self.ap.cmd_mgr.build_context(
             command_text=command_text,
             full_command_text=full_command_text,
@@ -1251,6 +1288,33 @@ class RuntimeBot:
             launcher_id=launcher_id,
             config=command_config,
         )
+
+        if query is not None:
+            hook = plugin_events.GroupCommandSent if is_group_message else plugin_events.PersonCommandSent
+            ctx = await self.ap.plugin_connector.emit_event(
+                hook(
+                    query=query,
+                    launcher_type=launcher_type.value,
+                    launcher_id=launcher_id,
+                    sender_id=sender_id,
+                    command=command_name,
+                    params=command_text.split()[1:],
+                    text_message=full_command_text,
+                    is_admin=cmd_ctx.privilege == 2,
+                ),
+                query._listener_plugins,
+            )
+            if ctx.is_prevented_default():
+                if ctx.event.reply_message_chain is not None:
+                    await query._message_policy.send_command_reply(query, ctx.event.reply_message_chain)
+                return
+            if command_name.lower() == 'stop' and query.pipeline_uuid:
+                query.variables['_stop_command_attempted'] = True
+                run_id = await self.ap.agent_run_orchestrator.cancel_active_from_query(
+                    query, allow_other_actors=is_group_message and cmd_ctx.privilege == 2
+                )
+                if run_id:
+                    query.variables['_stop_command_run_id'] = run_id
 
         event_type = getattr(event, 'type', None) or 'message.received'
         route_ref = f'plugin_command:{plugin_id}/{command_name}'
@@ -1311,11 +1375,10 @@ class RuntimeBot:
 
                     if components:
                         chain = platform_message.MessageChain(components)
-                        await adapter.reply_message(
-                            message_source=legacy_event,
-                            message=chain,
-                            quote_origin=False,
-                        )
+                        if query is None:
+                            await adapter.reply_message(message_source=legacy_event, message=chain, quote_origin=False)
+                        else:
+                            await query._message_policy.send_command_reply(query, chain)
                         await self.logger.info(f'Command({query_id}) replied: {chain}')
         except Exception as exc:
             await self._record_event_route_trace(
@@ -1343,6 +1406,50 @@ class RuntimeBot:
             text=f'Plugin command {plugin_id}/{command_name} delivered successfully',
         )
 
+    async def _begin_message(self, event, adapter):
+        route = self._resolve_eba_event_binding(event, event.type)
+        object.__setattr__(event, '_selected_route', route)
+        legacy = event.to_legacy_event()
+        group = isinstance(legacy, platform_events.GroupMessage)
+        launcher_id = (adapter.get_launcher_id(legacy) if hasattr(adapter, 'get_launcher_id') else None) or (
+            legacy.group.id if group else legacy.sender.id
+        )
+        query = await self.ap.query_pool.add_query(
+            bot_uuid=self.bot_entity.uuid,
+            launcher_type=provider_session.LauncherTypes.GROUP if group else provider_session.LauncherTypes.PERSON,
+            launcher_id=launcher_id,
+            sender_id=legacy.sender.id,
+            message_event=legacy,
+            message_chain=event.message_chain,
+            adapter=adapter,
+            execution_context=self.execution_context,
+            enqueue=False,
+            pipeline_uuid=route.get('target_uuid') if route and route.get('target_type') == 'pipeline' else None,
+            route_id=route.get('id') if route else None,
+        )
+        try:
+            object.__setattr__(event, '_entry_query', query)
+            await self.ap.message_policy_mgr.bind_query(query)
+            hook = plugin_events.GroupMessageReceived if group else plugin_events.PersonMessageReceived
+            ctx = await self.ap.plugin_connector.emit_event(
+                hook(
+                    query=query,
+                    launcher_type=query.launcher_type.value,
+                    launcher_id=query.launcher_id,
+                    sender_id=query.sender_id,
+                    message_event=legacy,
+                    message_chain=query.message_chain,
+                ),
+                query._listener_plugins,
+            )
+            command_handled = ctx.is_prevented_default()
+            query.message_chain = event.message_chain = ctx.event.message_chain
+            query.message_event.message_chain = query.message_chain
+            return query, command_handled
+        except BaseException:
+            await self.ap.query_pool.remove_query(query)
+            raise
+
     async def _handle_platform_event_body(
         self,
         event: platform_events.EBAEvent,
@@ -1351,17 +1458,19 @@ class RuntimeBot:
         node: str = '',
     ) -> None:
         results: list[typing.Any] = []
+        query = None
         try:
             await self._record_adapter_event(event, adapter)
             await self._persist_monitoring_ingress(event, adapter, execution_id)
 
             command_handled = False
+            if isinstance(event, platform_events.MessageReceivedEvent):
+                query, command_handled = await self._begin_message(event, adapter)
             command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
-            processors = command_settings.get('processors', []) if isinstance(command_settings, dict) else []
             if (
                 isinstance(event, platform_events.MessageReceivedEvent)
                 and command_settings.get('enabled', True)
-                and processors
+                and not command_handled
             ):
                 cmd_tasks = [
                     self._run_event_delivery(
@@ -1410,6 +1519,9 @@ class RuntimeBot:
             )
             await self._persist_monitoring_ingress(event, adapter, execution_id, 'failed', [exc])
             raise
+        finally:
+            if query is not None and not getattr(query, '_handed_to_messaging', False):
+                await self.ap.query_pool.remove_query(query)
 
         # Recorded after handling so the inbound stage carries the real outcome
         # instead of a hardcoded success.
@@ -1517,7 +1629,11 @@ class RuntimeBot:
                     return {'status': 'delivered', 'interaction': 'text_reply'}
 
         if event_binding is None:
-            event_binding = self._resolve_eba_event_binding(event, event_type)
+            event_binding = (
+                event._selected_route
+                if hasattr(event, '_selected_route')
+                else self._resolve_eba_event_binding(event, event_type)
+            )
         if event_binding is None:
             return await self._record_event_route_trace(
                 event_type=event_type,
@@ -1729,6 +1845,11 @@ class RuntimeBot:
                                 '_delivery_adapter': adapter,
                                 '_platform_event': event,
                                 '_execution_context': self.execution_context,
+                                **(
+                                    {'_entry_query': event._entry_query}
+                                    if target_type == 'agent' and hasattr(event, '_entry_query')
+                                    else {}
+                                ),
                             },
                         ):
                             # Results are journaled by the orchestrator; platform sends require explicit actions.
@@ -1911,6 +2032,8 @@ class RuntimeBot:
             execution_context=self.execution_context,
             route_id=route_id,
         )
+        if hasattr(event, '_entry_query'):
+            object.__setattr__(event._entry_query, '_handed_to_messaging', True)
 
     async def _handle_interaction_submission(
         self,
@@ -1997,8 +2120,11 @@ class RuntimeBot:
             await self.logger.warning(f'Event {event_type} cannot be dispatched to legacy Pipeline')
             return
 
+        legacy = event.to_legacy_event()
+        if hasattr(event, '_entry_query'):
+            object.__setattr__(legacy, '_entry_query', event._entry_query)
         await self._handle_legacy_message_event(
-            event.to_legacy_event(),
+            legacy,
             adapter,
             pipeline_uuid_override=pipeline_uuid,
             routed_by_event_binding=routed_by_event_binding,

@@ -30,6 +30,7 @@ AggregationKey = tuple[
     str | None,
     str,
     int | str,
+    str | None,
 ]
 
 
@@ -50,6 +51,7 @@ class PendingMessage:
     variables: dict[str, typing.Any] | None = None
     route_id: str | None = None
     timestamp: float = field(default_factory=time.time)
+    entry_query: typing.Any = None
 
 
 @dataclass
@@ -92,6 +94,7 @@ class MessageAggregator:
         launcher_type: provider_session.LauncherTypes,
         launcher_id: int | str,
         pipeline_uuid: str | None,
+        route_id: str | None = None,
     ) -> AggregationKey:
         """Build a key that cannot alias another Workspace, bot, or pipeline."""
 
@@ -103,6 +106,7 @@ class MessageAggregator:
             pipeline_uuid,
             launcher_type.value,
             launcher_id,
+            route_id,
         )
 
     async def _get_aggregation_config(
@@ -208,8 +212,10 @@ class MessageAggregator:
             launcher_type,
             launcher_id,
             pipeline_uuid,
+            route_id,
         )
         pending_msg = PendingMessage(
+            entry_query=getattr(message_event, '_entry_query', None),
             execution_context=execution_context,
             bot_uuid=bot_uuid,
             launcher_type=launcher_type,
@@ -345,6 +351,8 @@ class MessageAggregator:
                 raise WorkspaceInvariantError('Aggregation buffer instance does not match the active Workspace binding')
         except BaseException as exc:
             for pending in buffer.messages:
+                if pending.entry_query is not None:
+                    await self.ap.query_pool.remove_query(pending.entry_query)
                 telemetry_execution.release_handoff(
                     self.ap, pending.variables, error=telemetry_execution.describe_exception(exc)
                 )
@@ -352,6 +360,8 @@ class MessageAggregator:
         # Events folded into the first message's query close as merged into it.
         merged_into = str((message.variables or {}).get(telemetry_execution.HANDOFF_EVENT_KEY) or '')
         for pending in buffer.messages[1:]:
+            if pending.entry_query is not None:
+                await self.ap.query_pool.remove_query(pending.entry_query)
             telemetry_execution.release_handoff(self.ap, pending.variables, merged_into=merged_into)
         await self._enqueue_or_release(
             message.variables,
@@ -372,7 +382,15 @@ class MessageAggregator:
     async def _enqueue_or_release(self, handoff, **query) -> None:
         """Enqueue a query; release its telemetry handoff if it never queues."""
         try:
-            await self.ap.query_pool.add_query(**query)
+            existing = getattr(query['message_event'], '_entry_query', None)
+            if existing is None:
+                await self.ap.query_pool.add_query(**query)
+            else:
+                existing.variables.update(query.get('variables') or {})
+                existing.variables['_routed_by_rule'] = query['routed_by_rule']
+                existing.message_chain = query['message_chain']
+                existing.message_event.message_chain = existing.message_chain
+                await self.ap.query_pool.enqueue_registered(existing)
         except BaseException as exc:
             from ..telemetry import execution as telemetry_execution
 
@@ -394,6 +412,7 @@ class MessageAggregator:
             base_msg.launcher_type,
             base_msg.launcher_id,
             base_msg.pipeline_uuid,
+            base_msg.route_id,
         )
         for message in messages[1:]:
             message_key = self._get_aggregation_key(
@@ -402,6 +421,7 @@ class MessageAggregator:
                 message.launcher_type,
                 message.launcher_id,
                 message.pipeline_uuid,
+                message.route_id,
             )
             if message_key != base_key or message.execution_context != base_msg.execution_context:
                 raise ExecutionContextMismatchError('Cannot merge pending messages from different execution scopes')
@@ -414,6 +434,7 @@ class MessageAggregator:
                 merged_chain.append(component)
 
         return PendingMessage(
+            entry_query=base_msg.entry_query,
             execution_context=base_msg.execution_context,
             bot_uuid=base_msg.bot_uuid,
             launcher_type=base_msg.launcher_type,

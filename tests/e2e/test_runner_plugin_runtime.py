@@ -228,6 +228,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             """
             from langbot_plugin.api.definition.components.command.command import Command
             from langbot_plugin.api.entities.builtin.command.context import CommandReturn
+            from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
             class BoundaryCommand(Command):
                 async def initialize(self):
@@ -235,6 +236,10 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     @self.subcommand('')
                     async def handle(self, ctx):
                         yield CommandReturn(text='QA_COMMAND_EXECUTED')
+                    @self.subcommand('query-probe')
+                    async def probe(self, ctx):
+                        await ctx.reply(MessageChain([Plain(text='command:' + await ctx.get_bot_uuid())]))
+                        yield CommandReturn()
         """,
         ),
         'event_listener': (
@@ -246,6 +251,7 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
             from pathlib import Path
             from langbot_plugin.api.definition.components.common.event_listener import EventListener
             from langbot_plugin.api.entities import events
+            from langbot_plugin.api.entities.builtin.platform.message import MessageChain, Plain
 
             class BoundaryListener(EventListener):
                 async def initialize(self):
@@ -253,6 +259,11 @@ def _write_qa_runner_plugin(plugin_root: Path) -> None:
                     @self.handler(events.PersonNormalMessageReceived)
                     async def handle(ctx):
                         self.plugin.boundary_listener_hits = getattr(self.plugin, 'boundary_listener_hits', 0) + 1
+                    @self.handler(events.GroupMessageReceived)
+                    async def group(ctx):
+                        if 'group-probe' in str(ctx.event.message_chain):
+                            await ctx.reply(MessageChain([Plain(text='group:' + await ctx.get_bot_uuid())]))
+                            ctx.prevent_default()
         """,
         ),
     }
@@ -353,7 +364,7 @@ def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_po
     config['system']['disabled_adapters'] = [
         yaml.safe_load(path.read_text(encoding='utf-8'))['metadata']['name']
         for path in sorted(adapters.glob('*.yaml'))
-        if path.stem != 'websocket'
+        if path.stem not in {'websocket', 'http_bot'}
     ]
     with open(config_path, 'w', encoding='utf-8') as f:
         yaml.safe_dump(config, f, default_flow_style=False)
@@ -651,6 +662,60 @@ def test_host_orchestrator_runs_runner_and_records_ledger(
         assert '"count": 1' in state_row[0]
     finally:
         conn.close()
+
+
+def test_http_bot_plugin_lifecycle(runner_client, runner_e2e_tmpdir):
+    client = runner_client
+    token = _init_and_auth(client)
+    _ensure_qa_plugin(client, token, runner_e2e_tmpdir / 'agent-runner-qa.zip')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    def data(response):
+        payload = response.json()
+        assert payload['code'] == 0, payload
+        return payload['data']
+
+    agent = data(
+        client.post(
+            '/api/v1/agents',
+            headers=headers,
+            json={
+                'kind': 'agent',
+                'name': 'Plugin lifecycle QA',
+                'supported_event_patterns': ['message.*'],
+                'config': {'runner': {'id': QA_RUNNER_ID}, 'runner_config': {QA_RUNNER_ID: {}}},
+            },
+        )
+    )['uuid']
+    bot = data(
+        client.post(
+            '/api/v1/platform/bots',
+            headers=headers,
+            json={
+                'adapter': 'http_bot',
+                'name': 'Plugin lifecycle QA',
+                'enable': True,
+                'adapter_config': {'signature_required': False, 'callback_timeout': 10},
+                'event_bindings': [{'event_pattern': 'message.received', 'target_type': 'agent', 'target_uuid': agent}],
+                'message_policy': {
+                    'plugins': {'enable_all': False, 'plugins': [{'author': 'e2e', 'name': 'agent-runner-qa'}]}
+                },
+            },
+        )
+    )['uuid']
+    registrations = data(client.get(f'/api/v1/platform/bots/{bot}/plugin-registrations', headers=headers))['plugins']
+    assert 'GroupMessageReceived' in registrations['e2e/agent-runner-qa']['events']
+    for text, kind, expected in [
+        ('group-probe', 'group', 'group:'),
+        ('/qa_boundary_command query-probe', 'person', 'command:'),
+    ]:
+        reply = data(
+            client.post(
+                f'/bots/{bot}/sync',
+                json={'session_id': 'lifecycle', 'session_type': kind, 'message': [{'type': 'Plain', 'text': text}]},
+            )
+        )
+        assert expected + bot in [item.get('text') for item in reply['message']]
 
 
 def test_event_processor_real_runtime_logs_actions_and_instance_isolation(

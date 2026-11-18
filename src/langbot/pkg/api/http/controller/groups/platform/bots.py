@@ -63,6 +63,20 @@ class BotsRouterGroup(group.RouterGroup):
             return self.success(data=self.ap.bot_service.get_message_policy_metadata())
 
         @self.route(
+            '/<bot_uuid>/plugin-registrations',
+            methods=['GET'],
+            auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,
+            permission=Permission.RESOURCE_VIEW,
+        )
+        async def _(bot_uuid: str, request_context: RequestContext) -> str:
+            result = await self.ap.bot_service.get_plugin_registrations(
+                request_context, bot_uuid, quart.request.args.get('route_id')
+            )
+            if result is None:
+                return self.http_status(404, -1, 'bot not found')
+            return self.success(data=result)
+
+        @self.route(
             '/<bot_uuid>',
             methods=['GET'],
             auth_type=group.AuthType.USER_TOKEN_OR_API_KEY,

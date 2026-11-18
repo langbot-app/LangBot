@@ -242,11 +242,23 @@ class PluginRuntimeHandler(Handler):
             self._slot_containers.pop(binding.installation_uuid, None)
             return ActionResponse.success({})
 
+        def describe_container(container, request):
+            payload = container.model_dump()
+            if request.get("include_registered_events") is True:
+                payload["registered_events"] = sorted(
+                    {
+                        event.__name__
+                        for component in container.components
+                        if isinstance(component.component_instance, EventListener)
+                        for event in component.component_instance.registered_handlers
+                    }
+                )
+            return payload
+
         @self.action(RuntimeToPluginAction.GET_PLUGIN_SLOT_CONTAINER)
         async def get_plugin_slot_container(
             data: dict[str, typing.Any],
         ) -> ActionResponse:
-            del data
             binding = self.current_action_context
             if not isinstance(binding, InstallationBinding):
                 raise ValueError("Shared slot lookup requires InstallationBinding")
@@ -258,7 +270,9 @@ class PluginRuntimeHandler(Handler):
                     "enabled": container.enabled,
                     "priority": container.priority,
                     "plugin_config": thaw_config(container.plugin_config),
-                    "plugin_container": container.plugin_container.model_dump(),
+                    "plugin_container": describe_container(
+                        container.plugin_container, data
+                    ),
                 }
             )
 
@@ -268,7 +282,9 @@ class PluginRuntimeHandler(Handler):
 
         @self.action(RuntimeToPluginAction.GET_PLUGIN_CONTAINER)
         async def get_plugin_container(data: dict[str, typing.Any]) -> ActionResponse:
-            return ActionResponse.success(self.plugin_container.model_dump())
+            return ActionResponse.success(
+                describe_container(self.plugin_container, data)
+            )
 
         @self.action(RuntimeToPluginAction.GET_PLUGIN_ICON)
         async def get_plugin_icon(data: dict[str, typing.Any]) -> ActionResponse:

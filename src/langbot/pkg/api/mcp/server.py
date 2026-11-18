@@ -651,7 +651,7 @@ class LangBotMCPServer:
                 'command_settings is an object: {enabled: bool, prefixes: [str], processors: [{processor_uuid, enabled}]} '
                 'binding command_processor instances in priority order (message.received only). '
                 'Optional platform_commands: {enabled: bool, selected: [command_name]} registers Telegram/Discord menus and overwrites platform commands. '
-                'message_policy is an optional object {trigger, safety, output} deciding which messages the bot answers and how replies are sent '
+                'message_policy is an optional object {trigger, safety, output, plugins}. plugins={enable_all, plugins:[{author,name}]} enables commands and event listeners. It decides which messages the bot answers and how replies are sent '
                 '(group respond rules, access control, ignore rules, aggregation; content filter, rate limit; long text, delay, @sender, quote, failure hints); '
                 'omit it for the defaults, pass {} to admit everything unchanged. '
                 'Each event_bindings item may carry `policy`, a partial message_policy overriding the bot policy for that route. '
@@ -671,7 +671,7 @@ class LangBotMCPServer:
                 'processors are command_processor instances, at most one per plugin, in priority order. '
                 'Include platform_commands: {enabled: bool, selected: [command_name]} to register Telegram/Discord menus; disabling clears the registered list. '
                 'Do not put event_processor targets in event_bindings; those are exclusive Agent/Pipeline routes. '
-                'message_policy replaces the bot message policy ({trigger, safety, output}; omitted settings mean "admit everything, change nothing"). '
+                'message_policy configures trigger, safety, output and plugins ({enable_all, plugins:[{author,name}]}). '
                 'An event_bindings item keeps its stored `policy` override when the key is omitted; send `policy: null` to remove it.'
             )
         )

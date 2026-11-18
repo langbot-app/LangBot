@@ -12,6 +12,12 @@ import langbot_plugin.api.entities.builtin.platform.message as pm
 import langbot_plugin.api.entities.builtin.provider.session as provider_session
 
 from langbot.pkg.command.cmdmgr import CommandManager
+from langbot.pkg.api.http.context import ExecutionContext
+from langbot.pkg.pipeline.pool import QueryPool
+from langbot.pkg.message_policy.runtime import MessagePolicyRuntime
+from langbot.pkg.message_policy.schema import neutral_policy
+from langbot_plugin.api.definition.abstract.platform.adapter import AbstractMessagePlatformAdapter
+from langbot_plugin.api.entities.context import EventContext
 from langbot.pkg.platform.botmgr import RuntimeBot
 
 
@@ -23,8 +29,7 @@ def make_bot(command_settings=None, plugin_processors=None):
         adapter='aiocqhttp',
         event_bindings=[],
         plugin_processors=plugin_processors or [],
-        command_settings=command_settings
-        or {'enabled': True, 'prefixes': ['/'], 'processors': []},
+        command_settings=command_settings or {'enabled': True, 'prefixes': ['/'], 'processors': []},
     )
     bot.execution_context = SimpleNamespace(
         instance_uuid='inst-1',
@@ -47,12 +52,8 @@ def make_bot(command_settings=None, plugin_processors=None):
     bot._get_event_bindings_from_value = RuntimeBot._get_event_bindings_from_value
     bot._match_plugin_command = RuntimeBot._match_plugin_command.__get__(bot, RuntimeBot)
     bot._try_handle_plugin_command = RuntimeBot._try_handle_plugin_command.__get__(bot, RuntimeBot)
-    bot._execute_matched_plugin_command = RuntimeBot._execute_matched_plugin_command.__get__(
-        bot, RuntimeBot
-    )
-    bot._handle_platform_event_body = RuntimeBot._handle_platform_event_body.__get__(
-        bot, RuntimeBot
-    )
+    bot._execute_matched_plugin_command = RuntimeBot._execute_matched_plugin_command.__get__(bot, RuntimeBot)
+    bot._handle_platform_event_body = RuntimeBot._handle_platform_event_body.__get__(bot, RuntimeBot)
 
     plugin_connector = SimpleNamespace(
         list_commands=AsyncMock(return_value=[]),
@@ -135,16 +136,15 @@ async def test_prefix_matched_but_command_not_found():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'known_cmd')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'known_cmd')]
     ev = make_message_event('/unknown_cmd arg')
     matched = await bot._match_plugin_command(ev)
     assert matched is None
 
 
 @pytest.mark.asyncio
-async def test_matched_command_skips_processors_and_pipeline():
+@pytest.mark.parametrize('prevent', [None, 'PersonMessageReceived', 'PersonCommandSent'])
+async def test_matched_command_skips_processors_and_pipeline(prevent):
     """Matched command executes at routing layer and skips plugin_processors and primary handler."""
     bot = make_bot(
         command_settings={
@@ -154,9 +154,7 @@ async def test_matched_command_skips_processors_and_pipeline():
         },
         plugin_processors=[{'processor_uuid': 'proc-1', 'enabled': True}],
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'hello')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'hello')]
 
     async def mock_execute_gen(*args, **kwargs):
         ret = Mock()
@@ -169,10 +167,33 @@ async def test_matched_command_skips_processors_and_pipeline():
 
     bot.ap.cmd_mgr.execute_command.side_effect = mock_execute_gen
 
-    adapter = SimpleNamespace(
-        reply_message=AsyncMock(),
-        get_launcher_id=Mock(return_value=None),
-    )
+    adapter = Mock(spec=AbstractMessagePlatformAdapter)
+    adapter.reply_message = AsyncMock()
+    adapter.is_stream_output_supported = AsyncMock(return_value=False)
+    bot.execution_context = ExecutionContext(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+    bot.ap.query_pool = QueryPool()
+    bot.ap.logger = Mock()
+    runtime = MessagePolicyRuntime(bot.ap, neutral_policy())
+
+    async def bind(query):
+        runtime.attach(query)
+        return runtime
+
+    bot.ap.message_policy_mgr = SimpleNamespace(bind_query=bind)
+    seen = []
+
+    async def emit(event, plugins):
+        query = await bot.ap.query_pool.get_query_by_legacy_id('ws-1', event.query.query_id)
+        assert query is event.query
+        assert query.bot_uuid == 'bot-123'
+        assert not bot.ap.query_pool.queries
+        seen.append((event.event_name, query.query_uuid))
+        ctx = EventContext.from_event(event)
+        if event.event_name == prevent:
+            ctx.prevent_default()
+        return ctx
+
+    bot.ap.plugin_connector.emit_event = emit
     ev = make_message_event('/hello world')
 
     primary_called = False
@@ -192,6 +213,15 @@ async def test_matched_command_skips_processors_and_pipeline():
     await bot._handle_platform_event_body(ev, adapter)
 
     assert not primary_called
+    assert not bot.ap.query_pool.cached_queries
+    if prevent:
+        assert seen[-1][0] == prevent
+        bot.ap.cmd_mgr.execute_command.assert_not_called()
+        adapter.reply_message.assert_not_awaited()
+        return
+    assert [name for name, _ in seen] == ['PersonMessageReceived', 'PersonCommandSent']
+    assert seen[0][1] == seen[1][1] == bot.ap.cmd_mgr.build_context.await_args.kwargs['query_uuid']
+    assert not bot.ap.query_pool.cached_queries
     assert not processor_called
     adapter.reply_message.assert_awaited_once()
     call_args = adapter.reply_message.call_args[1]
@@ -253,9 +283,7 @@ async def test_disabled_plugin_will_not_hit():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': False}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'hello')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'hello')]
     ev = make_message_event('/hello')
     matched = await bot._match_plugin_command(ev)
     assert matched is None
@@ -271,9 +299,7 @@ async def test_custom_and_longest_prefix_matching():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'test')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'test')]
 
     # '!!test' matches '!!', command_name is 'test', command_text is 'test'
     ev1 = make_message_event('!!test foo')
@@ -300,9 +326,7 @@ async def test_admin_privilege_passed_to_cmd_context():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'admin_cmd')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'admin_cmd')]
 
     # Use real CommandManager to ensure is_admin and build_context signatures are strictly exercised
     real_cmd_mgr = CommandManager(bot.ap)
@@ -353,9 +377,7 @@ async def test_launcher_id_preserves_original_type():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'ping')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'ping')]
 
     async def mock_execute_gen(*args, **kwargs):
         ret = Mock()
@@ -401,9 +423,7 @@ async def test_telemetry_recorded_on_plugin_command_match():
             'processors': [{'processor_uuid': 'proc-plugin_a', 'enabled': True}],
         }
     )
-    bot.ap.plugin_connector.list_commands.return_value = [
-        FakeCommandManifest('author/plugin_a', 'ping')
-    ]
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/plugin_a', 'ping')]
 
     async def mock_execute_gen(*args, **kwargs):
         ret = Mock()

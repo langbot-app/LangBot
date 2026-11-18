@@ -2904,6 +2904,7 @@ class PluginManager:
                     "Plugin changed its manifest identity after registration"
                 )
             plugin_container.components = refreshed.components
+            plugin_container.registered_events = refreshed.registered_events
             plugin_container.manifest = refreshed.manifest
             plugin_container.status = refreshed.status
             if installation_runtime is not None:
@@ -3171,6 +3172,32 @@ class PluginManager:
                 f"plugin process is none: {plugin_container.manifest.metadata.author}/{plugin_container.manifest.metadata.name}:{plugin_container.manifest.metadata.version}"
             )
 
+    def _ordered_event_plugins(self, include_plugins):
+        plugins = self._plugins_for_current_scope()
+        if include_plugins is None:
+            return plugins
+        by_id = {
+            f"{plugin.manifest.metadata.author}/{plugin.manifest.metadata.name}": plugin
+            for plugin in plugins
+        }
+        return [by_id[name] for name in dict.fromkeys(include_plugins) if name in by_id]
+
+    def plugin_registrations(self, include_plugins):
+        return {
+            f"{plugin.manifest.metadata.author}/{plugin.manifest.metadata.name}": {
+                "events": plugin.registered_events,
+                "commands": [
+                    component.manifest.metadata.name
+                    for component in plugin.components
+                    if component.manifest.kind == Command.__kind__
+                ],
+            }
+            for plugin in self._ordered_event_plugins(include_plugins)
+            if plugin.enabled
+            and plugin.status
+            == runtime_plugin_container.RuntimeContainerStatus.INITIALIZED
+        }
+
     async def emit_event(
         self, event_context: EventContext, include_plugins: list[str] | None = None
     ) -> tuple[
@@ -3181,7 +3208,7 @@ class PluginManager:
         emitted_plugins: list[runtime_plugin_container.PluginContainer] = []
         response_sources: list[dict[str, typing.Any]] = []
 
-        for plugin in self._plugins_for_current_scope():
+        for plugin in self._ordered_event_plugins(include_plugins):
             if (
                 plugin.status
                 != runtime_plugin_container.RuntimeContainerStatus.INITIALIZED
@@ -3194,13 +3221,9 @@ class PluginManager:
             if plugin._runtime_plugin_handler is None:
                 continue
 
-            # Filter by include_plugins if specified (pipeline-specific filtering)
-            if include_plugins is not None:
-                plugin_id = (
-                    f"{plugin.manifest.metadata.author}/{plugin.manifest.metadata.name}"
-                )
-                if plugin_id not in include_plugins:
-                    continue
+            registered = getattr(plugin, "registered_events", None)
+            if registered is not None and event_context.event_name not in registered:
+                continue
 
             if not any(
                 component.manifest.kind == EventListener.__kind__

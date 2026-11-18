@@ -262,6 +262,7 @@ class QueryPool:
         variables: dict[str, typing.Any] | None = None,
         execution_context: ExecutionContext | None = None,
         route_id: str | None = None,
+        enqueue: bool = True,
     ) -> pipeline_query.Query:
         """Create a query and cache it under an opaque, Workspace-scoped key.
 
@@ -316,7 +317,8 @@ class QueryPool:
             object.__setattr__(query, 'query_uuid', query_uuid)
             object.__setattr__(query, '_execution_context', execution_context)
 
-            self.queries.append(query)
+            if enqueue:
+                self.queries.append(query)
             self.cached_queries[(execution_context.workspace_uuid, query_uuid)] = query
             self.active_query_count_by_workspace[execution_context.workspace_uuid] = (
                 self.active_query_count_by_workspace.get(execution_context.workspace_uuid, 0) + 1
@@ -338,6 +340,14 @@ class QueryPool:
             self.query_count_by_scope[counter_key] = self.query_count_by_scope.get(counter_key, 0) + 1
             self.condition.notify_all()
             return query
+
+    async def enqueue_registered(self, query):
+        async with self.condition:
+            scope = get_query_execution_context(query)
+            if self.cached_queries.get((scope.workspace_uuid, query.query_uuid)) is not query:
+                raise QueryNotFoundError('Query is no longer registered')
+            self.queries.append(query)
+            self.condition.notify_all()
 
     def get_query_count(self, execution_context: ExecutionContext) -> int:
         """Return the lifetime query count for one active placement scope."""

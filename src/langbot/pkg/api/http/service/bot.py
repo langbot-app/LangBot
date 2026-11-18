@@ -664,7 +664,10 @@ class BotService:
             if target_type != 'discard':
                 if 'policy' in raw_binding:
                     policy = message_policy_schema.validate_policy(
-                        raw_binding['policy'], field=f'event_bindings[{index}].policy'
+                        message_policy_schema.retain_plugin_selection(
+                            raw_binding['policy'], current_policies.get(str(binding_id))
+                        ),
+                        field=f'event_bindings[{index}].policy',
                     )
                 else:
                     policy = current_policies.get(str(binding_id))
@@ -734,6 +737,14 @@ class BotService:
             if not isinstance(item, dict):
                 raise ValueError('Each command processor binding must be an object')
             processor_uuid = item.get('processor_uuid')
+            if 'plugin_id' in item and not processor_uuid:
+                plugin_id = command_processor.plugin_id_from_component_ref(f'plugin:{item["plugin_id"]}')
+                enabled_binding = item.get('enabled', True)
+                if not plugin_id or plugin_id in seen_plugins or not isinstance(enabled_binding, bool):
+                    raise ValueError('Invalid command plugin binding')
+                seen_plugins.add(plugin_id)
+                normalized_processors.append({'plugin_id': plugin_id, 'enabled': enabled_binding})
+                continue
             if not isinstance(processor_uuid, str) or not processor_uuid.strip():
                 raise ValueError('Command processor UUID is required')
             processor_uuid = processor_uuid.strip()
@@ -768,6 +779,18 @@ class BotService:
                 'selected': list(dict.fromkeys(selected)),
             }
         return normalized
+
+    async def get_plugin_registrations(self, context, bot_uuid, route_id=None):
+        bot = await self.get_bot(context, bot_uuid, include_secret=False)
+        if bot is None:
+            return None
+        route = next((r for r in bot.get('event_bindings', []) if r.get('id') == route_id), {})
+        policy = message_policy_schema.resolve_policy(bot.get('message_policy'), route.get('policy'))
+        await self.ap.plugin_connector.require_workspace_context(context)
+        plugins = await self.ap.plugin_connector.list_plugin_registrations(
+            message_policy_schema.enabled_plugins(policy)
+        )
+        return {'plugins': plugins}
 
     def get_message_policy_metadata(self) -> dict[str, typing.Any]:
         """Describe the message policy for editors: form metadata and reference values.
@@ -903,6 +926,9 @@ class BotService:
         plugin_ids = []
         for binding in settings.get('processors', []):
             if not binding.get('enabled', True):
+                continue
+            if binding.get('plugin_id'):
+                plugin_ids.append(binding['plugin_id'])
                 continue
             agent = await self._get_agent_entity(context, binding['processor_uuid'])
             if agent is not None and agent.kind == command_processor.COMMAND_PROCESSOR_KIND:
@@ -1056,9 +1082,18 @@ class BotService:
         """Update bot"""
         workspace_uuid = require_workspace_uuid(context)
         current_bindings = None
-        if isinstance(bot_data, dict) and bot_data.get('event_bindings'):
+        if isinstance(bot_data, dict) and (
+            bot_data.get('event_bindings') or isinstance(bot_data.get('message_policy'), dict)
+        ):
             stored = await self.get_bot(context, bot_uuid, include_secret=False)
             current_bindings = (stored or {}).get('event_bindings')
+            if 'message_policy' in bot_data:
+                bot_data = {
+                    **bot_data,
+                    'message_policy': message_policy_schema.retain_plugin_selection(
+                        bot_data['message_policy'], (stored or {}).get('message_policy')
+                    ),
+                }
         update_data = await self._prepare_bot_data(
             context, bot_data, include_uuid=False, current_bindings=current_bindings
         )

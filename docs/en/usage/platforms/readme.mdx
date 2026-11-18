@@ -5,6 +5,8 @@ description: "Connect LangBot to messaging platforms: Discord, Telegram, Slack, 
 
 Bots are used to receive message events from messaging platforms and call pipelines to process messages.
 
+For incoming messages, `message_policy.plugins` enables a plugin's commands and event listeners together. New bots enable all plugins. To select plugins, set `enable_all` to `false` and list `{author, name}` objects in `plugins`. A route can override this selection in `policy.plugins`; the Messaging processor's plugin list authorizes AI tools separately.
+
 ![arch](/images/zh/deploy/bots/arch.png)
 
 

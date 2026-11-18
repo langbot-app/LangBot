@@ -522,7 +522,7 @@ async def test_sdk_recovery_dispatches_new_attempt_and_preserves_source(
     ap.sess_mgr = SimpleNamespace(get_session=AsyncMock(side_effect=lambda execution_query: execution_query.session))
 
     async def emit_event(event, bound_plugins):
-        assert bound_plugins == ['langbot-team/LocalAgent']
+        assert bound_plugins is None
         assert event.response_text == 'MASKED'
         event.reply_message_chain = message.MessageChain([message.Plain(text='wrapped:' + event.response_text)])
         return EventContext.from_event(event)

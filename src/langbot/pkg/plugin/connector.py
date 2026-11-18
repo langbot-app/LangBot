@@ -1379,6 +1379,11 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
         bindings: list[InstallationBinding] = (
             [self._legacy_oss_bridge_binding(execution_context)] if self.runtime_profile == 'oss_dev' else []
         )
+        if include_plugins is not None:
+            position = {name: index for index, name in enumerate(include_plugins)}
+            settings = sorted(
+                settings, key=lambda item: position.get(f'{item.plugin_author}/{item.plugin_name}', len(position))
+            )
         for setting in settings:
             plugin_id = f'{setting.plugin_author}/{setting.plugin_name}'
             if not include_disabled and not setting.enabled:
@@ -2848,6 +2853,19 @@ class PluginRuntimeConnector(ManagedRuntimeConnector):
                 query_uuid=query_uuid,
                 include_plugins=bound_plugins,
             )
+
+    async def list_plugin_registrations(self, include_plugins):
+        if not self.is_enable_plugin or not self._runtime_available():
+            return {}
+        handler = self._runtime_handler()
+        registrations = {}
+        for binding in await self._operation_bindings(include_plugins=include_plugins):
+            with handler.installation_scope(binding):
+                scoped = await handler.list_plugin_registrations(include_plugins)
+            if scoped is None:
+                return None
+            registrations.update(scoped)
+        return registrations
 
     async def list_commands(self, bound_plugins: list[str] | None = None) -> list[ComponentManifest]:
         if not self.is_enable_plugin or not self._runtime_available():

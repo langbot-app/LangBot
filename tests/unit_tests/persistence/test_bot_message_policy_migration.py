@@ -24,6 +24,78 @@ from langbot.pkg.message_policy import schema as policy_schema
 migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0056_bot_message_policy')
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize('all_plugins', [False, True])
+async def test_bot_plugin_selection_round_trip(database, all_plugins, caplog):
+    selection = importlib.import_module('langbot.pkg.persistence.alembic.versions.0057_bot_plugin_selection')
+    caplog.set_level('INFO', logger=selection.__name__)
+
+    def scenario(conn):
+        metadata = sa.MetaData()
+        bots, pipelines = _tables(metadata)
+        bots.append_column(sa.Column('command_settings', sa.JSON))
+        bots.append_column(sa.Column('message_policy', sa.JSON))
+        pipelines.append_column(sa.Column('extensions_preferences', sa.JSON))
+        agents = sa.Table(
+            'agents',
+            metadata,
+            *(sa.Column(key, sa.String) for key in ('uuid', 'workspace_uuid', 'kind', 'component_ref')),
+        )
+        metadata.create_all(conn)
+
+        def plugin(name):
+            return {'author': 'owner', 'name': name}
+
+        for name in ('A', 'D'):
+            conn.execute(
+                pipelines.insert().values(
+                    uuid=name,
+                    workspace_uuid='ws',
+                    config={},
+                    extensions_preferences={
+                        'enable_all_plugins': all_plugins and name == 'D',
+                        'plugins': [plugin(name)],
+                    },
+                )
+            )
+        routes = [route(name, 'pipeline', name) for name in ('A', 'D')]
+        routes[0]['policy'] = {'output': {}}
+        settings = {'processors': [{'processor_uuid': 'cmd'}, {'plugin_id': 'owner/C'}]}
+        conn.execute(
+            agents.insert().values(
+                uuid='cmd', workspace_uuid='ws', kind='command_processor', component_ref='plugin:owner/B'
+            )
+        )
+        conn.execute(
+            bots.insert().values(
+                uuid='bot',
+                workspace_uuid='ws',
+                command_settings=settings,
+                event_bindings=routes,
+                message_policy={'trigger': {}},
+            )
+        )
+        with patch.object(selection, 'op', Operations(MigrationContext.configure(conn))):
+            selection.upgrade()
+            migrated = conn.execute(sa.select(bots)).mappings().one()
+            default = migrated['message_policy']['plugins']
+            assert default['enable_all'] is all_plugins
+            if not all_plugins:
+                assert default['plugins'] == list(map(plugin, 'ADBC'))
+            for name, binding in zip('AD', migrated['event_bindings']):
+                policy = binding.get('policy', {}).get('plugins', default)
+                if not policy['enable_all']:
+                    assert policy['plugins'] == list(map(plugin, name + 'BC'))
+            assert len([record for record in caplog.records if record.name == selection.__name__]) == 1
+            selection.downgrade()
+        restored = conn.execute(sa.select(bots)).mappings().one()
+        assert restored['event_bindings'] == routes
+        assert restored['command_settings'] == settings
+        assert restored['message_policy'] == {'trigger': {}}
+
+    await database(scenario)
+
+
 def legacy_config(prefix: str, *, limitation: int = 60, at_sender: bool = True) -> dict:
     """A full pre-policy Messaging config, distinguishable by its settings."""
     return {

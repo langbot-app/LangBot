@@ -14,7 +14,6 @@ from ..entity.persistence import pipeline as persistence_pipeline
 from . import stage
 import langbot_plugin.api.entities.builtin.platform.message as platform_message
 import langbot_plugin.api.entities.builtin.provider.message as provider_message
-import langbot_plugin.api.entities.events as events
 from ..utils import importutil
 from ..api.http.authz import WorkspaceRequiredError
 from ..api.http.context import ExecutionContext, PrincipalContext, PrincipalType, RequestContext
@@ -26,7 +25,6 @@ from ..i18n.workspace import get_workspace_language
 from ..agent.runner.config_resolver import RunnerConfigResolver
 from .extension_preferences import normalize_extension_preferences
 
-import langbot_plugin.api.entities.builtin.provider.session as provider_session
 import langbot_plugin.api.entities.builtin.pipeline.query as pipeline_query
 
 from . import (
@@ -640,43 +638,6 @@ class RuntimePipeline:
             self.ap.logger.error(f'Failed to record query start: {e}')
 
         try:
-            # Get bound plugins for this pipeline
-            bound_plugins = query.variables.get('_pipeline_bound_plugins', None)
-
-            # ======== 触发 MessageReceived 事件 ========
-            event_type = (
-                events.PersonMessageReceived
-                if query.launcher_type == provider_session.LauncherTypes.PERSON
-                else events.GroupMessageReceived
-            )
-
-            event_obj = event_type(
-                query=query,
-                launcher_type=query.launcher_type.value,
-                launcher_id=query.launcher_id,
-                sender_id=query.sender_id,
-                message_event=query.message_event,
-                message_chain=query.message_chain,
-            )
-
-            await self._assert_execution_active(query)
-            event_ctx = await self.ap.plugin_connector.emit_event(event_obj, bound_plugins)
-            await self._assert_execution_active(query)
-
-            if event_ctx.is_prevented_default():
-                self.ap.logger.debug(
-                    f'MessageReceived event prevented default for query {query.query_id}, pipeline={pipeline_name}'
-                )
-                from .monitoring_helper import mark_plugin_handled
-
-                mark_plugin_handled(query, event_ctx)
-                return
-
-            # The Runtime returns a deserialized event, not the original Query.
-            # Carry plugin message edits into the following Pipeline stages.
-            query.message_chain = event_ctx.event.message_chain
-            query.message_event.message_chain = query.message_chain
-
             self.ap.logger.debug(f'Processing query {query.query_id}')
 
             await self._execute_from_stage(0, query)
