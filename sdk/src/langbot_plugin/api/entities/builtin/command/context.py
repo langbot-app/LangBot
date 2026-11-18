@@ -113,6 +113,15 @@ class ExecuteContext(WorkspaceExecutionScope):
     privilege: int
     """发起人权限"""
 
+    config: dict[str, Any] = pydantic.Field(default_factory=dict)
+    """Command configuration from the Host.
+
+    Values follow the ``spec.config`` form schema declared in the Command
+    component manifest, filled from the bound command processor instance.
+    Empty when the command declares no configuration or the Host predates
+    command configuration support.
+    """
+
     @pydantic.model_validator(mode="after")
     def align_session_execution_scope(self) -> ExecuteContext:
         self.inherit_execution_scope(self.session)
