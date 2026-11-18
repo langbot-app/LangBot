@@ -111,6 +111,42 @@ class FakeCommandManifest:
         self.metadata = SimpleNamespace(name=name)
 
 
+async def test_disabled_listener_and_command_share_entry_selection():
+    bot = make_bot(command_settings={'processors': [{'plugin_id': 'author/disabled'}]})
+    bot.execution_context = ExecutionContext(instance_uuid='inst-1', workspace_uuid='ws-1', placement_generation=1)
+    bot.ap.query_pool = QueryPool()
+    runtime = MessagePolicyRuntime(
+        bot.ap, {'plugins': {'enable_all': False, 'plugins': [{'author': 'author', 'name': 'enabled'}]}}
+    )
+    bot.ap.message_policy_mgr = SimpleNamespace(bind_query=AsyncMock(side_effect=runtime.attach))
+    bot.ap.plugin_connector.emit_event = AsyncMock(side_effect=lambda event, plugins: EventContext.from_event(event))
+    bot.ap.plugin_connector.list_commands.return_value = [FakeCommandManifest('author/disabled', 'hello')]
+    event = make_message_event('/hello')
+    await bot._begin_message(event, Mock(spec=AbstractMessagePlatformAdapter))
+    assert bot.ap.plugin_connector.emit_event.await_args.args[1] == ['author/enabled']
+    assert await bot._match_plugin_command(event) is None
+    bot.ap.plugin_connector.list_commands.assert_awaited_once_with(['author/enabled'])
+
+
+async def test_onebot_recall_notifies_selected_plugins_without_consuming_event():
+    from langbot.pkg.platform.adapters.aiocqhttp.event_converter import AiocqhttpEventConverter
+
+    bot = make_bot()
+    bot.bot_entity.message_policy = {
+        'plugins': {'enable_all': False, 'plugins': [{'author': 'author', 'name': 'audit'}]}
+    }
+    bot.ap.plugin_connector.require_workspace_context = AsyncMock()
+    bot.ap.plugin_connector.emit_event = AsyncMock()
+    bot._dispatch_eba_event_to_processor = AsyncMock()
+    event = AiocqhttpEventConverter.notice_to_eba(
+        SimpleNamespace(notice_type='friend_recall', message_id=23, user_id=1)
+    )
+    await bot._handle_platform_event_body(event, Mock())
+    hook, plugins = bot.ap.plugin_connector.emit_event.await_args.args
+    assert (hook.event_name, hook.message_id, plugins) == ('MessageDeleted', 23, ['author/audit'])
+    bot._dispatch_eba_event_to_processor.assert_awaited_once()
+
+
 @pytest.mark.asyncio
 async def test_non_message_received_event_does_not_hit():
     """Non message.received event (e.g. MemberJoinedEvent) does not match plugin command."""
@@ -219,7 +255,7 @@ async def test_matched_command_skips_processors_and_pipeline(prevent):
         bot.ap.cmd_mgr.execute_command.assert_not_called()
         adapter.reply_message.assert_not_awaited()
         return
-    assert [name for name, _ in seen] == ['PersonMessageReceived', 'PersonCommandSent']
+    assert [name for name, _ in seen] == ['MessageReceived', 'PersonMessageReceived', 'PersonCommandSent']
     assert seen[0][1] == seen[1][1] == bot.ap.cmd_mgr.build_context.await_args.kwargs['query_uuid']
     assert not bot.ap.query_pool.cached_queries
     assert not processor_called

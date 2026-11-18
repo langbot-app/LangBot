@@ -45,6 +45,7 @@ from ..workspace.errors import WorkspaceInvariantError
 
 from .logger import EventLogger
 from ..plugin.message_received import message_received_event
+from ..message_policy import schema as policy_schema
 from ..utils import constants
 from .adapter_names import canonical_adapter_name
 from .command_registration import PlatformCommandEvent, PlatformCommandRegistrar
@@ -1188,26 +1189,22 @@ class RuntimeBot:
         adapter: abstract_platform_adapter.AbstractMessagePlatformAdapter,
         execution_id: str | None = None,
         node: str = '',
-    ) -> bool:
-        """Attempt to match and execute a plugin command within event delivery scope."""
+    ) -> bool | dict:
+        """Match a plugin command, returning its trace if policy blocked delivery."""
         matched = await self._match_plugin_command(event)
         if matched is None:
             return False
         plugin_id, cmd_name, cmd_text, full_cmd_text, cmd_config, processor_uuid = matched
         query = getattr(event, '_entry_query', None)
         runtime = getattr(query, '_message_policy', None)
-        if runtime is not None:
-            if not runtime.check_access(query.launcher_type.value, query.launcher_id, query.sender_id).allowed:
-                return True
-            if query.launcher_type == provider_session.LauncherTypes.GROUP and not await runtime.match_group_rules(
-                query
-            ):
-                return True
-            if not await runtime.acquire_rate_limit(query):
-                return True
-        try:
-            if runtime is not None and not (await runtime.filter_inbound(query, cmd_text)).allowed:
-                return True
+        async with runtime.admit(query, cmd_text) if runtime is not None else contextlib.nullcontext() as item:
+            if item:
+                binding = dict(
+                    getattr(event, '_selected_route', None) or {},
+                    target_type='plugin_command',
+                    target_uuid=f'{plugin_id}/{cmd_name}',
+                )
+                return await self._record_policy_drop(event, binding, item)
             await self._execute_matched_plugin_command(
                 event=event,
                 adapter=adapter,
@@ -1220,9 +1217,6 @@ class RuntimeBot:
                 execution_id=execution_id,
                 node=node,
             )
-        finally:
-            if runtime is not None:
-                await runtime.release_rate_limit(query)
         return True
 
     async def _execute_matched_plugin_command(
@@ -1431,9 +1425,14 @@ class RuntimeBot:
         try:
             object.__setattr__(event, '_entry_query', query)
             await self.ap.message_policy_mgr.bind_query(query)
+            await self._notify_platform_listeners(event, query=query)
             ctx = await self.ap.plugin_connector.emit_event(message_received_event(query), query._listener_plugins)
             object.__setattr__(query, '_message_received_dispatched', True)
             command_handled = ctx.is_prevented_default()
+            if command_handled:
+                from ..pipeline import monitoring_helper
+
+                monitoring_helper.mark_plugin_handled(query, ctx)
             query.message_chain = event.message_chain = ctx.event.message_chain
             query.message_event.message_chain = query.message_chain
             return query, command_handled
@@ -1457,6 +1456,20 @@ class RuntimeBot:
             command_handled = False
             if isinstance(event, platform_events.MessageReceivedEvent):
                 query, command_handled = await self._begin_message(event, adapter)
+                if command_handled:
+                    from ..pipeline import monitoring_helper
+
+                    owner = monitoring_helper.get_handled_by(query)
+                    results.append(
+                        await self._record_event_route_trace(
+                            event_type=event.type,
+                            status='delivered',
+                            target_type='plugin',
+                            target_uuid=owner,
+                            text=f'{event.type} handled by {owner}',
+                            binding=event._selected_route,
+                        )
+                    )
             command_settings = getattr(self.bot_entity, 'command_settings', None) or {}
             if (
                 isinstance(event, platform_events.MessageReceivedEvent)
@@ -1473,7 +1486,10 @@ class RuntimeBot:
                     )
                 ]
                 cmd_results = await asyncio.gather(*cmd_tasks, return_exceptions=True)
-                if cmd_results and cmd_results[0] is True:
+                if cmd_results and isinstance(cmd_results[0], dict):
+                    command_handled = True
+                    results = cmd_results
+                elif cmd_results and cmd_results[0] is True:
                     command_handled = True
                     results = [None]
                 elif cmd_results and isinstance(cmd_results[0], BaseException):
@@ -1489,6 +1505,11 @@ class RuntimeBot:
                 subscriptions = self._get_event_bindings_from_value(getattr(self.bot_entity, 'plugin_processors', []))
                 seen = set()
                 tasks = [self._run_event_delivery(primary_handler, event, adapter, execution_id=execution_id)]
+                if (
+                    not isinstance(event, platform_events.MessageReceivedEvent)
+                    and getattr(self.ap, 'plugin_connector', None) is not None
+                ):
+                    tasks.append(self._run_event_delivery(self._notify_platform_listeners, event))
                 for subscription in subscriptions:
                     processor_uuid = subscription.get('processor_uuid')
                     if not processor_uuid or processor_uuid in seen or not subscription.get('enabled', True):
@@ -1543,6 +1564,28 @@ class RuntimeBot:
             async with tenant_scope(self.workspace_uuid):
                 return await handler(*args, **kwargs)
         return await handler(*args, **kwargs)
+
+    async def _notify_platform_listeners(self, event, query=None):
+        try:
+            hook = self._eba_event_to_plugin_event(event)
+            if hook is None:
+                return
+            hook.inherit_execution_scope(self.execution_context)
+            if query is not None:
+                hook.query = query
+                hook.query_uuid = query.query_uuid
+                listeners = query._listener_plugins
+            else:
+                route = self._resolve_eba_event_binding(event, event.type) or {}
+                policy = policy_schema.resolve_policy(
+                    getattr(self.bot_entity, 'message_policy', None), route.get('policy')
+                )
+                await self.ap.plugin_connector.require_workspace_context(self.execution_context)
+                listeners = policy_schema.enabled_plugins(policy)
+            if listeners != []:
+                await self.ap.plugin_connector.emit_event(hook, listeners)
+        except Exception as exc:
+            await self.logger.warning(f'Plugin notification for {event.type} failed: {exc}')
 
     async def _dispatch_plugin_subscription(self, event, adapter, processor_uuid, execution_id=None):
         event_type = event.type
@@ -1796,7 +1839,70 @@ class RuntimeBot:
                 text=f'Event {event_type} target agent has no runner: {target_uuid}',
             )
 
+        query = getattr(event, '_entry_query', None)
+        async with contextlib.AsyncExitStack() as stack:
+            altered = None
+            if query is not None and target_type == 'agent':
+                runtime = query._message_policy
+                group = query.launcher_type == provider_session.LauncherTypes.GROUP
+                query.message_chain = query.message_chain.model_copy(deep=True)
+                item = await stack.enter_async_context(runtime.admit(query))
+                if item:
+                    return await self._record_policy_drop(event, event_binding, item)
+                event = event.model_copy(update={'message_chain': query.message_chain})
+                query.message_event.message_chain = query.message_chain
+                hook = plugin_events.GroupNormalMessageReceived if group else plugin_events.PersonNormalMessageReceived
+                ctx = await self.ap.plugin_connector.emit_event(
+                    hook(
+                        launcher_type=query.launcher_type.value,
+                        launcher_id=query.launcher_id,
+                        sender_id=query.sender_id,
+                        query=query,
+                        message_event=query.message_event,
+                        message_chain=query.message_chain,
+                        text_message=str(query.message_chain),
+                    ),
+                    query._listener_plugins,
+                )
+                if ctx.is_prevented_default():
+                    from ..pipeline import monitoring_helper
+
+                    monitoring_helper.mark_plugin_handled(query, ctx)
+                    if ctx.event.reply_message_chain is not None:
+                        await runtime.send_command_reply(query, ctx.event.reply_message_chain)
+                    return await self._record_event_route_trace(
+                        event_type=event_type,
+                        binding=event_binding,
+                        target_type='plugin',
+                        status='delivered',
+                        target_uuid=monitoring_helper.get_handled_by(query),
+                        text=f'{hook.__name__} handled by plugin',
+                    )
+                altered = ctx.event.user_message_alter
+            return await self._deliver_runner_event(event, adapter, execution_id, event_binding, binding, altered)
+
+    async def _record_policy_drop(self, event, binding, item):
+        reason = policy_schema.drop_reason(self.bot_entity.uuid, binding, item)
+        return await self._record_event_route_trace(
+            event_type=event.type,
+            binding=binding,
+            status='discarded',
+            failure_code='message_policy',
+            reason=reason,
+            text=reason,
+        )
+
+    async def _deliver_runner_event(self, event, adapter, execution_id, event_binding, binding, altered):
+        target_type = event_binding['target_type']
+        target_uuid = event_binding.get('target_uuid')
+        event_type = event.type
         envelope = self._eba_event_to_agent_envelope(event, adapter, execution_id)
+        if altered is not None:
+            if isinstance(altered, str):
+                envelope.input = AgentInput(text=altered, contents=[{'type': 'text', 'text': altered}])
+            else:
+                parts = altered if isinstance(altered, list) else [altered]
+                envelope.input = AgentInput(text=''.join(part.text or '' for part in parts), contents=parts)
         if target_type == 'agent' and isinstance(event, platform_events.MessageReceivedEvent):
             envelope.delivery.supports_streaming = True
         if target_type == 'event_processor':

@@ -334,6 +334,8 @@ class AgentRunOrchestrator:
             source=(adapter_context or {}).get('_platform_event')
             or getattr((adapter_context or {}).get('_query'), 'message_event', None),
             delivery_adapter=(adapter_context or {}).get('_recovery_delivery_adapter'),
+            policy_query=getattr((adapter_context or {}).get('_platform_event'), '_entry_query', None),
+            agent_hooks=binding.processor_type == 'agent',
         )
         available_apis = context.get('context', {}).get('available_apis')
         run_authorization = {

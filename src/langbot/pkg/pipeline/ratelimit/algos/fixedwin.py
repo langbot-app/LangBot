@@ -41,6 +41,34 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         self.containers = OrderedDict()
         self._last_cleanup = time.monotonic()
 
+    @staticmethod
+    def _session_name(query, launcher_type, launcher_id):
+        context = get_query_execution_context(query)
+        return ':'.join(
+            map(
+                str,
+                (
+                    context.instance_uuid,
+                    context.workspace_uuid,
+                    context.placement_generation,
+                    query.bot_uuid,
+                    query.pipeline_uuid,
+                    launcher_type,
+                    launcher_id,
+                ),
+            )
+        )
+
+    def would_drop(self, query):
+        config = query.pipeline_config['safety']['rate-limit']
+        container = self.containers.get(self._session_name(query, query.launcher_type.value, query.launcher_id))
+        now = int(time.time())
+        return (
+            config['strategy'] == 'drop'
+            and container is not None
+            and container.records.get(now - now % config['window-length'], 0) >= config['limitation']
+        )
+
     async def require_access(
         self,
         query: pipeline_query.Query,
@@ -50,18 +78,7 @@ class FixedWindowAlgo(algo.ReteLimitAlgo):
         # 加锁，找容器
         container: SessionContainer = None
 
-        execution_context = get_query_execution_context(query)
-        session_name = ':'.join(
-            (
-                execution_context.instance_uuid,
-                execution_context.workspace_uuid,
-                str(execution_context.placement_generation),
-                str(getattr(query, 'bot_uuid', '')),
-                str(getattr(query, 'pipeline_uuid', '')),
-                str(launcher_type),
-                str(launcher_id),
-            )
-        )
+        session_name = self._session_name(query, launcher_type, launcher_id)
 
         async with self.containers_lock:
             container = self.containers.get(session_name)

@@ -312,7 +312,7 @@ class RuntimePipeline:
             except Exception as e:
                 self.ap.logger.error(f'Failed to record error to monitoring: {e}')
 
-    def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
+    async def _mark_stage_interrupt(self, query: pipeline_query.Query, stage_name: str) -> None:
         """Make rule-based drops visible: log them and attribute them in monitoring."""
         from .monitoring_helper import FILTER_STAGES, mark_stage_interrupt
 
@@ -321,6 +321,37 @@ class RuntimePipeline:
         session = f'{getattr(query.launcher_type, "value", query.launcher_type)}_{query.launcher_id}'
         self.ap.logger.info(f'Query {query.query_id} ({session}) stopped by pipeline stage {stage_name}')
         mark_stage_interrupt(query, stage_name)
+        from ..message_policy import manager, schema
+
+        runtime = manager.get_query_policy(query)
+        if runtime is None or not runtime.bot_uuid:
+            return
+        bot = self.ap.platform_mgr.find_runtime_bot(get_query_execution_context(query), runtime.bot_uuid)
+        if bot is None:
+            return
+        route = manager.select_route(
+            bot.bot_entity.event_bindings, route_id=runtime.route_id, pipeline_uuid=query.pipeline_uuid
+        )
+        item = {
+            'BanSessionCheckStage': 'trigger.access-control',
+            'GroupRespondRuleCheckStage': 'trigger.group-respond-rules',
+            'RequireRateLimitOccupancy': 'safety.rate-limit',
+            'PreContentFilterStage': 'safety.content-filter',
+            'PostContentFilterStage': 'safety.content-filter',
+        }[stage_name]
+        item = query.variables.get('_policy_filter_item', item)
+        reason = schema.drop_reason(runtime.bot_uuid, route, item)
+        query.variables['message_policy_drop'] = reason
+        await bot._record_event_route_trace(
+            event_type='message.received',
+            binding=route,
+            target_type='pipeline',
+            target_uuid=query.pipeline_uuid,
+            status='discarded',
+            failure_code='message_policy',
+            text=reason,
+            reason=reason,
+        )
 
     async def _execute_from_stage(
         self,
@@ -368,7 +399,7 @@ class RuntimePipeline:
 
                 if result.result_type == pipeline_entities.ResultType.INTERRUPT:
                     self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
-                    self._mark_stage_interrupt(query, stage_container.inst_name)
+                    await self._mark_stage_interrupt(query, stage_container.inst_name)
                     break
                 elif result.result_type == pipeline_entities.ResultType.CONTINUE:
                     query = result.new_query
@@ -389,7 +420,7 @@ class RuntimePipeline:
 
                     if sub_result.result_type == pipeline_entities.ResultType.INTERRUPT:
                         self.ap.logger.debug(f'Stage {stage_container.inst_name} interrupted query {query.query_id}')
-                        self._mark_stage_interrupt(query, stage_container.inst_name)
+                        await self._mark_stage_interrupt(query, stage_container.inst_name)
                         break
                     elif sub_result.result_type == pipeline_entities.ResultType.CONTINUE:
                         query = sub_result.new_query

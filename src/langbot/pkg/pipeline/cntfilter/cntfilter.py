@@ -52,6 +52,8 @@ class ContentFilterStage(stage.PipelineStage):
                 return entities.StageProcessResult(result_type=entities.ResultType.CONTINUE, new_query=query)
 
             verdict = await policy.filter_inbound(query, str(query.message_chain).strip())
+            if not verdict.allowed:
+                query.variables['_policy_filter_item'] = verdict.policy_item
             if verdict.allowed and verdict.rewritten:
                 query.message_chain = platform_message.MessageChain([platform_message.Plain(text=verdict.text)])
             return self._result(query, verdict)

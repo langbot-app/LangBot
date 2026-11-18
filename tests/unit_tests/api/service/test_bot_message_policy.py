@@ -13,6 +13,64 @@ from langbot.pkg.message_policy import schema
 WORKSPACE = 'workspace'
 
 
+async def test_dry_run_reports_live_policy_item_without_charging_rate_limit():
+    from langbot.pkg.api.http.context import ExecutionContext
+    from langbot.pkg.message_policy.manager import MessagePolicyManager
+    from tests.factories import FakeApp, text_query
+
+    context = ExecutionContext(instance_uuid='inst', workspace_uuid=WORKSPACE, placement_generation=1)
+    app = FakeApp()
+    app.message_policy_mgr = MessagePolicyManager(app)
+    service = BotService(app)
+    policy = {'safety': {'rate-limit': {'enabled': True, 'window-length': 3600, 'limitation': 1}}}
+    binding = {
+        'target_type': 'agent',
+        'id': 'first',
+        'target_uuid': 'agent',
+        'event_pattern': 'message.received',
+        'policy': policy,
+    }
+    bot = {'event_bindings': [binding]}
+    service.get_bot = AsyncMock(return_value=bot)
+    sample = {'chat_id': 'person-1', 'message_text': 'hello', 'user_id': 'person-1'}
+    assert await service._preview_message_policy(context, 'bot', bot, binding, sample) == (None, None)
+    runtime = await app.message_policy_mgr.compile(policy, bot_uuid='bot')
+    query = text_query('hello', sender_id='person-1', pipeline_uuid=None, bot_uuid='bot')
+    object.__setattr__(query, '_execution_context', context)
+    runtime.attach(query)
+    async with runtime.admit(query) as item:
+        assert item is None
+    result = await service.dry_run_event_route(context, 'bot', 'message.received', sample)
+    assert result['failure_code'] == 'message_policy'
+    assert result['reason'] == 'route:first: safety.rate-limit'
+
+
+async def test_registration_lists_processor_scope_for_each_hook():
+    service = make_service(stored_bot={})
+    service.ap.plugin_connector = SimpleNamespace(
+        require_workspace_context=AsyncMock(),
+        list_plugin_registrations=AsyncMock(
+            return_value={
+                'a/b': {
+                    'events': [
+                        'PromptPreProcessing',
+                        'GroupCommandSent',
+                        'NormalMessageResponded',
+                        'GroupMessageReceived',
+                    ]
+                }
+            }
+        ),
+    )
+    registrations = await service.get_plugin_registrations(WORKSPACE, 'bot')
+    assert registrations['plugins']['a/b']['event_processors'] == {
+        'PromptPreProcessing': ['messaging'],
+        'GroupCommandSent': ['command'],
+        'NormalMessageResponded': ['messaging', 'agent'],
+        'GroupMessageReceived': ['messaging', 'agent', 'command'],
+    }
+
+
 def make_service(*, stored_bot=None, runtime_bot=None):
     """A BotService whose Messaging targets all exist."""
     ap = SimpleNamespace(

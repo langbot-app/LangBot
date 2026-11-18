@@ -157,6 +157,13 @@ def enabled_plugins(policy: dict) -> list[str] | None:
     return [f'{item["author"]}/{item["name"]}' for item in selection.get('plugins', [])]
 
 
+def drop_reason(bot_uuid, route, item):
+    section, block = item.split('.', 1)
+    override = (route or {}).get('policy') or {}
+    scope = f'route:{route.get("id")}' if override.get(section, {}).get(block) else f'bot:{bot_uuid}'
+    return f'{scope}: {item}'
+
+
 def retain_plugin_selection(incoming, stored):
     if not isinstance(incoming, dict):
         return incoming

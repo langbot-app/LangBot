@@ -13,7 +13,7 @@ are not necessarily the catalog operation IDs.
 
 ## Endpoint
 
-`create_bot` and `update_bot` accept `bot_data.message_policy.plugins`, for example `{"enable_all":false,"plugins":[{"author":"example","name":"assistant"}]}`. Selection applies to commands and listeners; use `event_bindings[].policy.plugins` for a route override. `GET /api/v1/platform/bots/<uuid>/plugin-registrations` optionally takes `route_id`; `plugins: null` means the Runtime cannot report registrations.
+`create_bot` and `update_bot` accept `bot_data.message_policy.plugins`, for example `{"enable_all":false,"plugins":[{"author":"example","name":"assistant"}]}`. Selection applies to commands and listeners; use `event_bindings[].policy.plugins` for a route override. `list_bot_plugin_registrations` and `GET /api/v1/platform/bots/<uuid>/plugin-registrations` optionally take `route_id`. Each plugin's `event_processors` maps hook names to `messaging`, `agent` or `command`; `plugins: null` means the Runtime cannot report registrations.
 
 ```
 http://<langbot-host>:5300/mcp

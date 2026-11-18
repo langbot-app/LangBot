@@ -284,6 +284,7 @@ class BotService:
                     'target_type': target_type,
                     'target_uuid': target_uuid,
                     'filters': filters,
+                    'policy': raw_binding.get('policy'),
                     'priority': priority,
                     'enabled': bool(raw_binding.get('enabled', True)),
                     # For draft bindings, current array order is the effective order
@@ -389,6 +390,36 @@ class BotService:
             event_type,
             bot_account_id=self._extract_dry_run_bot_account_id(context, event_data),
         )
+        if event_type == 'message.received' and (bot.get('message_policy') or (selected_binding or {}).get('policy')):
+            blocked, command = await self._preview_message_policy(
+                tenant_context, bot_uuid, bot, selected_binding, event
+            )
+            if command:
+                selected_binding = dict(selected_binding or {}, target_type='plugin_command', target_uuid=command)
+            if blocked:
+                reason = message_policy_schema.drop_reason(bot_uuid, selected_binding, blocked)
+                return self._diagnostic_result(
+                    matched=False,
+                    binding=selected_binding,
+                    failure_code='message_policy',
+                    reason=reason,
+                    diagnostic_steps=[
+                        *diagnostic_steps,
+                        {
+                            'step': 'message_policy',
+                            'matched': False,
+                            'failure_code': 'message_policy',
+                            'reason': reason,
+                        },
+                    ],
+                )
+            if command:
+                return self._diagnostic_result(
+                    matched=True,
+                    binding=selected_binding,
+                    reason='Registered command matched',
+                    diagnostic_steps=diagnostic_steps,
+                )
         if selected_binding is None:
             return self._diagnostic_result(
                 matched=False,
@@ -780,6 +811,61 @@ class BotService:
             }
         return normalized
 
+    async def _preview_message_policy(self, context, bot_uuid, bot, binding, event):
+        from types import SimpleNamespace
+        from langbot_plugin.api.entities.builtin.platform import message
+        from langbot_plugin.api.entities.builtin.platform.events import MessageReceivedEvent
+        from langbot_plugin.api.entities.builtin.provider.session import LauncherTypes
+        from ....platform.botmgr import PlatformManager
+
+        binding = binding or {}
+        launcher = LauncherTypes.GROUP if event.get('chat_type') == 'group' else LauncherTypes.PERSON
+        policy = message_policy_schema.resolve_policy(bot.get('message_policy'), binding.get('policy'))
+        runtime = await self.ap.message_policy_mgr.compile(policy, bot_uuid=bot_uuid, route_id=binding.get('id'))
+        account = self._extract_dry_run_bot_account_id(event.get('context'), event)
+        chain = (
+            message.MessageChain.model_validate(event['message_chain'])
+            if event.get('message_chain')
+            else message.MessageChain([message.Plain(text=str(event.get('message_text') or ''))])
+        )
+        if event.get('is_at_bot') and not event.get('message_chain'):
+            account = account or bot_uuid
+            chain.insert(0, message.At(target=account))
+        query = SimpleNamespace(
+            bot_uuid=bot_uuid,
+            launcher_type=launcher,
+            launcher_id=event.get('chat_id', ''),
+            sender_id=(event.get('sender') or {}).get('id', event.get('user_id', '')),
+            variables={},
+            pipeline_uuid=binding.get('target_uuid') if binding.get('target_type') == 'pipeline' else None,
+            adapter=SimpleNamespace(bot_account_id=account),
+            message_chain=chain,
+            pipeline_config=runtime.policy,
+            _execution_context=PlatformManager._normalize_execution_context(context, bot_uuid=bot_uuid),
+        )
+        command = None
+        text = None
+        settings = bot.get('command_settings') or {}
+        if settings.get('enabled', True) and str(chain).startswith(tuple(settings.get('prefixes') or ['/'])):
+            live_bot = self.ap.platform_mgr.find_runtime_bot(query._execution_context, bot_uuid)
+            if live_bot is not None:
+                sample = MessageReceivedEvent(
+                    chat_type='group' if launcher == LauncherTypes.GROUP else 'private',
+                    chat_id=query.launcher_id,
+                    sender={'id': query.sender_id},
+                    message_chain=chain,
+                )
+                query._listener_plugins = message_policy_schema.enabled_plugins(policy)
+                object.__setattr__(sample, '_entry_query', query)
+                await self.ap.plugin_connector.require_workspace_context(context)
+                match = await live_bot._match_plugin_command(sample)
+                if match:
+                    command, text = f'{match[0]}/{match[1]}', match[2]
+        if not command and binding.get('target_type') not in {'agent', 'pipeline'}:
+            return None, None
+        async with runtime.admit(query, text, preview=True) as blocked:
+            return blocked, command
+
     async def get_plugin_registrations(self, context, bot_uuid, route_id=None):
         bot = await self.get_bot(context, bot_uuid, include_secret=False)
         if bot is None:
@@ -790,6 +876,22 @@ class BotService:
         plugins = await self.ap.plugin_connector.list_plugin_registrations(
             message_policy_schema.enabled_plugins(policy)
         )
+        for registration in (plugins or {}).values():
+            if registration.get('events') is None:
+                registration['event_processors'] = None
+                continue
+            applicability = {}
+            for event in registration['events']:
+                if event == 'PromptPreProcessing':
+                    processors = ['messaging']
+                elif event in {'GroupCommandSent', 'PersonCommandSent'}:
+                    processors = ['command']
+                elif event in {'GroupNormalMessageReceived', 'PersonNormalMessageReceived', 'NormalMessageResponded'}:
+                    processors = ['messaging', 'agent']
+                else:
+                    processors = ['messaging', 'agent', 'command']
+                applicability[event] = processors
+            registration['event_processors'] = applicability
         return {'plugins': plugins}
 
     def get_message_policy_metadata(self) -> dict[str, typing.Any]:

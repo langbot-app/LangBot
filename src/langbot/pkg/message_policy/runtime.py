@@ -9,6 +9,7 @@ around their own work.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import dataclasses
 import os
 import random
@@ -44,6 +45,7 @@ class FilterVerdict:
     rewritten: bool = False
     user_notice: str = ''
     console_notice: str = ''
+    policy_item: str = 'safety.content-filter'
 
 
 class MessagePolicyRuntime:
@@ -220,6 +222,27 @@ class MessagePolicyRuntime:
 
     # --------------------------------------------------------------- rate limit
 
+    @contextlib.asynccontextmanager
+    async def admit(self, query, text=None, *, preview=False):
+        launcher = query.launcher_type.value
+        if not self.check_access(launcher, query.launcher_id, query.sender_id).allowed:
+            yield 'trigger.access-control'
+        elif launcher == 'group' and not await self.match_group_rules(query):
+            yield 'trigger.group-respond-rules'
+        elif (
+            self.policy['safety']['rate-limit'].get('enabled', True) and self.rate_limiter.would_drop(query)
+            if preview
+            else not await self.acquire_rate_limit(query)
+        ):
+            yield 'safety.rate-limit'
+        else:
+            try:
+                verdict = await self.filter_inbound(query, str(query.message_chain) if text is None else text)
+                yield None if verdict.allowed else verdict.policy_item
+            finally:
+                if not preview:
+                    await self.release_rate_limit(query)
+
     async def acquire_rate_limit(self, query: pipeline_query.Query) -> bool:
         """Take one slot in the session's window; False means the message is dropped."""
         if self.policy['safety']['rate-limit'].get('enabled', True) is False:
@@ -250,6 +273,9 @@ class MessagePolicyRuntime:
                     allowed=False,
                     user_notice=result.user_notice,
                     console_notice=result.console_notice,
+                    policy_item='trigger.ignore-rules'
+                    if content_filter.name == 'content-ignore'
+                    else 'safety.content-filter',
                 )
             if result.level == filter_entities.ResultLevel.PASS:
                 message = result.replacement
@@ -314,7 +340,7 @@ class MessagePolicyRuntime:
         if self.at_sender and isinstance(message_event, platform_events.GroupMessage):
             message_chain.insert(0, platform_message.At(target=message_event.sender.id))
 
-    async def send_command_reply(self, query, chain, quote_origin=False):
+    async def prepare_reply_chain(self, query, chain):
         verdict = await self.filter_outbound(query, str(chain))
         if not verdict.allowed:
             return
@@ -323,6 +349,12 @@ class MessagePolicyRuntime:
         chain = await self.process_long_text(query, chain)
         await self.wait_force_delay()
         self.mention_sender(query.message_event, chain)
+        return chain
+
+    async def send_command_reply(self, query, chain, quote_origin=False):
+        chain = await self.prepare_reply_chain(query, chain)
+        if chain is None:
+            return
         await query.adapter.reply_message(
             message_source=query.message_event, message=chain, quote_origin=quote_origin or self.quote_origin
         )

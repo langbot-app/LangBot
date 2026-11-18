@@ -49,6 +49,73 @@ def request(key, operation='update', text='hello'):
     return ReplyStreamRequest(stream_id=key, operation=operation, text=text)
 
 
+@pytest.mark.parametrize('native', [True, False])
+async def test_agent_output_hooks_and_policy_follow_actual_delivery(native):
+    from unittest.mock import Mock
+    from tests.factories import group_text_query
+    from langbot.pkg.message_policy.runtime import MessagePolicyRuntime, FilterVerdict
+    from langbot_plugin.api.entities.context import EventContext
+
+    session, adapter, _ = make_session(native=native)
+    query = group_text_query()
+    session.source = query.message_event
+    observed = []
+
+    async def respond(event, selected):
+        observed.append((event.response_text, selected))
+        ctx = EventContext.from_event(event)
+        ctx.event.reply_message_chain = session._message('replacement')
+        return ctx
+
+    app = SimpleNamespace(plugin_connector=SimpleNamespace(emit_event=respond), logger=Mock())
+    policy = MessagePolicyRuntime(app, {'output': {'misc': {'at-sender': True, 'quote-origin': True}}})
+    policy.attach(query)
+    policy.filter_outbound = AsyncMock(return_value=FilterVerdict(True))
+    policy.process_long_text = AsyncMock(side_effect=lambda query, chain: chain)
+    policy.wait_force_delay = AsyncMock()
+    session.policy_query, session.agent_hooks = query, True
+    key = uuid4()
+    await session.apply(request(key, 'update', 'partial'))
+    await session.apply(request(key, 'finish', 'complete'))
+    assert observed == [('complete', None)]
+    policy.wait_force_delay.assert_awaited_once()
+    if native:
+        call = adapter.reply_message_chunk.await_args.kwargs
+        policy.filter_outbound.assert_not_awaited()
+        policy.process_long_text.assert_not_awaited()
+        assert call['message'][-1].text == 'complete'
+    else:
+        call = adapter.reply_message.await_args.kwargs
+        policy.filter_outbound.assert_awaited_once_with(query, 'replacement')
+        policy.process_long_text.assert_awaited_once()
+        assert call['message'][-1].text == 'replacement'
+    assert isinstance(call['message'][0], message.At)
+    assert call['quote_origin'] is True
+
+
+async def test_neutral_agent_reply_preserves_message():
+    from unittest.mock import Mock
+    from tests.factories import text_query
+    from langbot.pkg.message_policy.runtime import MessagePolicyRuntime
+    from langbot.pkg.message_policy.schema import neutral_policy
+    from langbot_plugin.api.entities.context import EventContext
+
+    session, adapter, _ = make_session(native=False)
+    query = text_query()
+    connector = SimpleNamespace(
+        emit_event=AsyncMock(side_effect=lambda event, selected: EventContext.from_event(event))
+    )
+    runtime = MessagePolicyRuntime(SimpleNamespace(plugin_connector=connector, logger=Mock()), neutral_policy())
+    runtime.attach(query)
+    session.policy_query, session.agent_hooks = query, True
+    await session.apply(request(uuid4(), 'finish', 'hello'))
+    assert adapter.reply_message.await_args.kwargs == {
+        'message_source': session.source,
+        'message': session._message('hello'),
+        'quote_origin': False,
+    }
+
+
 def proxy_for(session, *, allowed=True, advertised=True):
     if not hasattr(RunnerAPIProxy, 'reply_stream'):
         pytest.skip('SDK does not provide the optional streaming reply API')
