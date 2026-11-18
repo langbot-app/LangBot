@@ -17,6 +17,7 @@ def workspace_usage(
     root: str, stop_after_bytes: int, max_entries: int
 ) -> tuple[int, int, bool]:
     """Bound a no-follow workspace scan by both bytes and directory entries."""
+    _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
     def scan(descriptor):
@@ -101,6 +102,7 @@ finally:
 
 def run_files_present(owner: tuple[str, int, int], io_scope: str) -> bool:
     """Check one run without following links; uncertainty requires sandbox cleanup."""
+    _require_descriptor_io()
     root, device, inode = owner
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
@@ -146,10 +148,14 @@ def workspace_relative_path(mount_path: str, path: str) -> str:
     return path[len(prefix) :]
 
 
-@contextlib.contextmanager
-def _parent_directory(root: str, relative: str, *, create: bool):
+def _require_descriptor_io() -> None:
     if not hasattr(os, "O_NOFOLLOW") or os.open not in os.supports_dir_fd:
         raise ValueError("Workspace file transfer requires descriptor-relative file IO")
+
+
+@contextlib.contextmanager
+def _parent_directory(root: str, relative: str, *, create: bool):
+    _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     current = os.open("/", flags)
     try:
@@ -192,6 +198,7 @@ def read_workspace_file(root: str, relative: str, max_bytes: int) -> bytes:
 
 def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> bytes:
     """Read a bounded, stable directory tree without links or workspace staging."""
+    _require_descriptor_io()
     if (
         not isinstance(relative, str)
         or "\\" in relative
