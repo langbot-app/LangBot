@@ -2034,8 +2034,9 @@ async def test_workspace_capacity_remains_reserved_until_backend_cleanup_finishe
         await runtime.shutdown()
 
 
-def test_limit_capabilities_do_not_claim_unsupported_resources():
-    assert BoxRuntime._limit_capabilities("e2b") == {
+def test_limit_capabilities_do_not_claim_unsupported_resources(logger):
+    runtime = BoxRuntime(logger)
+    assert runtime._limit_capabilities("e2b") == {
         "timeout_sec": True,
         "idle_ttl_sec": True,
         "max_sessions": True,
@@ -2047,13 +2048,13 @@ def test_limit_capabilities_do_not_claim_unsupported_resources():
     from types import SimpleNamespace
 
     assert (
-        BoxRuntime._limit_capabilities(
-            "docker", SimpleNamespace(cpu_limit_enabled=False)
-        )["cpus"]
+        runtime._limit_capabilities("docker", SimpleNamespace(cpu_limit_enabled=False))[
+            "cpus"
+        ]
         is False
     )
     assert (
-        BoxRuntime._limit_capabilities(
+        runtime._limit_capabilities(
             "nsjail",
             SimpleNamespace(_cgroup_v2_available=False, _cgroup_v1_available=False),
         )["memory_mb"]
@@ -2092,5 +2093,46 @@ async def test_new_short_idle_ttl_wakes_reaper_waiting_on_long_interval(
         )
         await asyncio.wait_for(short_reaped.wait(), timeout=3)
         assert set(runtime._sessions) == {"long-ttl"}
+    finally:
+        await runtime.shutdown()
+
+
+@pytest.mark.anyio
+async def test_bound_generation_never_creates_missing_session(logger):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend])
+    with pytest.raises(BoxSessionNotFoundError, match="generation"):
+        await runtime.execute(_make_spec("missing", expected_session_generation="old"))
+    assert backend.started_sessions == 0
+    await runtime.shutdown()
+
+
+@pytest.mark.anyio
+async def test_bound_generation_rejects_recreated_box_with_reused_backend_name(logger):
+    backend = FakeBackend(logger)
+    runtime = BoxRuntime(logger, backends=[backend])
+    try:
+        first = await runtime.create_session(_make_spec("same-key"))
+        await runtime.delete_session("same-key")
+        second = await runtime.create_session(_make_spec("same-key"))
+        # Docker can reuse its deterministic container name on a new creation.
+        runtime._sessions["same-key"].info.backend_session_id = first[
+            "backend_session_id"
+        ]
+        assert first["session_generation"] != second["session_generation"]
+        with pytest.raises(BoxSessionNotFoundError, match="generation"):
+            await runtime.execute(
+                _make_spec(
+                    "same-key", expected_session_generation=first["session_generation"]
+                )
+            )
+        assert backend.started_sessions == 2
+        result = await runtime.execute(
+            _make_spec(
+                "same-key", expected_session_generation=second["session_generation"]
+            )
+        )
+        assert result.ok
+        assert backend.started_sessions == 2
     finally:
         await runtime.shutdown()

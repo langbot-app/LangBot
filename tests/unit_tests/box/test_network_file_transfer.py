@@ -13,7 +13,7 @@ import shlex
 from pathlib import Path
 from types import SimpleNamespace
 
-from tests.utils.artifact_store import seed_run, _artifact_store  # noqa: F401 -- fixture
+from tests.utils.artifact_store import named_key_context, seed_run, _artifact_store  # noqa: F401 -- fixture
 import uuid
 
 from aiohttp.test_utils import TestServer
@@ -33,7 +33,7 @@ from langbot_plugin.box.tenancy import namespace_session_id
 from langbot_plugin.runtime.io.connections.ws import WebSocketConnection
 from langbot_plugin.runtime.io.handler import Handler
 from langbot_plugin.runtime.security import PLUGIN_FILE_STORAGE_DIR_ENV
-from langbot.pkg.box.runner import RunnerBoxService, exported_message
+from langbot.pkg.box.runner import RunnerBoxService, exported_message, run_artifact_context
 from langbot.pkg.box.service import BoxService
 from tests.unit_tests.box.test_box_service import _ACTION_CONTEXT, _CONTEXT, make_app, make_query
 
@@ -304,16 +304,21 @@ async def test_network_import_preserves_same_name_files_from_separate_refs(netwo
     box = network_files
     query = box.query
     second = b'second attachment'
+    manager = await named_key_context(box.service.ap, box.context)
+    artifacts = box.service.ap.artifact_service
+    asset = await artifacts.create(manager, 'same.bin', second, 'application/octet-stream')
+    await artifacts.bind_run_inputs(manager, run_artifact_context(query), [asset['id']])
+    object.__setattr__(query, '_input_artifact_ids', frozenset({asset['id']}))
     object.__setattr__(
         query,
         '_input_components',
         {
             'att-a': File(name='same.bin', base64=base64.b64encode(_CONTENT).decode()),
-            'att-b': File(name='same.bin', base64=base64.b64encode(second).decode()),
+            asset['id']: File(name='same.bin'),
         },
     )
     first_import = await box.runner.import_attachments(query, ['att-a'])
-    second_import = await box.runner.import_attachments(query, ['att-b'])
+    second_import = await box.runner.import_attachments(query, [asset['id']])
     first = first_import['items'][0]
     last = second_import['items'][0]
     assert first['path'] != last['path']
@@ -340,7 +345,7 @@ async def test_network_selected_export_preserves_large_private_output_and_unsele
     item = result['items'][0]
     assert item['name'] == 'private-output.bin'
     assert item['size'] == len(_CONTENT)
-    assert 'base64' not in item
+    assert 'base64' not in item and 'content' not in item
     message = await exported_message(box.service.ap, box.query, [item['id']])
     assert _decode(message[0].base64) == _CONTENT
     assert await _command(box, f'test ! -e {shlex.quote(selected)} && cat {shlex.quote(unselected)}') == 'retained'

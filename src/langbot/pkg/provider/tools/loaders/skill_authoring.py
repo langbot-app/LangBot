@@ -431,9 +431,6 @@ class SkillToolLoader(loader.ToolLoader):
 
         base_revision = str(parameters.get('base_revision', '') or '').strip() or None
         if getattr(getattr(self.ap, 'box_service', None), 'file_transfer_mode', None) == 'network':
-            from ....box.runner import binding_for
-
-            binding_for(query)
             archive = await self.ap.box_service.export_skill_draft(query, sandbox_path)
             published = await skill_service.import_skill_zip(
                 execution_context,

@@ -24,6 +24,7 @@ class RunBoxBinding:
     session_id: str
     spec: dict
     io_scope: str
+    session_generation: str | None = None
     imported: dict = field(default_factory=dict)
     exported: dict = field(default_factory=dict)
     submitted: set = field(default_factory=set)
@@ -301,8 +302,20 @@ class RunnerBoxService:
             spec['e2b_config'] = selected_config['config']
         from ..provider.tools.loaders.skill import build_execution_mounts
 
+        generation = None
+        if self.box.file_transfer_mode == 'network':
+            generation = item.get('session_generation')
+            if not isinstance(generation, str) or not generation:
+                raise BoxValidationError(
+                    'Box Runtime does not expose session generations; upgrade Core and Box Runtime together'
+                )
         binding = RunBoxBinding(
-            run_id, box_id, spec, run_id, read_only_mounts=build_execution_mounts(self.box.ap, query)
+            run_id,
+            box_id,
+            spec,
+            run_id,
+            session_generation=generation,
+            read_only_mounts=build_execution_mounts(self.box.ap, query),
         )
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)
@@ -333,21 +346,28 @@ class RunnerBoxService:
                 binding.import_scopes.add(scope)
                 object.__setattr__(transfer, '_box_binding', replace(binding, io_scope=scope))
                 component = available[key]
+                resolved = None
                 if key in getattr(query, '_input_artifact_ids', frozenset()):
                     authorized = await self.box.ap.artifact_service.read_bound_run_input(
                         run_artifact_context(query),
                         key,
                         max_bytes=self.box._ATTACHMENT_MAX_BYTES,
                     )
-                    component = component.model_copy(
-                        update={
-                            'base64': base64.b64encode(authorized['content']).decode('ascii'),
-                            'url': '',
-                            'path': '',
-                        }
-                    )
-                transfer.message_chain = pm.MessageChain([component])
-                items = await self.box.materialize_inbound_attachments(transfer)
+                    if self.box.file_transfer_mode == 'network':
+                        resolved = (component, authorized['content'])
+                    else:
+                        component = component.model_copy(
+                            update={
+                                'base64': base64.b64encode(authorized['content']).decode('ascii'),
+                                'url': '',
+                                'path': '',
+                            }
+                        )
+                if resolved is not None:
+                    items = await self.box.materialize_inbound_attachments(transfer, resolved=resolved)
+                else:
+                    transfer.message_chain = pm.MessageChain([component])
+                    items = await self.box.materialize_inbound_attachments(transfer)
                 if not items:
                     raise BoxValidationError(f'Failed to import input attachment {key}')
                 binding.imported[key] = {'id': key, **items[0]}
@@ -373,10 +393,20 @@ class RunnerBoxService:
             items = await self.box.collect_selected_files(query, paths)
             unseen = {}
             for item in items:
-                data = base64.b64decode(item['base64'].split(';base64,')[-1])
-                fingerprint = (item.get('_outbox_path', item['name']), item['type'], hashlib.sha256(data).hexdigest())
+                if 'content' in item:
+                    data, mime_type, digest = item['content'], item['mime_type'], item['digest']
+                else:
+                    prefix, separator, payload = item['base64'].partition(';base64,')
+                    mime_type = (
+                        prefix.removeprefix('data:')
+                        if separator
+                        else (mimetypes.guess_type(item['name'])[0] or 'application/octet-stream')
+                    )
+                    data = base64.b64decode(payload if separator else prefix, validate=True)
+                    digest = hashlib.sha256(data).hexdigest()
+                fingerprint = (item.get('_outbox_path', item['name']), item['type'], digest)
                 if fingerprint not in binding.exported_fingerprints:
-                    unseen[fingerprint] = (item, len(data))
+                    unseen[fingerprint] = (item, data, mime_type)
             if len(binding.exported) + len(unseen) > 100:
                 first = next(iter(unseen.values()))[0]
                 raise export_error(
@@ -388,7 +418,7 @@ class RunnerBoxService:
                     absolute_path=True,
                 )
             total_bytes = sum(x['size'] for x in binding.exported.values())
-            batch_bytes = sum(size for _, size in unseen.values())
+            batch_bytes = sum(len(data) for _, data, _ in unseen.values())
             if unseen and total_bytes + batch_bytes > self.box._ATTACHMENT_MAX_TOTAL_BYTES:
                 first = next(iter(unseen.values()))[0]
                 raise export_error(
@@ -404,19 +434,11 @@ class RunnerBoxService:
             context = run_artifact_context(query)
             # Register the complete batch before accepting handles or removing any source file.
             async with self.box.ap.persistence_mgr.tenant_uow(context.workspace_uuid):
-                for fingerprint, (item, size) in unseen.items():
-                    encoded = item['base64']
-                    prefix, separator, payload = encoded.partition(';base64,')
-                    mime_type = (
-                        prefix.removeprefix('data:')
-                        if separator
-                        else (mimetypes.guess_type(item['name'])[0] or 'application/octet-stream')
-                    )
-                    value = base64.b64decode(payload if separator else encoded, validate=True)
+                for fingerprint, (item, data, mime_type) in unseen.items():
                     metadata = await self.box.ap.artifact_service.create_run_output(
                         context,
                         item['name'],
-                        value,
+                        data,
                         mime_type,
                     )
                     key = str(uuid.uuid4())
@@ -426,7 +448,7 @@ class RunnerBoxService:
                         'artifact_id': metadata['id'],
                         'name': item['name'],
                         'type': item['type'],
-                        'size': size,
+                        'size': len(data),
                         'mime_type': metadata['mime_type'],
                         'digest': metadata['digest'],
                     }
