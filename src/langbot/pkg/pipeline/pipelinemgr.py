@@ -642,7 +642,7 @@ class RuntimePipeline:
             if not getattr(query, '_message_received_dispatched', False):
                 await self._assert_execution_active(query)
                 ctx = await self.ap.plugin_connector.emit_event(
-                    message_received_event(query), query.variables['_pipeline_bound_plugins']
+                    message_received_event(query), query.variables.get('_pipeline_bound_plugins')
                 )
                 await self._assert_execution_active(query)
                 if ctx.is_prevented_default():
