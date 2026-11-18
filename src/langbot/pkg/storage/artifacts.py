@@ -590,10 +590,9 @@ class ArtifactService:
         owner = 'run_output', await self._authorize_run(context)
         return await self._read_owned(context, owner, artifact_id, max_bytes, run_read=True)
 
-    async def commit_run_outputs(self, context, artifact_ids, *, manager_context: RequestContext):
-        owner = 'run_output', await self._authorize_run(context)
-        manager_context = await self.resolve_manager_context(context, manager_context)
-        manager = await self._authorize(manager_context, write=True)
+    async def commit_run_outputs(
+        self, context, artifact_ids, *, manager_context: RequestContext | None = None, publication=None
+    ):
         if (
             not isinstance(artifact_ids, list)
             or not 1 <= len(artifact_ids) <= 100
@@ -602,6 +601,13 @@ class ArtifactService:
         ):
             raise ValueError('Commit requires 1 to 100 unique output asset IDs')
         async with self.ap.persistence_mgr.tenant_uow(context.workspace_uuid) as uow:
+            # Keep policy revocation and output publication in the same transaction.
+            if manager_context is None:
+                manager_context = await self.ap.artifact_publication_service.manager_for_commit(context, publication)
+            else:
+                manager_context = await self.resolve_manager_context(context, manager_context)
+            manager = await self._authorize(manager_context, write=True)
+            owner = 'run_output', await self._authorize_run(context)
             # Authorize the whole batch before pinning; lock order prevents reversed-batch deadlocks.
             rows = {
                 artifact_id: await self._row(uow, context, artifact_id, owner, lock=True, run_read=True)
@@ -611,40 +617,49 @@ class ArtifactService:
             for artifact_id, row in rows.items():
                 if row['manager_type'] is not None and (row['manager_type'], row['manager_id']) != manager:
                     raise ArtifactError('artifact_manager_conflict', 'Artifact has a different manager', 409)
-                legacy = (
+            pending = [key for key, row in rows.items() if row['manager_type'] is None]
+            if pending:
+                reference = ArtifactReference
+                holder_id = ':'.join(manager)
+                existing = (
                     await uow.execute(
-                        sa.select(ArtifactReference.artifact_id).where(
-                            ArtifactReference.workspace_uuid == context.workspace_uuid,
-                            ArtifactReference.artifact_id == artifact_id,
-                            ArtifactReference.holder_type == 'run_output_commit',
+                        sa.select(reference.artifact_id, reference.holder_type).where(
+                            reference.workspace_uuid == context.workspace_uuid,
+                            reference.artifact_id.in_(pending),
+                            sa.or_(
+                                reference.holder_type == 'run_output_commit',
+                                sa.and_(reference.holder_type == 'principal', reference.holder_id == holder_id),
+                            ),
                         )
                     )
-                ).first()
-                if row['manager_type'] is None and legacy is not None:
+                ).all()
+                if any(kind == 'run_output_commit' for _, kind in existing):
                     raise ArtifactError(
                         'artifact_legacy_commit_unmanaged', 'Legacy output requires explicit manager assignment', 409
                     )
-            for artifact_id in artifact_ids:
-                if rows[artifact_id]['manager_type'] is not None:
-                    # Publication is one-shot: Runner retries cannot undo the manager's explicit release.
-                    continue
-                pin = dict(
-                    workspace_uuid=context.workspace_uuid,
-                    artifact_id=artifact_id,
-                    holder_type='principal',
-                    holder_id=':'.join(manager),
-                )
-                exists = (await uow.execute(sa.select(ArtifactReference.artifact_id).filter_by(**pin))).first()
-                if exists is None:
-                    await uow.execute(sa.insert(ArtifactReference).values(**pin))
+                pinned = {key for key, _ in existing}
+                pins = [
+                    dict(
+                        workspace_uuid=context.workspace_uuid,
+                        artifact_id=key,
+                        holder_type='principal',
+                        holder_id=holder_id,
+                    )
+                    for key in pending
+                    if key not in pinned
+                ]
+                if pins:
+                    await uow.execute(sa.insert(reference).values(pins))
                 await uow.execute(
                     sa.update(Artifact)
-                    .where(*self._scope(context, artifact_id))
+                    .where(Artifact.workspace_uuid == context.workspace_uuid, Artifact.id.in_(pending))
                     .values(manager_type=manager[0], manager_id=manager[1], expires_at=None)
                 )
+            # The locked rows supply the response; a released publication must not be pinned again.
+            await self._require_run_lease(uow, context, owner[1])
             return [
-                self._public(await self._row(uow, context, artifact_id, owner, run_read=True))
-                for artifact_id in artifact_ids
+                self._public(dict(rows[key], expires_at=None) if rows[key]['manager_type'] is None else rows[key])
+                for key in artifact_ids
             ]
 
     async def _authorize_run(self, context):

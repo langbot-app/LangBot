@@ -190,16 +190,16 @@ async def test_mcp_uses_same_self_policy_and_run_commit_publishes_only_to_that_m
     output = await case.a.app.artifact_service.create_run_output(
         run_context, 'published.txt', b'published output', 'text/plain'
     )
-    async with case.a.app.persistence_mgr.tenant_uow(case.context.workspace_uuid):
-        manager = await case.a.app.artifact_publication_service.manager_for_commit(run_context, policy)
-        committed = await case.a.app.artifact_service.commit_run_outputs(
-            run_context, [output['id']], manager_context=manager
-        )
+    committed = await case.a.app.artifact_service.commit_run_outputs(run_context, [output['id']], publication=policy)
     assert committed[0]['lifecycle'] == 'persistent'
     assert (await case.b.app.artifact_service.read(case.context, output['id']))['content'] == b'published output'
     other = replace(case.context, principal=PrincipalContext(PrincipalType.API_KEY, api_key_uuid=str(uuid.uuid4())))
     with pytest.raises(FileNotFoundError):
         await case.b.app.artifact_service.read(other, output['id'])
+
+    await case.b.app.artifact_publication_service.set(case.context, 'agent', producer_id, False)
+    with pytest.raises(PermissionDeniedError):
+        await case.a.app.artifact_service.commit_run_outputs(run_context, [output['id']], publication=policy)
 
 
 async def test_unknown_or_deleted_producer_and_sentinel_principal_cannot_publish(artifact_replicas):

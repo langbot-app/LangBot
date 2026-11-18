@@ -79,7 +79,12 @@ async def test_manager_key_is_private_and_conflicting_batch_does_not_partly_publ
         row = (await uow.execute(sa.select(Artifact.manager_type).where(Artifact.id == second['id']))).one()
     assert row.manager_type is None and not await _pins(case, second['id'])
     await case.a.app.artifact_service.release(manager, first['id'])
-    repeated = await case.b.app.artifact_service.commit_run_outputs(run, [first['id']], manager_context=manager)
+    third = await _create(case, run, 'third.bin')
+    repeated = await case.b.app.artifact_service.commit_run_outputs(
+        run, [first['id'], third['id']], manager_context=manager
+    )
+    assert [entry['id'] for entry in repeated] == [first['id'], third['id']]
+    assert repeated[1]['lifecycle'] == 'persistent' and len(await _pins(case, third['id'])) == 1
     assert repeated[0]['lifecycle'] == 'temporary' and not await _pins(case, first['id'])
     assert await case.b.app.artifact_service.expire_run_outputs(run) == 1
     assert (await case.b.app.artifact_service.get(manager, first['id']))['expires_at'] == repeated[0]['expires_at']
