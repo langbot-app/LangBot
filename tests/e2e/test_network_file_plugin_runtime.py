@@ -152,6 +152,11 @@ def _write_file_runner(plugin_root):
                                 report['commit_denied'] = str(error)
                         elif request['operation'] == 'revoked':
                             report['unexpected_sandbox_access'] = True
+                        elif request['operation'] == 'exceed-quota':
+                            result = await ctx.call_tool('exec', {
+                                'command': 'truncate -s 9M /workspace/over-quota',
+                                'timeout_sec': 10})
+                            report['quota_result'] = result
                         else:
                             imported = await ctx.import_box_attachments()
                             assert len(imported) == 1, imported
@@ -211,7 +216,7 @@ def runner_e2e_config_path(runner_e2e_tmpdir, runner_e2e_port, runner_runtime_po
     )
     config['box'].update(
         enabled=True,
-        backend='docker' if backend == 'e2b' else backend,
+        backend=backend,
         instance_id='full-network-' + uuid.uuid4().hex,
         file_transfer_mode='network',
         limits={'max_sessions': 1, 'max_rpc_file_bytes': 3 * 1024 * 1024},
@@ -449,6 +454,7 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
         selection = {'backend': backend, 'limits': {'timeout_sec': 10, 'idle_ttl_sec': 60, 'max_sessions': 1}}
         if backend == 'e2b':
             selection['e2b'] = runner_langbot_process.e2b_config
+            selection['limits']['workspace_quota_mb'] = 8
         else:
             selection['limits'].update(cpus=0.25, memory_mb=128, pids_limit=32)
         saved = _data(client.put('/api/v1/workspaces/current/sandbox', headers=headers, json=selection))
@@ -576,6 +582,16 @@ def test_registered_runner_persistent_grants_and_tcp_file_delivery(
     assert client.get(artifact_url, headers=headers).status_code == 404
     roundtrip()
     assert source_requests == ['/input.bin', '/input.bin'], source_requests
+
+    if backend == 'e2b':
+        sessions = _data(client.get('/api/v1/box/sessions', headers=headers))
+        assert len(sessions) == 1
+        quota, files = _turn(client, bot_id, {'operation': 'exceed-quota'})
+        result = quota.get('quota_result') or {}
+        assert 'workspace quota exceeded' in (quota.get('error') or result.get('error', '')), quota
+        assert not files and not result.get('ok'), quota
+        assert quota['box_id'] == sessions[0]['session_id']
+        _provider_presence(sessions[0], False, runner_langbot_process.e2b_config)
 
     _data(
         client.put(

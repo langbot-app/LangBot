@@ -1719,10 +1719,18 @@ done
         path: str,
         content: bytes,
         action_context: ActionContext,
+        *,
+        expected_session_generation: str | None = None,
     ) -> None:
         if len(content) > self.max_rpc_file_bytes:
             raise BoxValidationError("File exceeds the configured transfer size limit")
-        await self._transfer_file(session_id, path, action_context, content=content)
+        await self._transfer_file(
+            session_id,
+            path,
+            action_context,
+            content=content,
+            expected_session_generation=expected_session_generation,
+        )
 
     async def download_file(
         self,
@@ -1731,23 +1739,35 @@ done
         action_context: ActionContext,
         *,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ) -> bytes:
         if directory_archive and not self.network_workspace:
             raise BoxValidationError(
                 "Directory archives require network workspace mode"
             )
         return await self._transfer_file(
-            session_id, path, action_context, directory_archive=directory_archive
+            session_id,
+            path,
+            action_context,
+            directory_archive=directory_archive,
+            expected_session_generation=expected_session_generation,
         )
 
     async def _enforce_network_workspace_quota(
         self, session: _RuntimeSession, spec: BoxSpec, phase: str
     ) -> None:
-        if session.owned_workspace is None or spec.workspace_quota_mb <= 0:
+        if not self.network_workspace or spec.workspace_quota_mb <= 0:
+            return
+        limit = spec.workspace_quota_mb * 1024 * 1024
+        if session.backend.name == "e2b":
+            await session.backend.check_workspace_quota(
+                session.info, limit, self.max_workspace_entries, phase
+            )
+            return
+        if session.owned_workspace is None:
             return
         from .file_io import workspace_usage
 
-        limit = spec.workspace_quota_mb * 1024 * 1024
         try:
             used, entries, exceeded = await self._artifact_work(
                 workspace_usage,
@@ -1769,7 +1789,12 @@ done
             )
 
     async def cleanup_run_files(
-        self, session_id: str, io_scope: str, action_context: ActionContext
+        self,
+        session_id: str,
+        io_scope: str,
+        action_context: ActionContext,
+        *,
+        expected_session_generation: str | None = None,
     ) -> None:
         from .file_io import run_files_cleanup_script, run_files_present
         from .tenancy import session_belongs_to_placement
@@ -1785,12 +1810,31 @@ done
             await self.require_sandbox_admission(action_context)
         async with self._lock:
             session = self._sessions.get(session_id)
-            if session is None or session.closing:
+            if (
+                session is None
+                or session.closing
+                or (
+                    expected_session_generation is not None
+                    and session.info.session_generation != expected_session_generation
+                )
+            ):
+                if expected_session_generation is not None:
+                    return  # The old incarnation is gone; never clean its replacement.
                 raise BoxSessionNotFoundError(f"session {session_id} not found")
             self._session_leases[session_id] += 1
         try:
             async with session.lock:
-                if session.closing or self._sessions.get(session_id) is not session:
+                if (
+                    session.closing
+                    or self._sessions.get(session_id) is not session
+                    or (
+                        expected_session_generation is not None
+                        and session.info.session_generation
+                        != expected_session_generation
+                    )
+                ):
+                    if expected_session_generation is not None:
+                        return
                     raise BoxSessionNotFoundError(
                         f"session {session_id} is being deleted"
                     )
@@ -1845,6 +1889,7 @@ done
         *,
         content: bytes | None = None,
         directory_archive: bool = False,
+        expected_session_generation: str | None = None,
     ):
         from .file_io import workspace_relative_path
         from .tenancy import session_belongs_to_placement
@@ -1857,12 +1902,27 @@ done
             await self.require_sandbox_admission(action_context)
         async with self._lock:
             session = self._sessions.get(session_id)
-            if session is None or session.closing:
+            if (
+                session is None
+                or session.closing
+                or (
+                    expected_session_generation is not None
+                    and session.info.session_generation != expected_session_generation
+                )
+            ):
                 raise BoxSessionNotFoundError(f"session {session_id} not found")
             self._session_leases[session_id] += 1
         try:
             async with session.lock:
-                if session.closing or self._sessions.get(session_id) is not session:
+                if (
+                    session.closing
+                    or self._sessions.get(session_id) is not session
+                    or (
+                        expected_session_generation is not None
+                        and session.info.session_generation
+                        != expected_session_generation
+                    )
+                ):
                     raise BoxSessionNotFoundError(
                         f"session {session_id} is being deleted"
                     )
@@ -2335,9 +2395,8 @@ done
             f"Managed sandbox isolation is not ready (failed checks: {detail})"
         )
 
-    @staticmethod
     def _limit_capabilities(
-        name: str, backend: BaseSandboxBackend | None = None
+        self, name: str, backend: BaseSandboxBackend | None = None
     ) -> dict:
         local = name in ("docker", "nsjail")
         hard_resources = local
@@ -2354,7 +2413,7 @@ done
             and bool(getattr(backend, "cpu_limit_enabled", True)),
             "memory_mb": hard_resources,
             "pids_limit": hard_resources,
-            "workspace_quota_mb": local,
+            "workspace_quota_mb": local or (name == "e2b" and self.network_workspace),
         }
 
     async def _probe_backend(
@@ -2645,6 +2704,18 @@ done
                                 "Sandbox admission session limit reached"
                             )
 
+                    if spec.expected_session_generation is not None:
+                        bound = self._sessions.get(spec.session_id)
+                        if (
+                            bound is None
+                            or bound.closing
+                            or bound.info.session_generation
+                            != spec.expected_session_generation
+                            or spec.session_id in self._closing_session_tasks
+                        ):
+                            raise BoxSessionNotFoundError(
+                                "Bound Box generation is no longer available; start a new run and explicitly acquire a Box"
+                            )
                     cleanup_task = self._closing_session_tasks.get(spec.session_id)
                     if cleanup_task is None:
                         existing = self._sessions.get(spec.session_id)
@@ -2797,6 +2868,7 @@ done
 
                     async def start_session():
                         info = await backend.start_session(backend_spec)
+                        info.session_generation = uuid.uuid4().hex
                         info._runtime_workspace_owner = owned_workspace
                         runtime_session = _RuntimeSession(
                             info=info,

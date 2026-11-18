@@ -439,6 +439,10 @@ remains subject to Runtime idle expiry. Legacy shared workspace files survive ex
 Runtime-owned network workspaces are removed after successful backend stop.
 Processes and container-local state do not survive.
 
+Runtime assigns a fresh session generation at creation. An expected generation
+on a command or file request must match the live session. A bound command never
+creates a missing session. Cleanup for a retired generation is a no-op.
+
 `lbp box` enters `box/server.py::main()` and serves `BoxRuntime` through action RPC.
 
 Box graph:

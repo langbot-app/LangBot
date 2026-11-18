@@ -19,7 +19,7 @@ import httpx
 from ..artifact import build_tree_manifest, load_tree_manifest
 from ..runtime.bounded_executor import run_blocking_with_backpressure
 from .backend import BaseSandboxBackend, _MAX_RAW_OUTPUT_BYTES
-from .errors import BoxError
+from .errors import BoxError, BoxValidationError
 from .models import (
     ARTIFACT_MOUNT_ROOT,
     BoxExecutionResult,
@@ -729,6 +729,39 @@ class E2BSandboxBackend(BaseSandboxBackend):
             stderr=stderr,
             duration_ms=duration_ms,
         )
+
+    async def check_workspace_quota(
+        self, session: BoxSessionInfo, limit: int, max_entries: int, phase: str
+    ) -> None:
+        from . import file_io
+
+        root = _adapt_path_for_e2b(session.mount_path)
+        script = (
+            inspect.getsource(file_io)
+            + f"\nos.makedirs({root!r}, exist_ok=True)\n"
+            + f"used, _, exceeded = workspace_usage({root!r}, {limit}, {max_entries})\n"
+            + f"print('entries' if exceeded else 'bytes' if used > {limit} else 'ok')\n"
+        )
+        try:
+            sandbox = await _AsyncSandbox.connect(
+                sandbox_id=session.backend_session_id,
+                request_timeout=30,
+                **self._connection_kwargs(session.backend_session_id),
+            )
+            result = await sandbox.commands.run(
+                "python3 -I -c " + shlex.quote(script), timeout=30, request_timeout=30
+            )
+            status = result.stdout.strip()
+            if result.exit_code != 0 or status not in {"ok", "bytes", "entries"}:
+                raise BoxError("Invalid quota scan response")
+        except Exception as exc:
+            raise BoxValidationError(
+                f"Cannot enforce E2B workspace quota {phase}: {self._safe_error(exc)}"
+            ) from None
+        if status == "entries":
+            raise BoxValidationError(f"E2B workspace entry limit exceeded {phase}")
+        if status == "bytes":
+            raise BoxValidationError(f"E2B workspace quota exceeded {phase}")
 
     async def _sync_mounts_to_e2b(self, sandbox, spec: BoxSpec) -> None:
         """Upload Workspace data and atomically materialize immutable mounts."""

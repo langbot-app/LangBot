@@ -22,6 +22,7 @@ def service():
         ap=SimpleNamespace(),
         resolve_workspace_selection=AsyncMock(return_value={'backend': None, 'e2b': {}}),
         enabled=True,
+        file_transfer_mode='legacy',
         managed_admission_required=False,
         _ATTACHMENT_MAX_TOTAL_BYTES=1000000,
         clear_selected_files=AsyncMock(return_value=None),

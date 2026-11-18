@@ -24,6 +24,7 @@ class RunBoxBinding:
     session_id: str
     spec: dict
     io_scope: str
+    session_generation: str | None = None
     imported: dict = field(default_factory=dict)
     exported: dict = field(default_factory=dict)
     submitted: set = field(default_factory=set)
@@ -301,8 +302,20 @@ class RunnerBoxService:
             spec['e2b_config'] = selected_config['config']
         from ..provider.tools.loaders.skill import build_execution_mounts
 
+        generation = None
+        if self.box.file_transfer_mode == 'network':
+            generation = item.get('session_generation')
+            if not isinstance(generation, str) or not generation:
+                raise BoxValidationError(
+                    'Box Runtime does not expose session generations; upgrade Core and Box Runtime together'
+                )
         binding = RunBoxBinding(
-            run_id, box_id, spec, run_id, read_only_mounts=build_execution_mounts(self.box.ap, query)
+            run_id,
+            box_id,
+            spec,
+            run_id,
+            session_generation=generation,
+            read_only_mounts=build_execution_mounts(self.box.ap, query),
         )
         object.__setattr__(query, '_box_binding', binding)
         return self.binding_info(binding)

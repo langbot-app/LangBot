@@ -133,13 +133,14 @@ class BoxService:
 
             if (
                 not hasattr(sdk_box_errors, 'BoxArtifactNotPreparedError')
+                or 'expected_session_generation' not in BoxSpec.model_fields
                 or not callable(getattr(SkillStore, 'list_publication_manifest_resources', None))
                 or any(
                     not callable(getattr(client, name, None))
                     for name in ('upload_file', 'download_file', 'prepare_artifact', 'cleanup_run_files')
                 )
             ):
-                raise BoxValidationError('Network Skill execution requires an updated Core and Box SDK')
+                raise BoxValidationError('Network Box execution requires an updated Core and Box SDK')
         self.output_limit_chars = output_limit_chars
         self.host_root = self._load_host_root()
         self.allowed_mount_roots = self._load_allowed_mount_roots()
@@ -578,7 +579,10 @@ class BoxService:
         async def clean_scopes():
             for scope in sorted({binding.io_scope, *binding.import_scopes}):
                 await self.client.cleanup_run_files(
-                    binding.session_id, scope, action_context=self._action_context(context)
+                    binding.session_id,
+                    scope,
+                    action_context=self._action_context(context),
+                    expected_session_generation=binding.session_generation,
                 )
 
         task = asyncio.create_task(clean_scopes())
@@ -762,6 +766,9 @@ class BoxService:
         backend = binding.spec.get('backend')
         e2b_config = binding.spec.get('e2b_config')
         spec_payload = {**binding.spec, **spec_payload, 'session_id': binding.session_id}
+        spec_payload.pop('expected_session_generation', None)
+        if binding.session_generation is not None:
+            spec_payload['expected_session_generation'] = binding.session_generation
         spec_payload.pop('backend', None)
         spec_payload.pop('e2b_config', None)
         execution_context = await self._validated_execution_context(self._query_execution_context(query))
@@ -1103,6 +1110,9 @@ class BoxService:
         return await self._write_files_via_exec(query, target_mount_dir, files)
 
     async def _write_files_network(self, query, target_dir, files):
+        from .runner import binding_for
+
+        binding = binding_for(query)
         if (
             len(files) > self._ATTACHMENT_MAX_FILES
             or sum(len(data) for _, data in files) > self._ATTACHMENT_MAX_TOTAL_BYTES
@@ -1120,7 +1130,11 @@ class BoxService:
                 path = f'{target_dir}/{name}'
                 written.append(path)
                 await self.client.upload_file(
-                    self.resolve_box_session_id(query), path, data, action_context=self._action_context(context)
+                    binding.session_id,
+                    path,
+                    data,
+                    action_context=self._action_context(context),
+                    expected_session_generation=binding.session_generation,
                 )
             await self._validated_execution_context(context)
             return written
@@ -1266,6 +1280,7 @@ class BoxService:
                     self.resolve_box_session_id(query),
                     root + '/' + filename,
                     action_context=self._action_context(context),
+                    expected_session_generation=binding.session_generation,
                 )
                 if len(content) != size or hashlib.sha256(content).hexdigest() != item.get('sha256'):
                     raise export_error('invalid_response')
@@ -1302,6 +1317,7 @@ class BoxService:
             sandbox_path,
             action_context=self._action_context(context),
             directory_archive=True,
+            expected_session_generation=binding.session_generation,
         )
         if len(content) > 20 * _MIB:
             raise BoxValidationError('Skill draft archive exceeds the size limit (20 MiB)')
@@ -1864,7 +1880,11 @@ class BoxService:
         updates = {}
         for key in configured_caps:
             field = 'workspace_max_sessions' if key == 'max_sessions' else key
-            if key not in ('timeout_sec', 'max_sessions', 'idle_ttl_sec') and spec.backend == 'e2b':
+            if (
+                spec.backend == 'e2b'
+                and key not in ('timeout_sec', 'max_sessions', 'idle_ttl_sec')
+                and not (self.file_transfer_mode == 'network' and key == 'workspace_quota_mb')
+            ):
                 continue
             raw = getattr(spec, field)
             if key in self.profile.locked and raw is not None and raw > caps[key]:
@@ -1966,10 +1986,9 @@ class BoxService:
         for key in getattr(self.profile, 'locked', ()):
             capabilities[key] = False
         capabilities['workspace_quota_mb'] = (
-            item['name'] in ('docker', 'nsjail')
-            and self.shares_filesystem_with_box
-            and 'workspace_quota_mb' not in self.profile.locked
-        )
+            (item['name'] in ('docker', 'nsjail') and self.shares_filesystem_with_box)
+            or (item['name'] == 'e2b' and capabilities.get('workspace_quota_mb') is True)
+        ) and 'workspace_quota_mb' not in self.profile.locked
         return capabilities
 
     def _prepare_limits(self, limits: dict, backend: str, settings: dict) -> dict:

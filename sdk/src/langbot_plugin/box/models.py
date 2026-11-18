@@ -370,6 +370,8 @@ class BoxSpec(pydantic.BaseModel):
     timeout_sec: int = 30
     network: BoxNetworkMode = BoxNetworkMode.OFF
     session_id: str
+    # Bound executions must target one Runtime incarnation, never auto-create.
+    expected_session_generation: str | None = pydantic.Field(default=None, min_length=1)
     env: dict[str, str] = pydantic.Field(default_factory=dict)
     image: str = DEFAULT_BOX_IMAGE
     host_path: str | None = None
@@ -606,6 +608,8 @@ class BoxSessionInfo(pydantic.BaseModel):
     session_id: str
     backend_name: str
     backend_session_id: str
+    # Assigned by Runtime, independent of reusable backend names/container IDs.
+    session_generation: str = ""
     image: str
     network: BoxNetworkMode
     host_path: str | None = None
@@ -692,6 +696,7 @@ class BoxFileRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid", strict=True)
 
     session_id: str = pydantic.Field(min_length=1)
+    expected_session_generation: str | None = pydantic.Field(default=None, min_length=1)
     path: str = pydantic.Field(min_length=1, max_length=4096)
     file_key: str = pydantic.Field(pattern=r"^ft1_[0-9a-f]{64}$")
 
@@ -711,6 +716,7 @@ class BoxRunFilesCleanupRequest(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(extra="forbid", strict=True)
 
     session_id: str = pydantic.Field(min_length=1)
+    expected_session_generation: str | None = pydantic.Field(default=None, min_length=1)
     io_scope: str = pydantic.Field(min_length=1, max_length=512)
 
     @pydantic.field_validator("io_scope")
