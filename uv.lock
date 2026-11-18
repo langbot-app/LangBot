@@ -2313,7 +2313,7 @@ dev = [
 
 [[package]]
 name = "langbot-plugin"
-version = "0.7.25"
+version = "0.7.26"
 source = { editable = "sdk" }
 dependencies = [
     { name = "aiofiles" },
