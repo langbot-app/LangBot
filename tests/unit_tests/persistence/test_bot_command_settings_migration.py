@@ -1,4 +1,4 @@
-"""Unit tests for 0047_bot_command_settings Alembic migration and startup YAML migration."""
+"""Unit tests for 0054_bot_command_settings Alembic migration and startup YAML migration."""
 
 import importlib
 import json
@@ -15,7 +15,7 @@ from langbot.pkg.persistence.bot_command_migration import (
     migrate_global_command_config,
 )
 
-migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0047_bot_command_settings')
+migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0054_bot_command_settings')
 
 
 def test_alembic_0043_upgrade_and_downgrade():

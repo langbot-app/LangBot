@@ -7,8 +7,8 @@ from alembic.operations import Operations
 
 
 def test_platform_command_sync_upgrade_and_downgrade():
-    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0048_platform_command_sync')
-    assert migration.down_revision == '0047_bot_command_settings'
+    migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0055_platform_command_sync')
+    assert migration.down_revision == '0054_bot_command_settings'
     engine = sa.create_engine('sqlite://')
     metadata = sa.MetaData()
     bots = sa.Table('bots', metadata, sa.Column('uuid', sa.String(), primary_key=True))

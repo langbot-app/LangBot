@@ -1,4 +1,4 @@
-"""0049: trigger, safety and general output settings move from Messaging to bots.
+"""0056: trigger, safety and general output settings move from Messaging to bots.
 
 Runs on SQLite always and on PostgreSQL when ``TEST_POSTGRES_URL`` is set
 (each test works in its own throwaway schema).
@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from langbot.pkg.message_policy import schema as policy_schema
 
-migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0049_bot_message_policy')
+migration = importlib.import_module('langbot.pkg.persistence.alembic.versions.0056_bot_message_policy')
 
 
 def legacy_config(prefix: str, *, limitation: int = 60, at_sender: bool = True) -> dict:
