@@ -1,3 +1,4 @@
+# CI probe (LANG-596): no-op change to select the vector unit shard.
 from __future__ import annotations
 
 import asyncio
