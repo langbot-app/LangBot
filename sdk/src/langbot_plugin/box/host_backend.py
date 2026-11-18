@@ -30,7 +30,13 @@ from .windows_job import WindowsJob
 _UTC = dt.timezone.utc
 _INHERITED_ENV_KEYS = ("PATH", "LANG", "LC_ALL", "LC_CTYPE", "TERM")
 _WINDOWS_ENV_KEYS = (
-    "SYSTEMROOT", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "USERPROFILE",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "PATHEXT",
+    "TEMP",
+    "TMP",
+    "USERPROFILE",
 )
 _WINDOWS = os.name == "nt"
 
@@ -47,7 +53,9 @@ class _HostSession:
 class _HostManagedProcess:
     """Process facade whose terminate/kill operations cover its process group."""
 
-    def __init__(self, process: asyncio.subprocess.Process, job: WindowsJob | None = None):
+    def __init__(
+        self, process: asyncio.subprocess.Process, job: WindowsJob | None = None
+    ):
         self._process = process
         self._job = job
         self.stdin = process.stdin
@@ -95,9 +103,15 @@ class HostProcessBackend(BaseSandboxBackend):
             return shutil.which("sh"), "sh"
         for name in ("bash.exe", "sh.exe"):
             executable = shutil.which(name)
-            if executable and "/windows/system32/" not in executable.replace("\\", "/").lower():
+            if (
+                executable
+                and "/windows/system32/" not in executable.replace("\\", "/").lower()
+            ):
                 return executable, "git-bash"
-        for variable, suffix in (("ProgramFiles", "Git"), ("LOCALAPPDATA", "Programs/Git")):
+        for variable, suffix in (
+            ("ProgramFiles", "Git"),
+            ("LOCALAPPDATA", "Programs/Git"),
+        ):
             root = os.environ.get(variable)
             if root:
                 for name in ("bash.exe", "sh.exe"):
@@ -334,7 +348,9 @@ class HostProcessBackend(BaseSandboxBackend):
 
     def _rewrite_shell_paths(self, state: _HostSession, command: str) -> str:
         if _WINDOWS:
-            if self._shell_kind == "powershell" and re.search(r"<<|\bcommand -v\b", command):
+            if self._shell_kind == "powershell" and re.search(
+                r"<<|\bcommand -v\b", command
+            ):
                 raise BoxValidationError(
                     "POSIX shell scripts and native file tools require Git Bash on Windows; "
                     "the active host shell is PowerShell"
@@ -344,7 +360,13 @@ class HostProcessBackend(BaseSandboxBackend):
                     "This file tool requires POSIX interval timers and is not supported "
                     "by the Windows host backend"
                 )
-            mounts = tuple((mount, host.replace("\\", "/")) for mount, host in state.mounts)
+            mounts = tuple(
+                (mount, host.replace("\\", "/")) for mount, host in state.mounts
+            )
+            if any(not re.fullmatch(r"[\w ./:-]+", host) for _, host in mounts):
+                raise BoxValidationError(
+                    "host backend mount path contains shell-special characters"
+                )
             state = dataclasses.replace(state, mounts=mounts)
             return self._replace_mount_paths(state, command, shell=self._shell_kind)
         for _, host_path in state.mounts:
@@ -359,22 +381,28 @@ class HostProcessBackend(BaseSandboxBackend):
         return cls._replace_mount_paths(state, value)
 
     @staticmethod
-    def _replace_mount_paths(state: _HostSession, value: str, *, shell: str | None = None) -> str:
+    def _replace_mount_paths(
+        state: _HostSession, value: str, *, shell: str | None = None
+    ) -> str:
         if not state.mounts:
             return value
         alternatives = "|".join(re.escape(item[0]) for item in state.mounts)
         pattern = re.compile(rf"(?P<mount>{alternatives})(?=/|$|[^A-Za-z0-9_.-])")
         mapped = dict(state.mounts)
+
         def replace(match):
             host = mapped[match.group("mount")]
             if shell is None:
                 return host
             quote = None
             escaped = False
-            for character in value[:match.start()]:
+            for character in value[: match.start()]:
                 if escaped:
                     escaped = False
-                elif character == ("`" if shell == "powershell" else "\\") and quote != "'":
+                elif (
+                    character == ("`" if shell == "powershell" else "\\")
+                    and quote != "'"
+                ):
                     escaped = True
                 elif character in ("'", '"'):
                     if quote is None:
@@ -386,9 +414,9 @@ class HostProcessBackend(BaseSandboxBackend):
                     return host.replace("`", "``").replace("$", "`$").replace('"', '`"')
                 if quote == "'":
                     return host.replace("'", "''")
-                return "'" + host.replace("'", "''") + "'"
+                return host.replace(" ", "` ")
             if quote == '"':
-                return re.sub(r'([\\$`"])', r'\\\1', host)
+                return re.sub(r'([\\$`"])', r"\\\1", host)
             if quote == "'":
                 return host.replace("'", "'\"'\"'")
             return shlex.quote(host)

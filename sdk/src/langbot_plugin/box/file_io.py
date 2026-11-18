@@ -382,6 +382,7 @@ def archive_workspace_directory(root: str, relative: str, max_bytes: int) -> byt
 
 def clear_workspace_directory(root: str, device: int, inode: int) -> None:
     """Clear an identity-bound workspace without following links or other devices."""
+    _require_descriptor_io()
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     entries = 0
 

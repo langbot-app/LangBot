@@ -26,6 +26,18 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  windows-host:
+    name: Windows host Box
+    runs-on: windows-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+      - run: uv run --python 3.12 pytest -qs tests/box/test_windows_host_backend.py
+        working-directory: sdk
+
   scope:
     runs-on: ubuntu-latest
     outputs:

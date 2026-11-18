@@ -11,8 +11,14 @@ class WindowsJob:
         self._kernel = ctypes.WinDLL("kernel32", use_last_error=True)
         signatures = {
             "CreateJobObjectW": ([ctypes.c_void_p, wintypes.LPCWSTR], wintypes.HANDLE),
-            "OpenProcess": ([wintypes.DWORD, wintypes.BOOL, wintypes.DWORD], wintypes.HANDLE),
-            "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
+            "OpenProcess": (
+                [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD],
+                wintypes.HANDLE,
+            ),
+            "AssignProcessToJobObject": (
+                [wintypes.HANDLE, wintypes.HANDLE],
+                wintypes.BOOL,
+            ),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
             "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
         }
