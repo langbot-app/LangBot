@@ -1,5 +1,6 @@
 import asyncio
 import io
+import json
 import logging
 import os
 import shutil
@@ -121,5 +122,50 @@ async def test_windows_exec(tmp_path, shell):
                     session,
                     spec.model_copy(update={"cmd": "python3 - <<'PY'\nprint(1)\nPY"}),
                 )
+    finally:
+        await backend.stop_session(session)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="requires actual Windows shells")
+@pytest.mark.asyncio
+async def test_windows_git_bash_native_file_tool_shape(tmp_path):
+    """Mirror Core's native file-tool wrapper: python3 lookup + quoted heredoc."""
+    backend = host_backend.HostProcessBackend(logging.getLogger(__name__))
+    if backend._shell_kind != "git-bash":
+        pytest.skip("Git Bash is not installed")
+    workspace = tmp_path / "box workspace"
+    script = (
+        "import json, os\n"
+        'path = "/workspace/sub dir/a.txt"\n'
+        "if not path.startswith('/workspace'):\n"
+        "    print(json.dumps({'ok': False}))\n"
+        "else:\n"
+        "    os.makedirs(os.path.dirname(path), exist_ok=True)\n"
+        "    with open(path, 'w', encoding='utf-8') as f:\n"
+        '        f.write("it\'s $HOME `x`")\n'
+        "    with open(path, encoding='utf-8') as f:\n"
+        "        print(json.dumps({'ok': True, 'content': f.read()}))"
+    )
+    command = (
+        "PYTHON_BIN=$(command -v python3 || true); "
+        'if [ -z "$PYTHON_BIN" ]; then echo no-python; exit 0; fi; '
+        f"\"$PYTHON_BIN\" - <<'PY'\n{script}\nPY"
+    )
+    spec = BoxSpec(
+        session_id="windows-host-file-tool",
+        host_path=str(workspace),
+        cmd=command,
+        read_only_rootfs=False,
+    )
+    session = await backend.start_session(spec)
+    try:
+        result = await asyncio.wait_for(backend.exec(session, spec), 30)
+        assert result.exit_code == 0, result.stderr
+        print(f"file-tool: {result.stdout.strip()}")
+        payload = json.loads(result.stdout.strip().splitlines()[-1])
+        assert payload == {"ok": True, "content": "it's $HOME `x`"}
+        assert (workspace / "sub dir" / "a.txt").read_text(
+            encoding="utf-8"
+        ) == "it's $HOME `x`"
     finally:
         await backend.stop_session(session)
